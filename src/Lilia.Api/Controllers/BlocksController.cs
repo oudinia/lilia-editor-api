@@ -13,11 +13,13 @@ public class BlocksController : ControllerBase
 {
     private readonly IBlockService _blockService;
     private readonly IDocumentService _documentService;
+    private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
+        _logger = logger;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -89,6 +91,16 @@ public class BlocksController : ControllerBase
     [HttpPost("batch")]
     public async Task<ActionResult<List<BlockDto>>> BatchUpdateBlocks(Guid docId, [FromBody] BatchUpdateBlocksDto dto)
     {
+        _logger.LogInformation("BatchUpdateBlocks called for doc {DocId} with {BlockCount} blocks", docId, dto.Blocks?.Count ?? 0);
+        if (dto.Blocks != null && dto.Blocks.Count > 0)
+        {
+            foreach (var block in dto.Blocks.Take(3))
+            {
+                _logger.LogDebug("Block {BlockId}: Type={Type}, HasContent={HasContent}",
+                    block.Id, block.Type, block.Content.HasValue);
+            }
+        }
+
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
