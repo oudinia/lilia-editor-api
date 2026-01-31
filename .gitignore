@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+*.user
+
+# Logs
+logs/
+
+# Local uploads
+uploads/

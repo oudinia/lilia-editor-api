@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Lilia.Api/Lilia.Api.csproj" />
+    <Project Path="src/Lilia.Core/Lilia.Core.csproj" />
+    <Project Path="src/Lilia.Infrastructure/Lilia.Infrastructure.csproj" />
+  </Folder>
+</Solution>

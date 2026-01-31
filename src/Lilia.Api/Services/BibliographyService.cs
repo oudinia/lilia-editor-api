@@ -1,0 +1,328 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Lilia.Core.DTOs;
+using Lilia.Core.Entities;
+using Lilia.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace Lilia.Api.Services;
+
+public partial class BibliographyService : IBibliographyService
+{
+    private readonly LiliaDbContext _context;
+    private readonly HttpClient _httpClient;
+
+    public BibliographyService(LiliaDbContext context, IHttpClientFactory httpClientFactory)
+    {
+        _context = context;
+        _httpClient = httpClientFactory.CreateClient();
+    }
+
+    public async Task<List<BibliographyEntryDto>> GetEntriesAsync(Guid documentId)
+    {
+        var entries = await _context.BibliographyEntries
+            .Where(e => e.DocumentId == documentId)
+            .OrderBy(e => e.CiteKey)
+            .ToListAsync();
+
+        return entries.Select(MapToDto).ToList();
+    }
+
+    public async Task<BibliographyEntryDto?> GetEntryAsync(Guid documentId, Guid entryId)
+    {
+        var entry = await _context.BibliographyEntries
+            .FirstOrDefaultAsync(e => e.DocumentId == documentId && e.Id == entryId);
+
+        return entry == null ? null : MapToDto(entry);
+    }
+
+    public async Task<BibliographyEntryDto> CreateEntryAsync(Guid documentId, CreateBibliographyEntryDto dto)
+    {
+        var entry = new BibliographyEntry
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            CiteKey = dto.CiteKey,
+            EntryType = dto.EntryType,
+            Data = JsonDocument.Parse(dto.Data.GetRawText()),
+            FormattedText = FormatCitation(dto.EntryType, dto.Data),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.BibliographyEntries.Add(entry);
+        await _context.SaveChangesAsync();
+
+        return MapToDto(entry);
+    }
+
+    public async Task<BibliographyEntryDto?> UpdateEntryAsync(Guid documentId, Guid entryId, UpdateBibliographyEntryDto dto)
+    {
+        var entry = await _context.BibliographyEntries
+            .FirstOrDefaultAsync(e => e.DocumentId == documentId && e.Id == entryId);
+
+        if (entry == null) return null;
+
+        if (dto.CiteKey != null) entry.CiteKey = dto.CiteKey;
+        if (dto.EntryType != null) entry.EntryType = dto.EntryType;
+        if (dto.Data.HasValue) entry.Data = JsonDocument.Parse(dto.Data.Value.GetRawText());
+
+        entry.FormattedText = FormatCitation(entry.EntryType, entry.Data.RootElement);
+        entry.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return MapToDto(entry);
+    }
+
+    public async Task<bool> DeleteEntryAsync(Guid documentId, Guid entryId)
+    {
+        var entry = await _context.BibliographyEntries
+            .FirstOrDefaultAsync(e => e.DocumentId == documentId && e.Id == entryId);
+
+        if (entry == null) return false;
+
+        _context.BibliographyEntries.Remove(entry);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
+    public async Task<List<BibliographyEntryDto>> ImportBibTexAsync(Guid documentId, string bibTexContent)
+    {
+        var entries = ParseBibTex(bibTexContent);
+        var results = new List<BibliographyEntryDto>();
+
+        foreach (var (citeKey, entryType, data) in entries)
+        {
+            // Check if entry already exists
+            var existing = await _context.BibliographyEntries
+                .FirstOrDefaultAsync(e => e.DocumentId == documentId && e.CiteKey == citeKey);
+
+            if (existing != null)
+            {
+                existing.EntryType = entryType;
+                existing.Data = JsonDocument.Parse(JsonSerializer.Serialize(data));
+                existing.FormattedText = FormatCitation(entryType, existing.Data.RootElement);
+                existing.UpdatedAt = DateTime.UtcNow;
+                results.Add(MapToDto(existing));
+            }
+            else
+            {
+                var entry = new BibliographyEntry
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = documentId,
+                    CiteKey = citeKey,
+                    EntryType = entryType,
+                    Data = JsonDocument.Parse(JsonSerializer.Serialize(data)),
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                entry.FormattedText = FormatCitation(entry.EntryType, entry.Data.RootElement);
+                _context.BibliographyEntries.Add(entry);
+                results.Add(MapToDto(entry));
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return results;
+    }
+
+    public async Task<string> ExportBibTexAsync(Guid documentId)
+    {
+        var entries = await _context.BibliographyEntries
+            .Where(e => e.DocumentId == documentId)
+            .ToListAsync();
+
+        var sb = new StringBuilder();
+
+        foreach (var entry in entries)
+        {
+            sb.AppendLine($"@{entry.EntryType}{{{entry.CiteKey},");
+
+            var data = entry.Data.RootElement;
+            foreach (var prop in data.EnumerateObject())
+            {
+                var value = prop.Value.GetString();
+                if (!string.IsNullOrEmpty(value))
+                {
+                    sb.AppendLine($"  {prop.Name} = {{{value}}},");
+                }
+            }
+
+            sb.AppendLine("}");
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    public async Task<DoiLookupResultDto?> LookupDoiAsync(string doi)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.crossref.org/works/{Uri.EscapeDataString(doi)}");
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(json);
+            var message = doc.RootElement.GetProperty("message");
+
+            var data = new Dictionary<string, string>();
+
+            if (message.TryGetProperty("title", out var title) && title.GetArrayLength() > 0)
+                data["title"] = title[0].GetString() ?? "";
+
+            if (message.TryGetProperty("author", out var authors))
+            {
+                var authorList = new List<string>();
+                foreach (var author in authors.EnumerateArray())
+                {
+                    var family = author.TryGetProperty("family", out var f) ? f.GetString() ?? "" : "";
+                    var given = author.TryGetProperty("given", out var g) ? g.GetString() ?? "" : "";
+                    if (!string.IsNullOrEmpty(family))
+                        authorList.Add($"{family}, {given}");
+                }
+                data["author"] = string.Join(" and ", authorList);
+            }
+
+            if (message.TryGetProperty("published-print", out var published) ||
+                message.TryGetProperty("published-online", out published))
+            {
+                if (published.TryGetProperty("date-parts", out var dateParts) && dateParts.GetArrayLength() > 0)
+                {
+                    var parts = dateParts[0];
+                    if (parts.GetArrayLength() > 0)
+                        data["year"] = parts[0].GetInt32().ToString();
+                }
+            }
+
+            if (message.TryGetProperty("container-title", out var journal) && journal.GetArrayLength() > 0)
+                data["journal"] = journal[0].GetString() ?? "";
+
+            if (message.TryGetProperty("volume", out var volume))
+                data["volume"] = volume.GetString() ?? "";
+
+            if (message.TryGetProperty("page", out var page))
+                data["pages"] = page.GetString() ?? "";
+
+            data["doi"] = doi;
+
+            var entryType = message.TryGetProperty("type", out var type) && type.GetString() == "journal-article"
+                ? "article"
+                : "misc";
+
+            var citeKey = GenerateCiteKey(data);
+
+            return new DoiLookupResultDto(citeKey, entryType, JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<(string CiteKey, string EntryType, Dictionary<string, string> Data)> ParseBibTex(string content)
+    {
+        var results = new List<(string, string, Dictionary<string, string>)>();
+        var entryPattern = EntryRegex();
+        var fieldPattern = FieldRegex();
+
+        foreach (Match entryMatch in entryPattern.Matches(content))
+        {
+            var entryType = entryMatch.Groups[1].Value.ToLower();
+            var citeKey = entryMatch.Groups[2].Value;
+            var fieldsContent = entryMatch.Groups[3].Value;
+
+            var data = new Dictionary<string, string>();
+            foreach (Match fieldMatch in fieldPattern.Matches(fieldsContent))
+            {
+                var fieldName = fieldMatch.Groups[1].Value.ToLower();
+                var fieldValue = fieldMatch.Groups[2].Value.Trim('{', '}', '"');
+                data[fieldName] = fieldValue;
+            }
+
+            results.Add((citeKey, entryType, data));
+        }
+
+        return results;
+    }
+
+    private static string FormatCitation(string entryType, JsonElement data)
+    {
+        var sb = new StringBuilder();
+
+        var authors = data.TryGetProperty("author", out var a) ? a.GetString() : "";
+        var title = data.TryGetProperty("title", out var t) ? t.GetString() : "";
+        var year = data.TryGetProperty("year", out var y) ? y.GetString() : "";
+
+        if (!string.IsNullOrEmpty(authors))
+        {
+            var authorList = authors.Split(" and ");
+            if (authorList.Length > 2)
+                sb.Append($"{authorList[0].Split(',')[0]} et al.");
+            else
+                sb.Append(string.Join(" & ", authorList.Select(a => a.Split(',')[0])));
+            sb.Append(" ");
+        }
+
+        if (!string.IsNullOrEmpty(year))
+            sb.Append($"({year}). ");
+
+        if (!string.IsNullOrEmpty(title))
+            sb.Append($"{title}. ");
+
+        if (entryType == "article")
+        {
+            var journal = data.TryGetProperty("journal", out var j) ? j.GetString() : "";
+            if (!string.IsNullOrEmpty(journal))
+                sb.Append($"*{journal}*");
+
+            var volume = data.TryGetProperty("volume", out var v) ? v.GetString() : "";
+            if (!string.IsNullOrEmpty(volume))
+                sb.Append($", {volume}");
+
+            var pages = data.TryGetProperty("pages", out var p) ? p.GetString() : "";
+            if (!string.IsNullOrEmpty(pages))
+                sb.Append($", {pages}");
+
+            sb.Append('.');
+        }
+
+        return sb.ToString();
+    }
+
+    private static string GenerateCiteKey(Dictionary<string, string> data)
+    {
+        var author = data.GetValueOrDefault("author", "");
+        var year = data.GetValueOrDefault("year", "");
+
+        var firstAuthor = author.Split(" and ").FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim() ?? "unknown";
+        return $"{firstAuthor.ToLower()}{year}";
+    }
+
+    private static BibliographyEntryDto MapToDto(BibliographyEntry e)
+    {
+        return new BibliographyEntryDto(
+            e.Id,
+            e.DocumentId,
+            e.CiteKey,
+            e.EntryType,
+            e.Data.RootElement,
+            e.FormattedText,
+            e.CreatedAt,
+            e.UpdatedAt
+        );
+    }
+
+    [GeneratedRegex(@"@(\w+)\s*\{\s*([^,]+)\s*,\s*([\s\S]*?)\s*\}", RegexOptions.Multiline)]
+    private static partial Regex EntryRegex();
+
+    [GeneratedRegex(@"(\w+)\s*=\s*(?:\{([^}]*)\}|""([^""]*)"")", RegexOptions.Multiline)]
+    private static partial Regex FieldRegex();
+}
