@@ -156,6 +156,11 @@ builder.Services.AddScoped<IVersionService, VersionService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
+builder.Services.AddScoped<IRenderService, RenderService>();
+builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
+
+// Add distributed cache for preview caching (in-memory for now, can upgrade to Redis later)
+builder.Services.AddDistributedMemoryCache();
 
 // Register Clerk service for fetching user data from Clerk API
 builder.Services.AddHttpClient<IClerkService, ClerkService>();

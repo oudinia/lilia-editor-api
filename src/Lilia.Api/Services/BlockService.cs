@@ -3,16 +3,21 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Lilia.Api.Services;
 
 public class BlockService : IBlockService
 {
     private readonly LiliaDbContext _context;
+    private readonly ILogger<BlockService> _logger;
+    private readonly IPreviewCacheService _previewCacheService;
 
-    public BlockService(LiliaDbContext context)
+    public BlockService(LiliaDbContext context, ILogger<BlockService> logger, IPreviewCacheService previewCacheService)
     {
         _context = context;
+        _logger = logger;
+        _previewCacheService = previewCacheService;
     }
 
     public async Task<List<BlockDto>> GetBlocksAsync(Guid documentId)
@@ -66,6 +71,9 @@ public class BlockService : IBlockService
 
         await _context.SaveChangesAsync();
 
+        // Invalidate preview cache
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
         return MapToDto(block);
     }
 
@@ -90,6 +98,9 @@ public class BlockService : IBlockService
 
         await _context.SaveChangesAsync();
 
+        // Invalidate preview cache
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
         return MapToDto(block);
     }
 
@@ -108,26 +119,65 @@ public class BlockService : IBlockService
 
         await _context.SaveChangesAsync();
 
+        // Invalidate preview cache
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
         return true;
     }
 
     public async Task<List<BlockDto>> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks)
     {
+        _logger.LogInformation("BatchUpdateBlocksAsync: Starting for document {DocumentId} with {Count} blocks", documentId, blocks.Count);
+
         var blockIds = blocks.Select(b => b.Id).ToList();
+        _logger.LogDebug("BatchUpdateBlocksAsync: Block IDs to process: {BlockIds}", string.Join(", ", blockIds));
+
         var existingBlocks = await _context.Blocks
             .Where(b => b.DocumentId == documentId && blockIds.Contains(b.Id))
             .ToDictionaryAsync(b => b.Id);
+
+        _logger.LogInformation("BatchUpdateBlocksAsync: Found {ExistingCount} existing blocks in database", existingBlocks.Count);
+
+        var resultBlocks = new List<Block>();
+        var createdCount = 0;
+        var updatedCount = 0;
 
         foreach (var update in blocks)
         {
             if (existingBlocks.TryGetValue(update.Id, out var block))
             {
+                // Update existing block
+                _logger.LogDebug("BatchUpdateBlocksAsync: Updating existing block {BlockId}", update.Id);
                 if (update.Type != null) block.Type = update.Type;
                 if (update.Content.HasValue) block.Content = JsonDocument.Parse(update.Content.Value.GetRawText());
                 if (update.SortOrder.HasValue) block.SortOrder = update.SortOrder.Value;
                 if (update.ParentId.HasValue) block.ParentId = update.ParentId.Value;
                 if (update.Depth.HasValue) block.Depth = update.Depth.Value;
                 block.UpdatedAt = DateTime.UtcNow;
+                resultBlocks.Add(block);
+                updatedCount++;
+            }
+            else
+            {
+                // Create new block
+                _logger.LogInformation("BatchUpdateBlocksAsync: Creating NEW block {BlockId} of type {Type}", update.Id, update.Type ?? "paragraph");
+                var newBlock = new Block
+                {
+                    Id = update.Id,
+                    DocumentId = documentId,
+                    Type = update.Type ?? "paragraph",
+                    Content = update.Content.HasValue
+                        ? JsonDocument.Parse(update.Content.Value.GetRawText())
+                        : JsonDocument.Parse("{}"),
+                    SortOrder = update.SortOrder ?? 0,
+                    ParentId = update.ParentId ?? null,
+                    Depth = update.Depth ?? 0,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.Blocks.Add(newBlock);
+                resultBlocks.Add(newBlock);
+                createdCount++;
             }
         }
 
@@ -135,9 +185,16 @@ public class BlockService : IBlockService
         var document = await _context.Documents.FindAsync(documentId);
         if (document != null) document.UpdatedAt = DateTime.UtcNow;
 
+        _logger.LogInformation("BatchUpdateBlocksAsync: About to SaveChanges - Created: {Created}, Updated: {Updated}", createdCount, updatedCount);
+
         await _context.SaveChangesAsync();
 
-        return existingBlocks.Values.OrderBy(b => b.SortOrder).Select(MapToDto).ToList();
+        _logger.LogInformation("BatchUpdateBlocksAsync: SaveChanges completed successfully for document {DocumentId}", documentId);
+
+        // Invalidate preview cache
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
+        return resultBlocks.OrderBy(b => b.SortOrder).Select(MapToDto).ToList();
     }
 
     public async Task<List<BlockDto>> ReorderBlocksAsync(Guid documentId, List<Guid> blockIds)
@@ -160,6 +217,9 @@ public class BlockService : IBlockService
         if (document != null) document.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        // Invalidate preview cache
+        await _previewCacheService.InvalidateCacheAsync(documentId);
 
         return blocks.Values.OrderBy(b => b.SortOrder).Select(MapToDto).ToList();
     }
