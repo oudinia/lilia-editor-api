@@ -83,12 +83,36 @@ public class RenderService : IRenderService
             .Take(BlocksPerPage)
             .ToListAsync();
 
+        _logger.LogDebug("[Render] Page {Page} has {Count} blocks: [{Types}]",
+            page, blocks.Count, string.Join(", ", blocks.Select(b => b.Type)));
+
+        // Check if any block is a bibliography block - if so, fetch entries (case-insensitive)
+        var hasBibliography = blocks.Any(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase));
+        IEnumerable<BibliographyEntry>? bibEntries = null;
+        if (hasBibliography)
+        {
+            bibEntries = await _context.BibliographyEntries
+                .Where(e => e.DocumentId == documentId)
+                .OrderBy(e => e.CiteKey)
+                .ToListAsync();
+            _logger.LogDebug("[Render] Found {Count} bibliography entries for document {DocId}",
+                bibEntries.Count(), documentId);
+        }
+
         var html = new StringBuilder();
         html.Append($"<div class=\"lilia-page\" data-page=\"{page}\">");
 
         foreach (var block in blocks)
         {
-            html.Append(RenderBlockToHtml(block));
+            if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase) && bibEntries != null)
+            {
+                _logger.LogDebug("[Render] Rendering bibliography block with {Count} entries", bibEntries.Count());
+                html.Append(RenderBibliographyEntriesHtml(bibEntries));
+            }
+            else
+            {
+                html.Append(RenderBlockToHtml(block));
+            }
         }
 
         html.Append("</div>");
@@ -102,12 +126,30 @@ public class RenderService : IRenderService
             .OrderBy(b => b.SortOrder)
             .ToListAsync();
 
+        // Check if any block is a bibliography block - if so, fetch entries (case-insensitive)
+        var hasBibliography = blocks.Any(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase));
+        IEnumerable<BibliographyEntry>? bibEntries = null;
+        if (hasBibliography)
+        {
+            bibEntries = await _context.BibliographyEntries
+                .Where(e => e.DocumentId == documentId)
+                .OrderBy(e => e.CiteKey)
+                .ToListAsync();
+        }
+
         var html = new StringBuilder();
         html.Append("<div class=\"lilia-preview\">");
 
         foreach (var block in blocks)
         {
-            html.Append(RenderBlockToHtml(block));
+            if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase) && bibEntries != null)
+            {
+                html.Append(RenderBibliographyEntriesHtml(bibEntries));
+            }
+            else
+            {
+                html.Append(RenderBlockToHtml(block));
+            }
         }
 
         html.Append("</div>");
@@ -286,7 +328,80 @@ public class RenderService : IRenderService
 
     private string RenderBibliographyToHtml(JsonElement content)
     {
+        // This is called when we don't have entries - just return placeholder
         return "<div class=\"bibliography\"><h3>References</h3><div class=\"bibliography-entries\"></div></div>";
+    }
+
+    private string RenderBibliographyEntriesHtml(IEnumerable<BibliographyEntry> entries)
+    {
+        var html = new StringBuilder();
+        html.Append("<div class=\"bibliography\">");
+        html.Append("<h3>References</h3>");
+        html.Append("<div class=\"bibliography-entries\">");
+
+        foreach (var entry in entries)
+        {
+            html.Append($"<div class=\"bib-entry\" data-cite-key=\"{WebUtility.HtmlEncode(entry.CiteKey)}\">");
+            html.Append($"<span class=\"bib-key\">[{WebUtility.HtmlEncode(entry.CiteKey)}]</span> ");
+
+            // Build citation from entry data
+            try
+            {
+                var data = entry.Data?.RootElement;
+                if (data.HasValue)
+                {
+                    var parts = new List<string>();
+
+                    if (data.Value.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.String)
+                    {
+                        var authorStr = author.GetString();
+                        if (!string.IsNullOrEmpty(authorStr))
+                            parts.Add(WebUtility.HtmlEncode(authorStr));
+                    }
+
+                    if (data.Value.TryGetProperty("year", out var year) && year.ValueKind == JsonValueKind.String)
+                    {
+                        var yearStr = year.GetString();
+                        if (!string.IsNullOrEmpty(yearStr))
+                            parts.Add($"({WebUtility.HtmlEncode(yearStr)})");
+                    }
+
+                    if (data.Value.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String)
+                    {
+                        var titleStr = title.GetString();
+                        if (!string.IsNullOrEmpty(titleStr))
+                            parts.Add($"<em>{WebUtility.HtmlEncode(titleStr)}</em>");
+                    }
+
+                    if (data.Value.TryGetProperty("journal", out var journal) && journal.ValueKind == JsonValueKind.String)
+                    {
+                        var journalStr = journal.GetString();
+                        if (!string.IsNullOrEmpty(journalStr))
+                            parts.Add(WebUtility.HtmlEncode(journalStr));
+                    }
+
+                    if (data.Value.TryGetProperty("publisher", out var publisher) && publisher.ValueKind == JsonValueKind.String)
+                    {
+                        var publisherStr = publisher.GetString();
+                        if (!string.IsNullOrEmpty(publisherStr))
+                            parts.Add(WebUtility.HtmlEncode(publisherStr));
+                    }
+
+                    html.Append(string.Join(". ", parts));
+                    if (parts.Count > 0) html.Append(".");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse bibliography entry {CiteKey}", entry.CiteKey);
+                html.Append(WebUtility.HtmlEncode(entry.CiteKey));
+            }
+
+            html.Append("</div>");
+        }
+
+        html.Append("</div></div>");
+        return html.ToString();
     }
 
     private string ProcessInlineContent(string text)
