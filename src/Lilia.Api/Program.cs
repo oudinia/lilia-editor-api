@@ -178,6 +178,15 @@ builder.Services.AddHttpClient<IClerkService, ClerkService>();
 // Add HttpClient for external API calls (DOI lookup)
 builder.Services.AddHttpClient();
 
+// Add HttpClient for DocxApi (conversion service)
+var docxApiBaseUrl = builder.Configuration["DocxApi:BaseUrl"] ?? "http://localhost:5001";
+builder.Services.AddHttpClient("DocxApi", client =>
+{
+    client.BaseAddress = new Uri(docxApiBaseUrl);
+    client.Timeout = TimeSpan.FromMinutes(5); // Conversions can take time
+});
+
+
 var app = builder.Build();
 
 // Request logging with enhanced diagnostic context

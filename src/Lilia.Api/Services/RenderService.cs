@@ -276,8 +276,18 @@ public class RenderService : IRenderService
 
     private string RenderListToHtml(JsonElement content)
     {
-        var listType = content.TryGetProperty("listType", out var lt) ? lt.GetString() ?? "unordered" : "unordered";
-        var tag = listType == "ordered" ? "ol" : "ul";
+        // Support both "listType" (string: "ordered"/"unordered") and "ordered" (boolean) formats
+        var isOrdered = false;
+        if (content.TryGetProperty("listType", out var lt))
+        {
+            isOrdered = lt.GetString() == "ordered";
+        }
+        else if (content.TryGetProperty("ordered", out var ord))
+        {
+            isOrdered = ord.ValueKind == JsonValueKind.True;
+        }
+
+        var tag = isOrdered ? "ol" : "ul";
 
         var html = new StringBuilder();
         html.Append($"<{tag} class=\"list\">");
@@ -286,7 +296,41 @@ public class RenderService : IRenderService
         {
             foreach (var item in items.EnumerateArray())
             {
-                var itemText = item.GetString() ?? "";
+                // Support both string items and object items with text/richText properties
+                string itemText;
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    itemText = item.GetString() ?? "";
+                }
+                else if (item.ValueKind == JsonValueKind.Object)
+                {
+                    // Handle object format: { text?: string, richText?: Array<{text: string}> }
+                    if (item.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
+                    {
+                        itemText = textProp.GetString() ?? "";
+                    }
+                    else if (item.TryGetProperty("richText", out var richTextProp) && richTextProp.ValueKind == JsonValueKind.Array)
+                    {
+                        var sb = new StringBuilder();
+                        foreach (var span in richTextProp.EnumerateArray())
+                        {
+                            if (span.TryGetProperty("text", out var spanText) && spanText.ValueKind == JsonValueKind.String)
+                            {
+                                sb.Append(spanText.GetString() ?? "");
+                            }
+                        }
+                        itemText = sb.ToString();
+                    }
+                    else
+                    {
+                        itemText = "";
+                    }
+                }
+                else
+                {
+                    itemText = "";
+                }
+
                 var escaped = ProcessInlineContent(itemText);
                 html.Append($"<li>{escaped}</li>");
             }
@@ -636,8 +680,18 @@ public class RenderService : IRenderService
 
     private string RenderListToLatex(JsonElement content)
     {
-        var listType = content.TryGetProperty("listType", out var lt) ? lt.GetString() ?? "unordered" : "unordered";
-        var env = listType == "ordered" ? "enumerate" : "itemize";
+        // Support both "listType" (string: "ordered"/"unordered") and "ordered" (boolean) formats
+        var isOrdered = false;
+        if (content.TryGetProperty("listType", out var lt))
+        {
+            isOrdered = lt.GetString() == "ordered";
+        }
+        else if (content.TryGetProperty("ordered", out var ord))
+        {
+            isOrdered = ord.ValueKind == JsonValueKind.True;
+        }
+
+        var env = isOrdered ? "enumerate" : "itemize";
 
         var sb = new StringBuilder();
         sb.AppendLine($@"\begin{{{env}}}");
@@ -646,7 +700,40 @@ public class RenderService : IRenderService
         {
             foreach (var item in items.EnumerateArray())
             {
-                var itemText = item.GetString() ?? "";
+                // Support both string items and object items with text/richText properties
+                string itemText;
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    itemText = item.GetString() ?? "";
+                }
+                else if (item.ValueKind == JsonValueKind.Object)
+                {
+                    if (item.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
+                    {
+                        itemText = textProp.GetString() ?? "";
+                    }
+                    else if (item.TryGetProperty("richText", out var richTextProp) && richTextProp.ValueKind == JsonValueKind.Array)
+                    {
+                        var textSb = new StringBuilder();
+                        foreach (var span in richTextProp.EnumerateArray())
+                        {
+                            if (span.TryGetProperty("text", out var spanText) && spanText.ValueKind == JsonValueKind.String)
+                            {
+                                textSb.Append(spanText.GetString() ?? "");
+                            }
+                        }
+                        itemText = textSb.ToString();
+                    }
+                    else
+                    {
+                        itemText = "";
+                    }
+                }
+                else
+                {
+                    itemText = "";
+                }
+
                 sb.AppendLine($@"\item {ProcessLatexText(itemText)}");
             }
         }
