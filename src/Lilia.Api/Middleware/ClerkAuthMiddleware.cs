@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
@@ -73,6 +74,11 @@ public class ClerkUserSyncMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<ClerkUserSyncMiddleware> _logger;
 
+    // Cache of recently synced users: userId -> (email, lastSyncTime)
+    // This avoids hitting the DB and Clerk API on every request
+    private static readonly ConcurrentDictionary<string, (string Email, DateTime SyncTime)> _recentlySyncedUsers = new();
+    private static readonly TimeSpan SyncCacheDuration = TimeSpan.FromMinutes(5);
+
     public ClerkUserSyncMiddleware(RequestDelegate next, ILogger<ClerkUserSyncMiddleware> logger)
     {
         _next = next;
@@ -86,64 +92,101 @@ public class ClerkUserSyncMiddleware
             var userId = context.User.FindFirst("sub")?.Value
                       ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            // Try to get email/name from JWT claims first
-            var email = context.User.FindFirst("email")?.Value
-                     ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
-            var name = context.User.FindFirst("name")?.Value
-                    ?? context.User.FindFirst(ClaimTypes.Name)?.Value;
-            var image = context.User.FindFirst("picture")?.Value;
-
-            _logger.LogDebug("JWT Claims - UserId: {UserId}, Email: {Email}, Name: {Name}",
-                userId ?? "NULL", email ?? "NULL", name ?? "NULL");
-
-            // If email is missing from JWT, fetch from Clerk API
-            if (!string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(email))
+            if (!string.IsNullOrEmpty(userId))
             {
-                _logger.LogInformation("Email not in JWT, fetching from Clerk API for user {UserId}", userId);
-
-                var clerkUser = await clerkService.GetUserAsync(userId);
-                if (clerkUser != null)
+                // Check if user was recently synced (skip all DB and API calls)
+                if (_recentlySyncedUsers.TryGetValue(userId, out var cached) &&
+                    DateTime.UtcNow - cached.SyncTime < SyncCacheDuration)
                 {
-                    email = clerkUser.PrimaryEmail;
-                    name ??= clerkUser.FullName;
-                    image ??= clerkUser.ImageUrl;
+                    _logger.LogDebug("User {UserId} was synced {SecondsAgo}s ago, skipping sync",
+                        userId, (int)(DateTime.UtcNow - cached.SyncTime).TotalSeconds);
+                    await _next(context);
+                    return;
+                }
 
-                    _logger.LogInformation("Fetched from Clerk API - Email: {Email}, Name: {Name}",
-                        email ?? "NULL", name ?? "NULL");
+                // Try to get email/name from JWT claims first
+                var email = context.User.FindFirst("email")?.Value
+                         ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
+                var name = context.User.FindFirst("name")?.Value
+                        ?? context.User.FindFirst(ClaimTypes.Name)?.Value;
+                var image = context.User.FindFirst("picture")?.Value;
+
+                _logger.LogDebug("JWT Claims - UserId: {UserId}, Email: {Email}, Name: {Name}",
+                    userId, email ?? "NULL", name ?? "NULL");
+
+                // If email is missing from JWT, fetch from Clerk API
+                if (string.IsNullOrEmpty(email))
+                {
+                    _logger.LogInformation("Email not in JWT, fetching from Clerk API for user {UserId}", userId);
+
+                    var clerkUser = await clerkService.GetUserAsync(userId);
+                    if (clerkUser != null)
+                    {
+                        email = clerkUser.PrimaryEmail;
+                        name ??= clerkUser.FullName;
+                        image ??= clerkUser.ImageUrl;
+
+                        _logger.LogInformation("Fetched from Clerk API - Email: {Email}, Name: {Name}",
+                            email ?? "NULL", name ?? "NULL");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Could not fetch user data from Clerk API for {UserId}", userId);
+                    }
+                }
+
+                // Sync user to database if we have the required data
+                if (!string.IsNullOrEmpty(email))
+                {
+                    try
+                    {
+                        await userService.CreateOrUpdateUserAsync(new CreateOrUpdateUserDto(
+                            userId,
+                            email,
+                            name,
+                            image
+                        ));
+
+                        // Cache the sync time
+                        _recentlySyncedUsers[userId] = (email, DateTime.UtcNow);
+                        _logger.LogDebug("User {UserId} synced to database and cached", userId);
+
+                        // Cleanup old cache entries periodically (every ~100 requests)
+                        if (_recentlySyncedUsers.Count > 100 && Random.Shared.Next(100) == 0)
+                        {
+                            CleanupExpiredCacheEntries();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to sync user {UserId} to database", userId);
+                        throw;
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("Could not fetch user data from Clerk API for {UserId}", userId);
+                    _logger.LogWarning("Cannot sync user - missing required data. UserId: {UserId}, Email: {Email}",
+                        userId, email ?? "NULL");
                 }
-            }
-
-            // Sync user to database if we have the required data
-            if (!string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(email))
-            {
-                try
-                {
-                    await userService.CreateOrUpdateUserAsync(new CreateOrUpdateUserDto(
-                        userId,
-                        email,
-                        name,
-                        image
-                    ));
-                    _logger.LogDebug("User {UserId} synced to database", userId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to sync user {UserId} to database", userId);
-                    throw;
-                }
-            }
-            else
-            {
-                _logger.LogWarning("Cannot sync user - missing required data. UserId: {UserId}, Email: {Email}",
-                    userId ?? "NULL", email ?? "NULL");
             }
         }
 
         await _next(context);
+    }
+
+    private void CleanupExpiredCacheEntries()
+    {
+        var expiredUsers = _recentlySyncedUsers
+            .Where(kvp => DateTime.UtcNow - kvp.Value.SyncTime > SyncCacheDuration)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var userId in expiredUsers)
+        {
+            _recentlySyncedUsers.TryRemove(userId, out _);
+        }
+
+        _logger.LogDebug("Cleaned up {Count} expired user sync cache entries", expiredUsers.Count);
     }
 }
 

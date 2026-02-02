@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -11,10 +12,12 @@ namespace Lilia.Api.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
+    private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(IDocumentService documentService)
+    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger)
     {
         _documentService = documentService;
+        _logger = logger;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -25,19 +28,39 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] Guid? labelId = null)
     {
+        var sw = Stopwatch.StartNew();
+
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
         var documents = await _documentService.GetDocumentsAsync(userId, search, labelId);
+
+        _logger.LogInformation(
+            "[Documents] GET list: total={TotalMs}ms, count={DocumentCount}, search={Search}, labelId={LabelId}",
+            sw.ElapsedMilliseconds, documents.Count, search, labelId);
+
         return Ok(documents);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<DocumentDto>> GetDocument(Guid id)
     {
+        var sw = Stopwatch.StartNew();
+
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var authTime = sw.ElapsedMilliseconds;
+
         var document = await _documentService.GetDocumentAsync(id, userId);
         if (document == null) return NotFound();
+
+        var queryTime = sw.ElapsedMilliseconds - authTime;
+
+        _logger.LogInformation(
+            "[Document] GET {DocumentId}: auth={AuthMs}ms, query={QueryMs}ms, total={TotalMs}ms, blocks={BlockCount}",
+            id, authTime, queryTime, sw.ElapsedMilliseconds, document.Blocks?.Count ?? 0);
+
         return Ok(document);
     }
 

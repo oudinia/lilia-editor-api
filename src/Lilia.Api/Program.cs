@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Lilia.Api.Hubs;
 using Lilia.Api.Middleware;
 using Lilia.Api.Services;
 using Lilia.Core.Interfaces;
@@ -162,6 +163,15 @@ builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 // Add distributed cache for preview caching (in-memory for now, can upgrade to Redis later)
 builder.Services.AddDistributedMemoryCache();
 
+// Add SignalR for real-time updates
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+});
+
+// Register import progress service
+builder.Services.AddScoped<IImportProgressService, ImportProgressService>();
+
 // Register Clerk service for fetching user data from Clerk API
 builder.Services.AddHttpClient<IClerkService, ClerkService>();
 
@@ -170,8 +180,26 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// Request logging
-app.UseSerilogRequestLogging();
+// Request logging with enhanced diagnostic context
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+        diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
+        diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString());
+        diagnosticContext.Set("ContentLength", httpContext.Request.ContentLength);
+
+        // Add user ID if authenticated
+        var userId = httpContext.User?.FindFirst("sub")?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            diagnosticContext.Set("UserId", userId);
+        }
+    };
+
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+});
 
 // Swagger UI - always enabled for now
 app.UseSwagger();
@@ -205,6 +233,9 @@ app.UseAuthorization();
 app.UseClerkUserSync();
 
 app.MapControllers();
+
+// Map SignalR hubs
+app.MapHub<ImportHub>("/hubs/import");
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
