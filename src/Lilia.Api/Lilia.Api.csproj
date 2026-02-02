@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
     <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
+    <ProjectReference Include="..\Lilia.Import\Lilia.Import.csproj" />
   </ItemGroup>
 
 </Project>

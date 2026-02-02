@@ -178,13 +178,9 @@ builder.Services.AddHttpClient<IClerkService, ClerkService>();
 // Add HttpClient for external API calls (DOI lookup)
 builder.Services.AddHttpClient();
 
-// Add HttpClient for DocxApi (conversion service)
-var docxApiBaseUrl = builder.Configuration["DocxApi:BaseUrl"] ?? "http://localhost:5001";
-builder.Services.AddHttpClient("DocxApi", client =>
-{
-    client.BaseAddress = new Uri(docxApiBaseUrl);
-    client.Timeout = TimeSpan.FromMinutes(5); // Conversions can take time
-});
+// Register Lilia.Import services for document conversion
+builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
+builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();
 
 
 var app = builder.Build();
