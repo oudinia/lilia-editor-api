@@ -16,13 +16,25 @@ public class DocumentService : IDocumentService
         _context = context;
     }
 
-    public async Task<List<DocumentListDto>> GetDocumentsAsync(string userId, string? search = null, Guid? labelId = null)
+    public async Task<PaginatedResult<DocumentListDto>> GetDocumentsPaginatedAsync(
+        string userId,
+        int page = 1,
+        int pageSize = 20,
+        string? search = null,
+        Guid? labelId = null,
+        string sortBy = "updatedAt",
+        string sortDir = "desc")
     {
+        // Ensure valid pagination params
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var query = _context.Documents
             .Include(d => d.Owner)
             .Include(d => d.Team)
             .Include(d => d.DocumentLabels)
                 .ThenInclude(dl => dl.Label)
+            .Where(d => d.DeletedAt == null)
             .Where(d => d.OwnerId == userId ||
                         d.Collaborators.Any(c => c.UserId == userId) ||
                         d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)));
@@ -37,11 +49,54 @@ public class DocumentService : IDocumentService
             query = query.Where(d => d.DocumentLabels.Any(dl => dl.LabelId == labelId.Value));
         }
 
+        // Get total count before pagination
+        var totalCount = await query.CountAsync();
+
+        // Apply sorting
+        query = (sortBy.ToLower(), sortDir.ToLower()) switch
+        {
+            ("title", "asc") => query.OrderBy(d => d.Title),
+            ("title", _) => query.OrderByDescending(d => d.Title),
+            ("createdat", "asc") => query.OrderBy(d => d.CreatedAt),
+            ("createdat", _) => query.OrderByDescending(d => d.CreatedAt),
+            ("updatedat", "asc") => query.OrderBy(d => d.UpdatedAt),
+            (_, "asc") => query.OrderBy(d => d.LastOpenedAt ?? d.UpdatedAt),
+            _ => query.OrderByDescending(d => d.LastOpenedAt ?? d.UpdatedAt)
+        };
+
+        // Apply pagination
         var documents = await query
-            .OrderByDescending(d => d.LastOpenedAt ?? d.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
-        return documents.Select(d => new DocumentListDto(
+        // Get block counts for these documents
+        var documentIds = documents.Select(d => d.Id).ToList();
+        var blockCounts = await _context.Blocks
+            .Where(b => documentIds.Contains(b.DocumentId))
+            .GroupBy(b => b.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Count);
+
+        // Get section counts and outlines (heading blocks)
+        var headingBlocks = await _context.Blocks
+            .Where(b => documentIds.Contains(b.DocumentId) && b.Type == BlockTypes.Heading)
+            .OrderBy(b => b.SortOrder)
+            .Select(b => new { b.DocumentId, b.Content })
+            .ToListAsync();
+
+        var sectionCounts = headingBlocks
+            .GroupBy(b => b.DocumentId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var outlines = headingBlocks
+            .GroupBy(b => b.DocumentId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(b => ExtractOutlineItem(b.Content)).Where(o => o != null).ToList()
+            );
+
+        var items = documents.Select(d => new DocumentListDto(
             d.Id,
             d.Title,
             d.OwnerId,
@@ -51,6 +106,9 @@ public class DocumentService : IDocumentService
             d.CreatedAt,
             d.UpdatedAt,
             d.LastOpenedAt,
+            blockCounts.GetValueOrDefault(d.Id, 0),
+            sectionCounts.GetValueOrDefault(d.Id, 0),
+            outlines.GetValueOrDefault(d.Id, new List<OutlineItemDto?>())!.Where(o => o != null).Select(o => o!).ToList(),
             d.DocumentLabels.Select(dl => new LabelDto(
                 dl.Label.Id,
                 dl.Label.Name,
@@ -58,6 +116,17 @@ public class DocumentService : IDocumentService
                 dl.Label.CreatedAt
             )).ToList()
         )).ToList();
+
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        return new PaginatedResult<DocumentListDto>(items, page, pageSize, totalCount, totalPages);
+    }
+
+    public async Task<List<DocumentListDto>> GetDocumentsAsync(string userId, string? search = null, Guid? labelId = null)
+    {
+        // Legacy method - returns all documents without pagination
+        var result = await GetDocumentsPaginatedAsync(userId, 1, 1000, search, labelId);
+        return result.Items;
     }
 
     public async Task<DocumentDto?> GetDocumentAsync(Guid id, string userId)
@@ -371,5 +440,50 @@ public class DocumentService : IDocumentService
                 dl.Label.CreatedAt
             )).ToList()
         );
+    }
+
+    private static OutlineItemDto? ExtractOutlineItem(JsonDocument content)
+    {
+        try
+        {
+            var root = content.RootElement;
+
+            // Try to get text from heading block content
+            // Format: { "text": "...", "level": 1 } or { "content": [{ "text": "..." }], "level": 1 }
+            string? text = null;
+            int level = 1;
+
+            if (root.TryGetProperty("level", out var levelProp))
+            {
+                level = levelProp.GetInt32();
+            }
+
+            if (root.TryGetProperty("text", out var textProp))
+            {
+                text = textProp.GetString();
+            }
+            else if (root.TryGetProperty("content", out var contentProp) && contentProp.ValueKind == JsonValueKind.Array)
+            {
+                // ProseMirror-style content array
+                var parts = new List<string>();
+                foreach (var node in contentProp.EnumerateArray())
+                {
+                    if (node.TryGetProperty("text", out var nodeTxt))
+                    {
+                        parts.Add(nodeTxt.GetString() ?? "");
+                    }
+                }
+                text = string.Join("", parts);
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            return new OutlineItemDto(text.Trim(), level);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

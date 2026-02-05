@@ -23,23 +23,37 @@ public class DocumentsController : ControllerBase
     private string? GetUserId() => User.FindFirst("sub")?.Value
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
+    /// <summary>
+    /// Get paginated list of documents
+    /// </summary>
+    /// <param name="page">Page number (1-based, default: 1)</param>
+    /// <param name="pageSize">Items per page (default: 20, max: 100)</param>
+    /// <param name="search">Search term for document title</param>
+    /// <param name="labelId">Filter by label ID</param>
+    /// <param name="sortBy">Sort field: title, createdAt, updatedAt (default: updatedAt)</param>
+    /// <param name="sortDir">Sort direction: asc, desc (default: desc)</param>
     [HttpGet]
-    public async Task<ActionResult<List<DocumentListDto>>> GetDocuments(
+    public async Task<ActionResult<PaginatedResult<DocumentListDto>>> GetDocuments(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
-        [FromQuery] Guid? labelId = null)
+        [FromQuery] Guid? labelId = null,
+        [FromQuery] string sortBy = "updatedAt",
+        [FromQuery] string sortDir = "desc")
     {
         var sw = Stopwatch.StartNew();
 
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        var documents = await _documentService.GetDocumentsAsync(userId, search, labelId);
+        var result = await _documentService.GetDocumentsPaginatedAsync(
+            userId, page, pageSize, search, labelId, sortBy, sortDir);
 
         _logger.LogInformation(
-            "[Documents] GET list: total={TotalMs}ms, count={DocumentCount}, search={Search}, labelId={LabelId}",
-            sw.ElapsedMilliseconds, documents.Count, search, labelId);
+            "[Documents] GET list: total={TotalMs}ms, count={DocumentCount}/{TotalCount}, page={Page}/{TotalPages}, search={Search}",
+            sw.ElapsedMilliseconds, result.Items.Count, result.TotalCount, result.Page, result.TotalPages, search);
 
-        return Ok(documents);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]

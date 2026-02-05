@@ -336,6 +336,21 @@ public class TeamService : ITeamService
             .OrderByDescending(d => d.UpdatedAt)
             .ToListAsync();
 
+        // Get block counts for these documents
+        var documentIds = documents.Select(d => d.Id).ToList();
+        var blockCounts = await _context.Blocks
+            .Where(b => documentIds.Contains(b.DocumentId))
+            .GroupBy(b => b.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Count);
+
+        // Get section counts (heading blocks)
+        var sectionCounts = await _context.Blocks
+            .Where(b => documentIds.Contains(b.DocumentId) && b.Type == "heading")
+            .GroupBy(b => b.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Count);
+
         return documents.Select(d => new DocumentListDto(
             d.Id,
             d.Title,
@@ -346,6 +361,9 @@ public class TeamService : ITeamService
             d.CreatedAt,
             d.UpdatedAt,
             d.LastOpenedAt,
+            blockCounts.GetValueOrDefault(d.Id, 0),
+            sectionCounts.GetValueOrDefault(d.Id, 0),
+            new List<OutlineItemDto>(), // Team documents don't need outline for now
             d.DocumentLabels.Select(dl => new LabelDto(
                 dl.Label.Id,
                 dl.Label.Name,

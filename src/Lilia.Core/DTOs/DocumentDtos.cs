@@ -2,6 +2,17 @@ using System.Text.Json;
 
 namespace Lilia.Core.DTOs;
 
+/// <summary>
+/// Paginated result wrapper for API responses
+/// </summary>
+public record PaginatedResult<T>(
+    List<T> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages
+);
+
 public record DocumentListDto(
     Guid Id,
     string Title,
@@ -12,7 +23,15 @@ public record DocumentListDto(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? LastOpenedAt,
+    int BlockCount,
+    int SectionCount,
+    List<OutlineItemDto> Outline,
     List<LabelDto> Labels
+);
+
+public record OutlineItemDto(
+    string Title,
+    int Level
 );
 
 public record DocumentDto(

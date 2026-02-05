@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Lilia.Api.Services;
-using Lilia.Core.Interfaces;
+using Lilia.Core.DTOs;
 
 namespace Lilia.Api.Controllers;
 
@@ -10,197 +10,169 @@ namespace Lilia.Api.Controllers;
 [Authorize]
 public class JobsController : ControllerBase
 {
-    private readonly IRenderService _renderService;
-    private readonly IDocumentService _documentService;
+    private readonly IJobService _jobService;
     private readonly ILogger<JobsController> _logger;
 
-    public JobsController(
-        IRenderService renderService,
-        IDocumentService documentService,
-        ILogger<JobsController> logger)
+    public JobsController(IJobService jobService, ILogger<JobsController> logger)
     {
-        _renderService = renderService;
-        _documentService = documentService;
+        _jobService = jobService;
         _logger = logger;
     }
 
-    public record ExportRequest(
-        Guid DocumentId,
-        string Format,
-        Dictionary<string, object>? Options = null
-    );
+    private string? GetUserId() => User.FindFirst("sub")?.Value
+        ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-    public record ExportResponse(
-        JobInfo Job,
-        string Content,
-        string Filename
-    );
+    /// <summary>
+    /// List jobs for the current user
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<List<JobListDto>>> GetJobs(
+        [FromQuery] string? status = null,
+        [FromQuery] string? jobType = null,
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-    public record JobInfo(
-        string Id,
-        string Status,
-        int Progress
-    );
+        var jobs = await _jobService.GetJobsAsync(userId, status, jobType, limit, offset);
+        return Ok(jobs);
+    }
+
+    /// <summary>
+    /// Get a specific job
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<JobDto>> GetJob(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var job = await _jobService.GetJobAsync(id, userId);
+        if (job == null) return NotFound();
+
+        return Ok(job);
+    }
+
+    /// <summary>
+    /// Import a document from an external format
+    /// </summary>
+    [HttpPost("import")]
+    public async Task<ActionResult<ImportResultDto>> Import([FromBody] ImportRequestDto request)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        _logger.LogInformation(
+            "[Import] User {UserId} importing file {Filename} format {Format}",
+            userId, request.Filename, request.Format);
+
+        try
+        {
+            var result = await _jobService.CreateImportJobFromBase64Async(userId, request);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Import] Failed to import file {Filename}", request.Filename);
+            return StatusCode(500, new { message = "Import failed: " + ex.Message });
+        }
+    }
 
     /// <summary>
     /// Export a document to the specified format
     /// </summary>
     [HttpPost("export")]
-    public async Task<ActionResult<ExportResponse>> Export([FromBody] ExportRequest request)
+    public async Task<ActionResult<ExportResultDto>> Export([FromBody] CreateExportJobDto dto)
     {
-        var userId = User.FindFirst("sub")?.Value ?? User.FindFirst("id")?.Value;
-        if (string.IsNullOrEmpty(userId))
-        {
-            return Unauthorized();
-        }
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         _logger.LogInformation(
             "[Export] User {UserId} exporting document {DocumentId} to {Format}",
-            userId, request.DocumentId, request.Format);
+            userId, dto.DocumentId, dto.Format);
 
         try
         {
-            // Verify document access
-            var document = await _documentService.GetDocumentAsync(request.DocumentId, userId);
-            if (document == null)
+            var job = await _jobService.CreateExportJobAsync(userId, dto);
+
+            // If completed, return the result directly
+            if (job.Status == "COMPLETED")
             {
-                return NotFound(new { message = "Document not found" });
+                var result = await _jobService.GetExportResultAsync(job.Id, userId);
+                if (result != null)
+                {
+                    return Ok(result);
+                }
             }
 
-            var jobId = Guid.NewGuid().ToString();
-            string content;
-            string filename;
-            string extension;
-
-            switch (request.Format.ToUpperInvariant())
-            {
-                case "LATEX":
-                    content = await _renderService.RenderToLatexAsync(request.DocumentId);
-                    extension = "tex";
-                    break;
-
-                case "HTML":
-                    content = await _renderService.RenderToHtmlAsync(request.DocumentId);
-                    extension = "html";
-                    break;
-
-                case "MARKDOWN":
-                    content = await RenderToMarkdownAsync(request.DocumentId);
-                    extension = "md";
-                    break;
-
-                case "LML":
-                    content = await RenderToLmlAsync(request.DocumentId);
-                    extension = "lilia";
-                    break;
-
-                case "PDF":
-                    // PDF is handled client-side via print preview
-                    return BadRequest(new { message = "PDF export should use the print preview at /document/{id}/print" });
-
-                default:
-                    return BadRequest(new { message = $"Unsupported format: {request.Format}" });
-            }
-
-            // Sanitize filename
-            var safeTitle = string.IsNullOrWhiteSpace(document.Title)
-                ? "document"
-                : SanitizeFilename(document.Title);
-            filename = $"{safeTitle}.{extension}";
-
-            _logger.LogInformation(
-                "[Export] Successfully exported document {DocumentId} to {Format}, size={Size} bytes",
-                request.DocumentId, request.Format, content.Length);
-
-            return Ok(new ExportResponse(
-                new JobInfo(jobId, "completed", 100),
-                content,
-                filename
-            ));
+            // Return job info for tracking
+            return Ok(new ExportResultDto(job.Id, job.Status, "", job.ResultFileName ?? ""));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Export] Failed to export document {DocumentId}", request.DocumentId);
+            _logger.LogError(ex, "[Export] Failed to export document {DocumentId}", dto.DocumentId);
             return StatusCode(500, new { message = "Export failed: " + ex.Message });
         }
     }
 
-    private async Task<string> RenderToMarkdownAsync(Guid documentId)
+    /// <summary>
+    /// Get the result of an export job
+    /// </summary>
+    [HttpGet("{id:guid}/result")]
+    public async Task<ActionResult<ExportResultDto>> GetExportResult(Guid id)
     {
-        // Simple conversion: get HTML and convert to basic markdown
-        // For now, return a placeholder - full implementation would need a proper converter
-        var html = await _renderService.RenderToHtmlAsync(documentId);
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        // Basic HTML to Markdown conversion
-        var markdown = html
-            .Replace("<h1>", "# ").Replace("</h1>", "\n\n")
-            .Replace("<h2>", "## ").Replace("</h2>", "\n\n")
-            .Replace("<h3>", "### ").Replace("</h3>", "\n\n")
-            .Replace("<h4>", "#### ").Replace("</h4>", "\n\n")
-            .Replace("<p>", "").Replace("</p>", "\n\n")
-            .Replace("<strong>", "**").Replace("</strong>", "**")
-            .Replace("<em>", "_").Replace("</em>", "_")
-            .Replace("<code>", "`").Replace("</code>", "`")
-            .Replace("<br>", "\n").Replace("<br/>", "\n").Replace("<br />", "\n")
-            .Replace("&nbsp;", " ")
-            .Replace("&lt;", "<").Replace("&gt;", ">")
-            .Replace("&amp;", "&");
+        var result = await _jobService.GetExportResultAsync(id, userId);
+        if (result == null) return NotFound();
 
-        // Remove remaining HTML tags
-        markdown = System.Text.RegularExpressions.Regex.Replace(markdown, "<[^>]+>", "");
-
-        return markdown.Trim();
+        return Ok(result);
     }
 
-    private async Task<string> RenderToLmlAsync(Guid documentId)
+    /// <summary>
+    /// Retry a failed job
+    /// </summary>
+    [HttpPost("{id:guid}/retry")]
+    public async Task<ActionResult<JobDto>> RetryJob(Guid id)
     {
-        // LML is Lilia's native JSON format
-        var document = await _documentService.GetDocumentAsync(documentId,
-            User.FindFirst("sub")?.Value ?? User.FindFirst("id")?.Value ?? "");
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (document == null)
+        try
         {
-            return "{}";
+            var job = await _jobService.RetryJobAsync(id, userId);
+            if (job == null) return NotFound();
+
+            return Ok(job);
         }
-
-        var lml = new
+        catch (InvalidOperationException ex)
         {
-            version = "1.0",
-            document = new
-            {
-                id = document.Id,
-                title = document.Title,
-                createdAt = document.CreatedAt,
-                updatedAt = document.UpdatedAt,
-                blocks = document.Blocks?.Select(b => new
-                {
-                    id = b.Id,
-                    type = b.Type,
-                    content = b.Content,
-                    sortOrder = b.SortOrder,
-                    depth = b.Depth
-                })
-            }
-        };
-
-        return System.Text.Json.JsonSerializer.Serialize(lml, new System.Text.Json.JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
-        });
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
-    private static string SanitizeFilename(string filename)
+    /// <summary>
+    /// Cancel a pending or processing job
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<ActionResult> CancelJob(Guid id)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = string.Join("", filename.Where(c => !invalid.Contains(c)));
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        // Limit length and trim whitespace
-        if (sanitized.Length > 100)
-        {
-            sanitized = sanitized.Substring(0, 100);
-        }
+        var result = await _jobService.CancelJobAsync(id, userId);
+        if (!result) return NotFound();
 
-        return sanitized.Trim();
+        return NoContent();
     }
 }

@@ -5,6 +5,7 @@ using Lilia.Api.Middleware;
 using Lilia.Api.Services;
 using Lilia.Core.Interfaces;
 using Lilia.Infrastructure.Data;
+using Lilia.Infrastructure.Data.Seeds;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -155,6 +156,7 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<IVersionService, VersionService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>();
+builder.Services.AddScoped<IJobService, JobService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IRenderService, RenderService>();
@@ -244,5 +246,12 @@ app.MapHub<ImportHub>("/hubs/import");
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+
+// Seed system templates
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
+    await SystemTemplateSeeder.SeedAsync(dbContext);
+}
 
 app.Run();

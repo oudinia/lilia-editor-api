@@ -4,7 +4,23 @@ namespace Lilia.Api.Services;
 
 public interface IDocumentService
 {
+    /// <summary>
+    /// Get paginated list of documents for a user
+    /// </summary>
+    Task<PaginatedResult<DocumentListDto>> GetDocumentsPaginatedAsync(
+        string userId,
+        int page = 1,
+        int pageSize = 20,
+        string? search = null,
+        Guid? labelId = null,
+        string sortBy = "updatedAt",
+        string sortDir = "desc");
+
+    /// <summary>
+    /// Get all documents for a user (legacy, for backwards compatibility)
+    /// </summary>
     Task<List<DocumentListDto>> GetDocumentsAsync(string userId, string? search = null, Guid? labelId = null);
+
     Task<DocumentDto?> GetDocumentAsync(Guid id, string userId);
     Task<DocumentDto?> GetSharedDocumentAsync(string shareLink);
     Task<DocumentDto> CreateDocumentAsync(string userId, CreateDocumentDto dto);

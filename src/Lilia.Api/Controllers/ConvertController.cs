@@ -44,11 +44,12 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpPost("docx-to-latex")]
     [RequestSizeLimit(MaxFileSizeBytes)]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> ConvertDocxToLatex(
-        [FromForm] IFormFile file,
+        IFormFile file,
         [FromForm] string? options = null)
     {
         return await HandleDocxConversion(file, "latex", options);
@@ -59,10 +60,11 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpPost("docx-to-html")]
     [RequestSizeLimit(MaxFileSizeBytes)]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
-    public async Task<IActionResult> ConvertDocxToHtml([FromForm] IFormFile file)
+    public async Task<IActionResult> ConvertDocxToHtml(IFormFile file)
     {
         return await HandleDocxConversion(file, "html", null);
     }
@@ -72,10 +74,11 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpPost("docx-to-markdown")]
     [RequestSizeLimit(MaxFileSizeBytes)]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
-    public async Task<IActionResult> ConvertDocxToMarkdown([FromForm] IFormFile file)
+    public async Task<IActionResult> ConvertDocxToMarkdown(IFormFile file)
     {
         return await HandleDocxConversion(file, "markdown", null);
     }
@@ -85,10 +88,11 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpPost("docx-to-pdf")]
     [RequestSizeLimit(MaxFileSizeBytes)]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
-    public async Task<IActionResult> ConvertDocxToPdf([FromForm] IFormFile file)
+    public async Task<IActionResult> ConvertDocxToPdf(IFormFile file)
     {
         // PDF export returns HTML that can be printed to PDF via browser
         return await HandleDocxConversion(file, "html", null);
@@ -99,10 +103,11 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpPost("latex-to-docx")]
     [RequestSizeLimit(MaxFileSizeBytes)]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
-    public async Task<IActionResult> ConvertLatexToDocx([FromForm] IFormFile file)
+    public async Task<IActionResult> ConvertLatexToDocx(IFormFile file)
     {
         return await HandleLatexConversion(file, "docx");
     }
@@ -112,11 +117,12 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpPost("markdown-to-latex")]
     [RequestSizeLimit(MaxFileSizeBytes)]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> ConvertMarkdownToLatex(
-        [FromForm] IFormFile file,
+        IFormFile file,
         [FromForm] string? options = null)
     {
         return await HandleMarkdownConversion(file, "latex", options);

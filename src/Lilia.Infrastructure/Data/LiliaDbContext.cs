@@ -25,6 +25,7 @@ public class LiliaDbContext : DbContext
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+    public DbSet<Job> Jobs => Set<Job>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
