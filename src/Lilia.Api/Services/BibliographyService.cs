@@ -438,4 +438,118 @@ public partial class BibliographyService : IBibliographyService
             return null;
         }
     }
+
+    public async Task<DoiLookupResultDto?> LookupArxivAsync(string arxivId)
+    {
+        try
+        {
+            // Normalize arXiv ID (remove "arXiv:" prefix if present)
+            var normalizedId = arxivId
+                .Replace("arXiv:", "")
+                .Replace("arxiv:", "")
+                .Trim();
+
+            // Use arXiv API (Atom feed)
+            var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"https://export.arxiv.org/api/query?id_list={Uri.EscapeDataString(normalizedId)}"
+            );
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var xml = await response.Content.ReadAsStringAsync();
+
+            // Parse XML response
+            var doc = System.Xml.Linq.XDocument.Parse(xml);
+            var ns = System.Xml.Linq.XNamespace.Get("http://www.w3.org/2005/Atom");
+
+            var entry = doc.Descendants(ns + "entry").FirstOrDefault();
+            if (entry == null) return null;
+
+            var data = new Dictionary<string, string>();
+
+            // Title
+            var title = entry.Element(ns + "title")?.Value;
+            if (!string.IsNullOrEmpty(title))
+            {
+                // Clean up title (remove newlines and extra spaces)
+                data["title"] = Regex.Replace(title, @"\s+", " ").Trim();
+            }
+
+            // Authors
+            var authors = entry.Elements(ns + "author")
+                .Select(a => a.Element(ns + "name")?.Value)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToList();
+
+            if (authors.Count > 0)
+            {
+                // Convert "First Last" to "Last, First"
+                var formattedAuthors = authors.Select(a =>
+                {
+                    var parts = a!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2)
+                    {
+                        return $"{parts[^1]}, {string.Join(" ", parts[..^1])}";
+                    }
+                    return a;
+                });
+                data["author"] = string.Join(" and ", formattedAuthors);
+            }
+
+            // Abstract
+            var summary = entry.Element(ns + "summary")?.Value;
+            if (!string.IsNullOrEmpty(summary))
+            {
+                data["abstract"] = Regex.Replace(summary, @"\s+", " ").Trim();
+            }
+
+            // Published date
+            var published = entry.Element(ns + "published")?.Value;
+            if (!string.IsNullOrEmpty(published) && DateTime.TryParse(published, out var pubDate))
+            {
+                data["year"] = pubDate.Year.ToString();
+                data["month"] = pubDate.ToString("MMMM").ToLower();
+            }
+
+            // arXiv ID and URL
+            data["arxivid"] = normalizedId;
+            data["eprint"] = normalizedId;
+            data["url"] = $"https://arxiv.org/abs/{normalizedId}";
+
+            // Primary category
+            var primaryCategory = entry.Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "primary_category")?
+                .Attribute("term")?.Value;
+            if (!string.IsNullOrEmpty(primaryCategory))
+            {
+                data["primaryclass"] = primaryCategory;
+            }
+
+            // DOI if available
+            var doiLink = entry.Elements(ns + "link")
+                .FirstOrDefault(l => l.Attribute("title")?.Value == "doi");
+            if (doiLink != null)
+            {
+                var doiHref = doiLink.Attribute("href")?.Value;
+                if (!string.IsNullOrEmpty(doiHref))
+                {
+                    var doiMatch = Regex.Match(doiHref, @"10\.\d{4,}/[^\s]+");
+                    if (doiMatch.Success)
+                    {
+                        data["doi"] = doiMatch.Value;
+                    }
+                }
+            }
+
+            var citeKey = GenerateCiteKey(data);
+
+            return new DoiLookupResultDto(citeKey, "article", JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

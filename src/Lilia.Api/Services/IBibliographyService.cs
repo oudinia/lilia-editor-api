@@ -13,4 +13,5 @@ public interface IBibliographyService
     Task<string> ExportBibTexAsync(Guid documentId);
     Task<DoiLookupResultDto?> LookupDoiAsync(string doi);
     Task<DoiLookupResultDto?> LookupIsbnAsync(string isbn);
+    Task<DoiLookupResultDto?> LookupArxivAsync(string arxivId);
 }

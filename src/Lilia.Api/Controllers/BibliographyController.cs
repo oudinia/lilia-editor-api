@@ -131,6 +131,14 @@ public class BibliographyController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("arxiv")]
+    public async Task<ActionResult<DoiLookupResultDto>> LookupArxiv([FromBody] ArxivLookupDto dto)
+    {
+        var result = await _bibliographyService.LookupArxivAsync(dto.ArxivId);
+        if (result == null) return NotFound("arXiv paper not found");
+        return Ok(result);
+    }
+
     /// <summary>
     /// Get available citation styles.
     /// </summary>

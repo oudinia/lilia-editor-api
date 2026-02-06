@@ -37,6 +37,10 @@ public record IsbnLookupDto(
     string Isbn
 );
 
+public record ArxivLookupDto(
+    string ArxivId
+);
+
 public record DoiLookupResultDto(
     string CiteKey,
     string EntryType,
