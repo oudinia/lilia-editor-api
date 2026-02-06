@@ -19,7 +19,8 @@ public enum ImportElementType
     TableOfContents,
     Comment,
     TrackChange,
-    PageBreak
+    PageBreak,
+    LatexPassthrough  // Raw LaTeX that bypasses conversion (TikZ, custom packages, etc.)
 }
 
 /// <summary>

@@ -526,3 +526,23 @@ public class ImportPageBreak : ImportElement
 {
     public override ImportElementType Type => ImportElementType.PageBreak;
 }
+
+/// <summary>
+/// A raw LaTeX passthrough element for advanced LaTeX features.
+/// Content is exported as-is without escaping or modification.
+/// Used for TikZ diagrams, custom packages, or other LaTeX code not supported by LML.
+/// </summary>
+public class ImportLatexPassthrough : ImportElement
+{
+    public override ImportElementType Type => ImportElementType.LatexPassthrough;
+
+    /// <summary>
+    /// Raw LaTeX code to be exported without modification.
+    /// </summary>
+    public string LatexCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional description for preview display.
+    /// </summary>
+    public string? Description { get; set; }
+}

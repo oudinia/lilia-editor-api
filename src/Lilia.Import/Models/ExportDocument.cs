@@ -60,7 +60,7 @@ public class ExportBlock
     /// <summary>
     /// Block type: paragraph, heading, equation, code, table, figure, list,
     /// blockquote, theorem, abstract, header, footer, footnote, endnote,
-    /// tableOfContents, comment.
+    /// tableOfContents, comment, latex-passthrough.
     /// </summary>
     public string Type { get; set; } = "paragraph";
 
@@ -184,6 +184,11 @@ public class ExportBlockContent
     /// Date for comments.
     /// </summary>
     public DateTime? Date { get; set; }
+
+    /// <summary>
+    /// Raw LaTeX code for passthrough blocks (exported without escaping).
+    /// </summary>
+    public string? RawLatex { get; set; }
 }
 
 /// <summary>

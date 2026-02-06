@@ -520,9 +520,22 @@ public class ConvertController : ControllerBase
             ImportTable t => RenderTableToLatex(t),
             ImportImage img => RenderImageToLatex(img),
             ImportListItem li => RenderListItemToLatex(li),
+            ImportLatexPassthrough lp => RenderLatexPassthroughToLatex(lp),
             ImportPageBreak => @"\newpage",
             _ => $"% Unsupported element type: {element.Type}"
         };
+    }
+
+    private string RenderLatexPassthroughToLatex(ImportLatexPassthrough passthrough)
+    {
+        // Output raw LaTeX without any escaping - this is the passthrough feature
+        var sb = new StringBuilder();
+        if (!string.IsNullOrEmpty(passthrough.Description))
+        {
+            sb.AppendLine($"% LaTeX Passthrough: {passthrough.Description}");
+        }
+        sb.AppendLine(passthrough.LatexCode);
+        return sb.ToString();
     }
 
     private string RenderHeadingToLatex(ImportHeading heading)
@@ -667,9 +680,23 @@ public class ConvertController : ControllerBase
             ImportTable t => RenderTableToHtml(t),
             ImportImage img => RenderImageToHtml(img),
             ImportListItem li => $"<li>{System.Net.WebUtility.HtmlEncode(li.Text)}</li>",
+            ImportLatexPassthrough lp => RenderLatexPassthroughToHtml(lp),
             ImportPageBreak => "<hr style=\"page-break-after: always;\">",
             _ => $"<!-- Unsupported element type: {element.Type} -->"
         };
+    }
+
+    private string RenderLatexPassthroughToHtml(ImportLatexPassthrough passthrough)
+    {
+        // Show a placeholder in HTML since raw LaTeX can't be rendered
+        var desc = passthrough.Description ?? "Raw LaTeX";
+        var preview = passthrough.LatexCode.Length > 100
+            ? passthrough.LatexCode.Substring(0, 100) + "..."
+            : passthrough.LatexCode;
+        return $"<div class=\"latex-passthrough\" style=\"border: 1px dashed #f59e0b; padding: 12px; margin: 12px 0; background: #fffbeb;\">" +
+               $"<div style=\"font-weight: bold; color: #b45309;\">⚡ {System.Net.WebUtility.HtmlEncode(desc)}</div>" +
+               $"<pre style=\"font-size: 12px; color: #666; margin-top: 8px;\">{System.Net.WebUtility.HtmlEncode(preview)}</pre>" +
+               $"</div>";
     }
 
     private string RenderTableToHtml(ImportTable table)
@@ -751,9 +778,17 @@ public class ConvertController : ControllerBase
             ImportTable t => RenderTableToMarkdown(t),
             ImportImage img => $"![{img.AltText ?? "Image"}](image-{img.Order})\n",
             ImportListItem li => (li.IsNumbered ? "1. " : "- ") + li.Text,
+            ImportLatexPassthrough lp => RenderLatexPassthroughToMarkdown(lp),
             ImportPageBreak => "---\n",
             _ => ""
         };
+    }
+
+    private string RenderLatexPassthroughToMarkdown(ImportLatexPassthrough passthrough)
+    {
+        // Wrap raw LaTeX in a code fence for Markdown
+        var desc = passthrough.Description ?? "Raw LaTeX";
+        return $"```latex\n% {desc}\n{passthrough.LatexCode}\n```\n";
     }
 
     private string RenderTableToMarkdown(ImportTable table)
