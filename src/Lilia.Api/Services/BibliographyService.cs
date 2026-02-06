@@ -325,4 +325,117 @@ public partial class BibliographyService : IBibliographyService
 
     [GeneratedRegex(@"(\w+)\s*=\s*(?:\{([^}]*)\}|""([^""]*)"")", RegexOptions.Multiline)]
     private static partial Regex FieldRegex();
+
+    public async Task<DoiLookupResultDto?> LookupIsbnAsync(string isbn)
+    {
+        try
+        {
+            // Normalize ISBN (remove hyphens and spaces)
+            var normalizedIsbn = isbn.Replace("-", "").Replace(" ", "");
+
+            // Use Open Library API (free, no API key required)
+            var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"https://openlibrary.org/api/books?bibkeys=ISBN:{normalizedIsbn}&format=json&jscmd=data"
+            );
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(json);
+
+            // Open Library returns object with ISBN as key
+            var key = $"ISBN:{normalizedIsbn}";
+            if (!doc.RootElement.TryGetProperty(key, out var bookData))
+            {
+                return null;
+            }
+
+            var data = new Dictionary<string, string>();
+
+            // Title
+            if (bookData.TryGetProperty("title", out var title))
+            {
+                data["title"] = title.GetString() ?? "";
+            }
+
+            // Authors
+            if (bookData.TryGetProperty("authors", out var authors))
+            {
+                var authorList = new List<string>();
+                foreach (var author in authors.EnumerateArray())
+                {
+                    if (author.TryGetProperty("name", out var name))
+                    {
+                        var authorName = name.GetString() ?? "";
+                        // Try to convert "First Last" to "Last, First"
+                        var parts = authorName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2)
+                        {
+                            authorList.Add($"{parts[^1]}, {string.Join(" ", parts[..^1])}");
+                        }
+                        else
+                        {
+                            authorList.Add(authorName);
+                        }
+                    }
+                }
+                data["author"] = string.Join(" and ", authorList);
+            }
+
+            // Publishers
+            if (bookData.TryGetProperty("publishers", out var publishers))
+            {
+                var publisherList = new List<string>();
+                foreach (var pub in publishers.EnumerateArray())
+                {
+                    if (pub.TryGetProperty("name", out var pubName))
+                    {
+                        publisherList.Add(pubName.GetString() ?? "");
+                    }
+                }
+                if (publisherList.Count > 0)
+                {
+                    data["publisher"] = publisherList[0];
+                }
+            }
+
+            // Year
+            if (bookData.TryGetProperty("publish_date", out var publishDate))
+            {
+                var dateStr = publishDate.GetString() ?? "";
+                // Extract year from various formats like "2020", "January 2020", "2020-01-01"
+                var yearMatch = System.Text.RegularExpressions.Regex.Match(dateStr, @"\b(19|20)\d{2}\b");
+                if (yearMatch.Success)
+                {
+                    data["year"] = yearMatch.Value;
+                }
+            }
+
+            // Number of pages
+            if (bookData.TryGetProperty("number_of_pages", out var pages))
+            {
+                data["pages"] = pages.GetInt32().ToString();
+            }
+
+            // ISBN
+            data["isbn"] = normalizedIsbn;
+
+            // URL
+            if (bookData.TryGetProperty("url", out var url))
+            {
+                data["url"] = url.GetString() ?? "";
+            }
+
+            var citeKey = GenerateCiteKey(data);
+
+            return new DoiLookupResultDto(citeKey, "book", JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

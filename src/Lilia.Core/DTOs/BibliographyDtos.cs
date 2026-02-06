@@ -33,6 +33,10 @@ public record DoiLookupDto(
     string Doi
 );
 
+public record IsbnLookupDto(
+    string Isbn
+);
+
 public record DoiLookupResultDto(
     string CiteKey,
     string EntryType,

@@ -123,6 +123,14 @@ public class BibliographyController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("isbn")]
+    public async Task<ActionResult<DoiLookupResultDto>> LookupIsbn([FromBody] IsbnLookupDto dto)
+    {
+        var result = await _bibliographyService.LookupIsbnAsync(dto.Isbn);
+        if (result == null) return NotFound("ISBN not found");
+        return Ok(result);
+    }
+
     /// <summary>
     /// Get available citation styles.
     /// </summary>
