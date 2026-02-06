@@ -184,6 +184,9 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();
 
+// Register Lorem Ipsum generator
+builder.Services.AddSingleton<ILoremIpsumService, LoremIpsumService>();
+
 
 var app = builder.Build();
 
