@@ -187,6 +187,9 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.
 // Register Lorem Ipsum generator
 builder.Services.AddSingleton<ILoremIpsumService, LoremIpsumService>();
 
+// Register Citation Style formatter
+builder.Services.AddSingleton<ICitationStyleService, CitationStyleService>();
+
 
 var app = builder.Build();
 
