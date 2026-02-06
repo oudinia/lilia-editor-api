@@ -190,6 +190,8 @@ builder.Services.AddSingleton<ILoremIpsumService, LoremIpsumService>();
 // Register Citation Style formatter
 builder.Services.AddSingleton<ICitationStyleService, CitationStyleService>();
 
+// Register LML Conversion service
+builder.Services.AddSingleton<ILmlConversionService, LmlConversionService>();
 
 var app = builder.Build();
 
