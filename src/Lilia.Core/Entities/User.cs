@@ -16,5 +16,7 @@ public class User
     public virtual ICollection<DocumentCollaborator> DocumentCollaborations { get; set; } = new List<DocumentCollaborator>();
     public virtual ICollection<Label> Labels { get; set; } = new List<Label>();
     public virtual ICollection<Template> Templates { get; set; } = new List<Template>();
+    public virtual ICollection<Formula> Formulas { get; set; } = new List<Formula>();
+    public virtual ICollection<Snippet> Snippets { get; set; } = new List<Snippet>();
     public virtual UserPreferences? Preferences { get; set; }
 }

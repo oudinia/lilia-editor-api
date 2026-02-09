@@ -149,6 +149,7 @@ else
 // Register Application Services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddSingleton<IBlockTypeService, BlockTypeService>();
 builder.Services.AddScoped<IBlockService, BlockService>();
 builder.Services.AddScoped<IBibliographyService, BibliographyService>();
 builder.Services.AddScoped<ILabelService, LabelService>();
@@ -156,6 +157,8 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<IVersionService, VersionService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>();
+builder.Services.AddScoped<IFormulaService, FormulaService>();
+builder.Services.AddScoped<ISnippetService, SnippetService>();
 builder.Services.AddScoped<IJobService, JobService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
@@ -251,6 +254,7 @@ app.MapControllers();
 
 // Map SignalR hubs
 app.MapHub<ImportHub>("/hubs/import");
+app.MapHub<DocumentHub>("/hubs/document");
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
@@ -260,6 +264,8 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
     await SystemTemplateSeeder.SeedAsync(dbContext);
+    await SystemFormulaSeeder.SeedAsync(dbContext);
+    await SystemSnippetSeeder.SeedAsync(dbContext);
 }
 
 app.Run();
