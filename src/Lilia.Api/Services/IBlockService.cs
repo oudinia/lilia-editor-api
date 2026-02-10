@@ -11,4 +11,5 @@ public interface IBlockService
     Task<bool> DeleteBlockAsync(Guid documentId, Guid blockId);
     Task<List<BlockDto>> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks);
     Task<List<BlockDto>> ReorderBlocksAsync(Guid documentId, List<Guid> blockIds);
+    Task<BlockDto?> ConvertBlockAsync(Guid documentId, Guid blockId, string newType);
 }

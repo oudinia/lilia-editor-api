@@ -43,6 +43,9 @@ public record DocumentDto(
     string PaperSize,
     string FontFamily,
     int FontSize,
+    int Columns,
+    string ColumnSeparator,
+    double ColumnGap,
     bool IsPublic,
     string? ShareLink,
     DateTime CreatedAt,
@@ -68,7 +71,10 @@ public record UpdateDocumentDto(
     string? Language,
     string? PaperSize,
     string? FontFamily,
-    int? FontSize
+    int? FontSize,
+    int? Columns,
+    string? ColumnSeparator,
+    double? ColumnGap
 );
 
 public record ShareDocumentDto(

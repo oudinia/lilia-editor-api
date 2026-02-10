@@ -528,6 +528,29 @@ public class ImportPageBreak : ImportElement
 }
 
 /// <summary>
+/// An abstract/summary section detected from the document.
+/// </summary>
+public class ImportAbstract : ImportElement
+{
+    public override ImportElementType Type => ImportElementType.Abstract;
+
+    /// <summary>
+    /// Plain text content of the abstract.
+    /// </summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Formatting spans within the abstract text.
+    /// </summary>
+    public List<FormattingSpan> Formatting { get; set; } = [];
+
+    /// <summary>
+    /// Original style ID from the DOCX.
+    /// </summary>
+    public string? StyleId { get; set; }
+}
+
+/// <summary>
 /// A raw LaTeX passthrough element for advanced LaTeX features.
 /// Content is exported as-is without escaping or modification.
 /// Used for TikZ diagrams, custom packages, or other LaTeX code not supported by LML.

@@ -19,6 +19,9 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.PaperSize).HasColumnName("paper_size").HasMaxLength(50).HasDefaultValue("a4");
         builder.Property(d => d.FontFamily).HasColumnName("font_family").HasMaxLength(100).HasDefaultValue("serif");
         builder.Property(d => d.FontSize).HasColumnName("font_size").HasDefaultValue(12);
+        builder.Property(d => d.Columns).HasColumnName("columns").HasDefaultValue(1);
+        builder.Property(d => d.ColumnSeparator).HasColumnName("column_separator").HasMaxLength(10).HasDefaultValue("none");
+        builder.Property(d => d.ColumnGap).HasColumnName("column_gap").HasDefaultValue(1.5);
         builder.Property(d => d.IsPublic).HasColumnName("is_public").HasDefaultValue(false);
         builder.Property(d => d.ShareLink).HasColumnName("share_link").HasMaxLength(100);
         builder.Property(d => d.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");

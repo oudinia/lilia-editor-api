@@ -20,7 +20,8 @@ public enum ImportElementType
     Comment,
     TrackChange,
     PageBreak,
-    LatexPassthrough  // Raw LaTeX that bypasses conversion (TikZ, custom packages, etc.)
+    LatexPassthrough,  // Raw LaTeX that bypasses conversion (TikZ, custom packages, etc.)
+    Abstract
 }
 
 /// <summary>

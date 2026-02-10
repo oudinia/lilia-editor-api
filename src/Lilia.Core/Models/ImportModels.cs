@@ -34,7 +34,8 @@ public enum BlockType
     Figure,
     Table,
     Code,
-    PageBreak
+    PageBreak,
+    Abstract
 }
 
 public class Block

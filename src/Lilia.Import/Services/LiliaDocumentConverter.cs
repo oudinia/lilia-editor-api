@@ -228,9 +228,22 @@ public class LiliaDocumentConverter : IImportConverter
             ImportTable table => ConvertTable(table, sortOrder, options),
             ImportImage image => ConvertImage(image, sortOrder, options),
             ImportListItem listItem => ConvertListItem(listItem, sortOrder, options),
+            ImportAbstract abs => ConvertAbstract(abs, sortOrder, options),
             ImportPageBreak => ConvertPageBreak(sortOrder),
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Convert an abstract element to a Block.
+    /// </summary>
+    private Block ConvertAbstract(ImportAbstract abs, int sortOrder, ConversionOptions options)
+    {
+        var content = options.ApplyFormattingAsLatex
+            ? ApplyFormattingAsLatex(abs.Text, abs.Formatting)
+            : abs.Text;
+
+        return CreateBlock(BlockType.Abstract, content, sortOrder);
     }
 
     /// <summary>

@@ -658,6 +658,22 @@ public class DocxParser : IDocxParser
             return equations;
         }
 
+        // Check if it's an abstract section (before code block to prevent misclassification)
+        if (IsAbstract(para))
+        {
+            ExtractTextAndFormatting(para, out var absText, out var absFormatting);
+            if (!string.IsNullOrWhiteSpace(absText))
+            {
+                return [new ImportAbstract
+                {
+                    Order = _elementOrder++,
+                    Text = absText,
+                    Formatting = _options.PreserveFormatting ? absFormatting : [],
+                    StyleId = styleId
+                }];
+            }
+        }
+
         // Check if it's a code block
         if (IsCodeBlock(para))
         {
@@ -1035,6 +1051,24 @@ public class DocxParser : IDocxParser
         // Check if the paragraph contains only math and whitespace
         var textContent = string.Concat(para.Descendants<Text>().Select(t => t.Text));
         return string.IsNullOrWhiteSpace(textContent) || mathElements.Count > 0;
+    }
+
+    private bool IsAbstract(Paragraph para)
+    {
+        if (!_options.DetectAbstractByStyle)
+            return false;
+
+        var styleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+        if (string.IsNullOrEmpty(styleId))
+            return false;
+
+        foreach (var pattern in _options.AbstractStylePatterns)
+        {
+            if (styleId.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private bool IsCodeBlock(Paragraph para)

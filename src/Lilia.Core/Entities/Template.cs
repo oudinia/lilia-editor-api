@@ -29,5 +29,6 @@ public static class TemplateCategories
     public const string Thesis = "thesis";
     public const string Article = "article";
     public const string Presentation = "presentation";
+    public const string Layout = "layout";
     public const string Other = "other";
 }

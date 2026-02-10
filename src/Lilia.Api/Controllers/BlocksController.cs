@@ -13,12 +13,16 @@ public class BlocksController : ControllerBase
 {
     private readonly IBlockService _blockService;
     private readonly IDocumentService _documentService;
+    private readonly IBlockTypeService _blockTypeService;
+    private readonly IRenderService _renderService;
     private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService, ILogger<BlocksController> logger)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
+        _blockTypeService = blockTypeService;
+        _renderService = renderService;
         _logger = logger;
     }
 
@@ -120,5 +124,46 @@ public class BlocksController : ControllerBase
 
         var blocks = await _blockService.ReorderBlocksAsync(docId, dto.BlockIds);
         return Ok(blocks);
+    }
+
+    [HttpPut("{id:guid}/convert")]
+    public async Task<ActionResult<BlockDto>> ConvertBlock(Guid docId, Guid id, [FromBody] ConvertBlockDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+            return Forbid();
+
+        if (!_blockTypeService.IsValidBlockType(dto.NewType))
+            return BadRequest(new { message = $"Invalid block type: {dto.NewType}" });
+
+        var block = await _blockService.ConvertBlockAsync(docId, id, dto.NewType);
+        if (block == null) return NotFound();
+        return Ok(block);
+    }
+
+    [HttpGet("{id:guid}/latex")]
+    public async Task<ActionResult<object>> GetBlockLatex(Guid docId, Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+            return Forbid();
+
+        var blockDto = await _blockService.GetBlockAsync(docId, id);
+        if (blockDto == null) return NotFound();
+
+        // Create a temporary Block entity for rendering
+        var block = new Block
+        {
+            Id = blockDto.Id,
+            DocumentId = docId,
+            Type = blockDto.Type,
+            Content = System.Text.Json.JsonDocument.Parse(blockDto.Content.GetRawText()),
+            SortOrder = blockDto.SortOrder
+        };
+
+        var latex = _renderService.RenderBlockToLatex(block);
+        return Ok(new { latex });
     }
 }

@@ -27,11 +27,25 @@ public static class BlockTypes
     public const string Equation = "equation";
     public const string List = "list";
     public const string Code = "code";
-    public const string Quote = "quote";
-    public const string Image = "image";
+    public const string Blockquote = "blockquote";
+    public const string Figure = "figure";
     public const string Table = "table";
     public const string Theorem = "theorem";
     public const string Abstract = "abstract";
     public const string Bibliography = "bibliography";
+    public const string TableOfContents = "tableOfContents";
+    public const string PageBreak = "pageBreak";
+    public const string ColumnBreak = "columnBreak";
+
+    // Legacy aliases for backwards compatibility with existing data
+    public const string Quote = "quote";
+    public const string Image = "image";
     public const string Divider = "divider";
+
+    public static readonly string[] All =
+    [
+        Paragraph, Heading, Equation, Figure, Code, List,
+        Blockquote, Table, Theorem, Abstract, Bibliography,
+        TableOfContents, PageBreak, ColumnBreak
+    ];
 }

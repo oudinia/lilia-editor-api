@@ -116,6 +116,24 @@ public class ImportOptions
     ];
 
     /// <summary>
+    /// Whether to detect abstract sections by style name.
+    /// Default: true
+    /// </summary>
+    public bool DetectAbstractByStyle { get; set; } = true;
+
+    /// <summary>
+    /// List of style names that indicate abstract sections (case-insensitive partial match).
+    /// </summary>
+    public HashSet<string> AbstractStylePatterns { get; set; } =
+    [
+        "Abstract",
+        "Summary",
+        "Résumé",
+        "Zusammenfassung",
+        "Resumen"
+    ];
+
+    /// <summary>
     /// Whether to merge consecutive paragraphs that appear to be the same logical paragraph
     /// (e.g., soft line breaks in Word).
     /// Default: false

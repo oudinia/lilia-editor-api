@@ -186,8 +186,17 @@ public class DocumentService : IDocumentService
             var template = await _context.Templates.FindAsync(dto.TemplateId.Value);
             if (template != null)
             {
-                // Parse template content and create blocks
+                // Parse template content and copy document settings
                 var content = template.Content.RootElement;
+
+                // Copy column settings from template if present
+                if (content.TryGetProperty("columns", out var colsProp) && colsProp.ValueKind == JsonValueKind.Number)
+                    document.Columns = Math.Clamp(colsProp.GetInt32(), 1, 3);
+                if (content.TryGetProperty("columnSeparator", out var colSepProp) && colSepProp.ValueKind == JsonValueKind.String)
+                    document.ColumnSeparator = colSepProp.GetString() ?? "none";
+                if (content.TryGetProperty("columnGap", out var colGapProp) && colGapProp.ValueKind == JsonValueKind.Number)
+                    document.ColumnGap = colGapProp.GetDouble();
+
                 if (content.TryGetProperty("blocks", out var blocksElement) && blocksElement.ValueKind == JsonValueKind.Array)
                 {
                     int sortOrder = 0;
@@ -230,6 +239,9 @@ public class DocumentService : IDocumentService
         if (dto.PaperSize != null) document.PaperSize = dto.PaperSize;
         if (dto.FontFamily != null) document.FontFamily = dto.FontFamily;
         if (dto.FontSize.HasValue) document.FontSize = dto.FontSize.Value;
+        if (dto.Columns.HasValue) document.Columns = Math.Clamp(dto.Columns.Value, 1, 3);
+        if (dto.ColumnSeparator != null) document.ColumnSeparator = dto.ColumnSeparator;
+        if (dto.ColumnGap.HasValue) document.ColumnGap = dto.ColumnGap.Value;
 
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -407,6 +419,9 @@ public class DocumentService : IDocumentService
             d.PaperSize,
             d.FontFamily,
             d.FontSize,
+            d.Columns,
+            d.ColumnSeparator,
+            d.ColumnGap,
             d.IsPublic,
             d.ShareLink,
             d.CreatedAt,

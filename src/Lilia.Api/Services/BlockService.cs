@@ -12,12 +12,14 @@ public class BlockService : IBlockService
     private readonly LiliaDbContext _context;
     private readonly ILogger<BlockService> _logger;
     private readonly IPreviewCacheService _previewCacheService;
+    private readonly IBlockTypeService _blockTypeService;
 
-    public BlockService(LiliaDbContext context, ILogger<BlockService> logger, IPreviewCacheService previewCacheService)
+    public BlockService(LiliaDbContext context, ILogger<BlockService> logger, IPreviewCacheService previewCacheService, IBlockTypeService blockTypeService)
     {
         _context = context;
         _logger = logger;
         _previewCacheService = previewCacheService;
+        _blockTypeService = blockTypeService;
     }
 
     public async Task<List<BlockDto>> GetBlocksAsync(Guid documentId)
@@ -222,6 +224,32 @@ public class BlockService : IBlockService
         await _previewCacheService.InvalidateCacheAsync(documentId);
 
         return blocks.Values.OrderBy(b => b.SortOrder).Select(MapToDto).ToList();
+    }
+
+    public async Task<BlockDto?> ConvertBlockAsync(Guid documentId, Guid blockId, string newType)
+    {
+        var block = await _context.Blocks
+            .FirstOrDefaultAsync(b => b.DocumentId == documentId && b.Id == blockId);
+
+        if (block == null) return null;
+
+        block.Type = newType;
+        block.Content = _blockTypeService.GetDefaultContent(newType);
+        block.UpdatedAt = DateTime.UtcNow;
+
+        // Update document timestamp
+        var document = await _context.Documents.FindAsync(documentId);
+        if (document != null) document.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        // Invalidate preview cache
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
+        _logger.LogInformation("ConvertBlockAsync: Block {BlockId} converted to type {NewType} in document {DocumentId}",
+            blockId, newType, documentId);
+
+        return MapToDto(block);
     }
 
     private static BlockDto MapToDto(Block b)

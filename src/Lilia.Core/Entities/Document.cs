@@ -10,6 +10,9 @@ public class Document
     public string PaperSize { get; set; } = "a4";
     public string FontFamily { get; set; } = "serif";
     public int FontSize { get; set; } = 12;
+    public int Columns { get; set; } = 1;
+    public string ColumnSeparator { get; set; } = "none";
+    public double ColumnGap { get; set; } = 1.5;
     public bool IsPublic { get; set; }
     public string? ShareLink { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -121,6 +121,7 @@ public class RenderService : IRenderService
 
     public async Task<string> RenderToHtmlAsync(Guid documentId)
     {
+        var doc = await _context.Documents.FindAsync(documentId);
         var blocks = await _context.Blocks
             .Where(b => b.DocumentId == documentId)
             .OrderBy(b => b.SortOrder)
@@ -138,7 +139,21 @@ public class RenderService : IRenderService
         }
 
         var html = new StringBuilder();
-        html.Append("<div class=\"lilia-preview\">");
+
+        // Apply multi-column CSS if document has columns > 1
+        if (doc != null && doc.Columns > 1)
+        {
+            html.Append($"<div class=\"lilia-preview\" style=\"column-count: {doc.Columns}; column-gap: {doc.ColumnGap}cm;");
+            if (doc.ColumnSeparator == "rule")
+            {
+                html.Append(" column-rule: 1px solid #ccc;");
+            }
+            html.Append("\">");
+        }
+        else
+        {
+            html.Append("<div class=\"lilia-preview\">");
+        }
 
         foreach (var block in blocks)
         {
@@ -174,6 +189,8 @@ public class RenderService : IRenderService
                 "blockquote" => RenderBlockquoteToHtml(content),
                 "theorem" => RenderTheoremToHtml(content),
                 "bibliography" => RenderBibliographyToHtml(content),
+                "columnBreak" => "<div class=\"column-break\" style=\"break-after: column;\"></div>",
+                "pageBreak" => "<div class=\"page-break\" style=\"break-after: page;\"></div>",
                 _ => $"<div class=\"block block-{WebUtility.HtmlEncode(block.Type)}\"></div>"
             };
         }
@@ -501,6 +518,18 @@ public class RenderService : IRenderService
         latex.AppendLine(@"\usepackage{hyperref}");
         latex.AppendLine(@"\usepackage{listings}");
         latex.AppendLine(@"\usepackage{booktabs}");
+
+        // Multi-column support
+        if (doc.Columns > 1)
+        {
+            latex.AppendLine(@"\usepackage{multicol}");
+            latex.AppendLine($@"\setlength{{\columnsep}}{{{doc.ColumnGap}cm}}");
+            if (doc.ColumnSeparator == "rule")
+            {
+                latex.AppendLine(@"\setlength{\columnseprule}{0.4pt}");
+            }
+        }
+
         latex.AppendLine();
 
         // Theorem environments
@@ -518,10 +547,24 @@ public class RenderService : IRenderService
         latex.AppendLine(@"\maketitle");
         latex.AppendLine();
 
+        // Multi-column wrapper
+        if (doc.Columns > 1)
+        {
+            latex.AppendLine($@"\begin{{multicols}}{{{doc.Columns}}}");
+            latex.AppendLine();
+        }
+
         // Blocks
         foreach (var block in doc.Blocks)
         {
             latex.AppendLine(RenderBlockToLatex(block));
+        }
+
+        // Close multi-column wrapper
+        if (doc.Columns > 1)
+        {
+            latex.AppendLine();
+            latex.AppendLine(@"\end{multicols}");
         }
 
         // Bibliography
@@ -552,6 +595,8 @@ public class RenderService : IRenderService
                 "list" => RenderListToLatex(content),
                 "blockquote" => RenderBlockquoteToLatex(content),
                 "theorem" => RenderTheoremToLatex(content),
+                "columnBreak" => @"\columnbreak",
+                "pageBreak" => @"\newpage",
                 _ => $"% Unknown block type: {block.Type}"
             };
         }

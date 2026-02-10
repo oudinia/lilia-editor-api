@@ -733,6 +733,100 @@ public static class SystemTemplateSeeder
                     }
                 }
             ),
+            // === MULTI-COLUMN LAYOUT TEMPLATES ===
+            CreateTemplate(
+                "Two-Column Article",
+                "Standard two-column article layout, commonly used for journals and newsletters.",
+                TemplateCategories.Layout,
+                new
+                {
+                    language = "en",
+                    paperSize = "a4",
+                    fontFamily = "charter",
+                    fontSize = 11,
+                    columns = 2,
+                    columnGap = 1.0,
+                    columnSeparator = "none",
+                    blocks = new object[]
+                    {
+                        new { type = "heading", content = new { text = "Article Title", level = 1 }, sortOrder = "000000" },
+                        new { type = "abstract", content = new { text = "A brief abstract summarizing the article content..." }, sortOrder = "000001" },
+                        new { type = "heading", content = new { text = "Introduction", level = 2 }, sortOrder = "000002" },
+                        new { type = "paragraph", content = new { text = "Begin your article here. The two-column layout provides a compact, professional appearance suitable for journals and magazines..." }, sortOrder = "000003" },
+                        new { type = "heading", content = new { text = "Main Content", level = 2 }, sortOrder = "000004" },
+                        new { type = "paragraph", content = new { text = "Continue developing your ideas across the two columns. Text will flow naturally from the left column to the right column..." }, sortOrder = "000005" },
+                        new { type = "heading", content = new { text = "Conclusion", level = 2 }, sortOrder = "000006" },
+                        new { type = "paragraph", content = new { text = "Wrap up your article with concluding remarks..." }, sortOrder = "000007" },
+                        new { type = "heading", content = new { text = "References", level = 2 }, sortOrder = "000008" },
+                        new { type = "bibliography", content = new { }, sortOrder = "000009" }
+                    }
+                }
+            ),
+            CreateTemplate(
+                "Three-Column Newsletter",
+                "Newsletter layout with three columns and separator rules between columns.",
+                TemplateCategories.Layout,
+                new
+                {
+                    language = "en",
+                    paperSize = "a4",
+                    fontFamily = "helvetica",
+                    fontSize = 10,
+                    columns = 3,
+                    columnGap = 0.8,
+                    columnSeparator = "rule",
+                    blocks = new object[]
+                    {
+                        new { type = "heading", content = new { text = "Newsletter Title", level = 1 }, sortOrder = "000000" },
+                        new { type = "paragraph", content = new { text = "<em>Volume X, Issue Y — Month Year</em>" }, sortOrder = "000001" },
+                        new { type = "heading", content = new { text = "Lead Story", level = 2 }, sortOrder = "000002" },
+                        new { type = "paragraph", content = new { text = "Your main story goes here. The three-column layout with separator rules is ideal for newsletters, providing clear visual separation between columns..." }, sortOrder = "000003" },
+                        new { type = "columnBreak", content = new { }, sortOrder = "000004" },
+                        new { type = "heading", content = new { text = "Second Story", level = 2 }, sortOrder = "000005" },
+                        new { type = "paragraph", content = new { text = "A secondary article or feature. Use column breaks to control where new sections start within the layout..." }, sortOrder = "000006" },
+                        new { type = "columnBreak", content = new { }, sortOrder = "000007" },
+                        new { type = "heading", content = new { text = "Quick Updates", level = 2 }, sortOrder = "000008" },
+                        new { type = "paragraph", content = new { text = "• Update item one<br/>• Update item two<br/>• Update item three<br/>• Update item four" }, sortOrder = "000009" },
+                        new { type = "heading", content = new { text = "Upcoming Events", level = 3 }, sortOrder = "000010" },
+                        new { type = "paragraph", content = new { text = "List upcoming events, dates, and details here..." }, sortOrder = "000011" }
+                    }
+                }
+            ),
+            CreateTemplate(
+                "Academic Paper (Two-Column)",
+                "IEEE-style two-column academic paper format with standard sections.",
+                TemplateCategories.Layout,
+                new
+                {
+                    language = "en",
+                    paperSize = "letter",
+                    fontFamily = "times",
+                    fontSize = 10,
+                    columns = 2,
+                    columnGap = 1.5,
+                    columnSeparator = "none",
+                    blocks = new object[]
+                    {
+                        new { type = "heading", content = new { text = "Paper Title", level = 1 }, sortOrder = "000000" },
+                        new { type = "paragraph", content = new { text = "<em>Author Name</em><br/>Department, University<br/>City, Country<br/>email@university.edu" }, sortOrder = "000001" },
+                        new { type = "abstract", content = new { text = "Abstract — This paper presents a two-column academic paper in IEEE style. The abstract should be 150-250 words summarizing the key contributions." }, sortOrder = "000002" },
+                        new { type = "paragraph", content = new { text = "<strong>Index Terms:</strong> keyword1, keyword2, keyword3, keyword4" }, sortOrder = "000003" },
+                        new { type = "heading", content = new { text = "I. Introduction", level = 2 }, sortOrder = "000004" },
+                        new { type = "paragraph", content = new { text = "The introduction section provides background and motivation..." }, sortOrder = "000005" },
+                        new { type = "heading", content = new { text = "II. Related Work", level = 2 }, sortOrder = "000006" },
+                        new { type = "paragraph", content = new { text = "Discuss relevant prior research and how this work differs..." }, sortOrder = "000007" },
+                        new { type = "heading", content = new { text = "III. Proposed Method", level = 2 }, sortOrder = "000008" },
+                        new { type = "paragraph", content = new { text = "Describe your approach in detail..." }, sortOrder = "000009" },
+                        new { type = "heading", content = new { text = "IV. Experimental Results", level = 2 }, sortOrder = "000010" },
+                        new { type = "paragraph", content = new { text = "Present experimental setup, datasets, and results..." }, sortOrder = "000011" },
+                        new { type = "heading", content = new { text = "V. Conclusion", level = 2 }, sortOrder = "000012" },
+                        new { type = "paragraph", content = new { text = "Summarize contributions and discuss future work..." }, sortOrder = "000013" },
+                        new { type = "heading", content = new { text = "References", level = 2 }, sortOrder = "000014" },
+                        new { type = "bibliography", content = new { }, sortOrder = "000015" }
+                    }
+                }
+            ),
+
             CreateTemplate(
                 "Blank Document",
                 "Start with a clean slate - no predefined structure.",

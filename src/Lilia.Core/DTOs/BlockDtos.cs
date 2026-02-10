@@ -46,3 +46,15 @@ public record BatchUpdateBlocksDto(
 public record ReorderBlocksDto(
     List<Guid> BlockIds
 );
+
+public record ConvertBlockDto(
+    string NewType
+);
+
+public record BlockTypeMetadataDto(
+    string Type,
+    string Label,
+    string Description,
+    string IconName,
+    JsonElement DefaultContent
+);

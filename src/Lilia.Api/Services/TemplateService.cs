@@ -74,13 +74,16 @@ public class TemplateService : ITemplateService
         if (document == null)
             throw new ArgumentException("Document not found");
 
-        // Create content from document
+        // Create content from document (including column settings)
         var content = new
         {
             language = document.Language,
             paperSize = document.PaperSize,
             fontFamily = document.FontFamily,
             fontSize = document.FontSize,
+            columns = document.Columns,
+            columnSeparator = document.ColumnSeparator,
+            columnGap = document.ColumnGap,
             blocks = document.Blocks.Select(b => new
             {
                 type = b.Type,
