@@ -5,6 +5,7 @@ using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace Lilia.Api.Tests.Controllers;
@@ -14,6 +15,7 @@ public class PreviewControllerTests
     private readonly Mock<IRenderService> _renderServiceMock;
     private readonly Mock<IPreviewCacheService> _cacheServiceMock;
     private readonly Mock<IDocumentService> _documentServiceMock;
+    private readonly Mock<ILogger<PreviewController>> _loggerMock;
     private readonly PreviewController _sut;
 
     public PreviewControllerTests()
@@ -21,11 +23,13 @@ public class PreviewControllerTests
         _renderServiceMock = new Mock<IRenderService>();
         _cacheServiceMock = new Mock<IPreviewCacheService>();
         _documentServiceMock = new Mock<IDocumentService>();
+        _loggerMock = new Mock<ILogger<PreviewController>>();
 
         _sut = new PreviewController(
             _renderServiceMock.Object,
             _cacheServiceMock.Object,
-            _documentServiceMock.Object);
+            _documentServiceMock.Object,
+            _loggerMock.Object);
 
         // Setup default authenticated user
         SetupAuthenticatedUser("user123");
@@ -62,6 +66,9 @@ public class PreviewControllerTests
             "a4",
             "Arial",
             12,
+            1,
+            "none",
+            1.5,
             false,
             null,
             DateTime.UtcNow,
@@ -105,7 +112,8 @@ public class PreviewControllerTests
         var result = await _sut.GetPageCount(docId);
 
         // Assert
-        result.Result.Should().BeOfType<UnauthorizedResult>();
+        result.Result.Should().BeAssignableTo<ObjectResult>()
+            .Which.StatusCode.Should().Be(401);
     }
 
     [Fact]
@@ -164,7 +172,8 @@ public class PreviewControllerTests
         var result = await _sut.GetSections(docId);
 
         // Assert
-        result.Result.Should().BeOfType<UnauthorizedResult>();
+        result.Result.Should().BeAssignableTo<ObjectResult>()
+            .Which.StatusCode.Should().Be(401);
     }
 
     #endregion
@@ -331,7 +340,8 @@ public class PreviewControllerTests
         var result = await _sut.GetLatexPreview(docId);
 
         // Assert
-        result.Result.Should().BeOfType<UnauthorizedResult>();
+        result.Result.Should().BeAssignableTo<ObjectResult>()
+            .Which.StatusCode.Should().Be(401);
     }
 
     #endregion
@@ -374,12 +384,12 @@ public class PreviewControllerTests
         SetupUnauthenticatedUser();
         var docId = Guid.NewGuid();
 
-        // Act & Assert
-        (await _sut.GetPageCount(docId)).Result.Should().BeOfType<UnauthorizedResult>();
-        (await _sut.GetSections(docId)).Result.Should().BeOfType<UnauthorizedResult>();
-        (await _sut.GetHtmlPreview(docId)).Result.Should().BeOfType<UnauthorizedResult>();
-        (await _sut.GetLatexPreview(docId)).Result.Should().BeOfType<UnauthorizedResult>();
-        (await _sut.GetFullHtmlPreview(docId)).Result.Should().BeOfType<UnauthorizedResult>();
+        // Act & Assert — controller returns Unauthorized(object) = UnauthorizedObjectResult
+        (await _sut.GetPageCount(docId)).Result.Should().BeAssignableTo<ObjectResult>().Which.StatusCode.Should().Be(401);
+        (await _sut.GetSections(docId)).Result.Should().BeAssignableTo<ObjectResult>().Which.StatusCode.Should().Be(401);
+        (await _sut.GetHtmlPreview(docId)).Result.Should().BeAssignableTo<ObjectResult>().Which.StatusCode.Should().Be(401);
+        (await _sut.GetLatexPreview(docId)).Result.Should().BeAssignableTo<ObjectResult>().Which.StatusCode.Should().Be(401);
+        (await _sut.GetFullHtmlPreview(docId)).Result.Should().BeAssignableTo<ObjectResult>().Which.StatusCode.Should().Be(401);
     }
 
     [Fact]
