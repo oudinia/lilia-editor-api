@@ -21,12 +21,24 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         builder.Property(a => a.Width).HasColumnName("width");
         builder.Property(a => a.Height).HasColumnName("height");
         builder.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+        builder.Property(a => a.UserId).HasColumnName("user_id").HasMaxLength(255);
+        builder.Property(a => a.S3Bucket).HasColumnName("s3_bucket").HasMaxLength(255);
+        builder.Property(a => a.ContentHash).HasColumnName("content_hash").HasMaxLength(255);
+        builder.Property(a => a.UsageCount).HasColumnName("usage_count").HasDefaultValue(1);
+        builder.Property(a => a.LastAccessedAt).HasColumnName("last_accessed_at");
 
         builder.HasIndex(a => a.DocumentId);
+        builder.HasIndex(a => a.ContentHash);
+        builder.HasIndex(a => a.UserId);
 
         builder.HasOne(a => a.Document)
             .WithMany(d => d.Assets)
             .HasForeignKey(a => a.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(a => a.User)
+            .WithMany()
+            .HasForeignKey(a => a.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

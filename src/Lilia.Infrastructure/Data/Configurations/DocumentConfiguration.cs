@@ -28,6 +28,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(d => d.LastOpenedAt).HasColumnName("last_opened_at");
         builder.Property(d => d.DeletedAt).HasColumnName("deleted_at");
+        builder.Property(d => d.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("draft");
+        builder.Property(d => d.LastAutoSavedAt).HasColumnName("last_auto_saved_at");
 
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);

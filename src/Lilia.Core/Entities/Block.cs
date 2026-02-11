@@ -13,11 +13,14 @@ public class Block
     public int Depth { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public string? CreatedBy { get; set; }
 
     // Navigation properties
     public virtual Document Document { get; set; } = null!;
     public virtual Block? Parent { get; set; }
     public virtual ICollection<Block> Children { get; set; } = new List<Block>();
+    public virtual User? Creator { get; set; }
+    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }
 
 public static class BlockTypes

@@ -12,6 +12,11 @@ public class UserPreferences
     public bool AutoSaveEnabled { get; set; } = true;
     public int AutoSaveInterval { get; set; } = 2000;
     public JsonDocument KeyboardShortcuts { get; set; } = JsonDocument.Parse("{}");
+    public string DefaultLanguage { get; set; } = "en";
+    public string DefaultExportFormat { get; set; } = "PDF";
+    public JsonDocument? ExportOptions { get; set; }
+    public bool SidebarCollapsed { get; set; }
+    public bool PreviewEnabled { get; set; } = true;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties

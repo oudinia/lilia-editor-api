@@ -16,6 +16,16 @@ public class Job
     public string? ResultFileName { get; set; }
     public string? ResultUrl { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? Direction { get; set; } // INBOUND, OUTBOUND
+    public string? InputFileKey { get; set; }
+    public long? InputFileSize { get; set; }
+    public string? OutputFileKey { get; set; }
+    public JsonDocument? Options { get; set; }
+    public JsonDocument? ErrorDetails { get; set; }
+    public int RetryCount { get; set; }
+    public int MaxRetries { get; set; } = 3;
+    public DateTime? StartedAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
     public JsonDocument? Metadata { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -39,4 +49,5 @@ public static class JobTypes
 {
     public const string Import = "IMPORT";
     public const string Export = "EXPORT";
+    public const string Convert = "CONVERT";
 }

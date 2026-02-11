@@ -12,7 +12,13 @@ public class Asset
     public int? Width { get; set; }
     public int? Height { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? UserId { get; set; }
+    public string? S3Bucket { get; set; }
+    public string? ContentHash { get; set; }
+    public int UsageCount { get; set; } = 1;
+    public DateTime? LastAccessedAt { get; set; }
 
     // Navigation properties
     public virtual Document Document { get; set; } = null!;
+    public virtual User? User { get; set; }
 }

@@ -20,6 +20,7 @@ public class BlockConfiguration : IEntityTypeConfiguration<Block>
         builder.Property(b => b.Depth).HasColumnName("depth").HasDefaultValue(0);
         builder.Property(b => b.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(b => b.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+        builder.Property(b => b.CreatedBy).HasColumnName("created_by").HasMaxLength(255);
 
         builder.HasIndex(b => b.DocumentId);
         builder.HasIndex(b => new { b.DocumentId, b.SortOrder });
@@ -33,5 +34,10 @@ public class BlockConfiguration : IEntityTypeConfiguration<Block>
             .WithMany(b => b.Children)
             .HasForeignKey(b => b.ParentId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(b => b.Creator)
+            .WithMany()
+            .HasForeignKey(b => b.CreatedBy)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

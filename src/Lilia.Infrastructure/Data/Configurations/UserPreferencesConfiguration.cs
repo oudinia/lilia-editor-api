@@ -19,6 +19,11 @@ public class UserPreferencesConfiguration : IEntityTypeConfiguration<UserPrefere
         builder.Property(p => p.AutoSaveEnabled).HasColumnName("auto_save_enabled").HasDefaultValue(true);
         builder.Property(p => p.AutoSaveInterval).HasColumnName("auto_save_interval").HasDefaultValue(2000);
         builder.Property(p => p.KeyboardShortcuts).HasColumnName("keyboard_shortcuts").HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
+        builder.Property(p => p.DefaultLanguage).HasColumnName("default_language").HasMaxLength(10).HasDefaultValue("en");
+        builder.Property(p => p.DefaultExportFormat).HasColumnName("default_export_format").HasMaxLength(20).HasDefaultValue("PDF");
+        builder.Property(p => p.ExportOptions).HasColumnName("export_options").HasColumnType("jsonb");
+        builder.Property(p => p.SidebarCollapsed).HasColumnName("sidebar_collapsed").HasDefaultValue(false);
+        builder.Property(p => p.PreviewEnabled).HasColumnName("preview_enabled").HasDefaultValue(true);
         builder.Property(p => p.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
         builder.HasOne(p => p.User)

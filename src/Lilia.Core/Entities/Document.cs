@@ -19,6 +19,8 @@ public class Document
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastOpenedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
+    public string Status { get; set; } = "draft"; // draft, saved, published
+    public DateTime? LastAutoSavedAt { get; set; }
 
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
@@ -30,4 +32,6 @@ public class Document
     public virtual ICollection<DocumentGroup> DocumentGroups { get; set; } = new List<DocumentGroup>();
     public virtual ICollection<DocumentVersion> Versions { get; set; } = new List<DocumentVersion>();
     public virtual ICollection<Asset> Assets { get; set; } = new List<Asset>();
+    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
+    public virtual ICollection<DocumentSnapshot> Snapshots { get; set; } = new List<DocumentSnapshot>();
 }

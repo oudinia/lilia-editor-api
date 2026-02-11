@@ -23,6 +23,16 @@ public class JobConfiguration : IEntityTypeConfiguration<Job>
         builder.Property(j => j.ResultFileName).HasColumnName("result_file_name").HasMaxLength(500);
         builder.Property(j => j.ResultUrl).HasColumnName("result_url");
         builder.Property(j => j.ErrorMessage).HasColumnName("error_message");
+        builder.Property(j => j.Direction).HasColumnName("direction").HasMaxLength(20);
+        builder.Property(j => j.InputFileKey).HasColumnName("input_file_key").HasMaxLength(500);
+        builder.Property(j => j.InputFileSize).HasColumnName("input_file_size");
+        builder.Property(j => j.OutputFileKey).HasColumnName("output_file_key").HasMaxLength(500);
+        builder.Property(j => j.Options).HasColumnName("options").HasColumnType("jsonb");
+        builder.Property(j => j.ErrorDetails).HasColumnName("error_details").HasColumnType("jsonb");
+        builder.Property(j => j.RetryCount).HasColumnName("retry_count").HasDefaultValue(0);
+        builder.Property(j => j.MaxRetries).HasColumnName("max_retries").HasDefaultValue(3);
+        builder.Property(j => j.StartedAt).HasColumnName("started_at");
+        builder.Property(j => j.ExpiresAt).HasColumnName("expires_at");
         builder.Property(j => j.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
         builder.Property(j => j.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(j => j.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");

@@ -29,6 +29,34 @@ public class LiliaDbContext : DbContext
     public DbSet<Formula> Formulas => Set<Formula>();
     public DbSet<Snippet> Snippets => Set<Snippet>();
 
+    // Auth tables (Better Auth)
+    public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<Passkey> Passkeys => Set<Passkey>();
+    public DbSet<Verification> Verifications => Set<Verification>();
+    public DbSet<TwoFactor> TwoFactors => Set<TwoFactor>();
+
+    // Organization & billing
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationMember> OrganizationMembers => Set<OrganizationMember>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<Purchase> Purchases => Set<Purchase>();
+    public DbSet<AiChat> AiChats => Set<AiChat>();
+
+    // Document features
+    public DbSet<Comment> Comments => Set<Comment>();
+    public DbSet<CommentReply> CommentReplies => Set<CommentReply>();
+    public DbSet<DocumentSnapshot> DocumentSnapshots => Set<DocumentSnapshot>();
+    public DbSet<ConversionAudit> ConversionAudits => Set<ConversionAudit>();
+    public DbSet<SyncHistory> SyncHistories => Set<SyncHistory>();
+
+    // Import review
+    public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
+    public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();
+    public DbSet<ImportReviewCollaborator> ImportReviewCollaborators => Set<ImportReviewCollaborator>();
+    public DbSet<ImportBlockComment> ImportBlockComments => Set<ImportBlockComment>();
+    public DbSet<ImportReviewActivity> ImportReviewActivities => Set<ImportReviewActivity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
