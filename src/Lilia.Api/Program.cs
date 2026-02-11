@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Lilia.Api.ErrorPages;
 using Lilia.Api.Hubs;
 using Lilia.Api.Middleware;
 using Lilia.Api.Services;
@@ -177,6 +178,9 @@ builder.Services.AddSignalR(options =>
 // Register import progress service
 builder.Services.AddScoped<IImportProgressService, ImportProgressService>();
 
+// Register import review service
+builder.Services.AddScoped<IImportReviewService, ImportReviewService>();
+
 // Register Clerk service for fetching user data from Clerk API
 builder.Services.AddHttpClient<IClerkService, ClerkService>();
 
@@ -197,6 +201,80 @@ builder.Services.AddSingleton<ICitationStyleService, CitationStyleService>();
 builder.Services.AddSingleton<ILmlConversionService, LmlConversionService>();
 
 var app = builder.Build();
+
+// Error handling — must be early in the pipeline
+var editorBaseUrl = builder.Configuration["Editor:BaseUrl"] ?? "http://localhost:3001";
+
+string ResolveHomeUrl(HttpRequest request)
+{
+    // Use the Origin or Referer from the request (works for both dev and prod)
+    var origin = request.Headers.Origin.ToString();
+    if (!string.IsNullOrEmpty(origin) && origin != "null")
+        return origin;
+
+    var referer = request.Headers.Referer.ToString();
+    if (!string.IsNullOrEmpty(referer) && Uri.TryCreate(referer, UriKind.Absolute, out var uri))
+        return $"{uri.Scheme}://{uri.Authority}";
+
+    return editorBaseUrl;
+}
+
+string? ResolveReviewUrl(HttpRequest request)
+{
+    var referer = request.Headers.Referer.ToString();
+    if (!string.IsNullOrEmpty(referer) && referer.Contains("/import/review"))
+    {
+        // Preserve the full referer URL (includes ?sessionId=... if present)
+        return referer;
+    }
+    return null;
+}
+
+app.UseExceptionHandler(exceptionApp =>
+{
+    exceptionApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        var accept = context.Request.Headers.Accept.ToString();
+        if (accept.Contains("text/html"))
+        {
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.WriteAsync(ErrorPageGenerator.GenerateHtml(500, ResolveHomeUrl(context.Request), ResolveReviewUrl(context.Request)));
+        }
+        else
+        {
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync("""{"error":"Internal Server Error","statusCode":500}""");
+        }
+    });
+});
+
+app.UseStatusCodePages(async context =>
+{
+    var statusCode = context.HttpContext.Response.StatusCode;
+    var accept = context.HttpContext.Request.Headers.Accept.ToString();
+    if (accept.Contains("text/html"))
+    {
+        context.HttpContext.Response.ContentType = "text/html; charset=utf-8";
+        await context.HttpContext.Response.WriteAsync(ErrorPageGenerator.GenerateHtml(statusCode, ResolveHomeUrl(context.HttpContext.Request), ResolveReviewUrl(context.HttpContext.Request)));
+    }
+    else
+    {
+        context.HttpContext.Response.ContentType = "application/json; charset=utf-8";
+        var title = statusCode switch
+        {
+            400 => "Bad Request",
+            401 => "Unauthorized",
+            403 => "Forbidden",
+            404 => "Not Found",
+            502 => "Bad Gateway",
+            503 => "Service Unavailable",
+            _ => "Error"
+        };
+        await context.HttpContext.Response.WriteAsync(
+            $$"""{"error":"{{title}}","statusCode":{{statusCode}}}""");
+    }
+});
 
 // Request logging with enhanced diagnostic context
 app.UseSerilogRequestLogging(options =>
@@ -269,3 +347,5 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+public partial class Program { }

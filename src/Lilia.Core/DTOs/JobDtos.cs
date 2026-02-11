@@ -55,16 +55,26 @@ public record ExportResultDto(
     string Filename
 );
 
+public record ImportOptionsDto(
+    bool PreserveFormatting = true,
+    bool ImportImages = true,
+    bool ImportBibliography = true,
+    bool AutoDetectEquations = true,
+    bool SplitByHeadings = true
+);
+
 public record ImportRequestDto(
     string Content,      // Base64 encoded for DOCX, plain text for LaTeX/LML
     string Format,       // "DOCX", "LATEX", "LML"
     string Filename,
-    string? Title = null
+    string? Title = null,
+    ImportOptionsDto? Options = null
 );
 
 public record ImportResultDto(
     JobDto Job,
-    ImportedDocumentInfoDto? Document
+    ImportedDocumentInfoDto? Document,
+    Guid? ReviewSessionId = null
 );
 
 public record ImportedDocumentInfoDto(

@@ -14,6 +14,7 @@ public class JobService : IJobService
     private readonly IRenderService _renderService;
     private readonly IDocxImportService _docxImportService;
     private readonly IImportProgressService _progressService;
+    private readonly IImportReviewService _reviewService;
     private readonly ILogger<JobService> _logger;
 
     public JobService(
@@ -22,6 +23,7 @@ public class JobService : IJobService
         IRenderService renderService,
         IDocxImportService docxImportService,
         IImportProgressService progressService,
+        IImportReviewService reviewService,
         ILogger<JobService> logger)
     {
         _context = context;
@@ -29,6 +31,7 @@ public class JobService : IJobService
         _renderService = renderService;
         _docxImportService = docxImportService;
         _progressService = progressService;
+        _reviewService = reviewService;
         _logger = logger;
     }
 
@@ -223,6 +226,8 @@ public class JobService : IJobService
         {
             Lilia.Core.Entities.Document? createdDocument = null;
 
+            Guid? reviewSessionId = null;
+
             if (request.Format.ToUpperInvariant() == "DOCX")
             {
                 // Report receiving phase
@@ -241,8 +246,25 @@ public class JobService : IJobService
                     job.Progress = 30;
                     await _context.SaveChangesAsync();
 
+                    // Map DTO options to ImportOptions model
+                    Lilia.Import.Models.ImportOptions? importOptions = null;
+                    if (request.Options != null)
+                    {
+                        importOptions = new Lilia.Import.Models.ImportOptions
+                        {
+                            PreserveFormatting = request.Options.PreserveFormatting,
+                            ExtractImages = request.Options.ImportImages,
+                            ConvertEquationsToLatex = request.Options.AutoDetectEquations,
+                            DetectHeadingsByFormatting = request.Options.SplitByHeadings,
+                            AIOptions = new Lilia.Import.Models.AIImportOptions
+                            {
+                                BibliographyParsing = request.Options.ImportBibliography
+                            }
+                        };
+                    }
+
                     // Use DOCX import service
-                    var importResult = await _docxImportService.ImportAsync(tempPath);
+                    var importResult = await _docxImportService.ImportAsync(tempPath, importOptions);
 
                     if (importResult.Document == null)
                     {
@@ -257,189 +279,168 @@ public class JobService : IJobService
                     job.Progress = 60;
                     await _context.SaveChangesAsync();
 
-                    // Create document in database
                     var title = !string.IsNullOrWhiteSpace(request.Title)
                         ? request.Title
                         : Path.GetFileNameWithoutExtension(request.Filename);
 
-                    createdDocument = new Lilia.Core.Entities.Document
+                    // Build review blocks from intermediate elements
+                    var reviewBlocks = new List<CreateReviewBlockDto>();
+                    var sortOrder = 0;
+                    var currentListItems = new List<Lilia.Import.Models.ImportListItem>();
+                    var currentListIsOrdered = false;
+                    var processedCount = 0;
+                    var totalElements = elements.Count;
+
+                    foreach (var element in elements)
                     {
-                        Id = Guid.NewGuid(),
-                        OwnerId = userId,
-                        Title = title,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    _context.Documents.Add(createdDocument);
-                    await _context.SaveChangesAsync();
-
-                    job.Progress = 70;
-
-                    // Create blocks from intermediate document elements (raw parsed data)
-                    // This gives us structured data instead of LaTeX-converted content
-
-                    if (elements.Any())
-                    {
-                        var sortOrder = 0;
-                        var blocksToAdd = new List<Lilia.Core.Entities.Block>();
-                        var currentListItems = new List<Lilia.Import.Models.ImportListItem>();
-                        var currentListIsOrdered = false;
-                        var processedCount = 0;
-                        var totalElements = elements.Count;
-
-                        foreach (var element in elements)
+                        // Flush accumulated list items when we hit a non-list element
+                        if (element is not Lilia.Import.Models.ImportListItem && currentListItems.Any())
                         {
-                            // Flush accumulated list items when we hit a non-list element
-                            if (element is not Lilia.Import.Models.ImportListItem && currentListItems.Any())
+                            reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
+                            currentListItems.Clear();
+                        }
+
+                        CreateReviewBlockDto? reviewBlock = element switch
+                        {
+                            Lilia.Import.Models.ImportHeading h => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "heading",
+                                Content: JsonSerializer.SerializeToElement(new { text = h.Text, level = h.Level }),
+                                Confidence: 90,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportParagraph p => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "paragraph",
+                                Content: JsonSerializer.SerializeToElement(new { text = p.Text }),
+                                Confidence: 95,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportEquation eq => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "equation",
+                                Content: JsonSerializer.SerializeToElement(new
+                                {
+                                    latex = eq.LatexContent ?? eq.OmmlXml,
+                                    displayMode = !eq.IsInline
+                                }),
+                                Confidence: eq.LatexContent != null ? 80 : 50,
+                                Warnings: eq.LatexContent == null
+                                    ? JsonSerializer.SerializeToElement(new[]
+                                    {
+                                        new { id = Guid.NewGuid().ToString(), type = "EquationConversionFailed", message = "Equation could not be fully converted to LaTeX", severity = "warning" }
+                                    })
+                                    : null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportTable t => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "table",
+                                Content: JsonSerializer.SerializeToElement(ConvertTableToEditorFormat(t)),
+                                Confidence: 85,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportImage img => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "figure",
+                                Content: JsonSerializer.SerializeToElement(new
+                                {
+                                    src = img.Data.Length > 0 ? $"data:{img.MimeType};base64,{Convert.ToBase64String(img.Data)}" : "",
+                                    caption = img.AltText ?? "",
+                                    alt = img.AltText ?? ""
+                                }),
+                                Confidence: img.Data.Length > 0 ? 85 : 40,
+                                Warnings: img.Data.Length == 0
+                                    ? JsonSerializer.SerializeToElement(new[]
+                                    {
+                                        new { id = Guid.NewGuid().ToString(), type = "ImageExtractionFailed", message = "Image could not be extracted from document", severity = "warning" }
+                                    })
+                                    : null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportCodeBlock cb => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "code",
+                                Content: JsonSerializer.SerializeToElement(new
+                                {
+                                    code = cb.Text,
+                                    language = cb.Language ?? "plaintext"
+                                }),
+                                Confidence: 75,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportListItem => null, // Handle below
+                            Lilia.Import.Models.ImportPageBreak => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "pageBreak",
+                                Content: JsonSerializer.SerializeToElement(new { }),
+                                Confidence: 100,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            _ => null
+                        };
+
+                        // Accumulate list items to create a single list block
+                        if (element is Lilia.Import.Models.ImportListItem listItem)
+                        {
+                            if (currentListItems.Any() && currentListIsOrdered != listItem.IsNumbered)
                             {
-                                blocksToAdd.Add(CreateListBlock(createdDocument.Id, currentListItems, currentListIsOrdered, sortOrder++));
+                                reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
                                 currentListItems.Clear();
                             }
-
-                            Lilia.Core.Entities.Block? block = element switch
-                            {
-                                Lilia.Import.Models.ImportHeading h => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "heading",
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(new { text = h.Text, level = h.Level })),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                Lilia.Import.Models.ImportParagraph p => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "paragraph",
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(new { text = p.Text })),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                Lilia.Import.Models.ImportEquation eq => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "equation",
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(new
-                                    {
-                                        latex = eq.LatexContent ?? eq.OmmlXml,
-                                        displayMode = !eq.IsInline
-                                    })),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                Lilia.Import.Models.ImportTable t => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "table",
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(ConvertTableToEditorFormat(t))),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                Lilia.Import.Models.ImportImage img => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "figure",
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(new
-                                    {
-                                        src = img.Data.Length > 0 ? $"data:{img.MimeType};base64,{Convert.ToBase64String(img.Data)}" : "",
-                                        caption = img.AltText ?? "",
-                                        alt = img.AltText ?? ""
-                                    })),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                Lilia.Import.Models.ImportCodeBlock cb => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "code",
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(new
-                                    {
-                                        code = cb.Text,
-                                        language = cb.Language ?? "plaintext"
-                                    })),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                Lilia.Import.Models.ImportListItem li => null, // Handle below
-                                Lilia.Import.Models.ImportPageBreak => new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = "pageBreak",
-                                    Content = JsonDocument.Parse("{}"),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                },
-                                _ => null
-                            };
-
-                            // Accumulate list items to create a single list block
-                            if (element is Lilia.Import.Models.ImportListItem listItem)
-                            {
-                                if (currentListItems.Any() && currentListIsOrdered != listItem.IsNumbered)
-                                {
-                                    // List type changed, flush current list
-                                    blocksToAdd.Add(CreateListBlock(createdDocument.Id, currentListItems, currentListIsOrdered, sortOrder++));
-                                    currentListItems.Clear();
-                                }
-                                currentListItems.Add(listItem);
-                                currentListIsOrdered = listItem.IsNumbered;
-                            }
-                            else if (block != null)
-                            {
-                                blocksToAdd.Add(block);
-                                tracker.IncrementBlockCount(block.Type);
-                            }
-
-                            // Report progress every 10 elements
-                            processedCount++;
-                            if (processedCount % 10 == 0 || processedCount == totalElements)
-                            {
-                                var blockType = element.GetType().Name.Replace("Import", "");
-                                await tracker.ReportConvertingBlocksAsync(processedCount, totalElements, blockType);
-                            }
+                            currentListItems.Add(listItem);
+                            currentListIsOrdered = listItem.IsNumbered;
                         }
-
-                        // Flush any remaining list items
-                        if (currentListItems.Any())
+                        else if (reviewBlock != null)
                         {
-                            blocksToAdd.Add(CreateListBlock(createdDocument.Id, currentListItems, currentListIsOrdered, sortOrder++));
-                            tracker.IncrementBlockCount("list");
+                            reviewBlocks.Add(reviewBlock);
+                            var blockTypeName = element.GetType().Name.Replace("Import", "").ToLowerInvariant();
+                            tracker.IncrementBlockCount(blockTypeName);
                         }
 
-                        // Report saving phase
-                        await tracker.ReportSavingAsync(1, blocksToAdd.Count);
-
-                        _context.Blocks.AddRange(blocksToAdd);
-                        await _context.SaveChangesAsync();
-
-                        await tracker.ReportSavingAsync(blocksToAdd.Count, blocksToAdd.Count);
-
-                        _logger.LogInformation("[Import] Created {BlockCount} blocks for document {DocumentId}",
-                            blocksToAdd.Count, createdDocument.Id);
+                        // Report progress every 10 elements
+                        processedCount++;
+                        if (processedCount % 10 == 0 || processedCount == totalElements)
+                        {
+                            var blockType = element.GetType().Name.Replace("Import", "");
+                            await tracker.ReportConvertingBlocksAsync(processedCount, totalElements, blockType);
+                        }
                     }
 
-                    job.DocumentId = createdDocument.Id;
+                    // Flush any remaining list items
+                    if (currentListItems.Any())
+                    {
+                        reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
+                        tracker.IncrementBlockCount("list");
+                    }
+
+                    // Report saving phase
+                    await tracker.ReportSavingAsync(1, reviewBlocks.Count);
+
+                    // Create review session instead of document + blocks
+                    var sessionResult = await _reviewService.CreateSessionFromImportAsync(
+                        userId, job.Id, title, reviewBlocks);
+
+                    reviewSessionId = sessionResult.Session.Id;
+
+                    await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
+
+                    _logger.LogInformation("[Import] Created review session {SessionId} with {BlockCount} blocks for job {JobId}",
+                        reviewSessionId, reviewBlocks.Count, job.Id);
+
+                    // Do NOT set job.DocumentId — that happens at finalize
                 }
                 finally
                 {
@@ -562,7 +563,8 @@ public class JobService : IJobService
                 MapToDto(job),
                 createdDocument != null
                     ? new ImportedDocumentInfoDto(createdDocument.Id, createdDocument.Title ?? "", createdDocument.CreatedAt)
-                    : null
+                    : null,
+                reviewSessionId
             );
         }
         catch (Exception ex)
@@ -789,6 +791,26 @@ public class JobService : IJobService
             var headers = Enumerable.Range(1, colCount).Select(i => $"Column {i}").ToArray();
             return new { headers, rows = allRows };
         }
+    }
+
+    /// <summary>
+    /// Create a review list block DTO from accumulated list items
+    /// </summary>
+    private static CreateReviewBlockDto CreateReviewListBlock(
+        List<Lilia.Import.Models.ImportListItem> items,
+        bool ordered,
+        int sortOrder)
+    {
+        var itemTexts = items.Select(li => li.Text).ToArray();
+        return new CreateReviewBlockDto(
+            Id: Guid.NewGuid().ToString(),
+            Type: "list",
+            Content: JsonSerializer.SerializeToElement(new { items = itemTexts, ordered }),
+            Confidence: 90,
+            Warnings: null,
+            SortOrder: sortOrder,
+            Depth: 0
+        );
     }
 
     /// <summary>
