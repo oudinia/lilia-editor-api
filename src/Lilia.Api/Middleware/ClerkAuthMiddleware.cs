@@ -1,8 +1,7 @@
-using System.Collections.Concurrent;
 using System.Security.Claims;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace Lilia.Api.Middleware;
 
@@ -28,7 +27,6 @@ public class DevelopmentAuthMiddleware
     {
         _next = next;
         _logger = logger;
-        // Only enable dev auth when Clerk is NOT configured
         var clerkSecretKey = configuration["Clerk:SecretKey"];
         _enabled = string.IsNullOrEmpty(clerkSecretKey);
 
@@ -44,9 +42,6 @@ public class DevelopmentAuthMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Only apply if:
-        // 1. Dev auth is enabled (Clerk is not configured)
-        // 2. No Authorization header is present
         if (_enabled && !context.Request.Headers.ContainsKey("Authorization"))
         {
             _logger.LogDebug("Using development auth for request {Path}", context.Request.Path);
@@ -73,10 +68,6 @@ public class ClerkUserSyncMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ClerkUserSyncMiddleware> _logger;
-
-    // Cache of recently synced users: userId -> (email, lastSyncTime)
-    // This avoids hitting the DB and Clerk API on every request
-    private static readonly ConcurrentDictionary<string, (string Email, DateTime SyncTime)> _recentlySyncedUsers = new();
     private static readonly TimeSpan SyncCacheDuration = TimeSpan.FromMinutes(5);
 
     public ClerkUserSyncMiddleware(RequestDelegate next, ILogger<ClerkUserSyncMiddleware> logger)
@@ -85,7 +76,7 @@ public class ClerkUserSyncMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService)
+    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService, IDistributedCache cache)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -95,11 +86,11 @@ public class ClerkUserSyncMiddleware
             if (!string.IsNullOrEmpty(userId))
             {
                 // Check if user was recently synced (skip all DB and API calls)
-                if (_recentlySyncedUsers.TryGetValue(userId, out var cached) &&
-                    DateTime.UtcNow - cached.SyncTime < SyncCacheDuration)
+                var cacheKey = $"usersync:{userId}";
+                var cached = await cache.GetAsync(cacheKey);
+                if (cached != null)
                 {
-                    _logger.LogDebug("User {UserId} was synced {SecondsAgo}s ago, skipping sync",
-                        userId, (int)(DateTime.UtcNow - cached.SyncTime).TotalSeconds);
+                    _logger.LogDebug("User {UserId} was recently synced, skipping", userId);
                     await _next(context);
                     return;
                 }
@@ -147,15 +138,13 @@ public class ClerkUserSyncMiddleware
                             image
                         ));
 
-                        // Cache the sync time
-                        _recentlySyncedUsers[userId] = (email, DateTime.UtcNow);
-                        _logger.LogDebug("User {UserId} synced to database and cached", userId);
-
-                        // Cleanup old cache entries periodically (every ~100 requests)
-                        if (_recentlySyncedUsers.Count > 100 && Random.Shared.Next(100) == 0)
+                        // Mark as synced in distributed cache (TTL handles cleanup)
+                        await cache.SetAsync(cacheKey, [1], new DistributedCacheEntryOptions
                         {
-                            CleanupExpiredCacheEntries();
-                        }
+                            AbsoluteExpirationRelativeToNow = SyncCacheDuration
+                        });
+
+                        _logger.LogDebug("User {UserId} synced to database and cached", userId);
                     }
                     catch (Exception ex)
                     {
@@ -172,21 +161,6 @@ public class ClerkUserSyncMiddleware
         }
 
         await _next(context);
-    }
-
-    private void CleanupExpiredCacheEntries()
-    {
-        var expiredUsers = _recentlySyncedUsers
-            .Where(kvp => DateTime.UtcNow - kvp.Value.SyncTime > SyncCacheDuration)
-            .Select(kvp => kvp.Key)
-            .ToList();
-
-        foreach (var userId in expiredUsers)
-        {
-            _recentlySyncedUsers.TryRemove(userId, out _);
-        }
-
-        _logger.LogDebug("Cleaned up {Count} expired user sync cache entries", expiredUsers.Count);
     }
 }
 

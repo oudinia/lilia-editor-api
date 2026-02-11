@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using Lilia.Api.Services;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Lilia.Api.Hubs;
@@ -9,13 +9,12 @@ namespace Lilia.Api.Hubs;
 /// </summary>
 public class DocumentHub : Hub
 {
+    private readonly IPresenceService _presence;
     private readonly ILogger<DocumentHub> _logger;
 
-    // Track connected users per document
-    private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, UserPresence>> _documentUsers = new();
-
-    public DocumentHub(ILogger<DocumentHub> logger)
+    public DocumentHub(IPresenceService presence, ILogger<DocumentHub> logger)
     {
+        _presence = presence;
         _logger = logger;
     }
 
@@ -36,14 +35,14 @@ public class DocumentHub : Hub
             JoinedAt = DateTime.UtcNow
         };
 
-        var users = _documentUsers.GetOrAdd(documentId, _ => new ConcurrentDictionary<string, UserPresence>());
-        users[Context.ConnectionId] = presence;
+        _presence.AddUser(documentId, Context.ConnectionId, presence);
 
         // Notify others that someone joined
         await Clients.OthersInGroup(groupName).SendAsync("UserJoined", presence);
 
         // Send the new client the current user list
-        await Clients.Caller.SendAsync("CurrentUsers", users.Values.ToList());
+        var users = _presence.GetUsers(documentId);
+        await Clients.Caller.SendAsync("CurrentUsers", users);
 
         _logger.LogDebug("User {DisplayName} joined document {DocumentId}",
             displayName, documentId);
@@ -57,19 +56,12 @@ public class DocumentHub : Hub
         var groupName = $"doc-{documentId}";
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
 
-        if (_documentUsers.TryGetValue(documentId, out var users))
+        if (_presence.RemoveUser(documentId, Context.ConnectionId, out var presence))
         {
-            if (users.TryRemove(Context.ConnectionId, out var presence))
-            {
-                await Clients.Group(groupName).SendAsync("UserLeft", presence.UserId);
-            }
-
-            // Clean up empty document entries
-            if (users.IsEmpty)
-            {
-                _documentUsers.TryRemove(documentId, out _);
-            }
+            await Clients.Group(groupName).SendAsync("UserLeft", presence!.UserId);
         }
+
+        _presence.CleanupDocument(documentId);
 
         _logger.LogDebug("User left document {DocumentId}", documentId);
     }
@@ -87,32 +79,16 @@ public class DocumentHub : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        // Remove user from all document rooms
-        foreach (var (documentId, users) in _documentUsers)
-        {
-            if (users.TryRemove(Context.ConnectionId, out var presence))
-            {
-                var groupName = $"doc-{documentId}";
-                await Clients.Group(groupName).SendAsync("UserLeft", presence.UserId);
+        var removed = _presence.RemoveConnection(Context.ConnectionId);
 
-                if (users.IsEmpty)
-                {
-                    _documentUsers.TryRemove(documentId, out _);
-                }
-            }
+        foreach (var (documentId, presence) in removed)
+        {
+            var groupName = $"doc-{documentId}";
+            await Clients.Group(groupName).SendAsync("UserLeft", presence.UserId);
         }
 
         _logger.LogDebug("Client disconnected: {ConnectionId}, Exception: {Exception}",
             Context.ConnectionId, exception?.Message);
         await base.OnDisconnectedAsync(exception);
     }
-}
-
-public class UserPresence
-{
-    public string ConnectionId { get; set; } = string.Empty;
-    public string UserId { get; set; } = string.Empty;
-    public string DisplayName { get; set; } = string.Empty;
-    public string? AvatarUrl { get; set; }
-    public DateTime JoinedAt { get; set; }
 }

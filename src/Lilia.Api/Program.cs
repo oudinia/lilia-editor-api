@@ -166,8 +166,11 @@ builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IRenderService, RenderService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 
-// Add distributed cache for preview caching (in-memory for now, can upgrade to Redis later)
+// Add distributed cache (in-memory for now, swap to Redis with 1 line when scaling)
 builder.Services.AddDistributedMemoryCache();
+
+// Presence tracking (in-memory for now, swap to Redis-backed impl when scaling)
+builder.Services.AddSingleton<IPresenceService, InMemoryPresenceService>();
 
 // Add SignalR for real-time updates
 builder.Services.AddSignalR(options =>

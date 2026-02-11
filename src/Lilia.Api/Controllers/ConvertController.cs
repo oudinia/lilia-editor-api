@@ -1,10 +1,11 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Lilia.Import.Interfaces;
 using Lilia.Import.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace Lilia.Api.Controllers;
 
@@ -19,11 +20,8 @@ public class ConvertController : ControllerBase
 {
     private readonly IDocxImportService _docxImportService;
     private readonly IDocxExportService _docxExportService;
+    private readonly IDistributedCache _cache;
     private readonly ILogger<ConvertController> _logger;
-
-    // Simple in-memory rate limiting (should be replaced with Redis in production)
-    private static readonly ConcurrentDictionary<string, RateLimitEntry> _rateLimits = new();
-    private static readonly ConcurrentDictionary<Guid, ConversionResult> _conversionResults = new();
 
     private const int AnonymousLimitPerDay = 3;
     private const int AuthenticatedLimitPerDay = 10;
@@ -32,10 +30,12 @@ public class ConvertController : ControllerBase
     public ConvertController(
         IDocxImportService docxImportService,
         IDocxExportService docxExportService,
+        IDistributedCache cache,
         ILogger<ConvertController> logger)
     {
         _docxImportService = docxImportService;
         _docxExportService = docxExportService;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -94,7 +94,6 @@ public class ConvertController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> ConvertDocxToPdf(IFormFile file)
     {
-        // PDF export returns HTML that can be printed to PDF via browser
         return await HandleDocxConversion(file, "html", null);
     }
 
@@ -134,9 +133,10 @@ public class ConvertController : ControllerBase
     [HttpGet("jobs/{jobId:guid}")]
     [ProducesResponseType(typeof(JobStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public IActionResult GetJobStatus(Guid jobId)
+    public async Task<IActionResult> GetJobStatus(Guid jobId)
     {
-        if (_conversionResults.TryGetValue(jobId, out var result))
+        var cached = await _cache.GetAsync($"conversion:{jobId}");
+        if (cached != null)
         {
             return Ok(new JobStatusResponse
             {
@@ -156,12 +156,17 @@ public class ConvertController : ControllerBase
     [HttpGet("jobs/{jobId:guid}/download")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public IActionResult DownloadResult(Guid jobId)
+    public async Task<IActionResult> DownloadResult(Guid jobId)
     {
-        if (_conversionResults.TryGetValue(jobId, out var result))
+        var key = $"conversion:{jobId}";
+        var cached = await _cache.GetAsync(key);
+        if (cached != null)
         {
+            var result = JsonSerializer.Deserialize<CachedConversionResult>(cached)!;
+
             // Remove from cache after download
-            _conversionResults.TryRemove(jobId, out _);
+            await _cache.RemoveAsync(key);
+
             return File(result.Content, result.ContentType, result.Filename);
         }
 
@@ -173,13 +178,13 @@ public class ConvertController : ControllerBase
     /// </summary>
     [HttpGet("quota")]
     [ProducesResponseType(typeof(QuotaResponse), StatusCodes.Status200OK)]
-    public IActionResult GetQuota()
+    public async Task<IActionResult> GetQuota()
     {
         var identifier = GetRateLimitIdentifier();
         var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
         var limit = isAuthenticated ? AuthenticatedLimitPerDay : AnonymousLimitPerDay;
 
-        var entry = GetOrCreateRateLimitEntry(identifier);
+        var entry = await GetOrCreateRateLimitEntryAsync(identifier);
         var remaining = Math.Max(0, limit - entry.Count);
 
         return Ok(new QuotaResponse
@@ -196,7 +201,6 @@ public class ConvertController : ControllerBase
         var sw = Stopwatch.StartNew();
         var conversionType = $"docx-to-{targetFormat}";
 
-        // Validate file
         if (file == null || file.Length == 0)
         {
             return BadRequest(new ErrorResponse { Message = "No file provided", Code = "NO_FILE" });
@@ -212,8 +216,7 @@ public class ConvertController : ControllerBase
             });
         }
 
-        // Check rate limit
-        var rateLimitResult = CheckRateLimit();
+        var rateLimitResult = await CheckRateLimitAsync();
         if (rateLimitResult != null)
         {
             return rateLimitResult;
@@ -221,7 +224,6 @@ public class ConvertController : ControllerBase
 
         try
         {
-            // Save uploaded file to temp location
             var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.docx");
             try
             {
@@ -230,7 +232,6 @@ public class ConvertController : ControllerBase
                     await file.CopyToAsync(stream);
                 }
 
-                // Parse DOCX using local service
                 var importResult = await _docxImportService.ImportAsync(tempPath);
 
                 if (!importResult.Success)
@@ -242,7 +243,6 @@ public class ConvertController : ControllerBase
                     });
                 }
 
-                // Convert to target format
                 string content;
                 string contentType;
                 string fileExtension;
@@ -268,21 +268,11 @@ public class ConvertController : ControllerBase
                         return BadRequest(new ErrorResponse { Message = $"Unsupported target format: {targetFormat}", Code = "INVALID_FORMAT" });
                 }
 
-                // Increment rate limit counter
-                IncrementRateLimit();
+                await IncrementRateLimitAsync();
 
-                // Store result for download
                 var jobId = Guid.NewGuid();
                 var filename = Path.GetFileNameWithoutExtension(file.FileName) + fileExtension;
-                _conversionResults[jobId] = new ConversionResult
-                {
-                    Content = Encoding.UTF8.GetBytes(content),
-                    ContentType = contentType,
-                    Filename = filename
-                };
-
-                // Clean up old results (older than 1 hour)
-                CleanupOldResults();
+                await StoreConversionResultAsync(jobId, Encoding.UTF8.GetBytes(content), contentType, filename);
 
                 _logger.LogInformation(
                     "[Convert] {ConversionType}: file={FileName}, size={SizeKB}KB, elapsed={ElapsedMs}ms",
@@ -298,7 +288,6 @@ public class ConvertController : ControllerBase
             }
             finally
             {
-                // Clean up temp file
                 if (System.IO.File.Exists(tempPath))
                 {
                     System.IO.File.Delete(tempPath);
@@ -322,7 +311,6 @@ public class ConvertController : ControllerBase
         var sw = Stopwatch.StartNew();
         var conversionType = $"latex-to-{targetFormat}";
 
-        // Validate file
         if (file == null || file.Length == 0)
         {
             return BadRequest(new ErrorResponse { Message = "No file provided", Code = "NO_FILE" });
@@ -338,8 +326,7 @@ public class ConvertController : ControllerBase
             });
         }
 
-        // Check rate limit
-        var rateLimitResult = CheckRateLimit();
+        var rateLimitResult = await CheckRateLimitAsync();
         if (rateLimitResult != null)
         {
             return rateLimitResult;
@@ -347,30 +334,17 @@ public class ConvertController : ControllerBase
 
         try
         {
-            // Read LaTeX content
             using var reader = new StreamReader(file.OpenReadStream());
             var latexContent = await reader.ReadToEndAsync();
 
-            // Convert LaTeX to ExportDocument structure
             var exportDoc = ParseLatexToExportDocument(latexContent);
-
-            // Export to DOCX
             var docxBytes = await _docxExportService.ExportAsync(exportDoc);
 
-            // Increment rate limit counter
-            IncrementRateLimit();
+            await IncrementRateLimitAsync();
 
-            // Store result for download
             var jobId = Guid.NewGuid();
             var filename = Path.GetFileNameWithoutExtension(file.FileName) + ".docx";
-            _conversionResults[jobId] = new ConversionResult
-            {
-                Content = docxBytes,
-                ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                Filename = filename
-            };
-
-            CleanupOldResults();
+            await StoreConversionResultAsync(jobId, docxBytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename);
 
             _logger.LogInformation(
                 "[Convert] {ConversionType}: file={FileName}, size={SizeKB}KB, elapsed={ElapsedMs}ms",
@@ -401,7 +375,6 @@ public class ConvertController : ControllerBase
         var sw = Stopwatch.StartNew();
         var conversionType = $"markdown-to-{targetFormat}";
 
-        // Validate file
         if (file == null || file.Length == 0)
         {
             return BadRequest(new ErrorResponse { Message = "No file provided", Code = "NO_FILE" });
@@ -417,8 +390,7 @@ public class ConvertController : ControllerBase
             });
         }
 
-        // Check rate limit
-        var rateLimitResult = CheckRateLimit();
+        var rateLimitResult = await CheckRateLimitAsync();
         if (rateLimitResult != null)
         {
             return rateLimitResult;
@@ -426,27 +398,16 @@ public class ConvertController : ControllerBase
 
         try
         {
-            // Read Markdown content
             using var reader = new StreamReader(file.OpenReadStream());
             var markdownContent = await reader.ReadToEndAsync();
 
-            // Convert Markdown to LaTeX
             var latexContent = ConvertMarkdownToLatex(markdownContent);
 
-            // Increment rate limit counter
-            IncrementRateLimit();
+            await IncrementRateLimitAsync();
 
-            // Store result for download
             var jobId = Guid.NewGuid();
             var filename = Path.GetFileNameWithoutExtension(file.FileName) + ".tex";
-            _conversionResults[jobId] = new ConversionResult
-            {
-                Content = Encoding.UTF8.GetBytes(latexContent),
-                ContentType = "application/x-tex",
-                Filename = filename
-            };
-
-            CleanupOldResults();
+            await StoreConversionResultAsync(jobId, Encoding.UTF8.GetBytes(latexContent), "application/x-tex", filename);
 
             _logger.LogInformation(
                 "[Convert] {ConversionType}: file={FileName}, size={SizeKB}KB, elapsed={ElapsedMs}ms",
@@ -472,6 +433,126 @@ public class ConvertController : ControllerBase
         }
     }
 
+    #region Distributed Cache Helpers
+
+    private async Task StoreConversionResultAsync(Guid jobId, byte[] content, string contentType, string filename)
+    {
+        var result = new CachedConversionResult
+        {
+            Content = content,
+            ContentType = contentType,
+            Filename = filename
+        };
+        var json = JsonSerializer.SerializeToUtf8Bytes(result);
+        await _cache.SetAsync($"conversion:{jobId}", json, new DistributedCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1)
+        });
+    }
+
+    private async Task<CachedRateLimit> GetOrCreateRateLimitEntryAsync(string identifier)
+    {
+        var key = $"ratelimit:{identifier}";
+        var cached = await _cache.GetAsync(key);
+
+        if (cached != null)
+        {
+            var entry = JsonSerializer.Deserialize<CachedRateLimit>(cached);
+            if (entry != null && DateTime.UtcNow < entry.ResetTime)
+                return entry;
+        }
+
+        // Create new entry — expires at midnight UTC
+        var newEntry = new CachedRateLimit { Count = 0, ResetTime = DateTime.UtcNow.Date.AddDays(1) };
+        var json = JsonSerializer.SerializeToUtf8Bytes(newEntry);
+        await _cache.SetAsync(key, json, new DistributedCacheEntryOptions
+        {
+            AbsoluteExpiration = newEntry.ResetTime
+        });
+        return newEntry;
+    }
+
+    private async Task<IActionResult?> CheckRateLimitAsync()
+    {
+        var identifier = GetRateLimitIdentifier();
+        var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
+        var limit = isAuthenticated ? AuthenticatedLimitPerDay : AnonymousLimitPerDay;
+
+        var entry = await GetOrCreateRateLimitEntryAsync(identifier);
+
+        if (entry.Count >= limit)
+        {
+            Response.Headers["X-RateLimit-Limit"] = limit.ToString();
+            Response.Headers["X-RateLimit-Remaining"] = "0";
+            Response.Headers["X-RateLimit-Reset"] = new DateTimeOffset(entry.ResetTime).ToUnixTimeSeconds().ToString();
+
+            return StatusCode(429, new ErrorResponse
+            {
+                Message = isAuthenticated
+                    ? $"Rate limit exceeded. You have used all {limit} conversions for today."
+                    : "Rate limit exceeded. Sign up for more conversions.",
+                Code = "RATE_LIMIT_EXCEEDED"
+            });
+        }
+
+        return null;
+    }
+
+    private async Task IncrementRateLimitAsync()
+    {
+        var identifier = GetRateLimitIdentifier();
+        var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
+        var limit = isAuthenticated ? AuthenticatedLimitPerDay : AnonymousLimitPerDay;
+
+        var key = $"ratelimit:{identifier}";
+        var entry = await GetOrCreateRateLimitEntryAsync(identifier);
+        entry.Count++;
+
+        var json = JsonSerializer.SerializeToUtf8Bytes(entry);
+        await _cache.SetAsync(key, json, new DistributedCacheEntryOptions
+        {
+            AbsoluteExpiration = entry.ResetTime
+        });
+
+        var remaining = Math.Max(0, limit - entry.Count);
+        Response.Headers["X-RateLimit-Limit"] = limit.ToString();
+        Response.Headers["X-RateLimit-Remaining"] = remaining.ToString();
+        Response.Headers["X-RateLimit-Reset"] = new DateTimeOffset(entry.ResetTime).ToUnixTimeSeconds().ToString();
+    }
+
+    private string GetRateLimitIdentifier()
+    {
+        var userId = User.FindFirst("sub")?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            return $"user:{userId}";
+        }
+
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var forwarded = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwarded))
+        {
+            ip = forwarded.Split(',').First().Trim();
+        }
+
+        return $"ip:{ip}";
+    }
+
+    private class CachedRateLimit
+    {
+        public int Count { get; set; }
+        public DateTime ResetTime { get; set; }
+    }
+
+    private class CachedConversionResult
+    {
+        public byte[] Content { get; set; } = [];
+        public string ContentType { get; set; } = "";
+        public string Filename { get; set; } = "";
+    }
+
+    #endregion
+
     #region Rendering Methods
 
     private string RenderImportDocumentToLatex(ImportResult result)
@@ -479,7 +560,6 @@ public class ConvertController : ControllerBase
         var sb = new StringBuilder();
         var doc = result.IntermediateDocument ?? new ImportDocument { Title = "Converted Document" };
 
-        // Preamble
         sb.AppendLine(@"\documentclass[11pt,a4paper]{article}");
         sb.AppendLine(@"\usepackage[utf8]{inputenc}");
         sb.AppendLine(@"\usepackage{amsmath,amssymb,amsthm}");
@@ -499,7 +579,6 @@ public class ConvertController : ControllerBase
         sb.AppendLine(@"\maketitle");
         sb.AppendLine();
 
-        // Elements
         foreach (var element in doc.Elements)
         {
             sb.AppendLine(RenderElementToLatex(element));
@@ -528,7 +607,6 @@ public class ConvertController : ControllerBase
 
     private string RenderLatexPassthroughToLatex(ImportLatexPassthrough passthrough)
     {
-        // Output raw LaTeX without any escaping - this is the passthrough feature
         var sb = new StringBuilder();
         if (!string.IsNullOrEmpty(passthrough.Description))
         {
@@ -688,7 +766,6 @@ public class ConvertController : ControllerBase
 
     private string RenderLatexPassthroughToHtml(ImportLatexPassthrough passthrough)
     {
-        // Show a placeholder in HTML since raw LaTeX can't be rendered
         var desc = passthrough.Description ?? "Raw LaTeX";
         var preview = passthrough.LatexCode.Length > 100
             ? passthrough.LatexCode.Substring(0, 100) + "..."
@@ -786,7 +863,6 @@ public class ConvertController : ControllerBase
 
     private string RenderLatexPassthroughToMarkdown(ImportLatexPassthrough passthrough)
     {
-        // Wrap raw LaTeX in a code fence for Markdown
         var desc = passthrough.Description ?? "Raw LaTeX";
         return $"```latex\n% {desc}\n{passthrough.LatexCode}\n```\n";
     }
@@ -797,14 +873,12 @@ public class ConvertController : ControllerBase
 
         var sb = new StringBuilder();
 
-        // Header row
         if (table.Rows.Count > 0)
         {
             sb.AppendLine("| " + string.Join(" | ", table.Rows[0].Select(c => c.Text)) + " |");
             sb.AppendLine("| " + string.Join(" | ", table.Rows[0].Select(_ => "---")) + " |");
         }
 
-        // Data rows
         foreach (var row in table.Rows.Skip(table.HasHeaderRow ? 1 : 0))
         {
             sb.AppendLine("| " + string.Join(" | ", row.Select(c => c.Text)) + " |");
@@ -823,7 +897,6 @@ public class ConvertController : ControllerBase
         {
             var trimmed = line.Trim();
 
-            // Extract title
             if (trimmed.StartsWith(@"\title{"))
             {
                 var titleMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @"\\title\{(.+?)\}");
@@ -834,7 +907,6 @@ public class ConvertController : ControllerBase
                 continue;
             }
 
-            // Track document environment
             if (trimmed == @"\begin{document}")
             {
                 inDocument = true;
@@ -847,12 +919,10 @@ public class ConvertController : ControllerBase
 
             if (!inDocument) continue;
 
-            // Skip common commands
             if (trimmed.StartsWith(@"\maketitle")) continue;
             if (string.IsNullOrEmpty(trimmed)) continue;
             if (trimmed.StartsWith('%')) continue;
 
-            // Parse sections
             var sectionMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @"\\(section|subsection|subsubsection|paragraph)\{(.+?)\}");
             if (sectionMatch.Success)
             {
@@ -872,7 +942,6 @@ public class ConvertController : ControllerBase
                 continue;
             }
 
-            // Regular text becomes paragraph
             if (!trimmed.StartsWith('\\') && !trimmed.StartsWith('{'))
             {
                 doc.Blocks.Add(new ExportBlock
@@ -890,7 +959,6 @@ public class ConvertController : ControllerBase
     {
         var sb = new StringBuilder();
 
-        // Preamble
         sb.AppendLine(@"\documentclass[11pt,a4paper]{article}");
         sb.AppendLine(@"\usepackage[utf8]{inputenc}");
         sb.AppendLine(@"\usepackage{amsmath,amssymb}");
@@ -908,7 +976,6 @@ public class ConvertController : ControllerBase
         {
             var trimmed = line.Trim();
 
-            // Code blocks
             if (trimmed.StartsWith("```"))
             {
                 if (inCodeBlock)
@@ -932,7 +999,6 @@ public class ConvertController : ControllerBase
                 continue;
             }
 
-            // Headers
             if (trimmed.StartsWith('#'))
             {
                 var level = 0;
@@ -950,14 +1016,12 @@ public class ConvertController : ControllerBase
                 continue;
             }
 
-            // Lists
             if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
             {
                 sb.AppendLine($@"\item {EscapeLatex(trimmed[2..])}");
                 continue;
             }
 
-            // Regular paragraph
             if (!string.IsNullOrEmpty(trimmed))
             {
                 sb.AppendLine(EscapeLatex(trimmed));
@@ -984,127 +1048,6 @@ public class ConvertController : ControllerBase
             .Replace("_", "\\_")
             .Replace("~", "\\textasciitilde{}")
             .Replace("%", "\\%");
-    }
-
-    #endregion
-
-    #region Rate Limiting
-
-    private string GetRateLimitIdentifier()
-    {
-        var userId = User.FindFirst("sub")?.Value;
-        if (!string.IsNullOrEmpty(userId))
-        {
-            return $"user:{userId}";
-        }
-
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        var forwarded = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(forwarded))
-        {
-            ip = forwarded.Split(',').First().Trim();
-        }
-
-        return $"ip:{ip}";
-    }
-
-    private RateLimitEntry GetOrCreateRateLimitEntry(string identifier)
-    {
-        var now = DateTime.UtcNow;
-        var resetTime = now.Date.AddDays(1);
-
-        return _rateLimits.AddOrUpdate(
-            identifier,
-            _ => new RateLimitEntry { Count = 0, ResetTime = resetTime },
-            (_, existing) =>
-            {
-                if (now >= existing.ResetTime)
-                {
-                    return new RateLimitEntry { Count = 0, ResetTime = resetTime };
-                }
-                return existing;
-            });
-    }
-
-    private IActionResult? CheckRateLimit()
-    {
-        var identifier = GetRateLimitIdentifier();
-        var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
-        var limit = isAuthenticated ? AuthenticatedLimitPerDay : AnonymousLimitPerDay;
-
-        var entry = GetOrCreateRateLimitEntry(identifier);
-
-        if (entry.Count >= limit)
-        {
-            Response.Headers["X-RateLimit-Limit"] = limit.ToString();
-            Response.Headers["X-RateLimit-Remaining"] = "0";
-            Response.Headers["X-RateLimit-Reset"] = new DateTimeOffset(entry.ResetTime).ToUnixTimeSeconds().ToString();
-
-            return StatusCode(429, new ErrorResponse
-            {
-                Message = isAuthenticated
-                    ? $"Rate limit exceeded. You have used all {limit} conversions for today."
-                    : $"Rate limit exceeded. Sign up for more conversions.",
-                Code = "RATE_LIMIT_EXCEEDED"
-            });
-        }
-
-        return null;
-    }
-
-    private void IncrementRateLimit()
-    {
-        var identifier = GetRateLimitIdentifier();
-        var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
-        var limit = isAuthenticated ? AuthenticatedLimitPerDay : AnonymousLimitPerDay;
-
-        _rateLimits.AddOrUpdate(
-            identifier,
-            _ => new RateLimitEntry { Count = 1, ResetTime = DateTime.UtcNow.Date.AddDays(1) },
-            (_, existing) =>
-            {
-                existing.Count++;
-                return existing;
-            });
-
-        var entry = _rateLimits[identifier];
-        var remaining = Math.Max(0, limit - entry.Count);
-
-        Response.Headers["X-RateLimit-Limit"] = limit.ToString();
-        Response.Headers["X-RateLimit-Remaining"] = remaining.ToString();
-        Response.Headers["X-RateLimit-Reset"] = new DateTimeOffset(entry.ResetTime).ToUnixTimeSeconds().ToString();
-    }
-
-    private void CleanupOldResults()
-    {
-        var cutoff = DateTime.UtcNow.AddHours(-1);
-        var toRemove = _conversionResults
-            .Where(kv => kv.Value.CreatedAt < cutoff)
-            .Select(kv => kv.Key)
-            .ToList();
-
-        foreach (var key in toRemove)
-        {
-            _conversionResults.TryRemove(key, out _);
-        }
-    }
-
-    #endregion
-
-    #region Helper Classes
-
-    private class RateLimitEntry
-    {
-        public int Count { get; set; }
-        public DateTime ResetTime { get; set; }
-    }
-
-    private class ConversionResult
-    {
-        public byte[] Content { get; set; } = [];
-        public string ContentType { get; set; } = "";
-        public string Filename { get; set; } = "";
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
     #endregion
