@@ -134,6 +134,77 @@ public class ImportOptions
     ];
 
     /// <summary>
+    /// Whether to detect blockquotes by style name.
+    /// Default: true
+    /// </summary>
+    public bool DetectBlockquotesByStyle { get; set; } = true;
+
+    /// <summary>
+    /// Whether to detect blockquotes by indentation + italic formatting.
+    /// Default: true
+    /// </summary>
+    public bool DetectBlockquotesByIndent { get; set; } = true;
+
+    /// <summary>
+    /// Whether to detect theorem-like environments (Theorem, Lemma, Definition, Proof, etc.).
+    /// Default: true
+    /// </summary>
+    public bool DetectTheoremEnvironments { get; set; } = true;
+
+    /// <summary>
+    /// Whether to detect bibliography entries in reference sections.
+    /// Default: true
+    /// </summary>
+    public bool DetectBibliographyEntries { get; set; } = true;
+
+    /// <summary>
+    /// Whether to track document sections for context-aware detection.
+    /// Default: true
+    /// </summary>
+    public bool TrackDocumentSections { get; set; } = true;
+
+    /// <summary>
+    /// Style patterns that indicate blockquotes (case-insensitive partial match).
+    /// </summary>
+    public HashSet<string> BlockquoteStylePatterns { get; set; } =
+    [
+        "Quote",
+        "IntenseQuote",
+        "Blockquote",
+        "Quotation",
+        "Block Quote"
+    ];
+
+    /// <summary>
+    /// Style patterns that indicate theorem environments (case-insensitive partial match).
+    /// </summary>
+    public HashSet<string> TheoremStylePatterns { get; set; } =
+    [
+        "Theorem",
+        "Lemma",
+        "Proposition",
+        "Corollary",
+        "Definition",
+        "Proof",
+        "Example",
+        "Remark",
+        "Conjecture",
+        "Axiom"
+    ];
+
+    /// <summary>
+    /// Custom detection rules to add alongside the defaults.
+    /// These rules are merged with the default rules based on priority.
+    /// </summary>
+    public List<Lilia.Import.Detection.ElementDetectionRule>? CustomDetectionRules { get; set; }
+
+    /// <summary>
+    /// Set of rule IDs to disable from the default rules.
+    /// Useful for selectively turning off detection behaviors.
+    /// </summary>
+    public HashSet<string>? DisabledRuleIds { get; set; }
+
+    /// <summary>
     /// Whether to merge consecutive paragraphs that appear to be the same logical paragraph
     /// (e.g., soft line breaks in Word).
     /// Default: false

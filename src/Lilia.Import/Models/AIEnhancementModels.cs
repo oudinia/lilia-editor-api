@@ -501,14 +501,7 @@ public class FormattingInfo
 
     private static bool IsMonospaceFont(string fontName)
     {
-        var monospaceFonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Consolas", "Courier New", "Courier", "Monaco", "Menlo",
-            "Lucida Console", "Liberation Mono", "DejaVu Sans Mono",
-            "Source Code Pro", "Fira Code", "JetBrains Mono",
-            "Cascadia Code", "Cascadia Mono"
-        };
-        return monospaceFonts.Contains(fontName);
+        return Detection.MonospaceFontList.Default.Contains(fontName);
     }
 }
 

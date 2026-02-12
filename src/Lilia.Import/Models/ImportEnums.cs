@@ -21,7 +21,10 @@ public enum ImportElementType
     TrackChange,
     PageBreak,
     LatexPassthrough,  // Raw LaTeX that bypasses conversion (TikZ, custom packages, etc.)
-    Abstract
+    Abstract,
+    Blockquote,
+    Theorem,
+    BibliographyEntry
 }
 
 /// <summary>
@@ -33,6 +36,62 @@ public enum CodeBlockDetectionReason
     MonospaceFont,  // Uses Consolas, Courier New, Monaco, Menlo, etc.
     Shading,        // Has gray/colored background shading
     Manual          // User manually marked as code during review
+}
+
+/// <summary>
+/// How a blockquote was detected in the DOCX.
+/// </summary>
+public enum BlockquoteDetectionReason
+{
+    StyleName,      // Paragraph style contains "Quote", "Blockquote", etc.
+    IndentItalic,   // Indented + all italic
+    LeftBorder,     // Has left border and no numbering
+    Manual          // User manually marked as blockquote during review
+}
+
+/// <summary>
+/// Type of theorem-like environment.
+/// </summary>
+public enum TheoremEnvironmentType
+{
+    Theorem,
+    Lemma,
+    Proposition,
+    Corollary,
+    Conjecture,
+    Definition,
+    Example,
+    Remark,
+    Note,
+    Proof,
+    Algorithm,
+    Exercise,
+    Solution,
+    Axiom,
+    Assumption
+}
+
+/// <summary>
+/// How a theorem environment was detected in the DOCX.
+/// </summary>
+public enum TheoremDetectionReason
+{
+    StyleName,      // Paragraph style contains theorem/lemma/etc.
+    ContentPattern, // Text starts with "Theorem N.", "Definition N.", etc.
+    AIClassified,   // Classified by AI enhancement
+    Manual          // User manually marked during review
+}
+
+/// <summary>
+/// How a bibliography entry was detected in the DOCX.
+/// </summary>
+public enum BibliographyDetectionReason
+{
+    SectionContext,   // Inside a References/Bibliography section
+    NumberedPattern,  // Starts with [N] or N. pattern
+    HangingIndent,    // Has hanging indent formatting
+    AIClassified,     // Classified by AI enhancement
+    Manual            // User manually marked during review
 }
 
 /// <summary>

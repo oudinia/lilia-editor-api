@@ -1,0 +1,12 @@
+**/.git
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/logs
+**/uploads
+**/tests
+**/*.user
+**/*.md
+**/database
+**/.gitignore

@@ -116,6 +116,21 @@ public class ImportStatistics
     public int CodeBlocksDetected { get; set; }
 
     /// <summary>
+    /// Number of theorem environments detected.
+    /// </summary>
+    public int TheoremsDetected { get; set; }
+
+    /// <summary>
+    /// Number of blockquotes detected.
+    /// </summary>
+    public int BlockquotesDetected { get; set; }
+
+    /// <summary>
+    /// Number of bibliography entries detected.
+    /// </summary>
+    public int BibliographyEntriesDetected { get; set; }
+
+    /// <summary>
     /// Time taken to parse the DOCX.
     /// </summary>
     public TimeSpan ParseTime { get; set; }

@@ -35,7 +35,11 @@ public enum BlockType
     Table,
     Code,
     PageBreak,
-    Abstract
+    Abstract,
+    Blockquote,
+    Theorem,
+    Bibliography,
+    List
 }
 
 public class Block

@@ -288,11 +288,20 @@ public class JobService : IJobService
                     var sortOrder = 0;
                     var currentListItems = new List<Lilia.Import.Models.ImportListItem>();
                     var currentListIsOrdered = false;
+                    var currentAbstractTexts = new List<string>();
                     var processedCount = 0;
                     var totalElements = elements.Count;
 
                     foreach (var element in elements)
                     {
+                        // Flush accumulated abstract paragraphs when we hit a non-abstract element
+                        if (element is not Lilia.Import.Models.ImportAbstract && currentAbstractTexts.Any())
+                        {
+                            reviewBlocks.Add(CreateMergedAbstractBlock(currentAbstractTexts, sortOrder++));
+                            tracker.IncrementBlockCount("abstract");
+                            currentAbstractTexts.Clear();
+                        }
+
                         // Flush accumulated list items when we hit a non-list element
                         if (element is not Lilia.Import.Models.ImportListItem && currentListItems.Any())
                         {
@@ -379,6 +388,44 @@ public class JobService : IJobService
                                 SortOrder: sortOrder++,
                                 Depth: 0
                             ),
+                            Lilia.Import.Models.ImportAbstract => null, // Accumulated below
+                            Lilia.Import.Models.ImportBlockquote bq => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "blockquote",
+                                Content: JsonSerializer.SerializeToElement(new { text = bq.Text }),
+                                Confidence: 80,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportTheorem th => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "theorem",
+                                Content: JsonSerializer.SerializeToElement(new
+                                {
+                                    text = th.Text,
+                                    environmentType = th.EnvironmentType.ToString().ToLowerInvariant(),
+                                    number = th.Number,
+                                    title = th.Title
+                                }),
+                                Confidence: 80,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
+                            Lilia.Import.Models.ImportBibliographyEntry bib => new CreateReviewBlockDto(
+                                Id: Guid.NewGuid().ToString(),
+                                Type: "bibliography",
+                                Content: JsonSerializer.SerializeToElement(new
+                                {
+                                    text = bib.Text,
+                                    referenceLabel = bib.ReferenceLabel
+                                }),
+                                Confidence: 75,
+                                Warnings: null,
+                                SortOrder: sortOrder++,
+                                Depth: 0
+                            ),
                             Lilia.Import.Models.ImportListItem => null, // Handle below
                             Lilia.Import.Models.ImportPageBreak => new CreateReviewBlockDto(
                                 Id: Guid.NewGuid().ToString(),
@@ -392,8 +439,16 @@ public class JobService : IJobService
                             _ => null
                         };
 
+                        // Accumulate abstract paragraphs to create a single abstract block
+                        if (element is Lilia.Import.Models.ImportAbstract abstractElement)
+                        {
+                            if (!string.IsNullOrWhiteSpace(abstractElement.Text))
+                            {
+                                currentAbstractTexts.Add(abstractElement.Text);
+                            }
+                        }
                         // Accumulate list items to create a single list block
-                        if (element is Lilia.Import.Models.ImportListItem listItem)
+                        else if (element is Lilia.Import.Models.ImportListItem listItem)
                         {
                             if (currentListItems.Any() && currentListIsOrdered != listItem.IsNumbered)
                             {
@@ -419,6 +474,13 @@ public class JobService : IJobService
                         }
                     }
 
+                    // Flush any remaining abstract paragraphs
+                    if (currentAbstractTexts.Any())
+                    {
+                        reviewBlocks.Add(CreateMergedAbstractBlock(currentAbstractTexts, sortOrder++));
+                        tracker.IncrementBlockCount("abstract");
+                    }
+
                     // Flush any remaining list items
                     if (currentListItems.Any())
                     {
@@ -429,22 +491,46 @@ public class JobService : IJobService
                     // Report saving phase
                     await tracker.ReportSavingAsync(1, reviewBlocks.Count);
 
+                    // Serialize paragraph traces from the intermediate document
+                    JsonElement? tracesJson = null;
+                    var traces = importResult.IntermediateDocument?.ParagraphTraces;
+                    if (traces != null && traces.Count > 0)
+                    {
+                        tracesJson = JsonSerializer.SerializeToElement(traces);
+                    }
+
+                    // Move DOCX to persistent storage for re-testing
+                    string? persistentPath = null;
+                    try
+                    {
+                        var importsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uploads", "imports");
+                        Directory.CreateDirectory(importsDir);
+                        persistentPath = Path.Combine(importsDir, $"{job.Id}.docx");
+                        File.Copy(tempPath, persistentPath, overwrite: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Import] Failed to save DOCX to persistent storage for job {JobId}", job.Id);
+                    }
+
                     // Create review session instead of document + blocks
                     var sessionResult = await _reviewService.CreateSessionFromImportAsync(
-                        userId, job.Id, title, reviewBlocks);
+                        userId, job.Id, title, reviewBlocks,
+                        paragraphTraces: tracesJson,
+                        sourceFilePath: persistentPath);
 
                     reviewSessionId = sessionResult.Session.Id;
 
                     await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
 
-                    _logger.LogInformation("[Import] Created review session {SessionId} with {BlockCount} blocks for job {JobId}",
-                        reviewSessionId, reviewBlocks.Count, job.Id);
+                    _logger.LogInformation("[Import] Created review session {SessionId} with {BlockCount} blocks and {TraceCount} traces for job {JobId}",
+                        reviewSessionId, reviewBlocks.Count, traces?.Count ?? 0, job.Id);
 
                     // Do NOT set job.DocumentId — that happens at finalize
                 }
                 finally
                 {
-                    // Clean up temp file
+                    // Clean up temp file (persistent copy already saved above)
                     if (File.Exists(tempPath))
                     {
                         File.Delete(tempPath);
@@ -807,6 +893,26 @@ public class JobService : IJobService
             Type: "list",
             Content: JsonSerializer.SerializeToElement(new { items = itemTexts, ordered }),
             Confidence: 90,
+            Warnings: null,
+            SortOrder: sortOrder,
+            Depth: 0
+        );
+    }
+
+    /// <summary>
+    /// Create a review abstract block DTO from accumulated abstract paragraphs.
+    /// Merges consecutive abstract paragraphs into a single block with combined text.
+    /// </summary>
+    private static CreateReviewBlockDto CreateMergedAbstractBlock(
+        List<string> texts,
+        int sortOrder)
+    {
+        var combinedText = string.Join("\n\n", texts);
+        return new CreateReviewBlockDto(
+            Id: Guid.NewGuid().ToString(),
+            Type: "abstract",
+            Content: JsonSerializer.SerializeToElement(new { text = combinedText }),
+            Confidence: 85,
             Warnings: null,
             SortOrder: sortOrder,
             Depth: 0

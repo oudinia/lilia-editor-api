@@ -17,6 +17,8 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
         builder.Property(s => s.DocumentTitle).HasColumnName("document_title").HasMaxLength(500).IsRequired();
         builder.Property(s => s.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("in_progress").IsRequired();
         builder.Property(s => s.OriginalWarnings).HasColumnName("original_warnings").HasColumnType("jsonb");
+        builder.Property(s => s.ParagraphTraces).HasColumnName("paragraph_traces").HasColumnType("jsonb");
+        builder.Property(s => s.SourceFilePath).HasColumnName("source_file_path").HasMaxLength(1000);
         builder.Property(s => s.DocumentId).HasColumnName("document_id");
         builder.Property(s => s.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");

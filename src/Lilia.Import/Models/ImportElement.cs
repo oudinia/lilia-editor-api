@@ -551,6 +551,115 @@ public class ImportAbstract : ImportElement
 }
 
 /// <summary>
+/// A blockquote element detected by style, indentation, or borders.
+/// </summary>
+public class ImportBlockquote : ImportElement
+{
+    public override ImportElementType Type => ImportElementType.Blockquote;
+
+    /// <summary>
+    /// Plain text content of the blockquote.
+    /// </summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Formatting spans within the blockquote text.
+    /// </summary>
+    public List<FormattingSpan> Formatting { get; set; } = [];
+
+    /// <summary>
+    /// Original style ID from the DOCX.
+    /// </summary>
+    public string? StyleId { get; set; }
+
+    /// <summary>
+    /// How this blockquote was detected.
+    /// </summary>
+    public BlockquoteDetectionReason DetectionReason { get; set; }
+}
+
+/// <summary>
+/// A theorem-like environment (theorem, lemma, definition, proof, etc.).
+/// </summary>
+public class ImportTheorem : ImportElement
+{
+    public override ImportElementType Type => ImportElementType.Theorem;
+
+    /// <summary>
+    /// Plain text content of the theorem body.
+    /// </summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Formatting spans within the theorem text.
+    /// </summary>
+    public List<FormattingSpan> Formatting { get; set; } = [];
+
+    /// <summary>
+    /// Original style ID from the DOCX.
+    /// </summary>
+    public string? StyleId { get; set; }
+
+    /// <summary>
+    /// The specific type of theorem environment.
+    /// </summary>
+    public TheoremEnvironmentType EnvironmentType { get; set; } = TheoremEnvironmentType.Theorem;
+
+    /// <summary>
+    /// Optional label (e.g., "thm:main-result").
+    /// </summary>
+    public string? Label { get; set; }
+
+    /// <summary>
+    /// Theorem number (e.g., "1", "2.1").
+    /// </summary>
+    public string? Number { get; set; }
+
+    /// <summary>
+    /// Optional title/name (e.g., "Fermat's Last Theorem").
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// How this theorem was detected.
+    /// </summary>
+    public TheoremDetectionReason DetectionReason { get; set; }
+}
+
+/// <summary>
+/// A bibliography/reference entry detected from a references section.
+/// </summary>
+public class ImportBibliographyEntry : ImportElement
+{
+    public override ImportElementType Type => ImportElementType.BibliographyEntry;
+
+    /// <summary>
+    /// Plain text content of the bibliography entry.
+    /// </summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Formatting spans within the entry text.
+    /// </summary>
+    public List<FormattingSpan> Formatting { get; set; } = [];
+
+    /// <summary>
+    /// Original style ID from the DOCX.
+    /// </summary>
+    public string? StyleId { get; set; }
+
+    /// <summary>
+    /// Reference label (e.g., "[1]", "[Smith2020]").
+    /// </summary>
+    public string? ReferenceLabel { get; set; }
+
+    /// <summary>
+    /// How this bibliography entry was detected.
+    /// </summary>
+    public BibliographyDetectionReason DetectionReason { get; set; }
+}
+
+/// <summary>
 /// A raw LaTeX passthrough element for advanced LaTeX features.
 /// Content is exported as-is without escaping or modification.
 /// Used for TikZ diagrams, custom packages, or other LaTeX code not supported by LML.

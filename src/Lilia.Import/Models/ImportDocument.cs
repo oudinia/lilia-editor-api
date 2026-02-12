@@ -33,6 +33,12 @@ public class ImportDocument
     public ImportMetadata Metadata { get; set; } = new();
 
     /// <summary>
+    /// Paragraph-level diagnostic trace of the entire document body.
+    /// Each entry records what happened to a body element (matched rule, detected type, raw text).
+    /// </summary>
+    public List<ParagraphTraceEntry> ParagraphTraces { get; set; } = [];
+
+    /// <summary>
     /// Get all elements of a specific type.
     /// </summary>
     public IEnumerable<T> GetElements<T>() where T : ImportElement

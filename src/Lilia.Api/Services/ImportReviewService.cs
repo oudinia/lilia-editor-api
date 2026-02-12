@@ -854,7 +854,9 @@ public class ImportReviewService : IImportReviewService
         Guid jobId,
         string documentTitle,
         List<CreateReviewBlockDto> blocks,
-        List<object>? warnings = null)
+        List<object>? warnings = null,
+        JsonElement? paragraphTraces = null,
+        string? sourceFilePath = null)
     {
         var warningsJson = warnings != null
             ? JsonSerializer.SerializeToElement(warnings)
@@ -867,7 +869,42 @@ public class ImportReviewService : IImportReviewService
             Warnings: warningsJson
         );
 
-        return await CreateSessionAsync(userId, dto);
+        var result = await CreateSessionAsync(userId, dto);
+
+        // Store paragraph traces and source file path if provided
+        if (paragraphTraces.HasValue || sourceFilePath != null)
+        {
+            var session = await _context.ImportReviewSessions.FindAsync(result.Session.Id);
+            if (session != null)
+            {
+                if (paragraphTraces.HasValue)
+                {
+                    session.ParagraphTraces = JsonDocument.Parse(paragraphTraces.Value.GetRawText());
+                }
+                session.SourceFilePath = sourceFilePath;
+                session.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        return result;
+    }
+
+    public async Task<JsonElement?> GetParagraphTracesAsync(Guid sessionId, string userId)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId);
+
+        if (session == null) return null;
+
+        // Check access
+        var role = GetUserRole(session, userId);
+        if (role == null) return null;
+
+        if (session.ParagraphTraces == null) return null;
+
+        return JsonSerializer.Deserialize<JsonElement>(session.ParagraphTraces.RootElement.GetRawText());
     }
 
     // --- Private Helpers ---

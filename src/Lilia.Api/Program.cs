@@ -54,7 +54,7 @@ builder.Services.AddCors(options =>
                   // Allow any localhost/127.0.0.1 origin (any port) for development
                   if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                   {
-                      if (uri.Host == "localhost" || uri.Host == "127.0.0.1")
+                      if (uri.Host == "localhost" || uri.Host == "127.0.0.1" || uri.Host == "5.189.138.150")
                           return true;
                   }
                   // Also allow configured production origins
@@ -322,10 +322,12 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseCors();
 
-// Development auth - create a fake user when no auth token is provided
+app.UseAuthentication();
+
+// Development auth - create a fake user when no auth token is provided.
+// Must run AFTER UseAuthentication so the Bearer handler doesn't overwrite the user.
 app.UseDevelopmentAuth();
 
-app.UseAuthentication();
 app.UseAuthorization();
 
 // Sync Clerk user data on authenticated requests
@@ -336,6 +338,7 @@ app.MapControllers();
 // Map SignalR hubs
 app.MapHub<ImportHub>("/hubs/import");
 app.MapHub<DocumentHub>("/hubs/document");
+app.MapHub<ImportReviewHub>("/hubs/import-review");
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));

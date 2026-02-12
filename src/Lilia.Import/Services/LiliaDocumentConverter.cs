@@ -57,7 +57,10 @@ public class LiliaDocumentConverter : IImportConverter
                 EquationsConverted = importDocument.Elements.OfType<ImportEquation>().Count(e => e.ConversionSucceeded),
                 ImagesExtracted = importDocument.Elements.Count(e => e.Type == ImportElementType.Image),
                 TablesExtracted = importDocument.Elements.Count(e => e.Type == ImportElementType.Table),
-                CodeBlocksDetected = importDocument.Elements.Count(e => e.Type == ImportElementType.CodeBlock)
+                CodeBlocksDetected = importDocument.Elements.Count(e => e.Type == ImportElementType.CodeBlock),
+                TheoremsDetected = importDocument.Elements.Count(e => e.Type == ImportElementType.Theorem),
+                BlockquotesDetected = importDocument.Elements.Count(e => e.Type == ImportElementType.Blockquote),
+                BibliographyEntriesDetected = importDocument.Elements.Count(e => e.Type == ImportElementType.BibliographyEntry)
             };
 
             // Combine warnings from parsing and conversion
@@ -229,6 +232,9 @@ public class LiliaDocumentConverter : IImportConverter
             ImportImage image => ConvertImage(image, sortOrder, options),
             ImportListItem listItem => ConvertListItem(listItem, sortOrder, options),
             ImportAbstract abs => ConvertAbstract(abs, sortOrder, options),
+            ImportBlockquote bq => ConvertBlockquote(bq, sortOrder, options),
+            ImportTheorem thm => ConvertTheorem(thm, sortOrder, options),
+            ImportBibliographyEntry bib => ConvertBibliographyEntry(bib, sortOrder, options),
             ImportPageBreak => ConvertPageBreak(sortOrder),
             _ => null
         };
@@ -244,6 +250,66 @@ public class LiliaDocumentConverter : IImportConverter
             : abs.Text;
 
         return CreateBlock(BlockType.Abstract, content, sortOrder);
+    }
+
+    /// <summary>
+    /// Convert a blockquote element to a Block.
+    /// </summary>
+    private Block ConvertBlockquote(ImportBlockquote blockquote, int sortOrder, ConversionOptions options)
+    {
+        var content = options.ApplyFormattingAsLatex
+            ? ApplyFormattingAsLatex(blockquote.Text, blockquote.Formatting)
+            : blockquote.Text;
+
+        var formattedContent = $"\\begin{{quote}}\n{content}\n\\end{{quote}}";
+        return CreateBlock(BlockType.Blockquote, formattedContent, sortOrder);
+    }
+
+    /// <summary>
+    /// Convert a theorem element to a Block.
+    /// </summary>
+    private Block ConvertTheorem(ImportTheorem theorem, int sortOrder, ConversionOptions options)
+    {
+        var content = options.ApplyFormattingAsLatex
+            ? ApplyFormattingAsLatex(theorem.Text, theorem.Formatting)
+            : theorem.Text;
+
+        var envName = theorem.EnvironmentType.ToString().ToLowerInvariant();
+
+        var sb = new StringBuilder();
+        sb.Append($"\\begin{{{envName}}}");
+
+        if (!string.IsNullOrEmpty(theorem.Title))
+        {
+            sb.Append($"[{EscapeLatex(theorem.Title)}]");
+        }
+
+        sb.AppendLine();
+
+        if (!string.IsNullOrEmpty(theorem.Label))
+        {
+            sb.AppendLine($"\\label{{{theorem.Label}}}");
+        }
+
+        sb.AppendLine(content);
+        sb.Append($"\\end{{{envName}}}");
+
+        return CreateBlock(BlockType.Theorem, sb.ToString(), sortOrder);
+    }
+
+    /// <summary>
+    /// Convert a bibliography entry element to a Block.
+    /// </summary>
+    private Block ConvertBibliographyEntry(ImportBibliographyEntry entry, int sortOrder, ConversionOptions options)
+    {
+        var content = options.ApplyFormattingAsLatex
+            ? ApplyFormattingAsLatex(entry.Text, entry.Formatting)
+            : entry.Text;
+
+        var label = entry.ReferenceLabel ?? $"ref{sortOrder}";
+        var formattedContent = $"\\bibitem{{{label}}} {content}";
+
+        return CreateBlock(BlockType.Bibliography, formattedContent, sortOrder);
     }
 
     /// <summary>

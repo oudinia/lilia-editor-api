@@ -11,6 +11,8 @@ public class ImportReviewSession
     public string Status { get; set; } = "in_progress"; // in_progress, imported, cancelled
     public JsonDocument? OriginalWarnings { get; set; }
     public Guid? DocumentId { get; set; }
+    public JsonDocument? ParagraphTraces { get; set; }
+    public string? SourceFilePath { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }

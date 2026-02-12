@@ -35,6 +35,11 @@ public interface IImportReviewService
         Guid jobId,
         string documentTitle,
         List<CreateReviewBlockDto> blocks,
-        List<object>? warnings = null
+        List<object>? warnings = null,
+        System.Text.Json.JsonElement? paragraphTraces = null,
+        string? sourceFilePath = null
     );
+
+    // Paragraph traces
+    Task<System.Text.Json.JsonElement?> GetParagraphTracesAsync(Guid sessionId, string userId);
 }

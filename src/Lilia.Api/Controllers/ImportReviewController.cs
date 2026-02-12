@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using Lilia.Api.Hubs;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 
@@ -11,13 +13,21 @@ namespace Lilia.Api.Controllers;
 public class ImportReviewController : ControllerBase
 {
     private readonly IImportReviewService _reviewService;
+    private readonly IHubContext<ImportReviewHub> _hubContext;
     private readonly ILogger<ImportReviewController> _logger;
 
-    public ImportReviewController(IImportReviewService reviewService, ILogger<ImportReviewController> logger)
+    public ImportReviewController(
+        IImportReviewService reviewService,
+        IHubContext<ImportReviewHub> hubContext,
+        ILogger<ImportReviewController> logger)
     {
         _reviewService = reviewService;
+        _hubContext = hubContext;
         _logger = logger;
     }
+
+    private IClientProxy SessionGroup(Guid sessionId) =>
+        _hubContext.Clients.Group($"review-{sessionId}");
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -70,6 +80,8 @@ public class ImportReviewController : ControllerBase
         var result = await _reviewService.CancelSessionAsync(id, userId, permanent);
         if (!result) return NotFound();
 
+        await SessionGroup(id).SendAsync("SessionCancelled", new { userId });
+
         return NoContent();
     }
 
@@ -86,6 +98,8 @@ public class ImportReviewController : ControllerBase
         {
             var result = await _reviewService.FinalizeSessionAsync(id, userId, dto);
             if (result == null) return BadRequest(new { message = "Cannot finalize session. Ensure all blocks are reviewed or use force=true." });
+
+            await SessionGroup(id).SendAsync("SessionFinalized", new { documentId = result.Document.Id, userId });
 
             return Ok(result);
         }
@@ -108,6 +122,17 @@ public class ImportReviewController : ControllerBase
         var result = await _reviewService.UpdateBlockReviewAsync(id, blockId, userId, dto);
         if (result == null) return NotFound();
 
+        await SessionGroup(id).SendAsync("BlockUpdated", new
+        {
+            blockId,
+            status = result.Status,
+            reviewedBy = result.ReviewedBy,
+            reviewedAt = result.ReviewedAt,
+            currentContent = result.CurrentContent,
+            currentType = result.CurrentType,
+            userId
+        });
+
         return Ok(result);
     }
 
@@ -123,6 +148,8 @@ public class ImportReviewController : ControllerBase
         var result = await _reviewService.ResetBlockAsync(id, blockId, userId);
         if (result == null) return NotFound();
 
+        await SessionGroup(id).SendAsync("BlockReset", new { blockId, userId });
+
         return Ok(result);
     }
 
@@ -136,6 +163,14 @@ public class ImportReviewController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var affected = await _reviewService.BulkActionAsync(id, userId, dto);
+
+        await SessionGroup(id).SendAsync("BulkActionPerformed", new
+        {
+            action = dto.Action,
+            affectedCount = affected,
+            userId
+        });
+
         return Ok(new { affected });
     }
 
@@ -150,6 +185,8 @@ public class ImportReviewController : ControllerBase
 
         var result = await _reviewService.AddCollaboratorAsync(id, userId, dto);
         if (result == null) return BadRequest(new { message = "Could not add collaborator. User may not exist or is already a collaborator." });
+
+        await SessionGroup(id).SendAsync("CollaboratorAdded", new { collaborator = result });
 
         return Ok(new CollaboratorResponseDto(result));
     }
@@ -166,6 +203,8 @@ public class ImportReviewController : ControllerBase
         var result = await _reviewService.RemoveCollaboratorAsync(id, targetUserId, userId);
         if (!result) return NotFound();
 
+        await SessionGroup(id).SendAsync("CollaboratorRemoved", new { userId = targetUserId, removedBy = userId });
+
         return NoContent();
     }
 
@@ -180,6 +219,8 @@ public class ImportReviewController : ControllerBase
 
         var result = await _reviewService.AddCommentAsync(id, userId, dto);
         if (result == null) return NotFound();
+
+        await SessionGroup(id).SendAsync("CommentAdded", new { comment = result, blockId = dto.BlockId });
 
         return Ok(new CommentResponseDto(result));
     }
@@ -196,6 +237,8 @@ public class ImportReviewController : ControllerBase
         var result = await _reviewService.UpdateCommentAsync(id, commentId, userId, dto);
         if (!result) return NotFound();
 
+        await SessionGroup(id).SendAsync("CommentUpdated", new { commentId, resolved = dto.Resolved, userId });
+
         return NoContent();
     }
 
@@ -210,6 +253,8 @@ public class ImportReviewController : ControllerBase
 
         var result = await _reviewService.DeleteCommentAsync(id, commentId, userId);
         if (!result) return NotFound();
+
+        await SessionGroup(id).SendAsync("CommentDeleted", new { commentId, userId });
 
         return NoContent();
     }
@@ -251,5 +296,21 @@ public class ImportReviewController : ControllerBase
 
         var activities = await _reviewService.GetRecentActivitiesAsync(id, userId, since);
         return Ok(new ActivitiesListDto(activities));
+    }
+
+    /// <summary>
+    /// Get paragraph-level diagnostic traces for an import session.
+    /// Shows every body element from the DOCX, what rule matched, and what type was detected.
+    /// </summary>
+    [HttpGet("{id:guid}/traces")]
+    public async Task<ActionResult> GetParagraphTraces(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var traces = await _reviewService.GetParagraphTracesAsync(id, userId);
+        if (traces == null) return NotFound();
+
+        return Ok(traces);
     }
 }
