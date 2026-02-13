@@ -45,7 +45,7 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddCors(options =>
 {
     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-        ?? ["https://app.lilia.app", "https://editor.lilia.app"];
+        ?? ["https://liliaeditor.com", "https://editor.liliaeditor.com"];
 
     options.AddDefaultPolicy(policy =>
     {
@@ -300,13 +300,16 @@ app.UseSerilogRequestLogging(options =>
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
 });
 
-// Swagger UI - always enabled for now
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger UI - only in development
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Lilia Editor API v1");
-    c.RoutePrefix = string.Empty; // Serve Swagger UI at root
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Lilia Editor API v1");
+        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+    });
+}
 
 // Serve static files for local storage uploads
 var uploadsPath = builder.Configuration["Storage:LocalPath"]

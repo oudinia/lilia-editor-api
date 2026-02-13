@@ -1,0 +1,81 @@
+name: lilia-editor
+region: fra
+
+databases:
+  - name: db
+    engine: PG
+    cluster_name: lilia-db-cluster
+    production: true
+
+services:
+  - name: api
+    dockerfile_path: Dockerfile
+    github:
+      repo: oudinia/lilia-editor-api
+      branch: main
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: professional-xs
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 20
+      period_seconds: 30
+      timeout_seconds: 5
+    routes:
+      - path: /api
+        preserve_path_prefix: true
+      - path: /hubs
+        preserve_path_prefix: true
+      - path: /health
+      - path: /uploads
+        preserve_path_prefix: true
+    envs:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: "Production"
+      - key: ConnectionStrings__LiliaCore
+        value: "Host=${db.HOSTNAME};Port=${db.PORT};Database=${db.DATABASE};Username=${db.USERNAME};Password=${db.PASSWORD};SSL Mode=Require;Trust Server Certificate=true"
+      - key: Clerk__Authority
+        value: "https://national-bunny-74.clerk.accounts.dev"
+      - key: Clerk__Issuer
+        value: "https://national-bunny-74.clerk.accounts.dev"
+      - key: Clerk__SecretKey
+        type: SECRET
+        value: "REPLACE"
+      - key: R2__Endpoint
+        value: "https://fra1.digitaloceanspaces.com"
+      - key: R2__AccessKeyId
+        type: SECRET
+        value: "REPLACE"
+      - key: R2__SecretAccessKey
+        type: SECRET
+        value: "REPLACE"
+      - key: R2__BucketName
+        value: "lilia-docs"
+      - key: R2__PublicUrl
+        value: "https://lilia-docs.fra1.cdn.digitaloceanspaces.com"
+      - key: Cors__AllowedOrigins__0
+        value: "${APP_URL}"
+      - key: Cors__AllowedOrigins__1
+        value: "https://editor.liliaeditor.com"
+      - key: Cors__AllowedOrigins__2
+        value: "https://liliaeditor.com"
+      - key: Cors__AllowedOrigins__3
+        value: "https://www.liliaeditor.com"
+
+static_sites:
+  - name: editor
+    build_command: "corepack enable && pnpm install --frozen-lockfile && pnpm turbo build --filter=@repo/editor"
+    output_dir: apps/editor/dist
+    github:
+      repo: oudinia/lilia-cloud
+      branch: main
+      deploy_on_push: true
+    environment_slug: node-js
+    routes:
+      - path: /
+    catchall_document: index.html
+    envs:
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        scope: BUILD_TIME
+        value: "REPLACE"
