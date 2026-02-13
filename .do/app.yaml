@@ -28,6 +28,7 @@ services:
       - path: /hubs
         preserve_path_prefix: true
       - path: /health
+        preserve_path_prefix: true
       - path: /uploads
         preserve_path_prefix: true
     envs:
