@@ -12,11 +12,13 @@ public class JobsController : ControllerBase
 {
     private readonly IJobService _jobService;
     private readonly ILogger<JobsController> _logger;
+    private readonly IAuditService _auditService;
 
-    public JobsController(IJobService jobService, ILogger<JobsController> logger)
+    public JobsController(IJobService jobService, ILogger<JobsController> logger, IAuditService auditService)
     {
         _jobService = jobService;
         _logger = logger;
+        _auditService = auditService;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -70,6 +72,7 @@ public class JobsController : ControllerBase
         try
         {
             var result = await _jobService.CreateImportJobFromBase64Async(userId, request);
+            await _auditService.LogAsync("document.import", "Job", result.Job?.Id.ToString(), new { request.Filename, request.Format });
             return Ok(result);
         }
         catch (ArgumentException ex)
@@ -99,6 +102,7 @@ public class JobsController : ControllerBase
         try
         {
             var job = await _jobService.CreateExportJobAsync(userId, dto);
+            await _auditService.LogAsync("document.export", "Job", job.Id.ToString(), new { dto.DocumentId, dto.Format });
 
             // If completed, return the result directly
             if (job.Status == "COMPLETED")

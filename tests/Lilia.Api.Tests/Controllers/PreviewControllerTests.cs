@@ -74,6 +74,9 @@ public class PreviewControllerTests
             DateTime.UtcNow,
             DateTime.UtcNow,
             null,
+            null, null, null, null, // margins
+            null, null, // header/footer
+            null, null, null, // lineSpacing, paragraphIndent, pageNumbering
             new List<BlockDto>(),
             new List<BibliographyEntryDto>(),
             new List<LabelDto>()

@@ -51,6 +51,15 @@ public record DocumentDto(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? LastOpenedAt,
+    string? MarginTop,
+    string? MarginBottom,
+    string? MarginLeft,
+    string? MarginRight,
+    string? HeaderText,
+    string? FooterText,
+    double? LineSpacing,
+    string? ParagraphIndent,
+    string? PageNumbering,
     List<BlockDto> Blocks,
     List<BibliographyEntryDto> Bibliography,
     List<LabelDto> Labels
@@ -74,7 +83,16 @@ public record UpdateDocumentDto(
     int? FontSize,
     int? Columns,
     string? ColumnSeparator,
-    double? ColumnGap
+    double? ColumnGap,
+    string? MarginTop,
+    string? MarginBottom,
+    string? MarginLeft,
+    string? MarginRight,
+    string? HeaderText,
+    string? FooterText,
+    double? LineSpacing,
+    string? ParagraphIndent,
+    string? PageNumbering
 );
 
 public record ShareDocumentDto(

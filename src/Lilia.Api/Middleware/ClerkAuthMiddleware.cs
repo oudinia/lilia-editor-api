@@ -76,7 +76,7 @@ public class ClerkUserSyncMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService, IDistributedCache cache)
+    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService, IDistributedCache cache, IAuditService auditService)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -143,6 +143,9 @@ public class ClerkUserSyncMiddleware
                         {
                             AbsoluteExpirationRelativeToNow = SyncCacheDuration
                         });
+
+                        // Audit first-sync as a login event
+                        await auditService.LogAsync("user.login", "User", userId, new { email, name });
 
                         _logger.LogDebug("User {UserId} synced to database and cached", userId);
                     }

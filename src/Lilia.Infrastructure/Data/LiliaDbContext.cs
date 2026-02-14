@@ -50,6 +50,9 @@ public class LiliaDbContext : DbContext
     public DbSet<ConversionAudit> ConversionAudits => Set<ConversionAudit>();
     public DbSet<SyncHistory> SyncHistories => Set<SyncHistory>();
 
+    // Audit
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
     // Import review
     public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
     public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();

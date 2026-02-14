@@ -11,10 +11,12 @@ namespace Lilia.Api.Controllers;
 public class TemplatesController : ControllerBase
 {
     private readonly ITemplateService _templateService;
+    private readonly IAuditService _auditService;
 
-    public TemplatesController(ITemplateService templateService)
+    public TemplatesController(ITemplateService templateService, IAuditService auditService)
     {
         _templateService = templateService;
+        _auditService = auditService;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -45,6 +47,7 @@ public class TemplatesController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var template = await _templateService.CreateTemplateAsync(userId, dto);
+        await _auditService.LogAsync("template.create", "Template", template.Id.ToString(), new { dto.Name, dto.Category });
         return CreatedAtAction(nameof(GetTemplate), new { id = template.Id }, template);
     }
 
