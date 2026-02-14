@@ -15,9 +15,15 @@ using Serilog;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure Serilog
-builder.Host.UseSerilog((context, configuration) =>
+builder.Host.UseSerilog((context, services, configuration) =>
 {
     configuration.ReadFrom.Configuration(context.Configuration);
+
+    var betterStackToken = context.Configuration["BetterStack:SourceToken"];
+    if (!string.IsNullOrEmpty(betterStackToken))
+    {
+        configuration.WriteTo.BetterStack(sourceToken: betterStackToken);
+    }
 });
 
 // Add services to the container
@@ -194,6 +200,10 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();
 
+// Register Audit Service
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuditService, AuditService>();
+
 // Register Lorem Ipsum generator
 builder.Services.AddSingleton<ILoremIpsumService, LoremIpsumService>();
 
@@ -278,6 +288,9 @@ app.UseStatusCodePages(async context =>
             $$"""{"error":"{{title}}","statusCode":{{statusCode}}}""");
     }
 });
+
+// Correlation ID for request tracing
+app.UseCorrelationId();
 
 // Request logging with enhanced diagnostic context
 app.UseSerilogRequestLogging(options =>

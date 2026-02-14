@@ -63,6 +63,9 @@ services:
         value: "https://liliaeditor.com"
       - key: Cors__AllowedOrigins__3
         value: "https://www.liliaeditor.com"
+      - key: BetterStack__SourceToken
+        type: SECRET
+        value: "REPLACE"
 
 static_sites:
   - name: editor

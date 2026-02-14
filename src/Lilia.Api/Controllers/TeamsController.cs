@@ -11,10 +11,12 @@ namespace Lilia.Api.Controllers;
 public class TeamsController : ControllerBase
 {
     private readonly ITeamService _teamService;
+    private readonly IAuditService _auditService;
 
-    public TeamsController(ITeamService teamService)
+    public TeamsController(ITeamService teamService, IAuditService auditService)
     {
         _teamService = teamService;
+        _auditService = auditService;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -45,6 +47,7 @@ public class TeamsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var team = await _teamService.CreateTeamAsync(userId, dto);
+        await _auditService.LogAsync("team.create", "Team", team.Id.ToString(), new { dto.Name });
         return CreatedAtAction(nameof(GetTeam), new { id = team.Id }, team);
     }
 
@@ -84,6 +87,7 @@ public class TeamsController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var member = await _teamService.InviteMemberAsync(id, userId, dto);
         if (member == null) return NotFound();
+        await _auditService.LogAsync("team.member.add", "Team", id.ToString(), new { dto.Email, dto.Role });
         return Ok(member);
     }
 
@@ -104,6 +108,7 @@ public class TeamsController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var result = await _teamService.RemoveMemberAsync(id, targetUserId, userId);
         if (!result) return NotFound();
+        await _auditService.LogAsync("team.member.remove", "Team", id.ToString(), new { targetUserId });
         return NoContent();
     }
 

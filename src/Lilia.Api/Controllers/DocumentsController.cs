@@ -13,11 +13,13 @@ public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
     private readonly ILogger<DocumentsController> _logger;
+    private readonly IAuditService _auditService;
 
-    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger)
+    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger, IAuditService auditService)
     {
         _documentService = documentService;
         _logger = logger;
+        _auditService = auditService;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -93,6 +95,7 @@ public class DocumentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var document = await _documentService.CreateDocumentAsync(userId, dto);
+        await _auditService.LogAsync("document.create", "Document", document.Id.ToString(), new { dto.Title, dto.TeamId });
         return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
     }
 
@@ -113,6 +116,7 @@ public class DocumentsController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var result = await _documentService.DeleteDocumentAsync(id, userId);
         if (!result) return NotFound();
+        await _auditService.LogAsync("document.delete", "Document", id.ToString());
         return NoContent();
     }
 
