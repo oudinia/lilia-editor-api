@@ -40,6 +40,7 @@ public static class BlockTypes
     public const string PageBreak = "pageBreak";
     public const string ColumnBreak = "columnBreak";
     public const string Embed = "embed";
+    public const string Footnote = "footnote";
 
     // Legacy aliases for backwards compatibility with existing data
     public const string Quote = "quote";
@@ -50,6 +51,6 @@ public static class BlockTypes
     [
         Paragraph, Heading, Equation, Figure, Code, List,
         Blockquote, Table, Theorem, Abstract, Bibliography,
-        TableOfContents, PageBreak, ColumnBreak, Embed
+        TableOfContents, PageBreak, ColumnBreak, Embed, Footnote
     ];
 }

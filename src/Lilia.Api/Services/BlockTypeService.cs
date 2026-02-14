@@ -26,7 +26,8 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.TableOfContents, "Table of Contents", "Auto-generated contents from headings", "listUnordered", new { title = "Table of Contents" }),
             MakeBlockType(BlockTypes.PageBreak, "Page Break", "Force content to start on new page", "horizontalRule", new { }),
             MakeBlockType(BlockTypes.ColumnBreak, "Column Break", "Force content to next column", "layoutSideByLarge", new { }),
-            MakeBlockType(BlockTypes.Embed, "Embed", "Raw LaTeX or Typst code block", "terminal2", new { engine = "latex", code = "", label = "", caption = "" })
+            MakeBlockType(BlockTypes.Embed, "Embed", "Raw LaTeX or Typst code block", "terminal2", new { engine = "latex", code = "", label = "", caption = "" }),
+            MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", new { text = "" })
         ];
     }
 

@@ -22,6 +22,17 @@ public class Document
     public string Status { get; set; } = "draft"; // draft, saved, published
     public DateTime? LastAutoSavedAt { get; set; }
 
+    // Layout settings
+    public string? MarginTop { get; set; }
+    public string? MarginBottom { get; set; }
+    public string? MarginLeft { get; set; }
+    public string? MarginRight { get; set; }
+    public string? HeaderText { get; set; }
+    public string? FooterText { get; set; }
+    public double? LineSpacing { get; set; }
+    public string? ParagraphIndent { get; set; }
+    public string? PageNumbering { get; set; } // "arabic", "roman", "none"
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }

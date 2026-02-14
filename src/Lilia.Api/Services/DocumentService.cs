@@ -242,6 +242,15 @@ public class DocumentService : IDocumentService
         if (dto.Columns.HasValue) document.Columns = Math.Clamp(dto.Columns.Value, 1, 3);
         if (dto.ColumnSeparator != null) document.ColumnSeparator = dto.ColumnSeparator;
         if (dto.ColumnGap.HasValue) document.ColumnGap = dto.ColumnGap.Value;
+        if (dto.MarginTop != null) document.MarginTop = dto.MarginTop;
+        if (dto.MarginBottom != null) document.MarginBottom = dto.MarginBottom;
+        if (dto.MarginLeft != null) document.MarginLeft = dto.MarginLeft;
+        if (dto.MarginRight != null) document.MarginRight = dto.MarginRight;
+        if (dto.HeaderText != null) document.HeaderText = dto.HeaderText;
+        if (dto.FooterText != null) document.FooterText = dto.FooterText;
+        if (dto.LineSpacing.HasValue) document.LineSpacing = dto.LineSpacing.Value;
+        if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
+        if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
 
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -427,6 +436,15 @@ public class DocumentService : IDocumentService
             d.CreatedAt,
             d.UpdatedAt,
             d.LastOpenedAt,
+            d.MarginTop,
+            d.MarginBottom,
+            d.MarginLeft,
+            d.MarginRight,
+            d.HeaderText,
+            d.FooterText,
+            d.LineSpacing,
+            d.ParagraphIndent,
+            d.PageNumbering,
             d.Blocks.Select(b => new BlockDto(
                 b.Id,
                 b.DocumentId,
