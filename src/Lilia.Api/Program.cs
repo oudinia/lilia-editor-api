@@ -60,7 +60,7 @@ builder.Services.AddCors(options =>
                   // Allow any localhost/127.0.0.1 origin (any port) for development
                   if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                   {
-                      if (uri.Host == "localhost" || uri.Host == "127.0.0.1" || uri.Host == "5.189.138.150")
+                      if (uri.Host == "localhost" || uri.Host == "127.0.0.1")
                           return true;
                   }
                   // Also allow configured production origins
@@ -357,7 +357,20 @@ app.MapHub<DocumentHub>("/hubs/document");
 app.MapHub<ImportReviewHub>("/hubs/import-review");
 
 // Health check endpoint
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", async (LiliaDbContext db) =>
+{
+    try
+    {
+        await db.Database.CanConnectAsync();
+        return Results.Ok(new { status = "healthy", database = "connected", timestamp = DateTime.UtcNow });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { status = "unhealthy", database = "disconnected", error = ex.Message, timestamp = DateTime.UtcNow },
+            statusCode: 503);
+    }
+});
 
 // Seed system templates
 using (var scope = app.Services.CreateScope())

@@ -216,6 +216,18 @@ public class ConvertController : ControllerBase
             });
         }
 
+        var contentType = file.ContentType?.ToLowerInvariant() ?? "";
+        if (!string.IsNullOrEmpty(contentType)
+            && contentType != "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            && contentType != "application/octet-stream")
+        {
+            return BadRequest(new ErrorResponse
+            {
+                Message = "Invalid MIME type for DOCX file",
+                Code = "INVALID_MIME_TYPE"
+            });
+        }
+
         var rateLimitResult = await CheckRateLimitAsync();
         if (rateLimitResult != null)
         {
@@ -326,6 +338,20 @@ public class ConvertController : ControllerBase
             });
         }
 
+        var contentType = file.ContentType?.ToLowerInvariant() ?? "";
+        if (!string.IsNullOrEmpty(contentType)
+            && contentType != "application/x-tex"
+            && contentType != "text/x-tex"
+            && contentType != "text/plain"
+            && contentType != "application/octet-stream")
+        {
+            return BadRequest(new ErrorResponse
+            {
+                Message = "Invalid MIME type for LaTeX file",
+                Code = "INVALID_MIME_TYPE"
+            });
+        }
+
         var rateLimitResult = await CheckRateLimitAsync();
         if (rateLimitResult != null)
         {
@@ -387,6 +413,20 @@ public class ConvertController : ControllerBase
             {
                 Message = "Invalid file type. Expected: .md or .markdown",
                 Code = "INVALID_FORMAT"
+            });
+        }
+
+        var contentType = file.ContentType?.ToLowerInvariant() ?? "";
+        if (!string.IsNullOrEmpty(contentType)
+            && contentType != "text/markdown"
+            && contentType != "text/x-markdown"
+            && contentType != "text/plain"
+            && contentType != "application/octet-stream")
+        {
+            return BadRequest(new ErrorResponse
+            {
+                Message = "Invalid MIME type for Markdown file",
+                Code = "INVALID_MIME_TYPE"
             });
         }
 
