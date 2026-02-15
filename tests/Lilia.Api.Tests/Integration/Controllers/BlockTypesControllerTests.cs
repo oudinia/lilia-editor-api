@@ -84,6 +84,8 @@ public class BlockTypesControllerTests : IntegrationTestBase
     [InlineData("tableOfContents")]
     [InlineData("pageBreak")]
     [InlineData("columnBreak")]
+    [InlineData("footnote")]
+    [InlineData("embed")]
     public async Task GetBlockType_ReturnsMetadata_ForEachCanonicalType(string type)
     {
         var response = await Client.GetAsync($"/api/blocktypes/{type}");

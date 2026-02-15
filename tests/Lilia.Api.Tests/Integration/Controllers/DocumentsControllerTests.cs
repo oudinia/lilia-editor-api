@@ -209,6 +209,126 @@ public class DocumentsControllerTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // --- PUT /api/documents/{id} layout fields ---
+
+    [Fact]
+    public async Task UpdateDocument_WithLayoutFields_UpdatesAllFields()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Layout Test");
+
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            marginTop = "1in",
+            marginBottom = "1.5in",
+            marginLeft = "1.25in",
+            marginRight = "1.25in",
+            headerText = "My Thesis",
+            footerText = "Page {page}",
+            lineSpacing = 1.5,
+            paragraphIndent = "1.5em",
+            pageNumbering = "roman"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.MarginTop.Should().Be("1in");
+        doc.MarginBottom.Should().Be("1.5in");
+        doc.MarginLeft.Should().Be("1.25in");
+        doc.MarginRight.Should().Be("1.25in");
+        doc.HeaderText.Should().Be("My Thesis");
+        doc.FooterText.Should().Be("Page {page}");
+        doc.LineSpacing.Should().Be(1.5);
+        doc.ParagraphIndent.Should().Be("1.5em");
+        doc.PageNumbering.Should().Be("roman");
+    }
+
+    [Fact]
+    public async Task UpdateDocument_WithColumnLayout_UpdatesColumnFields()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Column Test");
+
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            columns = 2,
+            columnSeparator = "line",
+            columnGap = 2.0
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.Columns.Should().Be(2);
+        doc.ColumnSeparator.Should().Be("line");
+        doc.ColumnGap.Should().Be(2.0);
+    }
+
+    [Fact]
+    public async Task UpdateDocument_PartialLayoutUpdate_PreservesOtherFields()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Partial Update Test");
+
+        // First set margins
+        await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            marginTop = "2cm",
+            lineSpacing = 2.0
+        });
+
+        // Then update only lineSpacing
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            lineSpacing = 1.0
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.LineSpacing.Should().Be(1.0);
+        doc.MarginTop.Should().Be("2cm"); // preserved
+    }
+
+    [Fact]
+    public async Task GetDocument_IncludesLayoutFields()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Layout Read Test");
+
+        // Set some layout fields
+        await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            marginTop = "3cm",
+            headerText = "Chapter Header"
+        });
+
+        var response = await Client.GetAsync($"/api/documents/{seeded.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.MarginTop.Should().Be("3cm");
+        doc.HeaderText.Should().Be("Chapter Header");
+    }
+
+    [Fact]
+    public async Task CreateDocument_ReturnsDefaultColumnValues()
+    {
+        await SeedDefaultUsers();
+
+        var response = await Client.PostAsJsonAsync("/api/documents", new
+        {
+            title = "Defaults Test"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.Columns.Should().Be(1);
+        doc.ColumnSeparator.Should().Be("none");
+        doc.ColumnGap.Should().Be(1.5);
+        doc.MarginTop.Should().BeNull();
+        doc.LineSpacing.Should().BeNull();
+        doc.PageNumbering.Should().BeNull();
+    }
+
     // --- POST /api/documents/{id}/duplicate ---
 
     [Fact]

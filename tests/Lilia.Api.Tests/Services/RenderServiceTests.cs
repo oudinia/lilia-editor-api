@@ -278,6 +278,92 @@ public class RenderServiceTests
         result.Should().Contain("<td>");
     }
 
+    [Fact]
+    public void RenderBlockToHtml_ColumnBreak_ReturnsColumnBreakDiv()
+    {
+        // Arrange
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "columnBreak",
+            Content = JsonDocument.Parse("{}"),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToHtml(block);
+
+        // Assert
+        result.Should().Contain("column-break");
+        result.Should().Contain("break-after: column");
+    }
+
+    [Fact]
+    public void RenderBlockToHtml_PageBreak_ReturnsPageBreakDiv()
+    {
+        // Arrange
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "pageBreak",
+            Content = JsonDocument.Parse("{}"),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToHtml(block);
+
+        // Assert
+        result.Should().Contain("page-break");
+        result.Should().Contain("break-after: page");
+    }
+
+    [Fact]
+    public void RenderBlockToHtml_FootnoteBlock_FallsBackToGenericBlock()
+    {
+        // Arrange — footnote is not yet handled by RenderService, falls to default
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "footnote",
+            Content = JsonDocument.Parse("""{"text":"A footnote.","number":1}"""),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToHtml(block);
+
+        // Assert
+        result.Should().Contain("block-footnote");
+    }
+
+    [Fact]
+    public void RenderBlockToHtml_EmbedBlock_FallsBackToGenericBlock()
+    {
+        // Arrange — embed is not yet handled by RenderService, falls to default
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "embed",
+            Content = JsonDocument.Parse("""{"engine":"latex","code":"\\draw (0,0)"}"""),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToHtml(block);
+
+        // Assert
+        result.Should().Contain("block-embed");
+    }
+
     #endregion
 
     #region RenderBlockToLatex Tests
@@ -482,6 +568,90 @@ public class RenderServiceTests
         result.Should().Contain("\\bottomrule");
         result.Should().Contain("\\end{tabular}");
         result.Should().Contain("\\end{table}");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_ColumnBreak_ReturnsColumnbreak()
+    {
+        // Arrange
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "columnBreak",
+            Content = JsonDocument.Parse("{}"),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToLatex(block);
+
+        // Assert
+        result.Should().Be(@"\columnbreak");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_PageBreak_ReturnsNewpage()
+    {
+        // Arrange
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "pageBreak",
+            Content = JsonDocument.Parse("{}"),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToLatex(block);
+
+        // Assert
+        result.Should().Be(@"\newpage");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_FootnoteBlock_FallsBackToComment()
+    {
+        // Arrange — footnote not yet handled in LaTeX render, falls to unknown
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "footnote",
+            Content = JsonDocument.Parse("""{"text":"A footnote."}"""),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToLatex(block);
+
+        // Assert
+        result.Should().StartWith("% Unknown block type:");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_EmbedBlock_FallsBackToComment()
+    {
+        // Arrange — embed not yet handled in LaTeX render, falls to unknown
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.NewGuid(),
+            Type = "embed",
+            Content = JsonDocument.Parse("""{"engine":"latex","code":"\\draw"}"""),
+            SortOrder = 0
+        };
+        var sut = CreateRenderServiceWithoutDb();
+
+        // Act
+        var result = sut.RenderBlockToLatex(block);
+
+        // Assert
+        result.Should().StartWith("% Unknown block type:");
     }
 
     #endregion

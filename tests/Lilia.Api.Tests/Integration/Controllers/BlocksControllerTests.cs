@@ -145,6 +145,104 @@ public class BlocksControllerTests : IntegrationTestBase
         getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // --- POST footnote block ---
+
+    [Fact]
+    public async Task CreateBlock_Footnote_ReturnsCreated()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+
+        var response = await Client.PostAsJsonAsync($"/api/documents/{doc.Id}/blocks", new
+        {
+            type = "footnote",
+            content = JsonSerializer.Deserialize<JsonElement>("""{"text":"This is a footnote.","number":1}"""),
+            sortOrder = 0
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var block = await response.Content.ReadFromJsonAsync<BlockDto>();
+        block!.Type.Should().Be("footnote");
+        block.Content.GetProperty("text").GetString().Should().Be("This is a footnote.");
+    }
+
+    // --- POST embed block ---
+
+    [Fact]
+    public async Task CreateBlock_Embed_LaTeX_ReturnsCreated()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+
+        var response = await Client.PostAsJsonAsync($"/api/documents/{doc.Id}/blocks", new
+        {
+            type = "embed",
+            content = JsonSerializer.Deserialize<JsonElement>("""{"engine":"latex","code":"\\begin{tikzpicture}\\draw (0,0) circle (1);\\end{tikzpicture}","caption":"A circle","label":"fig:circle"}"""),
+            sortOrder = 0
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var block = await response.Content.ReadFromJsonAsync<BlockDto>();
+        block!.Type.Should().Be("embed");
+        block.Content.GetProperty("engine").GetString().Should().Be("latex");
+        block.Content.GetProperty("code").GetString().Should().Contain("tikzpicture");
+    }
+
+    [Fact]
+    public async Task CreateBlock_Embed_Typst_ReturnsCreated()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+
+        var response = await Client.PostAsJsonAsync($"/api/documents/{doc.Id}/blocks", new
+        {
+            type = "embed",
+            content = JsonSerializer.Deserialize<JsonElement>("""{"engine":"typst","code":"#circle(radius: 1cm)"}"""),
+            sortOrder = 0
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var block = await response.Content.ReadFromJsonAsync<BlockDto>();
+        block!.Type.Should().Be("embed");
+        block.Content.GetProperty("engine").GetString().Should().Be("typst");
+    }
+
+    // --- POST columnBreak block ---
+
+    [Fact]
+    public async Task CreateBlock_ColumnBreak_ReturnsCreated()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+
+        var response = await Client.PostAsJsonAsync($"/api/documents/{doc.Id}/blocks", new
+        {
+            type = "columnBreak",
+            content = JsonSerializer.Deserialize<JsonElement>("""{}"""),
+            sortOrder = 0
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var block = await response.Content.ReadFromJsonAsync<BlockDto>();
+        block!.Type.Should().Be("columnBreak");
+    }
+
+    // --- Footnote ordering ---
+
+    [Fact]
+    public async Task GetBlocks_FootnotesPreserveOrder()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Main text"}""", 0);
+        await SeedBlockAsync(doc.Id, "footnote", """{"text":"First footnote","number":1}""", 1);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"More text"}""", 2);
+        await SeedBlockAsync(doc.Id, "footnote", """{"text":"Second footnote","number":2}""", 3);
+
+        var response = await Client.GetAsync($"/api/documents/{doc.Id}/blocks");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var blocks = await response.Content.ReadFromJsonAsync<List<BlockDto>>();
+        blocks.Should().HaveCount(4);
+        blocks![1].Type.Should().Be("footnote");
+        blocks[3].Type.Should().Be("footnote");
+    }
+
     // --- PUT convert ---
 
     [Fact]
