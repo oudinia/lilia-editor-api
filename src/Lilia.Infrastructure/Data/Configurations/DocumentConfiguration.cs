@@ -31,6 +31,17 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("draft");
         builder.Property(d => d.LastAutoSavedAt).HasColumnName("last_auto_saved_at");
 
+        // Layout fields
+        builder.Property(d => d.MarginTop).HasColumnName("margin_top");
+        builder.Property(d => d.MarginBottom).HasColumnName("margin_bottom");
+        builder.Property(d => d.MarginLeft).HasColumnName("margin_left");
+        builder.Property(d => d.MarginRight).HasColumnName("margin_right");
+        builder.Property(d => d.HeaderText).HasColumnName("header_text");
+        builder.Property(d => d.FooterText).HasColumnName("footer_text");
+        builder.Property(d => d.LineSpacing).HasColumnName("line_spacing");
+        builder.Property(d => d.ParagraphIndent).HasColumnName("paragraph_indent");
+        builder.Property(d => d.PageNumbering).HasColumnName("page_numbering").HasMaxLength(20);
+
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);
         builder.HasIndex(d => d.ShareLink).IsUnique();
