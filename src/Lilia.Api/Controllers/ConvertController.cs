@@ -256,24 +256,24 @@ public class ConvertController : ControllerBase
                 }
 
                 string content;
-                string contentType;
+                string outputContentType;
                 string fileExtension;
 
                 switch (targetFormat)
                 {
                     case "latex":
                         content = RenderImportDocumentToLatex(importResult);
-                        contentType = "application/x-tex";
+                        outputContentType = "application/x-tex";
                         fileExtension = ".tex";
                         break;
                     case "html":
                         content = RenderImportDocumentToHtml(importResult);
-                        contentType = "text/html";
+                        outputContentType = "text/html";
                         fileExtension = ".html";
                         break;
                     case "markdown":
                         content = RenderImportDocumentToMarkdown(importResult);
-                        contentType = "text/markdown";
+                        outputContentType = "text/markdown";
                         fileExtension = ".md";
                         break;
                     default:
@@ -284,7 +284,7 @@ public class ConvertController : ControllerBase
 
                 var jobId = Guid.NewGuid();
                 var filename = Path.GetFileNameWithoutExtension(file.FileName) + fileExtension;
-                await StoreConversionResultAsync(jobId, Encoding.UTF8.GetBytes(content), contentType, filename);
+                await StoreConversionResultAsync(jobId, Encoding.UTF8.GetBytes(content), outputContentType, filename);
 
                 _logger.LogInformation(
                     "[Convert] {ConversionType}: file={FileName}, size={SizeKB}KB, elapsed={ElapsedMs}ms",

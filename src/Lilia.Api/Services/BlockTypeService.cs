@@ -6,36 +6,153 @@ namespace Lilia.Api.Services;
 
 public class BlockTypeService : IBlockTypeService
 {
+    public const string CategoryDocument = "document";
+    public const string CategoryInvoice = "invoice";
+
     private static readonly List<BlockTypeMetadataDto> BlockTypeDefinitions = BuildBlockTypes();
 
     private static List<BlockTypeMetadataDto> BuildBlockTypes()
     {
         return
         [
-            MakeBlockType(BlockTypes.Paragraph, "Paragraph", "Plain text paragraph", "paragraphMark", new { text = "" }),
-            MakeBlockType(BlockTypes.Heading, "Heading", "Section heading (H1-H4)", "fontFamily", new { text = "", level = 1 }),
-            MakeBlockType(BlockTypes.Equation, "Equation", "LaTeX math equation", "calculator", new { latex = "", displayMode = true }),
-            MakeBlockType(BlockTypes.Figure, "Figure", "Image with caption", "image", new { src = "", caption = "", alt = "" }),
-            MakeBlockType(BlockTypes.Code, "Code", "Code block with syntax highlighting", "code", new { code = "", language = "javascript" }),
-            MakeBlockType(BlockTypes.List, "List", "Numbered or bulleted list", "listOrdered", new { items = Array.Empty<string>(), ordered = false }),
-            MakeBlockType(BlockTypes.Blockquote, "Quote", "Block quotation", "rightDoubleQuotes", new { text = "" }),
-            MakeBlockType(BlockTypes.Table, "Table", "Data table", "table", new { headers = new[] { "Column 1", "Column 2", "Column 3" }, rows = new[] { new[] { "", "", "" }, new[] { "", "", "" } } }),
-            MakeBlockType(BlockTypes.Theorem, "Theorem", "Theorem, definition, lemma, proof", "stickyNote", new { theoremType = "theorem", title = "", text = "", label = "" }),
-            MakeBlockType(BlockTypes.Abstract, "Abstract", "Document abstract section", "file", new { title = "Abstract", text = "" }),
-            MakeBlockType(BlockTypes.Bibliography, "Bibliography", "Reference list", "book", new { title = "References", style = "apa", entries = Array.Empty<object>() }),
-            MakeBlockType(BlockTypes.TableOfContents, "Table of Contents", "Auto-generated contents from headings", "listUnordered", new { title = "Table of Contents" }),
-            MakeBlockType(BlockTypes.PageBreak, "Page Break", "Force content to start on new page", "horizontalRule", new { }),
-            MakeBlockType(BlockTypes.ColumnBreak, "Column Break", "Force content to next column", "layoutSideByLarge", new { }),
-            MakeBlockType(BlockTypes.Embed, "Embed", "Raw LaTeX or Typst code block", "terminal2", new { engine = "latex", code = "", label = "", caption = "" }),
-            MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", new { text = "" })
+            // Document block types
+            MakeBlockType(BlockTypes.Paragraph, "Paragraph", "Plain text paragraph", "paragraphMark", CategoryDocument, new { text = "" }),
+            MakeBlockType(BlockTypes.Heading, "Heading", "Section heading (H1-H4)", "fontFamily", CategoryDocument, new { text = "", level = 1 }),
+            MakeBlockType(BlockTypes.Equation, "Equation", "LaTeX math equation", "calculator", CategoryDocument, new { latex = "", displayMode = true }),
+            MakeBlockType(BlockTypes.Figure, "Figure", "Image with caption", "image", CategoryDocument, new { src = "", caption = "", alt = "" }),
+            MakeBlockType(BlockTypes.Code, "Code", "Code block with syntax highlighting", "code", CategoryDocument, new { code = "", language = "javascript" }),
+            MakeBlockType(BlockTypes.List, "List", "Numbered or bulleted list", "listOrdered", CategoryDocument, new { items = Array.Empty<string>(), ordered = false }),
+            MakeBlockType(BlockTypes.Blockquote, "Quote", "Block quotation", "rightDoubleQuotes", CategoryDocument, new { text = "" }),
+            MakeBlockType(BlockTypes.Table, "Table", "Data table", "table", CategoryDocument, new { headers = new[] { "Column 1", "Column 2", "Column 3" }, rows = new[] { new[] { "", "", "" }, new[] { "", "", "" } } }),
+            MakeBlockType(BlockTypes.Theorem, "Theorem", "Theorem, definition, lemma, proof", "stickyNote", CategoryDocument, new { theoremType = "theorem", title = "", text = "", label = "" }),
+            MakeBlockType(BlockTypes.Abstract, "Abstract", "Document abstract section", "file", CategoryDocument, new { title = "Abstract", text = "" }),
+            MakeBlockType(BlockTypes.Bibliography, "Bibliography", "Reference list", "book", CategoryDocument, new { title = "References", style = "apa", entries = Array.Empty<object>() }),
+            MakeBlockType(BlockTypes.TableOfContents, "Table of Contents", "Auto-generated contents from headings", "listUnordered", CategoryDocument, new { title = "Table of Contents" }),
+            MakeBlockType(BlockTypes.PageBreak, "Page Break", "Force content to start on new page", "horizontalRule", CategoryDocument, new { }),
+            MakeBlockType(BlockTypes.ColumnBreak, "Column Break", "Force content to next column", "layoutSideByLarge", CategoryDocument, new { }),
+            MakeBlockType(BlockTypes.Embed, "Embed", "Raw LaTeX or Typst code block", "terminal2", CategoryDocument, new { engine = "latex", code = "", label = "", caption = "" }),
+            MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", CategoryDocument, new { text = "" }),
+
+            // Invoice block types
+            MakeBlockType(BlockTypes.InvHeader, "Invoice Header", "Invoice metadata: number, dates, currency, type", "fileInvoice", CategoryInvoice, new
+            {
+                invoiceNumber = "",
+                issueDate = "",
+                dueDate = "",
+                currency = "EUR",
+                invoiceType = "380",
+                taxCurrencyCode = (string?)null,
+                buyerReference = (string?)null,
+                contractReference = (string?)null,
+                projectReference = (string?)null,
+                precedingInvoiceRef = (string?)null,
+                note = (string?)null,
+                taxPointDate = (string?)null,
+                periodStart = (string?)null,
+                periodEnd = (string?)null
+            }),
+            MakeBlockType(BlockTypes.InvParty, "Invoice Party", "Seller or buyer party with address and tax IDs", "users", CategoryInvoice, new
+            {
+                role = "seller",
+                name = "",
+                tradingName = (string?)null,
+                street = "",
+                streetAdditional = (string?)null,
+                city = "",
+                postalCode = "",
+                countrySubdivision = (string?)null,
+                countryCode = "",
+                vatId = (string?)null,
+                taxRegistrationId = (string?)null,
+                legalRegistrationId = (string?)null,
+                legalRegistrationScheme = (string?)null,
+                email = (string?)null,
+                phone = (string?)null,
+                contactName = (string?)null,
+                contactPhone = (string?)null,
+                contactEmail = (string?)null,
+                electronicAddress = (string?)null,
+                electronicAddressScheme = (string?)null,
+                logo = (string?)null,
+                bankAccount = (object?)null
+            }),
+            MakeBlockType(BlockTypes.InvLineItems, "Line Items", "Invoice line item table", "listOrdered", CategoryInvoice, new
+            {
+                items = Array.Empty<object>(),
+                columns = new[] { "description", "quantity", "unitCode", "unitPrice", "taxCategoryCode", "taxRate", "netAmount" }
+            }),
+            MakeBlockType(BlockTypes.InvTaxSummary, "Tax Summary", "Per-rate VAT/tax breakdown", "percentage", CategoryInvoice, new
+            {
+                breakdowns = Array.Empty<object>(),
+                taxTotalAmount = 0m,
+                taxCurrencyTotalAmount = (decimal?)null
+            }),
+            MakeBlockType(BlockTypes.InvTotals, "Invoice Totals", "Monetary totals: subtotal, tax, amount due", "currencyEuro", CategoryInvoice, new
+            {
+                sumOfLineNetAmounts = 0m,
+                sumOfAllowances = 0m,
+                sumOfCharges = 0m,
+                invoiceSubtotal = 0m,
+                totalTaxAmount = 0m,
+                invoiceTotal = 0m,
+                prepaidAmount = 0m,
+                roundingAmount = 0m,
+                amountDue = 0m
+            }),
+            MakeBlockType(BlockTypes.InvPayment, "Payment Information", "Payment method, bank details, terms", "creditCard", CategoryInvoice, new
+            {
+                paymentMeansCode = "58",
+                paymentMeansText = (string?)null,
+                paymentId = (string?)null,
+                iban = (string?)null,
+                bic = (string?)null,
+                bankName = (string?)null,
+                accountName = (string?)null,
+                paymentTerms = (string?)null,
+                earlyPaymentDiscount = (object?)null,
+                directDebitMandateId = (string?)null,
+                directDebitCreditorId = (string?)null,
+                cardPan = (string?)null
+            }),
+            MakeBlockType(BlockTypes.InvAllowanceCharge, "Allowance/Charge", "Document-level discount or surcharge", "discount", CategoryInvoice, new
+            {
+                isCharge = false,
+                reason = "",
+                reasonCode = (string?)null,
+                percentage = (decimal?)null,
+                baseAmount = (decimal?)null,
+                amount = 0m,
+                taxCategoryCode = (string?)null,
+                taxRate = (decimal?)null
+            }),
+            MakeBlockType(BlockTypes.InvDelivery, "Delivery Information", "Delivery date, location, and party", "truck", CategoryInvoice, new
+            {
+                deliveryDate = (string?)null,
+                deliveryLocationId = (string?)null,
+                deliveryLocationScheme = (string?)null,
+                deliveryStreet = (string?)null,
+                deliveryCity = (string?)null,
+                deliveryPostalCode = (string?)null,
+                deliveryCountryCode = (string?)null,
+                deliveryCountrySubdivision = (string?)null,
+                deliveryPartyName = (string?)null
+            }),
+            MakeBlockType(BlockTypes.InvNote, "Invoice Note", "Free-text note or attachment reference", "stickyNote", CategoryInvoice, new
+            {
+                text = "",
+                subjectCode = (string?)null,
+                attachmentFilename = (string?)null,
+                attachmentMimeType = (string?)null,
+                attachmentUrl = (string?)null
+            })
         ];
     }
 
-    private static BlockTypeMetadataDto MakeBlockType(string type, string label, string description, string iconName, object defaultContent)
+    private static BlockTypeMetadataDto MakeBlockType(string type, string label, string description, string iconName, string category, object defaultContent)
     {
         var json = JsonSerializer.Serialize(defaultContent);
         using var doc = JsonDocument.Parse(json);
-        return new BlockTypeMetadataDto(type, label, description, iconName, doc.RootElement.Clone());
+        return new BlockTypeMetadataDto(type, label, description, iconName, category, doc.RootElement.Clone());
     }
 
     public List<BlockTypeMetadataDto> GetAllBlockTypes()
@@ -43,18 +160,33 @@ public class BlockTypeService : IBlockTypeService
         return BlockTypeDefinitions;
     }
 
-    public List<BlockTypeMetadataDto> SearchBlockTypes(string query)
+    public List<BlockTypeMetadataDto> GetBlockTypesByCategory(string category)
     {
-        if (string.IsNullOrWhiteSpace(query))
+        return BlockTypeDefinitions
+            .Where(b => b.Category.Equals(category, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public List<BlockTypeMetadataDto> SearchBlockTypes(string query, string? category = null)
+    {
+        if (string.IsNullOrWhiteSpace(query) && string.IsNullOrWhiteSpace(category))
             return BlockTypeDefinitions;
 
-        var q = query.Trim().ToLowerInvariant();
-        return BlockTypeDefinitions
-            .Where(b =>
+        IEnumerable<BlockTypeMetadataDto> results = BlockTypeDefinitions;
+
+        if (!string.IsNullOrWhiteSpace(category))
+            results = results.Where(b => b.Category.Equals(category, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var q = query.Trim().ToLowerInvariant();
+            results = results.Where(b =>
                 b.Label.Contains(q, StringComparison.OrdinalIgnoreCase) ||
                 b.Type.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                b.Description.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+                b.Description.Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return results.ToList();
     }
 
     public JsonDocument GetDefaultContent(string blockType)

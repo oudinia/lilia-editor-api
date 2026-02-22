@@ -18,11 +18,11 @@ public class BlockTypesController : ControllerBase
     }
 
     [HttpGet]
-    public ActionResult<List<BlockTypeMetadataDto>> GetBlockTypes([FromQuery] string? query)
+    public ActionResult<List<BlockTypeMetadataDto>> GetBlockTypes([FromQuery] string? query, [FromQuery] string? category)
     {
-        var blockTypes = string.IsNullOrWhiteSpace(query)
+        var blockTypes = string.IsNullOrWhiteSpace(query) && string.IsNullOrWhiteSpace(category)
             ? _blockTypeService.GetAllBlockTypes()
-            : _blockTypeService.SearchBlockTypes(query);
+            : _blockTypeService.SearchBlockTypes(query ?? "", category);
 
         return Ok(blockTypes);
     }

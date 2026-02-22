@@ -42,6 +42,17 @@ public static class BlockTypes
     public const string Embed = "embed";
     public const string Footnote = "footnote";
 
+    // Invoice block types (inv- namespace)
+    public const string InvHeader = "inv-header";
+    public const string InvParty = "inv-party";
+    public const string InvLineItems = "inv-line-items";
+    public const string InvTaxSummary = "inv-tax-summary";
+    public const string InvTotals = "inv-totals";
+    public const string InvPayment = "inv-payment";
+    public const string InvAllowanceCharge = "inv-allowance-charge";
+    public const string InvDelivery = "inv-delivery";
+    public const string InvNote = "inv-note";
+
     // Legacy aliases for backwards compatibility with existing data
     public const string Quote = "quote";
     public const string Image = "image";
@@ -51,6 +62,8 @@ public static class BlockTypes
     [
         Paragraph, Heading, Equation, Figure, Code, List,
         Blockquote, Table, Theorem, Abstract, Bibliography,
-        TableOfContents, PageBreak, ColumnBreak, Embed, Footnote
+        TableOfContents, PageBreak, ColumnBreak, Embed, Footnote,
+        InvHeader, InvParty, InvLineItems, InvTaxSummary,
+        InvTotals, InvPayment, InvAllowanceCharge, InvDelivery, InvNote
     ];
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
+using Lilia.Import.Models;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,7 @@ public class JobService : IJobService
     private readonly IDocumentService _documentService;
     private readonly IRenderService _renderService;
     private readonly IDocxImportService _docxImportService;
+    private readonly IPdfParser? _pdfParser;
     private readonly IImportProgressService _progressService;
     private readonly IImportReviewService _reviewService;
     private readonly ILogger<JobService> _logger;
@@ -24,7 +26,8 @@ public class JobService : IJobService
         IDocxImportService docxImportService,
         IImportProgressService progressService,
         IImportReviewService reviewService,
-        ILogger<JobService> logger)
+        ILogger<JobService> logger,
+        IPdfParser? pdfParser = null)
     {
         _context = context;
         _documentService = documentService;
@@ -33,6 +36,7 @@ public class JobService : IJobService
         _progressService = progressService;
         _reviewService = reviewService;
         _logger = logger;
+        _pdfParser = pdfParser;
     }
 
     public async Task<List<JobListDto>> GetJobsAsync(string userId, string? status = null, string? jobType = null, int limit = 50, int offset = 0)
@@ -283,210 +287,8 @@ public class JobService : IJobService
                         ? request.Title
                         : Path.GetFileNameWithoutExtension(request.Filename);
 
-                    // Build review blocks from intermediate elements
-                    var reviewBlocks = new List<CreateReviewBlockDto>();
-                    var sortOrder = 0;
-                    var currentListItems = new List<Lilia.Import.Models.ImportListItem>();
-                    var currentListIsOrdered = false;
-                    var currentAbstractTexts = new List<string>();
-                    var processedCount = 0;
-                    var totalElements = elements.Count;
-
-                    foreach (var element in elements)
-                    {
-                        // Flush accumulated abstract paragraphs when we hit a non-abstract element
-                        if (element is not Lilia.Import.Models.ImportAbstract && currentAbstractTexts.Any())
-                        {
-                            reviewBlocks.Add(CreateMergedAbstractBlock(currentAbstractTexts, sortOrder++));
-                            tracker.IncrementBlockCount("abstract");
-                            currentAbstractTexts.Clear();
-                        }
-
-                        // Flush accumulated list items when we hit a non-list element
-                        if (element is not Lilia.Import.Models.ImportListItem && currentListItems.Any())
-                        {
-                            reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
-                            currentListItems.Clear();
-                        }
-
-                        CreateReviewBlockDto? reviewBlock = element switch
-                        {
-                            Lilia.Import.Models.ImportHeading h => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "heading",
-                                Content: JsonSerializer.SerializeToElement(new { text = h.Text, level = h.Level }),
-                                Confidence: 90,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportParagraph p => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "paragraph",
-                                Content: JsonSerializer.SerializeToElement(new { text = p.Text }),
-                                Confidence: 95,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportEquation eq => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "equation",
-                                Content: JsonSerializer.SerializeToElement(new
-                                {
-                                    latex = eq.LatexContent ?? eq.OmmlXml,
-                                    displayMode = !eq.IsInline
-                                }),
-                                Confidence: eq.LatexContent != null ? 80 : 50,
-                                Warnings: eq.LatexContent == null
-                                    ? JsonSerializer.SerializeToElement(new[]
-                                    {
-                                        new { id = Guid.NewGuid().ToString(), type = "EquationConversionFailed", message = "Equation could not be fully converted to LaTeX", severity = "warning" }
-                                    })
-                                    : null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportTable t => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "table",
-                                Content: JsonSerializer.SerializeToElement(ConvertTableToEditorFormat(t)),
-                                Confidence: 85,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportImage img => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "figure",
-                                Content: JsonSerializer.SerializeToElement(new
-                                {
-                                    src = img.Data.Length > 0 ? $"data:{img.MimeType};base64,{Convert.ToBase64String(img.Data)}" : "",
-                                    caption = img.AltText ?? "",
-                                    alt = img.AltText ?? ""
-                                }),
-                                Confidence: img.Data.Length > 0 ? 85 : 40,
-                                Warnings: img.Data.Length == 0
-                                    ? JsonSerializer.SerializeToElement(new[]
-                                    {
-                                        new { id = Guid.NewGuid().ToString(), type = "ImageExtractionFailed", message = "Image could not be extracted from document", severity = "warning" }
-                                    })
-                                    : null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportCodeBlock cb => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "code",
-                                Content: JsonSerializer.SerializeToElement(new
-                                {
-                                    code = cb.Text,
-                                    language = cb.Language ?? "plaintext"
-                                }),
-                                Confidence: 75,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportAbstract => null, // Accumulated below
-                            Lilia.Import.Models.ImportBlockquote bq => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "blockquote",
-                                Content: JsonSerializer.SerializeToElement(new { text = bq.Text }),
-                                Confidence: 80,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportTheorem th => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "theorem",
-                                Content: JsonSerializer.SerializeToElement(new
-                                {
-                                    text = th.Text,
-                                    environmentType = th.EnvironmentType.ToString().ToLowerInvariant(),
-                                    number = th.Number,
-                                    title = th.Title
-                                }),
-                                Confidence: 80,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportBibliographyEntry bib => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "bibliography",
-                                Content: JsonSerializer.SerializeToElement(new
-                                {
-                                    text = bib.Text,
-                                    referenceLabel = bib.ReferenceLabel
-                                }),
-                                Confidence: 75,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            Lilia.Import.Models.ImportListItem => null, // Handle below
-                            Lilia.Import.Models.ImportPageBreak => new CreateReviewBlockDto(
-                                Id: Guid.NewGuid().ToString(),
-                                Type: "pageBreak",
-                                Content: JsonSerializer.SerializeToElement(new { }),
-                                Confidence: 100,
-                                Warnings: null,
-                                SortOrder: sortOrder++,
-                                Depth: 0
-                            ),
-                            _ => null
-                        };
-
-                        // Accumulate abstract paragraphs to create a single abstract block
-                        if (element is Lilia.Import.Models.ImportAbstract abstractElement)
-                        {
-                            if (!string.IsNullOrWhiteSpace(abstractElement.Text))
-                            {
-                                currentAbstractTexts.Add(abstractElement.Text);
-                            }
-                        }
-                        // Accumulate list items to create a single list block
-                        else if (element is Lilia.Import.Models.ImportListItem listItem)
-                        {
-                            if (currentListItems.Any() && currentListIsOrdered != listItem.IsNumbered)
-                            {
-                                reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
-                                currentListItems.Clear();
-                            }
-                            currentListItems.Add(listItem);
-                            currentListIsOrdered = listItem.IsNumbered;
-                        }
-                        else if (reviewBlock != null)
-                        {
-                            reviewBlocks.Add(reviewBlock);
-                            var blockTypeName = element.GetType().Name.Replace("Import", "").ToLowerInvariant();
-                            tracker.IncrementBlockCount(blockTypeName);
-                        }
-
-                        // Report progress every 10 elements
-                        processedCount++;
-                        if (processedCount % 10 == 0 || processedCount == totalElements)
-                        {
-                            var blockType = element.GetType().Name.Replace("Import", "");
-                            await tracker.ReportConvertingBlocksAsync(processedCount, totalElements, blockType);
-                        }
-                    }
-
-                    // Flush any remaining abstract paragraphs
-                    if (currentAbstractTexts.Any())
-                    {
-                        reviewBlocks.Add(CreateMergedAbstractBlock(currentAbstractTexts, sortOrder++));
-                        tracker.IncrementBlockCount("abstract");
-                    }
-
-                    // Flush any remaining list items
-                    if (currentListItems.Any())
-                    {
-                        reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
-                        tracker.IncrementBlockCount("list");
-                    }
+                    // Build review blocks from intermediate elements using shared conversion
+                    var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
 
                     // Report saving phase
                     await tracker.ReportSavingAsync(1, reviewBlocks.Count);
@@ -531,6 +333,96 @@ public class JobService : IJobService
                 finally
                 {
                     // Clean up temp file (persistent copy already saved above)
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+            }
+            else if (request.Format.ToUpperInvariant() == "PDF")
+            {
+                if (_pdfParser == null)
+                    throw new InvalidOperationException("PDF import is not available. The MinerU service is not configured.");
+
+                // Report receiving phase
+                await tracker.ReportReceivingAsync($"Receiving {request.Filename}...");
+
+                // Decode base64 and save to temp file
+                var bytes = Convert.FromBase64String(request.Content);
+                var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.pdf");
+
+                try
+                {
+                    await File.WriteAllBytesAsync(tempPath, bytes);
+
+                    // Report parsing phase
+                    await tracker.ReportParsingAsync("Parsing PDF with MinerU...");
+                    job.Progress = 30;
+                    await _context.SaveChangesAsync();
+
+                    // Map DTO options to ImportOptions model
+                    Lilia.Import.Models.ImportOptions? importOptions = null;
+                    if (request.Options != null)
+                    {
+                        importOptions = new Lilia.Import.Models.ImportOptions
+                        {
+                            PreserveFormatting = request.Options.PreserveFormatting,
+                            ExtractImages = request.Options.ImportImages,
+                            ConvertEquationsToLatex = request.Options.AutoDetectEquations,
+                            DetectHeadingsByFormatting = request.Options.SplitByHeadings,
+                        };
+                    }
+
+                    // Use PDF parser (MinerU-backed)
+                    var importDocument = await _pdfParser.ParseAsync(tempPath, importOptions);
+
+                    var elements = importDocument.Elements;
+                    tracker.SetTotalBlocks(elements.Count);
+                    await tracker.ReportExtractingPagesAsync(1, "Extraction complete");
+
+                    job.Progress = 60;
+                    await _context.SaveChangesAsync();
+
+                    var title = !string.IsNullOrWhiteSpace(request.Title)
+                        ? request.Title
+                        : !string.IsNullOrWhiteSpace(importDocument.Title)
+                            ? importDocument.Title
+                            : Path.GetFileNameWithoutExtension(request.Filename);
+
+                    // Build review blocks from intermediate elements using shared conversion
+                    var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
+
+                    // Report saving phase
+                    await tracker.ReportSavingAsync(1, reviewBlocks.Count);
+
+                    // Move PDF to persistent storage
+                    string? persistentPath = null;
+                    try
+                    {
+                        var importsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uploads", "imports");
+                        Directory.CreateDirectory(importsDir);
+                        persistentPath = Path.Combine(importsDir, $"{job.Id}.pdf");
+                        File.Copy(tempPath, persistentPath, overwrite: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Import] Failed to save PDF to persistent storage for job {JobId}", job.Id);
+                    }
+
+                    // Create review session
+                    var sessionResult = await _reviewService.CreateSessionFromImportAsync(
+                        userId, job.Id, title, reviewBlocks,
+                        sourceFilePath: persistentPath);
+
+                    reviewSessionId = sessionResult.Session.Id;
+
+                    await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
+
+                    _logger.LogInformation("[Import] Created PDF review session {SessionId} with {BlockCount} blocks for job {JobId}",
+                        reviewSessionId, reviewBlocks.Count, job.Id);
+                }
+                finally
+                {
                     if (File.Exists(tempPath))
                     {
                         File.Delete(tempPath);
@@ -837,6 +729,221 @@ public class JobService : IJobService
             j.UpdatedAt,
             j.CompletedAt
         );
+    }
+
+    /// <summary>
+    /// Shared method to convert ImportElement list into CreateReviewBlockDto list.
+    /// Used by both DOCX and PDF import paths.
+    /// </summary>
+    private static async Task<List<CreateReviewBlockDto>> ConvertElementsToReviewBlocksAsync(
+        List<ImportElement> elements,
+        ImportProgressTracker tracker)
+    {
+        var reviewBlocks = new List<CreateReviewBlockDto>();
+        var sortOrder = 0;
+        var currentListItems = new List<ImportListItem>();
+        var currentListIsOrdered = false;
+        var currentAbstractTexts = new List<string>();
+        var processedCount = 0;
+        var totalElements = elements.Count;
+
+        foreach (var element in elements)
+        {
+            // Flush accumulated abstract paragraphs when we hit a non-abstract element
+            if (element is not ImportAbstract && currentAbstractTexts.Any())
+            {
+                reviewBlocks.Add(CreateMergedAbstractBlock(currentAbstractTexts, sortOrder++));
+                tracker.IncrementBlockCount("abstract");
+                currentAbstractTexts.Clear();
+            }
+
+            // Flush accumulated list items when we hit a non-list element
+            if (element is not ImportListItem && currentListItems.Any())
+            {
+                reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
+                currentListItems.Clear();
+            }
+
+            CreateReviewBlockDto? reviewBlock = element switch
+            {
+                ImportHeading h => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "heading",
+                    Content: JsonSerializer.SerializeToElement(new { text = h.Text, level = h.Level }),
+                    Confidence: 90,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportParagraph p => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "paragraph",
+                    Content: JsonSerializer.SerializeToElement(new { text = p.Text }),
+                    Confidence: 95,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportEquation eq => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "equation",
+                    Content: JsonSerializer.SerializeToElement(new
+                    {
+                        latex = eq.LatexContent ?? eq.OmmlXml,
+                        displayMode = !eq.IsInline
+                    }),
+                    Confidence: eq.LatexContent != null ? 80 : 50,
+                    Warnings: eq.LatexContent == null
+                        ? JsonSerializer.SerializeToElement(new[]
+                        {
+                            new { id = Guid.NewGuid().ToString(), type = "EquationConversionFailed", message = "Equation could not be fully converted to LaTeX", severity = "warning" }
+                        })
+                        : null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportTable t => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "table",
+                    Content: JsonSerializer.SerializeToElement(ConvertTableToEditorFormat(t)),
+                    Confidence: 85,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportImage img => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "figure",
+                    Content: JsonSerializer.SerializeToElement(new
+                    {
+                        src = img.Data.Length > 0 ? $"data:{img.MimeType};base64,{Convert.ToBase64String(img.Data)}" : "",
+                        caption = img.AltText ?? "",
+                        alt = img.AltText ?? ""
+                    }),
+                    Confidence: img.Data.Length > 0 ? 85 : 40,
+                    Warnings: img.Data.Length == 0
+                        ? JsonSerializer.SerializeToElement(new[]
+                        {
+                            new { id = Guid.NewGuid().ToString(), type = "ImageExtractionFailed", message = "Image could not be extracted from document", severity = "warning" }
+                        })
+                        : null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportCodeBlock cb => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "code",
+                    Content: JsonSerializer.SerializeToElement(new
+                    {
+                        code = cb.Text,
+                        language = cb.Language ?? "plaintext"
+                    }),
+                    Confidence: 75,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportAbstract => null, // Accumulated below
+                ImportBlockquote bq => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "blockquote",
+                    Content: JsonSerializer.SerializeToElement(new { text = bq.Text }),
+                    Confidence: 80,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportTheorem th => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "theorem",
+                    Content: JsonSerializer.SerializeToElement(new
+                    {
+                        text = th.Text,
+                        environmentType = th.EnvironmentType.ToString().ToLowerInvariant(),
+                        number = th.Number,
+                        title = th.Title
+                    }),
+                    Confidence: 80,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportBibliographyEntry bib => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "bibliography",
+                    Content: JsonSerializer.SerializeToElement(new
+                    {
+                        text = bib.Text,
+                        referenceLabel = bib.ReferenceLabel
+                    }),
+                    Confidence: 75,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                ImportListItem => null, // Handle below
+                ImportPageBreak => new CreateReviewBlockDto(
+                    Id: Guid.NewGuid().ToString(),
+                    Type: "pageBreak",
+                    Content: JsonSerializer.SerializeToElement(new { }),
+                    Confidence: 100,
+                    Warnings: null,
+                    SortOrder: sortOrder++,
+                    Depth: 0
+                ),
+                _ => null
+            };
+
+            // Accumulate abstract paragraphs to create a single abstract block
+            if (element is ImportAbstract abstractElement)
+            {
+                if (!string.IsNullOrWhiteSpace(abstractElement.Text))
+                {
+                    currentAbstractTexts.Add(abstractElement.Text);
+                }
+            }
+            // Accumulate list items to create a single list block
+            else if (element is ImportListItem listItem)
+            {
+                if (currentListItems.Any() && currentListIsOrdered != listItem.IsNumbered)
+                {
+                    reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
+                    currentListItems.Clear();
+                }
+                currentListItems.Add(listItem);
+                currentListIsOrdered = listItem.IsNumbered;
+            }
+            else if (reviewBlock != null)
+            {
+                reviewBlocks.Add(reviewBlock);
+                var blockTypeName = element.GetType().Name.Replace("Import", "").ToLowerInvariant();
+                tracker.IncrementBlockCount(blockTypeName);
+            }
+
+            // Report progress every 10 elements
+            processedCount++;
+            if (processedCount % 10 == 0 || processedCount == totalElements)
+            {
+                var blockType = element.GetType().Name.Replace("Import", "");
+                await tracker.ReportConvertingBlocksAsync(processedCount, totalElements, blockType);
+            }
+        }
+
+        // Flush any remaining abstract paragraphs
+        if (currentAbstractTexts.Any())
+        {
+            reviewBlocks.Add(CreateMergedAbstractBlock(currentAbstractTexts, sortOrder++));
+            tracker.IncrementBlockCount("abstract");
+        }
+
+        // Flush any remaining list items
+        if (currentListItems.Any())
+        {
+            reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
+            tracker.IncrementBlockCount("list");
+        }
+
+        return reviewBlocks;
     }
 
     /// <summary>

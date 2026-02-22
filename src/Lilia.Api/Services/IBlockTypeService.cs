@@ -6,7 +6,8 @@ namespace Lilia.Api.Services;
 public interface IBlockTypeService
 {
     List<BlockTypeMetadataDto> GetAllBlockTypes();
-    List<BlockTypeMetadataDto> SearchBlockTypes(string query);
+    List<BlockTypeMetadataDto> GetBlockTypesByCategory(string category);
+    List<BlockTypeMetadataDto> SearchBlockTypes(string query, string? category = null);
     JsonDocument GetDefaultContent(string blockType);
     bool IsValidBlockType(string blockType);
 }

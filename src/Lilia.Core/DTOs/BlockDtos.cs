@@ -56,5 +56,6 @@ public record BlockTypeMetadataDto(
     string Label,
     string Description,
     string IconName,
+    string Category,
     JsonElement DefaultContent
 );

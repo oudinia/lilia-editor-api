@@ -95,5 +95,67 @@ public class BlockTypesControllerTests : IntegrationTestBase
         blockType.Should().NotBeNull();
         blockType!.Type.Should().Be(type);
         blockType.Label.Should().NotBeNullOrEmpty();
+        blockType.Category.Should().Be("document");
+    }
+
+    [Fact]
+    public async Task GetBlockTypes_WithCategoryDocument_ReturnsOnlyDocumentTypes()
+    {
+        var response = await Client.GetAsync("/api/blocktypes?category=document");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var blockTypes = await response.Content.ReadFromJsonAsync<List<BlockTypeMetadataDto>>();
+        blockTypes.Should().NotBeNull();
+        blockTypes!.Should().OnlyContain(bt => bt.Category == "document");
+        blockTypes.Should().Contain(bt => bt.Type == "paragraph");
+        blockTypes.Should().NotContain(bt => bt.Type.StartsWith("inv-"));
+    }
+
+    [Fact]
+    public async Task GetBlockTypes_WithCategoryInvoice_ReturnsOnlyInvoiceTypes()
+    {
+        var response = await Client.GetAsync("/api/blocktypes?category=invoice");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var blockTypes = await response.Content.ReadFromJsonAsync<List<BlockTypeMetadataDto>>();
+        blockTypes.Should().NotBeNull();
+        blockTypes!.Should().OnlyContain(bt => bt.Category == "invoice");
+        blockTypes!.Count.Should().Be(9);
+        blockTypes.Should().Contain(bt => bt.Type == "inv-header");
+        blockTypes.Should().NotContain(bt => bt.Type == "paragraph");
+    }
+
+    [Fact]
+    public async Task GetBlockTypes_WithQueryAndCategory_FiltersBoth()
+    {
+        var response = await Client.GetAsync("/api/blocktypes?query=tax&category=invoice");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var blockTypes = await response.Content.ReadFromJsonAsync<List<BlockTypeMetadataDto>>();
+        blockTypes.Should().NotBeNull();
+        blockTypes!.Should().OnlyContain(bt => bt.Category == "invoice");
+        blockTypes.Should().Contain(bt => bt.Type == "inv-tax-summary");
+    }
+
+    [Theory]
+    [InlineData("inv-header")]
+    [InlineData("inv-party")]
+    [InlineData("inv-line-items")]
+    [InlineData("inv-tax-summary")]
+    [InlineData("inv-totals")]
+    [InlineData("inv-payment")]
+    [InlineData("inv-allowance-charge")]
+    [InlineData("inv-delivery")]
+    [InlineData("inv-note")]
+    public async Task GetBlockType_ReturnsMetadata_ForEachInvoiceType(string type)
+    {
+        var response = await Client.GetAsync($"/api/blocktypes/{type}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var blockType = await response.Content.ReadFromJsonAsync<BlockTypeMetadataDto>();
+        blockType.Should().NotBeNull();
+        blockType!.Type.Should().Be(type);
+        blockType.Label.Should().NotBeNullOrEmpty();
+        blockType.Category.Should().Be("invoice");
     }
 }

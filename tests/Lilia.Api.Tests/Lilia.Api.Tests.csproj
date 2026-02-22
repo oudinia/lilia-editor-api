@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lilia.Api\Lilia.Api.csproj" />
     <ProjectReference Include="..\..\src\Lilia.Core\Lilia.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lilia.Import\Lilia.Import.csproj" />
     <ProjectReference Include="..\..\src\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
   </ItemGroup>
 
