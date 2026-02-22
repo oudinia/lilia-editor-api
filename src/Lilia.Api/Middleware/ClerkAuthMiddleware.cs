@@ -68,7 +68,7 @@ public class ClerkUserSyncMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ClerkUserSyncMiddleware> _logger;
-    private static readonly TimeSpan SyncCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan SyncCacheDuration = TimeSpan.FromMinutes(30);
 
     public ClerkUserSyncMiddleware(RequestDelegate next, ILogger<ClerkUserSyncMiddleware> logger)
     {
@@ -76,7 +76,7 @@ public class ClerkUserSyncMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService, IDistributedCache cache, IAuditService auditService)
+    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService, IDistributedCache cache)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -105,24 +105,36 @@ public class ClerkUserSyncMiddleware
                 _logger.LogDebug("JWT Claims - UserId: {UserId}, Email: {Email}, Name: {Name}",
                     userId, email ?? "NULL", name ?? "NULL");
 
-                // If email is missing from JWT, fetch from Clerk API
+                // Only fetch from Clerk API if email is missing AND user doesn't exist in DB yet.
+                // Clerk JWTs include email/name claims, so this should rarely trigger.
                 if (string.IsNullOrEmpty(email))
                 {
-                    _logger.LogInformation("Email not in JWT, fetching from Clerk API for user {UserId}", userId);
-
-                    var clerkUser = await clerkService.GetUserAsync(userId);
-                    if (clerkUser != null)
+                    var existingUser = await userService.GetUserAsync(userId);
+                    if (existingUser == null)
                     {
-                        email = clerkUser.PrimaryEmail;
-                        name ??= clerkUser.FullName;
-                        image ??= clerkUser.ImageUrl;
+                        _logger.LogInformation("Email not in JWT and user not in DB, fetching from Clerk API for user {UserId}", userId);
 
-                        _logger.LogInformation("Fetched from Clerk API - Email: {Email}, Name: {Name}",
-                            email ?? "NULL", name ?? "NULL");
+                        var clerkUser = await clerkService.GetUserAsync(userId);
+                        if (clerkUser != null)
+                        {
+                            email = clerkUser.PrimaryEmail;
+                            name ??= clerkUser.FullName;
+                            image ??= clerkUser.ImageUrl;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Could not fetch user data from Clerk API for {UserId}", userId);
+                        }
                     }
                     else
                     {
-                        _logger.LogWarning("Could not fetch user data from Clerk API for {UserId}", userId);
+                        // User already in DB, no need to sync — just cache and move on
+                        await cache.SetAsync(cacheKey, [1], new DistributedCacheEntryOptions
+                        {
+                            AbsoluteExpirationRelativeToNow = SyncCacheDuration
+                        });
+                        await _next(context);
+                        return;
                     }
                 }
 
@@ -143,9 +155,6 @@ public class ClerkUserSyncMiddleware
                         {
                             AbsoluteExpirationRelativeToNow = SyncCacheDuration
                         });
-
-                        // Audit first-sync as a login event
-                        await auditService.LogAsync("user.login", "User", userId, new { email, name });
 
                         _logger.LogDebug("User {UserId} synced to database and cached", userId);
                     }
