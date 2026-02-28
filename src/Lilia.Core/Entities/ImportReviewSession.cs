@@ -13,6 +13,7 @@ public class ImportReviewSession
     public Guid? DocumentId { get; set; }
     public JsonDocument? ParagraphTraces { get; set; }
     public string? SourceFilePath { get; set; }
+    public string? RawImportData { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }

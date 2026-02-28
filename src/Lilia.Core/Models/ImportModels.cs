@@ -39,7 +39,8 @@ public enum BlockType
     Blockquote,
     Theorem,
     Bibliography,
-    List
+    List,
+    TableOfContents
 }
 
 public class Block

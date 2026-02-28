@@ -46,6 +46,39 @@ public class MineruParseResponse
 }
 
 /// <summary>
+/// Options passed to MinerU's /file_parse endpoint to control parsing behavior.
+/// </summary>
+public class MineruParseOptions
+{
+    /// <summary>
+    /// Language list for OCR (e.g., "en", "ch"). Default: "en".
+    /// </summary>
+    public string Language { get; set; } = "en";
+
+    /// <summary>
+    /// Whether to enable formula/equation detection and parsing.
+    /// Disabling significantly reduces parse time for text-heavy documents.
+    /// </summary>
+    public bool FormulaEnable { get; set; } = true;
+
+    /// <summary>
+    /// Whether to enable table structure recognition.
+    /// Disabling reduces parse time when tables are not needed.
+    /// </summary>
+    public bool TableEnable { get; set; } = true;
+
+    /// <summary>
+    /// Zero-based start page index (inclusive). Null = start from first page.
+    /// </summary>
+    public int? StartPageId { get; set; }
+
+    /// <summary>
+    /// Zero-based end page index (inclusive). Null = parse to last page.
+    /// </summary>
+    public int? EndPageId { get; set; }
+}
+
+/// <summary>
 /// A single content block from MinerU's parsed output.
 /// </summary>
 public class MineruContentBlock

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Disable exe generation - use DLL instead (avoids Windows Defender blocking) -->
     <UseAppHost>false</UseAppHost>
+    <UserSecretsId>ccac0501-488b-479d-97ea-48054276a00d</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

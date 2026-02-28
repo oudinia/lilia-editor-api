@@ -10,7 +10,7 @@ public interface IMineruClient
     /// <summary>
     /// Send a PDF file to MinerU for parsing and return the structured content.
     /// </summary>
-    Task<MineruParseResponse> ParsePdfAsync(string filePath, CancellationToken cancellationToken = default);
+    Task<MineruParseResponse> ParsePdfAsync(string filePath, MineruParseOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Fetch an extracted image from MinerU by its relative path.

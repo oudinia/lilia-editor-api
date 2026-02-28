@@ -9,16 +9,38 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__LiliaCore=Host=host.docker.internal;Database=lilia;Username=postgres;Password=postgres
       - MinerU__BaseUrl=http://mineru:8000
+      - MinerU__Backend=pipeline
     depends_on:
       mineru:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    profiles: ["cpu"]
 
+  api-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__LiliaCore=Host=host.docker.internal;Database=lilia;Username=postgres;Password=postgres
+      - MinerU__BaseUrl=http://mineru-gpu:8000
+      - MinerU__Backend=hybrid-auto-engine
+      - MinerU__BatchPageSize=0
+    depends_on:
+      mineru-gpu:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["gpu"]
+
+  # CPU-only MinerU (pipeline backend, no GPU required)
   mineru:
     build:
       context: docker/mineru
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.cpu
     ports:
       - "8000:8000"
     healthcheck:
@@ -27,3 +49,32 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    profiles: ["cpu"]
+
+  # GPU MinerU (VLM/hybrid backend, requires NVIDIA GPU with 10GB+ VRAM)
+  # Usage: docker compose --profile gpu up
+  mineru-gpu:
+    build:
+      context: docker/mineru
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    shm_size: "32g"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    profiles: ["gpu"]

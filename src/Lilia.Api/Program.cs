@@ -201,10 +201,20 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();
 
-// Register MinerU PDF import services (optional — PDF import disabled if MinerU not configured)
-builder.Services.Configure<Lilia.Import.Models.MineruOptions>(builder.Configuration.GetSection("MinerU"));
-builder.Services.AddHttpClient<Lilia.Import.Interfaces.IMineruClient, Lilia.Import.Services.MineruClient>();
-builder.Services.AddScoped<Lilia.Import.Interfaces.IPdfParser, Lilia.Import.Services.PdfImportService>();
+// Register PDF import services — provider-based (mathpix or mineru)
+var pdfProvider = builder.Configuration["PdfParser:Provider"] ?? "mineru";
+if (pdfProvider == "mathpix")
+{
+    builder.Services.Configure<Lilia.Import.Models.MathpixOptions>(builder.Configuration.GetSection("Mathpix"));
+    builder.Services.AddHttpClient<Lilia.Import.Interfaces.IMathpixClient, Lilia.Import.Services.MathpixClient>();
+    builder.Services.AddScoped<Lilia.Import.Interfaces.IPdfParser, Lilia.Import.Services.MathpixPdfImportService>();
+}
+else
+{
+    builder.Services.Configure<Lilia.Import.Models.MineruOptions>(builder.Configuration.GetSection("MinerU"));
+    builder.Services.AddHttpClient<Lilia.Import.Interfaces.IMineruClient, Lilia.Import.Services.MineruClient>();
+    builder.Services.AddScoped<Lilia.Import.Interfaces.IPdfParser, Lilia.Import.Services.PdfImportService>();
+}
 
 // Register Audit Service
 builder.Services.AddHttpContextAccessor();

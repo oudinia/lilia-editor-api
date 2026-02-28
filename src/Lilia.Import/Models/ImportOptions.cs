@@ -241,6 +241,20 @@ public class ImportOptions
     public bool UseAIEnhancement => AIOptions?.Enabled == true;
 
     /// <summary>
+    /// Whether to enable formula/equation detection during PDF import (MinerU).
+    /// Disabling significantly reduces parse time for text-heavy documents.
+    /// Default: true
+    /// </summary>
+    public bool PdfFormulaEnable { get; set; } = true;
+
+    /// <summary>
+    /// Whether to enable table structure recognition during PDF import (MinerU).
+    /// Disabling reduces parse time when tables are not needed.
+    /// Default: true
+    /// </summary>
+    public bool PdfTableEnable { get; set; } = true;
+
+    /// <summary>
     /// Default import options.
     /// </summary>
     public static ImportOptions Default => new();

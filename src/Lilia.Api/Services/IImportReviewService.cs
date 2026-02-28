@@ -37,7 +37,8 @@ public interface IImportReviewService
         List<CreateReviewBlockDto> blocks,
         List<object>? warnings = null,
         System.Text.Json.JsonElement? paragraphTraces = null,
-        string? sourceFilePath = null
+        string? sourceFilePath = null,
+        string? rawImportData = null
     );
 
     // Paragraph traces

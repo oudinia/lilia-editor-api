@@ -19,6 +19,7 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
         builder.Property(s => s.OriginalWarnings).HasColumnName("original_warnings").HasColumnType("jsonb");
         builder.Property(s => s.ParagraphTraces).HasColumnName("paragraph_traces").HasColumnType("jsonb");
         builder.Property(s => s.SourceFilePath).HasColumnName("source_file_path").HasMaxLength(1000);
+        builder.Property(s => s.RawImportData).HasColumnName("raw_import_data");
         builder.Property(s => s.DocumentId).HasColumnName("document_id");
         builder.Property(s => s.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");

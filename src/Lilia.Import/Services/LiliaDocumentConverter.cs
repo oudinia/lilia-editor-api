@@ -235,6 +235,7 @@ public class LiliaDocumentConverter : IImportConverter
             ImportBlockquote bq => ConvertBlockquote(bq, sortOrder, options),
             ImportTheorem thm => ConvertTheorem(thm, sortOrder, options),
             ImportBibliographyEntry bib => ConvertBibliographyEntry(bib, sortOrder, options),
+            ImportTableOfContents toc => ConvertTableOfContents(toc, sortOrder),
             ImportPageBreak => ConvertPageBreak(sortOrder),
             _ => null
         };
@@ -318,6 +319,15 @@ public class LiliaDocumentConverter : IImportConverter
     private Block ConvertPageBreak(int sortOrder)
     {
         return CreateBlock(BlockType.PageBreak, "", sortOrder);
+    }
+
+    /// <summary>
+    /// Convert a table of contents element to a Block.
+    /// Content is empty because the editor auto-generates TOC from headings at render time.
+    /// </summary>
+    private Block ConvertTableOfContents(ImportTableOfContents toc, int sortOrder)
+    {
+        return CreateBlock(BlockType.TableOfContents, "", sortOrder);
     }
 
     /// <summary>

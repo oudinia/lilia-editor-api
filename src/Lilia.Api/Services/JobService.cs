@@ -412,7 +412,8 @@ public class JobService : IJobService
                     // Create review session
                     var sessionResult = await _reviewService.CreateSessionFromImportAsync(
                         userId, job.Id, title, reviewBlocks,
-                        sourceFilePath: persistentPath);
+                        sourceFilePath: persistentPath,
+                        rawImportData: importDocument.RawImportData);
 
                     reviewSessionId = sessionResult.Session.Id;
 

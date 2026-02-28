@@ -33,6 +33,12 @@ public class ImportDocument
     public ImportMetadata Metadata { get; set; } = new();
 
     /// <summary>
+    /// Raw output from the import engine (e.g. Mathpix markdown).
+    /// Stored for debugging and integration testing without re-calling external APIs.
+    /// </summary>
+    public string? RawImportData { get; set; }
+
+    /// <summary>
     /// Paragraph-level diagnostic trace of the entire document body.
     /// Each entry records what happened to a body element (matched rule, detected type, raw text).
     /// </summary>

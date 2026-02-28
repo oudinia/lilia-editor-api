@@ -26,8 +26,15 @@ public class MineruClient : IMineruClient
         _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
     }
 
-    public async Task<MineruParseResponse> ParsePdfAsync(string filePath, CancellationToken cancellationToken = default)
+    public async Task<MineruParseResponse> ParsePdfAsync(string filePath, MineruParseOptions? options = null, CancellationToken cancellationToken = default)
     {
+        options ??= new MineruParseOptions
+        {
+            Language = _options.Language,
+            FormulaEnable = _options.FormulaEnable,
+            TableEnable = _options.TableEnable
+        };
+
         if (!File.Exists(filePath))
             throw new FileNotFoundException("PDF file not found", filePath);
 
@@ -36,7 +43,11 @@ public class MineruClient : IMineruClient
         if (fileInfo.Length > maxBytes)
             throw new InvalidOperationException($"PDF file exceeds maximum size of {_options.MaxFileSizeMb} MB");
 
-        _logger.LogInformation("[MinerU] Parsing PDF: {FilePath} ({SizeMb:F1} MB)", filePath, fileInfo.Length / (1024.0 * 1024.0));
+        var pageRange = options.StartPageId.HasValue || options.EndPageId.HasValue
+            ? $" (pages {options.StartPageId ?? 0}-{options.EndPageId?.ToString() ?? "end"})"
+            : "";
+        _logger.LogInformation("[MinerU] Parsing PDF: {FilePath} ({SizeMb:F1} MB){PageRange}, backend={Backend}, formula={FormulaEnable}, table={TableEnable}, lang={Language}",
+            filePath, fileInfo.Length / (1024.0 * 1024.0), pageRange, _options.Backend, options.FormulaEnable, options.TableEnable, options.Language);
 
         using var content = new MultipartFormDataContent();
         var fileStream = File.OpenRead(filePath);
@@ -46,7 +57,15 @@ public class MineruClient : IMineruClient
         content.Add(new StringContent("true"), "return_content_list");
         content.Add(new StringContent("true"), "return_images");
         content.Add(new StringContent("auto"), "parse_method");
-        content.Add(new StringContent("pipeline"), "backend");
+        content.Add(new StringContent(_options.Backend), "backend");
+        content.Add(new StringContent(options.Language), "lang_list");
+        content.Add(new StringContent(options.FormulaEnable.ToString().ToLowerInvariant()), "formula_enable");
+        content.Add(new StringContent(options.TableEnable.ToString().ToLowerInvariant()), "table_enable");
+
+        if (options.StartPageId.HasValue)
+            content.Add(new StringContent(options.StartPageId.Value.ToString()), "start_page_id");
+        if (options.EndPageId.HasValue)
+            content.Add(new StringContent(options.EndPageId.Value.ToString()), "end_page_id");
 
         HttpResponseMessage response;
         try

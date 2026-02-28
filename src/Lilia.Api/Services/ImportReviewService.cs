@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -61,6 +62,44 @@ public class ImportReviewService : IImportReviewService
             };
             blockReviews.Add(review);
         }
+
+        // Auto-insert a tableOfContents block when ≥2 headings are detected and no TOC exists
+        var headingCount = blockReviews.Count(b =>
+            b.OriginalType == BlockTypes.Heading || b.OriginalType == "header");
+        var hasTocBlock = blockReviews.Any(b =>
+            b.OriginalType == BlockTypes.TableOfContents || b.OriginalType == "toc");
+
+        if (headingCount >= 2 && !hasTocBlock)
+        {
+            var tocWarnings = JsonDocument.Parse(
+                """[{"id":"auto-toc-warning","type":"AutoInsertedToc","message":"Auto-inserted TOC — approve to include, reject to skip.","severity":"info"}]""");
+
+            blockReviews.Insert(0, new ImportBlockReview
+            {
+                Id = Guid.NewGuid(),
+                SessionId = session.Id,
+                BlockIndex = -1,
+                BlockId = Guid.NewGuid().ToString(),
+                Status = "pending",
+                OriginalContent = JsonDocument.Parse("{}"),
+                OriginalType = BlockTypes.TableOfContents,
+                Confidence = 100,
+                Warnings = tocWarnings,
+                SortOrder = -1,
+                Depth = 0
+            });
+        }
+
+        // Detect and flag clusters of consecutive headings that look like imported TOC entries.
+        // A run of ≥5 consecutive heading blocks (no other types in between) is almost certainly
+        // a TOC parsed as individual headings by the OCR/import engine.
+        FlagTocHeadingClusters(blockReviews);
+
+        // Correct heading levels based on section numbering in the heading text.
+        // Mathpix often assigns wrong levels — derive from numbering depth instead:
+        //   "Chapter N" / unnumbered front matter → h1
+        //   "1.1 Title" → h2, "2.5.1 Title" → h3, etc.
+        CorrectHeadingLevelsFromNumbering(blockReviews);
 
         _context.ImportBlockReviews.AddRange(blockReviews);
 
@@ -856,7 +895,8 @@ public class ImportReviewService : IImportReviewService
         List<CreateReviewBlockDto> blocks,
         List<object>? warnings = null,
         JsonElement? paragraphTraces = null,
-        string? sourceFilePath = null)
+        string? sourceFilePath = null,
+        string? rawImportData = null)
     {
         var warningsJson = warnings != null
             ? JsonSerializer.SerializeToElement(warnings)
@@ -872,7 +912,7 @@ public class ImportReviewService : IImportReviewService
         var result = await CreateSessionAsync(userId, dto);
 
         // Store paragraph traces and source file path if provided
-        if (paragraphTraces.HasValue || sourceFilePath != null)
+        if (paragraphTraces.HasValue || sourceFilePath != null || rawImportData != null)
         {
             var session = await _context.ImportReviewSessions.FindAsync(result.Session.Id);
             if (session != null)
@@ -882,6 +922,7 @@ public class ImportReviewService : IImportReviewService
                     session.ParagraphTraces = JsonDocument.Parse(paragraphTraces.Value.GetRawText());
                 }
                 session.SourceFilePath = sourceFilePath;
+                session.RawImportData = rawImportData;
                 session.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
@@ -908,6 +949,238 @@ public class ImportReviewService : IImportReviewService
     }
 
     // --- Private Helpers ---
+
+    /// <summary>
+    /// Detects clusters of consecutive heading blocks that are likely imported TOC entries
+    /// (e.g. from Mathpix OCR) and flags them as rejected with an info warning.
+    /// A run of ≥5 consecutive headings with no other block types in between is flagged.
+    /// </summary>
+    private static void FlagTocHeadingClusters(List<ImportBlockReview> blockReviews)
+    {
+        const int minClusterSize = 5;
+        var headingTypes = new HashSet<string> { BlockTypes.Heading, "header" };
+
+        var runStart = -1;
+        var runLength = 0;
+
+        for (var i = 0; i <= blockReviews.Count; i++)
+        {
+            var isHeading = i < blockReviews.Count && headingTypes.Contains(blockReviews[i].OriginalType);
+
+            if (isHeading)
+            {
+                if (runStart == -1) runStart = i;
+                runLength++;
+            }
+            else
+            {
+                // End of a run — flag if long enough
+                if (runLength >= minClusterSize)
+                {
+                    for (var j = runStart; j < runStart + runLength; j++)
+                    {
+                        var block = blockReviews[j];
+                        block.Status = "rejected";
+
+                        // Append a warning to existing warnings
+                        var warningId = Guid.NewGuid().ToString();
+                        var warningJson = "[{\"id\":\"" + warningId + "\",\"type\":\"PossibleTocEntry\",\"message\":\"Likely a TOC entry imported as a heading — auto-rejected. Approve if this is a real section heading.\",\"severity\":\"info\"}]";
+
+                        if (block.Warnings != null)
+                        {
+                            // Merge with existing warnings array
+                            var existing = block.Warnings.RootElement.EnumerateArray().Select(e => e.GetRawText());
+                            var newWarning = JsonDocument.Parse(warningJson).RootElement.EnumerateArray().Select(e => e.GetRawText());
+                            var merged = "[" + string.Join(",", existing.Concat(newWarning)) + "]";
+                            block.Warnings = JsonDocument.Parse(merged);
+                        }
+                        else
+                        {
+                            block.Warnings = JsonDocument.Parse(warningJson);
+                        }
+                    }
+                }
+
+                runStart = -1;
+                runLength = 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Corrects heading levels based on section numbering in the heading text.
+    /// Mathpix/OCR importers often assign wrong levels. This derives the correct level
+    /// from the numbering pattern in the text:
+    ///   "Chapter N" / front matter (Declaration, Abstract, etc.) → h1
+    ///   "N Title" (e.g. "1 Introduction") → h1
+    ///   "N.N Title" (e.g. "1.1 Email Communication") → h2
+    ///   "N.N.N Title" (e.g. "2.5.1 Tokenization") → h3
+    ///   Unnumbered headings without a known pattern → left unchanged
+    /// </summary>
+    private static void CorrectHeadingLevelsFromNumbering(List<ImportBlockReview> blockReviews)
+    {
+        var headingTypes = new HashSet<string> { BlockTypes.Heading, "header" };
+
+        // Known front-matter / top-level heading patterns (unnumbered)
+        var topLevelPatterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "abstract", "acknowledgements", "acknowledgment", "declaration",
+            "certificate", "dedication", "preface", "foreword",
+            "list of figures", "list of tables", "list of abbreviations",
+            "table of contents", "contents", "bibliography", "references",
+            "appendix", "glossary", "index", "conclusion", "summary"
+        };
+
+        ImportBlockReview? previousHeading = null;
+
+        for (var i = 0; i < blockReviews.Count; i++)
+        {
+            var block = blockReviews[i];
+            if (!headingTypes.Contains(block.OriginalType)) continue;
+
+            var text = ExtractTextFromContent(block.OriginalContent);
+            if (string.IsNullOrWhiteSpace(text)) continue;
+
+            var trimmed = text.Trim();
+            int? correctLevel = null;
+
+            // Rule 1: "Chapter N" → reject (it's a label, not content).
+            // The actual chapter title follows as the next heading.
+            if (Regex.IsMatch(trimmed, @"^Chapter\s+\d+\s*$", RegexOptions.IgnoreCase))
+            {
+                block.Status = "rejected";
+                var warningId = Guid.NewGuid().ToString();
+                var warningJson = "[{\"id\":\"" + warningId + "\",\"type\":\"ChapterLabel\",\"message\":\"Chapter label — the chapter title follows as the next heading.\",\"severity\":\"info\"}]";
+                block.Warnings = block.Warnings != null
+                    ? JsonDocument.Parse("[" + string.Join(",",
+                        block.Warnings.RootElement.EnumerateArray().Select(e => e.GetRawText())
+                        .Concat(JsonDocument.Parse(warningJson).RootElement.EnumerateArray().Select(e => e.GetRawText()))) + "]")
+                    : JsonDocument.Parse(warningJson);
+                previousHeading = block;
+                continue;
+            }
+
+            // Rule 2: Numbered heading "N.N.N Title" → derive level from dot count
+            var numberedMatch = Regex.Match(trimmed, @"^(\d+(?:\.\d+)*)\s");
+            if (numberedMatch.Success)
+            {
+                var number = numberedMatch.Groups[1].Value;
+                var dotCount = number.Count(c => c == '.');
+                correctLevel = dotCount + 1;
+            }
+
+            // Rule 3: Known front-matter / top-level titles → h1
+            if (correctLevel == null && topLevelPatterns.Contains(trimmed))
+            {
+                correctLevel = 1;
+            }
+
+            // Rule 4: Heading immediately after a rejected "Chapter N" (no non-heading blocks between) → h1
+            // This is the actual chapter title (e.g., "Introduction" after "Chapter 1")
+            if (correctLevel == null && previousHeading != null && previousHeading.Status == "rejected")
+            {
+                var prevText = ExtractTextFromContent(previousHeading.OriginalContent)?.Trim() ?? "";
+                if (Regex.IsMatch(prevText, @"^Chapter\s+\d+\s*$", RegexOptions.IgnoreCase))
+                {
+                    var hasNonHeadingBetween = false;
+                    for (var j = i - 1; j >= 0; j--)
+                    {
+                        if (blockReviews[j] == previousHeading) break;
+                        if (!headingTypes.Contains(blockReviews[j].OriginalType))
+                        {
+                            hasNonHeadingBetween = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasNonHeadingBetween)
+                    {
+                        correctLevel = 1;
+                    }
+                }
+            }
+
+            if (correctLevel != null)
+            {
+                correctLevel = Math.Clamp(correctLevel.Value, 1, 6);
+                UpdateHeadingLevel(block, correctLevel.Value);
+            }
+
+            previousHeading = block;
+        }
+    }
+
+    /// <summary>
+    /// Extracts plain text from a block's JSON content.
+    /// Tries common field names: text, html, value, content.
+    /// </summary>
+    private static string ExtractTextFromContent(JsonDocument? content)
+    {
+        if (content == null) return "";
+
+        var root = content.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return "";
+
+        // Try "text" field first (most common for headings)
+        if (root.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
+            return textProp.GetString() ?? "";
+
+        if (root.TryGetProperty("html", out var htmlProp) && htmlProp.ValueKind == JsonValueKind.String)
+            return htmlProp.GetString() ?? "";
+
+        if (root.TryGetProperty("value", out var valueProp) && valueProp.ValueKind == JsonValueKind.String)
+            return valueProp.GetString() ?? "";
+
+        if (root.TryGetProperty("content", out var contentProp) && contentProp.ValueKind == JsonValueKind.String)
+            return contentProp.GetString() ?? "";
+
+        return "";
+    }
+
+
+    /// <summary>
+    /// Updates the heading level in a block's content JSON.
+    /// Sets CurrentContent with the corrected level, marking the block as edited.
+    /// </summary>
+    private static void UpdateHeadingLevel(ImportBlockReview block, int level)
+    {
+        var source = block.CurrentContent ?? block.OriginalContent;
+        if (source == null) return;
+
+        var root = source.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+
+        // Check current level — skip if already correct
+        if (root.TryGetProperty("level", out var currentLevel) &&
+            currentLevel.ValueKind == JsonValueKind.Number &&
+            currentLevel.GetInt32() == level)
+        {
+            return;
+        }
+
+        // Build updated JSON with corrected level
+        var dict = new Dictionary<string, object?>();
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (prop.Name == "level")
+            {
+                dict["level"] = level;
+            }
+            else
+            {
+                dict[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
+            }
+        }
+
+        // Ensure level is present even if it wasn't before
+        if (!dict.ContainsKey("level"))
+        {
+            dict["level"] = level;
+        }
+
+        block.CurrentContent = JsonDocument.Parse(JsonSerializer.Serialize(dict));
+        block.CurrentType ??= block.OriginalType; // preserve type if not already changed
+    }
 
     private static string? GetUserRole(ImportReviewSession session, string userId)
     {

@@ -188,9 +188,11 @@ public class RenderService : IRenderService
                 "list" => RenderListToHtml(content),
                 "blockquote" => RenderBlockquoteToHtml(content),
                 "theorem" => RenderTheoremToHtml(content),
+                "abstract" => RenderAbstractToHtml(content),
+                "tableOfContents" => "<div class=\"table-of-contents\"><h3>Table of Contents</h3><p>Auto-generated from headings</p></div>",
                 "bibliography" => RenderBibliographyToHtml(content),
-                "columnBreak" => "<div class=\"column-break\" style=\"break-after: column;\"></div>",
-                "pageBreak" => "<div class=\"page-break\" style=\"break-after: page;\"></div>",
+                "columnBreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
+                "pageBreak" => "<div class=\"page-break\"><span class=\"page-break-label\">Page Break</span></div>",
                 _ => $"<div class=\"block block-{WebUtility.HtmlEncode(block.Type)}\"></div>"
             };
         }
@@ -288,7 +290,7 @@ public class RenderService : IRenderService
         var escaped = WebUtility.HtmlEncode(code);
         var langAttr = !string.IsNullOrEmpty(language) ? $" data-language=\"{WebUtility.HtmlEncode(language)}\"" : "";
 
-        return $"<pre class=\"code-block\"{langAttr}><code>{escaped}</code></pre>";
+        return $"<div class=\"code-block\"{langAttr}><code>{escaped}</code></div>";
     }
 
     private string RenderListToHtml(JsonElement content)
@@ -357,6 +359,13 @@ public class RenderService : IRenderService
         return html.ToString();
     }
 
+    private string RenderAbstractToHtml(JsonElement content)
+    {
+        var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        var processed = ProcessInlineContent(text);
+        return $"<div class=\"abstract\"><h3>Abstract</h3><p>{processed}</p></div>";
+    }
+
     private string RenderBlockquoteToHtml(JsonElement content)
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
@@ -374,6 +383,9 @@ public class RenderService : IRenderService
         var titleEscaped = WebUtility.HtmlEncode(title);
         var processed = ProcessInlineContent(text);
 
+        var isProof = theoremType == "proof";
+        var bodyClass = isProof ? "theorem-body" : "theorem-body italic";
+
         var html = new StringBuilder();
         html.Append($"<div class=\"theorem theorem-{typeEscaped}\">");
         html.Append($"<div class=\"theorem-header\"><strong>{char.ToUpper(typeEscaped[0])}{typeEscaped[1..]}</strong>");
@@ -382,7 +394,11 @@ public class RenderService : IRenderService
             html.Append($" ({titleEscaped})");
         }
         html.Append(".</div>");
-        html.Append($"<div class=\"theorem-body\">{processed}</div>");
+        html.Append($"<div class=\"{bodyClass}\">{processed}</div>");
+        if (isProof)
+        {
+            html.Append("<div class=\"qed\">&#9633;</div>");
+        }
         html.Append("</div>");
         return html.ToString();
     }
@@ -518,6 +534,8 @@ public class RenderService : IRenderService
         latex.AppendLine(@"\usepackage{hyperref}");
         latex.AppendLine(@"\usepackage{listings}");
         latex.AppendLine(@"\usepackage{booktabs}");
+        latex.AppendLine(@"\usepackage{float}");
+        latex.AppendLine(@"\usepackage{multirow}");
 
         // Multi-column support
         if (doc.Columns > 1)
@@ -595,8 +613,11 @@ public class RenderService : IRenderService
                 "list" => RenderListToLatex(content),
                 "blockquote" => RenderBlockquoteToLatex(content),
                 "theorem" => RenderTheoremToLatex(content),
+                "abstract" => RenderAbstractToLatex(content),
+                "tableOfContents" => @"\tableofcontents",
                 "columnBreak" => @"\columnbreak",
                 "pageBreak" => @"\newpage",
+                "bibliography" => "", // handled separately via BibliographyEntries
                 _ => $"% Unknown block type: {block.Type}"
             };
         }
@@ -629,6 +650,14 @@ public class RenderService : IRenderService
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         return ProcessLatexText(text) + "\n";
+    }
+
+    private string RenderAbstractToLatex(JsonElement content)
+    {
+        var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        return $@"\begin{{abstract}}
+{ProcessLatexText(text)}
+\end{{abstract}}";
     }
 
     private string RenderEquationToLatex(JsonElement content)
@@ -671,42 +700,62 @@ public class RenderService : IRenderService
     {
         var sb = new StringBuilder();
 
+        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var hasHeaders = content.TryGetProperty("headers", out var headers) && headers.ValueKind == JsonValueKind.Array && headers.GetArrayLength() > 0;
+
         if (content.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array)
         {
             var rowList = rows.EnumerateArray().ToList();
-            if (rowList.Count > 0)
+            var colCount = hasHeaders
+                ? headers.GetArrayLength()
+                : rowList.Count > 0 && rowList[0].ValueKind == JsonValueKind.Array
+                    ? rowList[0].GetArrayLength()
+                    : 1;
+            var colSpec = string.Join("", Enumerable.Repeat("l", colCount));
+
+            sb.AppendLine(@"\begin{table}[htbp]");
+            sb.AppendLine(@"\centering");
+            sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
+            if (!string.IsNullOrEmpty(caption))
             {
-                var firstRow = rowList[0];
-                var colCount = firstRow.ValueKind == JsonValueKind.Array ? firstRow.GetArrayLength() : 1;
-                var colSpec = string.Join("", Enumerable.Repeat("c", colCount));
+                sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+            }
+            sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
+            sb.AppendLine(@"\toprule");
 
-                sb.AppendLine(@"\begin{table}[htbp]");
-                sb.AppendLine(@"\centering");
-                sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
-                sb.AppendLine(@"\toprule");
+            // Header row (bold)
+            if (hasHeaders)
+            {
+                var headerCells = headers.EnumerateArray()
+                    .Select(h => $@"\textbf{{{EscapeLatex(h.GetString() ?? "")}}}")
+                    .ToList();
+                sb.AppendLine(string.Join(" & ", headerCells) + @" \\");
+                sb.AppendLine(@"\midrule");
+            }
 
-                var isFirst = true;
-                foreach (var row in rowList)
+            // Data rows
+            var isFirst = true;
+            foreach (var row in rowList)
+            {
+                if (row.ValueKind == JsonValueKind.Array)
                 {
-                    if (row.ValueKind == JsonValueKind.Array)
-                    {
-                        var cells = row.EnumerateArray()
-                            .Select(c => EscapeLatex(c.GetString() ?? ""))
-                            .ToList();
-                        sb.AppendLine(string.Join(" & ", cells) + @" \\");
+                    var cells = row.EnumerateArray()
+                        .Select(c => EscapeLatex(c.GetString() ?? ""))
+                        .ToList();
+                    sb.AppendLine(string.Join(" & ", cells) + @" \\");
 
-                        if (isFirst)
-                        {
-                            sb.AppendLine(@"\midrule");
-                            isFirst = false;
-                        }
+                    // If no explicit headers, treat first row as header
+                    if (isFirst && !hasHeaders)
+                    {
+                        sb.AppendLine(@"\midrule");
+                        isFirst = false;
                     }
                 }
-
-                sb.AppendLine(@"\bottomrule");
-                sb.AppendLine(@"\end{tabular}");
-                sb.AppendLine(@"\end{table}");
             }
+
+            sb.AppendLine(@"\bottomrule");
+            sb.AppendLine(@"\end{tabular}");
+            sb.AppendLine(@"\end{table}");
         }
 
         return sb.ToString();
