@@ -170,6 +170,7 @@ builder.Services.AddScoped<IJobService, JobService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IRenderService, RenderService>();
+builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();
 
