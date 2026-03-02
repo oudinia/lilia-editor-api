@@ -680,10 +680,13 @@ public class RenderService : IRenderService
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
 
+        // Use a clean filename instead of the full URL for readability
+        var displayPath = ExtractCleanImagePath(src);
+
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{figure}[htbp]");
         sb.AppendLine(@"\centering");
-        sb.AppendLine($@"\includegraphics[width=0.8\textwidth]{{{src}}}");
+        sb.AppendLine($@"\includegraphics[width=0.8\textwidth]{{{displayPath}}}");
         if (!string.IsNullOrEmpty(caption))
         {
             sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
@@ -694,6 +697,44 @@ public class RenderService : IRenderService
         }
         sb.AppendLine(@"\end{figure}");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Extracts a clean filename from an image URL or path for LaTeX preview.
+    /// Converts long URLs like "/api/documents/.../assets/uuid" to "figures/uuid.png".
+    /// </summary>
+    private static string ExtractCleanImagePath(string src)
+    {
+        if (string.IsNullOrEmpty(src))
+            return "(no image)";
+
+        // Try to extract filename from URL
+        try
+        {
+            if (Uri.TryCreate(src, UriKind.Absolute, out var uri))
+            {
+                var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                var last = segments.Length > 0 ? segments[^1] : "image";
+                // If no extension, add .png
+                if (!Path.HasExtension(last))
+                    last = $"{last[..Math.Min(last.Length, 8)]}.png";
+                return $"figures/{last}";
+            }
+        }
+        catch { /* fall through */ }
+
+        // For relative paths or API paths
+        if (src.StartsWith("/api/") || src.StartsWith("http"))
+        {
+            var parts = src.Split('/');
+            var last = parts.Length > 0 ? parts[^1] : "image";
+            if (!Path.HasExtension(last))
+                last = $"{last[..Math.Min(last.Length, 8)]}.png";
+            return $"figures/{last}";
+        }
+
+        // Already a short path — keep as-is
+        return src.Length > 60 ? $"figures/{Path.GetFileName(src)}" : src;
     }
 
     private string RenderTableToLatex(JsonElement content)
