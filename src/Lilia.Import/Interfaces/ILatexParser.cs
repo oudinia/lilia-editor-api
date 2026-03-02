@@ -17,6 +17,14 @@ public interface ILatexParser
     Task<ImportDocument> ParseAsync(string filePath, LatexImportOptions? options = null);
 
     /// <summary>
+    /// Parse raw LaTeX text content into the intermediate model (no file needed).
+    /// </summary>
+    /// <param name="latexContent">Raw LaTeX text.</param>
+    /// <param name="options">Import options.</param>
+    /// <returns>The parsed ImportDocument containing all extracted elements.</returns>
+    Task<ImportDocument> ParseTextAsync(string latexContent, LatexImportOptions? options = null);
+
+    /// <summary>
     /// Check if a file can be parsed (by extension).
     /// </summary>
     /// <param name="filePath">Path to check.</param>

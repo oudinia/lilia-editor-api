@@ -10,6 +10,7 @@ using Lilia.Infrastructure.Data.Seeds;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.AI;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -198,9 +199,23 @@ builder.Services.AddHttpClient<IClerkService, ClerkService>();
 // Add HttpClient for external API calls (DOI lookup)
 builder.Services.AddHttpClient();
 
+// Configure AI services
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("AI"));
+
+var anthropicKey = builder.Configuration["AI:Anthropic:ApiKey"];
+if (!string.IsNullOrEmpty(anthropicKey))
+{
+    var defaultModel = builder.Configuration["AI:DefaultModel"] ?? "claude-sonnet-4-5-20250929";
+    builder.Services.AddSingleton<IChatClient>(
+        new Anthropic.AnthropicClient { ApiKey = anthropicKey }.AsIChatClient(defaultModel));
+}
+
+builder.Services.AddScoped<IAiService, AiService>();
+
 // Register Lilia.Import services for document conversion
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();
+builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexParser, Lilia.Import.Services.LatexParser>();
 
 // Register PDF import services — provider-based (mathpix or mineru)
 var pdfProvider = builder.Configuration["PdfParser:Provider"] ?? "mineru";

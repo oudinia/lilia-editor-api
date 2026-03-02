@@ -33,6 +33,14 @@ public class LatexParser : ILatexParser
         return Parse(content, filePath, options);
     }
 
+    /// <inheritdoc/>
+    public Task<ImportDocument> ParseTextAsync(string latexContent, LatexImportOptions? options = null)
+    {
+        options ??= LatexImportOptions.Default;
+        var document = Parse(latexContent, "input.tex", options);
+        return Task.FromResult(document);
+    }
+
     private ImportDocument Parse(string content, string sourcePath, LatexImportOptions options)
     {
         var document = new ImportDocument

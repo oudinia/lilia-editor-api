@@ -131,14 +131,17 @@ public class BlockService : IBlockService
     {
         _logger.LogInformation("BatchUpdateBlocksAsync: Starting for document {DocumentId} with {Count} blocks", documentId, blocks.Count);
 
-        var blockIds = blocks.Select(b => b.Id).ToList();
-        _logger.LogDebug("BatchUpdateBlocksAsync: Block IDs to process: {BlockIds}", string.Join(", ", blockIds));
+        var incomingIds = blocks.Select(b => b.Id).ToHashSet();
+        _logger.LogDebug("BatchUpdateBlocksAsync: Block IDs to process: {BlockIds}", string.Join(", ", incomingIds));
 
-        var existingBlocks = await _context.Blocks
-            .Where(b => b.DocumentId == documentId && blockIds.Contains(b.Id))
-            .ToDictionaryAsync(b => b.Id);
+        // Fetch ALL existing blocks for this document so we can detect deletions
+        var allExistingBlocks = await _context.Blocks
+            .Where(b => b.DocumentId == documentId)
+            .ToListAsync();
 
-        _logger.LogInformation("BatchUpdateBlocksAsync: Found {ExistingCount} existing blocks in database", existingBlocks.Count);
+        var existingDict = allExistingBlocks.ToDictionary(b => b.Id);
+
+        _logger.LogInformation("BatchUpdateBlocksAsync: Found {ExistingCount} existing blocks in database", allExistingBlocks.Count);
 
         var resultBlocks = new List<Block>();
         var createdCount = 0;
@@ -146,7 +149,7 @@ public class BlockService : IBlockService
 
         foreach (var update in blocks)
         {
-            if (existingBlocks.TryGetValue(update.Id, out var block))
+            if (existingDict.TryGetValue(update.Id, out var block))
             {
                 // Update existing block
                 _logger.LogDebug("BatchUpdateBlocksAsync: Updating existing block {BlockId}", update.Id);
@@ -183,11 +186,23 @@ public class BlockService : IBlockService
             }
         }
 
+        // Delete blocks that exist in DB but are NOT in the client's payload (user deleted them)
+        var blocksToDelete = allExistingBlocks
+            .Where(b => !incomingIds.Contains(b.Id))
+            .ToList();
+
+        if (blocksToDelete.Count > 0)
+        {
+            _logger.LogInformation("BatchUpdateBlocksAsync: Deleting {DeleteCount} orphaned blocks", blocksToDelete.Count);
+            _context.Blocks.RemoveRange(blocksToDelete);
+        }
+
         // Update document timestamp
         var document = await _context.Documents.FindAsync(documentId);
         if (document != null) document.UpdatedAt = DateTime.UtcNow;
 
-        _logger.LogInformation("BatchUpdateBlocksAsync: About to SaveChanges - Created: {Created}, Updated: {Updated}", createdCount, updatedCount);
+        _logger.LogInformation("BatchUpdateBlocksAsync: About to SaveChanges - Created: {Created}, Updated: {Updated}, Deleted: {Deleted}",
+            createdCount, updatedCount, blocksToDelete.Count);
 
         await _context.SaveChangesAsync();
 

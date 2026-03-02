@@ -20,21 +20,25 @@ public class ConvertController : ControllerBase
 {
     private readonly IDocxImportService _docxImportService;
     private readonly IDocxExportService _docxExportService;
+    private readonly ILatexParser _latexParser;
     private readonly IDistributedCache _cache;
     private readonly ILogger<ConvertController> _logger;
 
     private const int AnonymousLimitPerDay = 3;
     private const int AuthenticatedLimitPerDay = 10;
     private const long MaxFileSizeBytes = 20 * 1024 * 1024; // 20MB
+    private const int MaxLatexTextLength = 100_000;
 
     public ConvertController(
         IDocxImportService docxImportService,
         IDocxExportService docxExportService,
+        ILatexParser latexParser,
         IDistributedCache cache,
         ILogger<ConvertController> logger)
     {
         _docxImportService = docxImportService;
         _docxExportService = docxExportService;
+        _latexParser = latexParser;
         _cache = cache;
         _logger = logger;
     }
@@ -1091,6 +1095,96 @@ public class ConvertController : ControllerBase
     }
 
     #endregion
+
+    #region LaTeX Text to Blocks
+
+    /// <summary>
+    /// Parse raw LaTeX text and return structured editor blocks.
+    /// </summary>
+    [HttpPost("latex-to-blocks")]
+    [Authorize]
+    [ProducesResponseType(typeof(LatexToBlocksResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LatexToBlocks([FromBody] LatexToBlocksRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Latex))
+            return BadRequest(new ErrorResponse { Message = "LaTeX content is required.", Code = "EMPTY_INPUT" });
+
+        if (request.Latex.Length > MaxLatexTextLength)
+            return BadRequest(new ErrorResponse { Message = $"LaTeX content must be at most {MaxLatexTextLength} characters.", Code = "INPUT_TOO_LARGE" });
+
+        try
+        {
+            var importDoc = await _latexParser.ParseTextAsync(request.Latex);
+
+            var blocks = new List<LatexBlockDto>();
+            var warnings = new List<string>();
+
+            foreach (var element in importDoc.Elements.OrderBy(e => e.Order))
+            {
+                switch (element)
+                {
+                    case ImportHeading h:
+                        blocks.Add(new LatexBlockDto("heading", new { text = h.Text, level = h.Level }));
+                        break;
+                    case ImportParagraph p:
+                        blocks.Add(new LatexBlockDto("paragraph", new { text = p.Text }));
+                        break;
+                    case ImportEquation eq:
+                        blocks.Add(new LatexBlockDto("equation", new { latex = eq.LatexContent, equationMode = eq.IsInline ? "inline" : "display" }));
+                        break;
+                    case ImportCodeBlock cb:
+                        blocks.Add(new LatexBlockDto("code", new { code = cb.Text, language = cb.Language ?? "plaintext" }));
+                        break;
+                    case ImportTable t:
+                        var headers = t.HasHeaderRow && t.Rows.Count > 0
+                            ? t.Rows[0].Select(c => c.Text).ToList()
+                            : t.Rows.FirstOrDefault()?.Select(c => c.Text).ToList() ?? [];
+                        var rows = t.HasHeaderRow && t.Rows.Count > 1
+                            ? t.Rows.Skip(1).Select(r => r.Select(c => c.Text).ToList()).ToList()
+                            : t.Rows.Count > 1
+                                ? t.Rows.Skip(1).Select(r => r.Select(c => c.Text).ToList()).ToList()
+                                : [];
+                        blocks.Add(new LatexBlockDto("table", new { headers, rows }));
+                        break;
+                    case ImportImage img:
+                        blocks.Add(new LatexBlockDto("figure", new { caption = img.AltText ?? "", src = "", alt = img.AltText ?? "" }));
+                        break;
+                    default:
+                        warnings.Add($"Skipped unsupported element type: {element.GetType().Name}");
+                        break;
+                }
+            }
+
+            foreach (var w in importDoc.Warnings)
+                warnings.Add(w.Message);
+
+            return Ok(new LatexToBlocksResponse
+            {
+                Blocks = blocks,
+                Title = importDoc.Title,
+                Warnings = warnings.Count > 0 ? warnings : null,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse LaTeX text");
+            return BadRequest(new ErrorResponse { Message = "Failed to parse LaTeX content.", Code = "PARSE_ERROR" });
+        }
+    }
+
+    #endregion
+}
+
+public record LatexToBlocksRequest(string Latex);
+
+public record LatexBlockDto(string Type, object Content);
+
+public class LatexToBlocksResponse
+{
+    public List<LatexBlockDto> Blocks { get; set; } = [];
+    public string? Title { get; set; }
+    public List<string>? Warnings { get; set; }
 }
 
 public class ConversionResponse

@@ -177,22 +177,22 @@ public class RenderService : IRenderService
         {
             var content = block.Content.RootElement;
 
-            return block.Type switch
+            return block.Type.ToLowerInvariant() switch
             {
-                "heading" => RenderHeadingToHtml(content),
+                "heading" or "header" => RenderHeadingToHtml(content),
                 "paragraph" => RenderParagraphToHtml(content),
                 "equation" => RenderEquationToHtml(content),
-                "figure" => RenderFigureToHtml(content),
+                "figure" or "image" => RenderFigureToHtml(content),
                 "table" => RenderTableToHtml(content),
                 "code" => RenderCodeToHtml(content),
                 "list" => RenderListToHtml(content),
-                "blockquote" => RenderBlockquoteToHtml(content),
+                "blockquote" or "quote" => RenderBlockquoteToHtml(content),
                 "theorem" => RenderTheoremToHtml(content),
                 "abstract" => RenderAbstractToHtml(content),
-                "tableOfContents" => "<div class=\"table-of-contents\"><h3>Table of Contents</h3><p>Auto-generated from headings</p></div>",
+                "tableofcontents" => "<div class=\"table-of-contents\"><h3>Table of Contents</h3><p>Auto-generated from headings</p></div>",
                 "bibliography" => RenderBibliographyToHtml(content),
-                "columnBreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
-                "pageBreak" => "<div class=\"page-break\"><span class=\"page-break-label\">Page Break</span></div>",
+                "columnbreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
+                "pagebreak" or "divider" => "<div class=\"page-break\"><span class=\"page-break-label\">Page Break</span></div>",
                 _ => $"<div class=\"block block-{WebUtility.HtmlEncode(block.Type)}\"></div>"
             };
         }
@@ -602,21 +602,21 @@ public class RenderService : IRenderService
         {
             var content = block.Content.RootElement;
 
-            return block.Type switch
+            return block.Type.ToLowerInvariant() switch
             {
-                "heading" => RenderHeadingToLatex(content),
+                "heading" or "header" => RenderHeadingToLatex(content),
                 "paragraph" => RenderParagraphToLatex(content),
                 "equation" => RenderEquationToLatex(content),
-                "figure" => RenderFigureToLatex(content),
+                "figure" or "image" => RenderFigureToLatex(content),
                 "table" => RenderTableToLatex(content),
                 "code" => RenderCodeToLatex(content),
                 "list" => RenderListToLatex(content),
-                "blockquote" => RenderBlockquoteToLatex(content),
+                "blockquote" or "quote" => RenderBlockquoteToLatex(content),
                 "theorem" => RenderTheoremToLatex(content),
                 "abstract" => RenderAbstractToLatex(content),
-                "tableOfContents" => @"\tableofcontents",
-                "columnBreak" => @"\columnbreak",
-                "pageBreak" => @"\newpage",
+                "tableofcontents" => @"\tableofcontents",
+                "columnbreak" => @"\columnbreak",
+                "pagebreak" or "divider" => @"\newpage",
                 "bibliography" => "", // handled separately via BibliographyEntries
                 _ => $"% Unknown block type: {block.Type}"
             };
@@ -926,6 +926,11 @@ public class RenderService : IRenderService
         // Escape special chars except those used in LaTeX commands and math
         result = Regex.Replace(result, @"(?<!\\)([&%#])", @"\$1");
         result = result.Replace("_", @"\_");
+
+        // Convert single newlines to double newlines for LaTeX paragraph breaks.
+        // In the editor, \n separates ProseMirror paragraphs within a block.
+        // In LaTeX, a single \n is treated as a space — \n\n is needed for a paragraph break.
+        result = Regex.Replace(result, @"\r?\n", "\n\n");
 
         return result;
     }
