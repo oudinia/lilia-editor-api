@@ -575,6 +575,7 @@ public class RenderService : IRenderService
         // Blocks
         foreach (var block in doc.Blocks)
         {
+            latex.AppendLine($"% block:{block.Id}");
             latex.AppendLine(RenderBlockToLatex(block));
         }
 

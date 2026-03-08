@@ -209,6 +209,12 @@ if (!string.IsNullOrEmpty(anthropicKey))
     builder.Services.AddSingleton<IChatClient>(
         new Anthropic.AnthropicClient { ApiKey = anthropicKey }.AsIChatClient(defaultModel));
 }
+else
+{
+    // Register a no-op placeholder so DI doesn't fail when no API key is configured
+    builder.Services.AddSingleton<IChatClient>(new Anthropic.AnthropicClient { ApiKey = "sk-placeholder" }
+        .AsIChatClient("claude-sonnet-4-5-20250929"));
+}
 
 builder.Services.AddScoped<IAiService, AiService>();
 
