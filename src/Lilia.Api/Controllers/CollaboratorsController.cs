@@ -112,4 +112,16 @@ public class CollaboratorsController : ControllerBase
         if (!result) return NotFound();
         return NoContent();
     }
+
+    [HttpPost("invite")]
+    public async Task<ActionResult<InviteResultDto>> InviteByEmail(Guid docId, [FromBody] InviteCollaboratorDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+            return Forbid();
+
+        var result = await _collaboratorService.InviteByEmailAsync(docId, userId, dto);
+        return Ok(result);
+    }
 }

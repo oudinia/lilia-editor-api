@@ -53,6 +53,12 @@ public class LiliaDbContext : DbContext
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // Notifications
+    public DbSet<Notification> Notifications => Set<Notification>();
+
+    // Pending invites
+    public DbSet<DocumentPendingInvite> DocumentPendingInvites => Set<DocumentPendingInvite>();
+
     // Import review
     public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
     public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="xml:space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <data name="AutoTocWarning" xml:space="preserve">
+    <value>Table des matières insérée automatiquement — approuvez pour l'inclure, rejetez pour l'ignorer.</value>
+  </data>
+  <data name="TocEntryWarning" xml:space="preserve">
+    <value>Probablement une entrée de table des matières importée comme titre — rejetée automatiquement. Approuvez s'il s'agit d'un véritable titre de section.</value>
+  </data>
+  <data name="ChapterLabelWarning" xml:space="preserve">
+    <value>Libellé de chapitre — le titre du chapitre suit dans le prochain titre.</value>
+  </data>
+</root>

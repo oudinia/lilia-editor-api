@@ -4,18 +4,23 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 
 namespace Lilia.Api.Services;
+
+public class ImportReviewMessages { }
 
 public class ImportReviewService : IImportReviewService
 {
     private readonly LiliaDbContext _context;
     private readonly ILogger<ImportReviewService> _logger;
+    private readonly IStringLocalizer<ImportReviewMessages> _localizer;
 
-    public ImportReviewService(LiliaDbContext context, ILogger<ImportReviewService> logger)
+    public ImportReviewService(LiliaDbContext context, ILogger<ImportReviewService> logger, IStringLocalizer<ImportReviewMessages> localizer)
     {
         _context = context;
         _logger = logger;
+        _localizer = localizer;
     }
 
     // --- Session Management ---
@@ -71,8 +76,9 @@ public class ImportReviewService : IImportReviewService
 
         if (headingCount >= 2 && !hasTocBlock)
         {
+            var tocWarningMessage = _localizer["AutoTocWarning"].Value;
             var tocWarnings = JsonDocument.Parse(
-                """[{"id":"auto-toc-warning","type":"AutoInsertedToc","message":"Auto-inserted TOC — approve to include, reject to skip.","severity":"info"}]""");
+                $"[{{\"id\":\"auto-toc-warning\",\"type\":\"AutoInsertedToc\",\"message\":\"{tocWarningMessage}\",\"severity\":\"info\"}}]");
 
             blockReviews.Insert(0, new ImportBlockReview
             {
@@ -955,7 +961,7 @@ public class ImportReviewService : IImportReviewService
     /// (e.g. from Mathpix OCR) and flags them as rejected with an info warning.
     /// A run of ≥5 consecutive headings with no other block types in between is flagged.
     /// </summary>
-    private static void FlagTocHeadingClusters(List<ImportBlockReview> blockReviews)
+    private void FlagTocHeadingClusters(List<ImportBlockReview> blockReviews)
     {
         const int minClusterSize = 5;
         var headingTypes = new HashSet<string> { BlockTypes.Heading, "header" };
@@ -984,7 +990,7 @@ public class ImportReviewService : IImportReviewService
 
                         // Append a warning to existing warnings
                         var warningId = Guid.NewGuid().ToString();
-                        var warningJson = "[{\"id\":\"" + warningId + "\",\"type\":\"PossibleTocEntry\",\"message\":\"Likely a TOC entry imported as a heading — auto-rejected. Approve if this is a real section heading.\",\"severity\":\"info\"}]";
+                        var warningJson = "[{\"id\":\"" + warningId + "\",\"type\":\"PossibleTocEntry\",\"message\":\"" + _localizer["TocEntryWarning"].Value.Replace("\"", "\\\"") + "\",\"severity\":\"info\"}]";
 
                         if (block.Warnings != null)
                         {
@@ -1017,7 +1023,7 @@ public class ImportReviewService : IImportReviewService
     ///   "N.N.N Title" (e.g. "2.5.1 Tokenization") → h3
     ///   Unnumbered headings without a known pattern → left unchanged
     /// </summary>
-    private static void CorrectHeadingLevelsFromNumbering(List<ImportBlockReview> blockReviews)
+    private void CorrectHeadingLevelsFromNumbering(List<ImportBlockReview> blockReviews)
     {
         var headingTypes = new HashSet<string> { BlockTypes.Heading, "header" };
 
@@ -1050,7 +1056,7 @@ public class ImportReviewService : IImportReviewService
             {
                 block.Status = "rejected";
                 var warningId = Guid.NewGuid().ToString();
-                var warningJson = "[{\"id\":\"" + warningId + "\",\"type\":\"ChapterLabel\",\"message\":\"Chapter label — the chapter title follows as the next heading.\",\"severity\":\"info\"}]";
+                var warningJson = "[{\"id\":\"" + warningId + "\",\"type\":\"ChapterLabel\",\"message\":\"" + _localizer["ChapterLabelWarning"].Value.Replace("\"", "\\\"") + "\",\"severity\":\"info\"}]";
                 block.Warnings = block.Warnings != null
                     ? JsonDocument.Parse("[" + string.Join(",",
                         block.Warnings.RootElement.EnumerateArray().Select(e => e.GetRawText())

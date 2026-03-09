@@ -1125,10 +1125,10 @@ public class ConvertController : ControllerBase
                 switch (element)
                 {
                     case ImportHeading h:
-                        blocks.Add(new LatexBlockDto("heading", new { text = h.Text, level = h.Level }));
+                        blocks.Add(new LatexBlockDto("heading", new { text = ConvertLatexFormattingToMarkdown(h.Text), level = h.Level }));
                         break;
                     case ImportParagraph p:
-                        blocks.Add(new LatexBlockDto("paragraph", new { text = p.Text }));
+                        blocks.Add(new LatexBlockDto("paragraph", new { text = ConvertLatexFormattingToMarkdown(p.Text) }));
                         break;
                     case ImportEquation eq:
                         blocks.Add(new LatexBlockDto("equation", new { latex = eq.LatexContent, equationMode = eq.IsInline ? "inline" : "display" }));
@@ -1174,6 +1174,38 @@ public class ConvertController : ControllerBase
     }
 
     #endregion
+
+    /// <summary>
+    /// Converts LaTeX inline formatting commands to Markdown equivalents
+    /// so the editor's rich-text renderer can display them correctly.
+    /// </summary>
+    private static string ConvertLatexFormattingToMarkdown(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        // \textbf{...} → **...**
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textbf\{([^}]*)\}", "**$1**");
+        // \textit{...} → _..._
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textit\{([^}]*)\}", "_$1_");
+        // \emph{...} → _..._
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\emph\{([^}]*)\}", "_$1_");
+        // \texttt{...} → `...`
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\texttt\{([^}]*)\}", "`$1`");
+        // \underline{...} → <u>...</u>
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\underline\{([^}]*)\}", "<u>$1</u>");
+        // \textsc{...} → just the text (no markdown equivalent)
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textsc\{([^}]*)\}", "$1");
+        // \textrm{...} → just the text
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textrm\{([^}]*)\}", "$1");
+        // \textsf{...} → just the text
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textsf\{([^}]*)\}", "$1");
+        // Clean up remaining simple commands: \\ → newline, ~ → space
+        text = text.Replace("~", " ");
+        // Remove \, (thin space)
+        text = text.Replace("\\,", "");
+
+        return text;
+    }
 }
 
 public record LatexToBlocksRequest(string Latex);

@@ -39,3 +39,15 @@ public record AddGroupCollaboratorDto(
 public record UpdateCollaboratorRoleDto(
     string Role
 );
+
+public record InviteCollaboratorDto(
+    string Email,
+    string Role
+);
+
+public record InviteResultDto(
+    bool Success,
+    bool UserFound,
+    string Email,
+    string? Message
+);

@@ -1,67 +1,19 @@
+using Microsoft.Extensions.Localization;
+
 namespace Lilia.Api.ErrorPages;
 
-public static class ErrorPageGenerator
+public class ErrorPageGenerator
 {
-    private static readonly Dictionary<int, (string Title, string Description, string Emoji, string ExtraHtml)> ErrorMetadata = new()
-    {
-        [400] = (
-            "Bad Request",
-            "We couldn't make sense of that one. Double-check and try again?",
-            "🤔",
-            """<div class="hint">The request was malformed or missing something important.</div>"""
-        ),
-        [401] = (
-            "Who Goes There?",
-            "You need to sign in before we can let you through.",
-            "🔐",
-            """<div class="hint">Try signing in or refreshing your session.</div>"""
-        ),
-        [403] = (
-            "Off Limits",
-            "This area is reserved. You don't have the right permissions.",
-            "🚫",
-            """<div class="hint">If you think this is a mistake, contact the document owner.</div>"""
-        ),
-        [404] = (
-            "Lost in Space",
-            "We looked everywhere, but this page is playing hide and seek.",
-            "🔭",
-            """
-            <div class="stars" id="stars"></div>
-            <div class="hint">Maybe it was moved, renamed, or it never existed in the first place.</div>
-            """
-        ),
-        [500] = (
-            "Oops, We Broke Something",
-            "Our hamsters stopped running. We're getting them back on the wheel.",
-            "🐹",
-            """
-            <div class="progress-bar"><div class="progress-fill"></div></div>
-            <div class="hint">Our team has been notified. Try again in a moment.</div>
-            """
-        ),
-        [502] = (
-            "Bad Gateway",
-            "We asked an upstream server for help and got nonsense back.",
-            "⛈️",
-            """<div class="hint">This usually resolves on its own. Give it a minute.</div>"""
-        ),
-        [503] = (
-            "Taking a Breather",
-            "We're doing some maintenance to make things even better.",
-            "🛠️",
-            """
-            <div class="countdown" id="countdown">Retrying in <span id="timer">30</span>s</div>
-            <div class="hint">We'll be back before you can finish your coffee.</div>
-            """
-        ),
-    };
+    private readonly IStringLocalizer<ErrorPageGenerator> _localizer;
 
-    public static string GenerateHtml(int statusCode, string homeUrl = "/", string? reviewUrl = null)
+    public ErrorPageGenerator(IStringLocalizer<ErrorPageGenerator> localizer)
     {
-        var (title, description, emoji, extraHtml) = ErrorMetadata.TryGetValue(statusCode, out var meta)
-            ? meta
-            : ("Something Went Wrong", "An unexpected error occurred. That's all we know.", "😵", """<div class="hint">Try going back or returning home.</div>""");
+        _localizer = localizer;
+    }
+
+    public string GenerateHtml(int statusCode, string homeUrl = "/", string? reviewUrl = null)
+    {
+        var (title, description, emoji, extraHtml) = GetErrorMetadata(statusCode);
 
         var pageSpecificCss = statusCode switch
         {
@@ -147,6 +99,11 @@ public static class ErrorPageGenerator
                 """,
             _ => ""
         };
+
+        var goBackText = _localizer["Button_GoBack"].Value;
+        var backToReviewText = _localizer["Button_BackToReview"].Value;
+        var takeMeHomeText = _localizer["Button_TakeMeHome"].Value;
+        var retryingInText = _localizer["RetryingIn"].Value;
 
         return $$"""
         <!DOCTYPE html>
@@ -370,9 +327,9 @@ public static class ErrorPageGenerator
                 <div class="divider"></div>
                 <p class="description">{{description}}</p>
                 <div class="actions">
-                    <a href="javascript:history.back()" class="btn btn-secondary">Go Back</a>
-                    {{(reviewUrl is not null ? $"""<a href="{reviewUrl}" class="btn btn-secondary">Back to Review</a>""" : "")}}
-                    <a href="{{homeUrl}}" class="btn btn-primary">Take Me Home</a>
+                    <a href="javascript:history.back()" class="btn btn-secondary">{{goBackText}}</a>
+                    {{(reviewUrl is not null ? $"""<a href="{reviewUrl}" class="btn btn-secondary">{backToReviewText}</a>""" : "")}}
+                    <a href="{{homeUrl}}" class="btn btn-primary">{{takeMeHomeText}}</a>
                 </div>
                 <div class="brand">Lilia</div>
             </div>
@@ -380,5 +337,71 @@ public static class ErrorPageGenerator
         </body>
         </html>
         """;
+    }
+
+    private (string Title, string Description, string Emoji, string ExtraHtml) GetErrorMetadata(int statusCode)
+    {
+        var retryingInText = _localizer["RetryingIn"].Value;
+
+        return statusCode switch
+        {
+            400 => (
+                _localizer["BadRequest_Title"].Value,
+                _localizer["BadRequest_Description"].Value,
+                "🤔",
+                $"""<div class="hint">{_localizer["BadRequest_Hint"].Value}</div>"""
+            ),
+            401 => (
+                _localizer["Unauthorized_Title"].Value,
+                _localizer["Unauthorized_Description"].Value,
+                "🔐",
+                $"""<div class="hint">{_localizer["Unauthorized_Hint"].Value}</div>"""
+            ),
+            403 => (
+                _localizer["Forbidden_Title"].Value,
+                _localizer["Forbidden_Description"].Value,
+                "🚫",
+                $"""<div class="hint">{_localizer["Forbidden_Hint"].Value}</div>"""
+            ),
+            404 => (
+                _localizer["NotFound_Title"].Value,
+                _localizer["NotFound_Description"].Value,
+                "🔭",
+                $"""
+                <div class="stars" id="stars"></div>
+                <div class="hint">{_localizer["NotFound_Hint"].Value}</div>
+                """
+            ),
+            500 => (
+                _localizer["InternalError_Title"].Value,
+                _localizer["InternalError_Description"].Value,
+                "🐹",
+                $"""
+                <div class="progress-bar"><div class="progress-fill"></div></div>
+                <div class="hint">{_localizer["InternalError_Hint"].Value}</div>
+                """
+            ),
+            502 => (
+                _localizer["BadGateway_Title"].Value,
+                _localizer["BadGateway_Description"].Value,
+                "⛈️",
+                $"""<div class="hint">{_localizer["BadGateway_Hint"].Value}</div>"""
+            ),
+            503 => (
+                _localizer["ServiceUnavailable_Title"].Value,
+                _localizer["ServiceUnavailable_Description"].Value,
+                "🛠️",
+                $"""
+                <div class="countdown" id="countdown">{retryingInText} <span id="timer">30</span>s</div>
+                <div class="hint">{_localizer["ServiceUnavailable_Hint"].Value}</div>
+                """
+            ),
+            _ => (
+                _localizer["Default_Title"].Value,
+                _localizer["Default_Description"].Value,
+                "😵",
+                $"""<div class="hint">{_localizer["Default_Hint"].Value}</div>"""
+            )
+        };
     }
 }

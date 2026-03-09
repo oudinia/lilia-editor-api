@@ -80,11 +80,14 @@ public class DocumentsController : ControllerBase
         return Ok(document);
     }
 
-    [HttpGet("shared/{shareLink}")]
+    [HttpGet("shared/{*shareLink}")]
     [AllowAnonymous]
     public async Task<ActionResult<DocumentDto>> GetSharedDocument(string shareLink)
     {
-        var document = await _documentService.GetSharedDocumentAsync(shareLink);
+        // URL format: {slug}-{token} or just {token}
+        // Token is always 22 chars (base64url of 16 bytes)
+        var token = shareLink.Length > 22 ? shareLink[^22..] : shareLink;
+        var document = await _documentService.GetSharedDocumentAsync(token);
         if (document == null) return NotFound();
         return Ok(document);
     }

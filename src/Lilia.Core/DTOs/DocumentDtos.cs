@@ -26,7 +26,8 @@ public record DocumentListDto(
     int BlockCount,
     int SectionCount,
     List<OutlineItemDto> Outline,
-    List<LabelDto> Labels
+    List<LabelDto> Labels,
+    string? Role = null
 );
 
 public record OutlineItemDto(
@@ -48,6 +49,7 @@ public record DocumentDto(
     double ColumnGap,
     bool IsPublic,
     string? ShareLink,
+    string? ShareSlug,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? LastOpenedAt,
@@ -101,5 +103,6 @@ public record ShareDocumentDto(
 
 public record DocumentShareResultDto(
     string ShareLink,
+    string? ShareSlug,
     bool IsPublic
 );

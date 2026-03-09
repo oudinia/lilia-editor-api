@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="xml:space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <data name="InviteSubject" xml:space="preserve">
+    <value>{0} compartió «{1}» contigo en Lilia</value>
+  </data>
+  <data name="InvitePlainText" xml:space="preserve">
+    <value>{0} compartió el documento «{1}» contigo como {2}. Ábrelo aquí: {3}</value>
+  </data>
+  <data name="InviteBody" xml:space="preserve">
+    <value>{0} ha compartido un documento contigo:</value>
+  </data>
+  <data name="InviteRole" xml:space="preserve">
+    <value>Rol:</value>
+  </data>
+  <data name="InviteButton" xml:space="preserve">
+    <value>Abrir documento</value>
+  </data>
+  <data name="InviteFooter" xml:space="preserve">
+    <value>Recibiste este correo electrónico porque alguien compartió un documento de Lilia contigo.</value>
+  </data>
+</root>

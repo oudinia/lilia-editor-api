@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="xml:space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <data name="DocumentNotFound" xml:space="preserve">
+    <value>Document introuvable</value>
+  </data>
+  <data name="OnlyOwnerCanInvite" xml:space="preserve">
+    <value>Seul le propriétaire du document peut inviter des collaborateurs</value>
+  </data>
+  <data name="InvitationSent" xml:space="preserve">
+    <value>Invitation envoyée — l'utilisateur sera ajouté lors de son inscription</value>
+  </data>
+  <data name="CannotInviteSelf" xml:space="preserve">
+    <value>Vous ne pouvez pas vous inviter vous-même</value>
+  </data>
+  <data name="FailedToAddCollaborator" xml:space="preserve">
+    <value>Impossible d'ajouter le collaborateur</value>
+  </data>
+  <data name="InvalidBlockType" xml:space="preserve">
+    <value>Type de bloc invalide : {0}</value>
+  </data>
+  <data name="CannotFinalizeSession" xml:space="preserve">
+    <value>Impossible de finaliser la session. Assurez-vous que tous les blocs sont révisés ou utilisez force=true.</value>
+  </data>
+  <data name="FailedToCreateSession" xml:space="preserve">
+    <value>Impossible de créer la session de révision</value>
+  </data>
+  <data name="FailedToFinalizeSession" xml:space="preserve">
+    <value>Impossible de finaliser la session de révision</value>
+  </data>
+  <data name="CouldNotAddCollaborator" xml:space="preserve">
+    <value>Impossible d'ajouter le collaborateur. L'utilisateur n'existe peut-être pas ou est déjà collaborateur.</value>
+  </data>
+  <data name="OwnerRoleNotFound" xml:space="preserve">
+    <value>Rôle de propriétaire introuvable</value>
+  </data>
+  <data name="FormatNotSupported" xml:space="preserve">
+    <value>{0} n'est pas pris en charge</value>
+  </data>
+  <data name="ImportFailed" xml:space="preserve">
+    <value>L'importation a échoué — aucun document créé</value>
+  </data>
+  <data name="PdfImportNotAvailable" xml:space="preserve">
+    <value>L'importation PDF n'est pas disponible. Le service MinerU n'est pas configuré.</value>
+  </data>
+  <data name="OnlyFailedJobsRetried" xml:space="preserve">
+    <value>Seuls les travaux échoués peuvent être relancés</value>
+  </data>
+  <data name="FileNotFound" xml:space="preserve">
+    <value>Fichier introuvable : {0}</value>
+  </data>
+  <data name="NotificationShared" xml:space="preserve">
+    <value>{0} a partagé « {1} » avec vous</value>
+  </data>
+  <data name="NotificationAccess" xml:space="preserve">
+    <value>Un accès {0} vous a été accordé.</value>
+  </data>
+  <data name="ContentRequired" xml:space="preserve">
+    <value>Le contenu est requis</value>
+  </data>
+  <data name="DoiNotFound" xml:space="preserve">
+    <value>DOI introuvable</value>
+  </data>
+</root>

@@ -11,4 +11,5 @@ public interface ICollaboratorService
     Task<GroupCollaboratorDto?> UpdateGroupCollaboratorRoleAsync(Guid documentId, Guid groupId, string userId, UpdateCollaboratorRoleDto dto);
     Task<bool> RemoveUserCollaboratorAsync(Guid documentId, string targetUserId, string userId);
     Task<bool> RemoveGroupCollaboratorAsync(Guid documentId, Guid groupId, string userId);
+    Task<InviteResultDto> InviteByEmailAsync(Guid documentId, string inviterUserId, InviteCollaboratorDto dto);
 }

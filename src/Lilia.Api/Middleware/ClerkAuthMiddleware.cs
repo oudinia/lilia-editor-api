@@ -19,9 +19,9 @@ public class DevelopmentAuthMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<DevelopmentAuthMiddleware> _logger;
     private readonly bool _enabled;
-    private const string DevUserId = "dev_user_001";
-    private const string DevUserEmail = "dev@lilia.local";
-    private const string DevUserName = "Development User";
+    private const string DevUserId = "user_2wh3MeURGR4xLFPfiWWlx9OoWQ8";
+    private const string DevUserEmail = "oussama.dinia@gmail.com";
+    private const string DevUserName = "Oussama Dinia";
 
     public DevelopmentAuthMiddleware(RequestDelegate next, IConfiguration configuration, ILogger<DevelopmentAuthMiddleware> logger)
     {

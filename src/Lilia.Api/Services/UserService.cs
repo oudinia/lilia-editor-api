@@ -23,6 +23,7 @@ public class UserService : IUserService
     public async Task<UserDto> CreateOrUpdateUserAsync(CreateOrUpdateUserDto dto)
     {
         var user = await _context.Users.FindAsync(dto.Id);
+        var isNewUser = user == null;
 
         if (user == null)
         {
@@ -66,7 +67,53 @@ public class UserService : IUserService
             await _context.SaveChangesAsync();
         }
 
+        // Accept any pending invites for this email
+        if (!string.IsNullOrEmpty(dto.Email))
+        {
+            await AcceptPendingInvitesAsync(dto.Id, dto.Email);
+        }
+
         return MapToDto(user!);
+    }
+
+    private async Task AcceptPendingInvitesAsync(string userId, string email)
+    {
+        var pendingInvites = await _context.DocumentPendingInvites
+            .Where(pi => pi.Email == email && pi.Status == "pending" && pi.ExpiresAt > DateTime.UtcNow)
+            .ToListAsync();
+
+        foreach (var invite in pendingInvites)
+        {
+            // Find the role by name
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == invite.Role);
+            if (role == null) continue;
+
+            // Check if already a collaborator
+            var existing = await _context.DocumentCollaborators
+                .AnyAsync(dc => dc.DocumentId == invite.DocumentId && dc.UserId == userId);
+            if (existing)
+            {
+                invite.Status = "accepted";
+                continue;
+            }
+
+            var collaborator = new DocumentCollaborator
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = invite.DocumentId,
+                UserId = userId,
+                RoleId = role.Id,
+                InvitedBy = invite.InvitedBy,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.DocumentCollaborators.Add(collaborator);
+            invite.Status = "accepted";
+        }
+
+        if (pendingInvites.Count > 0)
+        {
+            await _context.SaveChangesAsync();
+        }
     }
 
     public async Task<UserDto?> GetUserByEmailAsync(string email)

@@ -15,6 +15,9 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Localization
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
 // Configure Serilog
 builder.Host.UseSerilog((context, services, configuration) =>
 {
@@ -163,6 +166,7 @@ builder.Services.AddScoped<IBibliographyService, BibliographyService>();
 builder.Services.AddScoped<ILabelService, LabelService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IVersionService, VersionService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>();
 builder.Services.AddScoped<IFormulaService, FormulaService>();
@@ -174,6 +178,11 @@ builder.Services.AddScoped<IRenderService, RenderService>();
 builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();
+
+// Email service (Resend)
+var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
+builder.Services.AddSingleton(emailSettings);
+builder.Services.AddSingleton<IEmailService, EmailService>();
 
 // Add distributed cache (in-memory for now, swap to Redis with 1 line when scaling)
 builder.Services.AddDistributedMemoryCache();
@@ -242,6 +251,9 @@ else
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditService, AuditService>();
 
+// Register error page generator (uses IStringLocalizer)
+builder.Services.AddSingleton<ErrorPageGenerator>();
+
 // Register Lorem Ipsum generator
 builder.Services.AddSingleton<ILoremIpsumService, LoremIpsumService>();
 
@@ -289,8 +301,9 @@ app.UseExceptionHandler(exceptionApp =>
         var accept = context.Request.Headers.Accept.ToString();
         if (accept.Contains("text/html"))
         {
+            var errorPageGen = context.RequestServices.GetRequiredService<ErrorPageGenerator>();
             context.Response.ContentType = "text/html; charset=utf-8";
-            await context.Response.WriteAsync(ErrorPageGenerator.GenerateHtml(500, ResolveHomeUrl(context.Request), ResolveReviewUrl(context.Request)));
+            await context.Response.WriteAsync(errorPageGen.GenerateHtml(500, ResolveHomeUrl(context.Request), ResolveReviewUrl(context.Request)));
         }
         else
         {
@@ -306,8 +319,9 @@ app.UseStatusCodePages(async context =>
     var accept = context.HttpContext.Request.Headers.Accept.ToString();
     if (accept.Contains("text/html"))
     {
+        var errorPageGen = context.HttpContext.RequestServices.GetRequiredService<ErrorPageGenerator>();
         context.HttpContext.Response.ContentType = "text/html; charset=utf-8";
-        await context.HttpContext.Response.WriteAsync(ErrorPageGenerator.GenerateHtml(statusCode, ResolveHomeUrl(context.HttpContext.Request), ResolveReviewUrl(context.HttpContext.Request)));
+        await context.HttpContext.Response.WriteAsync(errorPageGen.GenerateHtml(statusCode, ResolveHomeUrl(context.HttpContext.Request), ResolveReviewUrl(context.HttpContext.Request)));
     }
     else
     {
@@ -325,6 +339,15 @@ app.UseStatusCodePages(async context =>
         await context.HttpContext.Response.WriteAsync(
             $$"""{"error":"{{title}}","statusCode":{{statusCode}}}""");
     }
+});
+
+// Request localization — must be before any middleware that uses localized strings
+var supportedCultures = new[] { "en", "fr", "es" };
+app.UseRequestLocalization(options =>
+{
+    options.SetDefaultCulture("en")
+           .AddSupportedCultures(supportedCultures)
+           .AddSupportedUICultures(supportedCultures);
 });
 
 // Correlation ID for request tracing

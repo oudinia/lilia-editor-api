@@ -15,6 +15,7 @@ public class Document
     public double ColumnGap { get; set; } = 1.5;
     public bool IsPublic { get; set; }
     public string? ShareLink { get; set; }
+    public string? ShareSlug { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastOpenedAt { get; set; }

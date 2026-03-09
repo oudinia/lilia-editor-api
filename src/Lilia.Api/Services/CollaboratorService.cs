@@ -2,16 +2,28 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Options;
 
 namespace Lilia.Api.Services;
+
+public class SharedMessages { }
 
 public class CollaboratorService : ICollaboratorService
 {
     private readonly LiliaDbContext _context;
+    private readonly IEmailService _emailService;
+    private readonly EmailSettings _emailSettings;
+    private readonly INotificationService _notificationService;
+    private readonly IStringLocalizer<SharedMessages> _localizer;
 
-    public CollaboratorService(LiliaDbContext context)
+    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer)
     {
         _context = context;
+        _emailService = emailService;
+        _emailSettings = emailSettings;
+        _notificationService = notificationService;
+        _localizer = localizer;
     }
 
     public async Task<CollaboratorListDto> GetCollaboratorsAsync(Guid documentId)
@@ -98,6 +110,24 @@ public class CollaboratorService : ICollaboratorService
 
         _context.DocumentCollaborators.Add(collaborator);
         await _context.SaveChangesAsync();
+
+        // Notify the added collaborator
+        try
+        {
+            var inviterUser = await _context.Users.FindAsync(userId);
+            var inviterName = inviterUser?.Name ?? inviterUser?.Email ?? "Someone";
+            await _notificationService.CreateAsync(
+                dto.UserId,
+                "document_shared",
+                string.Format(_localizer["NotificationShared"].Value, inviterName, document.Title),
+                string.Format(_localizer["NotificationAccess"].Value, role.Name),
+                $"/document/{documentId}"
+            );
+        }
+        catch
+        {
+            // Notification failure should not block the operation
+        }
 
         return new UserCollaboratorDto(
             collaborator.Id,
@@ -257,5 +287,84 @@ public class CollaboratorService : ICollaboratorService
         await _context.SaveChangesAsync();
 
         return true;
+    }
+
+    public async Task<InviteResultDto> InviteByEmailAsync(Guid documentId, string inviterUserId, InviteCollaboratorDto dto)
+    {
+        var document = await _context.Documents.FindAsync(documentId);
+        if (document == null)
+            return new InviteResultDto(false, false, dto.Email, _localizer["DocumentNotFound"].Value);
+
+        if (document.OwnerId != inviterUserId)
+            return new InviteResultDto(false, false, dto.Email, _localizer["OnlyOwnerCanInvite"].Value);
+
+        var inviter = await _context.Users.FindAsync(inviterUserId);
+        var inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
+        var documentUrl = $"{_emailSettings.BaseUrl}/documents/{documentId}";
+
+        var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+
+        if (targetUser == null)
+        {
+            // User not registered — store pending invite
+            var existingInvite = await _context.DocumentPendingInvites
+                .FirstOrDefaultAsync(pi => pi.DocumentId == documentId && pi.Email == dto.Email && pi.Status == "pending");
+
+            if (existingInvite != null)
+            {
+                existingInvite.Role = dto.Role;
+                existingInvite.ExpiresAt = DateTime.UtcNow.AddDays(30);
+                await _context.SaveChangesAsync();
+            }
+            else
+            {
+                var pendingInvite = new DocumentPendingInvite
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = documentId,
+                    Email = dto.Email,
+                    Role = dto.Role,
+                    InvitedBy = inviterUserId,
+                    Status = "pending",
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = DateTime.UtcNow.AddDays(30)
+                };
+                _context.DocumentPendingInvites.Add(pendingInvite);
+                await _context.SaveChangesAsync();
+            }
+
+            // Send invite email with sign-up link
+            var signUpUrl = $"{_emailSettings.BaseUrl}/sign-up?email={Uri.EscapeDataString(dto.Email)}";
+            try
+            {
+                await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, signUpUrl);
+            }
+            catch
+            {
+                // Email failure should not block the invite
+            }
+
+            return new InviteResultDto(true, false, dto.Email, _localizer["InvitationSent"].Value);
+        }
+
+        // Prevent inviting yourself
+        if (targetUser.Id == inviterUserId)
+            return new InviteResultDto(false, true, dto.Email, _localizer["CannotInviteSelf"].Value);
+
+        var result = await AddUserCollaboratorAsync(documentId, inviterUserId, new AddUserCollaboratorDto(targetUser.Id, dto.Role));
+        if (result == null)
+            return new InviteResultDto(false, true, dto.Email, _localizer["FailedToAddCollaborator"].Value);
+
+        // Send invite email
+        try
+        {
+            await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, documentUrl);
+        }
+        catch
+        {
+            // Email failure should not block the invite — collaborator was already added
+        }
+
+        return new InviteResultDto(true, true, dto.Email, null);
     }
 }

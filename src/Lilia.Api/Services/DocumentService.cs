@@ -96,26 +96,44 @@ public class DocumentService : IDocumentService
                 g => g.Select(b => ExtractOutlineItem(b.Content)).Where(o => o != null).ToList()
             );
 
-        var items = documents.Select(d => new DocumentListDto(
-            d.Id,
-            d.Title,
-            d.OwnerId,
-            d.Owner?.Name,
-            d.TeamId,
-            d.Team?.Name,
-            d.CreatedAt,
-            d.UpdatedAt,
-            d.LastOpenedAt,
-            blockCounts.GetValueOrDefault(d.Id, 0),
-            sectionCounts.GetValueOrDefault(d.Id, 0),
-            outlines.GetValueOrDefault(d.Id, new List<OutlineItemDto?>())!.Where(o => o != null).Select(o => o!).ToList(),
-            d.DocumentLabels.Select(dl => new LabelDto(
-                dl.Label.Id,
-                dl.Label.Name,
-                dl.Label.Color,
-                dl.Label.CreatedAt
-            )).ToList()
-        )).ToList();
+        // Determine user's role per document
+        var collaboratorRoles = await _context.DocumentCollaborators
+            .Include(dc => dc.Role)
+            .Where(dc => documentIds.Contains(dc.DocumentId) && dc.UserId == userId)
+            .ToDictionaryAsync(dc => dc.DocumentId, dc => dc.Role.Name);
+
+        var items = documents.Select(d =>
+        {
+            string role;
+            if (d.OwnerId == userId)
+                role = "owner";
+            else if (collaboratorRoles.TryGetValue(d.Id, out var roleName))
+                role = roleName;
+            else
+                role = "viewer"; // group access fallback
+
+            return new DocumentListDto(
+                d.Id,
+                d.Title,
+                d.OwnerId,
+                d.Owner?.Name,
+                d.TeamId,
+                d.Team?.Name,
+                d.CreatedAt,
+                d.UpdatedAt,
+                d.LastOpenedAt,
+                blockCounts.GetValueOrDefault(d.Id, 0),
+                sectionCounts.GetValueOrDefault(d.Id, 0),
+                outlines.GetValueOrDefault(d.Id, new List<OutlineItemDto?>())!.Where(o => o != null).Select(o => o!).ToList(),
+                d.DocumentLabels.Select(dl => new LabelDto(
+                    dl.Label.Id,
+                    dl.Label.Name,
+                    dl.Label.Color,
+                    dl.Label.CreatedAt
+                )).ToList(),
+                role
+            );
+        }).ToList();
 
         var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
@@ -349,12 +367,13 @@ public class DocumentService : IDocumentService
         if (isPublic && string.IsNullOrEmpty(document.ShareLink))
         {
             document.ShareLink = GenerateShareLink();
+            document.ShareSlug = GenerateSlug(document.Title);
         }
 
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        return new DocumentShareResultDto(document.ShareLink ?? "", document.IsPublic);
+        return new DocumentShareResultDto(document.ShareLink ?? "", document.ShareSlug, document.IsPublic);
     }
 
     public async Task<bool> RevokeShareAsync(Guid id, string userId)
@@ -367,6 +386,7 @@ public class DocumentService : IDocumentService
 
         document.IsPublic = false;
         document.ShareLink = null;
+        document.ShareSlug = null;
         document.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -417,6 +437,34 @@ public class DocumentService : IDocumentService
             .Replace("=", "");
     }
 
+    private static string GenerateSlug(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title) || title == "Untitled")
+            return "document";
+
+        // Normalize unicode, strip diacritics (é → e, ü → u)
+        var normalized = title.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(normalized.Length);
+        foreach (var c in normalized)
+        {
+            var category = char.GetUnicodeCategory(c);
+            if (category != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+
+        var slug = sb.ToString().Normalize(System.Text.NormalizationForm.FormC).ToLowerInvariant();
+
+        // Replace non-alphanumeric with hyphens
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9]+", "-");
+
+        // Trim hyphens and truncate
+        slug = slug.Trim('-');
+        if (slug.Length > 60)
+            slug = slug[..60].TrimEnd('-');
+
+        return string.IsNullOrEmpty(slug) ? "document" : slug;
+    }
+
     private static DocumentDto MapToDto(Document d)
     {
         return new DocumentDto(
@@ -433,6 +481,7 @@ public class DocumentService : IDocumentService
             d.ColumnGap,
             d.IsPublic,
             d.ShareLink,
+            d.ShareSlug,
             d.CreatedAt,
             d.UpdatedAt,
             d.LastOpenedAt,

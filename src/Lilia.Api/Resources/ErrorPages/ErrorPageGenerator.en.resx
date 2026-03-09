@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="xml:space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <data name="BadRequest_Title" xml:space="preserve">
+    <value>Bad Request</value>
+  </data>
+  <data name="BadRequest_Description" xml:space="preserve">
+    <value>We couldn't make sense of that one. Double-check and try again?</value>
+  </data>
+  <data name="BadRequest_Hint" xml:space="preserve">
+    <value>The request was malformed or missing something important.</value>
+  </data>
+  <data name="Unauthorized_Title" xml:space="preserve">
+    <value>Who Goes There?</value>
+  </data>
+  <data name="Unauthorized_Description" xml:space="preserve">
+    <value>You need to sign in before we can let you through.</value>
+  </data>
+  <data name="Unauthorized_Hint" xml:space="preserve">
+    <value>Try signing in or refreshing your session.</value>
+  </data>
+  <data name="Forbidden_Title" xml:space="preserve">
+    <value>Off Limits</value>
+  </data>
+  <data name="Forbidden_Description" xml:space="preserve">
+    <value>This area is reserved. You don't have the right permissions.</value>
+  </data>
+  <data name="Forbidden_Hint" xml:space="preserve">
+    <value>If you think this is a mistake, contact the document owner.</value>
+  </data>
+  <data name="NotFound_Title" xml:space="preserve">
+    <value>Lost in Space</value>
+  </data>
+  <data name="NotFound_Description" xml:space="preserve">
+    <value>We looked everywhere, but this page is playing hide and seek.</value>
+  </data>
+  <data name="NotFound_Hint" xml:space="preserve">
+    <value>Maybe it was moved, renamed, or it never existed in the first place.</value>
+  </data>
+  <data name="InternalError_Title" xml:space="preserve">
+    <value>Oops, We Broke Something</value>
+  </data>
+  <data name="InternalError_Description" xml:space="preserve">
+    <value>Our hamsters stopped running. We're getting them back on the wheel.</value>
+  </data>
+  <data name="InternalError_Hint" xml:space="preserve">
+    <value>Our team has been notified. Try again in a moment.</value>
+  </data>
+  <data name="BadGateway_Title" xml:space="preserve">
+    <value>Bad Gateway</value>
+  </data>
+  <data name="BadGateway_Description" xml:space="preserve">
+    <value>We asked an upstream server for help and got nonsense back.</value>
+  </data>
+  <data name="BadGateway_Hint" xml:space="preserve">
+    <value>This usually resolves on its own. Give it a minute.</value>
+  </data>
+  <data name="ServiceUnavailable_Title" xml:space="preserve">
+    <value>Taking a Breather</value>
+  </data>
+  <data name="ServiceUnavailable_Description" xml:space="preserve">
+    <value>We're doing some maintenance to make things even better.</value>
+  </data>
+  <data name="ServiceUnavailable_Hint" xml:space="preserve">
+    <value>We'll be back before you can finish your coffee.</value>
+  </data>
+  <data name="Default_Title" xml:space="preserve">
+    <value>Something Went Wrong</value>
+  </data>
+  <data name="Default_Description" xml:space="preserve">
+    <value>An unexpected error occurred. That's all we know.</value>
+  </data>
+  <data name="Default_Hint" xml:space="preserve">
+    <value>Try going back or returning home.</value>
+  </data>
+  <data name="Button_GoBack" xml:space="preserve">
+    <value>Go Back</value>
+  </data>
+  <data name="Button_BackToReview" xml:space="preserve">
+    <value>Back to Review</value>
+  </data>
+  <data name="Button_TakeMeHome" xml:space="preserve">
+    <value>Take Me Home</value>
+  </data>
+  <data name="RetryingIn" xml:space="preserve">
+    <value>Retrying in</value>
+  </data>
+</root>

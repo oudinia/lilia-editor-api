@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="xml:space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <data name="BadRequest_Title" xml:space="preserve">
+    <value>Solicitud incorrecta</value>
+  </data>
+  <data name="BadRequest_Description" xml:space="preserve">
+    <value>No pudimos interpretar esa solicitud. Verifique e intente de nuevo.</value>
+  </data>
+  <data name="BadRequest_Hint" xml:space="preserve">
+    <value>La solicitud estaba mal formada o le faltaba algo importante.</value>
+  </data>
+  <data name="Unauthorized_Title" xml:space="preserve">
+    <value>Acceso no autorizado</value>
+  </data>
+  <data name="Unauthorized_Description" xml:space="preserve">
+    <value>Debe iniciar sesión antes de poder acceder a esta página.</value>
+  </data>
+  <data name="Unauthorized_Hint" xml:space="preserve">
+    <value>Intente iniciar sesión o actualizar su sesión.</value>
+  </data>
+  <data name="Forbidden_Title" xml:space="preserve">
+    <value>Acceso prohibido</value>
+  </data>
+  <data name="Forbidden_Description" xml:space="preserve">
+    <value>Esta zona está reservada. No dispone de los permisos necesarios.</value>
+  </data>
+  <data name="Forbidden_Hint" xml:space="preserve">
+    <value>Si cree que se trata de un error, contacte al propietario del documento.</value>
+  </data>
+  <data name="NotFound_Title" xml:space="preserve">
+    <value>Perdido en el espacio</value>
+  </data>
+  <data name="NotFound_Description" xml:space="preserve">
+    <value>Buscamos por todas partes, pero esta página no aparece.</value>
+  </data>
+  <data name="NotFound_Hint" xml:space="preserve">
+    <value>Quizás fue movida, renombrada, o nunca existió.</value>
+  </data>
+  <data name="InternalError_Title" xml:space="preserve">
+    <value>Vaya, algo se ha roto</value>
+  </data>
+  <data name="InternalError_Description" xml:space="preserve">
+    <value>Nuestros hámsteres dejaron de correr. Los estamos poniendo de vuelta en la rueda.</value>
+  </data>
+  <data name="InternalError_Hint" xml:space="preserve">
+    <value>Nuestro equipo ha sido notificado. Intente de nuevo en un momento.</value>
+  </data>
+  <data name="BadGateway_Title" xml:space="preserve">
+    <value>Puerta de enlace incorrecta</value>
+  </data>
+  <data name="BadGateway_Description" xml:space="preserve">
+    <value>Consultamos un servidor intermedio y obtuvimos una respuesta incoherente.</value>
+  </data>
+  <data name="BadGateway_Hint" xml:space="preserve">
+    <value>Esto suele resolverse solo. Espere un momento.</value>
+  </data>
+  <data name="ServiceUnavailable_Title" xml:space="preserve">
+    <value>Tomando un respiro</value>
+  </data>
+  <data name="ServiceUnavailable_Description" xml:space="preserve">
+    <value>Estamos realizando tareas de mantenimiento para mejorar el servicio.</value>
+  </data>
+  <data name="ServiceUnavailable_Hint" xml:space="preserve">
+    <value>Volveremos antes de que termine su café.</value>
+  </data>
+  <data name="Default_Title" xml:space="preserve">
+    <value>Algo salió mal</value>
+  </data>
+  <data name="Default_Description" xml:space="preserve">
+    <value>Ocurrió un error inesperado. Es todo lo que sabemos.</value>
+  </data>
+  <data name="Default_Hint" xml:space="preserve">
+    <value>Intente volver atrás o regresar al inicio.</value>
+  </data>
+  <data name="Button_GoBack" xml:space="preserve">
+    <value>Volver</value>
+  </data>
+  <data name="Button_BackToReview" xml:space="preserve">
+    <value>Volver a la revisión</value>
+  </data>
+  <data name="Button_TakeMeHome" xml:space="preserve">
+    <value>Ir al inicio</value>
+  </data>
+  <data name="RetryingIn" xml:space="preserve">
+    <value>Reintentando en</value>
+  </data>
+</root>

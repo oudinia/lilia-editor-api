@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="xml:space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <data name="BadRequest_Title" xml:space="preserve">
+    <value>Requête incorrecte</value>
+  </data>
+  <data name="BadRequest_Description" xml:space="preserve">
+    <value>Nous n'avons pas pu interpréter cette requête. Vérifiez et réessayez.</value>
+  </data>
+  <data name="BadRequest_Hint" xml:space="preserve">
+    <value>La requête était mal formée ou il manque un élément important.</value>
+  </data>
+  <data name="Unauthorized_Title" xml:space="preserve">
+    <value>Qui va là ?</value>
+  </data>
+  <data name="Unauthorized_Description" xml:space="preserve">
+    <value>Vous devez vous connecter avant de pouvoir accéder à cette page.</value>
+  </data>
+  <data name="Unauthorized_Hint" xml:space="preserve">
+    <value>Essayez de vous connecter ou d'actualiser votre session.</value>
+  </data>
+  <data name="Forbidden_Title" xml:space="preserve">
+    <value>Accès interdit</value>
+  </data>
+  <data name="Forbidden_Description" xml:space="preserve">
+    <value>Cette zone est réservée. Vous ne disposez pas des autorisations nécessaires.</value>
+  </data>
+  <data name="Forbidden_Hint" xml:space="preserve">
+    <value>Si vous pensez qu'il s'agit d'une erreur, contactez le propriétaire du document.</value>
+  </data>
+  <data name="NotFound_Title" xml:space="preserve">
+    <value>Perdu dans l'espace</value>
+  </data>
+  <data name="NotFound_Description" xml:space="preserve">
+    <value>Nous avons cherché partout, mais cette page reste introuvable.</value>
+  </data>
+  <data name="NotFound_Hint" xml:space="preserve">
+    <value>Elle a peut-être été déplacée, renommée, ou n'a jamais existé.</value>
+  </data>
+  <data name="InternalError_Title" xml:space="preserve">
+    <value>Oups, quelque chose s'est cassé</value>
+  </data>
+  <data name="InternalError_Description" xml:space="preserve">
+    <value>Nos hamsters ont arrêté de courir. Nous les remettons sur la roue.</value>
+  </data>
+  <data name="InternalError_Hint" xml:space="preserve">
+    <value>Notre équipe a été informée. Réessayez dans un instant.</value>
+  </data>
+  <data name="BadGateway_Title" xml:space="preserve">
+    <value>Passerelle incorrecte</value>
+  </data>
+  <data name="BadGateway_Description" xml:space="preserve">
+    <value>Nous avons interrogé un serveur en amont et la réponse était incohérente.</value>
+  </data>
+  <data name="BadGateway_Hint" xml:space="preserve">
+    <value>Ce problème se résout généralement de lui-même. Patientez une minute.</value>
+  </data>
+  <data name="ServiceUnavailable_Title" xml:space="preserve">
+    <value>Pause en cours</value>
+  </data>
+  <data name="ServiceUnavailable_Description" xml:space="preserve">
+    <value>Nous effectuons une maintenance pour améliorer les choses.</value>
+  </data>
+  <data name="ServiceUnavailable_Hint" xml:space="preserve">
+    <value>Nous serons de retour avant que vous ayez fini votre café.</value>
+  </data>
+  <data name="Default_Title" xml:space="preserve">
+    <value>Un problème est survenu</value>
+  </data>
+  <data name="Default_Description" xml:space="preserve">
+    <value>Une erreur inattendue s'est produite. C'est tout ce que nous savons.</value>
+  </data>
+  <data name="Default_Hint" xml:space="preserve">
+    <value>Essayez de revenir en arrière ou de retourner à l'accueil.</value>
+  </data>
+  <data name="Button_GoBack" xml:space="preserve">
+    <value>Retour</value>
+  </data>
+  <data name="Button_BackToReview" xml:space="preserve">
+    <value>Retour à la révision</value>
+  </data>
+  <data name="Button_TakeMeHome" xml:space="preserve">
+    <value>Retour à l'accueil</value>
+  </data>
+  <data name="RetryingIn" xml:space="preserve">
+    <value>Nouvelle tentative dans</value>
+  </data>
+</root>

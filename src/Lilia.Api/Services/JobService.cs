@@ -15,6 +15,7 @@ public class JobService : IJobService
     private readonly IRenderService _renderService;
     private readonly IDocxImportService _docxImportService;
     private readonly IPdfParser? _pdfParser;
+    private readonly ILatexParser _latexParser;
     private readonly IImportProgressService _progressService;
     private readonly IImportReviewService _reviewService;
     private readonly ILogger<JobService> _logger;
@@ -26,6 +27,7 @@ public class JobService : IJobService
         IDocxImportService docxImportService,
         IImportProgressService progressService,
         IImportReviewService reviewService,
+        ILatexParser latexParser,
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null)
     {
@@ -35,6 +37,7 @@ public class JobService : IJobService
         _docxImportService = docxImportService;
         _progressService = progressService;
         _reviewService = reviewService;
+        _latexParser = latexParser;
         _logger = logger;
         _pdfParser = pdfParser;
     }
@@ -502,19 +505,74 @@ public class JobService : IJobService
                 }
                 else
                 {
-                    // LaTeX: Create single code block with the content
-                    _context.Blocks.Add(new Lilia.Core.Entities.Block
+                    // LaTeX: Parse using ILatexParser into structured blocks
+                    try
                     {
-                        Id = Guid.NewGuid(),
-                        DocumentId = createdDocument.Id,
-                        Type = "code",
-                        Content = JsonDocument.Parse(JsonSerializer.Serialize(new { code = request.Content, language = "latex" })),
-                        SortOrder = 0,
-                        Depth = 0,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    });
-                    await _context.SaveChangesAsync();
+                        var parsedDoc = await _latexParser.ParseTextAsync(request.Content, new LatexImportOptions
+                        {
+                            ExtractDocumentTitle = true,
+                            ConvertEquationEnvironments = request.Options?.AutoDetectEquations ?? true,
+                            ConvertDisplayMath = request.Options?.AutoDetectEquations ?? true,
+                        });
+
+                        // Update document title if parser found one
+                        if (!string.IsNullOrWhiteSpace(parsedDoc.Title) && createdDocument != null)
+                        {
+                            createdDocument.Title = parsedDoc.Title;
+                        }
+
+                        if (parsedDoc.Elements.Count > 0)
+                        {
+                            int sortOrder = 0;
+                            foreach (var element in parsedDoc.Elements)
+                            {
+                                var (blockType, blockContent) = MapImportElementToBlock(element);
+                                _context.Blocks.Add(new Lilia.Core.Entities.Block
+                                {
+                                    Id = Guid.NewGuid(),
+                                    DocumentId = createdDocument.Id,
+                                    Type = blockType,
+                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(blockContent)),
+                                    SortOrder = sortOrder++,
+                                    Depth = 0,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                });
+                            }
+                        }
+                        else
+                        {
+                            // Parser returned no elements, fall back to single paragraph
+                            _context.Blocks.Add(new Lilia.Core.Entities.Block
+                            {
+                                Id = Guid.NewGuid(),
+                                DocumentId = createdDocument.Id,
+                                Type = "paragraph",
+                                Content = JsonDocument.Parse(JsonSerializer.Serialize(new { text = request.Content })),
+                                SortOrder = 0,
+                                Depth = 0,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            });
+                        }
+                        await _context.SaveChangesAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Import] LaTeX parsing failed, falling back to code block");
+                        _context.Blocks.Add(new Lilia.Core.Entities.Block
+                        {
+                            Id = Guid.NewGuid(),
+                            DocumentId = createdDocument.Id,
+                            Type = "code",
+                            Content = JsonDocument.Parse(JsonSerializer.Serialize(new { code = request.Content, language = "latex" })),
+                            SortOrder = 0,
+                            Depth = 0,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                        await _context.SaveChangesAsync();
+                    }
                 }
             }
             else
@@ -708,6 +766,35 @@ public class JobService : IJobService
         }
 
         return sanitized.Trim();
+    }
+
+    /// <summary>
+    /// Maps an ImportElement from the LaTeX parser to a block type and content dictionary.
+    /// </summary>
+    private static (string type, object content) MapImportElementToBlock(ImportElement element)
+    {
+        return element switch
+        {
+            ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
+            ImportParagraph p => ("paragraph", new { text = p.Text }),
+            ImportEquation eq => ("equation", new { latex = eq.LatexContent ?? eq.OmmlXml, equationMode = eq.IsInline ? "inline" : "display" }),
+            ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "plaintext" }),
+            ImportTable t => ("table", new
+            {
+                headers = t.HasHeaderRow && t.Rows.Count > 0
+                    ? t.Rows[0].Select(c => c.Text).ToArray()
+                    : Enumerable.Range(0, t.ColumnCount).Select(i => $"Column {i + 1}").ToArray(),
+                rows = (t.HasHeaderRow ? t.Rows.Skip(1) : t.Rows)
+                    .Select(r => r.Select(c => c.Text).ToArray()).ToArray()
+            }),
+            ImportAbstract a => ("abstract", new { text = a.Text }),
+            ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
+            ImportListItem li => ("list", new { items = new[] { li.Text }, ordered = li.IsNumbered }),
+            ImportPageBreak => ("pageBreak", new { }),
+            ImportImage img => ("figure", new { src = "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
+            ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
+            _ => ("paragraph", new { text = "" }),
+        };
     }
 
     private static JobDto MapToDto(Job j)
