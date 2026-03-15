@@ -240,6 +240,21 @@ public class DocumentService : IDocumentService
             }
         }
 
+        // Ensure every new document has at least one paragraph block
+        if (document.Blocks.Count == 0)
+        {
+            document.Blocks.Add(new Block
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = document.Id,
+                Type = "paragraph",
+                Content = JsonDocument.Parse("\"\""),
+                SortOrder = 0,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
 
