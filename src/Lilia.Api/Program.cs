@@ -179,6 +179,9 @@ builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();
 
+// Background services
+builder.Services.AddHostedService<TrashPurgeBackgroundService>();
+
 // Email service (Resend)
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
 builder.Services.AddSingleton(emailSettings);

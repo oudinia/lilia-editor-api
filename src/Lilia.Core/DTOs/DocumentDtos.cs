@@ -97,6 +97,16 @@ public record UpdateDocumentDto(
     string? PageNumbering
 );
 
+public record TrashDocumentDto(
+    Guid Id,
+    string Title,
+    string OwnerId,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    DateTime DeletedAt,
+    int DaysUntilPurge
+);
+
 public record ShareDocumentDto(
     bool IsPublic
 );

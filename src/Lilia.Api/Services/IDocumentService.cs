@@ -30,4 +30,24 @@ public interface IDocumentService
     Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, bool isPublic);
     Task<bool> RevokeShareAsync(Guid id, string userId);
     Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission);
+
+    /// <summary>
+    /// Get paginated list of soft-deleted documents for a user
+    /// </summary>
+    Task<PaginatedResult<TrashDocumentDto>> GetTrashDocumentsPaginatedAsync(string userId, int page = 1, int pageSize = 20);
+
+    /// <summary>
+    /// Restore a soft-deleted document
+    /// </summary>
+    Task<bool> RestoreDocumentAsync(Guid id, string userId);
+
+    /// <summary>
+    /// Permanently delete a soft-deleted document
+    /// </summary>
+    Task<bool> PermanentDeleteDocumentAsync(Guid id, string userId);
+
+    /// <summary>
+    /// Purge all documents that have been in trash longer than the retention period
+    /// </summary>
+    Task<int> PurgeExpiredDocumentsAsync(int retentionDays = 30);
 }

@@ -152,4 +152,56 @@ public class DocumentsController : ControllerBase
         if (!result) return NotFound();
         return NoContent();
     }
+
+    /// <summary>
+    /// Get paginated list of trashed documents
+    /// </summary>
+    [HttpGet("trash")]
+    public async Task<ActionResult<PaginatedResult<TrashDocumentDto>>> GetTrash(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var result = await _documentService.GetTrashDocumentsPaginatedAsync(userId, page, pageSize);
+
+        _logger.LogInformation(
+            "[Documents] GET trash: count={DocumentCount}/{TotalCount}, page={Page}/{TotalPages}",
+            result.Items.Count, result.TotalCount, result.Page, result.TotalPages);
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Restore a document from trash
+    /// </summary>
+    [HttpPost("{id:guid}/restore")]
+    public async Task<ActionResult> RestoreDocument(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var result = await _documentService.RestoreDocumentAsync(id, userId);
+        if (!result) return NotFound();
+
+        await _auditService.LogAsync("document.restore", "Document", id.ToString());
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Permanently delete a document from trash
+    /// </summary>
+    [HttpDelete("{id:guid}/permanent")]
+    public async Task<ActionResult> PermanentDeleteDocument(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var result = await _documentService.PermanentDeleteDocumentAsync(id, userId);
+        if (!result) return NotFound();
+
+        await _auditService.LogAsync("document.permanent_delete", "Document", id.ToString());
+        return NoContent();
+    }
 }

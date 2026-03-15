@@ -154,7 +154,7 @@ public class DocumentService : IDocumentService
             .Include(d => d.BibliographyEntries)
             .Include(d => d.DocumentLabels)
                 .ThenInclude(dl => dl.Label)
-            .FirstOrDefaultAsync(d => d.Id == id);
+            .FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null);
 
         if (document == null) return null;
 
@@ -426,6 +426,86 @@ public class DocumentService : IDocumentService
         }
 
         return false;
+    }
+
+    public async Task<PaginatedResult<TrashDocumentDto>> GetTrashDocumentsPaginatedAsync(string userId, int page = 1, int pageSize = 20)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _context.Documents
+            .Where(d => d.DeletedAt != null && d.OwnerId == userId)
+            .OrderByDescending(d => d.DeletedAt);
+
+        var totalCount = await query.CountAsync();
+
+        var documents = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var items = documents.Select(d =>
+        {
+            var daysSinceDeletion = (int)(DateTime.UtcNow - d.DeletedAt!.Value).TotalDays;
+            var daysUntilPurge = Math.Max(0, 30 - daysSinceDeletion);
+
+            return new TrashDocumentDto(
+                d.Id,
+                d.Title,
+                d.OwnerId,
+                d.CreatedAt,
+                d.UpdatedAt,
+                d.DeletedAt.Value,
+                daysUntilPurge
+            );
+        }).ToList();
+
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        return new PaginatedResult<TrashDocumentDto>(items, page, pageSize, totalCount, totalPages);
+    }
+
+    public async Task<bool> RestoreDocumentAsync(Guid id, string userId)
+    {
+        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt != null);
+        if (document == null) return false;
+
+        if (document.OwnerId != userId) return false;
+
+        document.DeletedAt = null;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
+    public async Task<bool> PermanentDeleteDocumentAsync(Guid id, string userId)
+    {
+        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt != null);
+        if (document == null) return false;
+
+        if (document.OwnerId != userId) return false;
+
+        _context.Documents.Remove(document);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
+    public async Task<int> PurgeExpiredDocumentsAsync(int retentionDays = 30)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
+
+        var expiredDocuments = await _context.Documents
+            .Where(d => d.DeletedAt != null && d.DeletedAt < cutoff)
+            .ToListAsync();
+
+        if (expiredDocuments.Count == 0) return 0;
+
+        _context.Documents.RemoveRange(expiredDocuments);
+        await _context.SaveChangesAsync();
+
+        return expiredDocuments.Count;
     }
 
     private static string GenerateShareLink()
