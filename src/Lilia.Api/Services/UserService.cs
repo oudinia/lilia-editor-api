@@ -8,10 +8,14 @@ namespace Lilia.Api.Services;
 public class UserService : IUserService
 {
     private readonly LiliaDbContext _context;
+    private readonly IDocumentService _documentService;
+    private readonly ILogger<UserService> _logger;
 
-    public UserService(LiliaDbContext context)
+    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger)
     {
         _context = context;
+        _documentService = documentService;
+        _logger = logger;
     }
 
     public async Task<UserDto?> GetUserAsync(string userId)
@@ -65,6 +69,21 @@ public class UserService : IUserService
             user.Image = dto.Image;
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+        }
+
+        // Clone starter documents for new users
+        if (isNewUser)
+        {
+            try
+            {
+                var count = await _documentService.CloneStarterDocumentsAsync(dto.Id);
+                if (count > 0)
+                    _logger.LogInformation("[Onboarding] Cloned {Count} starter documents for new user {UserId}", count, dto.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Onboarding] Failed to clone starter documents for user {UserId}", dto.Id);
+            }
         }
 
         // Accept any pending invites for this email

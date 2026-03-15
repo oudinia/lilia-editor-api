@@ -10,10 +10,12 @@ namespace Lilia.Api.Services;
 public class DocumentService : IDocumentService
 {
     private readonly LiliaDbContext _context;
+    private readonly ILogger<DocumentService> _logger;
 
-    public DocumentService(LiliaDbContext context)
+    public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     public async Task<PaginatedResult<DocumentListDto>> GetDocumentsPaginatedAsync(
@@ -506,6 +508,87 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
 
         return expiredDocuments.Count;
+    }
+
+    public async Task<int> CloneStarterDocumentsAsync(string userId)
+    {
+        const string sampleUserId = "sample-content";
+
+        var sampleDocs = await _context.Documents
+            .Include(d => d.Blocks)
+            .Include(d => d.BibliographyEntries)
+            .Where(d => d.OwnerId == sampleUserId && d.DeletedAt == null)
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (sampleDocs.Count == 0) return 0;
+
+        foreach (var original in sampleDocs)
+        {
+            var newDoc = new Document
+            {
+                Id = Guid.NewGuid(),
+                OwnerId = userId,
+                Title = original.Title,
+                Language = original.Language,
+                PaperSize = original.PaperSize,
+                FontFamily = original.FontFamily,
+                FontSize = original.FontSize,
+                Columns = original.Columns,
+                ColumnGap = original.ColumnGap,
+                ColumnSeparator = original.ColumnSeparator,
+                LineSpacing = original.LineSpacing,
+                ParagraphIndent = original.ParagraphIndent,
+                MarginTop = original.MarginTop,
+                MarginBottom = original.MarginBottom,
+                MarginLeft = original.MarginLeft,
+                MarginRight = original.MarginRight,
+                HeaderText = original.HeaderText,
+                FooterText = original.FooterText,
+                PageNumbering = original.PageNumbering,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            foreach (var block in original.Blocks.OrderBy(b => b.SortOrder))
+            {
+                newDoc.Blocks.Add(new Block
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = newDoc.Id,
+                    Type = block.Type,
+                    Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
+                    SortOrder = block.SortOrder,
+                    Depth = block.Depth,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+
+            foreach (var entry in original.BibliographyEntries)
+            {
+                newDoc.BibliographyEntries.Add(new BibliographyEntry
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = newDoc.Id,
+                    CiteKey = entry.CiteKey,
+                    EntryType = entry.EntryType,
+                    Data = JsonDocument.Parse(entry.Data.RootElement.GetRawText()),
+                    FormattedText = entry.FormattedText,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+
+            _context.Documents.Add(newDoc);
+        }
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("[Onboarding] Cloned {Count} starter documents for user {UserId}",
+            sampleDocs.Count, userId);
+
+        return sampleDocs.Count;
     }
 
     private static string GenerateShareLink()

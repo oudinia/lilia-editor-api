@@ -50,4 +50,9 @@ public interface IDocumentService
     /// Purge all documents that have been in trash longer than the retention period
     /// </summary>
     Task<int> PurgeExpiredDocumentsAsync(int retentionDays = 30);
+
+    /// <summary>
+    /// Clone starter/sample documents to a new user for onboarding
+    /// </summary>
+    Task<int> CloneStarterDocumentsAsync(string userId);
 }
