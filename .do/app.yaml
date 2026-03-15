@@ -92,10 +92,10 @@ services:
 
 static_sites:
   - name: editor
-    build_command: "corepack enable && pnpm install --frozen-lockfile && pnpm turbo build --filter=@repo/editor"
-    output_dir: apps/editor/dist
+    build_command: "npm install --legacy-peer-deps && npm run build"
+    output_dir: dist
     github:
-      repo: oudinia/lilia-cloud
+      repo: oudinia/lilia-web-editor
       branch: main
       deploy_on_push: true
     environment_slug: node-js
