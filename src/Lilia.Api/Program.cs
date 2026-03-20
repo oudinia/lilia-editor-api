@@ -400,6 +400,20 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads"
 });
 
+// Local storage upload endpoint — accepts PUT requests from the frontend
+// when using LocalStorageService (dev mode). Production uses R2 presigned URLs.
+app.MapPut("/api/upload/{**key}", async (string key, HttpContext ctx) =>
+{
+    var filePath = Path.Combine(uploadsPath, key.Replace('/', Path.DirectorySeparatorChar));
+    var directory = Path.GetDirectoryName(filePath);
+    if (!string.IsNullOrEmpty(directory))
+        Directory.CreateDirectory(directory);
+
+    using var fileStream = File.Create(filePath);
+    await ctx.Request.Body.CopyToAsync(fileStream);
+    return Results.Ok();
+});
+
 app.UseCors();
 
 app.UseAuthentication();
