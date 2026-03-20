@@ -12,6 +12,7 @@ public class JobConfiguration : IEntityTypeConfiguration<Job>
 
         builder.HasKey(j => j.Id);
         builder.Property(j => j.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+        builder.Property(j => j.TenantId).HasColumnName("tenant_id").HasMaxLength(255).IsRequired();
         builder.Property(j => j.UserId).HasColumnName("user_id").HasMaxLength(255).IsRequired();
         builder.Property(j => j.DocumentId).HasColumnName("document_id");
         builder.Property(j => j.JobType).HasColumnName("job_type").HasMaxLength(20).IsRequired();

@@ -5,6 +5,7 @@ namespace Lilia.Core.Entities;
 public class Job
 {
     public Guid Id { get; set; }
+    public string TenantId { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public Guid? DocumentId { get; set; }
     public string JobType { get; set; } = string.Empty; // IMPORT, EXPORT

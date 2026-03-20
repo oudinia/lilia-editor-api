@@ -103,6 +103,7 @@ public class JobService : IJobService
         var job = new Job
         {
             Id = Guid.NewGuid(),
+            TenantId = userId,
             UserId = userId,
             DocumentId = dto.DocumentId,
             JobType = JobTypes.Export,
@@ -183,6 +184,7 @@ public class JobService : IJobService
         var job = new Job
         {
             Id = Guid.NewGuid(),
+            TenantId = userId,
             UserId = userId,
             JobType = JobTypes.Import,
             Status = JobStatus.Pending,
@@ -212,6 +214,7 @@ public class JobService : IJobService
         var job = new Job
         {
             Id = Guid.NewGuid(),
+            TenantId = userId,
             UserId = userId,
             JobType = JobTypes.Import,
             Status = JobStatus.Processing,
