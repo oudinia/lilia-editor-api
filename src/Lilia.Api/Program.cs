@@ -276,6 +276,9 @@ builder.Services.AddSingleton<ILmlConversionService, LmlConversionService>();
 // Register Accessibility service
 builder.Services.AddScoped<IAccessibilityService, AccessibilityService>();
 
+// Register ePub service
+builder.Services.AddScoped<IEpubService, EpubService>();
+
 var app = builder.Build();
 
 // Error handling — must be early in the pipeline

@@ -8,6 +8,7 @@ public class BlockTypeService : IBlockTypeService
 {
     public const string CategoryDocument = "document";
     public const string CategoryInvoice = "invoice";
+    public const string CategoryEpub = "epub";
 
     private static readonly List<BlockTypeMetadataDto> BlockTypeDefinitions = BuildBlockTypes();
 
@@ -34,6 +35,15 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", CategoryDocument, new { text = "" }),
             MakeBlockType(BlockTypes.Algorithm, "Algorithm", "Pseudocode algorithm block", "cpu", CategoryDocument, new { title = "", language = "pseudocode", code = "", label = "", caption = "" }),
             MakeBlockType(BlockTypes.Callout, "Callout", "Admonition or callout box (note, tip, warning, important, example)", "alert", CategoryDocument, new { variant = "note", title = "", text = "" }),
+
+            // ePub block types
+            MakeBlockType(BlockTypes.FrontMatter, "Front Matter", "Book front matter (title page, preface, etc.)", "bookOpen", CategoryEpub, new { text = "" }),
+            MakeBlockType(BlockTypes.BackMatter, "Back Matter", "Book back matter (appendix, index, etc.)", "bookEnd", CategoryEpub, new { text = "" }),
+            MakeBlockType(BlockTypes.Verse, "Verse", "Poetry or verse block", "quote", CategoryEpub, new { text = "" }),
+            MakeBlockType(BlockTypes.Aside, "Aside", "Sidebar or supplementary content", "layoutSidebar", CategoryEpub, new { text = "" }),
+            MakeBlockType(BlockTypes.Annotation, "Annotation", "Annotation or footnote-like remark", "pencil", CategoryEpub, new { text = "" }),
+            MakeBlockType(BlockTypes.Cover, "Cover", "Book cover image", "image", CategoryEpub, new { src = "", alt = "Cover" }),
+            MakeBlockType(BlockTypes.ChapterBreak, "Chapter Break", "Marks a chapter boundary", "horizontalRule", CategoryEpub, new { }),
 
             // Invoice block types
             MakeBlockType(BlockTypes.InvHeader, "Invoice Header", "Invoice metadata: number, dates, currency, type", "fileInvoice", CategoryInvoice, new

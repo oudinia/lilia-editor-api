@@ -55,6 +55,15 @@ public static class BlockTypes
     public const string InvDelivery = "inv-delivery";
     public const string InvNote = "inv-note";
 
+    // ePub block types
+    public const string FrontMatter = "frontMatter";
+    public const string BackMatter = "backMatter";
+    public const string Verse = "verse";
+    public const string Aside = "aside";
+    public const string Annotation = "annotation";
+    public const string Cover = "cover";
+    public const string ChapterBreak = "chapterBreak";
+
     // Legacy aliases for backwards compatibility with existing data
     public const string Quote = "quote";
     public const string Image = "image";
@@ -66,6 +75,7 @@ public static class BlockTypes
         Blockquote, Table, Theorem, Abstract, Bibliography,
         TableOfContents, PageBreak, ColumnBreak, Embed, Footnote,
         Algorithm, Callout,
+        FrontMatter, BackMatter, Verse, Aside, Annotation, Cover, ChapterBreak,
         InvHeader, InvParty, InvLineItems, InvTaxSummary,
         InvTotals, InvPayment, InvAllowanceCharge, InvDelivery, InvNote
     ];
