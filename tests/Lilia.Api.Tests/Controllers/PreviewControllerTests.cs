@@ -71,6 +71,7 @@ public class PreviewControllerTests
             1.5,
             false,
             null,
+            null,
             DateTime.UtcNow,
             DateTime.UtcNow,
             null,
