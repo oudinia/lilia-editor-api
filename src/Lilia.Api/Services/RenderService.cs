@@ -193,6 +193,10 @@ public class RenderService : IRenderService
                 "bibliography" => RenderBibliographyToHtml(content),
                 "columnbreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
                 "pagebreak" or "divider" => "<div class=\"page-break\"><span class=\"page-break-label\">Page Break</span></div>",
+                "embed" => RenderEmbedToHtml(content),
+                "algorithm" => RenderAlgorithmToHtml(content),
+                "callout" => RenderCalloutToHtml(content),
+                "footnote" => RenderFootnoteToHtml(content),
                 _ => $"<div class=\"block block-{WebUtility.HtmlEncode(block.Type)}\"></div>"
             };
         }
@@ -409,6 +413,54 @@ public class RenderService : IRenderService
         return "<div class=\"bibliography\"><h3>References</h3><div class=\"bibliography-entries\"></div></div>";
     }
 
+    private string RenderEmbedToHtml(JsonElement content)
+    {
+        var engine = content.TryGetProperty("engine", out var e) ? e.GetString() ?? "latex" : "latex";
+        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
+        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var escaped = WebUtility.HtmlEncode(code);
+        var html = $"<div class=\"embed embed-{WebUtility.HtmlEncode(engine)}\">";
+        html += $"<pre><code>{escaped}</code></pre>";
+        if (!string.IsNullOrEmpty(caption))
+            html += $"<p class=\"embed-caption\">{WebUtility.HtmlEncode(caption)}</p>";
+        html += "</div>";
+        return html;
+    }
+
+    private string RenderAlgorithmToHtml(JsonElement content)
+    {
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
+        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var html = "<div class=\"algorithm\">";
+        if (!string.IsNullOrEmpty(title))
+            html += $"<h4 class=\"algorithm-title\">{WebUtility.HtmlEncode(title)}</h4>";
+        html += $"<pre class=\"algorithm-code\"><code>{WebUtility.HtmlEncode(code)}</code></pre>";
+        if (!string.IsNullOrEmpty(caption))
+            html += $"<p class=\"algorithm-caption\">{WebUtility.HtmlEncode(caption)}</p>";
+        html += "</div>";
+        return html;
+    }
+
+    private string RenderCalloutToHtml(JsonElement content)
+    {
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "note" : "note";
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
+        var html = $"<div class=\"callout callout-{WebUtility.HtmlEncode(variant)}\">";
+        if (!string.IsNullOrEmpty(title))
+            html += $"<p class=\"callout-title\">{WebUtility.HtmlEncode(title)}</p>";
+        html += $"<p class=\"callout-text\">{ProcessInlineContent(text)}</p>";
+        html += "</div>";
+        return html;
+    }
+
+    private string RenderFootnoteToHtml(JsonElement content)
+    {
+        var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        return $"<span class=\"footnote\">{ProcessInlineContent(text)}</span>";
+    }
+
     private string RenderBibliographyEntriesHtml(IEnumerable<BibliographyEntry> entries)
     {
         var html = new StringBuilder();
@@ -619,6 +671,10 @@ public class RenderService : IRenderService
                 "columnbreak" => @"\columnbreak",
                 "pagebreak" or "divider" => @"\newpage",
                 "bibliography" => "", // handled separately via BibliographyEntries
+                "embed" => RenderEmbedToLatex(content),
+                "algorithm" => RenderAlgorithmToLatex(content),
+                "callout" => RenderCalloutToLatex(content),
+                "footnote" => RenderFootnoteToLatex(content),
                 _ => $"% Unknown block type: {block.Type}"
             };
         }
@@ -659,6 +715,48 @@ public class RenderService : IRenderService
         return $@"\begin{{abstract}}
 {ProcessLatexText(text)}
 \end{{abstract}}";
+    }
+
+    private string RenderEmbedToLatex(JsonElement content)
+    {
+        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
+        // Embed blocks are raw code escape hatches — output the code directly
+        return code;
+    }
+
+    private string RenderAlgorithmToLatex(JsonElement content)
+    {
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
+        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var sb = new StringBuilder();
+        sb.AppendLine(@"\begin{algorithm}");
+        if (!string.IsNullOrEmpty(caption))
+            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+        if (!string.IsNullOrEmpty(title))
+            sb.AppendLine($@"\label{{{EscapeLatex(title)}}}");
+        sb.AppendLine(@"\begin{algorithmic}");
+        sb.AppendLine(code);
+        sb.AppendLine(@"\end{algorithmic}");
+        sb.AppendLine(@"\end{algorithm}");
+        return sb.ToString().TrimEnd();
+    }
+
+    private string RenderCalloutToLatex(JsonElement content)
+    {
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "note" : "note";
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
+        var displayTitle = !string.IsNullOrEmpty(title) ? title : char.ToUpper(variant[0]) + variant[1..];
+        return $@"\begin{{tcolorbox}}[title={{{EscapeLatex(displayTitle)}}}]
+{ProcessLatexText(text)}
+\end{{tcolorbox}}";
+    }
+
+    private string RenderFootnoteToLatex(JsonElement content)
+    {
+        var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        return $@"\footnote{{{ProcessLatexText(text)}}}";
     }
 
     private string RenderEquationToLatex(JsonElement content)
