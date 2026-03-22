@@ -348,6 +348,147 @@ public class EpubServiceTests
         chapters.Should().HaveCount(1);
     }
 
+    // ────────────────────────── Block Rendering (BlockToXhtml) ──────────────────────────
+
+    [Fact]
+    public void BlockToXhtml_Paragraph_RendersCorrectly()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Paragraph, new { text = "Hello world" }, 0);
+        EpubService.BlockToXhtml(block).Should().Be("<p>Hello world</p>");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Heading_RendersWithLevel()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Heading, new { text = "Section", level = 3 }, 0);
+        EpubService.BlockToXhtml(block).Should().Be("<h3>Section</h3>");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Code_RendersPreCode()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Code, new { code = "x = 1" }, 0);
+        EpubService.BlockToXhtml(block).Should().Contain("<pre><code>");
+        EpubService.BlockToXhtml(block).Should().Contain("x = 1");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Equation_RendersWithClass()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Equation, new { latex = "E=mc^2" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("equation");
+        result.Should().Contain("E=mc^2");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Figure_RendersFigureElement()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Figure, new { src = "img.png", caption = "Cap", alt = "Alt" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("<figure>");
+        result.Should().Contain("img.png");
+        result.Should().Contain("<figcaption>Cap</figcaption>");
+    }
+
+    [Fact]
+    public void BlockToXhtml_List_RendersOrderedList()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.List, new { items = new[] { "A", "B" }, ordered = true }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("<ol>");
+        result.Should().Contain("<li>A</li>");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Table_RendersHeaders()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Table, new { headers = new[] { "H1" }, rows = new[] { new[] { "V1" } } }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("<th>H1</th>");
+        result.Should().Contain("<td>V1</td>");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Verse_RendersVerseClass()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Verse, new { text = "Roses are red" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("verse");
+        result.Should().Contain("Roses are red");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Aside_RendersAsideElement()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Aside, new { text = "Side note" }, 0);
+        EpubService.BlockToXhtml(block).Should().Be("<aside>Side note</aside>");
+    }
+
+    [Fact]
+    public void BlockToXhtml_FrontMatter_RendersWithEpubType()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.FrontMatter, new { text = "Preface" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("frontmatter");
+        result.Should().Contain("Preface");
+    }
+
+    [Fact]
+    public void BlockToXhtml_BackMatter_RendersWithEpubType()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.BackMatter, new { text = "Appendix" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("backmatter");
+        result.Should().Contain("Appendix");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Cover_RendersCoverDiv()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Cover, new { src = "cover.jpg" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("cover");
+        result.Should().Contain("cover.jpg");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Annotation_RendersAnnotationAside()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Annotation, new { text = "Note" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("annotation");
+        result.Should().Contain("Note");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Blockquote_RendersBlockquote()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Blockquote, new { text = "Famous quote" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("<blockquote>");
+        result.Should().Contain("Famous quote");
+    }
+
+    [Fact]
+    public void BlockToXhtml_Abstract_RendersAbstractSection()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Abstract, new { text = "Summary text", title = "Abstract" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("abstract");
+        result.Should().Contain("Summary text");
+    }
+
+    [Fact]
+    public void BlockToXhtml_EscapesXmlCharacters()
+    {
+        var block = EpubService.CreateBlock(BlockTypes.Paragraph, new { text = "A < B & C > D" }, 0);
+        var result = EpubService.BlockToXhtml(block);
+        result.Should().Contain("&lt;");
+        result.Should().Contain("&amp;");
+        result.Should().Contain("&gt;");
+    }
+
     // ────────────────────────── Export ──────────────────────────
 
     [Fact]
@@ -486,6 +627,62 @@ public class EpubServiceTests
         result.Issues.Should().Contain(i =>
             i.Category == "structure" &&
             i.Description.Contains("Heading level jumps"));
+    }
+
+    // ────────────────────────── Round-Trip ──────────────────────────
+
+    [Fact]
+    public async Task RoundTrip_ExportThenImport_PreservesContent()
+    {
+        var blocks = new List<Block>
+        {
+            EpubService.CreateBlock(BlockTypes.Heading, new { text = "My Chapter", level = 1 }, 0),
+            EpubService.CreateBlock(BlockTypes.Paragraph, new { text = "Body paragraph." }, 1),
+            EpubService.CreateBlock(BlockTypes.Code, new { code = "x = 42", language = "python" }, 2),
+            EpubService.CreateBlock(BlockTypes.Blockquote, new { text = "A famous quote." }, 3)
+        };
+        var options = new EpubExportOptions("Round Trip", Author: "Tester");
+
+        var epubBytes = await _service.ExportAsync(blocks, options);
+
+        using var importStream = new MemoryStream(epubBytes);
+        var (metadata, imported, _) = await _service.ImportAsync(importStream);
+
+        metadata.Title.Should().Be("Round Trip");
+        metadata.Author.Should().Be("Tester");
+        imported.Should().Contain(b => b.Type == BlockTypes.Heading);
+        imported.Should().Contain(b => b.Type == BlockTypes.Paragraph);
+        imported.Should().Contain(b => b.Type == BlockTypes.Code);
+        imported.Should().Contain(b => b.Type == BlockTypes.Blockquote);
+
+        var heading = imported.First(b => b.Type == BlockTypes.Heading);
+        EpubService.GetJsonProperty(heading.Content, "text").Should().Be("My Chapter");
+    }
+
+    [Fact]
+    public async Task ExportAsync_ChapterBreak_CreatesMultipleFiles()
+    {
+        var blocks = new List<Block>
+        {
+            EpubService.CreateBlock(BlockTypes.Paragraph, new { text = "Part 1" }, 0),
+            EpubService.CreateBlock(BlockTypes.ChapterBreak, new { }, 1),
+            EpubService.CreateBlock(BlockTypes.Paragraph, new { text = "Part 2" }, 2)
+        };
+        var options = new EpubExportOptions("Split Test");
+
+        var epub = await _service.ExportAsync(blocks, options);
+
+        using var ms = new MemoryStream(epub);
+        using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
+
+        zip.GetEntry("OEBPS/chapter1.xhtml").Should().NotBeNull();
+        zip.GetEntry("OEBPS/chapter2.xhtml").Should().NotBeNull();
+
+        using var r1 = new StreamReader(zip.GetEntry("OEBPS/chapter1.xhtml")!.Open());
+        (await r1.ReadToEndAsync()).Should().Contain("Part 1");
+
+        using var r2 = new StreamReader(zip.GetEntry("OEBPS/chapter2.xhtml")!.Open());
+        (await r2.ReadToEndAsync()).Should().Contain("Part 2");
     }
 
     // ────────────────────────── Helpers ──────────────────────────
