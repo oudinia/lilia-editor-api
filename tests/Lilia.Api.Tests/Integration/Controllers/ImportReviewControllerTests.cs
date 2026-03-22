@@ -31,7 +31,7 @@ public class ImportReviewControllerTests : IntegrationTestBase
             id = Guid.NewGuid().ToString(),
             type = i == 0 ? "heading" : "paragraph",
             content = i == 0
-                ? JsonSerializer.SerializeToElement(new { text = "Chapter 1", level = 1 })
+                ? JsonSerializer.SerializeToElement(new { text = "Introduction", level = 1 })
                 : JsonSerializer.SerializeToElement(new { text = $"Paragraph {i}" }),
             confidence = i == 0 ? 90 : 95,
             warnings = (JsonElement?)null,

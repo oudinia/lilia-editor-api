@@ -295,9 +295,9 @@ public class RenderServiceTests
         // Act
         var result = sut.RenderBlockToHtml(block);
 
-        // Assert
+        // Assert — columnBreak now renders a styled div with label
         result.Should().Contain("column-break");
-        result.Should().Contain("break-after: column");
+        result.Should().Contain("Column Break");
     }
 
     [Fact]
@@ -317,15 +317,15 @@ public class RenderServiceTests
         // Act
         var result = sut.RenderBlockToHtml(block);
 
-        // Assert
+        // Assert — pageBreak now renders a styled div with label
         result.Should().Contain("page-break");
-        result.Should().Contain("break-after: page");
+        result.Should().Contain("Page Break");
     }
 
     [Fact]
-    public void RenderBlockToHtml_FootnoteBlock_FallsBackToGenericBlock()
+    public void RenderBlockToHtml_FootnoteBlock_ReturnsFootnoteSpan()
     {
-        // Arrange — footnote is not yet handled by RenderService, falls to default
+        // Arrange — footnote is now handled by RenderService
         var block = new Block
         {
             Id = Guid.NewGuid(),
@@ -340,13 +340,14 @@ public class RenderServiceTests
         var result = sut.RenderBlockToHtml(block);
 
         // Assert
-        result.Should().Contain("block-footnote");
+        result.Should().Contain("footnote");
+        result.Should().Contain("A footnote.");
     }
 
     [Fact]
-    public void RenderBlockToHtml_EmbedBlock_FallsBackToGenericBlock()
+    public void RenderBlockToHtml_EmbedBlock_ReturnsEmbedDiv()
     {
-        // Arrange — embed is not yet handled by RenderService, falls to default
+        // Arrange — embed is now handled by RenderService with engine-specific class
         var block = new Block
         {
             Id = Guid.NewGuid(),
@@ -361,7 +362,8 @@ public class RenderServiceTests
         var result = sut.RenderBlockToHtml(block);
 
         // Assert
-        result.Should().Contain("block-embed");
+        result.Should().Contain("embed");
+        result.Should().Contain("embed-latex");
     }
 
     #endregion
@@ -613,9 +615,9 @@ public class RenderServiceTests
     }
 
     [Fact]
-    public void RenderBlockToLatex_FootnoteBlock_FallsBackToComment()
+    public void RenderBlockToLatex_FootnoteBlock_ReturnsFootnoteCommand()
     {
-        // Arrange — footnote not yet handled in LaTeX render, falls to unknown
+        // Arrange — footnote is now handled in LaTeX render
         var block = new Block
         {
             Id = Guid.NewGuid(),
@@ -630,13 +632,14 @@ public class RenderServiceTests
         var result = sut.RenderBlockToLatex(block);
 
         // Assert
-        result.Should().StartWith("% Unknown block type:");
+        result.Should().Contain(@"\footnote{");
+        result.Should().Contain("A footnote.");
     }
 
     [Fact]
-    public void RenderBlockToLatex_EmbedBlock_FallsBackToComment()
+    public void RenderBlockToLatex_EmbedBlock_ReturnsRawCode()
     {
-        // Arrange — embed not yet handled in LaTeX render, falls to unknown
+        // Arrange — embed renders raw code directly in LaTeX
         var block = new Block
         {
             Id = Guid.NewGuid(),
@@ -651,7 +654,7 @@ public class RenderServiceTests
         var result = sut.RenderBlockToLatex(block);
 
         // Assert
-        result.Should().StartWith("% Unknown block type:");
+        result.Should().Contain(@"\draw");
     }
 
     #endregion
