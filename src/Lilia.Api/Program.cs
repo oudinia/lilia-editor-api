@@ -234,6 +234,9 @@ else
 
 builder.Services.AddScoped<IAiService, AiService>();
 
+// Register AI assistant service (math generation, writing improvement, block classification)
+builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
+
 // Register Lilia.Import services for document conversion
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();

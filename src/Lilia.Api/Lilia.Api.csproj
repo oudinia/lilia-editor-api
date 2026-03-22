@@ -30,5 +30,8 @@
     <ProjectReference Include="..\Lilia.Import\Lilia.Import.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lilia.Api.Tests" />
+  </ItemGroup>
 
 </Project>
