@@ -32,6 +32,8 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.ColumnBreak, "Column Break", "Force content to next column", "layoutSideByLarge", CategoryDocument, new { }),
             MakeBlockType(BlockTypes.Embed, "Embed", "Raw LaTeX or Typst code block", "terminal2", CategoryDocument, new { engine = "latex", code = "", label = "", caption = "" }),
             MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", CategoryDocument, new { text = "" }),
+            MakeBlockType(BlockTypes.Algorithm, "Algorithm", "Pseudocode algorithm block", "cpu", CategoryDocument, new { title = "", language = "pseudocode", code = "", label = "", caption = "" }),
+            MakeBlockType(BlockTypes.Callout, "Callout", "Admonition or callout box (note, tip, warning, important, example)", "alert", CategoryDocument, new { variant = "note", title = "", text = "" }),
 
             // Invoice block types
             MakeBlockType(BlockTypes.InvHeader, "Invoice Header", "Invoice metadata: number, dates, currency, type", "fileInvoice", CategoryInvoice, new
