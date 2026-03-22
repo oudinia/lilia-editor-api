@@ -266,6 +266,9 @@ builder.Services.AddSingleton<ICitationStyleService, CitationStyleService>();
 // Register LML Conversion service
 builder.Services.AddSingleton<ILmlConversionService, LmlConversionService>();
 
+// Register Accessibility service
+builder.Services.AddScoped<IAccessibilityService, AccessibilityService>();
+
 var app = builder.Build();
 
 // Error handling — must be early in the pipeline
