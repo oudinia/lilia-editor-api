@@ -206,6 +206,9 @@ builder.Services.AddScoped<IImportProgressService, ImportProgressService>();
 // Register import review service
 builder.Services.AddScoped<IImportReviewService, ImportReviewService>();
 
+// Register AI import review service
+builder.Services.AddScoped<IAiImportService, AiImportService>();
+
 // Register Clerk service for fetching user data from Clerk API
 builder.Services.AddHttpClient<IClerkService, ClerkService>();
 
