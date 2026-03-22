@@ -72,6 +72,13 @@ services:
         value: "300"
       - key: MinerU__MaxFileSizeMb
         value: "50"
+      - key: AI__Anthropic__ApiKey
+        type: SECRET
+        value: "REPLACE"
+      - key: AI__DefaultModel
+        value: "claude-haiku-4-5-20251001"
+      - key: AiSettings__RateLimitPerHour
+        value: "100"
 
   - name: mineru
     dockerfile_path: docker/mineru/Dockerfile
@@ -106,3 +113,6 @@ static_sites:
       - key: VITE_CLERK_PUBLISHABLE_KEY
         scope: BUILD_TIME
         value: "REPLACE"
+      - key: VITE_EDITOR_API_URL
+        scope: BUILD_TIME
+        value: "${api.PUBLIC_URL}"
