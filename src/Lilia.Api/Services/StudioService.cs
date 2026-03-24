@@ -13,12 +13,25 @@ public class StudioService : IStudioService
     private readonly IRenderService _renderService;
     private readonly ILogger<StudioService> _logger;
 
+    private static readonly JsonElement EmptyObject = JsonDocument.Parse("{}").RootElement;
+
     public StudioService(LiliaDbContext db, IRenderService renderService, ILogger<StudioService> logger)
     {
         _db = db;
         _renderService = renderService;
         _logger = logger;
     }
+
+    private static JsonElement SafeRoot(JsonDocument? doc) => doc?.RootElement ?? EmptyObject;
+
+    private static StudioBlockNodeDto ToNodeDto(Block b) => new(
+        b.Id, b.Type, b.Path, b.SortOrder, b.ParentId, b.Depth, b.Status, SafeRoot(b.Metadata)
+    );
+
+    private static StudioBlockDetailDto ToDetailDto(Block b) => new(
+        b.Id, b.Type, SafeRoot(b.Content), b.Path, b.SortOrder, b.ParentId, b.Depth,
+        b.Status, SafeRoot(b.Metadata), b.CreatedAt, b.UpdatedAt
+    );
 
     // --- Tree Operations ---
 
@@ -32,57 +45,36 @@ public class StudioService : IStudioService
 
         if (document == null) return null;
 
-        var nodes = await _db.Blocks
+        var blocks = await _db.Blocks
             .AsNoTracking()
             .Where(b => b.DocumentId == documentId)
             .OrderBy(b => b.SortOrder)
-            .Select(b => new StudioBlockNodeDto(
-                b.Id,
-                b.Type,
-                b.Path,
-                b.SortOrder,
-                b.ParentId,
-                b.Depth,
-                b.Status,
-                b.Metadata.RootElement
-            ))
             .ToListAsync();
+
+        var nodes = blocks.Select(ToNodeDto).ToList();
 
         return new StudioTreeDto(document.Id, document.Title ?? "", nodes);
     }
 
     public async Task<StudioBlockDetailDto?> GetBlockDetailAsync(Guid documentId, Guid blockId)
     {
-        return await _db.Blocks
+        var block = await _db.Blocks
             .AsNoTracking()
-            .Where(b => b.DocumentId == documentId && b.Id == blockId)
-            .Select(b => new StudioBlockDetailDto(
-                b.Id,
-                b.Type,
-                b.Content.RootElement,
-                b.Path,
-                b.SortOrder,
-                b.ParentId,
-                b.Depth,
-                b.Status,
-                b.Metadata.RootElement,
-                b.CreatedAt,
-                b.UpdatedAt
-            ))
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(b => b.DocumentId == documentId && b.Id == blockId);
+
+        if (block == null) return null;
+        return ToDetailDto(block);
     }
 
     public async Task<StudioBlockNodeDto> CreateBlockAsync(Guid documentId, CreateBlockDto dto)
     {
-        // Determine position: after last sibling under same parent, or at end
         var maxSort = await _db.Blocks
             .Where(b => b.DocumentId == documentId && b.ParentId == dto.ParentId)
             .MaxAsync(b => (int?)b.SortOrder) ?? -1;
 
         var position = dto.SortOrder ?? maxSort + 1;
 
-        // Build path from parent
-        string? path = null;
+        string? path;
         if (dto.ParentId.HasValue)
         {
             var parentPath = await _db.Blocks
@@ -117,11 +109,7 @@ public class StudioService : IStudioService
         _db.Blocks.Add(block);
         await _db.SaveChangesAsync();
 
-        return new StudioBlockNodeDto(
-            block.Id, block.Type, block.Path, block.SortOrder,
-            block.ParentId, block.Depth, block.Status,
-            block.Metadata.RootElement
-        );
+        return ToNodeDto(block);
     }
 
     public async Task<StudioBlockDetailDto?> UpdateBlockContentAsync(Guid documentId, Guid blockId, UpdateBlockDto dto)
@@ -146,12 +134,7 @@ public class StudioService : IStudioService
 
         await _db.SaveChangesAsync();
 
-        return new StudioBlockDetailDto(
-            block.Id, block.Type, block.Content.RootElement,
-            block.Path, block.SortOrder, block.ParentId, block.Depth,
-            block.Status, block.Metadata.RootElement,
-            block.CreatedAt, block.UpdatedAt
-        );
+        return ToDetailDto(block);
     }
 
     public async Task<bool> DeleteBlockAsync(Guid documentId, Guid blockId)
@@ -161,7 +144,6 @@ public class StudioService : IStudioService
 
         if (block == null) return false;
 
-        // Delete children (path prefix match)
         if (block.Path != null)
         {
             var childPrefix = block.Path + ".";
@@ -187,7 +169,6 @@ public class StudioService : IStudioService
         block.SortOrder = dto.NewPosition;
         block.UpdatedAt = DateTime.UtcNow;
 
-        // Rebuild path
         if (dto.NewParentId.HasValue)
         {
             var parentPath = await _db.Blocks
@@ -228,8 +209,7 @@ public class StudioService : IStudioService
     {
         var preview = await _db.BlockPreviews
             .AsNoTracking()
-            .Where(bp => bp.BlockId == blockId && bp.Format == format)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(bp => bp.BlockId == blockId && bp.Format == format);
 
         if (preview == null) return null;
 
@@ -251,7 +231,6 @@ public class StudioService : IStudioService
             _ => throw new ArgumentException($"Unsupported format: {format}")
         };
 
-        // Upsert preview cache
         var existing = await _db.BlockPreviews
             .FirstOrDefaultAsync(bp => bp.BlockId == blockId && bp.Format == format);
 
@@ -289,7 +268,7 @@ public class StudioService : IStudioService
 
         return new StudioSessionDto(
             session.DocumentId, session.FocusedBlockId,
-            session.Layout.RootElement,
+            SafeRoot(session.Layout),
             session.CollapsedIds, session.PinnedIds,
             session.ViewMode, session.LastAccessed
         );
@@ -328,7 +307,7 @@ public class StudioService : IStudioService
 
         return new StudioSessionDto(
             session.DocumentId, session.FocusedBlockId,
-            session.Layout.RootElement,
+            SafeRoot(session.Layout),
             session.CollapsedIds, session.PinnedIds,
             session.ViewMode, session.LastAccessed
         );
