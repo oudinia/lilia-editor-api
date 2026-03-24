@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Lilia.Core.DTOs;
 
-// Lightweight tree node — no content, just structure
+// Lightweight tree node — no full content, includes preview text for outline
 public record StudioBlockNodeDto(
     Guid Id,
     string Type,
@@ -11,7 +11,8 @@ public record StudioBlockNodeDto(
     Guid? ParentId,
     int Depth,
     string Status,
-    JsonElement Metadata
+    JsonElement Metadata,
+    string? Preview
 );
 
 // Full block with content — loaded when focused

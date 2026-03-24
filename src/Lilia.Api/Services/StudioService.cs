@@ -25,8 +25,61 @@ public class StudioService : IStudioService
     private static JsonElement SafeRoot(JsonDocument? doc) => doc?.RootElement ?? EmptyObject;
 
     private static StudioBlockNodeDto ToNodeDto(Block b) => new(
-        b.Id, b.Type, b.Path, b.SortOrder, b.ParentId, b.Depth, b.Status, SafeRoot(b.Metadata)
+        b.Id, b.Type, b.Path, b.SortOrder, b.ParentId, b.Depth, b.Status, BuildNodeMeta(b),
+        ExtractPreview(b)
     );
+
+    // Build a merged metadata for the navigator: includes block metadata + content hints (e.g. heading level)
+    private static JsonElement BuildNodeMeta(Block b)
+    {
+        var root = b.Content?.RootElement;
+        if (b.Type == "heading" && root != null && root.Value.TryGetProperty("level", out var lvl))
+        {
+            // Merge level into metadata
+            var dict = new Dictionary<string, object>();
+            // Copy existing metadata
+            var meta = b.Metadata?.RootElement;
+            if (meta != null && meta.Value.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in meta.Value.EnumerateObject())
+                    dict[prop.Name] = prop.Value;
+            }
+            dict["level"] = lvl.GetInt32();
+            return JsonSerializer.SerializeToElement(dict);
+        }
+        return SafeRoot(b.Metadata);
+    }
+
+    private static string? ExtractPreview(Block b)
+    {
+        var root = b.Content?.RootElement;
+        if (root == null || root.Value.ValueKind != JsonValueKind.Object) return null;
+
+        // Try common text fields
+        foreach (var field in new[] { "text", "title", "caption", "latex", "code", "name" })
+        {
+            if (root.Value.TryGetProperty(field, out var val) && val.ValueKind == JsonValueKind.String)
+            {
+                var text = val.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text.Length > 120 ? text[..120] + "…" : text;
+            }
+        }
+
+        // For headings, also include level
+        if (b.Type == "heading" && root.Value.TryGetProperty("level", out var lvl))
+        {
+            return null; // level is in metadata via the node, text already checked above
+        }
+
+        // For code blocks, show language
+        if (b.Type == "code" && root.Value.TryGetProperty("language", out var lang) && lang.ValueKind == JsonValueKind.String)
+        {
+            return lang.GetString();
+        }
+
+        return null;
+    }
 
     private static StudioBlockDetailDto ToDetailDto(Block b) => new(
         b.Id, b.Type, SafeRoot(b.Content), b.Path, b.SortOrder, b.ParentId, b.Depth,
