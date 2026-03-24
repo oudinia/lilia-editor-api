@@ -11,6 +11,9 @@ public class Block
     public int SortOrder { get; set; }
     public Guid? ParentId { get; set; }
     public int Depth { get; set; }
+    public string? Path { get; set; }
+    public string Status { get; set; } = "draft";
+    public JsonDocument Metadata { get; set; } = JsonDocument.Parse("{}");
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string? CreatedBy { get; set; }

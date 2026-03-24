@@ -18,12 +18,17 @@ public class BlockConfiguration : IEntityTypeConfiguration<Block>
         builder.Property(b => b.SortOrder).HasColumnName("sort_order").HasDefaultValue(0);
         builder.Property(b => b.ParentId).HasColumnName("parent_id");
         builder.Property(b => b.Depth).HasColumnName("depth").HasDefaultValue(0);
+        builder.Property(b => b.Path).HasColumnName("path").HasMaxLength(500);
+        builder.Property(b => b.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("draft");
+        builder.Property(b => b.Metadata).HasColumnName("metadata").HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
         builder.Property(b => b.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(b => b.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(b => b.CreatedBy).HasColumnName("created_by").HasMaxLength(255);
 
         builder.HasIndex(b => b.DocumentId);
         builder.HasIndex(b => new { b.DocumentId, b.SortOrder });
+        builder.HasIndex(b => new { b.DocumentId, b.Path });
+        builder.HasIndex(b => new { b.DocumentId, b.Status });
 
         builder.HasOne(b => b.Document)
             .WithMany(d => d.Blocks)

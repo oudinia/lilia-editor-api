@@ -59,6 +59,10 @@ public class LiliaDbContext : DbContext
     // Pending invites
     public DbSet<DocumentPendingInvite> DocumentPendingInvites => Set<DocumentPendingInvite>();
 
+    // Block Studio
+    public DbSet<BlockPreview> BlockPreviews => Set<BlockPreview>();
+    public DbSet<StudioSession> StudioSessions => Set<StudioSession>();
+
     // Import review
     public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
     public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();
