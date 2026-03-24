@@ -104,6 +104,7 @@ public class RenderService : IRenderService
 
         foreach (var block in blocks)
         {
+            html.Append($"<div data-block-id=\"{block.Id}\" class=\"studio-block\" data-block-type=\"{block.Type}\">");
             if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase) && bibEntries != null)
             {
                 _logger.LogDebug("[Render] Rendering bibliography block with {Count} entries", bibEntries.Count());
@@ -113,6 +114,7 @@ public class RenderService : IRenderService
             {
                 html.Append(RenderBlockToHtml(block));
             }
+            html.Append("</div>");
         }
 
         html.Append("</div>");
@@ -157,6 +159,7 @@ public class RenderService : IRenderService
 
         foreach (var block in blocks)
         {
+            html.Append($"<div data-block-id=\"{block.Id}\" class=\"studio-block\" data-block-type=\"{block.Type}\">");
             if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase) && bibEntries != null)
             {
                 html.Append(RenderBibliographyEntriesHtml(bibEntries));
@@ -165,6 +168,7 @@ public class RenderService : IRenderService
             {
                 html.Append(RenderBlockToHtml(block));
             }
+            html.Append("</div>");
         }
 
         html.Append("</div>");
