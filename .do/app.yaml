@@ -101,7 +101,8 @@ services:
       timeout_seconds: 10
 
   - name: latex
-    dockerfile_path: docker/latex/Dockerfile
+    dockerfile_path: Dockerfile
+    source_dir: docker/latex
     github:
       repo: oudinia/lilia-editor-api
       branch: main
