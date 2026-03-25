@@ -68,6 +68,8 @@ services:
         value: "REPLACE"
       - key: MinerU__BaseUrl
         value: "http://mineru:8000"
+      - key: LaTeX__BaseUrl
+        value: "http://latex:8001"
       - key: MinerU__TimeoutSeconds
         value: "300"
       - key: MinerU__MaxFileSizeMb
@@ -96,6 +98,23 @@ services:
       initial_delay_seconds: 120
       period_seconds: 30
       timeout_seconds: 10
+
+  - name: latex
+    dockerfile_path: docker/latex/Dockerfile
+    github:
+      repo: oudinia/lilia-editor-api
+      branch: main
+      deploy_on_push: true
+    http_port: 8001
+    instance_count: 1
+    instance_size_slug: professional-xs
+    internal_ports:
+      - 8001
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 30
+      timeout_seconds: 5
 
 static_sites:
   - name: editor

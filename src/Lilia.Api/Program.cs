@@ -178,6 +178,14 @@ builder.Services.AddScoped<IRenderService, RenderService>();
 builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<IStudioService, StudioService>();
+
+// LaTeX rendering service (calls LaTeX container)
+var latexBaseUrl = builder.Configuration["LaTeX__BaseUrl"] ?? "http://latex:8001";
+builder.Services.AddHttpClient<ILaTeXRenderService, LaTeXRenderService>(client =>
+{
+    client.BaseAddress = new Uri(latexBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(120);
+});
 builder.Services.AddScoped<ILicenseService, LicenseService>();
 builder.Services.AddScoped<IMathAstService, MathAstService>();
 
