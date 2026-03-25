@@ -36,7 +36,7 @@ RUN pip install --no-cache-dir fastapi uvicorn[standard]
 
 # Copy application
 WORKDIR /app
-COPY server.py /app/server.py
+COPY docker/latex/server.py /app/server.py
 
 EXPOSE 8001
 
