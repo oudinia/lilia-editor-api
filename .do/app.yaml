@@ -100,15 +100,23 @@ services:
       period_seconds: 30
       timeout_seconds: 10
 
-workers:
   - name: latex
     dockerfile_path: docker/latex/Dockerfile
     github:
       repo: oudinia/lilia-editor-api
       branch: main
       deploy_on_push: true
+    http_port: 8001
     instance_count: 1
     instance_size_slug: professional-xs
+    routes:
+      - path: /latex-render
+        preserve_path_prefix: true
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 30
+      timeout_seconds: 5
 
 static_sites:
   - name: editor
