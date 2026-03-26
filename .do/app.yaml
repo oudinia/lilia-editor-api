@@ -1,6 +1,10 @@
 name: lilia-editor
 region: fra
 
+domains:
+  - domain: editor.liliaeditor.com
+    type: PRIMARY
+
 databases:
   - name: db
     engine: PG
