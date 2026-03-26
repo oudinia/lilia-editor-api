@@ -82,42 +82,8 @@ services:
       - key: AiSettings__RateLimitPerHour
         value: "100"
 
-  - name: mineru
-    dockerfile_path: docker/mineru/Dockerfile
-    github:
-      repo: oudinia/lilia-editor-api
-      branch: main
-      deploy_on_push: true
-    http_port: 8000
-    instance_count: 1
-    instance_size_slug: professional-s
-    routes:
-      - path: /mineru
-        preserve_path_prefix: true
-    health_check:
-      http_path: /docs
-      initial_delay_seconds: 120
-      period_seconds: 30
-      timeout_seconds: 10
-
-  - name: latex
-    dockerfile_path: docker/latex/Dockerfile
-    source_dir: /
-    github:
-      repo: oudinia/lilia-editor-api
-      branch: main
-      deploy_on_push: true
-    http_port: 8001
-    instance_count: 1
-    instance_size_slug: professional-xs
-    routes:
-      - path: /latex-render
-        preserve_path_prefix: true
-    health_check:
-      http_path: /health
-      initial_delay_seconds: 30
-      period_seconds: 30
-      timeout_seconds: 5
+  # mineru and latex disabled temporarily — mineru base image too large for DO build
+  # TODO: pre-build mineru image in DOCR, add latex service back
 
 static_sites:
   - name: editor
