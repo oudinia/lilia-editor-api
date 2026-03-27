@@ -104,7 +104,7 @@ static_sites:
     envs:
       - key: VITE_CLERK_PUBLISHABLE_KEY
         scope: BUILD_TIME
-        value: "REPLACE"
+        value: "pk_live_Y2xlcmsubGlsaWFlZGl0b3IuY29tJA"
       - key: VITE_EDITOR_API_URL
         scope: BUILD_TIME
         value: "${api.PUBLIC_URL}"
