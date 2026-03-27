@@ -41,9 +41,9 @@ services:
       - key: ConnectionStrings__LiliaCore
         value: "Host=${db.HOSTNAME};Port=${db.PORT};Database=${db.DATABASE};Username=${db.USERNAME};Password=${db.PASSWORD};SSL Mode=Require;Trust Server Certificate=true"
       - key: Clerk__Authority
-        value: "https://national-bunny-74.clerk.accounts.dev"
+        value: "https://clerk.liliaeditor.com"
       - key: Clerk__Issuer
-        value: "https://national-bunny-74.clerk.accounts.dev"
+        value: "https://clerk.liliaeditor.com"
       - key: Clerk__SecretKey
         type: SECRET
         value: "REPLACE"
