@@ -95,38 +95,23 @@ public class ClerkUserSyncMiddleware
                     return;
                 }
 
-                // Try to get email/name from JWT claims first
+                // Try to get email/name from JWT claims (supports Kinde, Clerk, and standard OIDC)
                 var email = context.User.FindFirst("email")?.Value
-                         ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
+                         ?? context.User.FindFirst(ClaimTypes.Email)?.Value
+                         ?? context.User.FindFirst("preferred_username")?.Value;
                 var name = context.User.FindFirst("name")?.Value
-                        ?? context.User.FindFirst(ClaimTypes.Name)?.Value;
+                        ?? context.User.FindFirst(ClaimTypes.Name)?.Value
+                        ?? context.User.FindFirst("given_name")?.Value;
                 var image = context.User.FindFirst("picture")?.Value;
 
                 _logger.LogDebug("JWT Claims - UserId: {UserId}, Email: {Email}, Name: {Name}",
                     userId, email ?? "NULL", name ?? "NULL");
 
-                // Only fetch from Clerk API if email is missing AND user doesn't exist in DB yet.
-                // Clerk JWTs include email/name claims, so this should rarely trigger.
+                // If email is missing from JWT, check if user already exists in DB
                 if (string.IsNullOrEmpty(email))
                 {
                     var existingUser = await userService.GetUserAsync(userId);
-                    if (existingUser == null)
-                    {
-                        _logger.LogInformation("Email not in JWT and user not in DB, fetching from Clerk API for user {UserId}", userId);
-
-                        var clerkUser = await clerkService.GetUserAsync(userId);
-                        if (clerkUser != null)
-                        {
-                            email = clerkUser.PrimaryEmail;
-                            name ??= clerkUser.FullName;
-                            image ??= clerkUser.ImageUrl;
-                        }
-                        else
-                        {
-                            _logger.LogWarning("Could not fetch user data from Clerk API for {UserId}", userId);
-                        }
-                    }
-                    else
+                    if (existingUser != null)
                     {
                         // User already in DB, no need to sync — just cache and move on
                         await cache.SetAsync(cacheKey, [1], new DistributedCacheEntryOptions
@@ -136,6 +121,10 @@ public class ClerkUserSyncMiddleware
                         await _next(context);
                         return;
                     }
+
+                    // User not in DB and no email in JWT — use a placeholder email
+                    _logger.LogWarning("Email not in JWT for new user {UserId}, using placeholder", userId);
+                    email = $"{userId}@auth.liliaeditor.com";
                 }
 
                 // Sync user to database if we have the required data
