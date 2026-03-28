@@ -22,7 +22,7 @@ public class LiliaDbContext : DbContext
     public DbSet<DocumentCollaborator> DocumentCollaborators => Set<DocumentCollaborator>();
     public DbSet<DocumentGroup> DocumentGroups => Set<DocumentGroup>();
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
-    public DbSet<Template> Templates => Set<Template>();
+    // Templates are now documents with is_template = true — no separate table
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<Job> Jobs => Set<Job>();

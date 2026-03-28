@@ -476,7 +476,8 @@ app.MapGet("/health", async (LiliaDbContext db) =>
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
-    await SystemTemplateSeeder.SeedAsync(dbContext);
+    // Templates are now documents — no separate seeder needed
+    // await SystemTemplateSeeder.SeedAsync(dbContext);
     await SystemFormulaSeeder.SeedAsync(dbContext);
     await SystemSnippetSeeder.SeedAsync(dbContext);
 }

@@ -43,6 +43,15 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.ParagraphIndent).HasColumnName("paragraph_indent");
         builder.Property(d => d.PageNumbering).HasColumnName("page_numbering").HasMaxLength(20);
 
+        // Template fields
+        builder.Property(d => d.IsTemplate).HasColumnName("is_template").HasDefaultValue(false);
+        builder.Property(d => d.TemplateName).HasColumnName("template_name").HasMaxLength(255);
+        builder.Property(d => d.TemplateDescription).HasColumnName("template_description");
+        builder.Property(d => d.TemplateCategory).HasColumnName("template_category").HasMaxLength(50);
+        builder.Property(d => d.TemplateThumbnail).HasColumnName("template_thumbnail");
+        builder.Property(d => d.IsPublicTemplate).HasColumnName("is_public_template").HasDefaultValue(false);
+        builder.Property(d => d.TemplateUsageCount).HasColumnName("template_usage_count").HasDefaultValue(0);
+
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);
         builder.HasIndex(d => d.ShareLink).IsUnique();

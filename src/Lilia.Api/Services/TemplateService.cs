@@ -19,133 +19,174 @@ public class TemplateService : ITemplateService
 
     public async Task<List<TemplateListDto>> GetTemplatesAsync(string userId, string? category = null)
     {
-        var query = _context.Templates
-            .Include(t => t.User)
-            .Where(t => t.IsSystem || t.IsPublic || t.UserId == userId);
+        var query = _context.Documents
+            .AsNoTracking()
+            .Include(d => d.Owner)
+            .Where(d => d.IsTemplate)
+            .Where(d => d.IsPublicTemplate || d.OwnerId == userId);
 
         if (!string.IsNullOrWhiteSpace(category))
         {
-            query = query.Where(t => t.Category == category);
+            query = query.Where(d => d.TemplateCategory == category);
         }
 
-        var templates = await query
-            .OrderByDescending(t => t.IsSystem)
-            .ThenByDescending(t => t.UsageCount)
-            .ThenBy(t => t.Name)
+        var docs = await query
+            .OrderByDescending(d => d.OwnerId == "system")
+            .ThenByDescending(d => d.TemplateUsageCount)
+            .ThenBy(d => d.TemplateName)
             .ToListAsync();
 
-        return templates.Select(t => new TemplateListDto(
-            t.Id,
-            t.Name,
-            t.Description,
-            t.Category,
-            t.Thumbnail,
-            t.IsPublic,
-            t.IsSystem,
-            t.UsageCount,
-            t.UserId,
-            t.User?.Name,
-            t.CreatedAt
+        return docs.Select(d => new TemplateListDto(
+            d.Id,
+            d.TemplateName ?? d.Title,
+            d.TemplateDescription,
+            d.TemplateCategory,
+            d.TemplateThumbnail,
+            d.IsPublicTemplate,
+            d.OwnerId == "system",
+            d.TemplateUsageCount,
+            d.OwnerId,
+            d.Owner?.Name,
+            d.CreatedAt
         )).ToList();
     }
 
     public async Task<TemplateDto?> GetTemplateAsync(Guid templateId, string userId)
     {
-        var template = await _context.Templates
-            .Include(t => t.User)
-            .FirstOrDefaultAsync(t => t.Id == templateId);
+        var doc = await _context.Documents
+            .AsNoTracking()
+            .Include(d => d.Owner)
+            .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+            .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate);
 
-        if (template == null) return null;
-
-        // Check access
-        if (!template.IsSystem && !template.IsPublic && template.UserId != userId)
+        if (doc == null) return null;
+        if (!doc.IsPublicTemplate && doc.OwnerId != userId && doc.OwnerId != "system")
             return null;
 
-        return MapToDto(template);
+        // Build content from blocks (for backward compat with frontend)
+        var blocksJson = doc.Blocks.Select(b => new
+        {
+            type = b.Type,
+            content = b.Content.RootElement,
+            sortOrder = b.SortOrder,
+            depth = b.Depth
+        });
+
+        var content = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            language = doc.Language,
+            paperSize = doc.PaperSize,
+            fontFamily = doc.FontFamily,
+            fontSize = doc.FontSize,
+            columns = doc.Columns,
+            blocks = blocksJson
+        }));
+
+        return new TemplateDto(
+            doc.Id,
+            doc.TemplateName ?? doc.Title,
+            doc.TemplateDescription,
+            doc.TemplateCategory,
+            doc.TemplateThumbnail,
+            content.RootElement,
+            doc.IsPublicTemplate,
+            doc.OwnerId == "system",
+            doc.TemplateUsageCount,
+            doc.OwnerId,
+            doc.Owner?.Name,
+            doc.CreatedAt,
+            doc.UpdatedAt
+        );
     }
 
     public async Task<TemplateDto> CreateTemplateAsync(string userId, CreateTemplateDto dto)
     {
-        var document = await _context.Documents
+        // Load the source document with blocks
+        var source = await _context.Documents
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
-            .Include(d => d.BibliographyEntries)
             .FirstOrDefaultAsync(d => d.Id == dto.DocumentId);
 
-        if (document == null)
+        if (source == null)
             throw new ArgumentException("Document not found");
 
-        // Create content from document (including column settings)
-        var content = new
-        {
-            language = document.Language,
-            paperSize = document.PaperSize,
-            fontFamily = document.FontFamily,
-            fontSize = document.FontSize,
-            columns = document.Columns,
-            columnSeparator = document.ColumnSeparator,
-            columnGap = document.ColumnGap,
-            blocks = document.Blocks.Select(b => new
-            {
-                type = b.Type,
-                content = b.Content.RootElement,
-                sortOrder = b.SortOrder,
-                depth = b.Depth
-            }),
-            bibliography = document.BibliographyEntries.Select(e => new
-            {
-                citeKey = e.CiteKey,
-                entryType = e.EntryType,
-                data = e.Data.RootElement
-            })
-        };
-
-        var template = new Template
+        // Create a new document as template (copy)
+        var templateDoc = new Document
         {
             Id = Guid.NewGuid(),
-            UserId = userId,
-            Name = dto.Name,
-            Description = dto.Description,
-            Category = dto.Category,
-            Content = JsonDocument.Parse(JsonSerializer.Serialize(content)),
-            IsPublic = dto.IsPublic,
-            IsSystem = false,
-            UsageCount = 0,
+            OwnerId = userId,
+            Title = dto.Name,
+            Language = source.Language,
+            PaperSize = source.PaperSize,
+            FontFamily = source.FontFamily,
+            FontSize = source.FontSize,
+            Columns = source.Columns,
+            ColumnSeparator = source.ColumnSeparator,
+            ColumnGap = source.ColumnGap,
+            IsTemplate = true,
+            TemplateName = dto.Name,
+            TemplateDescription = dto.Description,
+            TemplateCategory = dto.Category,
+            IsPublicTemplate = dto.IsPublic,
+            TemplateUsageCount = 0,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
         };
 
-        _context.Templates.Add(template);
+        _context.Documents.Add(templateDoc);
+
+        // Copy blocks
+        foreach (var block in source.Blocks)
+        {
+            _context.Blocks.Add(new Block
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = templateDoc.Id,
+                Type = block.Type,
+                Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
+                SortOrder = block.SortOrder,
+                Depth = block.Depth,
+                Path = block.Path,
+                Status = "draft",
+                Metadata = JsonDocument.Parse("{}"),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+
         await _context.SaveChangesAsync();
 
-        return MapToDto(template);
+        return (await GetTemplateAsync(templateDoc.Id, userId))!;
     }
 
     public async Task<TemplateDto?> UpdateTemplateAsync(Guid templateId, string userId, UpdateTemplateDto dto)
     {
-        var template = await _context.Templates
-            .FirstOrDefaultAsync(t => t.Id == templateId && t.UserId == userId);
+        var doc = await _context.Documents
+            .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate && d.OwnerId == userId);
 
-        if (template == null) return null;
+        if (doc == null) return null;
 
-        if (dto.Name != null) template.Name = dto.Name;
-        if (dto.Description != null) template.Description = dto.Description;
-        if (dto.Category != null) template.Category = dto.Category;
-        if (dto.IsPublic.HasValue) template.IsPublic = dto.IsPublic.Value;
+        if (dto.Name != null) { doc.TemplateName = dto.Name; doc.Title = dto.Name; }
+        if (dto.Description != null) doc.TemplateDescription = dto.Description;
+        if (dto.Category != null) doc.TemplateCategory = dto.Category;
+        if (dto.IsPublic.HasValue) doc.IsPublicTemplate = dto.IsPublic.Value;
 
-        template.UpdatedAt = DateTime.UtcNow;
+        doc.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        return MapToDto(template);
+        return await GetTemplateAsync(templateId, userId);
     }
 
     public async Task<bool> DeleteTemplateAsync(Guid templateId, string userId)
     {
-        var template = await _context.Templates
-            .FirstOrDefaultAsync(t => t.Id == templateId && t.UserId == userId && !t.IsSystem);
+        var doc = await _context.Documents
+            .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate && d.OwnerId == userId && d.OwnerId != "system");
 
-        if (template == null) return false;
+        if (doc == null) return false;
 
-        _context.Templates.Remove(template);
+        // Delete blocks first
+        var blocks = await _context.Blocks.Where(b => b.DocumentId == templateId).ToListAsync();
+        _context.Blocks.RemoveRange(blocks);
+        _context.Documents.Remove(doc);
         await _context.SaveChangesAsync();
 
         return true;
@@ -153,50 +194,68 @@ public class TemplateService : ITemplateService
 
     public async Task<DocumentDto> UseTemplateAsync(Guid templateId, string userId, UseTemplateDto dto)
     {
-        var template = await _context.Templates.FindAsync(templateId);
+        var template = await _context.Documents
+            .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+            .Include(d => d.BibliographyEntries)
+            .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate);
+
         if (template == null)
             throw new ArgumentException("Template not found");
 
-        var createDto = new CreateDocumentDto(
-            dto.Title ?? template.Name,
-            null,
-            null,
-            null,
-            null,
-            null,
-            templateId
-        );
+        // Create new document from template
+        var newDoc = new Document
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = userId,
+            Title = dto.Title ?? template.TemplateName ?? template.Title,
+            Language = template.Language,
+            PaperSize = template.PaperSize,
+            FontFamily = template.FontFamily,
+            FontSize = template.FontSize,
+            Columns = template.Columns,
+            ColumnSeparator = template.ColumnSeparator,
+            ColumnGap = template.ColumnGap,
+            IsTemplate = false,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
 
-        return await _documentService.CreateDocumentAsync(userId, createDto);
+        _context.Documents.Add(newDoc);
+
+        // Copy blocks
+        foreach (var block in template.Blocks)
+        {
+            _context.Blocks.Add(new Block
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = newDoc.Id,
+                Type = block.Type,
+                Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
+                SortOrder = block.SortOrder,
+                Depth = block.Depth,
+                Path = block.Path,
+                Status = "draft",
+                Metadata = JsonDocument.Parse("{}"),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+
+        // Increment usage count
+        template.TemplateUsageCount++;
+        await _context.SaveChangesAsync();
+
+        return (await _documentService.GetDocumentAsync(newDoc.Id, userId))!;
     }
 
     public async Task<List<TemplateCategoryDto>> GetCategoriesAsync()
     {
-        var categories = await _context.Templates
-            .Where(t => t.Category != null)
-            .GroupBy(t => t.Category)
+        var categories = await _context.Documents
+            .Where(d => d.IsTemplate && d.TemplateCategory != null)
+            .GroupBy(d => d.TemplateCategory)
             .Select(g => new TemplateCategoryDto(g.Key!, g.Count()))
             .ToListAsync();
 
         return categories;
-    }
-
-    private static TemplateDto MapToDto(Template t)
-    {
-        return new TemplateDto(
-            t.Id,
-            t.Name,
-            t.Description,
-            t.Category,
-            t.Thumbnail,
-            t.Content.RootElement,
-            t.IsPublic,
-            t.IsSystem,
-            t.UsageCount,
-            t.UserId,
-            t.User?.Name,
-            t.CreatedAt,
-            t.UpdatedAt
-        );
     }
 }

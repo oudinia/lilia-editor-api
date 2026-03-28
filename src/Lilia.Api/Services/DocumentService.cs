@@ -37,6 +37,7 @@ public class DocumentService : IDocumentService
             .Include(d => d.DocumentLabels)
                 .ThenInclude(dl => dl.Label)
             .Where(d => d.DeletedAt == null)
+            .Where(d => !d.IsTemplate)
             .Where(d => d.OwnerId == userId ||
                         d.Collaborators.Any(c => c.UserId == userId) ||
                         d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)));
@@ -200,43 +201,44 @@ public class DocumentService : IDocumentService
             UpdatedAt = DateTime.UtcNow
         };
 
-        // If creating from template, copy content
+        // If creating from template, copy blocks from template document
         if (dto.TemplateId.HasValue)
         {
-            var template = await _context.Templates.FindAsync(dto.TemplateId.Value);
-            if (template != null)
+            var templateDoc = await _context.Documents
+                .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+                .FirstOrDefaultAsync(d => d.Id == dto.TemplateId.Value && d.IsTemplate);
+
+            if (templateDoc != null)
             {
-                // Parse template content and copy document settings
-                var content = template.Content.RootElement;
+                // Copy document settings
+                document.Language = templateDoc.Language;
+                document.PaperSize = templateDoc.PaperSize;
+                document.FontFamily = templateDoc.FontFamily;
+                document.FontSize = templateDoc.FontSize;
+                document.Columns = templateDoc.Columns;
+                document.ColumnSeparator = templateDoc.ColumnSeparator;
+                document.ColumnGap = templateDoc.ColumnGap;
 
-                // Copy column settings from template if present
-                if (content.TryGetProperty("columns", out var colsProp) && colsProp.ValueKind == JsonValueKind.Number)
-                    document.Columns = Math.Clamp(colsProp.GetInt32(), 1, 3);
-                if (content.TryGetProperty("columnSeparator", out var colSepProp) && colSepProp.ValueKind == JsonValueKind.String)
-                    document.ColumnSeparator = colSepProp.GetString() ?? "none";
-                if (content.TryGetProperty("columnGap", out var colGapProp) && colGapProp.ValueKind == JsonValueKind.Number)
-                    document.ColumnGap = colGapProp.GetDouble();
-
-                if (content.TryGetProperty("blocks", out var blocksElement) && blocksElement.ValueKind == JsonValueKind.Array)
+                // Copy blocks
+                foreach (var srcBlock in templateDoc.Blocks)
                 {
-                    int sortOrder = 0;
-                    foreach (var blockElement in blocksElement.EnumerateArray())
+                    document.Blocks.Add(new Block
                     {
-                        var block = new Block
-                        {
-                            Id = Guid.NewGuid(),
-                            DocumentId = document.Id,
-                            Type = blockElement.GetProperty("type").GetString() ?? "paragraph",
-                            Content = JsonDocument.Parse(blockElement.GetProperty("content").GetRawText()),
-                            SortOrder = sortOrder++,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        };
-                        document.Blocks.Add(block);
-                    }
+                        Id = Guid.NewGuid(),
+                        DocumentId = document.Id,
+                        Type = srcBlock.Type,
+                        Content = JsonDocument.Parse(srcBlock.Content.RootElement.GetRawText()),
+                        SortOrder = srcBlock.SortOrder,
+                        Depth = srcBlock.Depth,
+                        Path = srcBlock.Path,
+                        Status = "draft",
+                        Metadata = JsonDocument.Parse("{}"),
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    });
                 }
 
-                template.UsageCount++;
+                templateDoc.TemplateUsageCount++;
             }
         }
 

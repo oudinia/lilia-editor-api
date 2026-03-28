@@ -34,6 +34,15 @@ public class Document
     public string? ParagraphIndent { get; set; }
     public string? PageNumbering { get; set; } // "arabic", "roman", "none"
 
+    // Template fields — templates are documents with is_template = true
+    public bool IsTemplate { get; set; }
+    public string? TemplateName { get; set; }
+    public string? TemplateDescription { get; set; }
+    public string? TemplateCategory { get; set; }
+    public string? TemplateThumbnail { get; set; }
+    public bool IsPublicTemplate { get; set; }
+    public int TemplateUsageCount { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }
