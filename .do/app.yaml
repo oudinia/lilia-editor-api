@@ -85,8 +85,24 @@ services:
       - key: AiSettings__RateLimitPerHour
         value: "100"
 
-  # mineru and latex disabled temporarily — mineru base image too large for DO build
-  # TODO: pre-build mineru image in DOCR, add latex service back
+  - name: latex
+    dockerfile_path: docker/latex/Dockerfile
+    source_dir: /
+    github:
+      repo: oudinia/lilia-editor-api
+      branch: main
+      deploy_on_push: true
+    http_port: 8001
+    instance_count: 1
+    instance_size_slug: professional-xs
+    routes:
+      - path: /latex-render
+        preserve_path_prefix: true
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 60
+      period_seconds: 30
+      timeout_seconds: 10
 
 static_sites:
   - name: editor
