@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="Lilia LaTeX Renderer", version="1.0.0")
+app = FastAPI(title="Lilia LaTeX Renderer", version="1.0.0", root_path="/latex-render")
 logger = logging.getLogger("latex-renderer")
 logging.basicConfig(level=logging.INFO)
 

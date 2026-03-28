@@ -99,7 +99,7 @@ services:
       - path: /latex-render
         preserve_path_prefix: true
     health_check:
-      http_path: /health
+      http_path: /latex-render/health
       initial_delay_seconds: 60
       period_seconds: 30
       timeout_seconds: 10
