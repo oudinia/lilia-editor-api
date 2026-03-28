@@ -27,16 +27,16 @@ public class DevelopmentAuthMiddleware
     {
         _next = next;
         _logger = logger;
-        var clerkSecretKey = configuration["Clerk:SecretKey"];
-        _enabled = string.IsNullOrEmpty(clerkSecretKey);
+        var authAuthority = configuration["Auth:Authority"] ?? configuration["Clerk:Authority"];
+        _enabled = string.IsNullOrEmpty(authAuthority);
 
         if (_enabled)
         {
-            _logger.LogWarning("DevelopmentAuthMiddleware is ENABLED - Clerk:SecretKey is not configured");
+            _logger.LogWarning("DevelopmentAuthMiddleware is ENABLED - Auth:Authority is not configured");
         }
         else
         {
-            _logger.LogInformation("DevelopmentAuthMiddleware is DISABLED - Clerk authentication is configured");
+            _logger.LogInformation("DevelopmentAuthMiddleware is DISABLED - Auth provider is configured");
         }
     }
 

@@ -40,13 +40,12 @@ services:
         value: "Production"
       - key: ConnectionStrings__LiliaCore
         value: "Host=${db.HOSTNAME};Port=${db.PORT};Database=${db.DATABASE};Username=${db.USERNAME};Password=${db.PASSWORD};SSL Mode=Require;Trust Server Certificate=true"
-      - key: Clerk__Authority
-        value: "https://liliaeditor.com/clerk-fapi"
-      - key: Clerk__Issuer
-        value: "https://liliaeditor.com/clerk-fapi"
-      - key: Clerk__SecretKey
-        type: SECRET
-        value: "REPLACE"
+      - key: Auth__Authority
+        value: "https://liliaeditor.kinde.com"
+      - key: Auth__Issuer
+        value: "https://liliaeditor.kinde.com"
+      - key: Auth__Audience
+        value: ""
       - key: R2__Endpoint
         value: "https://fra1.digitaloceanspaces.com"
       - key: R2__AccessKeyId
@@ -102,9 +101,18 @@ static_sites:
       - path: /
     catchall_document: index.html
     envs:
-      - key: VITE_CLERK_PUBLISHABLE_KEY
+      - key: VITE_KINDE_CLIENT_ID
         scope: BUILD_TIME
-        value: "pk_live_Y2xlcmsubGlsaWFlZGl0b3IuY29tJA"
+        value: "c9f65cb391944c228bab270a7a019247"
+      - key: VITE_KINDE_DOMAIN
+        scope: BUILD_TIME
+        value: "https://liliaeditor.kinde.com"
+      - key: VITE_KINDE_REDIRECT_URL
+        scope: BUILD_TIME
+        value: "https://editor.liliaeditor.com/callback"
+      - key: VITE_KINDE_LOGOUT_URL
+        scope: BUILD_TIME
+        value: "https://editor.liliaeditor.com"
       - key: VITE_EDITOR_API_URL
         scope: BUILD_TIME
         value: "${api.PUBLIC_URL}"

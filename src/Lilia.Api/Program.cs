@@ -77,27 +77,32 @@ builder.Services.AddCors(options =>
 });
 
 // Configure Authentication
-var clerkAuthority = builder.Configuration["Clerk:Authority"];
-if (!string.IsNullOrEmpty(clerkAuthority))
+// Auth: Kinde (or any OIDC provider)
+var authAuthority = builder.Configuration["Auth:Authority"]
+    ?? builder.Configuration["Clerk:Authority"]; // Fallback for backward compat
+
+if (!string.IsNullOrEmpty(authAuthority))
 {
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            options.Authority = clerkAuthority;
+            options.Authority = authAuthority;
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = builder.Configuration["Clerk:Issuer"] ?? clerkAuthority,
-                ValidateAudience = false,
+                ValidIssuer = builder.Configuration["Auth:Issuer"] ?? authAuthority,
+                ValidateAudience = !string.IsNullOrEmpty(builder.Configuration["Auth:Audience"]),
+                ValidAudience = builder.Configuration["Auth:Audience"],
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
+                ClockSkew = TimeSpan.FromSeconds(30),
+                NameClaimType = "name",
+                RoleClaimType = "roles"
             };
         });
 }
 else
 {
-    // Development: Accept Clerk tokens without signature validation
-    // This allows testing with real Clerk tokens without needing the JWKS
+    // Development: Accept tokens without signature validation
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
@@ -109,17 +114,14 @@ else
                 ValidateIssuerSigningKey = false,
                 RequireSignedTokens = false,
                 SignatureValidator = (token, _) => new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(token),
-                // Map Clerk claims to standard claims
                 NameClaimType = "name",
-                RoleClaimType = "role"
+                RoleClaimType = "roles"
             };
 
-            // Parse and map claims from Clerk JWT
             options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
             {
                 OnTokenValidated = context =>
                 {
-                    // Clerk JWTs have claims in the token, ensure they're accessible
                     if (context.SecurityToken is Microsoft.IdentityModel.JsonWebTokens.JsonWebToken jwt)
                     {
                         var claims = new List<System.Security.Claims.Claim>();
@@ -127,8 +129,6 @@ else
                         {
                             claims.Add(claim);
                         }
-
-                        // Create a new identity with the JWT claims
                         var identity = new System.Security.Claims.ClaimsIdentity(claims, "Bearer");
                         context.Principal = new System.Security.Claims.ClaimsPrincipal(identity);
                     }
