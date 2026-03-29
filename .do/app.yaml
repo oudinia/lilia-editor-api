@@ -71,8 +71,7 @@ services:
         value: "REPLACE"
       - key: MinerU__BaseUrl
         value: "http://mineru:8000"
-      - key: LaTeX__BaseUrl
-        value: "http://latex:8001"
+      # LaTeX runs in-process, no separate URL needed
       - key: MinerU__TimeoutSeconds
         value: "300"
       - key: MinerU__MaxFileSizeMb
@@ -85,24 +84,7 @@ services:
       - key: AiSettings__RateLimitPerHour
         value: "100"
 
-  - name: latex
-    dockerfile_path: docker/latex/Dockerfile
-    source_dir: /
-    github:
-      repo: oudinia/lilia-editor-api
-      branch: main
-      deploy_on_push: true
-    http_port: 8001
-    instance_count: 1
-    instance_size_slug: professional-s
-    routes:
-      - path: /latex-render
-        preserve_path_prefix: true
-    health_check:
-      http_path: /latex-render/health
-      initial_delay_seconds: 60
-      period_seconds: 30
-      timeout_seconds: 10
+  # LaTeX rendering runs inside the API container (no separate service)
 
 static_sites:
   - name: editor

@@ -1,5 +1,5 @@
+using System.Diagnostics;
 using System.Text;
-using System.Text.Json;
 
 namespace Lilia.Api.Services;
 
@@ -11,85 +11,241 @@ public interface ILaTeXRenderService
     Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex);
 }
 
-public class LaTeXRenderServiceOptions
-{
-    public string BaseUrl { get; set; } = "http://latex:8001";
-    public int TimeoutSeconds { get; set; } = 60;
-}
-
 public class LaTeXRenderService : ILaTeXRenderService
 {
-    private readonly HttpClient _http;
     private readonly ILogger<LaTeXRenderService> _logger;
+    private static readonly SemaphoreSlim _semaphore = new(3, 3); // Max 3 concurrent compilations
 
-    public LaTeXRenderService(HttpClient http, ILogger<LaTeXRenderService> logger)
+    private const string MinimalPreamble = @"\documentclass[preview,border=2pt]{standalone}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{hyperref}
+";
+
+    public LaTeXRenderService(ILogger<LaTeXRenderService> logger)
     {
-        _http = http;
         _logger = logger;
     }
 
     public async Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30)
     {
-        var body = JsonSerializer.Serialize(new { latex, timeout });
-        var response = await _http.PostAsync("/render/pdf",
-            new StringContent(body, Encoding.UTF8, "application/json"));
-
-        if (!response.IsSuccessStatusCode)
+        await _semaphore.WaitAsync();
+        try
         {
-            var error = await response.Content.ReadAsStringAsync();
-            _logger.LogError("LaTeX PDF render failed: {StatusCode} {Error}", response.StatusCode, error);
-            throw new InvalidOperationException($"LaTeX compilation failed: {error}");
+            var (pdf, _) = await CompileLatexAsync(latex, timeout);
+            return pdf;
         }
-
-        return await response.Content.ReadAsByteArrayAsync();
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30)
     {
-        var body = JsonSerializer.Serialize(new { latex, dpi, timeout });
-        var response = await _http.PostAsync("/render/png",
-            new StringContent(body, Encoding.UTF8, "application/json"));
-
-        if (!response.IsSuccessStatusCode)
+        await _semaphore.WaitAsync();
+        try
         {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"LaTeX PNG render failed: {error}");
+            var (pdf, _) = await CompileLatexAsync(latex, timeout);
+            return await PdfToPngAsync(pdf, dpi);
         }
-
-        return await response.Content.ReadAsByteArrayAsync();
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150)
     {
-        var body = JsonSerializer.Serialize(new { latex = latexFragment, preamble = preamble ?? "", dpi, timeout = 15 });
-        var response = await _http.PostAsync("/render/block",
-            new StringContent(body, Encoding.UTF8, "application/json"));
+        var fullSource = MinimalPreamble;
+        if (!string.IsNullOrEmpty(preamble))
+            fullSource += preamble + "\n";
+        fullSource += "\\begin{document}\n" + latexFragment + "\n\\end{document}\n";
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"LaTeX block render failed: {error}");
-        }
-
-        return await response.Content.ReadAsByteArrayAsync();
+        return await RenderToPngAsync(fullSource, dpi, 15);
     }
 
     public async Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex)
     {
-        var body = JsonSerializer.Serialize(new { latex, timeout = 15 });
-        var response = await _http.PostAsync("/validate",
-            new StringContent(body, Encoding.UTF8, "application/json"));
+        await _semaphore.WaitAsync();
+        try
+        {
+            var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tmpDir);
 
-        var json = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+            try
+            {
+                var texPath = Path.Combine(tmpDir, "document.tex");
+                var logPath = Path.Combine(tmpDir, "document.log");
+                await File.WriteAllTextAsync(texPath, latex);
 
-        var valid = root.GetProperty("valid").GetBoolean();
-        var error = root.TryGetProperty("error", out var errProp) ? errProp.GetString() : null;
-        var warnings = root.TryGetProperty("warnings", out var warnProp)
-            ? warnProp.EnumerateArray().Select(w => w.GetString() ?? "").ToArray()
-            : Array.Empty<string>();
+                var (exitCode, _, stderr) = await RunProcessAsync(
+                    "pdflatex",
+                    $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
+                    tmpDir,
+                    15
+                );
 
-        return (valid, error, warnings);
+                var logContent = File.Exists(logPath)
+                    ? await File.ReadAllTextAsync(logPath)
+                    : "";
+
+                if (exitCode != 0)
+                {
+                    var errorLines = logContent.Split('\n')
+                        .Where(l => l.StartsWith("!") || l.Contains("Error"))
+                        .Take(5)
+                        .ToArray();
+
+                    var errorMsg = errorLines.Length > 0
+                        ? string.Join("\n", errorLines)
+                        : stderr.Length > 500 ? stderr[..500] : stderr;
+
+                    return (false, $"LaTeX compilation failed:\n{errorMsg}", []);
+                }
+
+                var warnings = logContent.Split('\n')
+                    .Where(l => l.Contains("Warning") || l.Contains("Underfull") || l.Contains("Overfull"))
+                    .Take(20)
+                    .Select(l => l.Trim())
+                    .ToArray();
+
+                return (true, null, warnings);
+            }
+            finally
+            {
+                try { Directory.Delete(tmpDir, true); } catch { }
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout)
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+
+        try
+        {
+            var texPath = Path.Combine(tmpDir, "document.tex");
+            var pdfPath = Path.Combine(tmpDir, "document.pdf");
+            var logPath = Path.Combine(tmpDir, "document.log");
+            await File.WriteAllTextAsync(texPath, latex);
+
+            // Run pdflatex twice (for references)
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var (exitCode, stdout, stderr) = await RunProcessAsync(
+                    "pdflatex",
+                    $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
+                    tmpDir,
+                    timeout
+                );
+
+                if (exitCode != 0 && pass == 1)
+                {
+                    var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+                    var errorLines = logContent.Split('\n')
+                        .Where(l => l.StartsWith("!") || l.Contains("Error"))
+                        .Take(5);
+                    throw new InvalidOperationException(
+                        $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
+                    );
+                }
+            }
+
+            if (!File.Exists(pdfPath))
+                throw new InvalidOperationException("PDF was not generated");
+
+            var pdf = await File.ReadAllBytesAsync(pdfPath);
+            var log = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+
+            return (pdf, log);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    private async Task<byte[]> PdfToPngAsync(byte[] pdf, int dpi)
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-png-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+
+        try
+        {
+            var pdfPath = Path.Combine(tmpDir, "input.pdf");
+            var outputPrefix = Path.Combine(tmpDir, "output");
+            await File.WriteAllBytesAsync(pdfPath, pdf);
+
+            await RunProcessAsync(
+                "pdftoppm",
+                $"-png -r {dpi} -singlefile {pdfPath} {outputPrefix}",
+                tmpDir,
+                10
+            );
+
+            var pngPath = outputPrefix + ".png";
+            if (!File.Exists(pngPath))
+                throw new InvalidOperationException("PNG conversion failed");
+
+            return await File.ReadAllBytesAsync(pngPath);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
+        string command, string arguments, string workingDir, int timeoutSeconds)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = arguments,
+                WorkingDirectory = workingDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }
+        };
+
+        var stdoutBuilder = new StringBuilder();
+        var stderrBuilder = new StringBuilder();
+
+        process.OutputDataReceived += (_, e) => { if (e.Data != null) stdoutBuilder.AppendLine(e.Data); };
+        process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderrBuilder.AppendLine(e.Data); };
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(true);
+            throw new TimeoutException($"Process timed out after {timeoutSeconds}s");
+        }
+
+        return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
     }
 }
