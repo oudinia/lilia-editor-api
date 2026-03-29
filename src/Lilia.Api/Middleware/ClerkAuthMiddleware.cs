@@ -76,7 +76,7 @@ public class ClerkUserSyncMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, IUserService userService, IClerkService clerkService, IDistributedCache cache)
+    public async Task InvokeAsync(HttpContext context, IUserService userService, IDistributedCache cache)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
