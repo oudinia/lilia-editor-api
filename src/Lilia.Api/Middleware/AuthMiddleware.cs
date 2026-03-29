@@ -64,13 +64,13 @@ public class DevelopmentAuthMiddleware
     }
 }
 
-public class ClerkUserSyncMiddleware
+public class UserSyncMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly ILogger<ClerkUserSyncMiddleware> _logger;
+    private readonly ILogger<UserSyncMiddleware> _logger;
     private static readonly TimeSpan SyncCacheDuration = TimeSpan.FromMinutes(30);
 
-    public ClerkUserSyncMiddleware(RequestDelegate next, ILogger<ClerkUserSyncMiddleware> logger)
+    public UserSyncMiddleware(RequestDelegate next, ILogger<UserSyncMiddleware> logger)
     {
         _next = next;
         _logger = logger;
@@ -167,9 +167,9 @@ public class ClerkUserSyncMiddleware
 
 public static class ClerkAuthMiddlewareExtensions
 {
-    public static IApplicationBuilder UseClerkUserSync(this IApplicationBuilder builder)
+    public static IApplicationBuilder UseUserSync(this IApplicationBuilder builder)
     {
-        return builder.UseMiddleware<ClerkUserSyncMiddleware>();
+        return builder.UseMiddleware<UserSyncMiddleware>();
     }
 
     public static IApplicationBuilder UseDevelopmentAuth(this IApplicationBuilder builder)

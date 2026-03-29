@@ -438,8 +438,8 @@ app.UseDevelopmentAuth();
 
 app.UseAuthorization();
 
-// Sync Clerk user data on authenticated requests
-app.UseClerkUserSync();
+// Sync user data on authenticated requests
+app.UseUserSync();
 
 app.MapControllers();
 
