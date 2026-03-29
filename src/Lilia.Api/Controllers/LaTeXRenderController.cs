@@ -118,6 +118,50 @@ public class LaTeXRenderController : ControllerBase
         return Ok(new { valid, error, warnings });
     }
 
+    /// <summary>
+    /// Validate a single block's LaTeX.
+    /// </summary>
+    [HttpPost("block/{blockId:guid}/validate")]
+    public async Task<IActionResult> ValidateBlock(Guid blockId)
+    {
+        var block = await GetBlockAsync(blockId);
+        if (block == null) return NotFound();
+
+        var latex = _renderService.RenderBlockToLatex(block);
+        // Wrap in a minimal document for validation
+        var fullLatex = $@"\documentclass{{article}}
+\usepackage{{amsmath,amssymb,amsfonts}}
+\usepackage{{mathtools}}
+\usepackage{{graphicx}}
+\usepackage{{booktabs}}
+\usepackage{{listings}}
+\usepackage{{hyperref}}
+\begin{{document}}
+{latex}
+\end{{document}}";
+
+        var (valid, error, warnings) = await _latexService.ValidateAsync(fullLatex);
+        return Ok(new { valid, error, warnings, blockId });
+    }
+
+    /// <summary>
+    /// Validate an entire document's LaTeX.
+    /// </summary>
+    [HttpPost("{documentId:guid}/validate")]
+    public async Task<IActionResult> ValidateDocument(Guid documentId)
+    {
+        try
+        {
+            var latex = await _renderService.RenderToLatexAsync(documentId);
+            var (valid, error, warnings) = await _latexService.ValidateAsync(latex);
+            return Ok(new { valid, error, warnings });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     private async Task<Lilia.Core.Entities.Block?> GetBlockAsync(Guid blockId)
     {
         var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
