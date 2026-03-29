@@ -20,7 +20,7 @@ services:
       deploy_on_push: true
     http_port: 8080
     instance_count: 1
-    instance_size_slug: professional-xs
+    instance_size_slug: professional-s
     health_check:
       http_path: /health
       initial_delay_seconds: 20
@@ -94,7 +94,7 @@ services:
       deploy_on_push: true
     http_port: 8001
     instance_count: 1
-    instance_size_slug: professional-xs
+    instance_size_slug: professional-s
     routes:
       - path: /latex-render
         preserve_path_prefix: true
