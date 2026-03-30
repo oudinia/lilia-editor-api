@@ -171,6 +171,7 @@ builder.Services.AddScoped<IVersionService, VersionService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>();
 builder.Services.AddScoped<IFormulaService, FormulaService>();
 builder.Services.AddScoped<ISnippetService, SnippetService>();
+builder.Services.AddScoped<IDraftBlockService, DraftBlockService>();
 builder.Services.AddScoped<IJobService, JobService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();

@@ -28,6 +28,7 @@ public class LiliaDbContext : DbContext
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<Formula> Formulas => Set<Formula>();
     public DbSet<Snippet> Snippets => Set<Snippet>();
+    public DbSet<DraftBlock> DraftBlocks => Set<DraftBlock>();
 
     // Auth tables (Better Auth)
     public DbSet<Session> Sessions => Set<Session>();
