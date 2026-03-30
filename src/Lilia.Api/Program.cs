@@ -78,8 +78,7 @@ builder.Services.AddCors(options =>
 
 // Configure Authentication
 // Auth: Kinde (or any OIDC provider)
-var authAuthority = builder.Configuration["Auth:Authority"]
-    ?? builder.Configuration["Clerk:Authority"]; // Fallback for backward compat
+var authAuthority = builder.Configuration["Auth:Authority"];
 
 if (!string.IsNullOrEmpty(authAuthority))
 {

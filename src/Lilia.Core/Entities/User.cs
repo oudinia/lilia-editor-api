@@ -2,7 +2,7 @@ namespace Lilia.Core.Entities;
 
 public class User
 {
-    public string Id { get; set; } = string.Empty; // Clerk user ID
+    public string Id { get; set; } = string.Empty; // Auth provider user ID (Kinde sub claim)
     public string Email { get; set; } = string.Empty;
     public string? Name { get; set; }
     public string? Image { get; set; }

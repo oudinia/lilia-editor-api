@@ -8,10 +8,10 @@ namespace Lilia.Api.Middleware;
 /// <summary>
 /// Development-only middleware that creates a fake authenticated user
 /// when no Authorization header is provided. This allows local testing
-/// without requiring Clerk authentication.
+/// without requiring authentication.
 ///
-/// IMPORTANT: This middleware only activates when Clerk is NOT configured.
-/// If Clerk:SecretKey is set, this middleware does nothing, allowing
+/// IMPORTANT: This middleware only activates when Auth is NOT configured.
+/// If Auth:Authority is set, this middleware does nothing, allowing
 /// unauthenticated requests to properly fail with 401.
 /// </summary>
 public class DevelopmentAuthMiddleware
@@ -27,7 +27,7 @@ public class DevelopmentAuthMiddleware
     {
         _next = next;
         _logger = logger;
-        var authAuthority = configuration["Auth:Authority"] ?? configuration["Clerk:Authority"];
+        var authAuthority = configuration["Auth:Authority"];
         _enabled = string.IsNullOrEmpty(authAuthority);
 
         if (_enabled)
@@ -165,7 +165,7 @@ public class UserSyncMiddleware
     }
 }
 
-public static class ClerkAuthMiddlewareExtensions
+public static class AuthMiddlewareExtensions
 {
     public static IApplicationBuilder UseUserSync(this IApplicationBuilder builder)
     {
@@ -178,7 +178,7 @@ public static class ClerkAuthMiddlewareExtensions
     }
 }
 
-public static class ClerkClaimTypes
+public static class OidcClaimTypes
 {
     public const string UserId = "sub";
     public const string Email = "email";
