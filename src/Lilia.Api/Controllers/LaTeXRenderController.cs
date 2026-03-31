@@ -109,6 +109,38 @@ public class LaTeXRenderController : ControllerBase
     }
 
     /// <summary>
+    /// Render a LaTeX formula to SVG. Supports caching via ETag.
+    /// </summary>
+    [HttpGet("svg")]
+    [AllowAnonymous]
+    [ResponseCache(Duration = 86400, VaryByQueryKeys = ["latex", "display"])]
+    public async Task<IActionResult> RenderSvg([FromQuery] string latex, [FromQuery] bool display = true)
+    {
+        if (string.IsNullOrWhiteSpace(latex))
+            return BadRequest(new { error = "latex parameter is required" });
+
+        // ETag for client-side caching
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"{latex}:{display}")
+        ))[..16];
+
+        if (Request.Headers.IfNoneMatch.ToString() == $"\"{hash}\"")
+            return StatusCode(304);
+
+        try
+        {
+            var svg = await _latexService.RenderToSvgAsync(latex, display);
+            Response.Headers.ETag = $"\"{hash}\"";
+            Response.Headers.CacheControl = "public, max-age=86400, immutable";
+            return Content(svg, "image/svg+xml");
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Validate LaTeX source without rendering.
     /// </summary>
     [HttpPost("validate")]

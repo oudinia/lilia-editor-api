@@ -8,6 +8,7 @@ public interface ILaTeXRenderService
     Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30);
     Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30);
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
+    Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
     Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex);
 }
 
@@ -70,6 +71,75 @@ public class LaTeXRenderService : ILaTeXRenderService
         fullSource += "\\begin{document}\n" + latexFragment + "\n\\end{document}\n";
 
         return await RenderToPngAsync(fullSource, dpi, 15);
+    }
+
+    public async Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true)
+    {
+        await _semaphore.WaitAsync();
+        try
+        {
+            var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-svg-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tmpDir);
+
+            try
+            {
+                // Build a standalone document for the formula
+                var math = displayMode
+                    ? $"\\[{latexFragment}\\]"
+                    : $"${latexFragment}$";
+
+                var fullSource = MinimalPreamble + "\\begin{document}\n" + math + "\n\\end{document}\n";
+
+                var texPath = Path.Combine(tmpDir, "formula.tex");
+                var dviPath = Path.Combine(tmpDir, "formula.dvi");
+                var svgPath = Path.Combine(tmpDir, "formula.svg");
+                await File.WriteAllTextAsync(texPath, fullSource);
+
+                // Step 1: latex → DVI (faster than pdflatex for single formulas)
+                var (exitCode, _, stderr) = await RunProcessAsync(
+                    "latex",
+                    $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
+                    tmpDir,
+                    10
+                );
+
+                if (exitCode != 0)
+                    throw new InvalidOperationException($"LaTeX compilation failed: {(stderr.Length > 300 ? stderr[..300] : stderr)}");
+
+                if (!File.Exists(dviPath))
+                    throw new InvalidOperationException("DVI was not generated");
+
+                // Step 2: DVI → SVG via dvisvgm
+                var (svgExit, _, svgStderr) = await RunProcessAsync(
+                    "dvisvgm",
+                    $"--no-fonts --exact-bbox --zoom=1.4 -o {svgPath} {dviPath}",
+                    tmpDir,
+                    10
+                );
+
+                if (svgExit != 0 || !File.Exists(svgPath))
+                    throw new InvalidOperationException($"SVG conversion failed: {(svgStderr.Length > 300 ? svgStderr[..300] : svgStderr)}");
+
+                var svg = await File.ReadAllTextAsync(svgPath);
+
+                // Clean up XML declaration if present
+                if (svg.StartsWith("<?xml"))
+                {
+                    var idx = svg.IndexOf("?>");
+                    if (idx > 0) svg = svg[(idx + 2)..].TrimStart();
+                }
+
+                return svg;
+            }
+            finally
+            {
+                try { Directory.Delete(tmpDir, true); } catch { }
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex)
