@@ -13,7 +13,7 @@ public class StudioService : IStudioService
     private readonly IRenderService _renderService;
     private readonly ILogger<StudioService> _logger;
 
-    private static readonly JsonElement EmptyObject = JsonDocument.Parse("{}").RootElement;
+    private static readonly JsonElement EmptyObject = JsonDocument.Parse("{}").RootElement.Clone();
 
     public StudioService(LiliaDbContext db, IRenderService renderService, ILogger<StudioService> logger)
     {
@@ -22,7 +22,28 @@ public class StudioService : IStudioService
         _logger = logger;
     }
 
-    private static JsonElement SafeRoot(JsonDocument? doc) => doc?.RootElement ?? EmptyObject;
+    /// <summary>
+    /// Safely extract and clone the RootElement from a JsonDocument.
+    /// Handles null documents, disposed documents, and invalid states
+    /// that can occur with EF Core + Npgsql jsonb materialization.
+    /// Clone() detaches the JsonElement from the parent JsonDocument lifecycle.
+    /// </summary>
+    private static JsonElement SafeRoot(JsonDocument? doc)
+    {
+        if (doc == null) return EmptyObject;
+        try
+        {
+            return doc.RootElement.Clone();
+        }
+        catch (ObjectDisposedException)
+        {
+            return EmptyObject;
+        }
+        catch (InvalidOperationException)
+        {
+            return EmptyObject;
+        }
+    }
 
     private static StudioBlockNodeDto ToNodeDto(Block b) => new(
         b.Id, b.Type, b.Path, b.SortOrder, b.ParentId, b.Depth, b.Status, BuildNodeMeta(b),
@@ -32,16 +53,16 @@ public class StudioService : IStudioService
     // Build a merged metadata for the navigator: includes block metadata + content hints (e.g. heading level)
     private static JsonElement BuildNodeMeta(Block b)
     {
-        var root = b.Content?.RootElement;
-        if (b.Type == "heading" && root != null && root.Value.TryGetProperty("level", out var lvl))
+        var root = SafeRoot(b.Content);
+        if (b.Type == "heading" && root.ValueKind == JsonValueKind.Object && root.TryGetProperty("level", out var lvl))
         {
             // Merge level into metadata
             var dict = new Dictionary<string, object>();
             // Copy existing metadata
-            var meta = b.Metadata?.RootElement;
-            if (meta != null && meta.Value.ValueKind == JsonValueKind.Object)
+            var meta = SafeRoot(b.Metadata);
+            if (meta.ValueKind == JsonValueKind.Object)
             {
-                foreach (var prop in meta.Value.EnumerateObject())
+                foreach (var prop in meta.EnumerateObject())
                     dict[prop.Name] = prop.Value;
             }
             dict["level"] = lvl.GetInt32();
@@ -52,13 +73,13 @@ public class StudioService : IStudioService
 
     private static string? ExtractPreview(Block b)
     {
-        var root = b.Content?.RootElement;
-        if (root == null || root.Value.ValueKind != JsonValueKind.Object) return null;
+        var root = SafeRoot(b.Content);
+        if (root.ValueKind != JsonValueKind.Object) return null;
 
         // Try common text fields
         foreach (var field in new[] { "text", "title", "caption", "latex", "code", "name" })
         {
-            if (root.Value.TryGetProperty(field, out var val) && val.ValueKind == JsonValueKind.String)
+            if (root.TryGetProperty(field, out var val) && val.ValueKind == JsonValueKind.String)
             {
                 var text = val.GetString();
                 if (!string.IsNullOrWhiteSpace(text))
@@ -67,13 +88,13 @@ public class StudioService : IStudioService
         }
 
         // For headings, also include level
-        if (b.Type == "heading" && root.Value.TryGetProperty("level", out var lvl))
+        if (b.Type == "heading" && root.TryGetProperty("level", out _))
         {
             return null; // level is in metadata via the node, text already checked above
         }
 
         // For code blocks, show language
-        if (b.Type == "code" && root.Value.TryGetProperty("language", out var lang) && lang.ValueKind == JsonValueKind.String)
+        if (b.Type == "code" && root.TryGetProperty("language", out var lang) && lang.ValueKind == JsonValueKind.String)
         {
             return lang.GetString();
         }

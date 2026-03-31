@@ -32,9 +32,17 @@ public class StudioController : ControllerBase
     [HttpGet("tree")]
     public async Task<IActionResult> GetTree(Guid docId)
     {
-        var tree = await _studioService.GetTreeAsync(docId);
-        if (tree == null) return NotFound();
-        return Ok(tree);
+        try
+        {
+            var tree = await _studioService.GetTreeAsync(docId);
+            if (tree == null) return NotFound();
+            return Ok(tree);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading tree for document {DocumentId}", docId);
+            return StatusCode(500, new { error = "Failed to load document tree", documentId = docId });
+        }
     }
 
     // --- Block CRUD ---
@@ -42,9 +50,17 @@ public class StudioController : ControllerBase
     [HttpGet("block/{blockId:guid}")]
     public async Task<IActionResult> GetBlock(Guid docId, Guid blockId)
     {
-        var block = await _studioService.GetBlockDetailAsync(docId, blockId);
-        if (block == null) return NotFound();
-        return Ok(block);
+        try
+        {
+            var block = await _studioService.GetBlockDetailAsync(docId, blockId);
+            if (block == null) return NotFound();
+            return Ok(block);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading block {BlockId} in document {DocumentId}", blockId, docId);
+            return StatusCode(500, new { error = "Failed to load block", blockId, documentId = docId });
+        }
     }
 
     [HttpPost("block")]
@@ -91,26 +107,41 @@ public class StudioController : ControllerBase
     [HttpGet("block/{blockId:guid}/preview")]
     public async Task<IActionResult> GetBlockPreview(Guid docId, Guid blockId, [FromQuery] string format = "html")
     {
-        // Try cache first
-        var cached = await _studioService.GetBlockPreviewAsync(blockId, format);
-        if (cached != null)
+        try
         {
+            // Try cache first
+            var cached = await _studioService.GetBlockPreviewAsync(blockId, format);
+            if (cached?.Data != null)
+            {
+                return format switch
+                {
+                    "html" => Content(System.Text.Encoding.UTF8.GetString(cached.Data), "text/html"),
+                    "latex" => Content(System.Text.Encoding.UTF8.GetString(cached.Data), "text/plain"),
+                    _ => File(cached.Data, "application/octet-stream")
+                };
+            }
+
+            // Render fresh
+            var rendered = await _studioService.RenderBlockPreviewAsync(docId, blockId, format);
+            if (rendered.Data == null)
+                return NoContent();
+
             return format switch
             {
-                "html" => Content(System.Text.Encoding.UTF8.GetString(cached.Data!), "text/html"),
-                "latex" => Content(System.Text.Encoding.UTF8.GetString(cached.Data!), "text/plain"),
-                _ => File(cached.Data!, "application/octet-stream")
+                "html" => Content(System.Text.Encoding.UTF8.GetString(rendered.Data), "text/html"),
+                "latex" => Content(System.Text.Encoding.UTF8.GetString(rendered.Data), "text/plain"),
+                _ => File(rendered.Data, "application/octet-stream")
             };
         }
-
-        // Render fresh
-        var rendered = await _studioService.RenderBlockPreviewAsync(docId, blockId, format);
-        return format switch
+        catch (KeyNotFoundException)
         {
-            "html" => Content(System.Text.Encoding.UTF8.GetString(rendered.Data!), "text/html"),
-            "latex" => Content(System.Text.Encoding.UTF8.GetString(rendered.Data!), "text/plain"),
-            _ => File(rendered.Data!, "application/octet-stream")
-        };
+            return NotFound();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rendering preview for block {BlockId} in document {DocumentId}", blockId, docId);
+            return StatusCode(500, new { error = "Failed to render block preview", blockId, documentId = docId });
+        }
     }
 
     [HttpPost("block/{blockId:guid}/preview")]
