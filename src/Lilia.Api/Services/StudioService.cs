@@ -200,6 +200,11 @@ public class StudioService : IStudioService
 
         block.UpdatedAt = DateTime.UtcNow;
 
+        // Update document timestamp so dashboard shows recent edit
+        var document = await _db.Documents.FindAsync(documentId);
+        if (document != null)
+            document.UpdatedAt = DateTime.UtcNow;
+
         // Invalidate cached preview
         var previews = await _db.BlockPreviews
             .Where(bp => bp.BlockId == blockId)
