@@ -176,6 +176,7 @@ builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IRenderService, RenderService>();
 builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
+builder.Services.AddScoped<IDocumentExportService, DocumentExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<IStudioService, StudioService>();
 
