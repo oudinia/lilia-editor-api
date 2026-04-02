@@ -13,3 +13,4 @@ logs/
 # Local uploads
 uploads/
 src/Lilia.Api/bin\\Debug/
+scripts/backup-db.env
