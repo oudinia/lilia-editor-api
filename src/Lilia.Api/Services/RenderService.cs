@@ -231,9 +231,17 @@ public class RenderService : IRenderService
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
         var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
+
+        // Strip MathLive placeholder artifacts
+        latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
+
         var escaped = WebUtility.HtmlEncode(latex);
 
-        if (displayMode)
+        // Auto-detect paragraph-level math environments
+        var containsParagraphEnv = ParagraphMathEnvironments.Any(env =>
+            latex.Contains($"\\begin{{{env}}}"));
+
+        if (displayMode || containsParagraphEnv)
         {
             return $"<div class=\"equation display-math\" data-latex=\"{escaped}\">$${escaped}$$</div>";
         }
@@ -763,13 +771,29 @@ public class RenderService : IRenderService
         return $@"\footnote{{{ProcessLatexText(text)}}}";
     }
 
+    private static readonly string[] ParagraphMathEnvironments = [
+        "align", "align*", "gather", "gather*", "multline", "multline*",
+        "flalign", "flalign*", "alignat", "alignat*", "split",
+    ];
+
     private string RenderEquationToLatex(JsonElement content)
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
         var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
 
-        if (displayMode)
+        // Strip MathLive placeholder artifacts
+        latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
+
+        // Auto-detect paragraph-level math environments — these can't be wrapped in $...$
+        var containsParagraphEnv = ParagraphMathEnvironments.Any(env =>
+            latex.Contains($"\\begin{{{env}}}"));
+
+        if (displayMode || containsParagraphEnv)
         {
+            // If it already contains a math environment, don't wrap in equation
+            if (containsParagraphEnv)
+                return latex;
+
             return $@"\begin{{equation}}
 {latex}
 \end{{equation}}";
