@@ -16,6 +16,7 @@ public class DocumentVersionConfiguration : IEntityTypeConfiguration<DocumentVer
         builder.Property(v => v.VersionNumber).HasColumnName("version_number").IsRequired();
         builder.Property(v => v.Name).HasColumnName("name").HasMaxLength(255);
         builder.Property(v => v.Snapshot).HasColumnName("snapshot").HasColumnType("jsonb").IsRequired();
+        builder.Property(v => v.IsAutoSave).HasColumnName("is_auto_save").HasDefaultValue(false);
         builder.Property(v => v.CreatedBy).HasColumnName("created_by").HasMaxLength(255);
         builder.Property(v => v.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
 

@@ -15,14 +15,16 @@ public class BlocksController : ControllerBase
     private readonly IDocumentService _documentService;
     private readonly IBlockTypeService _blockTypeService;
     private readonly IRenderService _renderService;
+    private readonly IVersionService _versionService;
     private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, ILogger<BlocksController> logger)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
         _blockTypeService = blockTypeService;
         _renderService = renderService;
+        _versionService = versionService;
         _logger = logger;
     }
 
@@ -111,6 +113,14 @@ public class BlocksController : ControllerBase
             return Forbid();
 
         var blocks = await _blockService.BatchUpdateBlocksAsync(docId, dto.Blocks);
+
+        // Auto-version (throttled, fire-and-forget)
+        _ = Task.Run(async () =>
+        {
+            try { await _versionService.CreateAutoVersionAsync(docId, userId); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
+        });
+
         return Ok(blocks);
     }
 

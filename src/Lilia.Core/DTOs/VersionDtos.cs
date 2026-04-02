@@ -6,6 +6,7 @@ public record VersionListDto(
     Guid Id,
     int VersionNumber,
     string? Name,
+    bool IsAutoSave,
     string? CreatedBy,
     string? CreatorName,
     DateTime CreatedAt
@@ -16,6 +17,7 @@ public record VersionDto(
     Guid DocumentId,
     int VersionNumber,
     string? Name,
+    bool IsAutoSave,
     JsonElement Snapshot,
     string? CreatedBy,
     string? CreatorName,

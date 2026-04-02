@@ -29,6 +29,7 @@ public class VersionService : IVersionService
             v.Id,
             v.VersionNumber,
             v.Name,
+            v.IsAutoSave,
             v.CreatedBy,
             v.Creator?.Name,
             v.CreatedAt
@@ -48,6 +49,7 @@ public class VersionService : IVersionService
             version.DocumentId,
             version.VersionNumber,
             version.Name,
+            version.IsAutoSave,
             version.Snapshot.RootElement,
             version.CreatedBy,
             version.Creator?.Name,
@@ -117,6 +119,7 @@ public class VersionService : IVersionService
             version.DocumentId,
             version.VersionNumber,
             version.Name,
+            version.IsAutoSave,
             version.Snapshot.RootElement,
             version.CreatedBy,
             creator?.Name,
@@ -196,6 +199,88 @@ public class VersionService : IVersionService
         await _context.SaveChangesAsync();
 
         return await _documentService.GetDocumentAsync(documentId, userId);
+    }
+
+    private const int AutoVersionThrottleMinutes = 5;
+    private const int MaxAutoVersionsPerDocument = 50;
+
+    public async Task CreateAutoVersionAsync(Guid documentId, string userId)
+    {
+        // Throttle: skip if last auto-version is within 5 minutes
+        var lastAutoVersion = await _context.DocumentVersions
+            .Where(v => v.DocumentId == documentId && v.IsAutoSave)
+            .OrderByDescending(v => v.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (lastAutoVersion != null &&
+            (DateTime.UtcNow - lastAutoVersion.CreatedAt).TotalMinutes < AutoVersionThrottleMinutes)
+        {
+            return; // Too soon, skip
+        }
+
+        var document = await _context.Documents
+            .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+            .Include(d => d.BibliographyEntries)
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+
+        if (document == null) return;
+
+        var maxVersion = await _context.DocumentVersions
+            .Where(v => v.DocumentId == documentId)
+            .MaxAsync(v => (int?)v.VersionNumber) ?? 0;
+
+        var snapshot = new
+        {
+            title = document.Title,
+            language = document.Language,
+            paperSize = document.PaperSize,
+            fontFamily = document.FontFamily,
+            fontSize = document.FontSize,
+            blocks = document.Blocks.Select(b => new
+            {
+                id = b.Id,
+                type = b.Type,
+                content = b.Content.RootElement,
+                sortOrder = b.SortOrder,
+                parentId = b.ParentId,
+                depth = b.Depth
+            }),
+            bibliography = document.BibliographyEntries.Select(e => new
+            {
+                id = e.Id,
+                citeKey = e.CiteKey,
+                entryType = e.EntryType,
+                data = e.Data.RootElement
+            })
+        };
+
+        var version = new DocumentVersion
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            VersionNumber = maxVersion + 1,
+            Name = $"Auto-save",
+            IsAutoSave = true,
+            Snapshot = JsonDocument.Parse(JsonSerializer.Serialize(snapshot)),
+            CreatedBy = userId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.DocumentVersions.Add(version);
+
+        // Prune old auto-versions beyond limit
+        var autoVersions = await _context.DocumentVersions
+            .Where(v => v.DocumentId == documentId && v.IsAutoSave)
+            .OrderByDescending(v => v.CreatedAt)
+            .Skip(MaxAutoVersionsPerDocument)
+            .ToListAsync();
+
+        if (autoVersions.Count > 0)
+        {
+            _context.DocumentVersions.RemoveRange(autoVersions);
+        }
+
+        await _context.SaveChangesAsync();
     }
 
     public async Task<bool> DeleteVersionAsync(Guid documentId, Guid versionId, string userId)
