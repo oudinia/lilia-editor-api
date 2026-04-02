@@ -592,17 +592,57 @@ public class RenderService : IRenderService
 
         // Preamble
         latex.AppendLine(@"\documentclass[11pt,a4paper]{article}");
+
+        // Encoding & fonts
         latex.AppendLine(@"\usepackage[utf8]{inputenc}");
-        latex.AppendLine(@"\usepackage{amsmath,amssymb,amsthm}");
+        latex.AppendLine(@"\usepackage[T1]{fontenc}");
+        latex.AppendLine(@"\usepackage{textcomp}");
+
+        // Math
+        latex.AppendLine(@"\usepackage{amsmath,amssymb,amsfonts,amsthm}");
+        latex.AppendLine(@"\usepackage{mathtools}");
+        latex.AppendLine(@"\usepackage{mathrsfs}");
+        latex.AppendLine(@"\usepackage{cancel}");
+        latex.AppendLine(@"\usepackage{siunitx}");
+
+        // Typography
+        latex.AppendLine(@"\usepackage{microtype}");
+        latex.AppendLine(@"\usepackage{setspace}");
+        latex.AppendLine(@"\usepackage{parskip}");
+
+        // Graphics & floats
         latex.AppendLine(@"\usepackage{graphicx}");
-        latex.AppendLine(@"\usepackage{hyperref}");
-        latex.AppendLine(@"\usepackage{listings}");
-        latex.AppendLine(@"\usepackage{booktabs}");
         latex.AppendLine(@"\usepackage{float}");
+        latex.AppendLine(@"\usepackage{caption}");
+        latex.AppendLine(@"\usepackage{subcaption}");
+        latex.AppendLine(@"\usepackage{xcolor}");
+
+        // Tables
+        latex.AppendLine(@"\usepackage{booktabs}");
         latex.AppendLine(@"\usepackage{multirow}");
+        latex.AppendLine(@"\usepackage{tabularx}");
+        latex.AppendLine(@"\usepackage{longtable}");
+
+        // Lists
+        latex.AppendLine(@"\usepackage{enumitem}");
+
+        // Code
+        latex.AppendLine(@"\usepackage{listings}");
+
+        // Algorithms & callouts
         latex.AppendLine(@"\usepackage{algorithm}");
         latex.AppendLine(@"\usepackage{algorithmic}");
         latex.AppendLine(@"\usepackage{tcolorbox}");
+
+        // Text formatting
+        latex.AppendLine(@"\usepackage{soul}");
+        latex.AppendLine(@"\usepackage{ulem}");
+        latex.AppendLine(@"\normalem"); // ulem redefines \emph — restore it
+
+        // Links & references
+        latex.AppendLine(@"\usepackage{url}");
+        latex.AppendLine(@"\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}");
+        latex.AppendLine(@"\usepackage[nameinlink]{cleveref}");
 
         // Multi-column support
         if (doc.Columns > 1)

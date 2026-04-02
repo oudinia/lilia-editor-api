@@ -28,16 +28,36 @@ public class LatexBlockCompilationTests
     // The per-block validation preamble from LaTeXRenderController.cs
     private const string ValidationPreamble = @"\documentclass{article}
 \usepackage[utf8]{inputenc}
-\usepackage{amsmath,amssymb,amsfonts}
-\usepackage{amsthm}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{mathtools}
+\usepackage{mathrsfs}
+\usepackage{cancel}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{setspace}
+\usepackage{parskip}
 \usepackage[demo]{graphicx}
-\usepackage{booktabs}
-\usepackage{listings}
-\usepackage{hyperref}
 \usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{listings}
 \usepackage{algorithm}
 \usepackage{algorithmic}
 \usepackage{tcolorbox}
+\usepackage{soul}
+\usepackage{ulem}
+\normalem
+\usepackage{url}
+\usepackage[colorlinks=true]{hyperref}
+\usepackage[nameinlink]{cleveref}
 \newtheorem{theorem}{Theorem}
 \newtheorem{lemma}{Lemma}
 \newtheorem{proposition}{Proposition}
@@ -88,6 +108,31 @@ public class LatexBlockCompilationTests
         var block = CreateBlock("paragraph", """{"text":"The equation $x^2 + y^2 = z^2$ is famous."}""");
         var latex = _sut.RenderBlockToLatex(block);
         latex.Should().Contain("$x^2 + y^2 = z^2$");
+    }
+
+    [Fact]
+    public void Paragraph_WithCiteCommand_PreservesCommand()
+    {
+        var block = CreateBlock("paragraph", """{"text":"As shown by \\cite{smith2024}, the result holds."}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\cite{smith2024}");
+    }
+
+    [Fact]
+    public void Paragraph_WithUrlCommand_PreservesCommand()
+    {
+        var block = CreateBlock("paragraph", """{"text":"See \\url{https://example.com} for details."}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\url{https://example.com}");
+    }
+
+    [Fact]
+    public void Paragraph_WithRefCommand_PreservesCommand()
+    {
+        var block = CreateBlock("paragraph", """{"text":"See Theorem \\ref{thm:main} and \\cref{def:dlp}."}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\ref{thm:main}");
+        latex.Should().Contain("\\cref{def:dlp}");
     }
 
     #endregion
@@ -186,6 +231,51 @@ public class LatexBlockCompilationTests
         var block = CreateBlock("equation", """{"latex":"","displayMode":true}""");
         var latex = _sut.RenderBlockToLatex(block);
         latex.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Equation_WithCancelCommand_GeneratesValidLatex()
+    {
+        // cancel package: strikethrough in math
+        var block = CreateBlock("equation", """{"latex":"\\cancel{x} + y = z","displayMode":true}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\cancel{x}");
+    }
+
+    [Fact]
+    public void Equation_WithSiunitx_GeneratesValidLatex()
+    {
+        // siunitx: SI units
+        var block = CreateBlock("equation", """{"latex":"F = \\SI{9.8}{\\meter\\per\\second\\squared}","displayMode":true}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\SI{9.8}");
+    }
+
+    [Fact]
+    public void Equation_WithMathrsfs_GeneratesValidLatex()
+    {
+        // mathrsfs: script math fonts
+        var block = CreateBlock("equation", """{"latex":"\\mathscr{L}(f) = \\int_0^\\infty f(t) e^{-st} dt","displayMode":true}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\mathscr{L}");
+    }
+
+    [Fact]
+    public void Equation_WithMathtools_GeneratesValidLatex()
+    {
+        // mathtools: dcases, coloneqq, etc.
+        var block = CreateBlock("equation", """{"latex":"f(x) \\coloneqq \\begin{dcases} 1 & x > 0 \\\\ 0 & x \\leq 0 \\end{dcases}","displayMode":true}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\coloneqq");
+    }
+
+    [Fact]
+    public void Equation_WithMultlineEnvironment_NotWrappedInDollars()
+    {
+        var block = CreateBlock("equation", """{"latex":"\\begin{multline}\na + b + c \\\\\n= d + e + f\n\\end{multline}","displayMode":false}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().NotStartWith("$");
+        latex.Should().Contain("\\begin{multline}");
     }
 
     #endregion
@@ -466,29 +556,47 @@ public class LatexBlockCompilationTests
         }
     }
 
-    [Fact]
-    public void ValidationPreamble_IncludesAmsthmPackage()
+    [Theory]
+    [InlineData("inputenc")]
+    [InlineData("fontenc")]
+    [InlineData("textcomp")]
+    [InlineData("amsmath")]
+    [InlineData("amssymb")]
+    [InlineData("amsfonts")]
+    [InlineData("amsthm")]
+    [InlineData("mathtools")]
+    [InlineData("mathrsfs")]
+    [InlineData("cancel")]
+    [InlineData("siunitx")]
+    [InlineData("microtype")]
+    [InlineData("setspace")]
+    [InlineData("parskip")]
+    [InlineData("graphicx")]
+    [InlineData("float")]
+    [InlineData("caption")]
+    [InlineData("subcaption")]
+    [InlineData("xcolor")]
+    [InlineData("booktabs")]
+    [InlineData("multirow")]
+    [InlineData("tabularx")]
+    [InlineData("longtable")]
+    [InlineData("enumitem")]
+    [InlineData("listings")]
+    [InlineData("algorithm")]
+    [InlineData("algorithmic")]
+    [InlineData("tcolorbox")]
+    [InlineData("soul")]
+    [InlineData("ulem")]
+    [InlineData("url")]
+    [InlineData("hyperref")]
+    [InlineData("cleveref")]
+    public void ValidationPreamble_IncludesPackage(string package)
     {
-        ValidationPreamble.Should().Contain("\\usepackage{amsthm}");
-    }
-
-    [Fact]
-    public void ValidationPreamble_IncludesBooktabsForTables()
-    {
-        ValidationPreamble.Should().Contain("\\usepackage{booktabs}");
-    }
-
-    [Fact]
-    public void ValidationPreamble_IncludesAlgorithmPackages()
-    {
-        ValidationPreamble.Should().Contain("\\usepackage{algorithm}");
-        ValidationPreamble.Should().Contain("\\usepackage{algorithmic}");
-    }
-
-    [Fact]
-    public void ValidationPreamble_IncludesTcolorboxForCallouts()
-    {
-        ValidationPreamble.Should().Contain("\\usepackage{tcolorbox}");
+        // Match \usepackage{pkg}, \usepackage[opts]{pkg}, or \usepackage{a,pkg,b}
+        var regex = new System.Text.RegularExpressions.Regex(
+            $@"\\usepackage(\[.*?\])?\{{[^}}]*\b{package}\b[^}}]*\}}");
+        regex.IsMatch(ValidationPreamble).Should().BeTrue(
+            $"Preamble should include package '{package}'");
     }
 
     [Fact]
@@ -496,6 +604,13 @@ public class LatexBlockCompilationTests
     {
         // [demo] option renders placeholder boxes instead of requiring actual image files
         ValidationPreamble.Should().Contain("\\usepackage[demo]{graphicx}");
+    }
+
+    [Fact]
+    public void ValidationPreamble_RestoresEmphAfterUlem()
+    {
+        // ulem redefines \emph to underline — \normalem restores it to italic
+        ValidationPreamble.Should().Contain("\\normalem");
     }
 
     [Fact]
