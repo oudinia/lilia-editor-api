@@ -163,11 +163,19 @@ public class LaTeXRenderController : ControllerBase
         // Wrap in a minimal document for validation
         var fullLatex = $@"\documentclass{{article}}
 \usepackage{{amsmath,amssymb,amsfonts}}
+\usepackage{{amsthm}}
 \usepackage{{mathtools}}
 \usepackage{{graphicx}}
 \usepackage{{booktabs}}
 \usepackage{{listings}}
 \usepackage{{hyperref}}
+\newtheorem{{theorem}}{{Theorem}}
+\newtheorem{{lemma}}{{Lemma}}
+\newtheorem{{proposition}}{{Proposition}}
+\newtheorem{{corollary}}{{Corollary}}
+\newtheorem{{definition}}{{Definition}}
+\newtheorem{{example}}{{Example}}
+\newtheorem{{remark}}{{Remark}}
 \begin{{document}}
 {latex}
 \end{{document}}";
