@@ -64,6 +64,9 @@ public class LiliaDbContext : DbContext
     public DbSet<BlockPreview> BlockPreviews => Set<BlockPreview>();
     public DbSet<StudioSession> StudioSessions => Set<StudioSession>();
 
+    // Feedback
+    public DbSet<Feedback> Feedback => Set<Feedback>();
+
     // Import review
     public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
     public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();
