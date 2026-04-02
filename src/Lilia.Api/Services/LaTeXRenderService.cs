@@ -181,13 +181,26 @@ public class LaTeXRenderService : ILaTeXRenderService
                     return (false, $"LaTeX compilation failed:\n{errorMsg}", []);
                 }
 
-                var warnings = logContent.Split('\n')
+                // Classify warnings: filter out cosmetic noise, keep actionable ones
+                var allWarnings = logContent.Split('\n')
                     .Where(l => l.Contains("Warning") || l.Contains("Underfull") || l.Contains("Overfull"))
-                    .Take(20)
                     .Select(l => l.Trim())
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
                     .ToArray();
 
-                return (true, null, warnings);
+                // Suppress cosmetic warnings that users can't act on
+                var actionableWarnings = allWarnings
+                    .Where(w => !w.Contains("Overfull \\hbox"))
+                    .Where(w => !w.Contains("Underfull \\hbox"))
+                    .Where(w => !w.Contains("Overfull \\vbox"))
+                    .Where(w => !w.Contains("Underfull \\vbox"))
+                    .Where(w => !w.Contains("Font shape"))
+                    .Where(w => !w.Contains("Size substitutions"))
+                    .Where(w => !w.Contains("microtype"))
+                    .Take(10)
+                    .ToArray();
+
+                return (true, null, actionableWarnings);
             }
             finally
             {

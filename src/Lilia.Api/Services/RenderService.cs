@@ -592,57 +592,7 @@ public class RenderService : IRenderService
 
         // Preamble
         latex.AppendLine(@"\documentclass[11pt,a4paper]{article}");
-
-        // Encoding & fonts
-        latex.AppendLine(@"\usepackage[utf8]{inputenc}");
-        latex.AppendLine(@"\usepackage[T1]{fontenc}");
-        latex.AppendLine(@"\usepackage{textcomp}");
-
-        // Math
-        latex.AppendLine(@"\usepackage{amsmath,amssymb,amsfonts,amsthm}");
-        latex.AppendLine(@"\usepackage{mathtools}");
-        latex.AppendLine(@"\usepackage{mathrsfs}");
-        latex.AppendLine(@"\usepackage{cancel}");
-        latex.AppendLine(@"\usepackage{siunitx}");
-
-        // Typography
-        latex.AppendLine(@"\usepackage{microtype}");
-        latex.AppendLine(@"\usepackage{setspace}");
-        latex.AppendLine(@"\usepackage{parskip}");
-
-        // Graphics & floats
-        latex.AppendLine(@"\usepackage{graphicx}");
-        latex.AppendLine(@"\usepackage{float}");
-        latex.AppendLine(@"\usepackage{caption}");
-        latex.AppendLine(@"\usepackage{subcaption}");
-        latex.AppendLine(@"\usepackage{xcolor}");
-
-        // Tables
-        latex.AppendLine(@"\usepackage{booktabs}");
-        latex.AppendLine(@"\usepackage{multirow}");
-        latex.AppendLine(@"\usepackage{tabularx}");
-        latex.AppendLine(@"\usepackage{longtable}");
-
-        // Lists
-        latex.AppendLine(@"\usepackage{enumitem}");
-
-        // Code
-        latex.AppendLine(@"\usepackage{listings}");
-
-        // Algorithms & callouts
-        latex.AppendLine(@"\usepackage{algorithm}");
-        latex.AppendLine(@"\usepackage{algorithmic}");
-        latex.AppendLine(@"\usepackage{tcolorbox}");
-
-        // Text formatting
-        latex.AppendLine(@"\usepackage{soul}");
-        latex.AppendLine(@"\usepackage{ulem}");
-        latex.AppendLine(@"\normalem"); // ulem redefines \emph — restore it
-
-        // Links & references
-        latex.AppendLine(@"\usepackage{url}");
-        latex.AppendLine(@"\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}");
-        latex.AppendLine(@"\usepackage[nameinlink]{cleveref}");
+        latex.AppendLine(LaTeXPreamble.Packages);
 
         // Multi-column support
         if (doc.Columns > 1)
@@ -658,14 +608,7 @@ public class RenderService : IRenderService
         latex.AppendLine();
 
         // Theorem environments
-        latex.AppendLine(@"\newtheorem{theorem}{Theorem}");
-        latex.AppendLine(@"\newtheorem{lemma}{Lemma}");
-        latex.AppendLine(@"\newtheorem{proposition}{Proposition}");
-        latex.AppendLine(@"\newtheorem{corollary}{Corollary}");
-        latex.AppendLine(@"\newtheorem{definition}{Definition}");
-        latex.AppendLine(@"\newtheorem{example}{Example}");
-        latex.AppendLine(@"\newtheorem{remark}{Remark}");
-        latex.AppendLine();
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
 
         latex.AppendLine($@"\title{{{EscapeLatex(doc.Title)}}}");
         latex.AppendLine(@"\begin{document}");

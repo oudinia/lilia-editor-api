@@ -160,49 +160,7 @@ public class LaTeXRenderController : ControllerBase
         if (block == null) return NotFound();
 
         var latex = _renderService.RenderBlockToLatex(block);
-        // Wrap in a minimal document for validation
-        var fullLatex = $@"\documentclass{{article}}
-\usepackage[utf8]{{inputenc}}
-\usepackage[T1]{{fontenc}}
-\usepackage{{textcomp}}
-\usepackage{{amsmath,amssymb,amsfonts,amsthm}}
-\usepackage{{mathtools}}
-\usepackage{{mathrsfs}}
-\usepackage{{cancel}}
-\usepackage{{siunitx}}
-\usepackage{{microtype}}
-\usepackage{{setspace}}
-\usepackage{{parskip}}
-\usepackage[demo]{{graphicx}}
-\usepackage{{float}}
-\usepackage{{caption}}
-\usepackage{{subcaption}}
-\usepackage{{xcolor}}
-\usepackage{{booktabs}}
-\usepackage{{multirow}}
-\usepackage{{tabularx}}
-\usepackage{{longtable}}
-\usepackage{{enumitem}}
-\usepackage{{listings}}
-\usepackage{{algorithm}}
-\usepackage{{algorithmic}}
-\usepackage{{tcolorbox}}
-\usepackage{{soul}}
-\usepackage{{ulem}}
-\normalem
-\usepackage{{url}}
-\usepackage[colorlinks=true]{{hyperref}}
-\usepackage[nameinlink]{{cleveref}}
-\newtheorem{{theorem}}{{Theorem}}
-\newtheorem{{lemma}}{{Lemma}}
-\newtheorem{{proposition}}{{Proposition}}
-\newtheorem{{corollary}}{{Corollary}}
-\newtheorem{{definition}}{{Definition}}
-\newtheorem{{example}}{{Example}}
-\newtheorem{{remark}}{{Remark}}
-\begin{{document}}
-{latex}
-\end{{document}}";
+        var fullLatex = LaTeXPreamble.WrapForValidation(latex);
 
         var (valid, error, warnings) = await _latexService.ValidateAsync(fullLatex);
         return Ok(new { valid, error, warnings, blockId });
