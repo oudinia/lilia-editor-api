@@ -27,9 +27,9 @@ public class LatexBlockCompilationTests
 
     // The per-block validation preamble from LaTeXRenderController.cs
     private const string ValidationPreamble = @"\documentclass{article}
+\usepackage[utf8]{inputenc}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{amsthm}
-\usepackage{mathtools}
 \usepackage[demo]{graphicx}
 \usepackage{booktabs}
 \usepackage{listings}

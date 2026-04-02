@@ -162,9 +162,9 @@ public class LaTeXRenderController : ControllerBase
         var latex = _renderService.RenderBlockToLatex(block);
         // Wrap in a minimal document for validation
         var fullLatex = $@"\documentclass{{article}}
+\usepackage[utf8]{{inputenc}}
 \usepackage{{amsmath,amssymb,amsfonts}}
 \usepackage{{amsthm}}
-\usepackage{{mathtools}}
 \usepackage[demo]{{graphicx}}
 \usepackage{{booktabs}}
 \usepackage{{listings}}
