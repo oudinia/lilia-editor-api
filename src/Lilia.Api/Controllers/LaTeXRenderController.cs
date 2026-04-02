@@ -1,6 +1,7 @@
 using Lilia.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Controllers;
 
@@ -167,16 +168,50 @@ public class LaTeXRenderController : ControllerBase
     }
 
     /// <summary>
-    /// Validate an entire document's LaTeX.
+    /// Validate an entire document's LaTeX + check bibliography references.
     /// </summary>
     [HttpPost("{documentId:guid}/validate")]
     public async Task<IActionResult> ValidateDocument(Guid documentId)
     {
         try
         {
+            var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+
+            // Check for missing bibliography cite keys
+            var doc = await db.Documents
+                .Include(d => d.Blocks)
+                .Include(d => d.BibliographyEntries)
+                .FirstOrDefaultAsync(d => d.Id == documentId);
+
+            var bibWarnings = new List<string>();
+            if (doc != null)
+            {
+                var bibKeys = doc.BibliographyEntries.Select(e => e.CiteKey).ToHashSet();
+                var citeRegex = new System.Text.RegularExpressions.Regex(@"\\cite\{([^}]+)\}");
+
+                foreach (var block in doc.Blocks)
+                {
+                    var content = block.Content.RootElement;
+                    var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+                    foreach (System.Text.RegularExpressions.Match match in citeRegex.Matches(text))
+                    {
+                        var keys = match.Groups[1].Value.Split(',').Select(k => k.Trim());
+                        foreach (var key in keys)
+                        {
+                            if (!bibKeys.Contains(key))
+                                bibWarnings.Add($"Missing bibliography entry: \\cite{{{key}}}");
+                        }
+                    }
+                }
+            }
+
             var latex = await _renderService.RenderToLatexAsync(documentId);
             var (valid, error, warnings) = await _latexService.ValidateAsync(latex);
-            return Ok(new { valid, error, warnings });
+
+            // Merge bibliography warnings with LaTeX warnings
+            var allWarnings = bibWarnings.Concat(warnings).Distinct().ToArray();
+
+            return Ok(new { valid, error, warnings = allWarnings });
         }
         catch (Exception ex)
         {
