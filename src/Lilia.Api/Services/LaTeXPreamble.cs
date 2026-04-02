@@ -120,6 +120,7 @@ public static class LaTeXPreamble
 
     /// <summary>
     /// Theorem environment declarations used by theorem blocks.
+    /// Includes both numbered and unnumbered (*) variants.
     /// </summary>
     public const string TheoremEnvironments = @"\newtheorem{theorem}{Theorem}
 \newtheorem{lemma}{Lemma}
@@ -128,6 +129,13 @@ public static class LaTeXPreamble
 \newtheorem{definition}{Definition}
 \newtheorem{example}{Example}
 \newtheorem{remark}{Remark}
+\newtheorem*{theorem*}{Theorem}
+\newtheorem*{lemma*}{Lemma}
+\newtheorem*{proposition*}{Proposition}
+\newtheorem*{corollary*}{Corollary}
+\newtheorem*{definition*}{Definition}
+\newtheorem*{example*}{Example}
+\newtheorem*{remark*}{Remark}
 ";
 
     /// <summary>

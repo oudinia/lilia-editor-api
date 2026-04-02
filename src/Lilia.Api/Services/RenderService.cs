@@ -253,13 +253,23 @@ public class RenderService : IRenderService
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var alt = content.TryGetProperty("alt", out var a) ? a.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
+        var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
+        var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
 
         var srcEscaped = WebUtility.HtmlEncode(src);
         var altEscaped = WebUtility.HtmlEncode(alt);
         var captionEscaped = WebUtility.HtmlEncode(caption);
 
+        var widthPercent = (int)(width * 100);
+        var textAlign = position switch
+        {
+            "left" => "left",
+            "right" => "right",
+            _ => "center"
+        };
+
         var html = new StringBuilder();
-        html.Append("<figure class=\"figure\">");
+        html.Append($"<figure class=\"figure\" style=\"width: {widthPercent}%; text-align: {textAlign}\">");
         html.Append($"<img src=\"{srcEscaped}\" alt=\"{altEscaped}\" />");
         if (!string.IsNullOrEmpty(caption))
         {
@@ -303,10 +313,21 @@ public class RenderService : IRenderService
     {
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
         var language = content.TryGetProperty("language", out var l) ? l.GetString() ?? "" : "";
+        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var lineNumbers = content.TryGetProperty("lineNumbers", out var ln) && ln.ValueKind == JsonValueKind.True;
         var escaped = WebUtility.HtmlEncode(code);
         var langAttr = !string.IsNullOrEmpty(language) ? $" data-language=\"{WebUtility.HtmlEncode(language)}\"" : "";
+        var lineNumClass = lineNumbers ? " line-numbers" : "";
 
-        return $"<div class=\"code-block\"{langAttr}><code>{escaped}</code></div>";
+        var html = new StringBuilder();
+        html.Append($"<div class=\"code-block{lineNumClass}\"{langAttr}>");
+        html.Append($"<code>{escaped}</code>");
+        if (!string.IsNullOrEmpty(caption))
+        {
+            html.Append($"<figcaption>{WebUtility.HtmlEncode(caption)}</figcaption>");
+        }
+        html.Append("</div>");
+        return html.ToString();
     }
 
     private string RenderListToHtml(JsonElement content)
@@ -325,54 +346,90 @@ public class RenderService : IRenderService
         var tag = isOrdered ? "ol" : "ul";
 
         var html = new StringBuilder();
-        html.Append($"<{tag} class=\"list\">");
+
+        // Support start number for ordered lists
+        if (isOrdered && content.TryGetProperty("start", out var startProp) && startProp.TryGetInt32(out var startNum) && startNum != 1)
+        {
+            html.Append($"<{tag} class=\"list\" start=\"{startNum}\">");
+        }
+        else
+        {
+            html.Append($"<{tag} class=\"list\">");
+        }
 
         if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in items.EnumerateArray())
             {
-                // Support both string items and object items with text/richText properties
-                string itemText;
-                if (item.ValueKind == JsonValueKind.String)
-                {
-                    itemText = item.GetString() ?? "";
-                }
-                else if (item.ValueKind == JsonValueKind.Object)
-                {
-                    // Handle object format: { text?: string, richText?: Array<{text: string}> }
-                    if (item.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
-                    {
-                        itemText = textProp.GetString() ?? "";
-                    }
-                    else if (item.TryGetProperty("richText", out var richTextProp) && richTextProp.ValueKind == JsonValueKind.Array)
-                    {
-                        var sb = new StringBuilder();
-                        foreach (var span in richTextProp.EnumerateArray())
-                        {
-                            if (span.TryGetProperty("text", out var spanText) && spanText.ValueKind == JsonValueKind.String)
-                            {
-                                sb.Append(spanText.GetString() ?? "");
-                            }
-                        }
-                        itemText = sb.ToString();
-                    }
-                    else
-                    {
-                        itemText = "";
-                    }
-                }
-                else
-                {
-                    itemText = "";
-                }
-
-                var escaped = ProcessInlineContent(itemText);
-                html.Append($"<li>{escaped}</li>");
+                RenderListItemToHtml(item, isOrdered, html);
             }
         }
 
         html.Append($"</{tag}>");
         return html.ToString();
+    }
+
+    private void RenderListItemToHtml(JsonElement item, bool parentIsOrdered, StringBuilder html)
+    {
+        // Support both string items and object items with text/richText/children properties
+        string itemText;
+        JsonElement? children = null;
+
+        if (item.ValueKind == JsonValueKind.String)
+        {
+            itemText = item.GetString() ?? "";
+        }
+        else if (item.ValueKind == JsonValueKind.Object)
+        {
+            // Handle object format: { text?: string, richText?: Array<{text: string}>, children?: [...] }
+            if (item.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
+            {
+                itemText = textProp.GetString() ?? "";
+            }
+            else if (item.TryGetProperty("richText", out var richTextProp) && richTextProp.ValueKind == JsonValueKind.Array)
+            {
+                var sb = new StringBuilder();
+                foreach (var span in richTextProp.EnumerateArray())
+                {
+                    if (span.TryGetProperty("text", out var spanText) && spanText.ValueKind == JsonValueKind.String)
+                    {
+                        sb.Append(spanText.GetString() ?? "");
+                    }
+                }
+                itemText = sb.ToString();
+            }
+            else
+            {
+                itemText = "";
+            }
+
+            // Check for nested children
+            if (item.TryGetProperty("children", out var childrenProp) && childrenProp.ValueKind == JsonValueKind.Array && childrenProp.GetArrayLength() > 0)
+            {
+                children = childrenProp;
+            }
+        }
+        else
+        {
+            itemText = "";
+        }
+
+        var escaped = ProcessInlineContent(itemText);
+        html.Append($"<li>{escaped}");
+
+        // Render nested list if children present
+        if (children.HasValue)
+        {
+            var nestedTag = parentIsOrdered ? "ol" : "ul";
+            html.Append($"<{nestedTag}>");
+            foreach (var child in children.Value.EnumerateArray())
+            {
+                RenderListItemToHtml(child, parentIsOrdered, html);
+            }
+            html.Append($"</{nestedTag}>");
+        }
+
+        html.Append("</li>");
     }
 
     private string RenderAbstractToHtml(JsonElement content)
@@ -394,6 +451,8 @@ public class RenderService : IRenderService
         var theoremType = content.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
+        var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
+        var label = content.TryGetProperty("label", out var labelProp) ? labelProp.GetString() ?? "" : "";
 
         var typeEscaped = WebUtility.HtmlEncode(theoremType);
         var titleEscaped = WebUtility.HtmlEncode(title);
@@ -403,7 +462,13 @@ public class RenderService : IRenderService
         var bodyClass = isProof ? "theorem-body" : "theorem-body italic";
 
         var html = new StringBuilder();
-        html.Append($"<div class=\"theorem theorem-{typeEscaped}\">");
+        var numberedClass = numbered ? "" : " unnumbered";
+        html.Append($"<div class=\"theorem theorem-{typeEscaped}{numberedClass}\"");
+        if (!string.IsNullOrEmpty(label))
+        {
+            html.Append($" id=\"{WebUtility.HtmlEncode(label)}\"");
+        }
+        html.Append(">");
         html.Append($"<div class=\"theorem-header\"><strong>{char.ToUpper(typeEscaped[0])}{typeEscaped[1..]}</strong>");
         if (!string.IsNullOrEmpty(title))
         {
@@ -816,14 +881,26 @@ public class RenderService : IRenderService
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
+        var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
+        var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
 
         // Use a clean filename instead of the full URL for readability
         var displayPath = ExtractCleanImagePath(src);
 
+        // Format width with invariant culture to avoid comma decimal separators
+        var widthStr = width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
+        var alignCommand = position switch
+        {
+            "left" => @"\raggedright",
+            "right" => @"\raggedleft",
+            _ => @"\centering"
+        };
+
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{figure}[htbp]");
-        sb.AppendLine(@"\centering");
-        sb.AppendLine($@"\includegraphics[width=0.8\textwidth]{{{displayPath}}}");
+        sb.AppendLine(alignCommand);
+        sb.AppendLine($@"\includegraphics[width={widthStr}\textwidth]{{{displayPath}}}");
         if (!string.IsNullOrEmpty(caption))
         {
             sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
@@ -943,9 +1020,30 @@ public class RenderService : IRenderService
     {
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
         var language = content.TryGetProperty("language", out var l) ? l.GetString() ?? "" : "";
+        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var lineNumbers = content.TryGetProperty("lineNumbers", out var ln) && ln.ValueKind == JsonValueKind.True;
+        var highlightLines = new List<int>();
+        if (content.TryGetProperty("highlightLines", out var hl) && hl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var line in hl.EnumerateArray())
+            {
+                if (line.TryGetInt32(out var lineNum))
+                    highlightLines.Add(lineNum);
+            }
+        }
 
-        var langOption = !string.IsNullOrEmpty(language) ? $"[language={language}]" : "";
-        return $@"\begin{{lstlisting}}{langOption}
+        var options = new List<string>();
+        if (!string.IsNullOrEmpty(language))
+            options.Add($"language={language}");
+        if (!string.IsNullOrEmpty(caption))
+            options.Add($"caption={{{EscapeLatex(caption)}}}");
+        if (lineNumbers)
+            options.Add("numbers=left");
+        if (highlightLines.Count > 0)
+            options.Add($"emphstyle=\\color{{yellow}},emph={{{string.Join(",", highlightLines)}}}");
+
+        var optionStr = options.Count > 0 ? $"[{string.Join(", ", options)}]" : "";
+        return $@"\begin{{lstlisting}}{optionStr}
 {code}
 \end{{lstlisting}}";
     }
@@ -966,52 +1064,86 @@ public class RenderService : IRenderService
         var env = isOrdered ? "enumerate" : "itemize";
 
         var sb = new StringBuilder();
-        sb.AppendLine($@"\begin{{{env}}}");
+
+        // Support start number for ordered lists (requires enumitem package)
+        if (isOrdered && content.TryGetProperty("start", out var startProp) && startProp.TryGetInt32(out var startNum) && startNum != 1)
+        {
+            sb.AppendLine($@"\begin{{{env}}}[start={startNum}]");
+        }
+        else
+        {
+            sb.AppendLine($@"\begin{{{env}}}");
+        }
 
         if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in items.EnumerateArray())
             {
-                // Support both string items and object items with text/richText properties
-                string itemText;
-                if (item.ValueKind == JsonValueKind.String)
-                {
-                    itemText = item.GetString() ?? "";
-                }
-                else if (item.ValueKind == JsonValueKind.Object)
-                {
-                    if (item.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
-                    {
-                        itemText = textProp.GetString() ?? "";
-                    }
-                    else if (item.TryGetProperty("richText", out var richTextProp) && richTextProp.ValueKind == JsonValueKind.Array)
-                    {
-                        var textSb = new StringBuilder();
-                        foreach (var span in richTextProp.EnumerateArray())
-                        {
-                            if (span.TryGetProperty("text", out var spanText) && spanText.ValueKind == JsonValueKind.String)
-                            {
-                                textSb.Append(spanText.GetString() ?? "");
-                            }
-                        }
-                        itemText = textSb.ToString();
-                    }
-                    else
-                    {
-                        itemText = "";
-                    }
-                }
-                else
-                {
-                    itemText = "";
-                }
-
-                sb.AppendLine($@"\item {ProcessLatexText(itemText)}");
+                RenderListItemToLatex(item, isOrdered, sb);
             }
         }
 
         sb.AppendLine($@"\end{{{env}}}");
         return sb.ToString();
+    }
+
+    private void RenderListItemToLatex(JsonElement item, bool parentIsOrdered, StringBuilder sb)
+    {
+        // Support both string items and object items with text/richText/children properties
+        string itemText;
+        JsonElement? children = null;
+
+        if (item.ValueKind == JsonValueKind.String)
+        {
+            itemText = item.GetString() ?? "";
+        }
+        else if (item.ValueKind == JsonValueKind.Object)
+        {
+            if (item.TryGetProperty("text", out var textProp) && textProp.ValueKind == JsonValueKind.String)
+            {
+                itemText = textProp.GetString() ?? "";
+            }
+            else if (item.TryGetProperty("richText", out var richTextProp) && richTextProp.ValueKind == JsonValueKind.Array)
+            {
+                var textSb = new StringBuilder();
+                foreach (var span in richTextProp.EnumerateArray())
+                {
+                    if (span.TryGetProperty("text", out var spanText) && spanText.ValueKind == JsonValueKind.String)
+                    {
+                        textSb.Append(spanText.GetString() ?? "");
+                    }
+                }
+                itemText = textSb.ToString();
+            }
+            else
+            {
+                itemText = "";
+            }
+
+            // Check for nested children
+            if (item.TryGetProperty("children", out var childrenProp) && childrenProp.ValueKind == JsonValueKind.Array && childrenProp.GetArrayLength() > 0)
+            {
+                children = childrenProp;
+            }
+        }
+        else
+        {
+            itemText = "";
+        }
+
+        sb.AppendLine($@"\item {ProcessLatexText(itemText)}");
+
+        // Render nested list if children present
+        if (children.HasValue)
+        {
+            var nestedEnv = parentIsOrdered ? "enumerate" : "itemize";
+            sb.AppendLine($@"\begin{{{nestedEnv}}}");
+            foreach (var child in children.Value.EnumerateArray())
+            {
+                RenderListItemToLatex(child, parentIsOrdered, sb);
+            }
+            sb.AppendLine($@"\end{{{nestedEnv}}}");
+        }
     }
 
     private string RenderBlockquoteToLatex(JsonElement content)
@@ -1027,11 +1159,22 @@ public class RenderService : IRenderService
         var theoremType = content.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
+        var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
+        var label = content.TryGetProperty("label", out var labelProp) ? labelProp.GetString() ?? "" : "";
 
+        // Use starred variant for unnumbered theorems
+        var envName = numbered ? theoremType : $"{theoremType}*";
         var titleOption = !string.IsNullOrEmpty(title) ? $"[{EscapeLatex(title)}]" : "";
-        return $@"\begin{{{theoremType}}}{titleOption}
-{ProcessLatexText(text)}
-\end{{{theoremType}}}";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($@"\begin{{{envName}}}{titleOption}");
+        if (!string.IsNullOrEmpty(label))
+        {
+            sb.AppendLine($@"\label{{{label}}}");
+        }
+        sb.AppendLine(ProcessLatexText(text));
+        sb.Append($@"\end{{{envName}}}");
+        return sb.ToString();
     }
 
     private string RenderBibliographyToLatex(IEnumerable<BibliographyEntry> entries)
