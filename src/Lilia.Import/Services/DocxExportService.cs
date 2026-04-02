@@ -204,6 +204,13 @@ public class DocxExportService : IDocxExportService
             "table" => ConvertTable(block),
             "figure" => ConvertFigure(block, mainPart),
             "blockquote" => ConvertBlockquote(block),
+            "theorem" => ConvertTheorem(block),
+            "abstract" => ConvertAbstract(block),
+            "pagebreak" => ConvertPageBreak(),
+            "tableofcontents" => ConvertTableOfContents(),
+            "algorithm" => ConvertAlgorithm(block),
+            "callout" => ConvertCallout(block),
+            "footnote" => ConvertFootnote(block, mainPart),
             _ => ConvertParagraph(block) // Default to paragraph
         };
     }
@@ -518,6 +525,269 @@ public class DocxExportService : IDocxExportService
         run.Append(new RunProperties(new Italic()));
         run.Append(new Text(block.Content.Text ?? "") { Space = SpaceProcessingModeValues.Preserve });
         para.AppendChild(run);
+
+        return [para];
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertTheorem(ExportBlock block)
+    {
+        var elements = new List<OpenXmlElement>();
+        var content = block.Content;
+
+        var theoremType = content.TheoremType ?? "theorem";
+        var displayType = char.ToUpper(theoremType[0]) + theoremType[1..];
+        var number = content.TheoremNumber;
+        var title = content.Text; // title stored in Text
+        var bodySpans = content.RichText;
+
+        // Build header text: "Theorem 1 (Title)."
+        var headerText = displayType;
+        if (number.HasValue)
+            headerText += $" {number.Value}";
+        if (!string.IsNullOrEmpty(title))
+            headerText += $" ({title})";
+        headerText += ".";
+
+        // Theorem paragraph with left border
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties();
+        pPr.Append(new Indentation { Left = "360" });
+        pPr.Append(new ParagraphBorders(
+            new LeftBorder { Val = BorderValues.Single, Size = 18, Color = "4472C4" }
+        ));
+        pPr.Append(new SpacingBetweenLines { Before = "120", After = "120" });
+        para.Append(pPr);
+
+        // Bold header run
+        var headerRun = new Run();
+        var headerProps = new RunProperties();
+        headerProps.Append(new Bold());
+        headerRun.Append(headerProps);
+        headerRun.Append(new Text(headerText + " ") { Space = SpaceProcessingModeValues.Preserve });
+        para.AppendChild(headerRun);
+
+        // Body text in italic
+        if (bodySpans != null && bodySpans.Count > 0)
+        {
+            foreach (var span in bodySpans)
+            {
+                var run = CreateRun(span);
+                // Add italic to theorem body
+                var existingProps = run.RunProperties;
+                if (existingProps == null)
+                {
+                    existingProps = new RunProperties();
+                    run.PrependChild(existingProps);
+                }
+                if (!existingProps.Elements<Italic>().Any())
+                    existingProps.Append(new Italic());
+                para.AppendChild(run);
+            }
+        }
+
+        elements.Add(para);
+        return elements;
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertAbstract(ExportBlock block)
+    {
+        var elements = new List<OpenXmlElement>();
+        var content = block.Content;
+
+        // "Abstract" heading
+        var headingPara = new Paragraph();
+        var headingPPr = new ParagraphProperties();
+        headingPPr.Append(new Justification { Val = JustificationValues.Center });
+        headingPPr.Append(new SpacingBetweenLines { Before = "240", After = "120" });
+        headingPara.Append(headingPPr);
+
+        var headingRun = new Run();
+        var headingRunProps = new RunProperties();
+        headingRunProps.Append(new Bold());
+        headingRunProps.Append(new FontSize { Val = "28" }); // 14pt
+        headingRun.Append(headingRunProps);
+        headingRun.Append(new Text("Abstract") { Space = SpaceProcessingModeValues.Preserve });
+        headingPara.AppendChild(headingRun);
+        elements.Add(headingPara);
+
+        // Body paragraph in italic
+        var bodyPara = new Paragraph();
+        var bodyPPr = new ParagraphProperties();
+        bodyPPr.Append(new Indentation { Left = "720", Right = "720" });
+        bodyPara.Append(bodyPPr);
+
+        if (content.RichText != null && content.RichText.Count > 0)
+        {
+            foreach (var span in content.RichText)
+            {
+                var run = CreateRun(span);
+                var existingProps = run.RunProperties;
+                if (existingProps == null)
+                {
+                    existingProps = new RunProperties();
+                    run.PrependChild(existingProps);
+                }
+                if (!existingProps.Elements<Italic>().Any())
+                    existingProps.Append(new Italic());
+                bodyPara.AppendChild(run);
+            }
+        }
+        else if (!string.IsNullOrEmpty(content.Text))
+        {
+            var run = new Run();
+            run.Append(new RunProperties(new Italic()));
+            run.Append(new Text(content.Text) { Space = SpaceProcessingModeValues.Preserve });
+            bodyPara.AppendChild(run);
+        }
+
+        elements.Add(bodyPara);
+        return elements;
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertPageBreak()
+    {
+        var para = new Paragraph();
+        var run = new Run();
+        run.Append(new Break { Type = BreakValues.Page });
+        para.AppendChild(run);
+        return [para];
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertTableOfContents()
+    {
+        var elements = new List<OpenXmlElement>();
+
+        // TOC heading
+        var headingPara = new Paragraph();
+        var headingPPr = new ParagraphProperties();
+        headingPPr.Append(new ParagraphStyleId { Val = "Heading1" });
+        headingPara.Append(headingPPr);
+        headingPara.AppendChild(new Run(new Text("Table of Contents")));
+        elements.Add(headingPara);
+
+        // TOC field
+        var tocPara = new Paragraph();
+        var fldBegin = new Run(new FieldChar { FieldCharType = FieldCharValues.Begin });
+        var fldCode = new Run(new FieldCode(" TOC \\o \"1-3\" \\h \\z ") { Space = SpaceProcessingModeValues.Preserve });
+        var fldSeparate = new Run(new FieldChar { FieldCharType = FieldCharValues.Separate });
+        var fldText = new Run(new Text("Right-click to update field.") { Space = SpaceProcessingModeValues.Preserve });
+        var fldEnd = new Run(new FieldChar { FieldCharType = FieldCharValues.End });
+
+        tocPara.Append(fldBegin);
+        tocPara.Append(fldCode);
+        tocPara.Append(fldSeparate);
+        tocPara.Append(fldText);
+        tocPara.Append(fldEnd);
+        elements.Add(tocPara);
+
+        return elements;
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertAlgorithm(ExportBlock block)
+    {
+        var content = block.Content;
+
+        // Add caption before the code block
+        var elements = new List<OpenXmlElement>();
+        if (!string.IsNullOrEmpty(content.Caption))
+        {
+            var captionPara = new Paragraph();
+            var captionPPr = new ParagraphProperties();
+            captionPPr.Append(new SpacingBetweenLines { Before = "120", After = "60" });
+            captionPara.Append(captionPPr);
+
+            var captionRun = new Run();
+            captionRun.Append(new RunProperties(new Bold()));
+            captionRun.Append(new Text(content.Caption) { Space = SpaceProcessingModeValues.Preserve });
+            captionPara.AppendChild(captionRun);
+            elements.Add(captionPara);
+        }
+
+        // Reuse code block rendering
+        var codeBlock = new ExportBlock
+        {
+            Type = "code",
+            Content = new ExportBlockContent
+            {
+                Code = content.Code ?? content.Text,
+                Language = content.Language ?? "text"
+            }
+        };
+        elements.AddRange(ConvertCode(codeBlock));
+        return elements;
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertCallout(ExportBlock block)
+    {
+        var content = block.Content;
+        var title = content.Text; // title in Text
+        var bodySpans = content.RichText;
+
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties();
+        pPr.Append(new Indentation { Left = "720" });
+        pPr.Append(new ParagraphBorders(
+            new LeftBorder { Val = BorderValues.Single, Size = 24, Color = "70AD47" }
+        ));
+        pPr.Append(new SpacingBetweenLines { Before = "120", After = "120" });
+        pPr.Append(new Shading { Val = ShadingPatternValues.Clear, Fill = "F0FFF0" });
+        para.Append(pPr);
+
+        // Bold title
+        if (!string.IsNullOrEmpty(title))
+        {
+            var titleRun = new Run();
+            titleRun.Append(new RunProperties(new Bold()));
+            titleRun.Append(new Text(title + " ") { Space = SpaceProcessingModeValues.Preserve });
+            para.AppendChild(titleRun);
+        }
+
+        // Body
+        if (bodySpans != null && bodySpans.Count > 0)
+        {
+            foreach (var span in bodySpans)
+            {
+                para.AppendChild(CreateRun(span));
+            }
+        }
+
+        return [para];
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertFootnote(ExportBlock block, MainDocumentPart mainPart)
+    {
+        // Footnotes in OpenXML require a FootnotesPart. For simplicity,
+        // render as a superscript reference with the footnote text inline.
+        var content = block.Content;
+        var text = content.Text ?? "";
+
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties();
+        pPr.Append(new Indentation { Left = "360" });
+        para.Append(pPr);
+
+        // Footnote marker
+        var markerRun = new Run();
+        markerRun.Append(new RunProperties(
+            new VerticalTextAlignment { Val = VerticalPositionValues.Superscript },
+            new FontSize { Val = "18" }
+        ));
+        markerRun.Append(new Text("*") { Space = SpaceProcessingModeValues.Preserve });
+        para.AppendChild(markerRun);
+
+        // Footnote text
+        if (content.RichText != null && content.RichText.Count > 0)
+        {
+            foreach (var span in content.RichText)
+            {
+                para.AppendChild(CreateRun(span));
+            }
+        }
+        else
+        {
+            var textRun = new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+            para.AppendChild(textRun);
+        }
 
         return [para];
     }

@@ -10,15 +10,18 @@ namespace Lilia.Api.Controllers;
 public class ExportController : ControllerBase
 {
     private readonly ILaTeXExportService _latexExportService;
+    private readonly IDocumentExportService _documentExportService;
     private readonly IDocumentService _documentService;
     private readonly ILogger<ExportController> _logger;
 
     public ExportController(
         ILaTeXExportService latexExportService,
+        IDocumentExportService documentExportService,
         IDocumentService documentService,
         ILogger<ExportController> logger)
     {
         _latexExportService = latexExportService;
+        _documentExportService = documentExportService;
         _documentService = documentService;
         _logger = logger;
     }
@@ -43,6 +46,50 @@ public class ExportController : ControllerBase
 
         var sanitizedTitle = SanitizeFilename(document.Title);
         return File(zipStream, "application/zip", $"{sanitizedTitle}.zip");
+    }
+
+    /// <summary>
+    /// Export document as a DOCX file
+    /// </summary>
+    [HttpGet("docx")]
+    public async Task<IActionResult> ExportDocx(Guid docId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { error = "No valid authentication token provided" });
+
+        var document = await _documentService.GetDocumentAsync(docId, userId);
+        if (document == null)
+            return NotFound();
+
+        _logger.LogInformation("[Export] DOCX export for document {DocId} by user {UserId}", docId, userId);
+
+        var docxBytes = await _documentExportService.ExportToDocxAsync(docId);
+
+        var sanitizedTitle = SanitizeFilename(document.Title);
+        return File(docxBytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", $"{sanitizedTitle}.docx");
+    }
+
+    /// <summary>
+    /// Export document as a PDF file
+    /// </summary>
+    [HttpGet("pdf")]
+    public async Task<IActionResult> ExportPdf(Guid docId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { error = "No valid authentication token provided" });
+
+        var document = await _documentService.GetDocumentAsync(docId, userId);
+        if (document == null)
+            return NotFound();
+
+        _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId}", docId, userId);
+
+        var pdfBytes = await _documentExportService.ExportToPdfAsync(docId);
+
+        var sanitizedTitle = SanitizeFilename(document.Title);
+        return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
     }
 
     private string? GetUserId()
