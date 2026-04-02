@@ -12,15 +12,18 @@ public class StudioController : ControllerBase
 {
     private readonly IStudioService _studioService;
     private readonly IDocumentService _documentService;
+    private readonly IVersionService _versionService;
     private readonly ILogger<StudioController> _logger;
 
     public StudioController(
         IStudioService studioService,
         IDocumentService documentService,
+        IVersionService versionService,
         ILogger<StudioController> logger)
     {
         _studioService = studioService;
         _documentService = documentService;
+        _versionService = versionService;
         _logger = logger;
     }
 
@@ -75,6 +78,18 @@ public class StudioController : ControllerBase
     {
         var result = await _studioService.UpdateBlockContentAsync(docId, blockId, dto);
         if (result == null) return NotFound();
+
+        // Auto-version (throttled — max 1 per 5 min per document)
+        var userId = GetUserId();
+        if (userId != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await _versionService.CreateAutoVersionAsync(docId, userId); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
+            });
+        }
+
         return Ok(result);
     }
 

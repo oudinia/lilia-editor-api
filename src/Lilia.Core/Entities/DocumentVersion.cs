@@ -9,6 +9,7 @@ public class DocumentVersion
     public int VersionNumber { get; set; }
     public string? Name { get; set; }
     public JsonDocument Snapshot { get; set; } = JsonDocument.Parse("{}");
+    public bool IsAutoSave { get; set; }
     public string? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

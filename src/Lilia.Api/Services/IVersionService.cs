@@ -9,4 +9,5 @@ public interface IVersionService
     Task<VersionDto> CreateVersionAsync(Guid documentId, string userId, CreateVersionDto dto);
     Task<DocumentDto?> RestoreVersionAsync(Guid documentId, Guid versionId, string userId);
     Task<bool> DeleteVersionAsync(Guid documentId, Guid versionId, string userId);
+    Task CreateAutoVersionAsync(Guid documentId, string userId);
 }
