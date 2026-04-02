@@ -1,4 +1,5 @@
 using Lilia.Api.Services;
+using Lilia.Core.DTOs;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -23,8 +24,8 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
 
         builder.UseSetting("ConnectionStrings:LiliaCore", _connectionString);
-        builder.UseSetting("Clerk:SecretKey", "test_secret_key_to_disable_dev_auth");
-        builder.UseSetting("Clerk:Authority", "");
+        builder.UseSetting("Auth:SecretKey", "test_secret_key_to_disable_dev_auth");
+        builder.UseSetting("Auth:Authority", "");
         builder.UseSetting("Storage:LocalPath", Path.Combine(Path.GetTempPath(), "lilia-tests", Guid.NewGuid().ToString()));
 
         builder.ConfigureTestServices(services =>
@@ -39,15 +40,18 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
-            // Replace Clerk service with no-op
-            var clerkDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IClerkService));
-            if (clerkDescriptor != null) services.Remove(clerkDescriptor);
-            services.AddSingleton<IClerkService, NoOpClerkService>();
+            // Replace user service with no-op for tests
+            var userServiceDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IUserService));
+            if (userServiceDescriptor != null) services.Remove(userServiceDescriptor);
+            services.AddSingleton<IUserService, NoOpUserService>();
         });
     }
 }
 
-public class NoOpClerkService : IClerkService
+public class NoOpUserService : IUserService
 {
-    public Task<ClerkUser?> GetUserAsync(string userId) => Task.FromResult<ClerkUser?>(null);
+    public Task<UserDto?> GetUserAsync(string userId) => Task.FromResult<UserDto?>(null);
+    public Task<UserDto> CreateOrUpdateUserAsync(CreateOrUpdateUserDto dto) =>
+        Task.FromResult(new UserDto(dto.Id, dto.Email, dto.Name, dto.Image, DateTime.UtcNow));
+    public Task<UserDto?> GetUserByEmailAsync(string email) => Task.FromResult<UserDto?>(null);
 }
