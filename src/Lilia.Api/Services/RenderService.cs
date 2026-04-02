@@ -552,25 +552,49 @@ public class RenderService : IRenderService
         // First escape HTML
         var result = WebUtility.HtmlEncode(text);
 
-        // Process inline math: $...$ (but not $$...$$)
+        // Display math: $$...$$
+        result = Regex.Replace(result, @"\$\$(.+?)\$\$",
+            m => $"<div class=\"display-math\" data-latex=\"{m.Groups[1].Value}\">$${m.Groups[1].Value}$$</div>");
+
+        // Inline math: $...$ (but not $$...$$)
         result = Regex.Replace(result, @"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)",
             m => $"<span class=\"inline-math\" data-latex=\"{m.Groups[1].Value}\">${m.Groups[1].Value}$</span>");
 
-        // Process bold: **...**
+        // Bold: **...**
         result = Regex.Replace(result, @"\*\*(.+?)\*\*",
             m => $"<strong>{m.Groups[1].Value}</strong>");
 
-        // Process italic: *...*
+        // Italic: *...*
         result = Regex.Replace(result, @"\*(.+?)\*",
             m => $"<em>{m.Groups[1].Value}</em>");
 
-        // Process citations: \cite{...}
+        // Underline: __...__
+        result = Regex.Replace(result, @"__(.+?)__",
+            m => $"<u>{m.Groups[1].Value}</u>");
+
+        // Strikethrough: ~~...~~
+        result = Regex.Replace(result, @"~~(.+?)~~",
+            m => $"<del>{m.Groups[1].Value}</del>");
+
+        // Inline code: `...`
+        result = Regex.Replace(result, @"`(.+?)`",
+            m => $"<code>{m.Groups[1].Value}</code>");
+
+        // Citations: \cite{{...}}
         result = Regex.Replace(result, @"\\cite\{(.+?)\}",
             m => $"<cite data-cite=\"{m.Groups[1].Value}\">[{m.Groups[1].Value}]</cite>");
 
-        // Process references: \ref{...}
-        result = Regex.Replace(result, @"\\ref\{(.+?)\}",
+        // References: \ref{{...}}, \cref{{...}}
+        result = Regex.Replace(result, @"\\(?:c?ref|Cref|eqref)\{(.+?)\}",
             m => $"<a class=\"ref\" data-ref=\"{m.Groups[1].Value}\">{m.Groups[1].Value}</a>");
+
+        // URLs: \url{{...}}
+        result = Regex.Replace(result, @"\\url\{(.+?)\}",
+            m => $"<a href=\"{m.Groups[1].Value}\" class=\"url\" target=\"_blank\" rel=\"noopener\">{m.Groups[1].Value}</a>");
+
+        // Hyperlinks: \href{{url}}{{text}}
+        result = Regex.Replace(result, @"\\href\{(.+?)\}\{(.+?)\}",
+            m => $"<a href=\"{m.Groups[1].Value}\" target=\"_blank\" rel=\"noopener\">{m.Groups[2].Value}</a>");
 
         return result;
     }
@@ -1071,20 +1095,56 @@ public class RenderService : IRenderService
     {
         if (string.IsNullOrEmpty(text)) return "";
 
-        // Don't escape math delimiters and common LaTeX commands
-        // Just escape the text parts between math and commands
-
-        // For simplicity, we'll do basic escaping but preserve $...$ and common commands
         var result = text;
 
-        // Escape special chars except those used in LaTeX commands and math
-        result = Regex.Replace(result, @"(?<!\\)([&%#])", @"\$1");
-        result = result.Replace("_", @"\_");
+        // Step 1: Extract and protect math regions and LaTeX commands from escaping.
+        // Replace $...$ and $$...$$ with placeholders to avoid mangling them.
+        var mathRegions = new List<string>();
+        result = Regex.Replace(result, @"\$\$(.+?)\$\$", m => {
+            mathRegions.Add(m.Value);
+            return $"\x00MATH{mathRegions.Count - 1}\x00";
+        });
+        result = Regex.Replace(result, @"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", m => {
+            mathRegions.Add(m.Value);
+            return $"\x00MATH{mathRegions.Count - 1}\x00";
+        });
 
-        // Convert single newlines to double newlines for LaTeX paragraph breaks.
-        // In the editor, \n separates ProseMirror paragraphs within a block.
-        // In LaTeX, a single \n is treated as a space — \n\n is needed for a paragraph break.
+        // Protect LaTeX commands: \cite{...}, \ref{...}, \cref{...}, \url{...}, \href{...}{...}, \label{...}
+        var commandRegions = new List<string>();
+        result = Regex.Replace(result, @"\\(?:cite|ref|cref|Cref|url|label|eqref)\{[^}]+\}", m => {
+            commandRegions.Add(m.Value);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
+        result = Regex.Replace(result, @"\\href\{[^}]+\}\{[^}]+\}", m => {
+            commandRegions.Add(m.Value);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
+
+        // Step 2: Escape special LaTeX chars in the remaining text
+        result = Regex.Replace(result, @"(?<!\\)([&%#])", @"\$1");
+        // Escape underscores NOT inside formatting markers
+        result = Regex.Replace(result, @"(?<!_)_(?!_)", @"\_");
+
+        // Step 3: Convert inline formatting markers to LaTeX commands
+        // Bold: **text** → \textbf{text}
+        result = Regex.Replace(result, @"\*\*(.+?)\*\*", @"\textbf{$1}");
+        // Italic: *text* → \emph{text}
+        result = Regex.Replace(result, @"\*(.+?)\*", @"\emph{$1}");
+        // Underline: __text__ → \underline{text}
+        result = Regex.Replace(result, @"__(.+?)__", @"\underline{$1}");
+        // Strikethrough: ~~text~~ → \st{text} (soul package)
+        result = Regex.Replace(result, @"~~(.+?)~~", @"\st{$1}");
+        // Inline code: `text` → \texttt{text}
+        result = Regex.Replace(result, @"`(.+?)`", @"\texttt{$1}");
+
+        // Step 4: Convert newlines to paragraph breaks
         result = Regex.Replace(result, @"\r?\n", "\n\n");
+
+        // Step 5: Restore protected regions
+        for (int i = 0; i < commandRegions.Count; i++)
+            result = result.Replace($"\x00CMD{i}\x00", commandRegions[i]);
+        for (int i = 0; i < mathRegions.Count; i++)
+            result = result.Replace($"\x00MATH{i}\x00", mathRegions[i]);
 
         return result;
     }
