@@ -165,10 +165,14 @@ public class LaTeXRenderController : ControllerBase
 \usepackage{{amsmath,amssymb,amsfonts}}
 \usepackage{{amsthm}}
 \usepackage{{mathtools}}
-\usepackage{{graphicx}}
+\usepackage[demo]{{graphicx}}
 \usepackage{{booktabs}}
 \usepackage{{listings}}
 \usepackage{{hyperref}}
+\usepackage{{float}}
+\usepackage{{algorithm}}
+\usepackage{{algorithmic}}
+\usepackage{{tcolorbox}}
 \newtheorem{{theorem}}{{Theorem}}
 \newtheorem{{lemma}}{{Lemma}}
 \newtheorem{{proposition}}{{Proposition}}

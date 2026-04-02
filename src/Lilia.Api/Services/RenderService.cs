@@ -600,6 +600,9 @@ public class RenderService : IRenderService
         latex.AppendLine(@"\usepackage{booktabs}");
         latex.AppendLine(@"\usepackage{float}");
         latex.AppendLine(@"\usepackage{multirow}");
+        latex.AppendLine(@"\usepackage{algorithm}");
+        latex.AppendLine(@"\usepackage{algorithmic}");
+        latex.AppendLine(@"\usepackage{tcolorbox}");
 
         // Multi-column support
         if (doc.Columns > 1)

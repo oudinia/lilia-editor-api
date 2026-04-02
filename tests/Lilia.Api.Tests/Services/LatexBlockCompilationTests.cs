@@ -30,10 +30,14 @@ public class LatexBlockCompilationTests
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{amsthm}
 \usepackage{mathtools}
-\usepackage{graphicx}
+\usepackage[demo]{graphicx}
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{hyperref}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{tcolorbox}
 \newtheorem{theorem}{Theorem}
 \newtheorem{lemma}{Lemma}
 \newtheorem{proposition}{Proposition}
@@ -362,6 +366,51 @@ public class LatexBlockCompilationTests
 
     #endregion
 
+    #region Algorithm
+
+    [Fact]
+    public void Algorithm_GeneratesAlgorithmEnvironment()
+    {
+        var block = CreateBlock("algorithm", """{"title":"Binary Search","code":"\\STATE $low \\gets 0$\n\\STATE $high \\gets n-1$","caption":"Binary search algorithm"}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\begin{algorithm}");
+        latex.Should().Contain("\\begin{algorithmic}");
+        latex.Should().Contain("\\end{algorithmic}");
+        latex.Should().Contain("\\end{algorithm}");
+    }
+
+    [Fact]
+    public void Algorithm_WithCaption_IncludesCaption()
+    {
+        var block = CreateBlock("algorithm", """{"title":"Sort","code":"\\STATE sort(arr)","caption":"Sorting algorithm"}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\caption{");
+    }
+
+    #endregion
+
+    #region Callout
+
+    [Fact]
+    public void Callout_GeneratesTcolorboxEnvironment()
+    {
+        var block = CreateBlock("callout", """{"variant":"note","title":"Important","text":"Pay attention to this."}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\begin{tcolorbox}");
+        latex.Should().Contain("Pay attention to this.");
+        latex.Should().Contain("\\end{tcolorbox}");
+    }
+
+    [Fact]
+    public void Callout_WithoutTitle_GeneratesValidLatex()
+    {
+        var block = CreateBlock("callout", """{"variant":"warning","title":"","text":"Be careful."}""");
+        var latex = _sut.RenderBlockToLatex(block);
+        latex.Should().Contain("\\begin{tcolorbox}");
+    }
+
+    #endregion
+
     #region Abstract
 
     [Fact]
@@ -430,6 +479,26 @@ public class LatexBlockCompilationTests
     }
 
     [Fact]
+    public void ValidationPreamble_IncludesAlgorithmPackages()
+    {
+        ValidationPreamble.Should().Contain("\\usepackage{algorithm}");
+        ValidationPreamble.Should().Contain("\\usepackage{algorithmic}");
+    }
+
+    [Fact]
+    public void ValidationPreamble_IncludesTcolorboxForCallouts()
+    {
+        ValidationPreamble.Should().Contain("\\usepackage{tcolorbox}");
+    }
+
+    [Fact]
+    public void ValidationPreamble_IncludesDemoGraphicxForFigures()
+    {
+        // [demo] option renders placeholder boxes instead of requiring actual image files
+        ValidationPreamble.Should().Contain("\\usepackage[demo]{graphicx}");
+    }
+
+    [Fact]
     public void AllBlockTypes_GenerateNonNullLatex()
     {
         var blocks = new (string type, string json)[]
@@ -445,6 +514,9 @@ public class LatexBlockCompilationTests
             ("abstract", """{"text":"Abstract"}"""),
             ("tableOfContents", "{}"),
             ("pageBreak", "{}"),
+            ("algorithm", """{"title":"Algo","code":"\\STATE x","caption":""}"""),
+            ("callout", """{"variant":"note","title":"Note","text":"Info"}"""),
+            ("figure", """{"src":"test.png","caption":"Fig","alt":""}"""),
         };
 
         foreach (var (type, json) in blocks)
@@ -473,6 +545,9 @@ public class LatexBlockCompilationTests
             ("abstract", """{"text":"We present..."}"""),
             ("tableOfContents", "{}"),
             ("pageBreak", "{}"),
+            ("algorithm", """{"title":"Search","code":"\\STATE x \\gets 0","caption":"Search algo"}"""),
+            ("callout", """{"variant":"warning","title":"Warning","text":"Caution needed."}"""),
+            ("figure", """{"src":"img.png","caption":"A figure","alt":""}"""),
         };
 
         foreach (var (type, json) in blocks)
