@@ -284,6 +284,15 @@ public class RenderService : IRenderService
         var html = new StringBuilder();
         html.Append("<div class=\"table-container\"><table class=\"table\">");
 
+        // Read column alignments
+        string[] colAlignments = [];
+        if (content.TryGetProperty("columnAlign", out var alignProp) && alignProp.ValueKind == JsonValueKind.Array)
+        {
+            colAlignments = alignProp.EnumerateArray()
+                .Select(a => a.GetString()?.ToLowerInvariant() ?? "l")
+                .ToArray();
+        }
+
         if (content.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array)
         {
             var isFirst = true;
@@ -292,12 +301,40 @@ public class RenderService : IRenderService
                 html.Append("<tr>");
                 if (row.ValueKind == JsonValueKind.Array)
                 {
+                    var colIdx = 0;
                     foreach (var cell in row.EnumerateArray())
                     {
-                        var cellContent = cell.GetString() ?? "";
-                        var escaped = WebUtility.HtmlEncode(cellContent);
+                        var cellText = GetCellText(cell);
+                        var escaped = WebUtility.HtmlEncode(cellText);
                         var tag = isFirst ? "th" : "td";
-                        html.Append($"<{tag}>{escaped}</{tag}>");
+
+                        var attrs = new StringBuilder();
+
+                        // Column alignment
+                        if (colIdx < colAlignments.Length)
+                        {
+                            var textAlign = colAlignments[colIdx] switch
+                            {
+                                "c" => "center",
+                                "r" => "right",
+                                _ => (string?)null
+                            };
+                            if (textAlign != null)
+                                attrs.Append($" style=\"text-align: {textAlign}\"");
+                        }
+
+                        // Colspan
+                        var colspan = GetCellIntProp(cell, "colspan", 1);
+                        if (colspan > 1)
+                            attrs.Append($" colspan=\"{colspan}\"");
+
+                        // Rowspan
+                        var rowspan = GetCellIntProp(cell, "rowspan", 1);
+                        if (rowspan > 1)
+                            attrs.Append($" rowspan=\"{rowspan}\"");
+
+                        html.Append($"<{tag}{attrs}>{escaped}</{tag}>");
+                        colIdx += Math.Max(colspan, 1);
                     }
                 }
                 html.Append("</tr>");
@@ -966,7 +1003,24 @@ public class RenderService : IRenderService
                 : rowList.Count > 0 && rowList[0].ValueKind == JsonValueKind.Array
                     ? rowList[0].GetArrayLength()
                     : 1;
-            var colSpec = string.Join("", Enumerable.Repeat("l", colCount));
+
+            // 1.3 — Column alignment from content JSON, default to 'l'
+            var colAlignments = Enumerable.Repeat("l", colCount).ToArray();
+            if (content.TryGetProperty("columnAlign", out var alignProp) && alignProp.ValueKind == JsonValueKind.Array)
+            {
+                var alignList = alignProp.EnumerateArray().ToList();
+                for (var i = 0; i < Math.Min(alignList.Count, colCount); i++)
+                {
+                    var val = alignList[i].GetString()?.ToLowerInvariant();
+                    if (val is "l" or "c" or "r")
+                        colAlignments[i] = val;
+                }
+            }
+            var colSpec = string.Join("", colAlignments);
+
+            // Build a rowspan tracker: coveredCells[row][col] = true if covered by a previous multirow
+            var totalRows = (hasHeaders ? 1 : 0) + rowList.Count;
+            var coveredCells = new bool[totalRows, colCount];
 
             sb.AppendLine(@"\begin{table}[htbp]");
             sb.AppendLine(@"\centering");
@@ -978,14 +1032,30 @@ public class RenderService : IRenderService
             sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
             sb.AppendLine(@"\toprule");
 
+            var currentRowIndex = 0;
+
             // Header row (bold)
             if (hasHeaders)
             {
-                var headerCells = headers.EnumerateArray()
-                    .Select(h => $@"\textbf{{{EscapeLatex(h.GetString() ?? "")}}}")
-                    .ToList();
+                var headerCells = new List<string>();
+                var colIdx = 0;
+                foreach (var h in headers.EnumerateArray())
+                {
+                    if (colIdx >= colCount) break;
+                    if (coveredCells[currentRowIndex, colIdx]) { colIdx++; headerCells.Add(""); continue; }
+
+                    var cellText = GetCellText(h);
+                    var colspan = GetCellIntProp(h, "colspan", 1);
+                    var rowspan = GetCellIntProp(h, "rowspan", 1);
+                    var rendered = $@"\textbf{{{EscapeLatex(cellText)}}}";
+
+                    rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
+                    headerCells.Add(rendered);
+                    colIdx += Math.Max(colspan, 1);
+                }
                 sb.AppendLine(string.Join(" & ", headerCells) + @" \\");
                 sb.AppendLine(@"\midrule");
+                currentRowIndex++;
             }
 
             // Data rows
@@ -994,9 +1064,28 @@ public class RenderService : IRenderService
             {
                 if (row.ValueKind == JsonValueKind.Array)
                 {
-                    var cells = row.EnumerateArray()
-                        .Select(c => EscapeLatex(c.GetString() ?? ""))
-                        .ToList();
+                    var cells = new List<string>();
+                    var colIdx = 0;
+                    foreach (var cell in row.EnumerateArray())
+                    {
+                        if (colIdx >= colCount) break;
+                        // Skip cells covered by a previous multirow
+                        while (colIdx < colCount && coveredCells[currentRowIndex, colIdx])
+                        {
+                            cells.Add("");
+                            colIdx++;
+                        }
+                        if (colIdx >= colCount) break;
+
+                        var cellText = GetCellText(cell);
+                        var colspan = GetCellIntProp(cell, "colspan", 1);
+                        var rowspan = GetCellIntProp(cell, "rowspan", 1);
+                        var rendered = EscapeLatex(cellText);
+
+                        rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
+                        cells.Add(rendered);
+                        colIdx += Math.Max(colspan, 1);
+                    }
                     sb.AppendLine(string.Join(" & ", cells) + @" \\");
 
                     // If no explicit headers, treat first row as header
@@ -1006,6 +1095,7 @@ public class RenderService : IRenderService
                         isFirst = false;
                     }
                 }
+                currentRowIndex++;
             }
 
             sb.AppendLine(@"\bottomrule");
@@ -1014,6 +1104,57 @@ public class RenderService : IRenderService
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Extract text from a cell that may be a plain string or an object with a "text" property.
+    /// </summary>
+    private static string GetCellText(JsonElement cell)
+    {
+        if (cell.ValueKind == JsonValueKind.String)
+            return cell.GetString() ?? "";
+        if (cell.ValueKind == JsonValueKind.Object && cell.TryGetProperty("text", out var t))
+            return t.GetString() ?? "";
+        return "";
+    }
+
+    /// <summary>
+    /// Extract an integer property from a cell object, defaulting if the cell is a plain string.
+    /// </summary>
+    private static int GetCellIntProp(JsonElement cell, string propName, int defaultValue)
+    {
+        if (cell.ValueKind == JsonValueKind.Object && cell.TryGetProperty(propName, out var prop) && prop.TryGetInt32(out var val))
+            return val;
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// Wrap rendered text in \multicolumn / \multirow as needed, and mark covered cells.
+    /// </summary>
+    private static string WrapLatexSpans(string rendered, int colspan, int rowspan, string alignment, int currentRow, int colIdx, int colCount, bool[,] coveredCells)
+    {
+        // Mark cells covered by rowspan
+        if (rowspan > 1)
+        {
+            for (var r = 1; r < rowspan; r++)
+            {
+                for (var c = 0; c < Math.Max(colspan, 1); c++)
+                {
+                    var targetRow = currentRow + r;
+                    var targetCol = colIdx + c;
+                    if (targetRow < coveredCells.GetLength(0) && targetCol < coveredCells.GetLength(1))
+                        coveredCells[targetRow, targetCol] = true;
+                }
+            }
+            rendered = $@"\multirow{{{rowspan}}}{{*}}{{{rendered}}}";
+        }
+
+        if (colspan > 1)
+        {
+            rendered = $@"\multicolumn{{{colspan}}}{{{alignment}}}{{{rendered}}}";
+        }
+
+        return rendered;
     }
 
     private string RenderCodeToLatex(JsonElement content)

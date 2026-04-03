@@ -342,15 +342,28 @@ public class LaTeXExportService : ILaTeXExportService
     {
         var sb = new StringBuilder();
 
-        sb.AppendLine("% Encoding");
-        sb.AppendLine(@"\usepackage[utf8]{inputenc}");
-        sb.AppendLine(@"\usepackage[T1]{fontenc}");
+        // Use the shared preamble — same 31 packages as validation
+        sb.Append(LaTeXPreamble.Packages);
         sb.AppendLine();
-        sb.AppendLine("% Math packages");
-        sb.AppendLine(@"\usepackage{amsmath}");
-        sb.AppendLine(@"\usepackage{amssymb}");
-        sb.AppendLine(@"\usepackage{amsthm}");
 
+        // Graphics path for figures
+        sb.AppendLine(@"\graphicspath{{./figures/}}");
+        sb.AppendLine();
+
+        // Listings defaults
+        sb.AppendLine(@"\lstset{");
+        sb.AppendLine(@"  basicstyle=\ttfamily\small,");
+        sb.AppendLine(@"  breaklines=true,");
+        sb.AppendLine(@"  frame=single,");
+        sb.AppendLine(@"  numbers=left,");
+        sb.AppendLine(@"  numberstyle=\tiny,");
+        sb.AppendLine(@"}");
+
+        // Shared theorem environments
+        sb.AppendLine();
+        sb.Append(LaTeXPreamble.TheoremEnvironments);
+
+        // Optional domain-specific packages
         if (options.IncludePhysics)
         {
             sb.AppendLine();
@@ -365,45 +378,6 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine(@"\usepackage[version=4]{mhchem}");
         }
 
-        sb.AppendLine();
-        sb.AppendLine("% Graphics");
-        sb.AppendLine(@"\usepackage{graphicx}");
-        sb.AppendLine(@"\usepackage{float}");
-        sb.AppendLine(@"\graphicspath{{./figures/}}");
-        sb.AppendLine();
-        sb.AppendLine("% Tables");
-        sb.AppendLine(@"\usepackage{booktabs}");
-        sb.AppendLine(@"\usepackage{array}");
-        sb.AppendLine(@"\usepackage{longtable}");
-        sb.AppendLine();
-        sb.AppendLine("% Code listings");
-        sb.AppendLine(@"\usepackage{listings}");
-        sb.AppendLine(@"\lstset{");
-        sb.AppendLine(@"  basicstyle=\ttfamily\small,");
-        sb.AppendLine(@"  breaklines=true,");
-        sb.AppendLine(@"  frame=single,");
-        sb.AppendLine(@"  numbers=left,");
-        sb.AppendLine(@"  numberstyle=\tiny,");
-        sb.AppendLine(@"}");
-        sb.AppendLine();
-        sb.AppendLine("% Links");
-        sb.AppendLine(@"\usepackage{hyperref}");
-        sb.AppendLine(@"\hypersetup{");
-        sb.AppendLine(@"  colorlinks=true,");
-        sb.AppendLine(@"  linkcolor=blue,");
-        sb.AppendLine(@"  citecolor=blue,");
-        sb.AppendLine(@"  urlcolor=blue,");
-        sb.AppendLine(@"}");
-        sb.AppendLine();
-        sb.AppendLine("% Theorem environments");
-        sb.AppendLine(@"\newtheorem{theorem}{Theorem}[section]");
-        sb.AppendLine(@"\newtheorem{lemma}[theorem]{Lemma}");
-        sb.AppendLine(@"\newtheorem{corollary}[theorem]{Corollary}");
-        sb.AppendLine(@"\newtheorem{proposition}[theorem]{Proposition}");
-        sb.AppendLine(@"\newtheorem{definition}{Definition}[section]");
-        sb.AppendLine(@"\newtheorem{remark}{Remark}[section]");
-        sb.AppendLine(@"\newtheorem{example}{Example}[section]");
-
         // Margins via geometry
         var marginParts = new List<string>();
         if (!string.IsNullOrEmpty(doc.MarginTop)) marginParts.Add($"top={doc.MarginTop}");
@@ -417,12 +391,11 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine($@"\usepackage[{string.Join(",", marginParts)}]{{geometry}}");
         }
 
-        // Line spacing
+        // Line spacing (setspace already loaded in shared preamble)
         if (options.LineSpacing != 1.0)
         {
             sb.AppendLine();
             sb.AppendLine("% Line spacing");
-            sb.AppendLine(@"\usepackage{setspace}");
             if (Math.Abs(options.LineSpacing - 1.5) < 0.01)
                 sb.AppendLine(@"\onehalfspacing");
             else if (Math.Abs(options.LineSpacing - 2.0) < 0.01)
