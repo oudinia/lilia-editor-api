@@ -14,4 +14,5 @@ public interface IBibliographyService
     Task<DoiLookupResultDto?> LookupDoiAsync(string doi);
     Task<DoiLookupResultDto?> LookupIsbnAsync(string isbn);
     Task<DoiLookupResultDto?> LookupArxivAsync(string arxivId);
+    Task<List<DoiLookupResultDto>> SearchByTitleAsync(string query, int maxResults = 10);
 }

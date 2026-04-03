@@ -439,6 +439,83 @@ public partial class BibliographyService : IBibliographyService
         }
     }
 
+    public async Task<List<DoiLookupResultDto>> SearchByTitleAsync(string query, int maxResults = 10)
+    {
+        try
+        {
+            var url = $"https://api.crossref.org/works?query={Uri.EscapeDataString(query)}&rows={maxResults}&select=DOI,title,author,published-print,container-title,volume,page,type";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.UserAgent.ParseAdd("Lilia-Editor/1.0 (mailto:contact@liliaeditor.com)");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return [];
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(json);
+            var items = doc.RootElement.GetProperty("message").GetProperty("items");
+
+            var results = new List<DoiLookupResultDto>();
+
+            foreach (var item in items.EnumerateArray())
+            {
+                var data = new Dictionary<string, string>();
+
+                if (item.TryGetProperty("title", out var title) && title.GetArrayLength() > 0)
+                    data["title"] = title[0].GetString() ?? "";
+
+                if (item.TryGetProperty("author", out var authors))
+                {
+                    var authorList = new List<string>();
+                    foreach (var author in authors.EnumerateArray())
+                    {
+                        var family = author.TryGetProperty("family", out var f) ? f.GetString() ?? "" : "";
+                        var given = author.TryGetProperty("given", out var g) ? g.GetString() ?? "" : "";
+                        if (!string.IsNullOrEmpty(family))
+                            authorList.Add($"{family}, {given}");
+                    }
+                    data["author"] = string.Join(" and ", authorList);
+                }
+
+                if (item.TryGetProperty("published-print", out var published))
+                {
+                    if (published.TryGetProperty("date-parts", out var dateParts) && dateParts.GetArrayLength() > 0)
+                    {
+                        var parts = dateParts[0];
+                        if (parts.GetArrayLength() > 0)
+                            data["year"] = parts[0].GetInt32().ToString();
+                    }
+                }
+
+                if (item.TryGetProperty("container-title", out var journal) && journal.GetArrayLength() > 0)
+                    data["journal"] = journal[0].GetString() ?? "";
+
+                if (item.TryGetProperty("volume", out var volume))
+                    data["volume"] = volume.GetString() ?? "";
+
+                if (item.TryGetProperty("page", out var page))
+                    data["pages"] = page.GetString() ?? "";
+
+                if (item.TryGetProperty("DOI", out var doi))
+                    data["doi"] = doi.GetString() ?? "";
+
+                var entryType = item.TryGetProperty("type", out var type) && type.GetString() == "journal-article"
+                    ? "article"
+                    : "misc";
+
+                var citeKey = GenerateCiteKey(data);
+
+                results.Add(new DoiLookupResultDto(citeKey, entryType, JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement));
+            }
+
+            return results;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     public async Task<DoiLookupResultDto?> LookupArxivAsync(string arxivId)
     {
         try

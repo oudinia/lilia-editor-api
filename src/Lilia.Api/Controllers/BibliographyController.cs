@@ -131,6 +131,21 @@ public class BibliographyController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("search")]
+    public async Task<ActionResult<List<DoiLookupResultDto>>> SearchByTitle(Guid docId, [FromQuery] string q, [FromQuery] int maxResults = 10)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+            return Forbid();
+
+        if (string.IsNullOrWhiteSpace(q))
+            return BadRequest("Query parameter 'q' is required");
+
+        var results = await _bibliographyService.SearchByTitleAsync(q, maxResults);
+        return Ok(results);
+    }
+
     [HttpPost("arxiv")]
     public async Task<ActionResult<DoiLookupResultDto>> LookupArxiv([FromBody] ArxivLookupDto dto)
     {
