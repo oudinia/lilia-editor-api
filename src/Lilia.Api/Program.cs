@@ -182,6 +182,8 @@ builder.Services.AddScoped<IStudioService, StudioService>();
 
 // LaTeX rendering — runs pdflatex directly (no separate container)
 builder.Services.AddSingleton<ILaTeXRenderService, LaTeXRenderService>();
+builder.Services.AddSingleton<ICompilationQueueService, CompilationQueueService>();
+builder.Services.AddScoped<ITypstRenderService, TypstRenderService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();
 builder.Services.AddScoped<IMathAstService, MathAstService>();
 
