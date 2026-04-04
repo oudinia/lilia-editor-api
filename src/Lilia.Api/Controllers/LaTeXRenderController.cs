@@ -12,16 +12,35 @@ public class LaTeXRenderController : ControllerBase
 {
     private readonly ILaTeXRenderService _latexService;
     private readonly IRenderService _renderService;
+    private readonly ICompilationQueueService _compilationQueue;
     private readonly ILogger<LaTeXRenderController> _logger;
 
     public LaTeXRenderController(
         ILaTeXRenderService latexService,
         IRenderService renderService,
+        ICompilationQueueService compilationQueue,
         ILogger<LaTeXRenderController> logger)
     {
         _latexService = latexService;
         _renderService = renderService;
+        _compilationQueue = compilationQueue;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get compilation queue metrics.
+    /// </summary>
+    [HttpGet("metrics")]
+    [AllowAnonymous]
+    public IActionResult GetMetrics()
+    {
+        return Ok(new
+        {
+            queueLength = _compilationQueue.QueueLength,
+            activeCompilations = _compilationQueue.ActiveCompilations,
+            cacheHitRate = Math.Round(_compilationQueue.CacheHitRate, 2),
+            avgCompilationTimeMs = Math.Round(_compilationQueue.AvgCompilationTimeMs, 2)
+        });
     }
 
     /// <summary>

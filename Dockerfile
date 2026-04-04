@@ -17,6 +17,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    xz-utils \
     texlive-latex-base \
     texlive-latex-recommended \
     texlive-latex-extra \
@@ -30,6 +31,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Typst
+RUN curl -sSL https://github.com/typst/typst/releases/latest/download/typst-x86_64-unknown-linux-musl.tar.xz \
+    | tar xJf - -C /usr/local/bin --strip-components=1
+
+# Compilation worker pool concurrency (scale via instance_count in .do/app.yaml)
+ENV COMPILATION_MAX_CONCURRENT=5
 
 RUN groupadd --system appgroup && useradd --system --gid appgroup appuser
 
