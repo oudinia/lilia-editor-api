@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Lilia.Api.Services;
@@ -17,6 +19,9 @@ public class LaTeXRenderService : ILaTeXRenderService
     private readonly ILogger<LaTeXRenderService> _logger;
     private static readonly SemaphoreSlim _semaphore = new(3, 3); // Max 3 concurrent compilations
 
+    private const string PrecompiledFormatPath = "/tmp/lilia-latex-preamble/lilia-preamble";
+    private static bool? _formatFileExists;
+
     private const string MinimalPreamble = @"\documentclass[preview,border=2pt]{standalone}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -30,9 +35,36 @@ public class LaTeXRenderService : ILaTeXRenderService
 \usepackage{hyperref}
 ";
 
+    /// <summary>
+    /// In-memory cache for validation results, keyed by SHA-256 hash of the LaTeX content.
+    /// Avoids re-running pdflatex when the same content is validated again.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (bool Valid, string? Error, string[] Warnings, DateTime CachedAt)> _validationCache = new();
+    private const int MaxValidationCacheEntries = 1000;
+
     public LaTeXRenderService(ILogger<LaTeXRenderService> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Checks whether the precompiled .fmt file exists (cached after first check).
+    /// </summary>
+    private static bool HasPrecompiledFormat()
+    {
+        _formatFileExists ??= File.Exists(PrecompiledFormatPath + ".fmt");
+        return _formatFileExists.Value;
+    }
+
+    /// <summary>
+    /// Returns the pdflatex arguments, using the precompiled format if available.
+    /// </summary>
+    private static string BuildPdflatexArgs(string texPath, string outputDir)
+    {
+        var fmtArg = HasPrecompiledFormat()
+            ? $"-fmt={PrecompiledFormatPath} "
+            : "";
+        return $"-interaction=nonstopmode -halt-on-error {fmtArg}-output-directory {outputDir} {texPath}";
     }
 
     public async Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30)
@@ -95,7 +127,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var svgPath = Path.Combine(tmpDir, "formula.svg");
                 await File.WriteAllTextAsync(texPath, fullSource);
 
-                // Step 1: latex → DVI (faster than pdflatex for single formulas)
+                // Step 1: latex -> DVI (faster than pdflatex for single formulas)
                 var (exitCode, _, stderr) = await RunProcessAsync(
                     "latex",
                     $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
@@ -109,7 +141,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 if (!File.Exists(dviPath))
                     throw new InvalidOperationException("DVI was not generated");
 
-                // Step 2: DVI → SVG via dvisvgm
+                // Step 2: DVI -> SVG via dvisvgm
                 var (svgExit, _, svgStderr) = await RunProcessAsync(
                     "dvisvgm",
                     $"--no-fonts --exact-bbox --zoom=1.4 -o {svgPath} {dviPath}",
@@ -144,9 +176,21 @@ public class LaTeXRenderService : ILaTeXRenderService
 
     public async Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex)
     {
+        // Check cache first (no semaphore needed for read)
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(latex)));
+        if (_validationCache.TryGetValue(hash, out var cached))
+        {
+            _logger.LogDebug("Validation cache hit for hash {Hash}", hash[..12]);
+            return (cached.Valid, cached.Error, cached.Warnings);
+        }
+
         await _semaphore.WaitAsync();
         try
         {
+            // Double-check after acquiring semaphore (another thread may have cached it)
+            if (_validationCache.TryGetValue(hash, out cached))
+                return (cached.Valid, cached.Error, cached.Warnings);
+
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
             Directory.CreateDirectory(tmpDir);
 
@@ -156,9 +200,10 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var logPath = Path.Combine(tmpDir, "document.log");
                 await File.WriteAllTextAsync(texPath, latex);
 
+                var args = BuildPdflatexArgs(texPath, tmpDir);
                 var (exitCode, _, stderr) = await RunProcessAsync(
                     "pdflatex",
-                    $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
+                    args,
                     tmpDir,
                     15
                 );
@@ -166,6 +211,8 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var logContent = File.Exists(logPath)
                     ? await File.ReadAllTextAsync(logPath)
                     : "";
+
+                (bool Valid, string? Error, string[] Warnings) result;
 
                 if (exitCode != 0)
                 {
@@ -178,29 +225,36 @@ public class LaTeXRenderService : ILaTeXRenderService
                         ? string.Join("\n", errorLines)
                         : stderr.Length > 500 ? stderr[..500] : stderr;
 
-                    return (false, $"LaTeX compilation failed:\n{errorMsg}", []);
+                    result = (false, $"LaTeX compilation failed:\n{errorMsg}", []);
+                }
+                else
+                {
+                    // Classify warnings: filter out cosmetic noise, keep actionable ones
+                    var allWarnings = logContent.Split('\n')
+                        .Where(l => l.Contains("Warning") || l.Contains("Underfull") || l.Contains("Overfull"))
+                        .Select(l => l.Trim())
+                        .Where(l => !string.IsNullOrWhiteSpace(l))
+                        .ToArray();
+
+                    // Suppress cosmetic warnings that users can't act on
+                    var actionableWarnings = allWarnings
+                        .Where(w => !w.Contains("Overfull \\hbox"))
+                        .Where(w => !w.Contains("Underfull \\hbox"))
+                        .Where(w => !w.Contains("Overfull \\vbox"))
+                        .Where(w => !w.Contains("Underfull \\vbox"))
+                        .Where(w => !w.Contains("Font shape"))
+                        .Where(w => !w.Contains("Size substitutions"))
+                        .Where(w => !w.Contains("microtype"))
+                        .Take(10)
+                        .ToArray();
+
+                    result = (true, null, actionableWarnings);
                 }
 
-                // Classify warnings: filter out cosmetic noise, keep actionable ones
-                var allWarnings = logContent.Split('\n')
-                    .Where(l => l.Contains("Warning") || l.Contains("Underfull") || l.Contains("Overfull"))
-                    .Select(l => l.Trim())
-                    .Where(l => !string.IsNullOrWhiteSpace(l))
-                    .ToArray();
+                // Cache the result
+                CacheValidationResult(hash, result);
 
-                // Suppress cosmetic warnings that users can't act on
-                var actionableWarnings = allWarnings
-                    .Where(w => !w.Contains("Overfull \\hbox"))
-                    .Where(w => !w.Contains("Underfull \\hbox"))
-                    .Where(w => !w.Contains("Overfull \\vbox"))
-                    .Where(w => !w.Contains("Underfull \\vbox"))
-                    .Where(w => !w.Contains("Font shape"))
-                    .Where(w => !w.Contains("Size substitutions"))
-                    .Where(w => !w.Contains("microtype"))
-                    .Take(10)
-                    .ToArray();
-
-                return (true, null, actionableWarnings);
+                return result;
             }
             finally
             {
@@ -211,6 +265,19 @@ public class LaTeXRenderService : ILaTeXRenderService
         {
             _semaphore.Release();
         }
+    }
+
+    private static void CacheValidationResult(string hash, (bool Valid, string? Error, string[] Warnings) result)
+    {
+        // Simple eviction: clear all when we exceed the limit.
+        // This is acceptable because validation results are cheap to recompute
+        // relative to the cost of a more complex eviction policy.
+        if (_validationCache.Count >= MaxValidationCacheEntries)
+        {
+            _validationCache.Clear();
+        }
+
+        _validationCache.TryAdd(hash, (result.Valid, result.Error, result.Warnings, DateTime.UtcNow));
     }
 
     private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout)
@@ -228,9 +295,10 @@ public class LaTeXRenderService : ILaTeXRenderService
             // Run pdflatex twice (for references)
             for (int pass = 0; pass < 2; pass++)
             {
+                var args = BuildPdflatexArgs(texPath, tmpDir);
                 var (exitCode, stdout, stderr) = await RunProcessAsync(
                     "pdflatex",
-                    $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
+                    args,
                     tmpDir,
                     timeout
                 );
