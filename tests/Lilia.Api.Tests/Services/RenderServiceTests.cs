@@ -256,7 +256,7 @@ public class RenderServiceTests
         var result = sut.RenderBlockToHtml(block);
 
         // Assert
-        result.Should().Contain("<figure class=\"figure\"");
+        result.Should().Contain("<figure class=\"figure ");
         result.Should().Contain("src=\"/images/test.png\"");
         result.Should().Contain("alt=\"Test image\"");
         result.Should().Contain("<figcaption>Figure 1: Test</figcaption>");

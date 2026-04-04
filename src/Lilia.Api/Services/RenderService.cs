@@ -255,6 +255,7 @@ public class RenderService : IRenderService
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
         var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
+        var placement = content.TryGetProperty("placement", out var pl) ? pl.GetString() ?? "auto" : "auto";
 
         var srcEscaped = WebUtility.HtmlEncode(src);
         var altEscaped = WebUtility.HtmlEncode(alt);
@@ -269,13 +270,39 @@ public class RenderService : IRenderService
         };
 
         var html = new StringBuilder();
-        html.Append($"<figure class=\"figure\" style=\"width: {widthPercent}%; text-align: {textAlign}\">");
-        html.Append($"<img src=\"{srcEscaped}\" alt=\"{altEscaped}\" />");
-        if (!string.IsNullOrEmpty(caption))
+
+        // Check for subfigures
+        if (content.TryGetProperty("subfigures", out var subfigures) && subfigures.ValueKind == JsonValueKind.Array && subfigures.GetArrayLength() > 0)
         {
-            html.Append($"<figcaption>{captionEscaped}</figcaption>");
+            html.Append($"<figure class=\"figure figure-placement-{WebUtility.HtmlEncode(placement)}\" style=\"width: {widthPercent}%; text-align: {textAlign}\">");
+            html.Append("<div class=\"subfigures\" style=\"display: flex; gap: 1em; justify-content: center;\">");
+            foreach (var subfig in subfigures.EnumerateArray())
+            {
+                var subSrc = subfig.TryGetProperty("src", out var ss) ? ss.GetString() ?? "" : "";
+                var subAlt = subfig.TryGetProperty("alt", out var sa) ? sa.GetString() ?? "" : "";
+                var subCaption = subfig.TryGetProperty("caption", out var sc) ? sc.GetString() ?? "" : "";
+                html.Append("<figure class=\"subfigure\" style=\"flex: 1;\">");
+                html.Append($"<img src=\"{WebUtility.HtmlEncode(subSrc)}\" alt=\"{WebUtility.HtmlEncode(subAlt)}\" />");
+                if (!string.IsNullOrEmpty(subCaption))
+                    html.Append($"<figcaption>{WebUtility.HtmlEncode(subCaption)}</figcaption>");
+                html.Append("</figure>");
+            }
+            html.Append("</div>");
+            if (!string.IsNullOrEmpty(caption))
+                html.Append($"<figcaption>{captionEscaped}</figcaption>");
+            html.Append("</figure>");
         }
-        html.Append("</figure>");
+        else
+        {
+            html.Append($"<figure class=\"figure figure-placement-{WebUtility.HtmlEncode(placement)}\" style=\"width: {widthPercent}%; text-align: {textAlign}\">");
+            html.Append($"<img src=\"{srcEscaped}\" alt=\"{altEscaped}\" />");
+            if (!string.IsNullOrEmpty(caption))
+            {
+                html.Append($"<figcaption>{captionEscaped}</figcaption>");
+            }
+            html.Append("</figure>");
+        }
+
         return html.ToString();
     }
 
@@ -283,6 +310,14 @@ public class RenderService : IRenderService
     {
         var html = new StringBuilder();
         html.Append("<div class=\"table-container\"><table class=\"table\">");
+
+        // Table caption
+        if (content.TryGetProperty("caption", out var captionProp) && captionProp.ValueKind == JsonValueKind.String)
+        {
+            var captionText = captionProp.GetString() ?? "";
+            if (!string.IsNullOrEmpty(captionText))
+                html.Append($"<caption>{WebUtility.HtmlEncode(captionText)}</caption>");
+        }
 
         // Read column alignments
         string[] colAlignments = [];
@@ -384,15 +419,36 @@ public class RenderService : IRenderService
 
         var html = new StringBuilder();
 
-        // Support start number for ordered lists
-        if (isOrdered && content.TryGetProperty("start", out var startProp) && startProp.TryGetInt32(out var startNum) && startNum != 1)
+        // Build attributes for the list element
+        var attrs = new StringBuilder();
+        attrs.Append($" class=\"list\"");
+
+        if (isOrdered)
         {
-            html.Append($"<{tag} class=\"list\" start=\"{startNum}\">");
+            // Label format → HTML type attribute
+            if (content.TryGetProperty("labelFormat", out var lfProp))
+            {
+                var labelFormat = lfProp.GetString() ?? "number";
+                var typeAttr = labelFormat switch
+                {
+                    "alpha" => "a",
+                    "Alpha" => "A",
+                    "roman" => "i",
+                    "Roman" => "I",
+                    _ => (string?)null // "number" is default
+                };
+                if (typeAttr != null)
+                    attrs.Append($" type=\"{typeAttr}\"");
+            }
+
+            // Support start number for ordered lists
+            if (content.TryGetProperty("start", out var startProp) && startProp.TryGetInt32(out var startNum) && startNum != 1)
+            {
+                attrs.Append($" start=\"{startNum}\"");
+            }
         }
-        else
-        {
-            html.Append($"<{tag} class=\"list\">");
-        }
+
+        html.Append($"<{tag}{attrs}>");
 
         if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
@@ -853,14 +909,43 @@ public class RenderService : IRenderService
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var sb = new StringBuilder();
-        sb.AppendLine(@"\begin{algorithm}");
-        if (!string.IsNullOrEmpty(caption))
-            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
-        if (!string.IsNullOrEmpty(title))
-            sb.AppendLine($@"\label{{{EscapeLatex(title)}}}");
+        sb.AppendLine(@"\begin{algorithm}[H]");
+        var displayCaption = !string.IsNullOrEmpty(caption) ? caption : title;
+        if (!string.IsNullOrEmpty(displayCaption))
+            sb.AppendLine($@"\caption{{{EscapeLatex(displayCaption)}}}");
+        if (!string.IsNullOrEmpty(label))
+            sb.AppendLine($@"\label{{{label}}}");
         sb.AppendLine(@"\begin{algorithmic}");
-        sb.AppendLine(code);
+        // Wrap bare pseudocode lines in \STATE if they don't start with algorithmic commands
+        foreach (var line in code.Split('\n'))
+        {
+            var trimmed = line.TrimStart();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                sb.AppendLine();
+                continue;
+            }
+            // Check if line already starts with an algorithmic command
+            if (trimmed.StartsWith("\\STATE") || trimmed.StartsWith("\\IF") ||
+                trimmed.StartsWith("\\ELSE") || trimmed.StartsWith("\\ELSIF") ||
+                trimmed.StartsWith("\\ENDIF") || trimmed.StartsWith("\\FOR") ||
+                trimmed.StartsWith("\\ENDFOR") || trimmed.StartsWith("\\WHILE") ||
+                trimmed.StartsWith("\\ENDWHILE") || trimmed.StartsWith("\\REPEAT") ||
+                trimmed.StartsWith("\\UNTIL") || trimmed.StartsWith("\\RETURN") ||
+                trimmed.StartsWith("\\REQUIRE") || trimmed.StartsWith("\\ENSURE") ||
+                trimmed.StartsWith("\\PRINT") || trimmed.StartsWith("\\COMMENT") ||
+                trimmed.StartsWith("\\LOOP") || trimmed.StartsWith("\\ENDLOOP") ||
+                trimmed.StartsWith("%"))
+            {
+                sb.AppendLine(line);
+            }
+            else
+            {
+                sb.AppendLine($@"\STATE {trimmed}");
+            }
+        }
         sb.AppendLine(@"\end{algorithmic}");
         sb.AppendLine(@"\end{algorithm}");
         return sb.ToString().TrimEnd();
@@ -892,9 +977,14 @@ public class RenderService : IRenderService
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
         var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
+        var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
 
         // Strip MathLive placeholder artifacts
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
+
+        // Empty equation guard
+        if (string.IsNullOrWhiteSpace(latex))
+            return "% Empty equation";
 
         // Auto-detect paragraph-level math environments — these can't be wrapped in $...$
         var containsParagraphEnv = ParagraphMathEnvironments.Any(env =>
@@ -902,13 +992,29 @@ public class RenderService : IRenderService
 
         if (displayMode || containsParagraphEnv)
         {
-            // If it already contains a math environment, don't wrap in equation
+            // If it already contains a math environment, handle numbering
             if (containsParagraphEnv)
+            {
+                if (!numbered)
+                {
+                    // Convert unstarred environments to starred variants
+                    var result = latex;
+                    foreach (var env in ParagraphMathEnvironments)
+                    {
+                        // Only convert non-starred environments to starred
+                        if (env.EndsWith("*")) continue;
+                        result = result.Replace($"\\begin{{{env}}}", $"\\begin{{{env}*}}");
+                        result = result.Replace($"\\end{{{env}}}", $"\\end{{{env}*}}");
+                    }
+                    return result;
+                }
                 return latex;
+            }
 
-            return $@"\begin{{equation}}
+            var eqEnv = numbered ? "equation" : "equation*";
+            return $@"\begin{{{eqEnv}}}
 {latex}
-\end{{equation}}";
+\end{{{eqEnv}}}";
         }
         return $"${latex}$";
     }
@@ -920,6 +1026,17 @@ public class RenderService : IRenderService
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
         var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
         var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
+        var placement = content.TryGetProperty("placement", out var pl) ? pl.GetString() ?? "auto" : "auto";
+
+        // Map placement to LaTeX float specifier
+        var floatSpec = placement switch
+        {
+            "here" => "[H]",
+            "top" => "[t]",
+            "bottom" => "[b]",
+            "page" => "[p]",
+            _ => "[htbp]" // "auto" or unrecognized
+        };
 
         // Use a clean filename instead of the full URL for readability
         var displayPath = ExtractCleanImagePath(src);
@@ -935,18 +1052,57 @@ public class RenderService : IRenderService
         };
 
         var sb = new StringBuilder();
-        sb.AppendLine(@"\begin{figure}[htbp]");
-        sb.AppendLine(alignCommand);
-        sb.AppendLine($@"\includegraphics[width={widthStr}\textwidth]{{{displayPath}}}");
-        if (!string.IsNullOrEmpty(caption))
+
+        // Check for subfigures
+        if (content.TryGetProperty("subfigures", out var subfigures) && subfigures.ValueKind == JsonValueKind.Array && subfigures.GetArrayLength() > 0)
         {
-            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+            sb.AppendLine($@"\begin{{figure}}{floatSpec}");
+            sb.AppendLine(alignCommand);
+
+            var subfigCount = subfigures.GetArrayLength();
+            var subfigWidth = subfigCount > 0 ? (1.0 / subfigCount) - 0.02 : 0.45;
+            var subfigWidthStr = subfigWidth.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+            foreach (var subfig in subfigures.EnumerateArray())
+            {
+                var subSrc = subfig.TryGetProperty("src", out var ss) ? ss.GetString() ?? "" : "";
+                var subCaption = subfig.TryGetProperty("caption", out var sc) ? sc.GetString() ?? "" : "";
+                var subLabel = subfig.TryGetProperty("label", out var sl) ? sl.GetString() ?? "" : "";
+                var subDisplayPath = ExtractCleanImagePath(subSrc);
+
+                sb.AppendLine($@"\begin{{subfigure}}{{{subfigWidthStr}\textwidth}}");
+                sb.AppendLine(@"\centering");
+                sb.AppendLine($@"\includegraphics[width=\textwidth]{{{subDisplayPath}}}");
+                if (!string.IsNullOrEmpty(subCaption))
+                    sb.AppendLine($@"\caption{{{EscapeLatex(subCaption)}}}");
+                if (!string.IsNullOrEmpty(subLabel))
+                    sb.AppendLine($@"\label{{{subLabel}}}");
+                sb.AppendLine(@"\end{subfigure}");
+                sb.AppendLine(@"\hfill");
+            }
+
+            if (!string.IsNullOrEmpty(caption))
+                sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+            if (!string.IsNullOrEmpty(label))
+                sb.AppendLine($@"\label{{{label}}}");
+            sb.AppendLine(@"\end{figure}");
         }
-        if (!string.IsNullOrEmpty(label))
+        else
         {
-            sb.AppendLine($@"\label{{{label}}}");
+            sb.AppendLine($@"\begin{{figure}}{floatSpec}");
+            sb.AppendLine(alignCommand);
+            sb.AppendLine($@"\includegraphics[width={widthStr}\textwidth]{{{displayPath}}}");
+            if (!string.IsNullOrEmpty(caption))
+            {
+                sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+            }
+            if (!string.IsNullOrEmpty(label))
+            {
+                sb.AppendLine($@"\label{{{label}}}");
+            }
+            sb.AppendLine(@"\end{figure}");
         }
-        sb.AppendLine(@"\end{figure}");
+
         return sb.ToString();
     }
 
@@ -993,6 +1149,7 @@ public class RenderService : IRenderService
         var sb = new StringBuilder();
 
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var hasHeaders = content.TryGetProperty("headers", out var headers) && headers.ValueKind == JsonValueKind.Array && headers.GetArrayLength() > 0;
 
         if (content.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array)
@@ -1028,6 +1185,10 @@ public class RenderService : IRenderService
             if (!string.IsNullOrEmpty(caption))
             {
                 sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+            }
+            if (!string.IsNullOrEmpty(label))
+            {
+                sb.AppendLine($@"\label{{{label}}}");
             }
             sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
             sb.AppendLine(@"\toprule");
@@ -1206,10 +1367,36 @@ public class RenderService : IRenderService
 
         var sb = new StringBuilder();
 
-        // Support start number for ordered lists (requires enumitem package)
-        if (isOrdered && content.TryGetProperty("start", out var startProp) && startProp.TryGetInt32(out var startNum) && startNum != 1)
+        // Build enumitem options for ordered lists
+        var enumOptions = new List<string>();
+        if (isOrdered)
         {
-            sb.AppendLine($@"\begin{{{env}}}[start={startNum}]");
+            // Label format support
+            if (content.TryGetProperty("labelFormat", out var lfProp))
+            {
+                var labelFormat = lfProp.GetString() ?? "number";
+                var labelOption = labelFormat switch
+                {
+                    "alpha" => @"label=(\alph*)",
+                    "Alpha" => @"label=(\Alph*)",
+                    "roman" => @"label=(\roman*)",
+                    "Roman" => @"label=(\Roman*)",
+                    _ => (string?)null // "number" is default, no option needed
+                };
+                if (labelOption != null)
+                    enumOptions.Add(labelOption);
+            }
+
+            // Start number support
+            if (content.TryGetProperty("start", out var startProp) && startProp.TryGetInt32(out var startNum) && startNum != 1)
+            {
+                enumOptions.Add($"start={startNum}");
+            }
+        }
+
+        if (enumOptions.Count > 0)
+        {
+            sb.AppendLine($@"\begin{{{env}}}[{string.Join(", ", enumOptions)}]");
         }
         else
         {

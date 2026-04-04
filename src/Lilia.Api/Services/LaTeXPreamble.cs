@@ -129,6 +129,11 @@ public static class LaTeXPreamble
 \newtheorem{definition}{Definition}
 \newtheorem{example}{Example}
 \newtheorem{remark}{Remark}
+\newtheorem{claim}{Claim}
+\newtheorem{assumption}{Assumption}
+\newtheorem{axiom}{Axiom}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{hypothesis}{Hypothesis}
 \newtheorem*{theorem*}{Theorem}
 \newtheorem*{lemma*}{Lemma}
 \newtheorem*{proposition*}{Proposition}
@@ -136,6 +141,11 @@ public static class LaTeXPreamble
 \newtheorem*{definition*}{Definition}
 \newtheorem*{example*}{Example}
 \newtheorem*{remark*}{Remark}
+\newtheorem*{claim*}{Claim}
+\newtheorem*{assumption*}{Assumption}
+\newtheorem*{axiom*}{Axiom}
+\newtheorem*{conjecture*}{Conjecture}
+\newtheorem*{hypothesis*}{Hypothesis}
 ";
 
     /// <summary>

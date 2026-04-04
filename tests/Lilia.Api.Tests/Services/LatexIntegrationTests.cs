@@ -48,7 +48,14 @@ public class LatexIntegrationTests : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        try { Directory.Delete(TmpBase, true); } catch { }
+        // Clean up with docker to handle root-owned files
+        try
+        {
+            Process.Start(new ProcessStartInfo("/bin/bash", $"-c \"docker run --rm -v {TmpBase}:/cleanup alpine rm -rf /cleanup/*\"")
+            { UseShellExecute = false })?.WaitForExit(5000);
+            Directory.Delete(TmpBase, true);
+        }
+        catch { }
         return Task.CompletedTask;
     }
 
@@ -66,8 +73,12 @@ public class LatexIntegrationTests : IAsyncLifetime
         var texPath = Path.Combine(testDir, "test.tex");
         await File.WriteAllTextAsync(texPath, latex);
 
-        var psi = new ProcessStartInfo("docker", $"run --rm -v {testDir}:/work -w /work texlive/texlive:latest pdflatex -interaction=nonstopmode -halt-on-error --no-shell-escape test.tex")
+        // Run as current user to avoid root-owned files in temp dir
+        var uid = Environment.GetEnvironmentVariable("UID") ?? "1000";
+        var psi = new ProcessStartInfo
         {
+            FileName = "/bin/bash",
+            Arguments = $"-c \"docker run --rm --user {uid} -v {testDir}:/work -w /work texlive/texlive:latest pdflatex -interaction=nonstopmode -halt-on-error --no-shell-escape test.tex\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
