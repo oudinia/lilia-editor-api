@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --system appgroup && useradd --system --gid appgroup appuser
 
 COPY --from=build /app/publish .
+COPY scripts/precompile-preamble.sh /app/scripts/precompile-preamble.sh
+RUN chmod +x /app/scripts/precompile-preamble.sh && /app/scripts/precompile-preamble.sh
 
 RUN mkdir -p /app/uploads /app/logs && chown -R appuser:appgroup /app/uploads /app/logs
 
