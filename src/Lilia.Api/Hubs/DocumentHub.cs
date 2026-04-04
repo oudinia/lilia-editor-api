@@ -56,6 +56,13 @@ public class DocumentHub : Hub
         var groupName = $"doc-{documentId}";
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
 
+        // Release all block locks held by this connection before leaving
+        var unlockedBlocks = _presence.UnlockAllBlocks(documentId, Context.ConnectionId);
+        foreach (var blockId in unlockedBlocks)
+        {
+            await Clients.Group(groupName).SendAsync("BlockUnlocked", blockId);
+        }
+
         if (_presence.RemoveUser(documentId, Context.ConnectionId, out var presence))
         {
             await Clients.Group(groupName).SendAsync("UserLeft", presence!.UserId);
@@ -77,6 +84,36 @@ public class DocumentHub : Hub
         await Clients.OthersInGroup(groupName).SendAsync("CursorMoved", userId, line, column);
     }
 
+    // --- Block Locking ---
+
+    /// <summary>
+    /// Lock a block for editing. Other users will see it as locked.
+    /// </summary>
+    public async Task LockBlock(string documentId, string blockId)
+    {
+        var userId = Context.UserIdentifier ?? Context.ConnectionId;
+        var users = _presence.GetUsers(documentId);
+        var displayName = users.FirstOrDefault(u => u.ConnectionId == Context.ConnectionId)?.DisplayName ?? "Unknown";
+
+        if (_presence.TryLockBlock(documentId, blockId, Context.ConnectionId))
+        {
+            await Clients.OthersInGroup($"doc-{documentId}").SendAsync("BlockLocked", blockId, userId, displayName);
+            _logger.LogDebug("Block {BlockId} locked by {UserId} in document {DocumentId}", blockId, userId, documentId);
+        }
+    }
+
+    /// <summary>
+    /// Unlock a block after editing.
+    /// </summary>
+    public async Task UnlockBlock(string documentId, string blockId)
+    {
+        if (_presence.UnlockBlock(documentId, blockId, Context.ConnectionId))
+        {
+            await Clients.OthersInGroup($"doc-{documentId}").SendAsync("BlockUnlocked", blockId);
+            _logger.LogDebug("Block {BlockId} unlocked in document {DocumentId}", blockId, documentId);
+        }
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var removed = _presence.RemoveConnection(Context.ConnectionId);
@@ -84,6 +121,14 @@ public class DocumentHub : Hub
         foreach (var (documentId, presence) in removed)
         {
             var groupName = $"doc-{documentId}";
+
+            // Release all block locks held by this connection
+            var unlockedBlocks = _presence.UnlockAllBlocks(documentId, Context.ConnectionId);
+            foreach (var blockId in unlockedBlocks)
+            {
+                await Clients.Group(groupName).SendAsync("BlockUnlocked", blockId);
+            }
+
             await Clients.Group(groupName).SendAsync("UserLeft", presence.UserId);
         }
 

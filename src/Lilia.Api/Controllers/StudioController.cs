@@ -13,17 +13,20 @@ public class StudioController : ControllerBase
     private readonly IStudioService _studioService;
     private readonly IDocumentService _documentService;
     private readonly IVersionService _versionService;
+    private readonly IPresenceService _presenceService;
     private readonly ILogger<StudioController> _logger;
 
     public StudioController(
         IStudioService studioService,
         IDocumentService documentService,
         IVersionService versionService,
+        IPresenceService presenceService,
         ILogger<StudioController> logger)
     {
         _studioService = studioService;
         _documentService = documentService;
         _versionService = versionService;
+        _presenceService = presenceService;
         _logger = logger;
     }
 
@@ -187,5 +190,20 @@ public class StudioController : ControllerBase
 
         var session = await _studioService.SaveSessionAsync(userId, docId, dto);
         return Ok(session);
+    }
+
+    // --- Block Locks ---
+
+    [HttpGet("locks")]
+    public IActionResult GetBlockLocks(Guid docId)
+    {
+        var locks = _presenceService.GetLockedBlocks(docId.ToString());
+        var result = locks.Select(kvp => new
+        {
+            blockId = kvp.Key,
+            userId = kvp.Value.UserId,
+            displayName = kvp.Value.DisplayName,
+        });
+        return Ok(new { locks = result });
     }
 }

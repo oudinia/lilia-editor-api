@@ -13,6 +13,40 @@ public interface IPresenceService
     /// Returns the list of (documentId, presence) pairs that were removed.
     /// </summary>
     List<(string DocumentId, UserPresence Presence)> RemoveConnection(string connectionId);
+
+    // --- Block Locking ---
+
+    /// <summary>
+    /// Attempt to lock a block for editing. Returns true if lock was acquired.
+    /// Fails if the block is already locked by a different connection.
+    /// </summary>
+    bool TryLockBlock(string documentId, string blockId, string connectionId);
+
+    /// <summary>
+    /// Release a block lock. Only succeeds if the connection owns the lock.
+    /// </summary>
+    bool UnlockBlock(string documentId, string blockId, string connectionId);
+
+    /// <summary>
+    /// Release all block locks held by a connection in a document (used on disconnect/leave).
+    /// Returns the list of blockIds that were unlocked.
+    /// </summary>
+    List<string> UnlockAllBlocks(string documentId, string connectionId);
+
+    /// <summary>
+    /// Get all currently locked blocks in a document.
+    /// </summary>
+    Dictionary<string, (string UserId, string DisplayName)> GetLockedBlocks(string documentId);
+
+    /// <summary>
+    /// Check if a block is currently locked.
+    /// </summary>
+    bool IsBlockLocked(string documentId, string blockId);
+
+    /// <summary>
+    /// Get the user who locked a specific block, or null if unlocked.
+    /// </summary>
+    (string UserId, string DisplayName)? GetBlockLocker(string documentId, string blockId);
 }
 
 public class UserPresence
