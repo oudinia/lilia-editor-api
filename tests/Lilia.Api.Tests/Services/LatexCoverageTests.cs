@@ -203,6 +203,362 @@ public class LatexCoverageTests
         html.Should().Contain("rowspan=\"2\"");
     }
 
+    // ── 2.1 Figure placement ──────────────────────────────────────
+
+    [Theory]
+    [InlineData("here", "[H]")]
+    [InlineData("top", "[t]")]
+    [InlineData("bottom", "[b]")]
+    [InlineData("page", "[p]")]
+    [InlineData("auto", "[htbp]")]
+    public void Figure_PlacementOption_GeneratesCorrectFloatSpec(string placement, string expected)
+    {
+        var block = CreateBlock("figure", $$"""
+            {
+                "src": "test.png",
+                "caption": "Test",
+                "placement": "{{placement}}"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain($"\\begin{{figure}}{expected}");
+    }
+
+    [Fact]
+    public void Figure_DefaultPlacement_UsesHtbp()
+    {
+        var block = CreateBlock("figure", """
+            {
+                "src": "test.png",
+                "caption": "Test"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{figure}[htbp]");
+    }
+
+    // ── 2.2 Equation numbering ─────────────────────────────────────
+
+    [Fact]
+    public void Equation_NumberedFalse_UsesStarredEquation()
+    {
+        var block = CreateBlock("equation", """
+            {
+                "latex": "E = mc^2",
+                "displayMode": true,
+                "numbered": false
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{equation*}");
+        latex.Should().Contain(@"\end{equation*}");
+    }
+
+    [Fact]
+    public void Equation_NumberedTrue_UsesUnstarredEquation()
+    {
+        var block = CreateBlock("equation", """
+            {
+                "latex": "E = mc^2",
+                "displayMode": true,
+                "numbered": true
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{equation}");
+        latex.Should().NotContain(@"\begin{equation*}");
+    }
+
+    [Fact]
+    public void Equation_NumberedFalseWithAlign_UsesStarredAlign()
+    {
+        var block = CreateBlock("equation", """
+            {
+                "latex": "\\begin{align}\na &= b \\\\\nc &= d\n\\end{align}",
+                "displayMode": true,
+                "numbered": false
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{align*}");
+        latex.Should().Contain(@"\end{align*}");
+    }
+
+    [Fact]
+    public void Equation_DefaultNumbered_IsTrue()
+    {
+        var block = CreateBlock("equation", """
+            {
+                "latex": "x = 1",
+                "displayMode": true
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{equation}");
+        latex.Should().NotContain(@"\begin{equation*}");
+    }
+
+    // ── 2.3 List label format ──────────────────────────────────────
+
+    [Fact]
+    public void List_LabelFormatAlpha_GeneratesAlphLabel()
+    {
+        var block = CreateBlock("list", """
+            {
+                "items": ["a", "b", "c"],
+                "ordered": true,
+                "labelFormat": "alpha"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"[label=(\alph*)]");
+    }
+
+    [Fact]
+    public void List_LabelFormatRoman_GeneratesRomanLabel()
+    {
+        var block = CreateBlock("list", """
+            {
+                "items": ["a", "b", "c"],
+                "ordered": true,
+                "labelFormat": "roman"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"[label=(\roman*)]");
+    }
+
+    [Fact]
+    public void List_LabelFormatAlphaHtml_AddsTypeAttribute()
+    {
+        var block = CreateBlock("list", """
+            {
+                "items": ["a", "b"],
+                "ordered": true,
+                "labelFormat": "alpha"
+            }
+            """);
+
+        var html = _sut.RenderBlockToHtml(block);
+
+        html.Should().Contain("type=\"a\"");
+    }
+
+    [Fact]
+    public void List_LabelFormatRomanHtml_AddsTypeAttribute()
+    {
+        var block = CreateBlock("list", """
+            {
+                "items": ["a", "b"],
+                "ordered": true,
+                "labelFormat": "roman"
+            }
+            """);
+
+        var html = _sut.RenderBlockToHtml(block);
+
+        html.Should().Contain("type=\"i\"");
+    }
+
+    // ── 3.1 Subfigure support ──────────────────────────────────────
+
+    [Fact]
+    public void Figure_WithSubfigures_GeneratesSubfigureEnvironments()
+    {
+        var block = CreateBlock("figure", """
+            {
+                "src": "",
+                "caption": "Main caption",
+                "subfigures": [
+                    {"src": "fig1.png", "caption": "Sub A"},
+                    {"src": "fig2.png", "caption": "Sub B"}
+                ]
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{subfigure}");
+        latex.Should().Contain(@"\end{subfigure}");
+        latex.Should().Contain("Sub A");
+        latex.Should().Contain("Sub B");
+    }
+
+    [Fact]
+    public void Figure_WithSubfiguresHtml_RendersFlexLayout()
+    {
+        var block = CreateBlock("figure", """
+            {
+                "src": "",
+                "caption": "Main caption",
+                "subfigures": [
+                    {"src": "fig1.png", "caption": "Sub A"},
+                    {"src": "fig2.png", "caption": "Sub B"}
+                ]
+            }
+            """);
+
+        var html = _sut.RenderBlockToHtml(block);
+
+        html.Should().Contain("subfigures");
+        html.Should().Contain("subfigure");
+        html.Should().Contain("Sub A");
+        html.Should().Contain("Sub B");
+    }
+
+    // ── 3.2 Extended theorem types ─────────────────────────────────
+
+    [Theory]
+    [InlineData("claim")]
+    [InlineData("assumption")]
+    [InlineData("axiom")]
+    [InlineData("conjecture")]
+    [InlineData("hypothesis")]
+    public void Preamble_ContainsExtendedTheoremType(string theoremType)
+    {
+        LaTeXPreamble.TheoremEnvironments.Should().Contain($"\\newtheorem{{{theoremType}}}");
+        LaTeXPreamble.TheoremEnvironments.Should().Contain($"\\newtheorem*{{{theoremType}*}}");
+    }
+
+    // ── 3.3 Table caption and label ────────────────────────────────
+
+    [Fact]
+    public void Table_WithCaption_GeneratesCaptionCommand()
+    {
+        var block = CreateBlock("table", """
+            {
+                "rows": [["A"],["1"]],
+                "caption": "My Table"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\caption{My Table}");
+    }
+
+    [Fact]
+    public void Table_WithLabel_GeneratesLabelCommand()
+    {
+        var block = CreateBlock("table", """
+            {
+                "rows": [["A"],["1"]],
+                "caption": "My Table",
+                "label": "tab:results"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\label{tab:results}");
+    }
+
+    [Fact]
+    public void Table_WithCaptionHtml_GeneratesCaptionElement()
+    {
+        var block = CreateBlock("table", """
+            {
+                "rows": [["A"],["1"]],
+                "caption": "My Table"
+            }
+            """);
+
+        var html = _sut.RenderBlockToHtml(block);
+
+        html.Should().Contain("<caption>My Table</caption>");
+    }
+
+    // ── 3.4 Empty equation ─────────────────────────────────────────
+
+    [Fact]
+    public void Equation_EmptyLatex_RendersAsComment()
+    {
+        var block = CreateBlock("equation", """
+            {
+                "latex": "",
+                "displayMode": true
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain("% Empty equation");
+        latex.Should().NotContain(@"\begin{equation}");
+    }
+
+    [Fact]
+    public void Equation_WhitespaceOnlyLatex_RendersAsComment()
+    {
+        var block = CreateBlock("equation", """
+            {
+                "latex": "   ",
+                "displayMode": true
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain("% Empty equation");
+    }
+
+    // ── 3.5 Algorithm block ────────────────────────────────────────
+
+    [Fact]
+    public void Algorithm_RendersWithFloatH()
+    {
+        var block = CreateBlock("algorithm", """
+            {
+                "title": "Binary Search",
+                "code": "\\STATE $x \\gets 0$",
+                "caption": "Binary Search",
+                "label": "alg:bsearch"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\begin{algorithm}[H]");
+        latex.Should().Contain(@"\caption{Binary Search}");
+        latex.Should().Contain(@"\label{alg:bsearch}");
+        latex.Should().Contain(@"\begin{algorithmic}");
+        latex.Should().Contain(@"\end{algorithmic}");
+    }
+
+    [Fact]
+    public void Algorithm_BareLines_WrappedInState()
+    {
+        var block = CreateBlock("algorithm", """
+            {
+                "title": "Test",
+                "code": "x = x + 1\n\\STATE y = 2",
+                "caption": "Test"
+            }
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        // Bare line should be wrapped in \STATE
+        latex.Should().Contain(@"\STATE x = x + 1");
+        // Already-prefixed line should not get double \STATE
+        latex.Should().Contain(@"\STATE y = 2");
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────
 
     private static Block CreateBlock(string type, string contentJson)
