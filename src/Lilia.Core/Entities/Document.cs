@@ -43,6 +43,12 @@ public class Document
     public bool IsPublicTemplate { get; set; }
     public int TemplateUsageCount { get; set; }
 
+    // Help content fields — help articles are documents with is_help_content = true
+    public bool IsHelpContent { get; set; }
+    public string? HelpCategory { get; set; }
+    public int HelpOrder { get; set; }
+    public string? HelpSlug { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }

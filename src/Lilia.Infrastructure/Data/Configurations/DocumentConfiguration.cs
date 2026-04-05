@@ -52,6 +52,12 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.IsPublicTemplate).HasColumnName("is_public_template").HasDefaultValue(false);
         builder.Property(d => d.TemplateUsageCount).HasColumnName("template_usage_count").HasDefaultValue(0);
 
+        // Help content fields
+        builder.Property(d => d.IsHelpContent).HasColumnName("is_help_content").HasDefaultValue(false);
+        builder.Property(d => d.HelpCategory).HasColumnName("help_category").HasMaxLength(50);
+        builder.Property(d => d.HelpOrder).HasColumnName("help_order").HasDefaultValue(0);
+        builder.Property(d => d.HelpSlug).HasColumnName("help_slug").HasMaxLength(200);
+
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);
         builder.HasIndex(d => d.ShareLink).IsUnique();
