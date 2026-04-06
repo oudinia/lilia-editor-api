@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lilia.Core.DTOs;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -64,17 +63,18 @@ public class HelpService : IHelpService
 
         if (doc == null) return null;
 
-        var blocks = await _context.Blocks
+        var rawBlocks = await _context.Blocks
             .AsNoTracking()
             .Where(b => b.DocumentId == id)
             .OrderBy(b => b.SortOrder)
-            .Select(b => new BlockDto(
-                b.Id, b.DocumentId, b.Type,
-                b.Content != null ? JsonSerializer.Deserialize<JsonElement>(b.Content.ToString()!) : default,
-                b.SortOrder, b.ParentId, b.Depth,
-                b.CreatedAt, b.UpdatedAt
-            ))
             .ToListAsync();
+
+        var blocks = rawBlocks.Select(b => new BlockDto(
+            b.Id, b.DocumentId, b.Type,
+            b.Content.RootElement,
+            b.SortOrder, b.ParentId, b.Depth,
+            b.CreatedAt, b.UpdatedAt
+        )).ToList();
 
         return new HelpArticleDetailDto(
             doc.Id, doc.Title, doc.HelpCategory,
