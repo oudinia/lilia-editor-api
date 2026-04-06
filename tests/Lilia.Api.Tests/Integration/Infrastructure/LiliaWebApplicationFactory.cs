@@ -25,7 +25,7 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.UseSetting("ConnectionStrings:LiliaCore", _connectionString);
         builder.UseSetting("Auth:SecretKey", "test_secret_key_to_disable_dev_auth");
-        builder.UseSetting("Auth:Authority", "");
+        builder.UseSetting("Auth:Authority", "https://test.lilia.test");
         builder.UseSetting("Storage:LocalPath", Path.Combine(Path.GetTempPath(), "lilia-tests", Guid.NewGuid().ToString()));
 
         builder.ConfigureTestServices(services =>
@@ -39,6 +39,15 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
             // Replace auth with test scheme
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // Force the default scheme to TestScheme (AddAuthentication above may not override
+            // the default because the auth system was already configured in Program.cs)
+            services.Configure<AuthenticationOptions>(options =>
+            {
+                options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+                options.DefaultScheme = TestAuthHandler.SchemeName;
+            });
 
             // Replace user service with no-op for tests
             var userServiceDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IUserService));

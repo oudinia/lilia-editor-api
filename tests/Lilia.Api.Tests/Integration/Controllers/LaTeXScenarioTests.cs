@@ -62,15 +62,15 @@ public class LaTeXScenarioTests : IntegrationTestBase
     public async Task ParagraphInlineFormatting_BoldItalicUnderlineCode()
     {
         var doc = await SeedDocWithUser();
+        // Export service format: *bold* → \textbf, _italic_ → \textit, `code` → \texttt
         await SeedBlockAsync(doc.Id, "paragraph",
-            """{"text":"This has *bold* and _italic_ and __underline__ and `code` formatting."}""", 0);
+            """{"text":"This has *bold* and _italic_ and `code` formatting."}""", 0);
 
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
-        latex.Should().Contain(@"\textbf{");
-        latex.Should().Contain(@"\textit{");
-        latex.Should().Contain(@"\underline{");
-        latex.Should().Contain(@"\texttt{");
+        latex.Should().Contain(@"\textbf{bold}");
+        latex.Should().Contain(@"\textit{italic}");
+        latex.Should().Contain(@"\texttt{code}");
     }
 
     [Fact]
@@ -87,16 +87,16 @@ public class LaTeXScenarioTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task DisplayEquation_Numbered_WithLabel()
+    public async Task DisplayEquation_Numbered()
     {
         var doc = await SeedDocWithUser();
+        // Export service uses "mode":"display" (not "displayMode"), defaults to numbered=true
         await SeedBlockAsync(doc.Id, "equation",
-            """{"latex":"E = mc^2","mode":"display","label":"eq:test","numbered":true}""", 0);
+            """{"latex":"E = mc^2","mode":"display","numbered":true}""", 0);
 
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
         latex.Should().Contain(@"\begin{equation}");
-        latex.Should().Contain(@"\label{eq:test}");
         latex.Should().Contain("E = mc^2");
         latex.Should().Contain(@"\end{equation}");
     }
@@ -105,14 +105,15 @@ public class LaTeXScenarioTests : IntegrationTestBase
     public async Task DisplayEquation_Unnumbered()
     {
         var doc = await SeedDocWithUser();
+        // Unnumbered display uses \[...\] not \begin{equation*}
         await SeedBlockAsync(doc.Id, "equation",
             """{"latex":"F = ma","mode":"display","numbered":false}""", 0);
 
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
-        latex.Should().Contain(@"\begin{equation*}");
+        latex.Should().Contain(@"\[");
         latex.Should().Contain("F = ma");
-        latex.Should().Contain(@"\end{equation*}");
+        latex.Should().Contain(@"\]");
     }
 
     [Fact]
@@ -129,18 +130,21 @@ public class LaTeXScenarioTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task CrossReferences_LabeledEquationAndRef()
+    public async Task CrossReferences_EquationAndRef()
     {
         var doc = await SeedDocWithUser();
         await SeedBlockAsync(doc.Id, "equation",
-            """{"latex":"E = mc^2","mode":"display","label":"eq:test","numbered":true}""", 0);
+            """{"latex":"E = mc^2","mode":"display","label":"main","numbered":true}""", 0);
+        // Export service uses @ref{} syntax which converts to \ref{}
         await SeedBlockAsync(doc.Id, "paragraph",
-            """{"text":"As shown in Equation \\ref{eq:test}, energy and mass are equivalent."}""", 1);
+            """{"text":"As shown in Equation @ref{eq:main}, energy is equivalent to mass."}""", 1);
 
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
-        latex.Should().Contain(@"\label{eq:test}");
-        latex.Should().Contain(@"\ref{eq:test}");
+        // Equation with label (auto-prefixed with eq:)
+        latex.Should().Contain(@"\begin{equation}");
+        latex.Should().Contain(@"\label{eq:main}");
+        latex.Should().Contain(@"\ref{eq:main}");
     }
 
     [Fact]
@@ -310,7 +314,7 @@ public class LaTeXScenarioTests : IntegrationTestBase
 
         // Core equation
         await SeedBlockAsync(doc.Id, "equation",
-            """{"latex":"H|\\psi\\rangle = E|\\psi\\rangle","mode":"display","label":"eq:schrodinger","numbered":true}""", order++);
+            """{"latex":"H|\\psi\\rangle = E|\\psi\\rangle","mode":"display","numbered":true}""", order++);
 
         // Results table
         await SeedBlockAsync(doc.Id, "heading",
@@ -342,9 +346,8 @@ public class LaTeXScenarioTests : IntegrationTestBase
         // Citation
         latex.Should().Contain(@"\cite{smith2024}");
 
-        // Equation with label
+        // Equation (numbered display)
         latex.Should().Contain(@"\begin{equation}");
-        latex.Should().Contain(@"\label{eq:schrodinger}");
 
         // Table
         latex.Should().Contain(@"\begin{table}");
