@@ -48,6 +48,7 @@ public class Document
     public string? HelpCategory { get; set; }
     public int HelpOrder { get; set; }
     public string? HelpSlug { get; set; }
+    public string? SearchText { get; set; }
 
     // Navigation properties
     public virtual User Owner { get; set; } = null!;

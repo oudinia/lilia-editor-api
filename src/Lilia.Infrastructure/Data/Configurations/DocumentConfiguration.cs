@@ -57,6 +57,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.HelpCategory).HasColumnName("help_category").HasMaxLength(50);
         builder.Property(d => d.HelpOrder).HasColumnName("help_order").HasDefaultValue(0);
         builder.Property(d => d.HelpSlug).HasColumnName("help_slug").HasMaxLength(200);
+        builder.Property(d => d.SearchText).HasColumnName("search_text");
 
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);

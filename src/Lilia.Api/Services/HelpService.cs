@@ -136,17 +136,39 @@ public class HelpService : IHelpService
         if (string.IsNullOrWhiteSpace(query))
             return await GetAllAsync();
 
-        var lowerQuery = query.ToLower();
-
-        return await _context.Documents
+        // Full-text search using PostgreSQL tsvector/tsquery with ranking
+        var results = await _context.Documents
+            .FromSqlRaw(@"
+                SELECT * FROM documents
+                WHERE is_help_content = true
+                  AND to_tsvector('english', COALESCE(search_text, ''))
+                      @@ plainto_tsquery('english', {0})
+                ORDER BY ts_rank(
+                    to_tsvector('english', COALESCE(search_text, '')),
+                    plainto_tsquery('english', {0})
+                ) DESC
+            ", query)
             .AsNoTracking()
             .IgnoreQueryFilters()
-            .Where(d => d.IsHelpContent && d.Title.ToLower().Contains(lowerQuery))
-            .OrderBy(d => d.HelpCategory)
-            .ThenBy(d => d.HelpOrder)
-            .Select(d => new HelpArticleListDto(
-                d.Id, d.Title, d.HelpCategory, d.HelpOrder, d.HelpSlug
-            ))
             .ToListAsync();
+
+        // Fallback to ILIKE if full-text returns nothing (handles partial matches)
+        if (results.Count == 0)
+        {
+            var lowerQuery = query.ToLower();
+            results = await _context.Documents
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(d => d.IsHelpContent &&
+                    (d.Title.ToLower().Contains(lowerQuery) ||
+                     (d.SearchText != null && d.SearchText.ToLower().Contains(lowerQuery))))
+                .OrderBy(d => d.HelpCategory)
+                .ThenBy(d => d.HelpOrder)
+                .ToListAsync();
+        }
+
+        return results.Select(d => new HelpArticleListDto(
+            d.Id, d.Title, d.HelpCategory, d.HelpOrder, d.HelpSlug
+        )).ToList();
     }
 }
