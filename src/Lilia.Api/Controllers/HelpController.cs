@@ -11,10 +11,17 @@ namespace Lilia.Api.Controllers;
 public class HelpController : ControllerBase
 {
     private readonly IHelpService _helpService;
+    private readonly IRenderService _renderService;
+    private readonly ICompilationQueueService _compilationService;
 
-    public HelpController(IHelpService helpService)
+    public HelpController(
+        IHelpService helpService,
+        IRenderService renderService,
+        ICompilationQueueService compilationService)
     {
         _helpService = helpService;
+        _renderService = renderService;
+        _compilationService = compilationService;
     }
 
     [HttpGet]
@@ -52,5 +59,28 @@ public class HelpController : ControllerBase
     {
         var results = await _helpService.SearchAsync(q);
         return Ok(results);
+    }
+
+    [HttpGet("{id:guid}/pdf")]
+    public async Task<IActionResult> GetPdf(Guid id)
+    {
+        var article = await _helpService.GetByIdAsync(id);
+        if (article == null) return NotFound();
+
+        try
+        {
+            var latex = await _renderService.RenderToLatexAsync(id);
+            var result = await _compilationService.CompileLatexAsync(latex, CompilationType.Pdf);
+
+            if (!result.Success || result.Output == null || result.Output.Length == 0)
+                return StatusCode(500, new { error = "PDF compilation failed", details = result.Error });
+
+            var fileName = $"{article.HelpSlug ?? article.Id.ToString()}.pdf";
+            return File(result.Output, "application/pdf", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Failed to generate PDF", details = ex.Message });
+        }
     }
 }
