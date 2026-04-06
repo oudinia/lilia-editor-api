@@ -59,9 +59,11 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// <summary>
     /// Returns the pdflatex arguments, using the precompiled format if available.
     /// </summary>
-    private static string BuildPdflatexArgs(string texPath, string outputDir)
+    private static string BuildPdflatexArgs(string texPath, string outputDir, bool usePrecompiled = false)
     {
-        var fmtArg = HasPrecompiledFormat()
+        // Only use precompiled format for fragment validation (standalone class)
+        // Full documents already have \documentclass — using -fmt would cause "Two \documentclass" error
+        var fmtArg = usePrecompiled && HasPrecompiledFormat()
             ? $"-fmt={PrecompiledFormatPath} "
             : "";
         return $"-interaction=nonstopmode -halt-on-error {fmtArg}-output-directory {outputDir} {texPath}";
