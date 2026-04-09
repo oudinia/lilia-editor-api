@@ -117,17 +117,21 @@ public partial class FormulaService : IFormulaService
 
         if (formula == null) return null;
 
-        if (dto.Name != null) formula.Name = dto.Name;
-        if (dto.Description != null) formula.Description = dto.Description;
-        if (dto.LatexContent != null)
+        // Detect if any "content" field changed — only then bump version
+        var contentChanged = false;
+        if (dto.Name != null && dto.Name != formula.Name) { formula.Name = dto.Name; contentChanged = true; }
+        if (dto.Description != null && dto.Description != formula.Description) { formula.Description = dto.Description; contentChanged = true; }
+        if (dto.LatexContent != null && dto.LatexContent != formula.LatexContent)
         {
             formula.LatexContent = dto.LatexContent;
             formula.LmlContent = GenerateLml(dto.LatexContent, Slugify(dto.Name ?? formula.Name));
+            contentChanged = true;
         }
-        if (dto.Category != null) formula.Category = dto.Category;
-        if (dto.Subcategory != null) formula.Subcategory = dto.Subcategory;
+        if (dto.Category != null && dto.Category != formula.Category) { formula.Category = dto.Category; contentChanged = true; }
+        if (dto.Subcategory != null && dto.Subcategory != formula.Subcategory) { formula.Subcategory = dto.Subcategory; contentChanged = true; }
         if (dto.Tags != null) formula.Tags = dto.Tags;
 
+        if (contentChanged) formula.Version++;
         formula.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -239,7 +243,8 @@ public partial class FormulaService : IFormulaService
             f.UsageCount,
             f.UserId,
             f.CreatedAt,
-            f.UpdatedAt
+            f.UpdatedAt,
+            f.Version
         );
     }
 

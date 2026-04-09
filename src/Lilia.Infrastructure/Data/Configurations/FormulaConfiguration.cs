@@ -23,6 +23,7 @@ public class FormulaConfiguration : IEntityTypeConfiguration<Formula>
         builder.Property(f => f.IsFavorite).HasColumnName("is_favorite").HasDefaultValue(false);
         builder.Property(f => f.IsSystem).HasColumnName("is_system").HasDefaultValue(false);
         builder.Property(f => f.UsageCount).HasColumnName("usage_count").HasDefaultValue(0);
+        builder.Property(f => f.Version).HasColumnName("version").HasDefaultValue(1);
         builder.Property(f => f.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(f => f.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 

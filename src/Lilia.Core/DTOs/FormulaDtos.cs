@@ -14,7 +14,8 @@ public record FormulaDto(
     int UsageCount,
     string? UserId,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    int Version = 1
 );
 
 public record CreateFormulaDto(

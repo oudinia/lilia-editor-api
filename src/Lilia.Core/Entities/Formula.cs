@@ -14,6 +14,7 @@ public class Formula
     public bool IsFavorite { get; set; }
     public bool IsSystem { get; set; }
     public int UsageCount { get; set; }
+    public int Version { get; set; } = 1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
