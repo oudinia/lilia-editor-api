@@ -230,7 +230,11 @@ public class RenderService : IRenderService
     private string RenderEquationToHtml(JsonElement content)
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
-        var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
+
+        // Check both "equationMode" string and legacy "displayMode" boolean
+        var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
+        var displayMode = equationMode != "inline"
+            || (content.TryGetProperty("displayMode", out var d) && d.ValueKind == JsonValueKind.True);
 
         // Strip MathLive placeholder artifacts
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
@@ -976,7 +980,12 @@ public class RenderService : IRenderService
     private string RenderEquationToLatex(JsonElement content)
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
-        var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
+
+        // Check both "equationMode" string and legacy "displayMode" boolean
+        var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
+        var displayMode = equationMode != "inline"
+            || (content.TryGetProperty("displayMode", out var d) && d.ValueKind == JsonValueKind.True);
+
         var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
 
         // Strip MathLive placeholder artifacts
