@@ -1112,6 +1112,13 @@ public class ImportReviewService : IImportReviewService
                 UpdateHeadingLevel(block, correctLevel.Value);
             }
 
+            // Strip leading numbering from heading text (e.g., "1.1. Title" → "Title")
+            // so the ToC doesn't show double numbering (auto-generated + embedded).
+            if (numberedMatch.Success)
+            {
+                StripLeadingNumbering(block, numberedMatch.Value);
+            }
+
             previousHeading = block;
         }
     }
@@ -1186,6 +1193,48 @@ public class ImportReviewService : IImportReviewService
 
         block.CurrentContent = JsonDocument.Parse(JsonSerializer.Serialize(dict));
         block.CurrentType ??= block.OriginalType; // preserve type if not already changed
+    }
+
+    /// <summary>
+    /// Strips leading numbering prefix from a heading's text/html content.
+    /// E.g., "1.1. problematique formulation" → "problematique formulation"
+    /// Prevents double numbering when the ToC generates its own numbers.
+    /// </summary>
+    private static void StripLeadingNumbering(ImportBlockReview block, string matchedPrefix)
+    {
+        var source = block.CurrentContent ?? block.OriginalContent;
+        if (source == null) return;
+
+        var root = source.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+
+        // Pattern: strip "1.2.3. " or "1.2.3 " (numbering + optional dot + space)
+        var stripPattern = @"^" + Regex.Escape(matchedPrefix.TrimEnd()) + @"\.?\s*";
+
+        var dict = new Dictionary<string, object?>();
+        var changed = false;
+
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (prop.Name is "text" or "html" && prop.Value.ValueKind == JsonValueKind.String)
+            {
+                var original = prop.Value.GetString() ?? "";
+                var stripped = Regex.Replace(original, stripPattern, "").TrimStart();
+                if (stripped != original)
+                {
+                    dict[prop.Name] = stripped;
+                    changed = true;
+                    continue;
+                }
+            }
+            dict[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
+        }
+
+        if (changed)
+        {
+            block.CurrentContent = JsonDocument.Parse(JsonSerializer.Serialize(dict));
+            block.CurrentType ??= block.OriginalType;
+        }
     }
 
     private static string? GetUserRole(ImportReviewSession session, string userId)
