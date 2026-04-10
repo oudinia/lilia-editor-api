@@ -81,13 +81,16 @@ public static class AuthTokenProvider
                 "Kinde M2M credentials not configured. Set E2E__Kinde__ClientId and E2E__Kinde__ClientSecret.");
 
         using var http = new HttpClient();
-        var response = await http.PostAsync($"{kinde.Domain}/oauth2/token", new FormUrlEncodedContent(new[]
+        var form = new List<KeyValuePair<string, string>>
         {
-            new KeyValuePair<string, string>("grant_type", "client_credentials"),
-            new KeyValuePair<string, string>("client_id", kinde.ClientId),
-            new KeyValuePair<string, string>("client_secret", kinde.ClientSecret),
-            new KeyValuePair<string, string>("audience", kinde.Audience),
-        }));
+            new("grant_type", "client_credentials"),
+            new("client_id", kinde.ClientId),
+            new("client_secret", kinde.ClientSecret),
+        };
+        if (!string.IsNullOrEmpty(kinde.Audience))
+            form.Add(new("audience", kinde.Audience));
+
+        var response = await http.PostAsync($"{kinde.Domain}/oauth2/token", new FormUrlEncodedContent(form));
 
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<KindeTokenResponse>();

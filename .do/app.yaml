@@ -46,6 +46,14 @@ services:
         value: "https://liliaeditor.kinde.com"
       - key: Auth__Audience
         value: ""
+      - key: Auth__M2M__Enabled
+        value: "true"
+      - key: Auth__M2M__ServiceUserId
+        value: "svc_e2e_test"
+      - key: Auth__M2M__ServiceUserEmail
+        value: "e2e@liliaeditor.com"
+      - key: Auth__M2M__ServiceUserName
+        value: "E2E Test Service"
       - key: R2__Endpoint
         value: "https://fra1.digitaloceanspaces.com"
       - key: R2__AccessKeyId
