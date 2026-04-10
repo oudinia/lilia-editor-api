@@ -13,17 +13,20 @@ public class LaTeXRenderController : ControllerBase
     private readonly ILaTeXRenderService _latexService;
     private readonly IRenderService _renderService;
     private readonly ICompilationQueueService _compilationQueue;
+    private readonly IAuditService _audit;
     private readonly ILogger<LaTeXRenderController> _logger;
 
     public LaTeXRenderController(
         ILaTeXRenderService latexService,
         IRenderService renderService,
         ICompilationQueueService compilationQueue,
+        IAuditService audit,
         ILogger<LaTeXRenderController> logger)
     {
         _latexService = latexService;
         _renderService = renderService;
         _compilationQueue = compilationQueue;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -58,6 +61,11 @@ public class LaTeXRenderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to render PDF for document {DocumentId}", documentId);
+            _ = _audit.LogAsync("latex_render_error", "document", documentId.ToString(), new
+            {
+                format = "pdf",
+                error = ex.Message
+            });
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -77,6 +85,11 @@ public class LaTeXRenderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to render PNG for document {DocumentId}", documentId);
+            _ = _audit.LogAsync("latex_render_error", "document", documentId.ToString(), new
+            {
+                format = "png",
+                error = ex.Message
+            });
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -100,6 +113,11 @@ public class LaTeXRenderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to render block {BlockId}", blockId);
+            _ = _audit.LogAsync("latex_render_error", "block", blockId.ToString(), new
+            {
+                format = "png",
+                error = ex.Message
+            });
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -167,6 +185,18 @@ public class LaTeXRenderController : ControllerBase
     public async Task<IActionResult> ValidateLatex([FromBody] ValidateLatexRequest request)
     {
         var (valid, error, warnings) = await _latexService.ValidateAsync(request.Latex);
+
+        if (!valid)
+        {
+            _logger.LogWarning("LaTeX validation failed: {Error}", error);
+            _ = _audit.LogAsync("latex_validation_error", "latex", null, new
+            {
+                error,
+                warnings,
+                latexPreview = request.Latex.Length > 500 ? request.Latex[..500] : request.Latex
+            });
+        }
+
         return Ok(new { valid, error, warnings });
     }
 
@@ -183,6 +213,19 @@ public class LaTeXRenderController : ControllerBase
         var fullLatex = LaTeXPreamble.WrapForValidation(latex);
 
         var (valid, error, warnings) = await _latexService.ValidateAsync(fullLatex);
+
+        if (!valid)
+        {
+            _logger.LogWarning("Block {BlockId} LaTeX validation failed: {Error}", blockId, error);
+            _ = _audit.LogAsync("latex_validation_error", "block", blockId.ToString(), new
+            {
+                error,
+                warnings,
+                blockType = block.Type,
+                latexPreview = latex.Length > 500 ? latex[..500] : latex
+            });
+        }
+
         return Ok(new { valid, error, warnings, blockId });
     }
 
@@ -229,6 +272,20 @@ public class LaTeXRenderController : ControllerBase
 
             // Merge bibliography warnings with LaTeX warnings
             var allWarnings = bibWarnings.Concat(warnings).Distinct().ToArray();
+
+            if (!valid || allWarnings.Length > 0)
+            {
+                _logger.LogWarning("Document {DocumentId} LaTeX validation: valid={Valid}, errors={Error}, warnings={WarningCount}",
+                    documentId, valid, error, allWarnings.Length);
+                _ = _audit.LogAsync("latex_validation_error", "document", documentId.ToString(), new
+                {
+                    valid,
+                    error,
+                    warnings = allWarnings,
+                    blockCount = doc?.Blocks.Count,
+                    bibWarnings = bibWarnings.Count > 0 ? bibWarnings : null
+                });
+            }
 
             return Ok(new { valid, error, warnings = allWarnings });
         }
