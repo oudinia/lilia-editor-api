@@ -15,6 +15,22 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Sentry
+var sentryDsn = builder.Configuration["Sentry:Dsn"];
+if (!string.IsNullOrEmpty(sentryDsn))
+{
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsn;
+        options.Environment = builder.Environment.EnvironmentName.ToLowerInvariant();
+        options.Release = $"lilia-api@{typeof(Program).Assembly.GetName().Version}";
+        options.TracesSampleRate = builder.Environment.IsProduction() ? 0.2 : 1.0;
+        options.SendDefaultPii = false;
+        options.AttachStacktrace = true;
+        options.MaxBreadcrumbs = 50;
+    });
+}
+
 // Configure Localization
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
@@ -285,6 +301,12 @@ builder.Services.AddScoped<IAccessibilityService, AccessibilityService>();
 builder.Services.AddScoped<IEpubService, EpubService>();
 
 var app = builder.Build();
+
+// Sentry — must be before error handling to capture unhandled exceptions
+if (!string.IsNullOrEmpty(sentryDsn))
+{
+    app.UseSentryTracing();
+}
 
 // Error handling — must be early in the pipeline
 var editorBaseUrl = builder.Configuration["Editor:BaseUrl"] ?? "http://localhost:3001";

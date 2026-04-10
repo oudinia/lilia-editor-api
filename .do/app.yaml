@@ -83,6 +83,9 @@ services:
         value: "claude-haiku-4-5-20251001"
       - key: AiSettings__RateLimitPerHour
         value: "100"
+      - key: Sentry__Dsn
+        type: SECRET
+        value: "REPLACE"
 
   # LaTeX rendering runs inside the API container (no separate service)
 
@@ -114,3 +117,16 @@ static_sites:
       - key: VITE_EDITOR_API_URL
         scope: BUILD_TIME
         value: "${api.PUBLIC_URL}"
+      - key: VITE_SENTRY_DSN
+        scope: BUILD_TIME
+        value: "REPLACE"
+      - key: SENTRY_AUTH_TOKEN
+        scope: BUILD_TIME
+        type: SECRET
+        value: "REPLACE"
+      - key: SENTRY_ORG
+        scope: BUILD_TIME
+        value: "lilia"
+      - key: SENTRY_PROJECT
+        scope: BUILD_TIME
+        value: "lilia-editor"
