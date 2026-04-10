@@ -12,11 +12,13 @@ public partial class BibliographyService : IBibliographyService
 {
     private readonly LiliaDbContext _context;
     private readonly HttpClient _httpClient;
+    private readonly ILogger<BibliographyService> _logger;
 
-    public BibliographyService(LiliaDbContext context, IHttpClientFactory httpClientFactory)
+    public BibliographyService(LiliaDbContext context, IHttpClientFactory httpClientFactory, ILogger<BibliographyService> logger)
     {
         _context = context;
         _httpClient = httpClientFactory.CreateClient();
+        _logger = logger;
     }
 
     public async Task<List<BibliographyEntryDto>> GetEntriesAsync(Guid documentId)
@@ -221,8 +223,9 @@ public partial class BibliographyService : IBibliographyService
 
             return new DoiLookupResultDto(citeKey, entryType, JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "DOI lookup failed for {Doi}", doi);
             return null;
         }
     }
@@ -433,8 +436,9 @@ public partial class BibliographyService : IBibliographyService
 
             return new DoiLookupResultDto(citeKey, "book", JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "ISBN lookup failed for {Isbn}", isbn);
             return null;
         }
     }
@@ -510,8 +514,9 @@ public partial class BibliographyService : IBibliographyService
 
             return results;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Title search failed for query {Query}", query);
             return [];
         }
     }
@@ -624,8 +629,9 @@ public partial class BibliographyService : IBibliographyService
 
             return new DoiLookupResultDto(citeKey, "article", JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "arXiv lookup failed for {ArxivId}", arxivId);
             return null;
         }
     }

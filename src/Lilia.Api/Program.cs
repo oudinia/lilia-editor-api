@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lilia.Api.ErrorPages;
+using Lilia.Api.Filters;
 using Lilia.Api.Hubs;
 using Lilia.Api.Middleware;
 using Lilia.Api.Services;
@@ -24,7 +25,7 @@ if (!string.IsNullOrEmpty(sentryDsn))
         options.Dsn = sentryDsn;
         options.Environment = builder.Environment.EnvironmentName.ToLowerInvariant();
         options.Release = $"lilia-api@{typeof(Program).Assembly.GetName().Version}";
-        options.TracesSampleRate = builder.Environment.IsProduction() ? 0.2 : 1.0;
+        options.TracesSampleRate = 0; // Exceptions only — no performance tracing
         options.SendDefaultPii = false;
         options.AttachStacktrace = true;
         options.MaxBreadcrumbs = 50;
@@ -47,7 +48,13 @@ builder.Host.UseSerilog((context, services, configuration) =>
 });
 
 // Add services to the container
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        // Global exception filter — logs all unhandled exceptions with full context
+        // (user, controller, action, route params) and forwards to Sentry.
+        // No per-controller try/catch needed for logging.
+        options.Filters.Add<ExceptionLoggingFilter>();
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -301,12 +308,6 @@ builder.Services.AddScoped<IAccessibilityService, AccessibilityService>();
 builder.Services.AddScoped<IEpubService, EpubService>();
 
 var app = builder.Build();
-
-// Sentry — must be before error handling to capture unhandled exceptions
-if (!string.IsNullOrEmpty(sentryDsn))
-{
-    app.UseSentryTracing();
-}
 
 // Error handling — must be early in the pipeline
 var editorBaseUrl = builder.Configuration["Editor:BaseUrl"] ?? "http://localhost:3001";
