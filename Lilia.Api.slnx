@@ -4,4 +4,7 @@
     <Project Path="src/Lilia.Core/Lilia.Core.csproj" />
     <Project Path="src/Lilia.Infrastructure/Lilia.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lilia.Api.E2E/Lilia.Api.E2E.csproj" />
+  </Folder>
 </Solution>
