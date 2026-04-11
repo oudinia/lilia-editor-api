@@ -8,9 +8,15 @@ namespace Lilia.Api.E2E.Tests;
 /// <summary>
 /// E2E tests for authorization — verifies that access controls work across
 /// different user roles (owner, collaborator, viewer, anonymous).
+///
+/// Note: Multi-user tests (Owner vs Viewer) only work in DevJwt mode where
+/// each test user gets a unique sub claim. In Kinde M2M mode, all requests
+/// share the same service account identity.
 /// </summary>
 public class AuthorizationE2ETests : E2ETestBase
 {
+    private bool IsMultiUserSupported => Config.AuthMode == "DevJwt";
+
     [Fact]
     public async Task Anonymous_CannotListDocuments()
     {
@@ -45,6 +51,12 @@ public class AuthorizationE2ETests : E2ETestBase
     [Fact]
     public async Task Viewer_CannotDeleteOwnersDocument()
     {
+        if (!IsMultiUserSupported)
+        {
+            // M2M mode: all users share the same identity, skip multi-user test
+            return;
+        }
+
         using var ownerClient = await CreateAuthenticatedClientAsync("Owner");
         var doc = await CreateTestDocumentAsync(ownerClient, "No Delete");
         var id = doc.GetProperty("id").GetString()!;
@@ -57,6 +69,11 @@ public class AuthorizationE2ETests : E2ETestBase
     [Fact]
     public async Task Viewer_CannotAddBlocksToOwnersDocument()
     {
+        if (!IsMultiUserSupported)
+        {
+            return;
+        }
+
         using var ownerClient = await CreateAuthenticatedClientAsync("Owner");
         var doc = await CreateTestDocumentAsync(ownerClient, "No Blocks");
         var id = doc.GetProperty("id").GetString()!;
@@ -71,19 +88,19 @@ public class AuthorizationE2ETests : E2ETestBase
     }
 
     [Fact]
-    public async Task EachUser_SeesOnlyOwnDocuments()
+    public async Task DifferentUser_CannotAccessOtherUsersDocument()
     {
+        if (!IsMultiUserSupported)
+        {
+            return;
+        }
+
         using var ownerClient = await CreateAuthenticatedClientAsync("Owner");
-        var ownerDoc = await CreateTestDocumentAsync(ownerClient, "Owner's Doc");
-        var ownerDocId = ownerDoc.GetProperty("id").GetString()!;
+        var created = await CreateTestDocumentAsync(ownerClient, "E2E Private Doc");
+        var id = created.GetProperty("id").GetString();
 
-        using var collabClient = await CreateAuthenticatedClientAsync("Collaborator");
-        var collabDoc = await CreateTestDocumentAsync(collabClient, "Collab's Doc");
-        TrackForCleanup("/api/documents", collabDoc.GetProperty("id").GetString()!);
-
-        // Owner should not see collab's doc in their list
-        var ownerList = await ownerClient.GetAsync("/api/documents");
-        var ownerDocs = await ownerList.Content.ReadAsStringAsync();
-        ownerDocs.Should().Contain(ownerDocId);
+        using var viewerClient = await CreateAuthenticatedClientAsync("Viewer");
+        var response = await viewerClient.GetAsync($"/api/documents/{id}");
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
     }
 }

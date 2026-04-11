@@ -18,19 +18,18 @@ public class HealthTests : E2ETestBase
     }
 
     [Fact]
-    public async Task BlockTypes_ReturnsOk_WithoutAuth()
+    public async Task Documents_RequiresAuth()
     {
         using var client = CreateClient();
-        var response = await client.GetAsync("/api/block-types");
-        // Block types may or may not require auth depending on config
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Unauthorized);
+        var response = await client.GetAsync("/api/documents");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
-    public async Task BlockTypes_ReturnsOk_WithAuth()
+    public async Task Documents_ReturnsOk_WithAuth()
     {
         using var client = await CreateAuthenticatedClientAsync();
-        var response = await client.GetAsync("/api/block-types");
+        var response = await client.GetAsync("/api/documents");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }
