@@ -17,6 +17,12 @@ public partial class FormulaService : IFormulaService
 
     public async Task<FormulaPageDto> GetFormulasAsync(string userId, FormulaSearchDto search)
     {
+        search = search with
+        {
+            Page = Math.Max(1, search.Page),
+            PageSize = Math.Clamp(search.PageSize, 1, 100)
+        };
+
         var query = _context.Formulas.AsQueryable();
 
         // Show user's own formulas + system formulas (if requested)

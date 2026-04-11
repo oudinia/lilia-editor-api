@@ -16,6 +16,12 @@ public class SnippetService : ISnippetService
 
     public async Task<SnippetPageDto> GetSnippetsAsync(string userId, SnippetSearchDto search)
     {
+        search = search with
+        {
+            Page = Math.Max(1, search.Page),
+            PageSize = Math.Clamp(search.PageSize, 1, 100)
+        };
+
         var query = _context.Snippets.AsQueryable();
 
         // Show user's own snippets + system snippets (if requested)
