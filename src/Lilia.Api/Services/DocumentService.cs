@@ -452,7 +452,7 @@ public class DocumentService : IDocumentService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var query = _context.Documents
+        var query = _context.Documents.IgnoreQueryFilters()
             .Where(d => d.DeletedAt != null && d.OwnerId == userId)
             .OrderByDescending(d => d.DeletedAt);
 
@@ -486,7 +486,7 @@ public class DocumentService : IDocumentService
 
     public async Task<bool> RestoreDocumentAsync(Guid id, string userId)
     {
-        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt != null);
+        var document = await _context.Documents.IgnoreQueryFilters().FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt != null);
         if (document == null) return false;
 
         if (document.OwnerId != userId) return false;
@@ -500,7 +500,7 @@ public class DocumentService : IDocumentService
 
     public async Task<bool> PermanentDeleteDocumentAsync(Guid id, string userId)
     {
-        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt != null);
+        var document = await _context.Documents.IgnoreQueryFilters().FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt != null);
         if (document == null) return false;
 
         if (document.OwnerId != userId) return false;
@@ -515,7 +515,7 @@ public class DocumentService : IDocumentService
     {
         var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
 
-        var expiredDocuments = await _context.Documents
+        var expiredDocuments = await _context.Documents.IgnoreQueryFilters()
             .Where(d => d.DeletedAt != null && d.DeletedAt < cutoff)
             .ToListAsync();
 
