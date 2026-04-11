@@ -165,6 +165,65 @@ public class UserSyncMiddleware
     }
 }
 
+/// <summary>
+/// Maps M2M (client_credentials) JWT tokens to a service account user.
+/// M2M tokens have no "sub" claim — this middleware injects one so that
+/// downstream middleware and controllers can identify the caller.
+/// Only activates when Auth:M2M:Enabled is true.
+/// </summary>
+public class M2MAuthMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly ILogger<M2MAuthMiddleware> _logger;
+    private readonly bool _enabled;
+    private readonly string _serviceUserId;
+    private readonly string _serviceUserEmail;
+    private readonly string _serviceUserName;
+
+    public M2MAuthMiddleware(RequestDelegate next, IConfiguration configuration, ILogger<M2MAuthMiddleware> logger)
+    {
+        _next = next;
+        _logger = logger;
+        _enabled = configuration.GetValue<bool>("Auth:M2M:Enabled");
+        _serviceUserId = configuration["Auth:M2M:ServiceUserId"] ?? "svc_m2m_e2e";
+        _serviceUserEmail = configuration["Auth:M2M:ServiceUserEmail"] ?? "m2m@liliaeditor.com";
+        _serviceUserName = configuration["Auth:M2M:ServiceUserName"] ?? "M2M Service Account";
+
+        if (_enabled)
+            _logger.LogInformation("M2M auth middleware enabled — service user: {UserId}", _serviceUserId);
+    }
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        if (_enabled
+            && context.User.Identity?.IsAuthenticated == true
+            && string.IsNullOrEmpty(context.User.FindFirst("sub")?.Value))
+        {
+            // Check if this is a client_credentials token (has "gty" claim with "client_credentials")
+            var gtyClaim = context.User.FindFirst("gty")?.Value;
+            if (gtyClaim != null && gtyClaim.Contains("client_credentials"))
+            {
+                _logger.LogDebug("M2M token detected, mapping to service user {UserId}", _serviceUserId);
+
+                var claims = new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, _serviceUserId),
+                    new Claim("sub", _serviceUserId),
+                    new Claim(ClaimTypes.Email, _serviceUserEmail),
+                    new Claim("email", _serviceUserEmail),
+                    new Claim(ClaimTypes.Name, _serviceUserName),
+                    new Claim("name", _serviceUserName),
+                };
+
+                var identity = new ClaimsIdentity(claims, "M2M");
+                context.User.AddIdentity(identity);
+            }
+        }
+
+        await _next(context);
+    }
+}
+
 public static class AuthMiddlewareExtensions
 {
     public static IApplicationBuilder UseUserSync(this IApplicationBuilder builder)
@@ -175,6 +234,11 @@ public static class AuthMiddlewareExtensions
     public static IApplicationBuilder UseDevelopmentAuth(this IApplicationBuilder builder)
     {
         return builder.UseMiddleware<DevelopmentAuthMiddleware>();
+    }
+
+    public static IApplicationBuilder UseM2MAuth(this IApplicationBuilder builder)
+    {
+        return builder.UseMiddleware<M2MAuthMiddleware>();
     }
 }
 

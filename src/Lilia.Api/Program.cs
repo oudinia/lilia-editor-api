@@ -463,6 +463,9 @@ app.UseAuthentication();
 // Must run AFTER UseAuthentication so the Bearer handler doesn't overwrite the user.
 app.UseDevelopmentAuth();
 
+// M2M auth - map client_credentials tokens (no sub claim) to a service account user.
+app.UseM2MAuth();
+
 app.UseAuthorization();
 
 // Sync user data on authenticated requests

@@ -1,0 +1,52 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'API URL to test against'
+        required: false
+        default: 'https://editor.liliaeditor.com'
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: '0 6 * * *'
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore tests/Lilia.Api.E2E
+
+      - name: Build
+        run: dotnet build tests/Lilia.Api.E2E --no-restore
+
+      - name: Run E2E Tests
+        env:
+          E2E__ApiBaseUrl: ${{ github.event.inputs.api_url || 'https://editor.liliaeditor.com' }}
+          E2E__AuthMode: Kinde
+          E2E__Kinde__Domain: https://liliaeditor.kinde.com
+          E2E__Kinde__ClientId: ${{ secrets.E2E_KINDE_CLIENT_ID }}
+          E2E__Kinde__ClientSecret: ${{ secrets.E2E_KINDE_CLIENT_SECRET }}
+          E2E__Kinde__Audience: ${{ secrets.E2E_KINDE_AUDIENCE }}
+        run: dotnet test tests/Lilia.Api.E2E --no-build --verbosity normal --logger "trx;LogFileName=e2e-results.trx"
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results
+          path: tests/Lilia.Api.E2E/TestResults/e2e-results.trx
