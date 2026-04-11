@@ -151,7 +151,7 @@ public class LaTeXRenderController : ControllerBase
     /// </summary>
     [HttpGet("svg")]
     [AllowAnonymous]
-    [ResponseCache(Duration = 86400, VaryByQueryKeys = ["latex", "display"])]
+    [ResponseCache(Duration = 86400)]
     public async Task<IActionResult> RenderSvg([FromQuery] string latex, [FromQuery] bool display = true)
     {
         if (string.IsNullOrWhiteSpace(latex))
