@@ -97,6 +97,11 @@ public class DocumentsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        // Truncate overly long titles to prevent DB overflow
+        if (dto.Title?.Length > 500)
+            dto = dto with { Title = dto.Title[..500] };
+
         var document = await _documentService.CreateDocumentAsync(userId, dto);
         await _auditService.LogAsync("document.create", "Document", document.Id.ToString(), new { dto.Title, dto.TeamId });
         return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
