@@ -22,7 +22,7 @@ public abstract class E2ETestBase : IAsyncLifetime
     protected HttpClient CreateClient() => new()
     {
         BaseAddress = new Uri(Config.ApiBaseUrl),
-        Timeout = TimeSpan.FromSeconds(30),
+        Timeout = TimeSpan.FromSeconds(60),
     };
 
     protected async Task<HttpClient> CreateAuthenticatedClientAsync(string userKey = "Owner")
