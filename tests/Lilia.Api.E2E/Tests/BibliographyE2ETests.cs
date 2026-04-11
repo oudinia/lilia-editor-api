@@ -58,7 +58,7 @@ public class BibliographyE2ETests : E2ETestBase
   journal={The Computer Journal},
   year={1984}
 }";
-        var response = await client.PostAsJsonAsync($"/api/documents/{docId}/bibliography/import", new { content = bibtex });
+        var response = await client.PostAsJsonAsync($"/api/documents/{docId}/bibliography/import", new { bibTexContent = bibtex });
         response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
     }
 

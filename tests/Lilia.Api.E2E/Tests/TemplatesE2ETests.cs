@@ -63,8 +63,16 @@ public class TemplatesE2ETests : E2ETestBase
 
         // Get first available template
         var listResp = await client.GetAsync("/api/templates");
-        var templates = await listResp.Content.ReadFromJsonAsync<JsonElement>();
-        var arr = templates.TryGetProperty("items", out var items) ? items : templates;
+        var body = await listResp.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Response may be an array, { items: [...] }, or other shape
+        JsonElement arr;
+        if (body.ValueKind == JsonValueKind.Array)
+            arr = body;
+        else if (body.TryGetProperty("items", out var items))
+            arr = items;
+        else
+            return; // Unexpected shape, skip
 
         if (arr.ValueKind != JsonValueKind.Array || arr.GetArrayLength() == 0)
             return; // No templates to test with

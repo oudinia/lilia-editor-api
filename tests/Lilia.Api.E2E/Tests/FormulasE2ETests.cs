@@ -34,8 +34,9 @@ public class FormulasE2ETests : E2ETestBase
         var response = await client.PostAsJsonAsync("/api/formulas", new
         {
             name = "E2E Quadratic",
-            latex = @"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}",
+            latexContent = @"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}",
             category = "algebra",
+            description = "Quadratic formula",
         });
         response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
 
@@ -56,8 +57,9 @@ public class FormulasE2ETests : E2ETestBase
         var createResp = await client.PostAsJsonAsync("/api/formulas", new
         {
             name = "E2E Favorite",
-            latex = @"\sum_{i=1}^{n} i",
+            latexContent = @"\sum_{i=1}^{n} i",
             category = "calculus",
+            description = "Sum of integers",
         });
         if (!createResp.IsSuccessStatusCode) return;
         var formula = await createResp.Content.ReadFromJsonAsync<JsonElement>();
