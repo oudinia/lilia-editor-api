@@ -68,7 +68,6 @@ public class BibliographyStyleTests : E2ETestBase
         deleteResp.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
     }
 
-    [Fact]
     [Fact(Skip = "Bug: API returns 500 on duplicate cite key — needs unique constraint handling")]
     public async Task BibEntry_DuplicateCiteKey_HandledGracefully()
     {

@@ -147,7 +147,6 @@ public class BoundaryTests : E2ETestBase
         response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);
     }
 
-    [Fact]
     [Fact(Skip = "Bug: API returns 500 on invalid color — needs input validation")]
     public async Task CreateLabel_InvalidColor_HandledGracefully()
     {
