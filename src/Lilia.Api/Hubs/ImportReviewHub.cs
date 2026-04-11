@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Lilia.Api.Hubs;
@@ -6,6 +7,7 @@ namespace Lilia.Api.Hubs;
 /// SignalR hub for real-time import review collaboration.
 /// Clients join a group based on sessionId to receive review updates.
 /// </summary>
+[Authorize]
 public class ImportReviewHub : Hub
 {
     private readonly ILogger<ImportReviewHub> _logger;

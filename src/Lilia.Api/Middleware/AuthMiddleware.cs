@@ -23,12 +23,12 @@ public class DevelopmentAuthMiddleware
     private const string DevUserEmail = "oussama.dinia@gmail.com";
     private const string DevUserName = "Oussama Dinia";
 
-    public DevelopmentAuthMiddleware(RequestDelegate next, IConfiguration configuration, ILogger<DevelopmentAuthMiddleware> logger)
+    public DevelopmentAuthMiddleware(RequestDelegate next, IConfiguration configuration, IWebHostEnvironment env, ILogger<DevelopmentAuthMiddleware> logger)
     {
         _next = next;
         _logger = logger;
         var authAuthority = configuration["Auth:Authority"];
-        _enabled = string.IsNullOrEmpty(authAuthority);
+        _enabled = env.IsDevelopment() && string.IsNullOrEmpty(authAuthority);
 
         if (_enabled)
         {

@@ -1,4 +1,5 @@
 using Lilia.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Lilia.Api.Hubs;
@@ -7,6 +8,7 @@ namespace Lilia.Api.Hubs;
 /// SignalR hub for real-time document presence.
 /// Tracks which users are viewing/editing a document.
 /// </summary>
+[Authorize]
 public class DocumentHub : Hub
 {
     private readonly IPresenceService _presence;

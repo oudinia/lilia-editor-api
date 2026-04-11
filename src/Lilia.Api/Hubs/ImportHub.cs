@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Lilia.Api.Hubs;
@@ -6,6 +7,7 @@ namespace Lilia.Api.Hubs;
 /// SignalR hub for real-time import progress updates.
 /// Clients join a group based on jobId to receive progress for their specific import.
 /// </summary>
+[Authorize]
 public class ImportHub : Hub
 {
     private readonly ILogger<ImportHub> _logger;

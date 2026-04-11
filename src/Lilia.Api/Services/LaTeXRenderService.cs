@@ -66,7 +66,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         var fmtArg = usePrecompiled && HasPrecompiledFormat()
             ? $"-fmt={PrecompiledFormatPath} "
             : "";
-        return $"-interaction=nonstopmode -halt-on-error {fmtArg}-output-directory {outputDir} {texPath}";
+        return $"-interaction=nonstopmode -halt-on-error --no-shell-escape {fmtArg}-output-directory {outputDir} {texPath}";
     }
 
     public async Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30)
@@ -132,7 +132,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 // Step 1: latex -> DVI (faster than pdflatex for single formulas)
                 var (exitCode, _, stderr) = await RunProcessAsync(
                     "latex",
-                    $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
+                    $"-interaction=nonstopmode -halt-on-error --no-shell-escape -output-directory {tmpDir} {texPath}",
                     tmpDir,
                     10
                 );

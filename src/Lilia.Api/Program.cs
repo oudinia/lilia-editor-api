@@ -11,6 +11,8 @@ using Lilia.Infrastructure.Data.Seeds;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.AI;
 using Serilog;
 
@@ -84,13 +86,14 @@ builder.Services.AddCors(options =>
     {
         policy.SetIsOriginAllowed(origin =>
               {
-                  // Allow any localhost/127.0.0.1 origin (any port) for development
-                  if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                  // Allow localhost only in development
+                  if (builder.Environment.IsDevelopment())
                   {
-                      if (uri.Host == "localhost" || uri.Host == "127.0.0.1")
+                      if (Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+                          && (uri.Host == "localhost" || uri.Host == "127.0.0.1"))
                           return true;
                   }
-                  // Also allow configured production origins
+                  // Allow configured production origins
                   return allowedOrigins.Contains(origin);
               })
               .AllowAnyHeader()
@@ -221,6 +224,22 @@ builder.Services.AddSingleton<IEmailService, EmailService>();
 
 // Add distributed cache (in-memory for now, swap to Redis with 1 line when scaling)
 builder.Services.AddDistributedMemoryCache();
+
+// Rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("default", config =>
+    {
+        config.PermitLimit = 100;
+        config.Window = TimeSpan.FromMinutes(1);
+    });
+    options.AddFixedWindowLimiter("strict", config =>
+    {
+        config.PermitLimit = 10;
+        config.Window = TimeSpan.FromMinutes(1);
+    });
+});
 
 // Presence tracking (in-memory for now, swap to Redis-backed impl when scaling)
 builder.Services.AddSingleton<IPresenceService, InMemoryPresenceService>();
@@ -455,7 +474,14 @@ app.MapPut("/api/upload/{**key}", async (string key, HttpContext ctx) =>
     return Results.Ok();
 });
 
+// Forwarded headers (DigitalOcean proxy → real client IPs)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+});
+
 app.UseCors();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 
