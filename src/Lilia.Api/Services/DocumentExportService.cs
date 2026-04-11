@@ -103,6 +103,21 @@ public class DocumentExportService : IDocumentExportService
     private async Task<ExportBlock?> ConvertBlockAsync(Block block, int theoremCounter)
     {
         var content = block.Content.RootElement;
+
+        // If content is a plain string, wrap it as a paragraph
+        if (content.ValueKind == JsonValueKind.String)
+        {
+            return new ExportBlock
+            {
+                Type = "paragraph",
+                Content = new ExportBlockContent
+                {
+                    Text = content.GetString() ?? "",
+                    RichText = ParseInlineFormatting(content.GetString() ?? "")
+                }
+            };
+        }
+
         var type = block.Type.ToLowerInvariant();
 
         // Handle legacy aliases
@@ -138,7 +153,10 @@ public class DocumentExportService : IDocumentExportService
 
     private ExportBlock ConvertParagraphBlock(JsonElement content)
     {
-        var text = GetString(content, "text");
+        // Content may be a string (legacy) or an object with a "text" property
+        var text = content.ValueKind == JsonValueKind.String
+            ? content.GetString() ?? ""
+            : GetString(content, "text");
         return new ExportBlock
         {
             Type = "paragraph",
