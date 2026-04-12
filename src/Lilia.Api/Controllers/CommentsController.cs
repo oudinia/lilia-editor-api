@@ -100,6 +100,16 @@ public class CommentsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Content))
             return BadRequest("Content is required.");
 
+        // Validate that the referenced block exists and belongs to this document
+        // before inserting — otherwise the FK violation bubbles up as a 500.
+        if (dto.BlockId.HasValue)
+        {
+            var blockExists = await _db.Blocks
+                .AnyAsync(b => b.Id == dto.BlockId.Value && b.DocumentId == docId);
+            if (!blockExists)
+                return NotFound("Block not found in this document.");
+        }
+
         var comment = new Comment
         {
             Id = Guid.NewGuid(),
