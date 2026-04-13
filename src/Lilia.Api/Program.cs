@@ -169,6 +169,24 @@ builder.Services.AddAuthorization();
 var connectionString = builder.Configuration.GetConnectionString("LiliaCore")
     ?? "Host=localhost;Database=lilia_core;Username=postgres;Password=postgres";
 
+// Cap the Npgsql pool to fit inside the DO managed Postgres plan's
+// max_connections (db-s-1vcpu-1gb → 25, ~20 after superuser reserves).
+// Npgsql's default Maximum Pool Size is 100 per process, so even a single
+// instance can exhaust the DB pool under burst load, causing
+//   53300: remaining connection slots are reserved for roles with the SUPERUSER attribute
+// (see Sentry LILIA-API-9). Always force these caps on top of whatever
+// the env var carries, so ops can't accidentally blow past the DB limit.
+{
+    var csBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+    {
+        MaxPoolSize = 18,
+        MinPoolSize = 1,
+        ConnectionIdleLifetime = 30,
+        Pooling = true,
+    };
+    connectionString = csBuilder.ConnectionString;
+}
+
 builder.Services.AddDbContext<LiliaDbContext>(options =>
     options.UseNpgsql(connectionString));
 
