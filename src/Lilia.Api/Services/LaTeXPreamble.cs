@@ -40,6 +40,7 @@ public static class LaTeXPreamble
 \usepackage{multirow}
 \usepackage{tabularx}
 \usepackage{longtable}
+\usepackage{array}
 
 % Lists
 \usepackage{enumitem}
@@ -47,10 +48,19 @@ public static class LaTeXPreamble
 % Code
 \usepackage{listings}
 
-% Algorithms & callouts
+% Algorithms & pseudocode (algorithmic kept for legacy compat; algpseudocode is the modern interface)
 \usepackage{algorithm}
 \usepackage{algorithmic}
+\usepackage{algpseudocode}
+
+% Callouts & boxes
 \usepackage{tcolorbox}
+
+% Quotations (required by many biblatex styles)
+\usepackage{csquotes}
+
+% Legacy graphics compat — epsfig is arXiv's #4 most-used package; it wraps graphicx
+\usepackage{epsfig}
 
 % Text formatting
 \usepackage{soul}
@@ -95,6 +105,7 @@ public static class LaTeXPreamble
 \usepackage{multirow}
 \usepackage{tabularx}
 \usepackage{longtable}
+\usepackage{array}
 
 % Lists
 \usepackage{enumitem}
@@ -102,10 +113,19 @@ public static class LaTeXPreamble
 % Code
 \usepackage{listings}
 
-% Algorithms & callouts
+% Algorithms & pseudocode (algorithmic kept for legacy compat; algpseudocode is the modern interface)
 \usepackage{algorithm}
 \usepackage{algorithmic}
+\usepackage{algpseudocode}
+
+% Callouts & boxes
 \usepackage{tcolorbox}
+
+% Quotations (required by many biblatex styles)
+\usepackage{csquotes}
+
+% Legacy graphics compat — epsfig is arXiv's #4 most-used package; it wraps graphicx
+\usepackage{epsfig}
 
 % Text formatting
 \usepackage{soul}
