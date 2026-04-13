@@ -15,6 +15,7 @@ public static class LaTeXPreamble
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{textcomp}
+\usepackage{lmodern}        % Latin Modern: better scaling + PDF-embedding than default Computer Modern
 
 % Math
 \usepackage{amsmath,amssymb,amsfonts,amsthm}
@@ -85,6 +86,7 @@ public static class LaTeXPreamble
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{textcomp}
+\usepackage{lmodern}        % Latin Modern: better scaling + PDF-embedding than default Computer Modern
 
 % Math
 \usepackage{amsmath,amssymb,amsfonts,amsthm}
