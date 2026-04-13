@@ -28,11 +28,16 @@ public class DevelopmentAuthMiddleware
         _next = next;
         _logger = logger;
         var authAuthority = configuration["Auth:Authority"];
-        _enabled = env.IsDevelopment() && string.IsNullOrEmpty(authAuthority);
+        var explicitlyDisabled = configuration.GetValue<bool>("Auth:DevelopmentAuth:Disabled");
+        _enabled = env.IsDevelopment() && string.IsNullOrEmpty(authAuthority) && !explicitlyDisabled;
 
         if (_enabled)
         {
             _logger.LogWarning("DevelopmentAuthMiddleware is ENABLED - Auth:Authority is not configured");
+        }
+        else if (explicitlyDisabled)
+        {
+            _logger.LogInformation("DevelopmentAuthMiddleware is DISABLED - Auth:DevelopmentAuth:Disabled=true (e.g. E2E run)");
         }
         else
         {
