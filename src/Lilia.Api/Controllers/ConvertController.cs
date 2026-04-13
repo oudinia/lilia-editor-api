@@ -1308,26 +1308,46 @@ public class ConvertController : ControllerBase
     {
         if (string.IsNullOrEmpty(text)) return text;
 
+        // Inline formatting commands — the output format must match what the
+        // editor's content-converter.ts parseInlineContent expects:
+        //   **bold** → bold mark
+        //   *italic* → italic mark (single asterisk, NOT underscore)
+        //   `code` → code mark
+        //   __underline__ → underline mark (double underscore)
+        // Prior versions emitted `_italic_` and `<u>...</u>` which the client
+        // parser didn't recognize — those formats are no longer produced.
+
         // \textbf{...} → **...**
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textbf\{([^}]*)\}", "**$1**");
-        // \textit{...} → _..._
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textit\{([^}]*)\}", "_$1_");
-        // \emph{...} → _..._
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\emph\{([^}]*)\}", "_$1_");
+        // \textit{...} → *...* (single asterisk)
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textit\{([^}]*)\}", "*$1*");
+        // \emph{...} → *...* (single asterisk — emph maps to italic)
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\emph\{([^}]*)\}", "*$1*");
         // \texttt{...} → `...`
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\\texttt\{([^}]*)\}", "`$1`");
-        // \underline{...} → <u>...</u>
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\underline\{([^}]*)\}", "<u>$1</u>");
-        // \textsc{...} → just the text (no markdown equivalent)
+        // \underline{...} → __...__ (double underscore — client's underline mark)
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\underline\{([^}]*)\}", "__$1__");
+        // \textsc{...} → just the text (no markdown equivalent; small caps not in our mark set)
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textsc\{([^}]*)\}", "$1");
         // \textrm{...} → just the text
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textrm\{([^}]*)\}", "$1");
         // \textsf{...} → just the text
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\\textsf\{([^}]*)\}", "$1");
-        // Clean up remaining simple commands: \\ → newline, ~ → space
+
+        // Typographic quotes — convert LaTeX backtick/apostrophe syntax to
+        // Unicode curly quotes so they don't trip up the client's inline-code
+        // markdown parser (which treats `text` as code).
+        //   ``double-open''  → " "
+        //   `single-open'    → ' '
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"``([^`']*?)''", "\u201C$1\u201D");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<![`])`([^`']*?)'(?!')", "\u2018$1\u2019");
+
+        // Non-breaking space (~) → regular space
         text = text.Replace("~", " ");
-        // Remove \, (thin space)
-        text = text.Replace("\\,", "");
+        // Thin space (\,) → regular space (not empty string — stripping collapses words)
+        text = text.Replace("\\,", " ");
+        // Backslash-space (\ ) used for non-breaking inter-word spacing → regular space
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\\ (?=\S)", " ");
 
         return text;
     }
