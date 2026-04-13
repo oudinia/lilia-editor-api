@@ -238,6 +238,33 @@ public class LatexParser : ILatexParser
             });
         }
 
+        // Extract line-spacing setting from the setspace package.
+        // We look in both the preamble and the document body.
+        if (Regex.IsMatch(content, @"\\doublespacing\b"))
+            document.Metadata.LineSpacing = "double";
+        else if (Regex.IsMatch(content, @"\\onehalfspacing\b"))
+            document.Metadata.LineSpacing = "onehalf";
+        else if (Regex.IsMatch(content, @"\\singlespacing\b"))
+            document.Metadata.LineSpacing = "single";
+        else
+        {
+            var setStretchMatch = Regex.Match(content, @"\\setstretch\{([^}]+)\}");
+            if (setStretchMatch.Success)
+                document.Metadata.LineSpacing = setStretchMatch.Groups[1].Value.Trim();
+        }
+
+        // Extract fancyhdr usage — record the raw setup commands for round-trip.
+        if (Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{fancyhdr\}") ||
+            Regex.IsMatch(content, @"\\pagestyle\{fancy\}"))
+        {
+            document.Metadata.UsesFancyhdr = true;
+            // Collect all fancyhdr setup lines as a passthrough block.
+            var fancyLines = Regex.Matches(content,
+                @"\\(?:pagestyle|fancyhf|fancyhead|fancyfoot|renewcommand\s*\{\\headrulewidth\}|renewcommand\s*\{\\footrulewidth\})[^\n]*");
+            if (fancyLines.Count > 0)
+                document.Metadata.FancyhdrSource = string.Join("\n", fancyLines.Select(m => m.Value.Trim()));
+        }
+
         // \usepackage[lang]{babel} or \usepackage[lang]{polyglossia}
         // The last language in the option list is conventionally the primary one.
         var babelMatch = Regex.Match(content, @"\\usepackage\[([^\]]*)\]\{(?:babel|polyglossia)\}");

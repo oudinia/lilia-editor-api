@@ -192,6 +192,25 @@ public class ImportMetadata
     /// Lets the editor validate cross-references against actual labels.
     /// </summary>
     public List<string> ReferencedLabels { get; set; } = [];
+
+    /// <summary>
+    /// Line-spacing setting from \onehalfspacing / \doublespacing / \setstretch{N}
+    /// (setspace package). Values: "single", "onehalf", "double", or a numeric stretch
+    /// factor like "1.5". Null if no spacing override was found.
+    /// </summary>
+    public string? LineSpacing { get; set; }
+
+    /// <summary>
+    /// Whether the document uses \pagestyle{fancy} (fancyhdr package).
+    /// The raw header/footer definitions are stored in FancyhdrSource for passthrough.
+    /// </summary>
+    public bool UsesFancyhdr { get; set; }
+
+    /// <summary>
+    /// Raw fancyhdr setup commands (\fancyhead, \fancyfoot, \fancyhf, \renewcommand\headrulewidth)
+    /// preserved for round-trip export. Not rendered in the editor preview.
+    /// </summary>
+    public string? FancyhdrSource { get; set; }
 }
 
 /// <summary>

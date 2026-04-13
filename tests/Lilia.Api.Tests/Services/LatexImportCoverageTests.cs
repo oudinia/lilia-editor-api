@@ -646,4 +646,38 @@ public class LatexImportCoverageTests
 
         doc.Warnings.Should().Contain(w => w.Message.Contains("Beamer"));
     }
+
+    // ── prompt 7 — setspace + fancyhdr extraction ────────────────────
+
+    [Fact]
+    public async Task Setspace_DoublespaceCommand_Extracted()
+    {
+        var doc = await ParseAsync("\\documentclass{article}\n\\usepackage{setspace}\n\\doublespacing\n\\begin{document}\nBody.\n\\end{document}");
+        doc.Metadata.LineSpacing.Should().Be("double");
+    }
+
+    [Fact]
+    public async Task Setspace_OnehalfCommand_Extracted()
+    {
+        var doc = await ParseAsync("\\documentclass{article}\n\\usepackage{setspace}\n\\onehalfspacing\n\\begin{document}\nBody.\n\\end{document}");
+        doc.Metadata.LineSpacing.Should().Be("onehalf");
+    }
+
+    [Fact]
+    public async Task Setspace_SetstretchCommand_Extracted()
+    {
+        var doc = await ParseAsync("\\usepackage{setspace}\n\\setstretch{1.3}\nBody.");
+        doc.Metadata.LineSpacing.Should().Be("1.3");
+    }
+
+    [Fact]
+    public async Task Fancyhdr_Detected_WhenPagestyleFancyUsed()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{fancyhdr}\n\\pagestyle{fancy}\n\\fancyhead[L]{Draft}\n\\fancyfoot[C]{\\thepage}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Metadata.UsesFancyhdr.Should().BeTrue();
+        doc.Metadata.FancyhdrSource.Should().Contain("\\pagestyle{fancy}");
+        doc.Metadata.FancyhdrSource.Should().Contain("\\fancyhead[L]{Draft}");
+    }
 }

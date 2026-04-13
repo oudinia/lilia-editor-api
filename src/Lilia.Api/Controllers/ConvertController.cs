@@ -1258,7 +1258,9 @@ public class ConvertController : ControllerBase
                 || importDoc.Metadata.UsesTitlesec
                 || !string.IsNullOrEmpty(importDoc.Metadata.Language)
                 || importDoc.Metadata.CitedKeys.Count > 0
-                || importDoc.Metadata.ReferencedLabels.Count > 0)
+                || importDoc.Metadata.ReferencedLabels.Count > 0
+                || !string.IsNullOrEmpty(importDoc.Metadata.LineSpacing)
+                || importDoc.Metadata.UsesFancyhdr)
             {
                 preamble = new LatexPreambleDto
                 {
@@ -1275,6 +1277,9 @@ public class ConvertController : ControllerBase
                     Language = importDoc.Metadata.Language,
                     CitedKeys = importDoc.Metadata.CitedKeys,
                     ReferencedLabels = importDoc.Metadata.ReferencedLabels,
+                    LineSpacing = importDoc.Metadata.LineSpacing,
+                    UsesFancyhdr = importDoc.Metadata.UsesFancyhdr,
+                    FancyhdrSource = importDoc.Metadata.FancyhdrSource,
                 };
             }
 
@@ -1357,6 +1362,9 @@ public class LatexPreambleDto
     public string? Language { get; set; }
     public List<string> CitedKeys { get; set; } = [];
     public List<string> ReferencedLabels { get; set; } = [];
+    public string? LineSpacing { get; set; }
+    public bool UsesFancyhdr { get; set; }
+    public string? FancyhdrSource { get; set; }
 }
 
 public class LatexPackageDto
