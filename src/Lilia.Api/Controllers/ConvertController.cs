@@ -1134,7 +1134,7 @@ public class ConvertController : ControllerBase
                         blocks.Add(new LatexBlockDto("equation", new { latex = eq.LatexContent, equationMode = eq.IsInline ? "inline" : "display" }));
                         break;
                     case ImportCodeBlock cb:
-                        blocks.Add(new LatexBlockDto("code", new { code = cb.Text, language = cb.Language ?? "plaintext" }));
+                        blocks.Add(new LatexBlockDto("code", new { code = cb.Text, language = cb.Language ?? "" }));
                         break;
                     case ImportTable t:
                         var headers = t.HasHeaderRow && t.Rows.Count > 0
