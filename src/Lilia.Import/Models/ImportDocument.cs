@@ -132,4 +132,76 @@ public class ImportMetadata
     /// </summary>
     public bool IsGoogleDocsExport =>
         Application?.Contains("Google", StringComparison.OrdinalIgnoreCase) == true;
+
+    // ── LaTeX-specific preamble metadata ──────────────────────────────
+
+    /// <summary>
+    /// LaTeX \documentclass (e.g. "article", "report", "book", "beamer").
+    /// Only populated when parsed from a .tex source.
+    /// </summary>
+    public string? DocumentClass { get; set; }
+
+    /// <summary>
+    /// Options passed to \documentclass[...]{...} (e.g. "11pt,a4paper,twocolumn").
+    /// </summary>
+    public string? DocumentClassOptions { get; set; }
+
+    /// <summary>
+    /// Packages requested via \usepackage — name → optional bracket args.
+    /// </summary>
+    public List<LatexPackageReference> Packages { get; set; } = [];
+
+    /// <summary>
+    /// Raw \date{} content if present.
+    /// </summary>
+    public string? Date { get; set; }
+
+    /// <summary>
+    /// Requested bibliography style (\bibliographystyle{...}).
+    /// </summary>
+    public string? BibliographyStyle { get; set; }
+
+    /// <summary>
+    /// Page-layout options from \usepackage[opts]{geometry} (e.g. "margin=1in,a4paper").
+    /// Null if no geometry package was loaded.
+    /// </summary>
+    public string? GeometryOptions { get; set; }
+
+    /// <summary>
+    /// Whether the source loads \usepackage{titlesec} for custom section formatting.
+    /// We don't currently apply the customizations on render, but we record the fact
+    /// so we can warn the user that section styling won't round-trip exactly.
+    /// </summary>
+    public bool UsesTitlesec { get; set; }
+
+    /// <summary>
+    /// Primary document language extracted from \usepackage[lang]{babel} or
+    /// \setdefaultlanguage{lang} (polyglossia). E.g. "english", "french", "spanish".
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
+    /// All cite keys referenced via \cite{}, \citep{}, \citet{}, \parencite{} etc.
+    /// in any paragraph or paragraph-style element. Lets the editor validate
+    /// citations against the bibliography.
+    /// </summary>
+    public List<string> CitedKeys { get; set; } = [];
+
+    /// <summary>
+    /// All labels referenced via \ref{}, \eqref{}, \cref{}, \Cref{}, \autoref{}.
+    /// Lets the editor validate cross-references against actual labels.
+    /// </summary>
+    public List<string> ReferencedLabels { get; set; } = [];
+}
+
+/// <summary>
+/// A single \usepackage entry extracted from a LaTeX preamble.
+/// </summary>
+public class LatexPackageReference
+{
+    /// <summary>Package name (e.g. "amsmath", "tikz", "hyperref").</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Optional bracket options, if present (e.g. "utf8" for inputenc).</summary>
+    public string? Options { get; set; }
 }

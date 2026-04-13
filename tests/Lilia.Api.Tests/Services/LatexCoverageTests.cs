@@ -559,6 +559,124 @@ public class LatexCoverageTests
         latex.Should().Contain(@"\STATE y = 2");
     }
 
+    // ── Round-trip protection for inline LaTeX commands (#60) ───────
+    // These tests verify that ProcessLatexText (called by RenderParagraphToLatex)
+    // protects chemistry, hyperref, siunitx, and extended-cite commands from the
+    // underscore-escape pass. Pre-fix, an underscore inside \ce{H_2O} got mangled
+    // to \_, breaking mhchem rendering on the LaTeX side.
+
+    [Fact]
+    public void Paragraph_WithMhchemCommand_PreservesUnderscores()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"The reaction \\ce{H_2 + O_2 -> H_2O} balances easily."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\ce{H_2 + O_2 -> H_2O}");
+        latex.Should().NotContain(@"\ce{H\_2");
+    }
+
+    [Fact]
+    public void Paragraph_WithChemfigCommand_PreservesUnderscores()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"See \\chemfig{H_2C-O-CH_3} for the structure."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\chemfig{H_2C-O-CH_3}");
+    }
+
+    [Fact]
+    public void Paragraph_WithHyperrefBracketArg_Preserved()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"As shown in \\hyperref[fig:loss_curve]{Figure 1}, performance improves."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\hyperref[fig:loss_curve]{Figure 1}");
+        latex.Should().NotContain(@"loss\_curve");
+    }
+
+    [Fact]
+    public void Paragraph_WithAutoref_Preserved()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"See \\autoref{sec:method_overview} for details."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\autoref{sec:method_overview}");
+    }
+
+    [Fact]
+    public void Paragraph_WithHypertarget_PreservesBothArgs()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"\\hypertarget{label_one}{Anchor text} for jumps."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\hypertarget{label_one}{Anchor text}");
+    }
+
+    [Fact]
+    public void Paragraph_WithSiunitxSI_PreservesUnitsArg()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"The speed of light is \\SI{299792458}{\\meter\\per\\second}."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\SI{299792458}{\meter\per\second}");
+    }
+
+    [Fact]
+    public void Paragraph_WithBiblatexCitep_Preserved()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"Recent work \\citep{smith_2020,lee_2021} confirms this."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\citep{smith_2020,lee_2021}");
+        latex.Should().NotContain(@"smith\_2020");
+    }
+
+    [Fact]
+    public void Paragraph_WithParencite_Preserved()
+    {
+        var block = CreateBlock("paragraph", """
+            {"text":"\\parencite[p.~12]{author_2024} gives the bound."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"\parencite[p.~12]{author_2024}");
+    }
+
+    [Fact]
+    public void Paragraph_OrdinaryUnderscores_StillEscaped()
+    {
+        // Sanity check: underscores OUTSIDE protected commands still get escaped.
+        var block = CreateBlock("paragraph", """
+            {"text":"The variable file_name should be escaped."}
+            """);
+
+        var latex = _sut.RenderBlockToLatex(block);
+
+        latex.Should().Contain(@"file\_name");
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────
 
     private static Block CreateBlock(string type, string contentJson)

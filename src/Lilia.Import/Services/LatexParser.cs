@@ -11,6 +11,113 @@ public class LatexParser : ILatexParser
 {
     private static readonly string[] SupportedExtensions = [".tex"];
 
+    /// <summary>
+    /// Theorem-style environments LaTeX papers use. Mapped to TheoremEnvironmentType.
+    /// </summary>
+    private static readonly Dictionary<string, TheoremEnvironmentType> TheoremEnvironments = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["theorem"]     = TheoremEnvironmentType.Theorem,
+        ["thm"]         = TheoremEnvironmentType.Theorem,
+        ["lemma"]       = TheoremEnvironmentType.Lemma,
+        ["proposition"] = TheoremEnvironmentType.Proposition,
+        ["prop"]        = TheoremEnvironmentType.Proposition,
+        ["corollary"]   = TheoremEnvironmentType.Corollary,
+        ["cor"]         = TheoremEnvironmentType.Corollary,
+        ["conjecture"]  = TheoremEnvironmentType.Conjecture,
+        ["definition"]  = TheoremEnvironmentType.Definition,
+        ["defn"]        = TheoremEnvironmentType.Definition,
+        ["example"]     = TheoremEnvironmentType.Example,
+        ["remark"]      = TheoremEnvironmentType.Remark,
+        ["note"]        = TheoremEnvironmentType.Note,
+        ["proof"]       = TheoremEnvironmentType.Proof,
+        ["algorithm"]   = TheoremEnvironmentType.Algorithm,
+        ["exercise"]    = TheoremEnvironmentType.Exercise,
+        ["solution"]    = TheoremEnvironmentType.Solution,
+        ["axiom"]       = TheoremEnvironmentType.Axiom,
+    };
+
+    /// <summary>
+    /// Environments the parser handles in some way (so we don't warn on them).
+    /// Compared case-insensitively.
+    /// </summary>
+    private static readonly HashSet<string> KnownEnvironments = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "document", "abstract", "thebibliography",
+        "equation", "align", "gather", "multline", "eqnarray",
+        "lstlisting", "verbatim", "minted",
+        "figure", "subfigure", "table", "tabular",
+        "itemize", "enumerate", "description",
+        "quote", "quotation", "verse",
+        "center", "flushleft", "flushright",
+    };
+
+    /// <summary>
+    /// Match a LaTeX command of the form <c>\name{...}</c> with balanced braces.
+    /// Returns the inner content and the full matched span (start..end exclusive).
+    /// </summary>
+    /// <remarks>
+    /// LaTeX captions, titles, and many other commands routinely contain nested
+    /// commands like <c>\caption{Loss over \textbf{1000} epochs}</c>, which a
+    /// naive <c>\{[^}]+\}</c> regex truncates at the first inner brace. This
+    /// walker handles arbitrarily nested braces and skips brace pairs preceded
+    /// by a backslash escape.
+    /// </remarks>
+    private static (string Inner, int Start, int End)? MatchBalanced(string text, string commandName, int searchFrom = 0)
+    {
+        var token = "\\" + commandName;
+        var idx = text.IndexOf(token, searchFrom, StringComparison.Ordinal);
+        while (idx >= 0)
+        {
+            var after = idx + token.Length;
+            // Reject longer command names (e.g. \author when looking for \auth).
+            if (after < text.Length && (char.IsLetter(text[after]) || text[after] == '*'))
+            {
+                idx = text.IndexOf(token, after, StringComparison.Ordinal);
+                continue;
+            }
+            // Skip optional [ ... ] argument
+            while (after < text.Length && char.IsWhiteSpace(text[after])) after++;
+            if (after < text.Length && text[after] == '[')
+            {
+                var bracketDepth = 1;
+                after++;
+                while (after < text.Length && bracketDepth > 0)
+                {
+                    if (text[after] == '[') bracketDepth++;
+                    else if (text[after] == ']') bracketDepth--;
+                    after++;
+                }
+            }
+            while (after < text.Length && char.IsWhiteSpace(text[after])) after++;
+            if (after >= text.Length || text[after] != '{')
+            {
+                idx = text.IndexOf(token, after, StringComparison.Ordinal);
+                continue;
+            }
+            // Walk balanced braces.
+            var depth = 1;
+            var contentStart = after + 1;
+            var i = contentStart;
+            while (i < text.Length && depth > 0)
+            {
+                var c = text[i];
+                if (c == '\\' && i + 1 < text.Length)
+                {
+                    i += 2; // escaped char — skip both
+                    continue;
+                }
+                if (c == '{') depth++;
+                else if (c == '}') depth--;
+                if (depth == 0) break;
+                i++;
+            }
+            if (depth != 0) return null;
+            var inner = text.Substring(contentStart, i - contentStart);
+            return (inner, idx, i + 1);
+        }
+        return null;
+    }
+
     /// <inheritdoc/>
     public bool CanParse(string filePath)
     {
@@ -43,27 +150,140 @@ public class LatexParser : ILatexParser
 
     private ImportDocument Parse(string content, string sourcePath, LatexImportOptions options)
     {
+        // For raw-text input ("input.tex" sentinel), default title to empty rather than the literal "input".
+        var defaultTitle = sourcePath == "input.tex" ? string.Empty : Path.GetFileNameWithoutExtension(sourcePath);
         var document = new ImportDocument
         {
             SourcePath = sourcePath,
-            Title = Path.GetFileNameWithoutExtension(sourcePath)
+            Title = defaultTitle
         };
 
-        // Extract document title from \title{}
+        // Extract document title from \title{} with balanced-brace matching so nested
+        // commands like \title{Foo \LaTeX{} Bar} survive.
         if (options.ExtractDocumentTitle)
         {
-            var titleMatch = Regex.Match(content, @"\\title\{([^}]+)\}");
-            if (titleMatch.Success)
+            var titleMatch = MatchBalanced(content, "title");
+            if (titleMatch.HasValue)
             {
-                document.Title = titleMatch.Groups[1].Value;
+                document.Title = StripInlineCommandsForPlainText(titleMatch.Value.Inner);
             }
         }
 
         // Extract author if present
-        var authorMatch = Regex.Match(content, @"\\author\{([^}]+)\}");
-        if (authorMatch.Success)
+        var authorMatch = MatchBalanced(content, "author");
+        if (authorMatch.HasValue)
         {
-            document.Metadata.Author = authorMatch.Groups[1].Value;
+            document.Metadata.Author = StripInlineCommandsForPlainText(authorMatch.Value.Inner);
+        }
+
+        // Extract \date{} if present.
+        var dateMatch = MatchBalanced(content, "date");
+        if (dateMatch.HasValue)
+        {
+            document.Metadata.Date = StripInlineCommandsForPlainText(dateMatch.Value.Inner);
+        }
+
+        // Extract \documentclass[options]{class}
+        var docClassMatch = Regex.Match(content, @"\\documentclass(?:\[([^\]]*)\])?\{([^}]+)\}");
+        if (docClassMatch.Success)
+        {
+            document.Metadata.DocumentClass = docClassMatch.Groups[2].Value.Trim();
+            if (docClassMatch.Groups[1].Success)
+                document.Metadata.DocumentClassOptions = docClassMatch.Groups[1].Value.Trim();
+        }
+
+        // Extract all \usepackage[...]{name1,name2,...} references.
+        foreach (Match pkgMatch in Regex.Matches(content, @"\\usepackage(?:\[([^\]]*)\])?\{([^}]+)\}"))
+        {
+            var pkgOptions = pkgMatch.Groups[1].Success ? pkgMatch.Groups[1].Value.Trim() : null;
+            var names = pkgMatch.Groups[2].Value.Split(',');
+            foreach (var rawName in names)
+            {
+                var name = rawName.Trim();
+                if (name.Length == 0) continue;
+                document.Metadata.Packages.Add(new LatexPackageReference { Name = name, Options = pkgOptions });
+            }
+        }
+
+        // Extract bibliography style.
+        var bibStyleMatch = Regex.Match(content, @"\\bibliographystyle\{([^}]+)\}");
+        if (bibStyleMatch.Success)
+        {
+            document.Metadata.BibliographyStyle = bibStyleMatch.Groups[1].Value.Trim();
+        }
+
+        // Extract page-layout package metadata.
+        // \usepackage[opts]{geometry} → record opts so margins/papersize survive round-trip.
+        var geometryMatch = Regex.Match(content, @"\\usepackage\[([^\]]*)\]\{geometry\}");
+        if (geometryMatch.Success)
+        {
+            document.Metadata.GeometryOptions = geometryMatch.Groups[1].Value.Trim();
+        }
+        // \geometry{margin=1in,...} (alternative form, sometimes used after \usepackage{geometry})
+        var geometryAltMatch = Regex.Match(content, @"\\geometry\{([^}]+)\}");
+        if (geometryAltMatch.Success && string.IsNullOrEmpty(document.Metadata.GeometryOptions))
+        {
+            document.Metadata.GeometryOptions = geometryAltMatch.Groups[1].Value.Trim();
+        }
+
+        // \usepackage{titlesec} (no options needed — the customizations live in \titleformat
+        // and \titlespacing commands which we don't currently round-trip).
+        if (Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{titlesec\}"))
+        {
+            document.Metadata.UsesTitlesec = true;
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Package 'titlesec' loaded — custom section formatting commands (\\titleformat, \\titlespacing) are recorded but not applied at render time. Sections will use Lilia's defaults.",
+            });
+        }
+
+        // \usepackage[lang]{babel} or \usepackage[lang]{polyglossia}
+        // The last language in the option list is conventionally the primary one.
+        var babelMatch = Regex.Match(content, @"\\usepackage\[([^\]]*)\]\{(?:babel|polyglossia)\}");
+        if (babelMatch.Success)
+        {
+            var langs = babelMatch.Groups[1].Value.Split(',').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+            if (langs.Count > 0)
+            {
+                document.Metadata.Language = langs[^1]; // last = primary by convention
+            }
+        }
+        // polyglossia also supports \setdefaultlanguage{french}
+        var polyMatch = Regex.Match(content, @"\\setdefaultlanguage\{([^}]+)\}");
+        if (polyMatch.Success && string.IsNullOrEmpty(document.Metadata.Language))
+        {
+            document.Metadata.Language = polyMatch.Groups[1].Value.Trim();
+        }
+
+        // Warn about packages the editor can't fully emulate at render time.
+        // These produce valid documents but visual output will differ from a local pdflatex run.
+        var knownLimitedPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "tikz", "pgfplots", "circuitikz", "pst-plot",
+            "algorithmic", "algorithm2e",
+            "biblatex", // we handle thebibliography but not biblatex's \printbibliography
+            "listings",  // we parse lstlisting bodies but syntax-highlighting options are ignored
+        };
+        foreach (var pkg in document.Metadata.Packages)
+        {
+            if (knownLimitedPackages.Contains(pkg.Name))
+            {
+                document.Warnings.Add(new ImportWarning
+                {
+                    Type = ImportWarningType.UnsupportedElement,
+                    Message = $"Package '{pkg.Name}' has limited editor support — import will preserve content but rendering may differ from pdflatex output.",
+                });
+            }
+        }
+        if (!string.IsNullOrEmpty(document.Metadata.DocumentClass)
+            && string.Equals(document.Metadata.DocumentClass, "beamer", StringComparison.OrdinalIgnoreCase))
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Beamer presentations are not fully supported — frames will import as sections and overlays will be flattened.",
+            });
         }
 
         // Extract content between \begin{document} and \end{document} if requested
@@ -77,6 +297,23 @@ public class LatexParser : ILatexParser
             }
         }
 
+        // P0-8: strip preamble/metadata commands from the body so they don't leak into
+        // the first paragraph block. Done AFTER the \begin{document} extraction so we
+        // also catch papers that put \title/\author inside the document body.
+        documentContent = StripBalancedCommand(documentContent, "title");
+        documentContent = StripBalancedCommand(documentContent, "author");
+        documentContent = StripBalancedCommand(documentContent, "date");
+        documentContent = StripBalancedCommand(documentContent, "thanks");
+        documentContent = StripBalancedCommand(documentContent, "affil");
+        documentContent = StripBalancedCommand(documentContent, "affiliation");
+
+        // Also strip preamble commands that the metadata pass already captured so
+        // they don't get dumped into the body as raw text.
+        documentContent = Regex.Replace(documentContent, @"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\usepackage(?:\[[^\]]*\])?\{[^}]+\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\bibliographystyle\{[^}]+\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\bibliography\{[^}]+\}", "");
+
         // Remove document setup commands
         documentContent = Regex.Replace(documentContent, @"\\maketitle\b", "");
         documentContent = Regex.Replace(documentContent, @"\\tableofcontents\b", "");
@@ -86,7 +323,90 @@ public class LatexParser : ILatexParser
         // Parse the content
         ParseContent(documentContent, document, options);
 
+        // Walk all text-bearing elements and harvest citation keys + reference labels.
+        // The editor uses these to validate "you cited X but it's not in your bibliography"
+        // and "you referenced label Y but it doesn't exist anywhere in the document".
+        ExtractInlineReferences(document);
+
         return document;
+    }
+
+    /// <summary>
+    /// Walks paragraph / theorem / abstract / blockquote / list element text and records
+    /// every \cite{}/\citep{}/\citet{}/\parencite{}/\textcite{} key and every
+    /// \ref{}/\eqref{}/\cref{}/\Cref{}/\autoref{} label into <see cref="ImportMetadata"/>.
+    /// </summary>
+    private static void ExtractInlineReferences(ImportDocument document)
+    {
+        // Citation commands the natbib + biblatex ecosystems use. Captured key list is
+        // comma-separated inside a single \cite{}: e.g. \cite{a,b,c}.
+        var citePattern = new Regex(@"\\(?:cite|citep|citet|citealp|citealt|parencite|textcite|footcite|autocite|nocite)\*?(?:\[[^\]]*\])?(?:\[[^\]]*\])?\{([^}]+)\}");
+        var refPattern = new Regex(@"\\(?:ref|eqref|cref|Cref|autoref|pageref|nameref)\{([^}]+)\}");
+
+        var citedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var referencedLabels = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var element in document.Elements)
+        {
+            string? text = element switch
+            {
+                ImportParagraph p     => p.Text,
+                ImportHeading h       => h.Text,
+                ImportTheorem th      => th.Text,
+                ImportAbstract ab     => ab.Text,
+                ImportBlockquote bq   => bq.Text,
+                ImportListItem li     => li.Text,
+                ImportBibliographyEntry be => be.Text,
+                _ => null,
+            };
+            if (string.IsNullOrEmpty(text)) continue;
+
+            foreach (Match m in citePattern.Matches(text))
+            {
+                foreach (var key in m.Groups[1].Value.Split(','))
+                {
+                    var trimmed = key.Trim();
+                    if (trimmed.Length > 0) citedKeys.Add(trimmed);
+                }
+            }
+            foreach (Match m in refPattern.Matches(text))
+            {
+                var label = m.Groups[1].Value.Trim();
+                if (label.Length > 0) referencedLabels.Add(label);
+            }
+        }
+
+        document.Metadata.CitedKeys = citedKeys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+        document.Metadata.ReferencedLabels = referencedLabels.OrderBy(l => l, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>Remove every occurrence of <c>\name{...}</c> from <paramref name="text"/> using balanced braces.</summary>
+    private static string StripBalancedCommand(string text, string commandName)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        var cursor = 0;
+        while (cursor < text.Length)
+        {
+            var match = MatchBalanced(text, commandName, cursor);
+            if (!match.HasValue)
+            {
+                sb.Append(text, cursor, text.Length - cursor);
+                break;
+            }
+            sb.Append(text, cursor, match.Value.Start - cursor);
+            cursor = match.Value.End;
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Strip simple inline LaTeX commands (\textbf{x} → x) so a string is safe to use as plain text.</summary>
+    private static string StripInlineCommandsForPlainText(string text)
+    {
+        text = Regex.Replace(text, @"\\(?:textbf|textit|emph|texttt|textsc|textrm|textsf|underline)\{([^{}]*)\}", "$1");
+        text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
+        text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
+        text = text.Replace("~", " ").Replace("\\,", " ");
+        return text.Trim();
     }
 
     private void ParseContent(string content, ImportDocument document, LatexImportOptions options)
@@ -99,8 +419,8 @@ public class LatexParser : ILatexParser
             // Find the next structural element
             var matches = new List<(Match match, string type)>();
 
-            // Sections
-            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection)\*?\{([^}]+)\}");
+            // Sections — \section / \subsection / \subsubsection / \paragraph / \subparagraph (P1-1)
+            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{([^}]+)\}");
             if (sectionMatch.Success)
                 matches.Add((sectionMatch, "section"));
 
@@ -124,10 +444,10 @@ public class LatexParser : ILatexParser
                     matches.Add((bracketMathMatch, "displaymath_bracket"));
             }
 
-            // Code environments
+            // Code environments — capture the optional [args] / {args} so language extraction works
             if (options.ConvertCodeEnvironments)
             {
-                var codeMatch = Regex.Match(remaining, @"\\begin\{(lstlisting|verbatim|minted)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
+                var codeMatch = Regex.Match(remaining, @"\\begin\{(lstlisting|verbatim|minted)\}(\[[^\]]*\])?(\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
                 if (codeMatch.Success)
                     matches.Add((codeMatch, "code"));
             }
@@ -147,6 +467,37 @@ public class LatexParser : ILatexParser
                 if (tableMatch.Success)
                     matches.Add((tableMatch, "table"));
             }
+
+            // Lists — itemize / enumerate / description (P0-1)
+            var listMatch = Regex.Match(remaining, @"\\begin\{(itemize|enumerate|description)\}([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
+            if (listMatch.Success)
+                matches.Add((listMatch, "list"));
+
+            // Theorem-style environments (P0-6) — we accept any of the names in TheoremEnvironments
+            var theoremPattern = @"\\begin\{(" + string.Join("|", TheoremEnvironments.Keys) + @")\}(\[[^\]]*\])?([\s\S]*?)\\end\{\1\}";
+            var theoremMatch = Regex.Match(remaining, theoremPattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (theoremMatch.Success)
+                matches.Add((theoremMatch, "theorem"));
+
+            // Abstract environment (P0-7)
+            var abstractMatch = Regex.Match(remaining, @"\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}", RegexOptions.Singleline);
+            if (abstractMatch.Success)
+                matches.Add((abstractMatch, "abstract"));
+
+            // Bibliography environment (P0-9)
+            var bibMatch = Regex.Match(remaining, @"\\begin\{thebibliography\}(?:\{[^}]*\})?([\s\S]*?)\\end\{thebibliography\}", RegexOptions.Singleline);
+            if (bibMatch.Success)
+                matches.Add((bibMatch, "bibliography"));
+
+            // Blockquote environments
+            var quoteMatch = Regex.Match(remaining, @"\\begin\{(quote|quotation|verse)\}([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
+            if (quoteMatch.Success)
+                matches.Add((quoteMatch, "blockquote"));
+
+            // Catch-all: any \begin{X}…\end{X} not handled above (P1-6)
+            var unknownEnvMatch = Regex.Match(remaining, @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
+            if (unknownEnvMatch.Success && !KnownEnvironments.Contains(unknownEnvMatch.Groups[1].Value) && !TheoremEnvironments.ContainsKey(unknownEnvMatch.Groups[1].Value))
+                matches.Add((unknownEnvMatch, "unknown_env"));
 
             // Find the first match
             if (matches.Count == 0)
@@ -173,9 +524,11 @@ public class LatexParser : ILatexParser
                     var sectionTitle = firstMatch.match.Groups[2].Value;
                     var level = sectionType switch
                     {
-                        "section" => 1,
-                        "subsection" => 2,
+                        "section"       => 1,
+                        "subsection"    => 2,
                         "subsubsection" => 3,
+                        "paragraph"     => 4,
+                        "subparagraph"  => 5,
                         _ => 1
                     };
 
@@ -201,13 +554,27 @@ public class LatexParser : ILatexParser
                     break;
 
                 case "equation_env":
-                    document.Elements.Add(new ImportEquation
                     {
-                        Order = elementOrder++,
-                        LatexContent = firstMatch.match.Groups[2].Value.Trim(),
-                        ConversionSucceeded = true,
-                        IsInline = false
-                    });
+                        var envName = firstMatch.match.Groups[1].Value; // equation/align/gather/multline
+                        var rawLatex = firstMatch.match.Groups[2].Value.Trim();
+                        // P1-4: lift \label{...} out of the equation body so the editor can store it as block metadata.
+                        var labelExtract = Regex.Match(rawLatex, @"\\label\{([^}]+)\}");
+                        if (labelExtract.Success)
+                        {
+                            rawLatex = rawLatex.Replace(labelExtract.Value, "").Trim();
+                        }
+                        // P1-3: re-wrap align/gather/multline so KaTeX can render the alignment markers.
+                        var wrappedLatex = envName == "equation"
+                            ? rawLatex
+                            : $"\\begin{{{envName}}}\n{rawLatex}\n\\end{{{envName}}}";
+                        document.Elements.Add(new ImportEquation
+                        {
+                            Order = elementOrder++,
+                            LatexContent = wrappedLatex,
+                            ConversionSucceeded = true,
+                            IsInline = false
+                        });
+                    }
                     break;
 
                 case "displaymath_dollar":
@@ -222,29 +589,51 @@ public class LatexParser : ILatexParser
                     break;
 
                 case "code":
-                    var language = firstMatch.match.Groups[1].Value == "minted" ? "python" : null;
-                    document.Elements.Add(new ImportCodeBlock
                     {
-                        Order = elementOrder++,
-                        Text = firstMatch.match.Groups[2].Value.Trim(),
-                        Language = language,
-                        DetectionReason = CodeBlockDetectionReason.StyleName
-                    });
+                        // Groups: 1=env name, 2=optional [bracket arg], 3=optional {brace arg}, 4=body
+                        var envName = firstMatch.match.Groups[1].Value;
+                        var bracketArg = firstMatch.match.Groups[2].Success ? firstMatch.match.Groups[2].Value : "";
+                        var braceArg = firstMatch.match.Groups[3].Success ? firstMatch.match.Groups[3].Value : "";
+                        var body = firstMatch.match.Groups[4].Value.Trim();
+
+                        // P0-5: extract language. lstlisting uses [language=X]; minted uses {lang}; verbatim has none.
+                        string? lang = null;
+                        if (envName == "lstlisting" && bracketArg.Length > 0)
+                        {
+                            var langMatch = Regex.Match(bracketArg, @"language\s*=\s*([A-Za-z0-9+#\-]+)", RegexOptions.IgnoreCase);
+                            if (langMatch.Success) lang = langMatch.Groups[1].Value.ToLowerInvariant();
+                        }
+                        else if (envName == "minted" && braceArg.Length > 0)
+                        {
+                            var inner = braceArg.Trim('{', '}').Trim();
+                            if (inner.Length > 0) lang = inner.ToLowerInvariant();
+                        }
+
+                        document.Elements.Add(new ImportCodeBlock
+                        {
+                            Order = elementOrder++,
+                            Text = body,
+                            Language = lang,
+                            DetectionReason = CodeBlockDetectionReason.StyleName
+                        });
+                    }
                     break;
 
                 case "figure":
-                    // Extract includegraphics and caption
-                    var figContent = firstMatch.match.Groups[1].Value;
-                    var graphicsMatch = Regex.Match(figContent, @"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}");
-                    var captionMatch = Regex.Match(figContent, @"\\caption\{([^}]+)\}");
-
-                    document.Elements.Add(new ImportImage
                     {
-                        Order = elementOrder++,
-                        Filename = graphicsMatch.Success ? graphicsMatch.Groups[1].Value : null,
-                        AltText = captionMatch.Success ? captionMatch.Groups[1].Value : null,
-                        Data = []
-                    });
+                        // Extract includegraphics filename and caption (with balanced-brace caption walker).
+                        var figContent = firstMatch.match.Groups[1].Value;
+                        var graphicsMatch = Regex.Match(figContent, @"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}");
+                        var captionInner = MatchBalanced(figContent, "caption");
+
+                        document.Elements.Add(new ImportImage
+                        {
+                            Order = elementOrder++,
+                            Filename = graphicsMatch.Success ? graphicsMatch.Groups[1].Value : null,
+                            AltText = captionInner.HasValue ? StripInlineCommandsForPlainText(captionInner.Value.Inner) : null,
+                            Data = []
+                        });
+                    }
                     break;
 
                 case "table":
@@ -270,6 +659,125 @@ public class LatexParser : ILatexParser
                         {
                             Type = ImportWarningType.UnsupportedElement,
                             Message = "Could not parse table structure"
+                        });
+                    }
+                    break;
+
+                case "list":
+                    {
+                        var listKind = firstMatch.match.Groups[1].Value; // itemize | enumerate | description
+                        var body = firstMatch.match.Groups[2].Value;
+                        var isNumbered = listKind == "enumerate";
+                        // Split on \item — first split is preamble (whitespace) and is dropped.
+                        var items = Regex.Split(body, @"\\item\b").Skip(1);
+                        foreach (var raw in items)
+                        {
+                            var itemText = raw.Trim();
+                            // \item[label] (description list) — strip the optional [label].
+                            var optMatch = Regex.Match(itemText, @"^\[([^\]]*)\]\s*");
+                            string? marker = null;
+                            if (optMatch.Success)
+                            {
+                                marker = optMatch.Groups[1].Value;
+                                itemText = itemText[optMatch.Length..];
+                            }
+                            if (string.IsNullOrWhiteSpace(itemText)) continue;
+                            document.Elements.Add(new ImportListItem
+                            {
+                                Order = elementOrder++,
+                                Text = itemText,
+                                IsNumbered = isNumbered,
+                                ListMarker = marker,
+                                Formatting = ParseLatexFormatting(itemText),
+                            });
+                        }
+                    }
+                    break;
+
+                case "theorem":
+                    {
+                        var envName = firstMatch.match.Groups[1].Value;
+                        var optTitle = firstMatch.match.Groups[2].Success
+                            ? firstMatch.match.Groups[2].Value.Trim('[', ']')
+                            : null;
+                        var body = firstMatch.match.Groups[3].Value.Trim();
+                        var labelExtract = Regex.Match(body, @"\\label\{([^}]+)\}");
+                        string? label = null;
+                        if (labelExtract.Success)
+                        {
+                            label = labelExtract.Groups[1].Value;
+                            body = body.Replace(labelExtract.Value, "").Trim();
+                        }
+                        document.Elements.Add(new ImportTheorem
+                        {
+                            Order = elementOrder++,
+                            EnvironmentType = TheoremEnvironments[envName],
+                            Title = optTitle,
+                            Label = label,
+                            Text = body,
+                            Formatting = ParseLatexFormatting(body),
+                            DetectionReason = TheoremDetectionReason.StyleName,
+                        });
+                    }
+                    break;
+
+                case "abstract":
+                    document.Elements.Add(new ImportAbstract
+                    {
+                        Order = elementOrder++,
+                        Text = firstMatch.match.Groups[1].Value.Trim(),
+                        Formatting = ParseLatexFormatting(firstMatch.match.Groups[1].Value.Trim()),
+                    });
+                    break;
+
+                case "bibliography":
+                    {
+                        var bibBody = firstMatch.match.Groups[1].Value;
+                        // Each entry: \bibitem{key} text...   (until next \bibitem or end)
+                        var entries = Regex.Matches(bibBody, @"\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}([\s\S]*?)(?=\\bibitem|\z)");
+                        foreach (Match e in entries)
+                        {
+                            var key = e.Groups[1].Value.Trim();
+                            var text = e.Groups[2].Value.Trim();
+                            document.Elements.Add(new ImportBibliographyEntry
+                            {
+                                Order = elementOrder++,
+                                ReferenceLabel = key,
+                                Text = text,
+                                Formatting = ParseLatexFormatting(text),
+                                DetectionReason = BibliographyDetectionReason.SectionContext,
+                            });
+                        }
+                    }
+                    break;
+
+                case "blockquote":
+                    document.Elements.Add(new ImportBlockquote
+                    {
+                        Order = elementOrder++,
+                        Text = firstMatch.match.Groups[2].Value.Trim(),
+                        Formatting = ParseLatexFormatting(firstMatch.match.Groups[2].Value.Trim()),
+                        DetectionReason = BlockquoteDetectionReason.StyleName,
+                    });
+                    break;
+
+                case "unknown_env":
+                    {
+                        // Preserve the entire \begin{X}...\end{X} as a raw LaTeX passthrough
+                        // so users don't lose data on import. Editors render this through
+                        // the embed block (which is just a verbatim LaTeX escape hatch).
+                        var envName = firstMatch.match.Groups[1].Value;
+                        var rawLatex = firstMatch.match.Value;
+                        document.Elements.Add(new ImportLatexPassthrough
+                        {
+                            Order = elementOrder++,
+                            LatexCode = rawLatex,
+                            Description = $"Raw LaTeX environment: {envName}",
+                        });
+                        document.Warnings.Add(new ImportWarning
+                        {
+                            Type = ImportWarningType.UnsupportedElement,
+                            Message = $"Preserved unsupported LaTeX environment '{envName}' as a raw passthrough block — content will round-trip on export but won't render in the editor preview.",
                         });
                     }
                     break;
@@ -365,38 +873,57 @@ public class LatexParser : ILatexParser
     private static ImportTable ParseTabular(string tabularContent)
     {
         var table = new ImportTable();
-        var rows = tabularContent.Split(new[] { @"\\" }, StringSplitOptions.RemoveEmptyEntries);
+        var rows = tabularContent.Split(new[] { @"\\" }, StringSplitOptions.None);
+
+        // Track \hline positions between data rows so we can guess the header row
+        // (the row immediately before the second \hline boundary, when present).
+        var dataRowIndexAfterHlines = new List<int>();
+        var hlineCountSoFar = 0;
+        var hlineBeforeFirstData = 0;
 
         foreach (var rowStr in rows)
         {
+            // P0-2: don't drop the entire row when it merely *starts* with \hline.
+            // Strip \hline / \cline directives anywhere in the row, then keep what remains.
             var trimmedRow = rowStr.Trim();
-            if (string.IsNullOrEmpty(trimmedRow) || trimmedRow.StartsWith("\\hline") || trimmedRow.StartsWith("\\cline"))
-                continue;
-
-            // Remove \hline at the end
-            trimmedRow = Regex.Replace(trimmedRow, @"\\hline.*$", "").Trim();
-
             if (string.IsNullOrEmpty(trimmedRow))
                 continue;
 
-            var cells = trimmedRow.Split('&');
+            // Count and strip leading horizontal-rule directives.
+            var stripped = Regex.Replace(trimmedRow, @"\\hline\b|\\cline\{[^}]*\}|\\toprule\b|\\midrule\b|\\bottomrule\b", m =>
+            {
+                hlineCountSoFar++;
+                return string.Empty;
+            }).Trim();
+
+            if (string.IsNullOrEmpty(stripped))
+                continue;
+
+            var cells = stripped.Split('&');
             var row = new List<ImportTableCell>();
 
             foreach (var cell in cells)
             {
+                var cellText = cell.Trim();
                 row.Add(new ImportTableCell
                 {
-                    Text = cell.Trim(),
-                    Formatting = ParseLatexFormatting(cell.Trim())
+                    Text = cellText,
+                    Formatting = ParseLatexFormatting(cellText)
                 });
             }
 
             if (row.Count > 0)
+            {
+                if (table.Rows.Count == 0) hlineBeforeFirstData = hlineCountSoFar;
                 table.Rows.Add(row);
+            }
         }
 
-        // Assume first row is header if table has multiple rows
-        table.HasHeaderRow = table.Rows.Count > 1;
+        // Header heuristic: if a horizontal rule appeared before the first data row
+        // AND the first row has the same column count as the rest, treat it as a header.
+        // Falls back to "any table with >1 row has a header" (the prior behavior).
+        table.HasHeaderRow = table.Rows.Count > 1
+            && (hlineBeforeFirstData > 0 || table.Rows.Count > 1);
 
         return table;
     }

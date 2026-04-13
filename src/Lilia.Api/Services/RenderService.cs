@@ -1589,16 +1589,40 @@ public class RenderService : IRenderService
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
 
-        // Protect LaTeX commands: \cite{...}, \ref{...}, \cref{...}, \url{...}, \href{...}{...}, \label{...}
+        // Protect inline LaTeX commands from the escape pass below. Without this, an
+        // underscore inside e.g. \ce{H_2O} or \cite{smith_2020} would get escaped to \_
+        // and break the chemistry / citation rendering on the LaTeX side.
+        //
+        // The regex matches \name[opts]?{arg1}{arg2}? for the command names we care
+        // about. Listed explicitly (rather than catch-all) so we don't accidentally
+        // protect markdown-converted commands the next step is about to produce.
+        // Order in the alternation list — citations, refs, hyperref, chem, siunitx, misc.
         var commandRegions = new List<string>();
-        result = Regex.Replace(result, @"\\(?:cite|ref|cref|Cref|url|label|eqref)\{[^}]+\}", m => {
-            commandRegions.Add(m.Value);
-            return $"\x00CMD{commandRegions.Count - 1}\x00";
-        });
-        result = Regex.Replace(result, @"\\href\{[^}]+\}\{[^}]+\}", m => {
-            commandRegions.Add(m.Value);
-            return $"\x00CMD{commandRegions.Count - 1}\x00";
-        });
+        const string protectedCommands =
+            // Citations (natbib + biblatex flavors)
+            "cite|citep|citet|citealp|citealt|parencite|textcite|footcite|autocite|nocite|" +
+            // Cross-references
+            "ref|eqref|cref|Cref|autoref|pageref|nameref|" +
+            // Hyperref / links
+            "url|href|hyperref|hypertarget|" +
+            // Labels (must survive intact so cleveref can find them)
+            "label|" +
+            // mhchem (chemistry inline formulas)
+            "ce|cee|cf|ch|" +
+            // chemfig (chemistry structures)
+            "chemfig|" +
+            // siunitx (scientific units)
+            "SI|si|num|unit|qty|" +
+            // Footnotes (rare in paragraph text but can appear)
+            "footnote";
+        result = Regex.Replace(
+            result,
+            @"\\(?:" + protectedCommands + @")\*?(?:\[[^\]]*\])?\{[^{}]*\}(?:\{[^{}]*\})?",
+            m =>
+            {
+                commandRegions.Add(m.Value);
+                return $"\x00CMD{commandRegions.Count - 1}\x00";
+            });
 
         // Step 2: Escape special LaTeX chars in the remaining text
         result = Regex.Replace(result, @"(?<!\\)([&%#])", @"\$1");

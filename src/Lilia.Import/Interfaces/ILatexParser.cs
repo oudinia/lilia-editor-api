@@ -87,9 +87,9 @@ public class LatexImportOptions
 
     /// <summary>
     /// Maximum heading level to treat as section.
-    /// Default: 3 (\section, \subsection, \subsubsection)
+    /// Default: 5 (\section…\subparagraph all become headings; H6+ would become Title-style paragraphs)
     /// </summary>
-    public int MaxHeadingLevelForSection { get; set; } = 3;
+    public int MaxHeadingLevelForSection { get; set; } = 5;
 
     /// <summary>
     /// Default options.

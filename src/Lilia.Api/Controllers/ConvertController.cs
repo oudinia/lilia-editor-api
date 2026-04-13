@@ -1120,8 +1120,46 @@ public class ConvertController : ControllerBase
             var blocks = new List<LatexBlockDto>();
             var warnings = new List<string>();
 
+            // Buffer for grouping consecutive ImportListItem / ImportBibliographyEntry into a single block.
+            var listBuffer = new List<ImportListItem>();
+            var bibBuffer = new List<ImportBibliographyEntry>();
+
+            void FlushList()
+            {
+                if (listBuffer.Count == 0) return;
+                var ordered = listBuffer[0].IsNumbered;
+                blocks.Add(new LatexBlockDto("list", new
+                {
+                    ordered,
+                    items = listBuffer.Select(li => new
+                    {
+                        text = ConvertLatexFormattingToMarkdown(li.Text),
+                        marker = li.ListMarker,
+                    }).ToList(),
+                }));
+                listBuffer.Clear();
+            }
+
+            void FlushBib()
+            {
+                if (bibBuffer.Count == 0) return;
+                blocks.Add(new LatexBlockDto("bibliography", new
+                {
+                    entries = bibBuffer.Select(e => new
+                    {
+                        citeKey = e.ReferenceLabel,
+                        text = ConvertLatexFormattingToMarkdown(e.Text),
+                    }).ToList(),
+                }));
+                bibBuffer.Clear();
+            }
+
             foreach (var element in importDoc.Elements.OrderBy(e => e.Order))
             {
+                // Flush buffers when we see a different element type.
+                if (element is not ImportListItem) FlushList();
+                if (element is not ImportBibliographyEntry) FlushBib();
+
                 switch (element)
                 {
                     case ImportHeading h:
@@ -1148,7 +1186,52 @@ public class ConvertController : ControllerBase
                         blocks.Add(new LatexBlockDto("table", new { headers, rows }));
                         break;
                     case ImportImage img:
-                        blocks.Add(new LatexBlockDto("figure", new { caption = img.AltText ?? "", src = "", alt = img.AltText ?? "" }));
+                        // P0-4: propagate the actual filename to the editor block so the user
+                        // doesn't have to re-attach every figure.
+                        blocks.Add(new LatexBlockDto("figure", new
+                        {
+                            caption = img.AltText ?? "",
+                            src = img.Filename ?? "",
+                            alt = img.AltText ?? "",
+                        }));
+                        break;
+                    case ImportListItem li:
+                        // Collect into a single list block — flushed on element-type change.
+                        if (listBuffer.Count > 0 && listBuffer[0].IsNumbered != li.IsNumbered)
+                        {
+                            FlushList();
+                        }
+                        listBuffer.Add(li);
+                        break;
+                    case ImportTheorem th:
+                        blocks.Add(new LatexBlockDto("theorem", new
+                        {
+                            text = ConvertLatexFormattingToMarkdown(th.Text),
+                            kind = th.EnvironmentType.ToString().ToLowerInvariant(),
+                            title = th.Title ?? "",
+                            label = th.Label ?? "",
+                        }));
+                        break;
+                    case ImportAbstract ab:
+                        blocks.Add(new LatexBlockDto("abstract", new { text = ConvertLatexFormattingToMarkdown(ab.Text) }));
+                        break;
+                    case ImportBibliographyEntry be:
+                        bibBuffer.Add(be);
+                        break;
+                    case ImportBlockquote bq:
+                        blocks.Add(new LatexBlockDto("blockquote", new { text = ConvertLatexFormattingToMarkdown(bq.Text) }));
+                        break;
+                    case ImportPageBreak:
+                        blocks.Add(new LatexBlockDto("pageBreak", new { }));
+                        break;
+                    case ImportLatexPassthrough lp:
+                        // Preserve raw LaTeX (TikZ, custom envs, etc.) as an embed block —
+                        // the editor's escape hatch for verbatim LaTeX that survives export unchanged.
+                        blocks.Add(new LatexBlockDto("embed", new
+                        {
+                            code = lp.LatexCode,
+                            description = lp.Description ?? "",
+                        }));
                         break;
                     default:
                         warnings.Add($"Skipped unsupported element type: {element.GetType().Name}");
@@ -1156,14 +1239,51 @@ public class ConvertController : ControllerBase
                 }
             }
 
+            // Final flush for any trailing buffered items.
+            FlushList();
+            FlushBib();
+
             foreach (var w in importDoc.Warnings)
                 warnings.Add(w.Message);
+
+            // Surface the preamble metadata so the editor can restore the user's
+            // original document class / package list / bibliography style on save.
+            LatexPreambleDto? preamble = null;
+            if (!string.IsNullOrEmpty(importDoc.Metadata.DocumentClass)
+                || importDoc.Metadata.Packages.Count > 0
+                || !string.IsNullOrEmpty(importDoc.Metadata.Date)
+                || !string.IsNullOrEmpty(importDoc.Metadata.BibliographyStyle)
+                || !string.IsNullOrEmpty(importDoc.Metadata.Author)
+                || !string.IsNullOrEmpty(importDoc.Metadata.GeometryOptions)
+                || importDoc.Metadata.UsesTitlesec
+                || !string.IsNullOrEmpty(importDoc.Metadata.Language)
+                || importDoc.Metadata.CitedKeys.Count > 0
+                || importDoc.Metadata.ReferencedLabels.Count > 0)
+            {
+                preamble = new LatexPreambleDto
+                {
+                    DocumentClass = importDoc.Metadata.DocumentClass,
+                    DocumentClassOptions = importDoc.Metadata.DocumentClassOptions,
+                    Packages = importDoc.Metadata.Packages
+                        .Select(p => new LatexPackageDto { Name = p.Name, Options = p.Options })
+                        .ToList(),
+                    Date = importDoc.Metadata.Date,
+                    BibliographyStyle = importDoc.Metadata.BibliographyStyle,
+                    Author = importDoc.Metadata.Author,
+                    GeometryOptions = importDoc.Metadata.GeometryOptions,
+                    UsesTitlesec = importDoc.Metadata.UsesTitlesec,
+                    Language = importDoc.Metadata.Language,
+                    CitedKeys = importDoc.Metadata.CitedKeys,
+                    ReferencedLabels = importDoc.Metadata.ReferencedLabels,
+                };
+            }
 
             return Ok(new LatexToBlocksResponse
             {
                 Blocks = blocks,
                 Title = importDoc.Title,
                 Warnings = warnings.Count > 0 ? warnings : null,
+                Preamble = preamble,
             });
         }
         catch (Exception ex)
@@ -1217,6 +1337,32 @@ public class LatexToBlocksResponse
     public List<LatexBlockDto> Blocks { get; set; } = [];
     public string? Title { get; set; }
     public List<string>? Warnings { get; set; }
+    public LatexPreambleDto? Preamble { get; set; }
+}
+
+/// <summary>
+/// Preamble metadata extracted from the LaTeX source so the editor can
+/// restore document class, packages, and bibliography style on save.
+/// </summary>
+public class LatexPreambleDto
+{
+    public string? DocumentClass { get; set; }
+    public string? DocumentClassOptions { get; set; }
+    public List<LatexPackageDto> Packages { get; set; } = [];
+    public string? Date { get; set; }
+    public string? BibliographyStyle { get; set; }
+    public string? Author { get; set; }
+    public string? GeometryOptions { get; set; }
+    public bool UsesTitlesec { get; set; }
+    public string? Language { get; set; }
+    public List<string> CitedKeys { get; set; } = [];
+    public List<string> ReferencedLabels { get; set; } = [];
+}
+
+public class LatexPackageDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Options { get; set; }
 }
 
 public class ConversionResponse
