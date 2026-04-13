@@ -48,10 +48,15 @@ public static class LaTeXPreamble
 % Code
 \usepackage{listings}
 
-% Algorithms & pseudocode (algorithmic kept for legacy compat; algpseudocode is the modern interface)
+% Algorithms & pseudocode
+% NOTE: algorithmic and algpseudocode/algorithmicx both define \begin{algorithmic}
+% and CANNOT be loaded together. We bundle algorithm + algorithmic (legacy interface)
+% as it matches the broadest existing arXiv corpus. Papers that use algpseudocode
+% must remove \usepackage{algorithmic} from their own preamble first.
+% algorithm2e is a completely separate package (no conflict) — bundled for CS/ML papers.
 \usepackage{algorithm}
 \usepackage{algorithmic}
-\usepackage{algpseudocode}
+\usepackage{algorithm2e}
 
 % Callouts & boxes
 \usepackage{tcolorbox}
@@ -113,10 +118,15 @@ public static class LaTeXPreamble
 % Code
 \usepackage{listings}
 
-% Algorithms & pseudocode (algorithmic kept for legacy compat; algpseudocode is the modern interface)
+% Algorithms & pseudocode
+% NOTE: algorithmic and algpseudocode/algorithmicx both define \begin{algorithmic}
+% and CANNOT be loaded together. We bundle algorithm + algorithmic (legacy interface)
+% as it matches the broadest existing arXiv corpus. Papers that use algpseudocode
+% must remove \usepackage{algorithmic} from their own preamble first.
+% algorithm2e is a completely separate package (no conflict) — bundled for CS/ML papers.
 \usepackage{algorithm}
 \usepackage{algorithmic}
-\usepackage{algpseudocode}
+\usepackage{algorithm2e}
 
 % Callouts & boxes
 \usepackage{tcolorbox}
