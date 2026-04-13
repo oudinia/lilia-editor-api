@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Lilia.Import.Models;
 using Lilia.Import.Services;
@@ -753,5 +754,127 @@ public class LatexImportCoverageTests
         var doc = await ParseAsync(latex);
 
         doc.Warnings.Should().Contain(w => w.Message.Contains("fontspec") && w.Message.Contains("inputenc"));
+    }
+
+    // ── One-off utility: dump parsed demo docs as JSON for SQL insertion ──
+    // Enabled only when LILIA_DEMO_DUMP_DIR is set; otherwise skipped.
+    // Usage: LILIA_DEMO_DUMP_DIR=/tmp/lilia-demos dotnet test --filter "Dump_DemoDocuments_AsJson"
+    [Fact]
+    public async Task Dump_DemoDocuments_AsJson()
+    {
+        var dumpDir = Environment.GetEnvironmentVariable("LILIA_DEMO_DUMP_DIR");
+        if (string.IsNullOrEmpty(dumpDir)) return; // no-op when not invoked via the env var
+
+        var demoDir = Environment.GetEnvironmentVariable("LILIA_DEMO_SRC_DIR")
+            ?? "/home/oussama/projects/lilia-docs/launch-readiness/latex-demos";
+        Directory.CreateDirectory(dumpDir);
+
+        var texFiles = Directory.GetFiles(demoDir, "*.tex").OrderBy(f => f).ToList();
+        foreach (var tex in texFiles)
+        {
+            var content = await File.ReadAllTextAsync(tex);
+            var parsed = await _parser.ParseTextAsync(content);
+            var name = Path.GetFileNameWithoutExtension(tex);
+
+            // Build a block list compatible with how ConvertController.LatexToBlocks emits them.
+            // We serialize: title + blocks array with {type, content} for each element.
+            var blocks = new List<object>();
+            var listBuffer = new List<ImportListItem>();
+            var bibBuffer = new List<ImportBibliographyEntry>();
+
+            void FlushList()
+            {
+                if (listBuffer.Count == 0) return;
+                var ordered = listBuffer[0].IsNumbered;
+                blocks.Add(new { type = "list", content = new
+                {
+                    ordered,
+                    items = listBuffer.Select(li => new { text = li.Text, marker = li.ListMarker }).ToArray(),
+                }});
+                listBuffer.Clear();
+            }
+            void FlushBib()
+            {
+                if (bibBuffer.Count == 0) return;
+                blocks.Add(new { type = "bibliography", content = new
+                {
+                    entries = bibBuffer.Select(e => new { citeKey = e.ReferenceLabel, text = e.Text }).ToArray(),
+                }});
+                bibBuffer.Clear();
+            }
+
+            foreach (var element in parsed.Elements.OrderBy(e => e.Order))
+            {
+                if (element is not ImportListItem) FlushList();
+                if (element is not ImportBibliographyEntry) FlushBib();
+
+                switch (element)
+                {
+                    case ImportHeading h:
+                        blocks.Add(new { type = "heading", content = new { text = h.Text, level = h.Level } });
+                        break;
+                    case ImportParagraph p:
+                        blocks.Add(new { type = "paragraph", content = new { text = p.Text } });
+                        break;
+                    case ImportEquation eq:
+                        blocks.Add(new { type = "equation", content = new { latex = eq.LatexContent, equationMode = eq.IsInline ? "inline" : "display" } });
+                        break;
+                    case ImportCodeBlock cb:
+                        blocks.Add(new { type = "code", content = new { code = cb.Text, language = cb.Language ?? "" } });
+                        break;
+                    case ImportTable t:
+                        var headers = t.HasHeaderRow && t.Rows.Count > 0
+                            ? t.Rows[0].Select(c => c.Text).ToList()
+                            : t.Rows.FirstOrDefault()?.Select(c => c.Text).ToList() ?? new List<string>();
+                        var rows = t.HasHeaderRow && t.Rows.Count > 1
+                            ? t.Rows.Skip(1).Select(r => r.Select(c => c.Text).ToList()).ToList()
+                            : new List<List<string>>();
+                        blocks.Add(new { type = "table", content = new { headers, rows } });
+                        break;
+                    case ImportImage img:
+                        blocks.Add(new { type = "figure", content = new { caption = img.AltText ?? "", src = img.Filename ?? "", alt = img.AltText ?? "" } });
+                        break;
+                    case ImportListItem li:
+                        if (listBuffer.Count > 0 && listBuffer[0].IsNumbered != li.IsNumbered) FlushList();
+                        listBuffer.Add(li);
+                        break;
+                    case ImportTheorem th:
+                        blocks.Add(new { type = "theorem", content = new
+                        {
+                            text = th.Text,
+                            kind = th.EnvironmentType.ToString().ToLowerInvariant(),
+                            title = th.Title ?? "",
+                            label = th.Label ?? "",
+                        }});
+                        break;
+                    case ImportAbstract ab:
+                        blocks.Add(new { type = "abstract", content = new { text = ab.Text } });
+                        break;
+                    case ImportBibliographyEntry be:
+                        bibBuffer.Add(be);
+                        break;
+                    case ImportBlockquote bq:
+                        blocks.Add(new { type = "blockquote", content = new { text = bq.Text } });
+                        break;
+                    case ImportPageBreak:
+                        blocks.Add(new { type = "pageBreak", content = new { } });
+                        break;
+                    case ImportLatexPassthrough lp:
+                        blocks.Add(new { type = "embed", content = new { code = lp.LatexCode, description = lp.Description ?? "" } });
+                        break;
+                }
+            }
+            FlushList();
+            FlushBib();
+
+            var output = new
+            {
+                title = parsed.Title,
+                blocks,
+                warnings = parsed.Warnings.Select(w => w.Message).ToArray(),
+            };
+            var json = JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = false });
+            await File.WriteAllTextAsync(Path.Combine(dumpDir, $"{name}.json"), json);
+        }
     }
 }
