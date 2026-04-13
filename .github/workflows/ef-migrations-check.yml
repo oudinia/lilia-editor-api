@@ -1,0 +1,44 @@
+name: EF migrations drift check
+
+# Blocks any PR that introduces an EF model change without a corresponding
+# migration. Catches the kind of drift that built up over Feb–Apr 2026 (see
+# database/025_reconcile_drift.sql) at the source.
+
+on:
+  pull_request:
+    paths:
+      - 'src/Lilia.Core/Entities/**'
+      - 'src/Lilia.Infrastructure/Data/**'
+      - 'src/Lilia.Infrastructure/Migrations/**'
+      - 'src/Lilia.Api/**'
+      - 'database/**'
+
+jobs:
+  check-pending-model-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install dotnet-ef tool
+        run: dotnet tool install --global dotnet-ef --version 10.*
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --verbosity quiet
+
+      - name: Check for pending model changes
+        run: |
+          set -e
+          dotnet ef migrations has-pending-model-changes \
+            --project src/Lilia.Infrastructure \
+            --startup-project src/Lilia.Api \
+            && echo "::error::EF model has changes that aren't captured in a migration. Run 'dotnet ef migrations add <name>' before merging." \
+            && exit 1 \
+            || echo "EF model and migrations are in sync."
