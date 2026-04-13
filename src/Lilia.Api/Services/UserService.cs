@@ -26,7 +26,14 @@ public class UserService : IUserService
 
     public async Task<UserDto> CreateOrUpdateUserAsync(CreateOrUpdateUserDto dto)
     {
-        var user = await _context.Users.FindAsync(dto.Id);
+        // Look up by ID first, but also fall back to email — handles the case
+        // where the same human user signs in via two identity providers that
+        // mint different `sub` claims for the same email address. Without
+        // this, the second sign-in races on `users_email_key` and 500s.
+        var user = await _context.Users.FindAsync(dto.Id)
+            ?? (string.IsNullOrEmpty(dto.Email)
+                ? null
+                : await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email));
         var isNewUser = user == null;
 
         if (user == null)
@@ -48,10 +55,15 @@ public class UserService : IUserService
             }
             catch (DbUpdateException)
             {
-                // Race condition: another request created the user first
-                // Detach the failed entity and fetch the existing one
+                // Race: another request inserted a user with the same id OR
+                // the same email between our lookup and SaveChanges. Detach
+                // the failed entity and re-fetch by id, then by email.
                 _context.Entry(user).State = EntityState.Detached;
                 user = await _context.Users.FindAsync(dto.Id);
+                if (user == null && !string.IsNullOrEmpty(dto.Email))
+                {
+                    user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+                }
                 if (user != null)
                 {
                     user.Email = dto.Email;
@@ -59,6 +71,16 @@ public class UserService : IUserService
                     user.Image = dto.Image;
                     user.UpdatedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
+                    // Race recovered — the row already existed, so skip the
+                    // starter-document clone on this request to avoid
+                    // duplicating it for the same user.
+                    isNewUser = false;
+                }
+                else
+                {
+                    // Couldn't recover — re-throw so the caller sees a real
+                    // error instead of a silent null.
+                    throw;
                 }
             }
         }
