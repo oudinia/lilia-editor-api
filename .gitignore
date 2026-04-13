@@ -9,6 +9,8 @@ obj/
 
 # Logs
 logs/
+.e2e-api.log
+.e2e-api.pid
 
 # Local uploads
 uploads/
