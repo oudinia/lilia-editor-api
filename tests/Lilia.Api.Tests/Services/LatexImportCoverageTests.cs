@@ -680,4 +680,78 @@ public class LatexImportCoverageTests
         doc.Metadata.FancyhdrSource.Should().Contain("\\pagestyle{fancy}");
         doc.Metadata.FancyhdrSource.Should().Contain("\\fancyhead[L]{Draft}");
     }
+
+    // ── prompt 10 — package compatibility-trap warnings ──────────────
+
+    [Fact]
+    public async Task CompatTrap_CleverefBeforeHyperref_Warned()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{cleveref}\n\\usepackage{hyperref}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().Contain(w => w.Message.Contains("cleveref") && w.Message.Contains("BEFORE"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_CleverefAfterHyperref_NoWarning()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{hyperref}\n\\usepackage{cleveref}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().NotContain(w => w.Message.Contains("cleveref") && w.Message.Contains("BEFORE"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_MultipleSubfigPackages_Warned()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{subfig}\n\\usepackage{subcaption}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().Contain(w => w.Message.Contains("sub-figure"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_Algorithm2ePlusAlgorithmic_Warned()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{algorithm2e}\n\\usepackage{algorithmic}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().Contain(w => w.Message.Contains("algorithm2e") && w.Message.Contains("algorithmic"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_CsquotesBeforeBabel_Warned()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{csquotes}\n\\usepackage[french]{babel}\n\\begin{document}\nBonjour.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().Contain(w => w.Message.Contains("csquotes") && w.Message.Contains("BEFORE"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_CsquotesAfterBabel_NoWarning()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage[french]{babel}\n\\usepackage{csquotes}\n\\begin{document}\nBonjour.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().NotContain(w => w.Message.Contains("csquotes") && w.Message.Contains("BEFORE"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_VariorefAfterHyperref_Warned()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{hyperref}\n\\usepackage{varioref}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().Contain(w => w.Message.Contains("varioref"));
+    }
+
+    [Fact]
+    public async Task CompatTrap_FontspecPlusInputenc_Warned()
+    {
+        var latex = "\\documentclass{article}\n\\usepackage{fontspec}\n\\usepackage[utf8]{inputenc}\n\\begin{document}\nBody.\n\\end{document}";
+        var doc = await ParseAsync(latex);
+
+        doc.Warnings.Should().Contain(w => w.Message.Contains("fontspec") && w.Message.Contains("inputenc"));
+    }
 }

@@ -265,6 +265,12 @@ public class LatexParser : ILatexParser
                 document.Metadata.FancyhdrSource = string.Join("\n", fancyLines.Select(m => m.Value.Trim()));
         }
 
+        // ── Compatibility-trap warnings ────────────────────────────────
+        // These don't fail compilation but produce silent rendering bugs
+        // (wrong refs, wrong captions, wrong quotes, wrong fonts). We warn so
+        // users know where to look when their imported doc renders oddly.
+        DetectLatexCompatTraps(content, document);
+
         // \usepackage[lang]{babel} or \usepackage[lang]{polyglossia}
         // The last language in the option list is conventionally the primary one.
         var babelMatch = Regex.Match(content, @"\\usepackage\[([^\]]*)\]\{(?:babel|polyglossia)\}");
@@ -356,6 +362,98 @@ public class LatexParser : ILatexParser
         ExtractInlineReferences(document);
 
         return document;
+    }
+
+    /// <summary>
+    /// Detect LaTeX package combinations that produce silent rendering bugs
+    /// (not compile errors). Based on well-documented community "traps":
+    /// load-order rules for hyperref/cleveref/varioref, mutually incompatible
+    /// subfigure families, algorithm package conflicts, csquotes+babel ordering.
+    /// </summary>
+    private static void DetectLatexCompatTraps(string content, ImportDocument document)
+    {
+        // Trap 1: cleveref must load AFTER hyperref.
+        // Walk the raw preamble looking for the two \usepackage lines and compare positions.
+        var hyperrefMatch = Regex.Match(content, @"\\usepackage(?:\[[^\]]*\])?\{hyperref\}");
+        var cleverefMatch = Regex.Match(content, @"\\usepackage(?:\[[^\]]*\])?\{cleveref\}");
+        if (hyperrefMatch.Success && cleverefMatch.Success && cleverefMatch.Index < hyperrefMatch.Index)
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Load-order trap: \\usepackage{cleveref} appears BEFORE \\usepackage{hyperref}. cleveref must be loaded AFTER hyperref or smart cross-references (\\cref, \\Cref) will silently fall back to plain \\ref text.",
+            });
+        }
+
+        // Trap 2: subfig / subfigure / subcaption are mutually incompatible.
+        var hasSubfig = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{subfig\}");
+        var hasSubfigure = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{subfigure\}");
+        var hasSubcaption = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{subcaption\}");
+        var subfigCount = (hasSubfig ? 1 : 0) + (hasSubfigure ? 1 : 0) + (hasSubcaption ? 1 : 0);
+        if (subfigCount > 1)
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Load-order trap: multiple sub-figure packages loaded (subfig/subfigure/subcaption). These are mutually incompatible — pick one. Lilia bundles subcaption by default.",
+            });
+        }
+
+        // Trap 3: algorithm2e + algorithmic together — they compete over the algorithm float.
+        var hasAlg2e = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{algorithm2e\}");
+        var hasAlgorithmic = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{algorithmic\}");
+        var hasAlgpseudocode = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{algpseudocode\}");
+        if (hasAlg2e && (hasAlgorithmic || hasAlgpseudocode))
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Load-order trap: algorithm2e and algorithmic/algpseudocode both loaded — they define incompatible algorithm environments. Algorithms will render inconsistently.",
+            });
+        }
+        if (hasAlgorithmic && hasAlgpseudocode)
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Load-order trap: both algorithmic and algpseudocode loaded — they both define \\begin{algorithmic} with different syntax. Pick one.",
+            });
+        }
+
+        // Trap 4: csquotes must load AFTER babel/polyglossia to pick up language-specific quotes.
+        var babelMatch2 = Regex.Match(content, @"\\usepackage(?:\[[^\]]*\])?\{(?:babel|polyglossia)\}");
+        var csquotesMatch = Regex.Match(content, @"\\usepackage(?:\[[^\]]*\])?\{csquotes\}");
+        if (babelMatch2.Success && csquotesMatch.Success && csquotesMatch.Index < babelMatch2.Index)
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Load-order trap: \\usepackage{csquotes} appears BEFORE babel/polyglossia. csquotes must load AFTER the language package or it will silently use English-style quotes even in French/German/Spanish documents.",
+            });
+        }
+
+        // Trap 5: varioref must load BEFORE hyperref (the reverse of cleveref).
+        var variorefMatch = Regex.Match(content, @"\\usepackage(?:\[[^\]]*\])?\{varioref\}");
+        if (hyperrefMatch.Success && variorefMatch.Success && variorefMatch.Index > hyperrefMatch.Index)
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Load-order trap: varioref should load BEFORE hyperref. \"On the following page\"-style cross-references may show wrong text.",
+            });
+        }
+
+        // Trap 6: fontspec is for XeLaTeX/LuaLaTeX only; warns if used with pdflatex's inputenc.
+        var hasFontspec = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{fontspec\}");
+        var hasInputenc = Regex.IsMatch(content, @"\\usepackage(?:\[[^\]]*\])?\{inputenc\}");
+        if (hasFontspec && hasInputenc)
+        {
+            document.Warnings.Add(new ImportWarning
+            {
+                Type = ImportWarningType.UnsupportedElement,
+                Message = "Engine trap: both fontspec (XeLaTeX/LuaLaTeX only) and inputenc (pdflatex only) are loaded. Pick one engine family — Lilia exports via pdflatex so fontspec font selections will be ignored.",
+            });
+        }
     }
 
     /// <summary>

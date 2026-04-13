@@ -50,20 +50,22 @@ public static class LaTeXPreamble
 \usepackage{listings}
 
 % Algorithms & pseudocode
-% NOTE: algorithmic and algpseudocode/algorithmicx both define \begin{algorithmic}
-% and CANNOT be loaded together. We bundle algorithm + algorithmic (legacy interface)
-% as it matches the broadest existing arXiv corpus. Papers that use algpseudocode
-% must remove \usepackage{algorithmic} from their own preamble first.
-% algorithm2e is a completely separate package (no conflict) — bundled for CS/ML papers.
+% NOTE: we bundle algorithm + algorithmic (the legacy interface) only. Alternatives
+% that users can load themselves in their own preamble:
+%   - algpseudocode / algorithmicx (redefines \begin{algorithmic} — conflicts with ours)
+%   - algorithm2e (floats compete with the algorithm package's floats — conflicts)
+% Both would produce silent rendering bugs if bundled alongside our defaults.
 \usepackage{algorithm}
 \usepackage{algorithmic}
-\usepackage{algorithm2e}
 
 % Callouts & boxes
 \usepackage{tcolorbox}
 
-% Quotations (required by many biblatex styles)
-\usepackage{csquotes}
+% NOTE: csquotes is NOT bundled. It is required by many biblatex styles but must be
+% loaded AFTER babel/polyglossia so it can pick up language-specific quote styles.
+% Since we don't bundle babel either, users who need csquotes must load both in
+% the correct order themselves. Bundling csquotes alone would produce silent
+% English-style quotes in French/German/Spanish documents.
 
 % Legacy graphics compat — epsfig is arXiv's #4 most-used package; it wraps graphicx
 \usepackage{epsfig}
@@ -121,20 +123,22 @@ public static class LaTeXPreamble
 \usepackage{listings}
 
 % Algorithms & pseudocode
-% NOTE: algorithmic and algpseudocode/algorithmicx both define \begin{algorithmic}
-% and CANNOT be loaded together. We bundle algorithm + algorithmic (legacy interface)
-% as it matches the broadest existing arXiv corpus. Papers that use algpseudocode
-% must remove \usepackage{algorithmic} from their own preamble first.
-% algorithm2e is a completely separate package (no conflict) — bundled for CS/ML papers.
+% NOTE: we bundle algorithm + algorithmic (the legacy interface) only. Alternatives
+% that users can load themselves in their own preamble:
+%   - algpseudocode / algorithmicx (redefines \begin{algorithmic} — conflicts with ours)
+%   - algorithm2e (floats compete with the algorithm package's floats — conflicts)
+% Both would produce silent rendering bugs if bundled alongside our defaults.
 \usepackage{algorithm}
 \usepackage{algorithmic}
-\usepackage{algorithm2e}
 
 % Callouts & boxes
 \usepackage{tcolorbox}
 
-% Quotations (required by many biblatex styles)
-\usepackage{csquotes}
+% NOTE: csquotes is NOT bundled. It is required by many biblatex styles but must be
+% loaded AFTER babel/polyglossia so it can pick up language-specific quote styles.
+% Since we don't bundle babel either, users who need csquotes must load both in
+% the correct order themselves. Bundling csquotes alone would produce silent
+% English-style quotes in French/German/Spanish documents.
 
 % Legacy graphics compat — epsfig is arXiv's #4 most-used package; it wraps graphicx
 \usepackage{epsfig}
