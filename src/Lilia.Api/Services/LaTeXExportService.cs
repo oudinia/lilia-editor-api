@@ -566,11 +566,93 @@ public class LaTeXExportService : ILaTeXExportService
         return sb.ToString();
     }
 
+    // Languages the `listings` package supports out of the box (canonical
+    // casing — listings is case-sensitive). Any value outside this set
+    // (including "text", "plaintext", "plain", empty, or an exotic language
+    // name from DOCX import) causes pdflatex to fail with "Package Listings
+    // Error: Couldn't load requested language." Unknown languages are mapped
+    // to a bare `\begin{lstlisting}` with no language option — listings
+    // renders that as plain code with no syntax highlighting.
+    private static readonly HashSet<string> ListingsLanguages = new(StringComparer.Ordinal)
+    {
+        "Ada", "Assembler", "Awk", "bash", "C", "C++", "Caml", "Clean", "Cobol",
+        "Csh", "CSS", "Delphi", "Eiffel", "Erlang", "Euphoria", "Fortran",
+        "GCL", "Gnuplot", "Haskell", "HTML", "IDL", "inform", "Java", "JVMIS",
+        "ksh", "Lisp", "Logo", "Lua", "make", "Mathematica", "Matlab",
+        "Mercury", "MetaPost", "Miranda", "Mizar", "ML", "Modula-2", "MuPAD",
+        "NASTRAN", "Oberon-2", "OCL", "Octave", "Oz", "Pascal", "Perl", "PHP",
+        "PL/I", "Plasm", "PostScript", "POV", "Prolog", "Promela", "PSTricks",
+        "Python", "R", "Reduce", "Rexx", "RSL", "Ruby", "S", "SAS", "Scilab",
+        "sh", "SHELXL", "Simula", "SQL", "tcl", "TeX", "VBScript", "Verilog",
+        "VHDL", "VRML", "XML", "XSLT",
+    };
+
+    // Some languages aren't native to listings but have a close enough match
+    // we can safely substitute. Values must be canonical listings names or "".
+    private static readonly Dictionary<string, string> LanguageAliasMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["js"] = "JavaScript",      // JavaScript not native but commonly added
+        ["javascript"] = "JavaScript",
+        ["ts"] = "JavaScript",      // listings has no TS; JS highlighting is close enough
+        ["typescript"] = "JavaScript",
+        ["sh"] = "bash",
+        ["shell"] = "bash",
+        ["zsh"] = "bash",
+        ["py"] = "Python",
+        ["cpp"] = "C++",
+        ["c#"] = "Java",            // closest listings fit
+        ["csharp"] = "Java",
+        ["latex"] = "TeX",
+        ["tex"] = "TeX",
+        // Languages listings doesn't ship with — fall back to plain (no highlighting).
+        ["json"] = "",
+        ["yaml"] = "",
+        ["yml"] = "",
+        ["toml"] = "",
+        ["go"] = "",
+        ["golang"] = "",
+        ["rust"] = "",
+        ["kotlin"] = "Java",
+        ["swift"] = "",
+        ["solidity"] = "",
+        ["dart"] = "",
+        ["zig"] = "",
+        ["elixir"] = "",
+        ["markdown"] = "",
+        ["md"] = "",
+        ["text"] = "",
+        ["plaintext"] = "",
+        ["plain"] = "",
+        ["txt"] = "",
+    };
+
+    // Returns a listings-valid language name, or "" when the input has no safe mapping.
+    // Case-insensitive lookup; always returns the canonical listings casing.
+    private static string NormalizeListingsLanguage(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        var trimmed = raw.Trim();
+        if (LanguageAliasMap.TryGetValue(trimmed, out var mapped))
+            return mapped;
+        // Case-insensitive whitelist match — return the canonical (dictionary) form
+        // so listings gets the exact string it expects.
+        foreach (var known in ListingsLanguages)
+        {
+            if (string.Equals(known, trimmed, StringComparison.OrdinalIgnoreCase))
+                return known;
+        }
+        return "";
+    }
+
     private string RenderCode(JsonElement content)
     {
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
-        var language = content.TryGetProperty("language", out var l) ? l.GetString() ?? "text" : "text";
-        return $@"\begin{{lstlisting}}[language={language}]" + "\n" + code + "\n" + @"\end{lstlisting}";
+        var rawLanguage = content.TryGetProperty("language", out var l) ? l.GetString() : null;
+        var language = NormalizeListingsLanguage(rawLanguage);
+        var opening = string.IsNullOrEmpty(language)
+            ? @"\begin{lstlisting}"
+            : $@"\begin{{lstlisting}}[language={language}]";
+        return opening + "\n" + code + "\n" + @"\end{lstlisting}";
     }
 
     private string RenderList(JsonElement content)
