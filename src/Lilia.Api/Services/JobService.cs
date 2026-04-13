@@ -781,7 +781,7 @@ public class JobService : IJobService
             ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
             ImportParagraph p => ("paragraph", new { text = p.Text }),
             ImportEquation eq => ("equation", new { latex = eq.LatexContent ?? eq.OmmlXml, equationMode = eq.IsInline ? "inline" : "display" }),
-            ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "plaintext" }),
+            ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
             ImportTable t => ("table", new
             {
                 headers = t.HasHeaderRow && t.Rows.Count > 0
@@ -927,7 +927,7 @@ public class JobService : IJobService
                     Content: JsonSerializer.SerializeToElement(new
                     {
                         code = cb.Text,
-                        language = cb.Language ?? "plaintext"
+                        language = cb.Language ?? ""
                     }),
                     Confidence: 75,
                     Warnings: null,
