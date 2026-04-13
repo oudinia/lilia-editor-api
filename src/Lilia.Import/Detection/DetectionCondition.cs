@@ -72,10 +72,27 @@ public class StyleMatchCondition : DetectionCondition
 }
 
 /// <summary>
-/// Matches against the paragraph's font family using a set of known fonts.
+/// Matches a paragraph as code-by-monospace-font. To avoid misclassifying
+/// short bullet items that merely demonstrate monospace text (e.g. a list
+/// like "monospace text for code or technical content" in a formatting-options
+/// list), this condition requires:
+///
+///   1. Every run in the paragraph uses a font in the monospace set —
+///      not just the first run, which would match a bullet whose first
+///      character happens to be in Courier.
+///   2. The paragraph is either multi-line (contains line break elements)
+///      or its text exceeds <see cref="MinSingleLineLength"/> characters.
+///      Real code blocks are nearly always multi-line; a one-liner under
+///      ~200 chars is almost always descriptive prose.
 /// </summary>
 public class FontMatchCondition : DetectionCondition
 {
+    /// <summary>
+    /// Minimum text length for a SINGLE-LINE paragraph to qualify as code.
+    /// Multi-line paragraphs bypass this check entirely.
+    /// </summary>
+    public const int MinSingleLineLength = 200;
+
     private readonly HashSet<string> _fonts;
 
     public FontMatchCondition(HashSet<string> fonts)
@@ -85,10 +102,30 @@ public class FontMatchCondition : DetectionCondition
 
     public override bool Evaluate(ParagraphAnalysis analysis)
     {
-        return !string.IsNullOrEmpty(analysis.FontFamily) && _fonts.Contains(analysis.FontFamily);
+        if (string.IsNullOrEmpty(analysis.FontFamily)) return false;
+        if (analysis.Runs.Count == 0) return false;
+
+        // Every run must have a known monospace font. A run with no explicit
+        // font inherits the document default, so we treat null as not monospace.
+        foreach (var run in analysis.Runs)
+        {
+            var rFonts = run.RunProperties?.RunFonts;
+            var runFont = rFonts?.Ascii?.Value
+                          ?? rFonts?.HighAnsi?.Value
+                          ?? rFonts?.ComplexScript?.Value;
+            if (string.IsNullOrEmpty(runFont) || !_fonts.Contains(runFont))
+                return false;
+        }
+
+        // Multi-line OR long-enough single-line.
+        var hasLineBreak = analysis.Runs.Any(r =>
+            r.Descendants<DocumentFormat.OpenXml.Wordprocessing.Break>().Any());
+        if (hasLineBreak) return true;
+
+        return analysis.Text.Length >= MinSingleLineLength;
     }
 
-    public override string Description => $"FontFamily in [{string.Join(", ", _fonts.Take(3))}...]";
+    public override string Description => $"AllRunsFontFamily in [{string.Join(", ", _fonts.Take(3))}...]";
 }
 
 /// <summary>
