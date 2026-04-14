@@ -51,14 +51,20 @@ public class DevelopmentAuthMiddleware
         {
             _logger.LogDebug("Using development auth for request {Path}", context.Request.Path);
 
+            // Allow callers to override the dev user via header (useful for test tools)
+            var userId = context.Request.Headers["X-Development-User-Id"].FirstOrDefault()
+                      ?? DevUserId;
+            var userEmail = userId == DevUserId ? DevUserEmail : $"{userId}@dev.liliaeditor.com";
+            var userName  = userId == DevUserId ? DevUserName  : $"Dev User ({userId})";
+
             var claims = new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, DevUserId),
-                new Claim("sub", DevUserId),
-                new Claim(ClaimTypes.Email, DevUserEmail),
-                new Claim("email", DevUserEmail),
-                new Claim(ClaimTypes.Name, DevUserName),
-                new Claim("name", DevUserName),
+                new Claim(ClaimTypes.NameIdentifier, userId),
+                new Claim("sub", userId),
+                new Claim(ClaimTypes.Email, userEmail),
+                new Claim("email", userEmail),
+                new Claim(ClaimTypes.Name, userName),
+                new Claim("name", userName),
             };
 
             var identity = new ClaimsIdentity(claims, "Development");

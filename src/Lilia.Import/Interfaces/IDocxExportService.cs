@@ -28,3 +28,17 @@ public interface ILatexToOmmlConverter
     /// <returns>Tuple of (OMML XML, success, error message).</returns>
     (string Omml, bool Success, string? Error) Convert(string latex);
 }
+
+/// <summary>
+/// Renders a LaTeX math fragment to a PNG image.
+/// Used as fallback when OMML conversion fails for complex expressions.
+/// Implemented in Lilia.Api using ILaTeXRenderService; injected as optional dependency.
+/// </summary>
+public interface IEquationImageRenderer
+{
+    /// <summary>
+    /// Render a LaTeX fragment (e.g. <c>\frac{1}{2}</c>) to PNG bytes.
+    /// Returns null when the renderer is unavailable or compilation fails.
+    /// </summary>
+    Task<byte[]?> RenderToPngAsync(string latexFragment, bool displayMode = true);
+}

@@ -304,7 +304,14 @@ builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 
 // Register Lilia.Import services for document conversion
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
-builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService, Lilia.Import.Services.DocxExportService>();
+builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexToOmmlConverter, Lilia.Import.Converters.LatexToOmmlConverter>();
+builder.Services.AddSingleton<Lilia.Import.Interfaces.IEquationImageRenderer>(sp =>
+    new Lilia.Api.Services.LaTeXEquationImageRenderer(
+        sp.GetRequiredService<ILaTeXRenderService>()));
+builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService>(sp =>
+    new Lilia.Import.Services.DocxExportService(
+        sp.GetRequiredService<Lilia.Import.Interfaces.ILatexToOmmlConverter>(),
+        sp.GetRequiredService<Lilia.Import.Interfaces.IEquationImageRenderer>()));
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexParser, Lilia.Import.Services.LatexParser>();
 
 // Register PDF import services — provider-based (mathpix or mineru)

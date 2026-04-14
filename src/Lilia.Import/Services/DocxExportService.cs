@@ -15,15 +15,19 @@ namespace Lilia.Import.Services;
 public class DocxExportService : IDocxExportService
 {
     private readonly ILatexToOmmlConverter? _latexToOmmlConverter;
+    private readonly IEquationImageRenderer? _equationImageRenderer;
 
     public DocxExportService()
     {
         _latexToOmmlConverter = null;
+        _equationImageRenderer = null;
     }
 
-    public DocxExportService(ILatexToOmmlConverter latexToOmmlConverter)
+    public DocxExportService(ILatexToOmmlConverter latexToOmmlConverter,
+        IEquationImageRenderer? equationImageRenderer = null)
     {
         _latexToOmmlConverter = latexToOmmlConverter;
+        _equationImageRenderer = equationImageRenderer;
     }
 
     /// <inheritdoc />
@@ -48,7 +52,7 @@ public class DocxExportService : IDocxExportService
             // Convert blocks to DOCX elements
             foreach (var block in document.Blocks)
             {
-                var elements = ConvertBlock(block, mainPart, options);
+                var elements = await ConvertBlock(block, mainPart, options);
                 foreach (var element in elements)
                 {
                     body.AppendChild(element);
@@ -192,13 +196,21 @@ public class DocxExportService : IDocxExportService
         numberingPart.Numbering.Save();
     }
 
-    private IEnumerable<OpenXmlElement> ConvertBlock(ExportBlock block, MainDocumentPart mainPart, ExportOptions options)
+    private Task<IEnumerable<OpenXmlElement>> ConvertBlock(ExportBlock block, MainDocumentPart mainPart, ExportOptions options)
+    {
+        return block.Type.ToLowerInvariant() switch
+        {
+            "equation" => ConvertEquation(block, mainPart),
+            _ => Task.FromResult(ConvertBlockSync(block, mainPart, options))
+        };
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertBlockSync(ExportBlock block, MainDocumentPart mainPart, ExportOptions options)
     {
         return block.Type.ToLowerInvariant() switch
         {
             "paragraph" => ConvertParagraph(block),
             "heading" => ConvertHeading(block),
-            "equation" => ConvertEquation(block),
             "code" => ConvertCode(block),
             "list" => ConvertList(block),
             "table" => ConvertTable(block),
@@ -211,7 +223,7 @@ public class DocxExportService : IDocxExportService
             "algorithm" => ConvertAlgorithm(block),
             "callout" => ConvertCallout(block),
             "footnote" => ConvertFootnote(block, mainPart),
-            _ => ConvertParagraph(block) // Default to paragraph
+            _ => ConvertParagraph(block)
         };
     }
 
@@ -224,7 +236,7 @@ public class DocxExportService : IDocxExportService
         {
             foreach (var span in content.RichText)
             {
-                para.AppendChild(CreateRun(span));
+                para.AppendChild(CreateSpanElement(span));
             }
         }
         else if (!string.IsNullOrEmpty(content.Text))
@@ -256,32 +268,92 @@ public class DocxExportService : IDocxExportService
         return [para];
     }
 
-    private IEnumerable<OpenXmlElement> ConvertEquation(ExportBlock block)
-    {
-        var para = new Paragraph();
-        var content = block.Content;
+    private const string MathNs = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+    private const string WordNs = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-        // For now, just output the LaTeX as text wrapped in $...$
-        // Full OMML conversion would require a LaTeX to OMML converter
+    private async Task<IEnumerable<OpenXmlElement>> ConvertEquation(ExportBlock block, MainDocumentPart mainPart)
+    {
+        var content = block.Content;
         var latex = content.Latex ?? content.Text ?? "";
         var displayMode = content.DisplayMode ?? true;
 
-        if (displayMode)
+        // Path 1: OMML (native Word math — editable, accessible)
+        if (_latexToOmmlConverter != null && !string.IsNullOrWhiteSpace(latex))
         {
-            // Center the equation
-            var pPr = new ParagraphProperties();
-            pPr.Append(new Justification { Val = JustificationValues.Center });
-            para.Append(pPr);
+            var (omml, success, _) = _latexToOmmlConverter.Convert(latex);
+            if (success && !string.IsNullOrEmpty(omml))
+            {
+                try
+                {
+                    var para = new Paragraph();
+                    if (displayMode)
+                    {
+                        var pPrXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:jc w:val=\"center\"/></w:pPr>";
+                        para.InnerXml = pPrXml + $"<m:oMathPara xmlns:m=\"{MathNs}\">{omml}</m:oMathPara>";
+                    }
+                    else
+                    {
+                        para.InnerXml = omml;
+                    }
+                    return [para];
+                }
+                catch { /* fall through */ }
+            }
         }
 
-        var run = new Run();
-        var runProps = new RunProperties();
-        runProps.Append(new Italic());
-        run.Append(runProps);
-        run.Append(new Text(displayMode ? $"[{latex}]" : $"${latex}$") { Space = SpaceProcessingModeValues.Preserve });
-        para.AppendChild(run);
+        // Path 2: PNG image via pdflatex (for complex expressions OMML can't handle)
+        if (_equationImageRenderer != null && !string.IsNullOrWhiteSpace(latex))
+        {
+            try
+            {
+                var png = await _equationImageRenderer.RenderToPngAsync(latex, displayMode);
+                if (png != null && png.Length > 0)
+                {
+                    var imgPara = EmbedEquationPng(png, mainPart, displayMode, latex);
+                    if (imgPara != null) return [imgPara];
+                }
+            }
+            catch { /* fall through */ }
+        }
 
-        return [para];
+        // Path 3: plain italic text (last resort — at least the LaTeX is readable)
+        var fallback = new Paragraph();
+        if (displayMode)
+        {
+            var pPr = new ParagraphProperties();
+            pPr.Append(new Justification { Val = JustificationValues.Center });
+            fallback.Append(pPr);
+        }
+        var run = new Run();
+        var rPr = new RunProperties();
+        rPr.Append(new Italic());
+        run.Append(rPr);
+        run.Append(new Text(displayMode ? $"[{latex}]" : $"${latex}$") { Space = SpaceProcessingModeValues.Preserve });
+        fallback.AppendChild(run);
+        return [fallback];
+    }
+
+    private Paragraph? EmbedEquationPng(byte[] png, MainDocumentPart mainPart, bool displayMode, string altText)
+    {
+        var imagePart = mainPart.AddImagePart(ImagePartType.Png);
+        using (var stream = new MemoryStream(png))
+            imagePart.FeedData(stream);
+
+        var relationshipId = mainPart.GetIdOfPart(imagePart);
+
+        // Estimate size: 150 DPI, scale to fit within 4 inches wide
+        var widthEmu  = Math.Min((long)(4 * 914400), (long)(png.Length / 10 * 914400 / 150));
+        var heightEmu = widthEmu / 3; // rough 3:1 aspect for inline math
+
+        var drawing = CreateImageDrawing(relationshipId, Math.Max(widthEmu, 457200), Math.Max(heightEmu, 152400), altText);
+        var para = new Paragraph(new Run(drawing));
+        if (displayMode)
+        {
+            var pPr = new ParagraphProperties();
+            pPr.Append(new Justification { Val = JustificationValues.Center });
+            para.PrependChild(pPr);
+        }
+        return para;
     }
 
     private IEnumerable<OpenXmlElement> ConvertCode(ExportBlock block)
@@ -747,7 +819,7 @@ public class DocxExportService : IDocxExportService
         {
             foreach (var span in bodySpans)
             {
-                para.AppendChild(CreateRun(span));
+                para.AppendChild(CreateSpanElement(span));
             }
         }
 
@@ -780,7 +852,7 @@ public class DocxExportService : IDocxExportService
         {
             foreach (var span in content.RichText)
             {
-                para.AppendChild(CreateRun(span));
+                para.AppendChild(CreateSpanElement(span));
             }
         }
         else
@@ -846,5 +918,40 @@ public class DocxExportService : IDocxExportService
         run.Append(new Text(span.Text) { Space = SpaceProcessingModeValues.Preserve });
 
         return run;
+    }
+
+    /// <summary>
+    /// Returns either a Run (text span) or an inline m:oMath element (equation span).
+    /// Use this instead of CreateRun when spans may contain inline equations.
+    /// </summary>
+    private OpenXmlElement CreateSpanElement(ExportRichTextSpan span)
+    {
+        if (!string.IsNullOrEmpty(span.Equation) && _latexToOmmlConverter != null)
+        {
+            var (omml, success, _) = _latexToOmmlConverter.Convert(span.Equation);
+            if (success && !string.IsNullOrEmpty(omml))
+            {
+                try
+                {
+                    // Inline equation: oMath directly in paragraph (no oMathPara wrapper)
+                    var placeholder = new Run();
+                    placeholder.InnerXml = omml.Replace(
+                        $" xmlns:m=\"{MathNs}\"", ""); // strip namespace decl for inner use
+                    // Use a paragraph as a container trick to inject the math element
+                    var tempPara = new Paragraph();
+                    tempPara.InnerXml = omml;
+                    var mathEl = tempPara.FirstChild;
+                    if (mathEl != null)
+                    {
+                        mathEl.Remove();
+                        return mathEl;
+                    }
+                }
+                catch { /* fall through */ }
+            }
+            // Fallback: render as $latex$ text
+            return new Run(new Text($"${span.Equation}$") { Space = SpaceProcessingModeValues.Preserve });
+        }
+        return CreateRun(span);
     }
 }

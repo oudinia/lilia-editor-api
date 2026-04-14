@@ -334,6 +334,20 @@ public class JobService : IJobService
                     _logger.LogInformation("[Import] Created review session {SessionId} with {BlockCount} blocks and {TraceCount} traces for job {JobId}",
                         reviewSessionId, reviewBlocks.Count, traces?.Count ?? 0, job.Id);
 
+                    // If caller requested skip-review, auto-finalize immediately
+                    if (request.SkipReview)
+                    {
+                        var finalizeResult = await _reviewService.FinalizeSessionAsync(
+                            reviewSessionId.Value, userId, new FinalizeSessionDto(title, Force: true));
+                        if (finalizeResult != null)
+                        {
+                            createdDocument = await _context.Documents.FindAsync(finalizeResult.Document.Id);
+                            job.DocumentId = finalizeResult.Document.Id;
+                            reviewSessionId = null; // Hide session from caller — document is ready
+                            _logger.LogInformation("[Import] SkipReview: auto-finalized into document {DocId}", finalizeResult.Document.Id);
+                        }
+                    }
+
                     // Do NOT set job.DocumentId — that happens at finalize
                 }
                 finally

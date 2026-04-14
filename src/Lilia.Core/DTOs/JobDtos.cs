@@ -64,11 +64,12 @@ public record ImportOptionsDto(
 );
 
 public record ImportRequestDto(
-    string Content,      // Base64 encoded for DOCX, plain text for LaTeX/LML
-    string Format,       // "DOCX", "LATEX", "LML"
+    string Content,         // Base64 encoded for DOCX, plain text for LaTeX/LML
+    string Format,          // "DOCX", "LATEX", "LML"
     string Filename,
     string? Title = null,
-    ImportOptionsDto? Options = null
+    ImportOptionsDto? Options = null,
+    bool SkipReview = false // When true, auto-finalize the review session and return the document directly
 );
 
 public record ImportResultDto(
