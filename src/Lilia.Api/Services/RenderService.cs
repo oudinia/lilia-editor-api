@@ -1081,7 +1081,10 @@ public class RenderService : IRenderService
 
                 sb.AppendLine($@"\begin{{subfigure}}{{{subfigWidthStr}\textwidth}}");
                 sb.AppendLine(@"\centering");
-                sb.AppendLine($@"\includegraphics[width=\textwidth]{{{subDisplayPath}}}");
+                if (!string.IsNullOrEmpty(subSrc))
+                    sb.AppendLine($@"\includegraphics[width=\textwidth]{{{subDisplayPath}}}");
+                else
+                    sb.AppendLine(@"% [subfigure placeholder — no image uploaded]");
                 if (!string.IsNullOrEmpty(subCaption))
                     sb.AppendLine($@"\caption{{{EscapeLatex(subCaption)}}}");
                 if (!string.IsNullOrEmpty(subLabel))
@@ -1100,7 +1103,10 @@ public class RenderService : IRenderService
         {
             sb.AppendLine($@"\begin{{figure}}{floatSpec}");
             sb.AppendLine(alignCommand);
-            sb.AppendLine($@"\includegraphics[width={widthStr}\textwidth]{{{displayPath}}}");
+            if (!string.IsNullOrEmpty(src))
+                sb.AppendLine($@"\includegraphics[width={widthStr}\textwidth]{{{displayPath}}}");
+            else
+                sb.AppendLine(@"% [figure placeholder — no image uploaded]");
             if (!string.IsNullOrEmpty(caption))
             {
                 sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");

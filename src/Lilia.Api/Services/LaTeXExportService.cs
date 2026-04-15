@@ -492,17 +492,24 @@ public class LaTeXExportService : ILaTeXExportService
 
     private string RenderFigure(JsonElement content)
     {
-        var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "placeholder" : "placeholder";
+        var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
 
-        var filename = ExtractImageFilename(src);
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{fig:{label}}}" : "";
 
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{figure}[H]");
         sb.AppendLine(@"\centering");
-        sb.AppendLine($@"\includegraphics[width=0.8\textwidth]{{figures/{filename}}}");
+        if (!string.IsNullOrEmpty(src))
+        {
+            var filename = ExtractImageFilename(src);
+            sb.AppendLine($@"\includegraphics[width=0.8\textwidth]{{figures/{filename}}}");
+        }
+        else
+        {
+            sb.AppendLine(@"% [figure placeholder — no image uploaded]");
+        }
         if (!string.IsNullOrEmpty(caption))
             sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
         else if (!string.IsNullOrEmpty(labelPart))
