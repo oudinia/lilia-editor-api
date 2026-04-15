@@ -555,6 +555,32 @@ using (var scope = app.Services.CreateScope())
     await SystemSnippetSeeder.SeedAsync(dbContext);
 }
 
+// Startup validation: warn loudly if PDF provider is mis-configured
+{
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    var cfgPdfProvider = app.Configuration["PdfParser:Provider"] ?? "mineru";
+    if (cfgPdfProvider == "mathpix")
+    {
+        var appId  = app.Configuration["Mathpix:AppId"];
+        var appKey = app.Configuration["Mathpix:AppKey"];
+        if (string.IsNullOrWhiteSpace(appId) || string.IsNullOrWhiteSpace(appKey))
+        {
+            startupLogger.LogCritical(
+                "CONFIGURATION ERROR: PdfParser:Provider is 'mathpix' but Mathpix:AppId or Mathpix:AppKey " +
+                "are not set. PDF import will fail at runtime. " +
+                "Set MATHPIX__APPID and MATHPIX__APPKEY environment variables.");
+        }
+        else
+        {
+            startupLogger.LogInformation("[Startup] PDF provider: Mathpix (credentials configured)");
+        }
+    }
+    else
+    {
+        startupLogger.LogInformation("[Startup] PDF provider: {Provider}", cfgPdfProvider);
+    }
+}
+
 app.Run();
 
 public partial class Program { }
