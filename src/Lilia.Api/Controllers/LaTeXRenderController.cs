@@ -1,4 +1,5 @@
 using Lilia.Api.Services;
+using Lilia.Core.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -184,7 +185,8 @@ public class LaTeXRenderController : ControllerBase
     [HttpPost("validate")]
     public async Task<IActionResult> ValidateLatex([FromBody] ValidateLatexRequest request)
     {
-        var (valid, error, warnings) = await _latexService.ValidateAsync(request.Latex);
+        var result = await _latexService.ValidateAsync(request.Latex);
+        var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
 
         if (!valid)
         {
@@ -193,10 +195,13 @@ public class LaTeXRenderController : ControllerBase
             {
                 error,
                 warnings,
+                errorCategory = result.ParsedError?.Category,
+                errorToken = result.ParsedError?.Token,
                 latexPreview = request.Latex.Length > 500 ? request.Latex[..500] : request.Latex
             });
         }
 
+        PersistCompilationEvent(result, "validate");
         return Ok(new { valid, error, warnings });
     }
 
@@ -212,7 +217,8 @@ public class LaTeXRenderController : ControllerBase
         var latex = _renderService.RenderBlockToLatex(block);
         var fullLatex = LaTeXPreamble.WrapForValidation(latex);
 
-        var (valid, error, warnings) = await _latexService.ValidateAsync(fullLatex);
+        var result = await _latexService.ValidateAsync(fullLatex);
+        var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
 
         if (!valid)
         {
@@ -221,11 +227,15 @@ public class LaTeXRenderController : ControllerBase
             {
                 error,
                 warnings,
+                errorCategory = result.ParsedError?.Category,
+                errorToken = result.ParsedError?.Token,
                 blockType = block.Type,
                 latexPreview = latex.Length > 500 ? latex[..500] : latex
             });
         }
 
+        PersistCompilationEvent(result, "validate_block",
+            documentId: block.DocumentId, blockId: blockId, blockType: block.Type);
         return Ok(new { valid, error, warnings, blockId });
     }
 
@@ -268,7 +278,8 @@ public class LaTeXRenderController : ControllerBase
             }
 
             var latex = await _renderService.RenderToLatexAsync(documentId);
-            var (valid, error, warnings) = await _latexService.ValidateAsync(latex);
+            var result = await _latexService.ValidateAsync(latex);
+            var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
 
             // Merge bibliography warnings with LaTeX warnings
             var allWarnings = bibWarnings.Concat(warnings).Distinct().ToArray();
@@ -281,11 +292,15 @@ public class LaTeXRenderController : ControllerBase
                 {
                     valid,
                     error,
+                    errorCategory = result.ParsedError?.Category,
+                    errorToken = result.ParsedError?.Token,
                     warnings = allWarnings,
                     blockCount = doc?.Blocks.Count,
                     bibWarnings = bibWarnings.Count > 0 ? bibWarnings : null
                 });
             }
+
+            PersistCompilationEvent(result, "validate_document", documentId: documentId);
 
             // Persist validation summary to document so it appears in the list view badge
             if (doc != null)
@@ -308,6 +323,51 @@ public class LaTeXRenderController : ControllerBase
     {
         var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
         return await db.Blocks.FindAsync(blockId);
+    }
+
+    /// <summary>
+    /// Persists a LaTeXCompilationEvent row for telemetry / error frequency analysis.
+    /// Fire-and-forget — never throws.
+    /// </summary>
+    private void PersistCompilationEvent(
+        LatexValidationResult result,
+        string eventType,
+        Guid? documentId = null,
+        Guid? blockId = null,
+        string? blockType = null)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value;
+
+                var evt = new LaTeXCompilationEvent
+                {
+                    DocumentId = documentId,
+                    BlockId = blockId,
+                    BlockType = blockType,
+                    EventType = eventType,
+                    Success = result.Valid,
+                    ErrorRaw = result.ParsedError?.ErrorRaw,
+                    ErrorCategory = result.ParsedError?.Category,
+                    ErrorToken = result.ParsedError?.Token,
+                    ErrorLine = result.ParsedError?.LineNumber,
+                    WarningCount = result.Warnings.Length,
+                    DurationMs = result.DurationMs,
+                    UserId = userId,
+                };
+
+                db.LaTeXCompilationEvents.Add(evt);
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist LaTeXCompilationEvent (non-critical)");
+            }
+        });
     }
 }
 

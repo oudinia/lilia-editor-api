@@ -11,8 +11,19 @@ public interface ILaTeXRenderService
     Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30);
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
     Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
-    Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex);
+    Task<LatexValidationResult> ValidateAsync(string latex);
 }
+
+/// <summary>
+/// Full result of a LaTeX validation run — includes the parsed error for persistence/telemetry.
+/// </summary>
+public record LatexValidationResult(
+    bool Valid,
+    string? Error,
+    string[] Warnings,
+    LaTeXErrorParser.ParsedLatexError? ParsedError,
+    int DurationMs
+);
 
 public class LaTeXRenderService : ILaTeXRenderService
 {
@@ -176,14 +187,14 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
-    public async Task<(bool Valid, string? Error, string[] Warnings)> ValidateAsync(string latex)
+    public async Task<LatexValidationResult> ValidateAsync(string latex)
     {
         // Check cache first (no semaphore needed for read)
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(latex)));
         if (_validationCache.TryGetValue(hash, out var cached))
         {
             _logger.LogDebug("Validation cache hit for hash {Hash}", hash[..12]);
-            return (cached.Valid, cached.Error, cached.Warnings);
+            return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0);
         }
 
         await _semaphore.WaitAsync();
@@ -191,7 +202,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
             if (_validationCache.TryGetValue(hash, out cached))
-                return (cached.Valid, cached.Error, cached.Warnings);
+                return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0);
 
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
             Directory.CreateDirectory(tmpDir);
@@ -203,18 +214,16 @@ public class LaTeXRenderService : ILaTeXRenderService
                 await File.WriteAllTextAsync(texPath, latex);
 
                 var args = BuildPdflatexArgs(texPath, tmpDir);
-                var (exitCode, _, stderr) = await RunProcessAsync(
-                    "pdflatex",
-                    args,
-                    tmpDir,
-                    15
-                );
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var (exitCode, _, stderr) = await RunProcessAsync("pdflatex", args, tmpDir, 15);
+                sw.Stop();
+                var durationMs = (int)sw.ElapsedMilliseconds;
 
                 var logContent = File.Exists(logPath)
                     ? await File.ReadAllTextAsync(logPath)
                     : "";
 
-                (bool Valid, string? Error, string[] Warnings) result;
+                LatexValidationResult result;
 
                 if (exitCode != 0)
                 {
@@ -227,7 +236,17 @@ public class LaTeXRenderService : ILaTeXRenderService
                         ? string.Join("\n", errorLines)
                         : stderr.Length > 500 ? stderr[..500] : stderr;
 
-                    result = (false, $"LaTeX compilation failed:\n{errorMsg}", []);
+                    // Parse into structured error for telemetry
+                    var rawForParsing = logContent.Length > 0 ? logContent : stderr;
+                    var parsed = LaTeXErrorParser.Parse(rawForParsing);
+
+                    result = new LatexValidationResult(
+                        false,
+                        $"LaTeX compilation failed:\n{errorMsg}",
+                        [],
+                        parsed,
+                        durationMs
+                    );
                 }
                 else
                 {
@@ -238,7 +257,6 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Where(l => !string.IsNullOrWhiteSpace(l))
                         .ToArray();
 
-                    // Suppress cosmetic warnings that users can't act on
                     var actionableWarnings = allWarnings
                         .Where(w => !w.Contains("Overfull \\hbox"))
                         .Where(w => !w.Contains("Underfull \\hbox"))
@@ -250,11 +268,11 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Take(10)
                         .ToArray();
 
-                    result = (true, null, actionableWarnings);
+                    result = new LatexValidationResult(true, null, actionableWarnings, null, durationMs);
                 }
 
                 // Cache the result
-                CacheValidationResult(hash, result);
+                CacheValidationResult(hash, (result.Valid, result.Error, result.Warnings));
 
                 return result;
             }

@@ -54,6 +54,9 @@ public class LiliaDbContext : DbContext
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // LaTeX compilation telemetry
+    public DbSet<LaTeXCompilationEvent> LaTeXCompilationEvents => Set<LaTeXCompilationEvent>();
+
     // Notifications
     public DbSet<Notification> Notifications => Set<Notification>();
 
