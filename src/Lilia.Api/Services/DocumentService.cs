@@ -134,7 +134,10 @@ public class DocumentService : IDocumentService
                     dl.Label.Color,
                     dl.Label.CreatedAt
                 )).ToList(),
-                role
+                role,
+                d.ValidationErrorCount,
+                d.ValidationWarningCount,
+                d.ValidationCheckedAt
             );
         }).ToList();
 

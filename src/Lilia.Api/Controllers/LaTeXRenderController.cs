@@ -287,6 +287,15 @@ public class LaTeXRenderController : ControllerBase
                 });
             }
 
+            // Persist validation summary to document so it appears in the list view badge
+            if (doc != null)
+            {
+                doc.ValidationErrorCount = valid ? 0 : 1;
+                doc.ValidationWarningCount = allWarnings.Length;
+                doc.ValidationCheckedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+
             return Ok(new { valid, error, warnings = allWarnings });
         }
         catch (Exception ex)

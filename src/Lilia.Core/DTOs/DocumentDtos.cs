@@ -27,7 +27,10 @@ public record DocumentListDto(
     int SectionCount,
     List<OutlineItemDto> Outline,
     List<LabelDto> Labels,
-    string? Role = null
+    string? Role = null,
+    int ValidationErrorCount = 0,
+    int ValidationWarningCount = 0,
+    DateTime? ValidationCheckedAt = null
 );
 
 public record OutlineItemDto(

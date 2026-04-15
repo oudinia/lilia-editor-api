@@ -50,6 +50,11 @@ public class Document
     public string? HelpSlug { get; set; }
     public string? SearchText { get; set; }
 
+    // Validation summary — populated by the validate endpoint, shown as badge in the document list
+    public int ValidationErrorCount { get; set; }
+    public int ValidationWarningCount { get; set; }
+    public DateTime? ValidationCheckedAt { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }

@@ -555,6 +555,13 @@ app.MapGet("/health", async (LiliaDbContext db) =>
     }
 });
 
+// Apply pending EF Core migrations on startup (safe for single-instance DO deployment)
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
+
 // Seed system templates
 using (var scope = app.Services.CreateScope())
 {
