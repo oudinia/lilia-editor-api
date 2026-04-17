@@ -16,19 +16,22 @@ public class LaTeXRenderController : ControllerBase
     private readonly ICompilationQueueService _compilationQueue;
     private readonly IAuditService _audit;
     private readonly ILogger<LaTeXRenderController> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public LaTeXRenderController(
         ILaTeXRenderService latexService,
         IRenderService renderService,
         ICompilationQueueService compilationQueue,
         IAuditService audit,
-        ILogger<LaTeXRenderController> logger)
+        ILogger<LaTeXRenderController> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _latexService = latexService;
         _renderService = renderService;
         _compilationQueue = compilationQueue;
         _audit = audit;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
@@ -336,13 +339,23 @@ public class LaTeXRenderController : ControllerBase
         Guid? blockId = null,
         string? blockType = null)
     {
+        // Capture values from request context before Task.Run — HttpContext
+        // is NOT safe to access from a background thread after the request ends.
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                  ?? User.FindFirst("sub")?.Value;
+
         _ = Task.Run(async () =>
         {
             try
             {
-                var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
-                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                          ?? User.FindFirst("sub")?.Value;
+                // Open a dedicated scope so we get a fresh DbContext that is
+                // not shared with the request scope. Using the request-scoped
+                // context here caused "A second operation was started on this
+                // context instance before a previous operation completed" because
+                // the fire-and-forget SaveChangesAsync raced with the main
+                // request's SaveChangesAsync in ValidateDocument.
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
 
                 var evt = new LaTeXCompilationEvent
                 {
