@@ -1630,10 +1630,20 @@ public class RenderService : IRenderService
                 return $"\x00CMD{commandRegions.Count - 1}\x00";
             });
 
-        // Step 2: Escape special LaTeX chars in the remaining text
+        // Step 2: Escape special LaTeX chars in the remaining text.
+        // After Step 1 all math regions are replaced with placeholders so
+        // the replacements below cannot accidentally touch math content.
         result = Regex.Replace(result, @"(?<!\\)([&%#])", @"\$1");
-        // Escape underscores NOT inside formatting markers
+        // Escape underscores NOT part of __underline__ markers
         result = Regex.Replace(result, @"(?<!_)_(?!_)", @"\_");
+        // ^ is only valid in math mode — escape to \textasciicircum{} in text
+        result = result.Replace("^", @"\textasciicircum{}");
+        // ~ produces a non-breaking space in LaTeX — escape to \textasciitilde{}
+        result = result.Replace("~", @"\textasciitilde{}");
+        // Escape any remaining literal $ that were not part of a $...$ math pair
+        // (e.g. currency "$100"). These arrive here as plain $ because the math
+        // protection in Step 1 only replaced matched pairs.
+        result = result.Replace("$", @"\$");
 
         // Step 3: Convert inline formatting markers to LaTeX commands
         // Bold: **text** → \textbf{text}
