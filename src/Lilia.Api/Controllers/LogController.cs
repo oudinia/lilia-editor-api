@@ -6,7 +6,7 @@ namespace Lilia.Api.Controllers;
 
 [ApiController]
 [Route("api/logs")]
-[Authorize]
+[AllowAnonymous]
 public class LogController : ControllerBase
 {
     private readonly ILogger<LogController> _logger;
