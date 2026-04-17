@@ -123,6 +123,23 @@ if (!string.IsNullOrEmpty(authAuthority))
                 NameClaimType = "name",
                 RoleClaimType = "roles"
             };
+
+            // SignalR cannot send Authorization headers over WebSocket / SSE.
+            // The client appends ?access_token=... to hub URLs instead.
+            // Extract it here so the JWT middleware can validate it normally.
+            options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+                    var path = context.HttpContext.Request.Path;
+                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                    {
+                        context.Token = accessToken;
+                    }
+                    return Task.CompletedTask;
+                }
+            };
         });
 }
 else
@@ -145,6 +162,17 @@ else
 
             options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
             {
+                // Extract SignalR token from query param (same as production path above)
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+                    var path = context.HttpContext.Request.Path;
+                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                    {
+                        context.Token = accessToken;
+                    }
+                    return Task.CompletedTask;
+                },
                 OnTokenValidated = context =>
                 {
                     if (context.SecurityToken is Microsoft.IdentityModel.JsonWebTokens.JsonWebToken jwt)

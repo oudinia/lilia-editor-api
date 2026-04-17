@@ -86,10 +86,19 @@ public class ExportController : ControllerBase
 
         _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId}", docId, userId);
 
-        var pdfBytes = await _documentExportService.ExportToPdfAsync(docId);
-
-        var sanitizedTitle = SanitizeFilename(document.Title);
-        return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
+        try
+        {
+            var pdfBytes = await _documentExportService.ExportToPdfAsync(docId);
+            var sanitizedTitle = SanitizeFilename(document.Title);
+            return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Export] PDF compilation failed for document {DocId}", docId);
+            // Return a JSON body so the frontend can display the error message
+            // (PdfPreview.tsx reads response.json().message)
+            return StatusCode(500, new { message = ex.Message, error = "PDF compilation failed" });
+        }
     }
 
     private string? GetUserId()
