@@ -330,14 +330,30 @@ public class LaTeXExportService : ILaTeXExportService
     // ── Package/preamble generation ────────────────────────────────────
 
     // Classes the DO App Platform container reliably provides. Anything outside
-    // this list (mnras, aastex, pnas, etc.) requires a .cls we don't ship, so
-    // we fall back to article and rely on shim commands.
+    // this list (mnras, aastex, pnas, IEEEtran, etc.) requires a .cls we don't
+    // ship, so we fall back to article and rely on shim commands.
     private static readonly HashSet<string> SafeDocumentClasses = new(StringComparer.OrdinalIgnoreCase)
     {
         "article", "report", "book", "letter", "minimal",
         "amsart", "amsbook", "amsproc",
-        "memoir", "IEEEtran", "revtex4", "revtex4-1", "revtex4-2",
+        "memoir",
         "scrartcl", "scrbook", "scrreprt"
+    };
+
+    // Packages our default preamble already loads. We must skip imported
+    // packages with these names to avoid LaTeX's "Option clash for package X"
+    // error (two \usepackage calls with different options). Our baseline wins.
+    private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "inputenc", "fontenc", "textcomp", "lmodern",
+        "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx",
+        "microtype", "setspace", "parskip",
+        "graphicx", "float", "caption", "subcaption", "xcolor",
+        "booktabs", "multirow", "tabularx", "longtable", "array",
+        "enumitem", "listings",
+        "algorithm", "algorithmic",
+        "tcolorbox", "hyperref", "cleveref", "csquotes",
+        "geometry", "babel"
     };
 
     /// <summary>
@@ -376,9 +392,10 @@ public class LaTeXExportService : ILaTeXExportService
     }
 
     /// <summary>
-    /// Emit `\usepackage{...}` lines for any packages captured from the
-    /// imported preamble. JSON shape: [{ "name": "...", "options": "..." }].
-    /// Gracefully degrades to no-op if parsing fails.
+    /// Emit `\usepackage{...}` lines for imported preamble packages that
+    /// aren't already in our default preamble. Wraps each in \IfFileExists so
+    /// a missing .sty on the container degrades to a no-op instead of aborting
+    /// compilation. JSON shape: [{ "name": "...", "options": "..." }].
     /// </summary>
     private static string BuildImportedPackageLines(Document doc)
     {
@@ -388,15 +405,19 @@ public class LaTeXExportService : ILaTeXExportService
             using var json = JsonDocument.Parse(doc.LatexPackages);
             if (json.RootElement.ValueKind != JsonValueKind.Array) return string.Empty;
             var sb = new StringBuilder();
-            sb.AppendLine("% Packages preserved from imported preamble");
+            var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            sb.AppendLine("% Packages preserved from imported preamble (IfFileExists-wrapped)");
             foreach (var pkg in json.RootElement.EnumerateArray())
             {
                 var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
                 if (string.IsNullOrWhiteSpace(name)) continue;
+                if (DefaultPreamblePackages.Contains(name)) continue; // avoid option clash
+                if (!emitted.Add(name)) continue;
                 var opts = pkg.TryGetProperty("options", out var o) ? o.GetString() : null;
-                sb.AppendLine(string.IsNullOrWhiteSpace(opts)
+                var load = string.IsNullOrWhiteSpace(opts)
                     ? $"\\usepackage{{{name}}}"
-                    : $"\\usepackage[{opts}]{{{name}}}");
+                    : $"\\usepackage[{opts}]{{{name}}}";
+                sb.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
             }
             return sb.ToString();
         }

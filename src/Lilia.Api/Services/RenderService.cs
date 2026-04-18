@@ -767,8 +767,21 @@ public partial class RenderService : IRenderService
     {
         "article", "report", "book", "letter", "minimal",
         "amsart", "amsbook", "amsproc",
-        "memoir", "IEEEtran", "revtex4", "revtex4-1", "revtex4-2",
+        "memoir",
         "scrartcl", "scrbook", "scrreprt"
+    };
+
+    private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "inputenc", "fontenc", "textcomp", "lmodern",
+        "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx",
+        "microtype", "setspace", "parskip",
+        "graphicx", "float", "caption", "subcaption", "xcolor",
+        "booktabs", "multirow", "tabularx", "longtable", "array",
+        "enumitem", "listings",
+        "algorithm", "algorithmic",
+        "tcolorbox", "hyperref", "cleveref", "csquotes",
+        "geometry", "babel"
     };
 
     private static string BuildDocumentClassDirectiveFromDoc(Document doc)
@@ -803,15 +816,19 @@ public partial class RenderService : IRenderService
             using var json = JsonDocument.Parse(doc.LatexPackages);
             if (json.RootElement.ValueKind != JsonValueKind.Array) return string.Empty;
             var sb = new StringBuilder();
-            sb.AppendLine("% Packages preserved from imported preamble");
+            var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            sb.AppendLine("% Packages preserved from imported preamble (IfFileExists-wrapped)");
             foreach (var pkg in json.RootElement.EnumerateArray())
             {
                 var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
                 if (string.IsNullOrWhiteSpace(name)) continue;
+                if (DefaultPreamblePackages.Contains(name)) continue;
+                if (!emitted.Add(name)) continue;
                 var o = pkg.TryGetProperty("options", out var opel) ? opel.GetString() : null;
-                sb.AppendLine(string.IsNullOrWhiteSpace(o)
+                var load = string.IsNullOrWhiteSpace(o)
                     ? $"\\usepackage{{{name}}}"
-                    : $"\\usepackage[{o}]{{{name}}}");
+                    : $"\\usepackage[{o}]{{{name}}}";
+                sb.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
             }
             return sb.ToString();
         }
