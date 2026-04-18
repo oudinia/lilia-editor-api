@@ -56,6 +56,25 @@ public class LatexParser : ILatexParser
     };
 
     /// <summary>
+    /// Environments that add styling only (line spacing, alignment, font size)
+    /// — they don't introduce structure. When we encounter them we want to
+    /// drop the wrapper and parse the body as if the wrapper wasn't there,
+    /// so \section inside \begin{spacing} still becomes a heading block.
+    ///
+    /// Without this, the catch-all unknown-env rule slurps the entire body
+    /// into a single embed block — e.g. SPIE's \begin{spacing}{2}...
+    /// \end{spacing} wrapped the whole paper in one block.
+    /// </summary>
+    private static readonly HashSet<string> PassThroughEnvironments = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "spacing", "singlespace", "doublespace", "onehalfspace",
+        "center", "flushleft", "flushright", "raggedright", "raggedleft",
+        "small", "footnotesize", "scriptsize", "tiny",
+        "large", "Large", "LARGE", "huge", "Huge",
+        "normalsize",
+    };
+
+    /// <summary>
     /// Match a LaTeX command of the form <c>\name{...}</c> with balanced braces.
     /// Returns the inner content and the full matched span (start..end exclusive).
     /// </summary>
@@ -632,6 +651,23 @@ public class LatexParser : ILatexParser
             var quoteMatch = Regex.Match(remaining, @"\\begin\{(quote|quotation|verse)\}([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
             if (quoteMatch.Success)
                 matches.Add((quoteMatch, "blockquote"));
+
+            // Pass-through environments (spacing, center, flushleft, size/weight).
+            // They add styling only, no structure — drop the wrapper and splice
+            // the body back into the stream so \section inside \begin{spacing}
+            // still becomes a heading block instead of being slurped into embed.
+            var passThroughMatch = Regex.Match(
+                remaining,
+                @"\\begin\{([A-Za-z]+)\}(?:\{[^}]*\})?(?:\[[^\]]*\])?([\s\S]*?)\\end\{\1\}",
+                RegexOptions.Singleline);
+            if (passThroughMatch.Success && PassThroughEnvironments.Contains(passThroughMatch.Groups[1].Value))
+            {
+                var before = remaining[..passThroughMatch.Index];
+                var body = passThroughMatch.Groups[2].Value;
+                var after = remaining[(passThroughMatch.Index + passThroughMatch.Length)..];
+                remaining = before + body + after;
+                continue; // restart the match search against the rewritten stream
+            }
 
             // Catch-all: any \begin{X}…\end{X} not handled above (P1-6)
             var unknownEnvMatch = Regex.Match(remaining, @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
