@@ -356,12 +356,13 @@ public class LaTeXExportService : ILaTeXExportService
         "algorithm", "algorithmic",
         "tcolorbox", "hyperref", "cleveref", "csquotes",
         "geometry", "babel",
-        // Typeface / math-font packages that redefine commands owned by amsmath
-        // (\iint, \iiint, etc.). Letting any of these load alongside our
-        // defaults triggers "already defined" aborts.
+        // Typeface / math-font / symbol packages that redefine commands
+        // owned by amsmath (\iint, \iiint, etc.). Letting any of these load
+        // alongside our defaults triggers "already defined" aborts.
         "newtxtext", "newtxmath", "mathptmx", "txfonts", "pxfonts",
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
-        "charter", "cmbright", "kpfonts", "eulervm"
+        "charter", "cmbright", "kpfonts", "eulervm",
+        "wasysym", "mathabx", "stix", "stix2", "times"
     };
 
     /// <summary>
@@ -627,7 +628,11 @@ public class LaTeXExportService : ILaTeXExportService
         if (!string.IsNullOrEmpty(src))
         {
             var filename = ExtractImageFilename(src);
-            sb.AppendLine($@"\includegraphics[width=0.8\textwidth]{{figures/{filename}}}");
+            // Wrap in IfFileExists so a missing asset renders as a labelled
+            // placeholder frame instead of aborting compilation with pdftex.def.
+            sb.AppendLine($@"\IfFileExists{{figures/{filename}}}{{%");
+            sb.AppendLine($@"  \includegraphics[width=0.8\textwidth]{{figures/{filename}}}%");
+            sb.AppendLine($@"}}{{\fbox{{\parbox{{0.7\textwidth}}{{\centering\small\textit{{[Missing figure: {EscapeLatex(filename)}]}}}}}}}}");
         }
         else
         {

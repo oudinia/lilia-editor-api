@@ -782,10 +782,11 @@ public partial class RenderService : IRenderService
         "algorithm", "algorithmic",
         "tcolorbox", "hyperref", "cleveref", "csquotes",
         "geometry", "babel",
-        // Typeface / math-font packages that conflict with amsmath (\iint etc.).
+        // Typeface / math-font / symbol packages that conflict with amsmath.
         "newtxtext", "newtxmath", "mathptmx", "txfonts", "pxfonts",
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
-        "charter", "cmbright", "kpfonts", "eulervm"
+        "charter", "cmbright", "kpfonts", "eulervm",
+        "wasysym", "mathabx", "stix", "stix2", "times"
     };
 
     private static string BuildDocumentClassDirectiveFromDoc(Document doc)
