@@ -781,7 +781,11 @@ public partial class RenderService : IRenderService
         "enumitem", "listings",
         "algorithm", "algorithmic",
         "tcolorbox", "hyperref", "cleveref", "csquotes",
-        "geometry", "babel"
+        "geometry", "babel",
+        // Typeface / math-font packages that conflict with amsmath (\iint etc.).
+        "newtxtext", "newtxmath", "mathptmx", "txfonts", "pxfonts",
+        "mathpazo", "fourier", "libertine", "palatino", "utopia",
+        "charter", "cmbright", "kpfonts", "eulervm"
     };
 
     private static string BuildDocumentClassDirectiveFromDoc(Document doc)

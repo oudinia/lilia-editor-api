@@ -340,11 +340,13 @@ public class LaTeXExportService : ILaTeXExportService
         "scrartcl", "scrbook", "scrreprt"
     };
 
-    // Packages our default preamble already loads. We must skip imported
-    // packages with these names to avoid LaTeX's "Option clash for package X"
-    // error (two \usepackage calls with different options). Our baseline wins.
+    // Packages our default preamble already loads OR packages that conflict
+    // with it (typeface-swappers redefining math commands that amsmath owns).
+    // We must skip imported packages with these names to avoid LaTeX's
+    // "Option clash for package X" or "Command \iint already defined" errors.
     private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Loaded by our default preamble
         "inputenc", "fontenc", "textcomp", "lmodern",
         "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx",
         "microtype", "setspace", "parskip",
@@ -353,7 +355,13 @@ public class LaTeXExportService : ILaTeXExportService
         "enumitem", "listings",
         "algorithm", "algorithmic",
         "tcolorbox", "hyperref", "cleveref", "csquotes",
-        "geometry", "babel"
+        "geometry", "babel",
+        // Typeface / math-font packages that redefine commands owned by amsmath
+        // (\iint, \iiint, etc.). Letting any of these load alongside our
+        // defaults triggers "already defined" aborts.
+        "newtxtext", "newtxmath", "mathptmx", "txfonts", "pxfonts",
+        "mathpazo", "fourier", "libertine", "palatino", "utopia",
+        "charter", "cmbright", "kpfonts", "eulervm"
     };
 
     /// <summary>
