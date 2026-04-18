@@ -189,6 +189,22 @@ public static class LaTeXPreamble
 ";
 
     /// <summary>
+    /// Shims for beamer presentations: \\usetheme, \\usecolortheme, \\usefonttheme
+    /// wrapped in \\IfFileExists so institution-specific themes (sintef, wildcat,
+    /// Ufg, DEXPI) degrade to the default theme when their .sty isn't on the
+    /// TexLive install. Also safe no-ops for \\setbeamercolor / \\setbeamertemplate.
+    /// </summary>
+    public const string BeamerShims = @"% Shims for beamer theme loads that may not be on the server
+\makeatletter
+\providecommand{\liliaSafeUseTheme}[1]{\IfFileExists{beamertheme#1.sty}{\usetheme{#1}}{\usetheme{default}}}
+\providecommand{\liliaSafeUseColorTheme}[1]{\IfFileExists{beamercolortheme#1.sty}{\usecolortheme{#1}}{}}
+\providecommand{\liliaSafeUseFontTheme}[1]{\IfFileExists{beamerfonttheme#1.sty}{\usefonttheme{#1}}{}}
+\providecommand{\liliaSafeUseInnerTheme}[1]{\IfFileExists{beamerinnertheme#1.sty}{\useinnertheme{#1}}{}}
+\providecommand{\liliaSafeUseOuterTheme}[1]{\IfFileExists{beamerouterthemeH#1.sty}{\useoutertheme{#1}}{}}
+\makeatother
+";
+
+    /// <summary>
     /// Shims for CV-class-specific commands (moderncv, altacv, simplehipstercv,
     /// twentysecondcv, curve). Renders as readable text so the CV's content
     /// survives the compile even when we can't honour the custom class.

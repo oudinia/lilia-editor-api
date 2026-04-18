@@ -337,7 +337,11 @@ public class LaTeXExportService : ILaTeXExportService
         "article", "report", "book", "letter", "minimal",
         "amsart", "amsbook", "amsproc",
         "memoir",
-        "scrartcl", "scrbook", "scrreprt"
+        "scrartcl", "scrbook", "scrreprt",
+        // Presentation classes — beamer and beamerposter ship with texlive-full.
+        // Keeping the class means \\begin{frame} compiles as a real slide instead
+        // of being shimmed into article text.
+        "beamer", "beamerposter"
     };
 
     // Packages our default preamble already loads OR packages that conflict
@@ -509,6 +513,7 @@ public class LaTeXExportService : ILaTeXExportService
         // (\begin{keywords}, \affiliation, etc.) don't abort compilation.
         sb.Append(LaTeXPreamble.JournalShims);
         sb.Append(LaTeXPreamble.CvShims);
+        sb.Append(LaTeXPreamble.BeamerShims);
         sb.AppendLine();
 
         // Graphics path for figures

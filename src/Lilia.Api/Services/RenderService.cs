@@ -799,7 +799,8 @@ public partial class RenderService : IRenderService
         "article", "report", "book", "letter", "minimal",
         "amsart", "amsbook", "amsproc",
         "memoir",
-        "scrartcl", "scrbook", "scrreprt"
+        "scrartcl", "scrbook", "scrreprt",
+        "beamer", "beamerposter"
     };
 
     private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
@@ -928,6 +929,7 @@ public partial class RenderService : IRenderService
         // Journal-class shims — safe no-ops when commands already exist
         latex.AppendLine(LaTeXPreamble.JournalShims);
         latex.AppendLine(LaTeXPreamble.CvShims);
+        latex.AppendLine(LaTeXPreamble.BeamerShims);
 
         // Multi-column support
         if (doc.Columns > 1)
