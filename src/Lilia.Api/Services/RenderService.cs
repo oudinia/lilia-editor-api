@@ -763,9 +763,18 @@ public partial class RenderService : IRenderService
 
     // Mirror of LaTeXExportService.BuildDocumentClassDirective but reads only
     // from the Document — no LaTeXExportOptions available in this code path.
+    private static readonly HashSet<string> SafeDocumentClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "article", "report", "book", "letter", "minimal",
+        "amsart", "amsbook", "amsproc",
+        "memoir", "IEEEtran", "revtex4", "revtex4-1", "revtex4-2",
+        "scrartcl", "scrbook", "scrreprt"
+    };
+
     private static string BuildDocumentClassDirectiveFromDoc(Document doc)
     {
-        var className = !string.IsNullOrWhiteSpace(doc.LatexDocumentClass) ? doc.LatexDocumentClass.Trim() : "article";
+        var stored = doc.LatexDocumentClass?.Trim();
+        var className = !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored) ? stored : "article";
         var opts = new List<string>();
         opts.Add($"{doc.FontSize}pt");
         opts.Add(string.Equals(doc.PaperSize, "letter", StringComparison.OrdinalIgnoreCase) ? "letterpaper" : "a4paper");
@@ -834,6 +843,8 @@ public partial class RenderService : IRenderService
             latex.AppendLine(importedPkgs);
         }
         latex.AppendLine(LaTeXPreamble.Packages);
+        // Journal-class shims — safe no-ops when commands already exist
+        latex.AppendLine(LaTeXPreamble.JournalShims);
 
         // Multi-column support
         if (doc.Columns > 1)

@@ -185,6 +185,35 @@ public static class LaTeXPreamble
 ";
 
     /// <summary>
+    /// Shims for journal-class-specific commands and environments so documents
+    /// imported from mnras / pnas / frontiers / etc. can still compile under
+    /// the fallback `article` class. Each shim is a no-op or minimal rendering
+    /// that won't crash the compiler.
+    /// </summary>
+    public const string JournalShims = @"% Shims for common journal-class commands (defined only if missing)
+\makeatletter
+\providecommand{\affiliation}[1]{}
+\providecommand{\affil}[2][]{#2}
+\providecommand{\orcidlink}[1]{}
+\providecommand{\orcid}[1]{}
+\providecommand{\keywords}[1]{\paragraph*{Keywords:} #1}
+\providecommand{\email}[1]{\texttt{#1}}
+\providecommand{\corresp}[1]{#1}
+\providecommand{\address}[1]{#1}
+\providecommand{\inst}[1]{#1}
+\providecommand{\institute}[1]{#1}
+\providecommand{\titlerunning}[1]{}
+\providecommand{\authorrunning}[1]{}
+\providecommand{\offprints}[1]{}
+\providecommand{\thanks}[1]{\footnote{#1}}
+\@ifundefined{keywords}{\newenvironment{keywords}{\paragraph*{Keywords:}}{}}{}
+\@ifundefined{affiliations}{\newenvironment{affiliations}{}{}}{}
+\@ifundefined{methods}{\newenvironment{methods}{\section*{Methods}}{}}{}
+\@ifundefined{highlights}{\newenvironment{highlights}{\paragraph*{Highlights}}{}}{}
+\makeatother
+";
+
+    /// <summary>
     /// Wraps a LaTeX fragment in a minimal document for per-block validation.
     /// </summary>
     public static string WrapForValidation(string latexFragment)

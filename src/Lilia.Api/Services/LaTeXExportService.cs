@@ -329,6 +329,17 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── Package/preamble generation ────────────────────────────────────
 
+    // Classes the DO App Platform container reliably provides. Anything outside
+    // this list (mnras, aastex, pnas, etc.) requires a .cls we don't ship, so
+    // we fall back to article and rely on shim commands.
+    private static readonly HashSet<string> SafeDocumentClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "article", "report", "book", "letter", "minimal",
+        "amsart", "amsbook", "amsproc",
+        "memoir", "IEEEtran", "revtex4", "revtex4-1", "revtex4-2",
+        "scrartcl", "scrbook", "scrreprt"
+    };
+
     /// <summary>
     /// Build the `\documentclass[...]{...}` directive honoring the stored
     /// imported preamble (LatexDocumentClass/LatexDocumentClassOptions) and
@@ -336,8 +347,9 @@ public class LaTeXExportService : ILaTeXExportService
     /// </summary>
     private static string BuildDocumentClassDirective(Document doc, LaTeXExportOptions options)
     {
-        var className = !string.IsNullOrWhiteSpace(doc.LatexDocumentClass)
-            ? doc.LatexDocumentClass.Trim()
+        var storedClass = doc.LatexDocumentClass?.Trim();
+        var className = !string.IsNullOrWhiteSpace(storedClass) && SafeDocumentClasses.Contains(storedClass)
+            ? storedClass
             : options.DocumentClass;
 
         var classOpts = new List<string>();
@@ -417,6 +429,11 @@ public class LaTeXExportService : ILaTeXExportService
 
         // Use the shared preamble — same 31 packages as validation
         sb.Append(LaTeXPreamble.Packages);
+        sb.AppendLine();
+
+        // Shims so journal-class-specific commands in imported bodies
+        // (\begin{keywords}, \affiliation, etc.) don't abort compilation.
+        sb.Append(LaTeXPreamble.JournalShims);
         sb.AppendLine();
 
         // Graphics path for figures
