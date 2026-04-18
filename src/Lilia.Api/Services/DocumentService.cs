@@ -285,6 +285,7 @@ public class DocumentService : IDocumentService
         if (dto.LatexDocumentClass != null) document.LatexDocumentClass = dto.LatexDocumentClass;
         if (dto.LatexDocumentClassOptions != null) document.LatexDocumentClassOptions = dto.LatexDocumentClassOptions;
         if (dto.LatexPackages != null) document.LatexPackages = dto.LatexPackages;
+        if (dto.BalancedColumns.HasValue) document.BalancedColumns = dto.BalancedColumns.Value;
         if (dto.MarginTop != null) document.MarginTop = dto.MarginTop;
         if (dto.MarginBottom != null) document.MarginBottom = dto.MarginBottom;
         if (dto.MarginLeft != null) document.MarginLeft = dto.MarginLeft;
@@ -683,6 +684,7 @@ public class DocumentService : IDocumentService
             d.LatexDocumentClass,
             d.LatexDocumentClassOptions,
             d.LatexPackages,
+            d.BalancedColumns,
             d.Blocks.Select(b => new BlockDto(
                 b.Id,
                 b.DocumentId,

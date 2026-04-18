@@ -68,6 +68,7 @@ public record DocumentDto(
     string? LatexDocumentClass,
     string? LatexDocumentClassOptions,
     string? LatexPackages,
+    bool BalancedColumns,
     List<BlockDto> Blocks,
     List<BibliographyEntryDto> Bibliography,
     List<LabelDto> Labels
@@ -95,6 +96,7 @@ public record UpdateDocumentDto(
     string? LatexDocumentClass,
     string? LatexDocumentClassOptions,
     string? LatexPackages,
+    bool? BalancedColumns,
     string? MarginTop,
     string? MarginBottom,
     string? MarginLeft,

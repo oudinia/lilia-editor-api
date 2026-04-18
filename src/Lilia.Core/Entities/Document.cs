@@ -62,6 +62,10 @@ public class Document
     public string? LatexDocumentClassOptions { get; set; }
     public string? LatexPackages { get; set; }
 
+    /// Multi-column balancing — maps to multicol's auto-balance behaviour in
+    /// LaTeX, w:cols w:equalWidth in DOCX, and column-fill:balance in HTML.
+    public bool BalancedColumns { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }
