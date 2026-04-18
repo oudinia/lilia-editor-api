@@ -75,9 +75,12 @@ public static class LaTeXPreamble
 \usepackage{ulem}
 \normalem
 
-% Links & references (hyperref before cleveref)
+% Links & references (hyperref before cleveref).
+% \PassOptionsToPackage + plain \usepackage avoids "Option clash for hyperref"
+% when an imported package (orcidlink, hyperxmp, etc.) pre-loaded hyperref.
+\PassOptionsToPackage{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}{hyperref}
 \usepackage{url}
-\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
 ";
 
@@ -149,8 +152,9 @@ public static class LaTeXPreamble
 \normalem
 
 % Links & references
+\PassOptionsToPackage{colorlinks=true}{hyperref}
 \usepackage{url}
-\usepackage[colorlinks=true]{hyperref}
+\usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
 ";
 
