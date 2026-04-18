@@ -817,7 +817,8 @@ public partial class RenderService : IRenderService
         "newtxtext", "newtxmath", "mathptmx", "txfonts", "pxfonts",
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
         "charter", "cmbright", "kpfonts", "eulervm",
-        "wasysym", "mathabx", "stix", "stix2", "times"
+        "wasysym", "mathabx", "stix", "stix2", "times",
+        "fontspec", "unicode-math", "polyglossia"
     };
 
     private static string BuildDocumentClassDirectiveFromDoc(Document doc)

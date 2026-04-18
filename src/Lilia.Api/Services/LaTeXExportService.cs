@@ -362,7 +362,10 @@ public class LaTeXExportService : ILaTeXExportService
         "newtxtext", "newtxmath", "mathptmx", "txfonts", "pxfonts",
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
         "charter", "cmbright", "kpfonts", "eulervm",
-        "wasysym", "mathabx", "stix", "stix2", "times"
+        "wasysym", "mathabx", "stix", "stix2", "times",
+        // XeTeX / LuaTeX-only font loaders — our pdflatex container can't
+        // use them. Load lmodern-based defaults instead.
+        "fontspec", "unicode-math", "polyglossia"
     };
 
     /// <summary>
