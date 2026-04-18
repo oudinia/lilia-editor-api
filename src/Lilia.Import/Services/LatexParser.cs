@@ -881,17 +881,21 @@ public class LatexParser : ILatexParser
                         var lblMatch = Regex.Match(algoBody, @"\\label\{([^}]+)\}");
                         var algorithmicMatch = Regex.Match(
                             algoBody,
-                            @"\\begin\{algorithmic\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{algorithmic\}",
+                            @"\\begin\{algorithmic\}(\[[^\]]*\])?([\s\S]*?)\\end\{algorithmic\}",
                             RegexOptions.Singleline);
                         var code = algorithmicMatch.Success
-                            ? algorithmicMatch.Groups[1].Value.Trim()
+                            ? algorithmicMatch.Groups[2].Value.Trim()
                             : algoBody.Trim();
+                        var lineNumbers = algorithmicMatch.Success
+                            && algorithmicMatch.Groups[1].Value.Contains("1", StringComparison.Ordinal);
                         document.Elements.Add(new ImportAlgorithm
                         {
                             Order = elementOrder++,
                             Caption = capMatch.Success ? capMatch.Groups[1].Value.Trim() : null,
                             Label = lblMatch.Success ? lblMatch.Groups[1].Value.Trim() : null,
                             Code = code,
+                            Lines = ParseAlgorithmicLines(code),
+                            LineNumbers = lineNumbers,
                         });
                     }
                     break;
@@ -1034,6 +1038,61 @@ public class LatexParser : ILatexParser
         }
 
         return spans;
+    }
+
+    /// <summary>
+    /// Parse a flat list of `algorithmic` lines. Each \STATE, \REQUIRE, \IF,
+    /// \FOR, etc. becomes one typed line entry. End markers (\ENDIF, \ENDFOR)
+    /// are preserved as their own kind so the exporter can re-emit them and
+    /// the UI can render a matching end marker. Condition / decl text for
+    /// control-flow openers (\IF{...}, \FOR{...}) is captured in the `Text`
+    /// field.
+    /// </summary>
+    private static List<ImportAlgorithmLine> ParseAlgorithmicLines(string body)
+    {
+        var lines = new List<ImportAlgorithmLine>();
+        // Tokenise: each algorithmic command opens a line that ends at the
+        // next command or end-of-body.
+        // Pattern captures the command word and whatever follows until the next
+        // \COMMAND or end.
+        var cmdRegex = new Regex(
+            @"\\(REQUIRE|ENSURE|STATE|RETURN|PRINT|COMMENT|IF|ELSIF|ELSEIF|ELSE|ENDIF|FOR|FORALL|ENDFOR|WHILE|ENDWHILE|REPEAT|UNTIL|LOOP|ENDLOOP)\b",
+            RegexOptions.IgnoreCase);
+        var matches = cmdRegex.Matches(body);
+        for (int i = 0; i < matches.Count; i++)
+        {
+            var m = matches[i];
+            var cmd = m.Groups[1].Value.ToLowerInvariant();
+            // Map aliases to canonical kinds.
+            var kind = cmd switch
+            {
+                "elseif" => "elsif",
+                "forall" => "for",
+                _ => cmd,
+            };
+            var startOfArg = m.Index + m.Length;
+            var endOfArg = i + 1 < matches.Count ? matches[i + 1].Index : body.Length;
+            var rawArg = body.Substring(startOfArg, endOfArg - startOfArg).Trim();
+            // Some openers take their argument inside {braces}: \IF{...}, \FOR{...},
+            // \WHILE{...}, \UNTIL{...}, \ELSIF{...}, \COMMENT{...}. Strip one
+            // pair of outer braces if present so the condition reads cleanly.
+            if (rawArg.StartsWith('{') && rawArg.EndsWith('}'))
+            {
+                rawArg = rawArg.Substring(1, rawArg.Length - 2).Trim();
+            }
+            lines.Add(new ImportAlgorithmLine
+            {
+                Kind = kind,
+                Text = rawArg,
+            });
+        }
+        // If no commands matched, fall back to a single statement so the
+        // block still holds the user's text.
+        if (lines.Count == 0 && !string.IsNullOrWhiteSpace(body))
+        {
+            lines.Add(new ImportAlgorithmLine { Kind = "statement", Text = body.Trim() });
+        }
+        return lines;
     }
 
     private static ImportTable ParseTabular(string tabularContent)

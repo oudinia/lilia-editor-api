@@ -1031,9 +1031,10 @@ public partial class RenderService : IRenderService
     private string RenderAlgorithmToLatex(JsonElement content)
     {
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
+        var lineNumbers = content.TryGetProperty("lineNumbers", out var lnProp) && lnProp.ValueKind == JsonValueKind.True;
+
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{algorithm}[H]");
         var displayCaption = !string.IsNullOrEmpty(caption) ? caption : title;
@@ -1041,38 +1042,73 @@ public partial class RenderService : IRenderService
             sb.AppendLine($@"\caption{{{EscapeLatex(displayCaption)}}}");
         if (!string.IsNullOrEmpty(label))
             sb.AppendLine($@"\label{{{label}}}");
-        sb.AppendLine(@"\begin{algorithmic}");
-        // Wrap bare pseudocode lines in \STATE if they don't start with algorithmic commands
-        foreach (var line in code.Split('\n'))
+        sb.AppendLine(lineNumbers ? @"\begin{algorithmic}[1]" : @"\begin{algorithmic}");
+
+        // Prefer structured lines[] if present — the typed shape lets us emit
+        // correct algorithmic commands without parsing backslashes. Fall back
+        // to the legacy flat `code` blob for backwards compat.
+        var renderedFromLines = false;
+        if (content.TryGetProperty("lines", out var linesEl) && linesEl.ValueKind == JsonValueKind.Array && linesEl.GetArrayLength() > 0)
         {
-            var trimmed = line.TrimStart();
-            if (string.IsNullOrWhiteSpace(trimmed))
+            foreach (var line in linesEl.EnumerateArray())
             {
-                sb.AppendLine();
-                continue;
+                var kind = (line.TryGetProperty("kind", out var kEl) ? kEl.GetString() : null) ?? "statement";
+                var text = (line.TryGetProperty("text", out var txEl) ? txEl.GetString() : null) ?? "";
+                sb.AppendLine(EmitAlgorithmicLine(kind, text));
             }
-            // Check if line already starts with an algorithmic command
-            if (trimmed.StartsWith("\\STATE") || trimmed.StartsWith("\\IF") ||
-                trimmed.StartsWith("\\ELSE") || trimmed.StartsWith("\\ELSIF") ||
-                trimmed.StartsWith("\\ENDIF") || trimmed.StartsWith("\\FOR") ||
-                trimmed.StartsWith("\\ENDFOR") || trimmed.StartsWith("\\WHILE") ||
-                trimmed.StartsWith("\\ENDWHILE") || trimmed.StartsWith("\\REPEAT") ||
-                trimmed.StartsWith("\\UNTIL") || trimmed.StartsWith("\\RETURN") ||
-                trimmed.StartsWith("\\REQUIRE") || trimmed.StartsWith("\\ENSURE") ||
-                trimmed.StartsWith("\\PRINT") || trimmed.StartsWith("\\COMMENT") ||
-                trimmed.StartsWith("\\LOOP") || trimmed.StartsWith("\\ENDLOOP") ||
-                trimmed.StartsWith("%"))
+            renderedFromLines = true;
+        }
+
+        if (!renderedFromLines)
+        {
+            var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
+            foreach (var line in code.Split('\n'))
             {
-                sb.AppendLine(line);
-            }
-            else
-            {
-                sb.AppendLine($@"\STATE {trimmed}");
+                var trimmed = line.TrimStart();
+                if (string.IsNullOrWhiteSpace(trimmed)) { sb.AppendLine(); continue; }
+                if (Regex.IsMatch(trimmed, @"^\\(STATE|IF|ELSE|ELSIF|ELSEIF|ENDIF|FOR|FORALL|ENDFOR|WHILE|ENDWHILE|REPEAT|UNTIL|LOOP|ENDLOOP|RETURN|REQUIRE|ENSURE|PRINT|COMMENT)\b") || trimmed.StartsWith("%"))
+                    sb.AppendLine(line);
+                else
+                    sb.AppendLine($@"\STATE {trimmed}");
             }
         }
+
         sb.AppendLine(@"\end{algorithmic}");
         sb.AppendLine(@"\end{algorithm}");
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Emit the algorithmic LaTeX for a single typed pseudocode line. Kind
+    /// values mirror the parser (see ParseAlgorithmicLines).
+    /// </summary>
+    private static string EmitAlgorithmicLine(string kind, string text)
+    {
+        // Openers that wrap the payload in braces.
+        static string Brace(string s) => "{" + s + "}";
+        return kind.ToLowerInvariant() switch
+        {
+            "require"   => $@"\REQUIRE {text}",
+            "ensure"    => $@"\ENSURE {text}",
+            "statement" => string.IsNullOrWhiteSpace(text) ? @"\STATE" : $@"\STATE {text}",
+            "return"    => string.IsNullOrWhiteSpace(text) ? @"\RETURN" : $@"\RETURN {text}",
+            "print"     => $@"\PRINT {text}",
+            "comment"   => $@"\COMMENT{Brace(text)}",
+            "if"        => $@"\IF{Brace(text)}",
+            "elsif"     => $@"\ELSIF{Brace(text)}",
+            "else"      => @"\ELSE",
+            "endif"     => @"\ENDIF",
+            "for"       => $@"\FOR{Brace(text)}",
+            "endfor"    => @"\ENDFOR",
+            "while"     => $@"\WHILE{Brace(text)}",
+            "endwhile"  => @"\ENDWHILE",
+            "repeat"    => @"\REPEAT",
+            "until"     => $@"\UNTIL{Brace(text)}",
+            "loop"      => @"\LOOP",
+            "endloop"   => @"\ENDLOOP",
+            // Unknown kind — emit as a STATE so compilation doesn't break.
+            _ => string.IsNullOrWhiteSpace(text) ? @"\STATE" : $@"\STATE {text}"
+        };
     }
 
     private string RenderCalloutToLatex(JsonElement content)

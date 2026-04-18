@@ -1218,7 +1218,13 @@ public class ConvertController : ControllerBase
                         {
                             caption = algo.Caption ?? "",
                             label = algo.Label ?? "",
+                            // Keep the flat string for backwards compat, but
+                            // also emit the structured lines[] so the editor
+                            // can render each statement as its own row and
+                            // validation can check \IF/\ENDIF pairing.
                             code = algo.Code,
+                            lineNumbers = algo.LineNumbers,
+                            lines = algo.Lines.Select(l => new { kind = l.Kind, text = l.Text }).ToList(),
                         }));
                         break;
                     case ImportAbstract ab:

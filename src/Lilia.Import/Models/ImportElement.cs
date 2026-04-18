@@ -164,6 +164,29 @@ public class ImportAlgorithm : ImportElement
     /// around it again.
     /// </summary>
     public string Code { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Structured line tree: each entry has a kind (require, statement, if,
+    /// else, endif, for, endfor, while, endwhile, repeat, until, loop,
+    /// endloop, return, print, comment) and an optional text field. End
+    /// markers (endif, endfor, endwhile, until, endloop) carry no text.
+    /// Preserving structure lets the exporter emit correct algorithmic
+    /// markup, and lets future UI treat each line as its own editable row.
+    /// </summary>
+    public List<ImportAlgorithmLine> Lines { get; set; } = new();
+
+    /// <summary>Whether \begin{algorithmic} used [1] to enable line numbering.</summary>
+    public bool LineNumbers { get; set; }
+}
+
+/// <summary>
+/// One line in an algorithmic body. See ImportAlgorithm.Lines for the
+/// full taxonomy of "kind" values.
+/// </summary>
+public class ImportAlgorithmLine
+{
+    public string Kind { get; set; } = "statement";
+    public string Text { get; set; } = string.Empty;
 }
 
 /// <summary>
