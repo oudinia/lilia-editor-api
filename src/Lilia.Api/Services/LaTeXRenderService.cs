@@ -8,6 +8,7 @@ namespace Lilia.Api.Services;
 public interface ILaTeXRenderService
 {
     Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30);
+    Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60);
     Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30);
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
     Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
@@ -70,14 +71,19 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// <summary>
     /// Returns the pdflatex arguments, using the precompiled format if available.
     /// </summary>
-    private static string BuildPdflatexArgs(string texPath, string outputDir, bool usePrecompiled = false)
+    private static string BuildPdflatexArgs(string texPath, string outputDir, bool usePrecompiled = false, bool tolerant = false)
     {
         // Only use precompiled format for fragment validation (standalone class)
         // Full documents already have \documentclass — using -fmt would cause "Two \documentclass" error
         var fmtArg = usePrecompiled && HasPrecompiledFormat()
             ? $"-fmt={PrecompiledFormatPath} "
             : "";
-        return $"-interaction=nonstopmode -halt-on-error --no-shell-escape {fmtArg}-output-directory {outputDir} {texPath}";
+        // tolerant=true drops -halt-on-error so pdflatex skips past recoverable
+        // body errors (unbalanced \text commands, stray chars, etc.) and still
+        // produces a PDF. Used for document export where a partial PDF is
+        // strictly better than none. Validation paths keep strict mode.
+        var haltArg = tolerant ? "" : "-halt-on-error ";
+        return $"-interaction=nonstopmode {haltArg}--no-shell-escape {fmtArg}-output-directory {outputDir} {texPath}";
     }
 
     public async Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30)
@@ -86,6 +92,24 @@ public class LaTeXRenderService : ILaTeXRenderService
         try
         {
             var (pdf, _) = await CompileLatexAsync(latex, timeout);
+            return pdf;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Document-export variant: runs pdflatex without -halt-on-error so minor
+    /// body errors produce a partial PDF rather than aborting with zero output.
+    /// </summary>
+    public async Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60)
+    {
+        await _semaphore.WaitAsync();
+        try
+        {
+            var (pdf, _) = await CompileLatexAsync(latex, timeout, tolerant: true);
             return pdf;
         }
         finally
@@ -300,7 +324,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         _validationCache.TryAdd(hash, (result.Valid, result.Error, result.Warnings, DateTime.UtcNow));
     }
 
-    private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout)
+    private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout, bool tolerant = false)
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -315,7 +339,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             // Run pdflatex twice (for references)
             for (int pass = 0; pass < 2; pass++)
             {
-                var args = BuildPdflatexArgs(texPath, tmpDir);
+                var args = BuildPdflatexArgs(texPath, tmpDir, tolerant: tolerant);
                 var (exitCode, stdout, stderr) = await RunProcessAsync(
                     "pdflatex",
                     args,
@@ -323,7 +347,9 @@ public class LaTeXRenderService : ILaTeXRenderService
                     timeout
                 );
 
-                if (exitCode != 0 && pass == 1)
+                // In tolerant mode, accept whatever PDF was produced even if
+                // exit code indicates errors — the user gets a partial preview.
+                if (exitCode != 0 && pass == 1 && !tolerant)
                 {
                     var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
                     var errorLines = logContent.Split('\n')
@@ -336,7 +362,19 @@ public class LaTeXRenderService : ILaTeXRenderService
             }
 
             if (!File.Exists(pdfPath))
-                throw new InvalidOperationException("PDF was not generated");
+            {
+                // Tolerant mode should still surface "no PDF at all" — likely
+                // preamble / package error, not a body glitch.
+                var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+                var errorLines = logContent.Split('\n')
+                    .Where(l => l.StartsWith("!") || l.Contains("Error"))
+                    .Take(5);
+                throw new InvalidOperationException(
+                    errorLines.Any()
+                        ? $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
+                        : "PDF was not generated"
+                );
+            }
 
             var pdf = await File.ReadAllBytesAsync(pdfPath);
             var log = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";

@@ -119,7 +119,9 @@ public class DocumentExportService : IDocumentExportService
             throw new InvalidOperationException("Generated LaTeX project has no main.tex");
         using var reader = new System.IO.StreamReader(mainEntry.Open());
         var latex = await reader.ReadToEndAsync();
-        return await _latexRenderService.RenderToPdfAsync(latex, timeout: 60);
+        // Tolerant mode — body errors produce a partial PDF instead of 500.
+        // Preamble errors still surface (no PDF file generated → exception).
+        return await _latexRenderService.RenderToPdfTolerantAsync(latex, timeout: 60);
     }
 
     private async Task<ExportBlock?> ConvertBlockAsync(Block block, int theoremCounter)
