@@ -42,6 +42,11 @@ public class ExportDocument
     public int Columns { get; set; } = 1;
 
     /// <summary>
+    /// Auto-balance column heights (DOCX w:cols w:equalWidth; LaTeX \balance).
+    /// </summary>
+    public bool BalancedColumns { get; set; }
+
+    /// <summary>
     /// Document blocks in order.
     /// </summary>
     public List<ExportBlock> Blocks { get; set; } = [];

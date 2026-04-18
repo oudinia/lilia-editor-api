@@ -76,13 +76,14 @@ public class DocxExportService : IDocxExportService
             sectionProps.Append(pageSize);
             sectionProps.Append(pageMargin);
 
-            // Multi-column layout — honours ExportDocument.Columns.
+            // Multi-column layout — honours ExportDocument.Columns and
+            // BalancedColumns (EqualWidth → whether Word auto-distributes width).
             if (document.Columns >= 2)
             {
                 sectionProps.Append(new Columns
                 {
                     ColumnCount = (short)Math.Min(document.Columns, 3),
-                    EqualWidth = true,
+                    EqualWidth = document.BalancedColumns,
                     Separator = false,
                 });
             }
