@@ -133,6 +133,30 @@ public class ImportMetadata
     public bool IsGoogleDocsExport =>
         Application?.Contains("Google", StringComparison.OrdinalIgnoreCase) == true;
 
+    // --- CV-style personal info captured from \name, \email, \phone etc.
+    // in the preamble. Kept optional so non-CV imports stay unaffected.
+
+    /// <summary>Combined display name from \name{first}{last}.</summary>
+    public string? PersonName { get; set; }
+
+    /// <summary>Primary email from \email{...}.</summary>
+    public string? Email { get; set; }
+
+    /// <summary>Phone numbers from \phone[type]{number} — kind is "mobile", "fixed", "fax", etc.</summary>
+    public List<(string Kind, string Number)> Phones { get; set; } = new();
+
+    /// <summary>Homepage / personal site URL from \homepage{...}.</summary>
+    public string? Homepage { get; set; }
+
+    /// <summary>Photo filename from \photo[h][frame]{file} — captured for a later photo block.</summary>
+    public string? PhotoFilename { get; set; }
+
+    /// <summary>Social handles from \social[network]{handle} — linkedin, github, etc.</summary>
+    public List<(string Network, string Handle)> Socials { get; set; } = new();
+
+    /// <summary>Free-form extra info from \extrainfo{...}.</summary>
+    public string? ExtraInfo { get; set; }
+
     // ── LaTeX-specific preamble metadata ──────────────────────────────
 
     /// <summary>

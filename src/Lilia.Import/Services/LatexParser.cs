@@ -175,6 +175,13 @@ public class LatexParser : ILatexParser
     {
         // For raw-text input ("input.tex" sentinel), default title to empty rather than the literal "input".
         var defaultTitle = sourcePath == "input.tex" ? string.Empty : Path.GetFileNameWithoutExtension(sourcePath);
+
+        // Collapse \ifxetexorluatex / \ifxetex / \ifluatex / \ifpdftex
+        // conditional preamble blocks to their pdflatex branch. Our compile
+        // stack is pdflatex only — picking the else (or false) branch drops
+        // fontspec/unicode-math loads that would otherwise abort compilation.
+        content = StripXeLuaConditionals(content);
+
         var document = new ImportDocument
         {
             SourcePath = sourcePath,
@@ -191,6 +198,10 @@ public class LatexParser : ILatexParser
                 document.Title = StripInlineCommandsForPlainText(titleMatch.Value.Inner);
             }
         }
+
+        // CV preamble personal info — captured before the main element walk
+        // so a later personalInfo/avatar block can draw on it.
+        ExtractCvPreambleMetadata(content, document);
 
         // Extract author if present
         var authorMatch = MatchBalanced(content, "author");
@@ -1074,6 +1085,78 @@ public class LatexParser : ILatexParser
         }
 
         return spans;
+    }
+
+    /// <summary>
+    /// Collapse \ifxetexorluatex ... \else ... \fi (and siblings) to the
+    /// pdflatex branch. Our compile pipeline is pdflatex-only; shipping both
+    /// branches made us load fontspec / unicode-math which abort pdflatex.
+    /// Handles nested siblings in a single linear pass.
+    /// </summary>
+    private static string StripXeLuaConditionals(string content)
+    {
+        // Match \ifxetexorluatex ... [\else ...] \fi, \ifxetex, \ifluatex,
+        // \ifpdftex. The two former expect true when running under XeTeX/LuaTeX,
+        // so the else branch is what pdflatex runs. \ifpdftex is the opposite
+        // — true under pdflatex.
+        var rx = new Regex(
+            @"\\(ifxetexorluatex|ifxetex|ifluatex|ifpdftex)\b([\s\S]*?)(?:\\else([\s\S]*?))?\\fi\b",
+            RegexOptions.Singleline);
+        // Non-overlapping replacement. Re-run until stable to collapse nested occurrences.
+        string prev;
+        do
+        {
+            prev = content;
+            content = rx.Replace(content, m =>
+            {
+                var kind = m.Groups[1].Value;
+                var thenBranch = m.Groups[2].Value;
+                var elseBranch = m.Groups[3].Success ? m.Groups[3].Value : "";
+                // For Xe/Lua guards the pdflatex path is the else branch.
+                // For \ifpdftex it's the then branch.
+                return string.Equals(kind, "ifpdftex", StringComparison.OrdinalIgnoreCase)
+                    ? thenBranch
+                    : elseBranch;
+            });
+        } while (prev != content);
+        return content;
+    }
+
+    /// <summary>
+    /// Pull CV-style personal-info macros out of the preamble and put them on
+    /// the ImportDocument.Metadata so a later personalInfo block (or export
+    /// re-emission of \name/\email/\phone) can draw on them.
+    /// </summary>
+    private static void ExtractCvPreambleMetadata(string content, ImportDocument document)
+    {
+        var nameMatch = Regex.Match(content, @"\\name\{([^}]+)\}\{([^}]+)\}");
+        if (nameMatch.Success)
+        {
+            document.Metadata.PersonName = $"{nameMatch.Groups[1].Value.Trim()} {nameMatch.Groups[2].Value.Trim()}";
+        }
+        var emailMatch = Regex.Match(content, @"\\email\{([^}]+)\}");
+        if (emailMatch.Success) document.Metadata.Email = emailMatch.Groups[1].Value.Trim();
+
+        foreach (Match pm in Regex.Matches(content, @"\\phone(?:\[([^\]]+)\])?\{([^}]+)\}"))
+        {
+            var kind = pm.Groups[1].Success ? pm.Groups[1].Value.Trim() : "mobile";
+            document.Metadata.Phones.Add((kind, pm.Groups[2].Value.Trim()));
+        }
+
+        var homeMatch = Regex.Match(content, @"\\homepage\{([^}]+)\}");
+        if (homeMatch.Success) document.Metadata.Homepage = homeMatch.Groups[1].Value.Trim();
+
+        var photoMatch = Regex.Match(content, @"\\photo(?:\[[^\]]*\])?(?:\[[^\]]*\])?\{([^}]+)\}");
+        if (photoMatch.Success) document.Metadata.PhotoFilename = photoMatch.Groups[1].Value.Trim();
+
+        foreach (Match sm in Regex.Matches(content, @"\\social(?:\[([^\]]+)\])?\{([^}]+)\}"))
+        {
+            var network = sm.Groups[1].Success ? sm.Groups[1].Value.Trim() : "web";
+            document.Metadata.Socials.Add((network, sm.Groups[2].Value.Trim()));
+        }
+
+        var extraMatch = Regex.Match(content, @"\\extrainfo\{([^}]+)\}");
+        if (extraMatch.Success) document.Metadata.ExtraInfo = extraMatch.Groups[1].Value.Trim();
     }
 
     /// <summary>

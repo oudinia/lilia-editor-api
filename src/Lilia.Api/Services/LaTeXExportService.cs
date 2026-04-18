@@ -368,6 +368,44 @@ public class LaTeXExportService : ILaTeXExportService
         "fontspec", "unicode-math", "polyglossia"
     };
 
+    // When we fall back to article (stored class not in SafeDocumentClasses),
+    // most stored options are class-specific garbage (e.g. sidecolor=gray!50,
+    // sectioncolor=materialblue for sixtysecondscv). Only forward options
+    // that article actually understands; drop the rest silently to keep
+    // \documentclass[…]{article} parseable.
+    private static readonly HashSet<string> ArticleKnownOptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "10pt", "11pt", "12pt",
+        "a4paper", "a5paper", "letterpaper", "legalpaper", "executivepaper", "b5paper",
+        "landscape", "portrait",
+        "onecolumn", "twocolumn",
+        "oneside", "twoside",
+        "openright", "openany",
+        "final", "draft",
+        "titlepage", "notitlepage",
+        "fleqn", "leqno",
+        "openbib",
+    };
+
+    /// <summary>
+    /// Clean one class-option token: strip the LaTeX comment marker and
+    /// everything after it, trim whitespace, drop anything empty. Also
+    /// drops multi-line artefacts (if a token still contains a newline
+    /// after comment stripping it was malformed in the source).
+    /// </summary>
+    private static string? CleanClassOption(string raw)
+    {
+        var t = raw;
+        var pct = t.IndexOf('%');
+        if (pct >= 0) t = t.Substring(0, pct);
+        // Collapse any internal whitespace (newline + tab) — article options
+        // are always short tokens without embedded whitespace.
+        t = t.Trim();
+        if (t.Length == 0) return null;
+        if (t.Any(c => c == '\r' || c == '\n' || c == '\t')) return null;
+        return t;
+    }
+
     /// <summary>
     /// Build the `\documentclass[...]{...}` directive honoring the stored
     /// imported preamble (LatexDocumentClass/LatexDocumentClassOptions) and
@@ -376,9 +414,8 @@ public class LaTeXExportService : ILaTeXExportService
     private static string BuildDocumentClassDirective(Document doc, LaTeXExportOptions options)
     {
         var storedClass = doc.LatexDocumentClass?.Trim();
-        var className = !string.IsNullOrWhiteSpace(storedClass) && SafeDocumentClasses.Contains(storedClass)
-            ? storedClass
-            : options.DocumentClass;
+        var usingStoredClass = !string.IsNullOrWhiteSpace(storedClass) && SafeDocumentClasses.Contains(storedClass);
+        var className = usingStoredClass ? storedClass! : options.DocumentClass;
 
         var classOpts = new List<string>();
         if (!string.IsNullOrEmpty(options.FontSize)) classOpts.Add(options.FontSize);
@@ -386,10 +423,14 @@ public class LaTeXExportService : ILaTeXExportService
 
         if (!string.IsNullOrWhiteSpace(doc.LatexDocumentClassOptions))
         {
-            foreach (var tok in doc.LatexDocumentClassOptions.Split(','))
+            foreach (var rawTok in doc.LatexDocumentClassOptions.Split(','))
             {
-                var t = tok.Trim();
-                if (!string.IsNullOrEmpty(t) && !classOpts.Contains(t)) classOpts.Add(t);
+                var t = CleanClassOption(rawTok);
+                if (t == null) continue;
+                // On article fallback, only forward article-known options;
+                // silently drop class-specific garbage (sidecolor=gray!50, etc.).
+                if (!usingStoredClass && !ArticleKnownOptions.Contains(t)) continue;
+                if (!classOpts.Contains(t)) classOpts.Add(t);
             }
         }
 
@@ -467,6 +508,7 @@ public class LaTeXExportService : ILaTeXExportService
         // Shims so journal-class-specific commands in imported bodies
         // (\begin{keywords}, \affiliation, etc.) don't abort compilation.
         sb.Append(LaTeXPreamble.JournalShims);
+        sb.Append(LaTeXPreamble.CvShims);
         sb.AppendLine();
 
         // Graphics path for figures

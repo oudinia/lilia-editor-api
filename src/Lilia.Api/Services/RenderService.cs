@@ -821,10 +821,36 @@ public partial class RenderService : IRenderService
         "fontspec", "unicode-math", "polyglossia"
     };
 
+    private static readonly HashSet<string> ArticleKnownOptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "10pt", "11pt", "12pt",
+        "a4paper", "a5paper", "letterpaper", "legalpaper", "executivepaper", "b5paper",
+        "landscape", "portrait",
+        "onecolumn", "twocolumn",
+        "oneside", "twoside",
+        "openright", "openany",
+        "final", "draft",
+        "titlepage", "notitlepage",
+        "fleqn", "leqno",
+        "openbib",
+    };
+
+    private static string? CleanClassOption(string raw)
+    {
+        var t = raw;
+        var pct = t.IndexOf('%');
+        if (pct >= 0) t = t.Substring(0, pct);
+        t = t.Trim();
+        if (t.Length == 0) return null;
+        if (t.Any(c => c == '\r' || c == '\n' || c == '\t')) return null;
+        return t;
+    }
+
     private static string BuildDocumentClassDirectiveFromDoc(Document doc)
     {
         var stored = doc.LatexDocumentClass?.Trim();
-        var className = !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored) ? stored : "article";
+        var usingStored = !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored);
+        var className = usingStored ? stored! : "article";
         var opts = new List<string>();
         opts.Add($"{doc.FontSize}pt");
         opts.Add(string.Equals(doc.PaperSize, "letter", StringComparison.OrdinalIgnoreCase) ? "letterpaper" : "a4paper");
@@ -832,8 +858,10 @@ public partial class RenderService : IRenderService
         {
             foreach (var t in doc.LatexDocumentClassOptions.Split(','))
             {
-                var o = t.Trim();
-                if (!string.IsNullOrEmpty(o) && !opts.Contains(o)) opts.Add(o);
+                var o = CleanClassOption(t);
+                if (o == null) continue;
+                if (!usingStored && !ArticleKnownOptions.Contains(o)) continue;
+                if (!opts.Contains(o)) opts.Add(o);
             }
         }
         if (doc.Columns >= 2 && !opts.Any(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase)))
@@ -899,6 +927,7 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.Packages);
         // Journal-class shims — safe no-ops when commands already exist
         latex.AppendLine(LaTeXPreamble.JournalShims);
+        latex.AppendLine(LaTeXPreamble.CvShims);
 
         // Multi-column support
         if (doc.Columns > 1)

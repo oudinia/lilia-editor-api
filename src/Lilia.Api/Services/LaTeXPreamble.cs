@@ -189,6 +189,52 @@ public static class LaTeXPreamble
 ";
 
     /// <summary>
+    /// Shims for CV-class-specific commands (moderncv, altacv, simplehipstercv,
+    /// twentysecondcv, curve). Renders as readable text so the CV's content
+    /// survives the compile even when we can't honour the custom class.
+    /// </summary>
+    public const string CvShims = @"% Shims for common CV-class commands (defined only if missing)
+\makeatletter
+% Personal info — render to printable text so the content is visible.
+\providecommand{\name}[2]{\noindent\textbf{\LARGE #1 #2}\par\medskip}
+\providecommand{\givenname}[1]{}
+\providecommand{\familyname}[1]{}
+\providecommand{\born}[1]{\textit{Born:} #1 \par}
+\providecommand{\address}[3]{\small #1, #2, #3 \par}
+\providecommand{\phone}[2][]{\small \textsuperscript{\textperiodcentered} #2 \par}
+\providecommand{\email}[1]{\small \texttt{#1} \par}
+\providecommand{\homepage}[1]{\small \url{#1} \par}
+\providecommand{\extrainfo}[1]{\small \textit{#1} \par}
+\providecommand{\quote}[1]{\begin{quote}\small\textit{#1}\end{quote}}
+\providecommand{\social}[2][]{\small [#1] #2 \par}
+\providecommand{\photo}[3][]{}
+% Style / theme directives — drop silently.
+\providecommand{\moderncvcolor}[1]{}
+\providecommand{\moderncvstyle}[1]{}
+\providecommand{\nopagenumbers}{}
+\providecommand{\makecvtitle}{}
+\providecommand{\cvtheme}[2][]{}
+% Structural CV entries — render as readable paragraphs.
+\providecommand{\cvsection}[1]{\par\medskip\noindent\textbf{\Large #1}\par\smallskip}
+\providecommand{\cvitem}[3][]{\noindent\textbf{#2:} #3\par}
+\providecommand{\cvitemwithcomment}[4][]{\noindent\textbf{#2:} #3 \emph{(#4)}\par}
+\providecommand{\cvlistitem}[2][]{\noindent $\bullet$\ #2\par}
+\providecommand{\cvlistdoubleitem}[3][]{\noindent $\bullet$\ #2 \quad $\bullet$\ #3\par}
+\providecommand{\cventry}[7][]{\noindent\textbf{#3}, \emph{#4} (#5) \hfill #2\par #7\par\medskip}
+\providecommand{\cvdoubleitem}[5][]{\noindent\textbf{#2:} #3 \quad \textbf{#4:} #5\par}
+\providecommand{\cvline}[3][]{\noindent #2 \dotfill #3\par}
+\providecommand{\cvcolumns}[1]{#1}
+\providecommand{\cvcolumn}[3][]{\textbf{#2}: #3}
+\providecommand{\cvkeyvaluelist}[2][]{}
+% Resume.cls / custom resume macros.
+\providecommand{\resumeSection}[1]{\par\medskip\noindent\textbf{\Large #1}\par\smallskip}
+\providecommand{\resumeItem}[1]{\noindent $\bullet$\ #1\par}
+\providecommand{\resumeSubItem}[1]{\quad $-$\ #1\par}
+\providecommand{\resumeEntry}[4][]{\noindent\textbf{#2} \hfill #3\par \textit{#4}\par}
+\makeatother
+";
+
+    /// <summary>
     /// Shims for journal-class-specific commands and environments so documents
     /// imported from mnras / pnas / frontiers / etc. can still compile under
     /// the fallback `article` class. Each shim is a no-op or minimal rendering
