@@ -60,6 +60,27 @@ public class AssetsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("upload")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<ActionResult<AssetDto>> UploadAsset(Guid docId, IFormFile file)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+            return Forbid();
+
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "File is required" });
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest(new { message = "File exceeds 10MB limit" });
+        if (string.IsNullOrEmpty(file.ContentType) || !file.ContentType.StartsWith("image/"))
+            return BadRequest(new { message = "Only image files are allowed" });
+
+        await using var stream = file.OpenReadStream();
+        var result = await _assetService.UploadAssetAsync(docId, userId, file.FileName, file.ContentType, file.Length, stream);
+        return Ok(result);
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> DeleteAsset(Guid docId, Guid id)
     {

@@ -67,6 +67,36 @@ public class AssetService : IAssetService
         return new AssetUploadDto(asset.Id, uploadUrl, asset.Url ?? "");
     }
 
+    public async Task<AssetDto> UploadAssetAsync(Guid documentId, string userId, string fileName, string contentType, long fileSize, Stream content)
+    {
+        var document = await _context.Documents.FindAsync(documentId);
+        if (document == null)
+            throw new ArgumentException("Document not found");
+
+        var assetId = Guid.NewGuid();
+        var extension = Path.GetExtension(fileName);
+        var storageKey = $"{userId}/documents/{documentId}/images/{assetId}{extension}";
+
+        var publicUrl = await _storageService.UploadAsync(storageKey, content, contentType);
+
+        var asset = new Asset
+        {
+            Id = assetId,
+            DocumentId = documentId,
+            FileName = fileName,
+            FileType = contentType,
+            FileSize = fileSize,
+            StorageKey = storageKey,
+            Url = publicUrl,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Assets.Add(asset);
+        await _context.SaveChangesAsync();
+
+        return MapToDto(asset);
+    }
+
     public async Task<bool> DeleteAssetAsync(Guid documentId, Guid assetId)
     {
         var asset = await _context.Assets
