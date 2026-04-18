@@ -37,6 +37,11 @@ public class ExportDocument
     public int FontSize { get; set; } = 11;
 
     /// <summary>
+    /// Number of page columns (1-3).
+    /// </summary>
+    public int Columns { get; set; } = 1;
+
+    /// <summary>
     /// Document blocks in order.
     /// </summary>
     public List<ExportBlock> Blocks { get; set; } = [];

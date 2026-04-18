@@ -55,6 +55,13 @@ public class Document
     public int ValidationWarningCount { get; set; }
     public DateTime? ValidationCheckedAt { get; set; }
 
+    // LaTeX preamble preserved from import, used by the LaTeX exporter so the
+    // round-trip produces a document that compiles under the original class.
+    // LatexPackages is a JSON array of { name: string, options?: string }.
+    public string? LatexDocumentClass { get; set; }
+    public string? LatexDocumentClassOptions { get; set; }
+    public string? LatexPackages { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }

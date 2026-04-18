@@ -282,6 +282,9 @@ public class DocumentService : IDocumentService
         if (dto.Columns.HasValue) document.Columns = Math.Clamp(dto.Columns.Value, 1, 3);
         if (dto.ColumnSeparator != null) document.ColumnSeparator = dto.ColumnSeparator;
         if (dto.ColumnGap.HasValue) document.ColumnGap = dto.ColumnGap.Value;
+        if (dto.LatexDocumentClass != null) document.LatexDocumentClass = dto.LatexDocumentClass;
+        if (dto.LatexDocumentClassOptions != null) document.LatexDocumentClassOptions = dto.LatexDocumentClassOptions;
+        if (dto.LatexPackages != null) document.LatexPackages = dto.LatexPackages;
         if (dto.MarginTop != null) document.MarginTop = dto.MarginTop;
         if (dto.MarginBottom != null) document.MarginBottom = dto.MarginBottom;
         if (dto.MarginLeft != null) document.MarginLeft = dto.MarginLeft;

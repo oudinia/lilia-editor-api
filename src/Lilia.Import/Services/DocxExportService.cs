@@ -75,6 +75,18 @@ public class DocxExportService : IDocxExportService
             };
             sectionProps.Append(pageSize);
             sectionProps.Append(pageMargin);
+
+            // Multi-column layout — honours ExportDocument.Columns.
+            if (document.Columns >= 2)
+            {
+                sectionProps.Append(new Columns
+                {
+                    ColumnCount = (short)Math.Min(document.Columns, 3),
+                    EqualWidth = true,
+                    Separator = false,
+                });
+            }
+
             body.AppendChild(sectionProps);
 
             // Set document properties

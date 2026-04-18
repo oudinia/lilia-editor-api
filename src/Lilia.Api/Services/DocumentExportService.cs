@@ -60,6 +60,7 @@ public class DocumentExportService : IDocumentExportService
             PaperSize = doc.PaperSize,
             FontFamily = doc.FontFamily,
             FontSize = doc.FontSize,
+            Columns = doc.Columns,
             Metadata = new ExportMetadata
             {
                 Author = doc.OwnerId,

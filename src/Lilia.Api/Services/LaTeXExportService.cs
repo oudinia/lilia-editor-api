@@ -93,7 +93,7 @@ public class LaTeXExportService : ILaTeXExportService
         var sb = new StringBuilder();
 
         // Preamble embedded in main.tex
-        sb.AppendLine($@"\documentclass[{options.FontSize},{options.PaperSize}]{{{options.DocumentClass}}}");
+        sb.AppendLine(BuildDocumentClassDirective(doc, options));
         sb.AppendLine();
         sb.Append(GeneratePackageLines(doc, options));
         sb.AppendLine();
@@ -170,7 +170,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // main.tex
         var main = new StringBuilder();
-        main.AppendLine($@"\documentclass[{options.FontSize},{options.PaperSize}]{{{options.DocumentClass}}}");
+        main.AppendLine(BuildDocumentClassDirective(doc, options));
         main.AppendLine();
         main.AppendLine("% Include preamble");
         main.AppendLine(@"\input{preamble}");
@@ -271,7 +271,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // main.tex
         var main = new StringBuilder();
-        main.AppendLine($@"\documentclass[{options.FontSize},{options.PaperSize}]{{{options.DocumentClass}}}");
+        main.AppendLine(BuildDocumentClassDirective(doc, options));
         main.AppendLine();
         main.AppendLine("% Include preamble");
         main.AppendLine(@"\input{preamble}");
@@ -329,6 +329,71 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── Package/preamble generation ────────────────────────────────────
 
+    /// <summary>
+    /// Build the `\documentclass[...]{...}` directive honoring the stored
+    /// imported preamble (LatexDocumentClass/LatexDocumentClassOptions) and
+    /// merging in font size, paper size, and twocolumn (if doc.Columns >= 2).
+    /// </summary>
+    private static string BuildDocumentClassDirective(Document doc, LaTeXExportOptions options)
+    {
+        var className = !string.IsNullOrWhiteSpace(doc.LatexDocumentClass)
+            ? doc.LatexDocumentClass.Trim()
+            : options.DocumentClass;
+
+        var classOpts = new List<string>();
+        if (!string.IsNullOrEmpty(options.FontSize)) classOpts.Add(options.FontSize);
+        if (!string.IsNullOrEmpty(options.PaperSize)) classOpts.Add(options.PaperSize);
+
+        if (!string.IsNullOrWhiteSpace(doc.LatexDocumentClassOptions))
+        {
+            foreach (var tok in doc.LatexDocumentClassOptions.Split(','))
+            {
+                var t = tok.Trim();
+                if (!string.IsNullOrEmpty(t) && !classOpts.Contains(t)) classOpts.Add(t);
+            }
+        }
+
+        if (doc.Columns >= 2 && !classOpts.Any(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase)))
+        {
+            classOpts.Add("twocolumn");
+        }
+
+        return classOpts.Count > 0
+            ? $"\\documentclass[{string.Join(",", classOpts)}]{{{className}}}"
+            : $"\\documentclass{{{className}}}";
+    }
+
+    /// <summary>
+    /// Emit `\usepackage{...}` lines for any packages captured from the
+    /// imported preamble. JSON shape: [{ "name": "...", "options": "..." }].
+    /// Gracefully degrades to no-op if parsing fails.
+    /// </summary>
+    private static string BuildImportedPackageLines(Document doc)
+    {
+        if (string.IsNullOrWhiteSpace(doc.LatexPackages)) return string.Empty;
+        try
+        {
+            using var json = JsonDocument.Parse(doc.LatexPackages);
+            if (json.RootElement.ValueKind != JsonValueKind.Array) return string.Empty;
+            var sb = new StringBuilder();
+            sb.AppendLine("% Packages preserved from imported preamble");
+            foreach (var pkg in json.RootElement.EnumerateArray())
+            {
+                var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                var opts = pkg.TryGetProperty("options", out var o) ? o.GetString() : null;
+                sb.AppendLine(string.IsNullOrWhiteSpace(opts)
+                    ? $"\\usepackage{{{name}}}"
+                    : $"\\usepackage[{opts}]{{{name}}}");
+            }
+            return sb.ToString();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private string GeneratePreambleFile(Document doc, LaTeXExportOptions options)
     {
         var sb = new StringBuilder();
@@ -341,6 +406,14 @@ public class LaTeXExportService : ILaTeXExportService
     private string GeneratePackageLines(Document doc, LaTeXExportOptions options)
     {
         var sb = new StringBuilder();
+
+        // Imported packages first — user's class often needs them before our defaults.
+        var importedPkgs = BuildImportedPackageLines(doc);
+        if (!string.IsNullOrEmpty(importedPkgs))
+        {
+            sb.Append(importedPkgs);
+            sb.AppendLine();
+        }
 
         // Use the shared preamble — same 31 packages as validation
         sb.Append(LaTeXPreamble.Packages);
