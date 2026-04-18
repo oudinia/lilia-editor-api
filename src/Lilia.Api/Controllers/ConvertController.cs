@@ -1120,6 +1120,42 @@ public class ConvertController : ControllerBase
             var blocks = new List<LatexBlockDto>();
             var warnings = new List<string>();
 
+            // If the preamble captured CV-style personal info, emit a
+            // personalInfo block at the top of the document so the CV's
+            // identity surface survives into the editor.
+            var meta = importDoc.Metadata;
+            if (!string.IsNullOrWhiteSpace(meta.PersonName)
+                || !string.IsNullOrWhiteSpace(meta.Email)
+                || meta.Phones.Count > 0
+                || meta.Socials.Count > 0
+                || !string.IsNullOrWhiteSpace(meta.Homepage))
+            {
+                blocks.Add(new LatexBlockDto("personalInfo", new
+                {
+                    name = meta.PersonName ?? "",
+                    email = meta.Email ?? "",
+                    phones = meta.Phones.Select(p => new { kind = p.Kind, number = p.Number }).ToList(),
+                    homepage = meta.Homepage ?? "",
+                    socials = meta.Socials.Select(s => new { network = s.Network, handle = s.Handle }).ToList(),
+                    extra = meta.ExtraInfo ?? ""
+                }));
+            }
+
+            // Preamble photo → dedicated photo block so CV avatar geometry
+            // isn't lost inside a generic figure block.
+            if (!string.IsNullOrWhiteSpace(meta.PhotoFilename))
+            {
+                blocks.Add(new LatexBlockDto("photo", new
+                {
+                    src = meta.PhotoFilename,
+                    alt = meta.PersonName ?? "",
+                    shape = "square",
+                    size = 64,
+                    position = "right",
+                    border = 0
+                }));
+            }
+
             // Buffer for grouping consecutive ImportListItem / ImportBibliographyEntry into a single block.
             var listBuffer = new List<ImportListItem>();
             var bibBuffer = new List<ImportBibliographyEntry>();

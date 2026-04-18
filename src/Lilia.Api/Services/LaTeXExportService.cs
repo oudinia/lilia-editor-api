@@ -607,6 +607,10 @@ public class LaTeXExportService : ILaTeXExportService
                 "pageBreak" => @"\newpage",
                 "columnBreak" => @"\columnbreak",
                 "columnLayout" => RenderColumnLayout(content),
+                "personalInfo" => RenderPersonalInfo(content),
+                "photo" => RenderPhoto(content),
+                "cvEntry" => RenderCvEntry(content),
+                "cvSection" => RenderCvSection(content),
                 "embed" => RenderEmbed(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
@@ -638,6 +642,87 @@ public class LaTeXExportService : ILaTeXExportService
             ? $@"\begin{{multicols}}{{{columns}}}"
             : @"\onecolumn";
     }
+
+    private string RenderPersonalInfo(JsonElement content)
+    {
+        var name = GetString(content, "name");
+        var headline = GetString(content, "headline");
+        var email = GetString(content, "email");
+        var homepage = GetString(content, "homepage");
+        var extra = GetString(content, "extra");
+
+        var sb = new StringBuilder();
+        if (!string.IsNullOrEmpty(name))
+            sb.AppendLine(@$"\noindent\textbf{{\LARGE {EscapeLatex(name)}}}\par\smallskip");
+        if (!string.IsNullOrEmpty(headline))
+            sb.AppendLine($@"\textit{{{EscapeLatex(headline)}}}\par");
+        var line = new List<string>();
+        if (!string.IsNullOrEmpty(email)) line.Add(@$"\texttt{{{EscapeLatex(email)}}}");
+        if (content.TryGetProperty("phones", out var phonesEl) && phonesEl.ValueKind == JsonValueKind.Array)
+            foreach (var p in phonesEl.EnumerateArray())
+            {
+                var num = p.TryGetProperty("number", out var n) ? n.GetString() : null;
+                if (!string.IsNullOrEmpty(num)) line.Add(EscapeLatex(num));
+            }
+        if (!string.IsNullOrEmpty(homepage)) line.Add($@"\url{{{homepage}}}");
+        if (line.Count > 0) sb.AppendLine(string.Join(@" \ $\cdot$\ ", line) + @"\par");
+        if (content.TryGetProperty("socials", out var socialsEl) && socialsEl.ValueKind == JsonValueKind.Array)
+            foreach (var s in socialsEl.EnumerateArray())
+            {
+                var network = s.TryGetProperty("network", out var nEl) ? nEl.GetString() : "";
+                var handle = s.TryGetProperty("handle", out var hEl) ? hEl.GetString() : "";
+                if (!string.IsNullOrEmpty(handle))
+                    sb.AppendLine(@$"\small\textbf{{{EscapeLatex(network ?? "")}:}} {EscapeLatex(handle)}\par");
+            }
+        if (!string.IsNullOrEmpty(extra))
+            sb.AppendLine($@"\smallskip\textit{{{EscapeLatex(extra)}}}\par");
+        return sb.ToString().TrimEnd();
+    }
+
+    private string RenderPhoto(JsonElement content)
+    {
+        var src = GetString(content, "src");
+        if (string.IsNullOrEmpty(src)) return "";
+        var size = content.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number ? sz.GetInt32() : 64;
+        var position = GetString(content, "position"); // left|right|center
+        var align = position switch
+        {
+            "left" => "flushleft",
+            "right" => "flushright",
+            _ => "center"
+        };
+        var filename = ExtractImageFilename(src);
+        return $@"\begin{{{align}}}
+\IfFileExists{{figures/{filename}}}{{\includegraphics[height={size}pt]{{figures/{filename}}}}}{{\fbox{{\parbox{{{size}pt}}{{\centering\small [photo]}}}}}}
+\end{{{align}}}";
+    }
+
+    private string RenderCvSection(JsonElement content)
+    {
+        var title = GetString(content, "title");
+        return @$"\par\medskip\noindent\textbf{{\Large {EscapeLatex(title)}}}\par\smallskip";
+    }
+
+    private string RenderCvEntry(JsonElement content)
+    {
+        var period = GetString(content, "period");
+        var role = GetString(content, "role");
+        var org = GetString(content, "org");
+        var location = GetString(content, "location");
+        var description = GetString(content, "description");
+        var sb = new StringBuilder();
+        sb.Append(@$"\noindent\textbf{{{EscapeLatex(role)}}}");
+        if (!string.IsNullOrEmpty(org)) sb.Append(@$", \emph{{{EscapeLatex(org)}}}");
+        if (!string.IsNullOrEmpty(location)) sb.Append(@$" — {EscapeLatex(location)}");
+        if (!string.IsNullOrEmpty(period)) sb.Append(@$" \hfill {EscapeLatex(period)}");
+        sb.AppendLine(@"\par");
+        if (!string.IsNullOrEmpty(description))
+            sb.AppendLine(FormatInlineContent(description) + @"\par");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string GetString(JsonElement el, string prop) =>
+        el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
     private string RenderHeading(JsonElement content)
     {

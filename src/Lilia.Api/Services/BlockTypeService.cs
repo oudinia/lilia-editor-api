@@ -36,6 +36,39 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.Algorithm, "Algorithm", "Pseudocode algorithm block", "cpu", CategoryDocument, new { title = "", language = "pseudocode", code = "", label = "", caption = "" }),
             MakeBlockType(BlockTypes.Callout, "Callout", "Admonition or callout box (note, tip, warning, important, example)", "alert", CategoryDocument, new { variant = "note", title = "", text = "" }),
 
+            // CV / resume block types
+            MakeBlockType(BlockTypes.PersonalInfo, "Personal Info", "Name, contact, and social profile — typically at the top of a CV", "idBadge2", CategoryDocument, new
+            {
+                name = "",
+                headline = "",
+                email = "",
+                phones = Array.Empty<object>(),
+                homepage = "",
+                location = "",
+                socials = Array.Empty<object>(),
+                extra = ""
+            }),
+            MakeBlockType(BlockTypes.Photo, "Photo", "Profile photo / avatar with geometry controls", "photo", CategoryDocument, new
+            {
+                src = "",
+                alt = "",
+                shape = "square",
+                size = 64,
+                position = "right",
+                border = 0
+            }),
+            MakeBlockType(BlockTypes.CvSection, "CV Section", "Named section container for a CV (e.g. Experience, Education)", "layoutList", CategoryDocument, new { title = "" }),
+            MakeBlockType(BlockTypes.CvEntry, "CV Entry", "Dated role / education / project entry for a CV section", "list", CategoryDocument, new
+            {
+                period = "",
+                role = "",
+                org = "",
+                location = "",
+                highlight = "",
+                description = "",
+                tech = Array.Empty<string>()
+            }),
+
             // ePub block types
             MakeBlockType(BlockTypes.FrontMatter, "Front Matter", "Book front matter (title page, preface, etc.)", "bookOpen", CategoryEpub, new { text = "" }),
             MakeBlockType(BlockTypes.BackMatter, "Back Matter", "Book back matter (appendix, index, etc.)", "bookEnd", CategoryEpub, new { text = "" }),

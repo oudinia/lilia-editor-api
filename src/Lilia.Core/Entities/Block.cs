@@ -47,6 +47,10 @@ public static class BlockTypes
     public const string Algorithm = "algorithm";
     public const string Callout = "callout";
     public const string ColumnLayout = "columnLayout";
+    public const string PersonalInfo = "personalInfo";
+    public const string Photo = "photo";
+    public const string CvEntry = "cvEntry";
+    public const string CvSection = "cvSection";
 
     // Invoice block types (inv- namespace)
     public const string InvHeader = "inv-header";
@@ -79,6 +83,7 @@ public static class BlockTypes
         Blockquote, Table, Theorem, Abstract, Bibliography,
         TableOfContents, PageBreak, ColumnBreak, Embed, Footnote,
         Algorithm, Callout, ColumnLayout,
+        PersonalInfo, Photo, CvEntry, CvSection,
         FrontMatter, BackMatter, Verse, Aside, Annotation, Cover, ChapterBreak,
         InvHeader, InvParty, InvLineItems, InvTaxSummary,
         InvTotals, InvPayment, InvAllowanceCharge, InvDelivery, InvNote
