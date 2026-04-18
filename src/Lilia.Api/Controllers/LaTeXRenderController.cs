@@ -259,6 +259,7 @@ public class LaTeXRenderController : ControllerBase
                 .FirstOrDefaultAsync(d => d.Id == documentId);
 
             var bibWarnings = new List<string>();
+            var layoutWarnings = new List<string>();
             if (doc != null)
             {
                 var bibKeys = doc.BibliographyEntries.Select(e => e.CiteKey).ToHashSet();
@@ -278,14 +279,40 @@ public class LaTeXRenderController : ControllerBase
                         }
                     }
                 }
+
+                // Layout hints — fire only when the document is multi-column.
+                // We flag figures/tables that don't explicitly span="page" AND
+                // long-line code blocks that won't fit in a single column.
+                if (doc.Columns >= 2)
+                {
+                    foreach (var block in doc.Blocks)
+                    {
+                        var c = block.Content.RootElement;
+                        var type = block.Type.ToLowerInvariant();
+                        if (type is "figure" or "table" or "image")
+                        {
+                            var span = c.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
+                            if (string.Equals(span, "column", StringComparison.OrdinalIgnoreCase))
+                            {
+                                layoutWarnings.Add($"[layout] {type} block may not fit a single column — consider setting span to page.");
+                            }
+                        }
+                        else if (type == "code")
+                        {
+                            var code = c.TryGetProperty("code", out var cd) ? cd.GetString() ?? "" : "";
+                            if (code.Split('\n').Any(line => line.Length > 80))
+                                layoutWarnings.Add($"[layout] code block has lines >80 chars — will overflow in multi-column layout.");
+                        }
+                    }
+                }
             }
 
             var latex = await _renderService.RenderToLatexAsync(documentId);
             var result = await _latexService.ValidateAsync(latex);
             var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
 
-            // Merge bibliography warnings with LaTeX warnings
-            var allWarnings = bibWarnings.Concat(warnings).Distinct().ToArray();
+            // Merge bibliography + layout warnings with LaTeX warnings
+            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(warnings).Distinct().ToArray();
 
             if (!valid || allWarnings.Length > 0)
             {
