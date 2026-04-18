@@ -76,8 +76,8 @@ public static class LaTeXPreamble
 \normalem
 
 % Links & references (hyperref before cleveref).
-% \PassOptionsToPackage + plain \usepackage avoids "Option clash for hyperref"
-% when an imported package (orcidlink, hyperxmp, etc.) pre-loaded hyperref.
+% PassOptionsToPackage + plain usepackage avoids option-clash when an imported
+% package (orcidlink, hyperxmp, etc.) pre-loaded hyperref with default options.
 \PassOptionsToPackage{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}{hyperref}
 \usepackage{url}
 \usepackage{hyperref}
