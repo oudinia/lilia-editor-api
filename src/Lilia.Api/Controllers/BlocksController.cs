@@ -16,15 +16,17 @@ public class BlocksController : ControllerBase
     private readonly IBlockTypeService _blockTypeService;
     private readonly IRenderService _renderService;
     private readonly IVersionService _versionService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, ILogger<BlocksController> logger)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, IServiceScopeFactory scopeFactory, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
         _blockTypeService = blockTypeService;
         _renderService = renderService;
         _versionService = versionService;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -114,11 +116,18 @@ public class BlocksController : ControllerBase
 
         var blocks = await _blockService.BatchUpdateBlocksAsync(docId, dto.Blocks);
 
-        // Auto-version (throttled, fire-and-forget)
+        // Auto-version (throttled, fire-and-forget). Must run in its OWN DI
+        // scope — the request scope disposes its LiliaDbContext as soon as
+        // this method returns, so capturing _versionService here would hit
+        // 'Npgsql: A command is already in progress' when the background
+        // task runs after the connection was reset.
+        var logger = _logger;
         _ = Task.Run(async () =>
         {
-            try { await _versionService.CreateAutoVersionAsync(docId, userId); }
-            catch (Exception ex) { _logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
+            using var scope = _scopeFactory.CreateScope();
+            var versionService = scope.ServiceProvider.GetRequiredService<IVersionService>();
+            try { await versionService.CreateAutoVersionAsync(docId, userId); }
+            catch (Exception ex) { logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
         });
 
         return Ok(blocks);
