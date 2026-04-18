@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Lilia.Api.Services;
 
-public class RenderService : IRenderService
+public partial class RenderService : IRenderService
 {
     private readonly LiliaDbContext _context;
     private readonly ILogger<RenderService> _logger;

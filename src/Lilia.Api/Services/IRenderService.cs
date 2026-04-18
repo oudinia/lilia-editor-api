@@ -10,6 +10,10 @@ public interface IRenderService
     Task<string> RenderPageAsync(Guid documentId, int page);
     Task<string> RenderToHtmlAsync(Guid documentId);
     Task<string> RenderToLatexAsync(Guid documentId);
+    Task<string> RenderToMarkdownAsync(Guid documentId);
+    Task<string> RenderToLmlAsync(Guid documentId);
     string RenderBlockToHtml(Block block);
     string RenderBlockToLatex(Block block);
+    string RenderBlockToMarkdown(Block block);
+    string RenderBlockToLml(Block block);
 }
