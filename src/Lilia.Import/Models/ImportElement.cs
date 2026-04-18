@@ -169,6 +169,12 @@ public class ImportTable : ImportElement
     /// Whether the first row is a header row.
     /// </summary>
     public bool HasHeaderRow { get; set; }
+
+    /// <summary>
+    /// Layout span: "column" (default, flows in the current column) or "page"
+    /// (spans all columns — maps to LaTeX \begin{table*}).
+    /// </summary>
+    public string Span { get; set; } = "column";
 }
 
 /// <summary>
@@ -223,6 +229,11 @@ public class ImportImage : ImportElement
     /// Alt text / description.
     /// </summary>
     public string? AltText { get; set; }
+
+    /// <summary>
+    /// Layout span: "column" (default) or "page" (\begin{figure*}).
+    /// </summary>
+    public string Span { get; set; } = "column";
 
     /// <summary>
     /// Width in EMUs (English Metric Units) or null if not specified.

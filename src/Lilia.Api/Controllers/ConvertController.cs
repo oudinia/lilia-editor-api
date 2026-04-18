@@ -1183,7 +1183,7 @@ public class ConvertController : ControllerBase
                             : t.Rows.Count > 1
                                 ? t.Rows.Skip(1).Select(r => r.Select(c => c.Text).ToList()).ToList()
                                 : [];
-                        blocks.Add(new LatexBlockDto("table", new { headers, rows }));
+                        blocks.Add(new LatexBlockDto("table", new { headers, rows, span = t.Span }));
                         break;
                     case ImportImage img:
                         // P0-4: propagate the actual filename to the editor block so the user
@@ -1193,6 +1193,7 @@ public class ConvertController : ControllerBase
                             caption = img.AltText ?? "",
                             src = img.Filename ?? "",
                             alt = img.AltText ?? "",
+                            span = img.Span,
                         }));
                         break;
                     case ImportListItem li:

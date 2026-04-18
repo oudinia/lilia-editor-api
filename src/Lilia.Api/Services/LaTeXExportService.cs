@@ -614,11 +614,15 @@ public class LaTeXExportService : ILaTeXExportService
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
+        // span="page" → \begin{figure*}, which in single-column mode behaves
+        // identically to \begin{figure}, so we can emit it unconditionally.
+        var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
+        var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure";
 
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{fig:{label}}}" : "";
 
         var sb = new StringBuilder();
-        sb.AppendLine(@"\begin{figure}[H]");
+        sb.AppendLine($@"\begin{{{env}}}[H]");
         sb.AppendLine(@"\centering");
         if (!string.IsNullOrEmpty(src))
         {
@@ -633,7 +637,7 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
         else if (!string.IsNullOrEmpty(labelPart))
             sb.AppendLine(labelPart);
-        sb.Append(@"\end{figure}");
+        sb.Append($@"\end{{{env}}}");
         return sb.ToString();
     }
 
@@ -657,9 +661,11 @@ public class LaTeXExportService : ILaTeXExportService
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{tbl:{label}}}" : "";
+        var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
+        var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "table*" : "table";
 
         var sb = new StringBuilder();
-        sb.AppendLine(@"\begin{table}[H]");
+        sb.AppendLine($@"\begin{{{env}}}[H]");
         sb.AppendLine(@"\centering");
         if (!string.IsNullOrEmpty(caption))
             sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
@@ -688,7 +694,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         sb.AppendLine(@"\bottomrule");
         sb.AppendLine(@"\end{tabular}");
-        sb.Append(@"\end{table}");
+        sb.Append($@"\end{{{env}}}");
         return sb.ToString();
     }
 

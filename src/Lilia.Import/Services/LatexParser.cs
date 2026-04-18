@@ -577,20 +577,22 @@ public class LatexParser : ILatexParser
                     matches.Add((codeMatch, "code"));
             }
 
-            // Figure environments
+            // Figure environments — match both \begin{figure} and \begin{figure*}.
+            // The starred form spans both columns in a 2-col layout; we capture
+            // that via the `span` attribute on the emitted figure block.
             if (options.PreserveFigures)
             {
-                var figureMatch = Regex.Match(remaining, @"\\begin\{figure\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{figure\}", RegexOptions.Singleline);
+                var figureMatch = Regex.Match(remaining, @"\\begin\{figure(\*?)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{figure\1\}", RegexOptions.Singleline);
                 if (figureMatch.Success)
-                    matches.Add((figureMatch, "figure"));
+                    matches.Add((figureMatch, figureMatch.Groups[1].Value == "*" ? "figure*" : "figure"));
             }
 
-            // Table environments
+            // Table environments — same starred-variant handling as figures.
             if (options.ConvertTables)
             {
-                var tableMatch = Regex.Match(remaining, @"\\begin\{table\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{table\}", RegexOptions.Singleline);
+                var tableMatch = Regex.Match(remaining, @"\\begin\{table(\*?)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{table\1\}", RegexOptions.Singleline);
                 if (tableMatch.Success)
-                    matches.Add((tableMatch, "table"));
+                    matches.Add((tableMatch, tableMatch.Groups[1].Value == "*" ? "table*" : "table"));
             }
 
             // Lists — itemize / enumerate / description (P0-1)
@@ -745,9 +747,11 @@ public class LatexParser : ILatexParser
                     break;
 
                 case "figure":
+                case "figure*":
                     {
                         // Extract includegraphics filename and caption (with balanced-brace caption walker).
-                        var figContent = firstMatch.match.Groups[1].Value;
+                        // With starred/regular handling the content is now group 2; group 1 is the "*" flag.
+                        var figContent = firstMatch.match.Groups[2].Value;
                         var graphicsMatch = Regex.Match(figContent, @"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}");
                         var captionInner = MatchBalanced(figContent, "caption");
 
@@ -756,19 +760,22 @@ public class LatexParser : ILatexParser
                             Order = elementOrder++,
                             Filename = graphicsMatch.Success ? graphicsMatch.Groups[1].Value : null,
                             AltText = captionInner.HasValue ? StripInlineCommandsForPlainText(captionInner.Value.Inner) : null,
+                            Span = firstMatch.type == "figure*" ? "page" : "column",
                             Data = []
                         });
                     }
                     break;
 
                 case "table":
-                    var tableContent = firstMatch.match.Groups[1].Value;
+                case "table*":
+                    var tableContent = firstMatch.match.Groups[2].Value;
                     var tabularMatch = Regex.Match(tableContent, @"\\begin\{tabular\}\{([^}]*)\}([\s\S]*?)\\end\{tabular\}", RegexOptions.Singleline);
 
                     if (tabularMatch.Success)
                     {
                         var table = ParseTabular(tabularMatch.Groups[2].Value);
                         table.Order = elementOrder++;
+                        table.Span = firstMatch.type == "table*" ? "page" : "column";
                         document.Elements.Add(table);
                     }
                     else
