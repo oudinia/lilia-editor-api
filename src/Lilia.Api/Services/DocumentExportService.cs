@@ -22,6 +22,7 @@ public class DocumentExportService : IDocumentExportService
     private readonly LiliaDbContext _context;
     private readonly IDocxExportService _docxExportService;
     private readonly IRenderService _renderService;
+    private readonly ILaTeXExportService _latexExportService;
     private readonly ILaTeXRenderService _latexRenderService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DocumentExportService> _logger;
@@ -30,6 +31,7 @@ public class DocumentExportService : IDocumentExportService
         LiliaDbContext context,
         IDocxExportService docxExportService,
         IRenderService renderService,
+        ILaTeXExportService latexExportService,
         ILaTeXRenderService latexRenderService,
         IHttpClientFactory httpClientFactory,
         ILogger<DocumentExportService> logger)
@@ -37,6 +39,7 @@ public class DocumentExportService : IDocumentExportService
         _context = context;
         _docxExportService = docxExportService;
         _renderService = renderService;
+        _latexExportService = latexExportService;
         _latexRenderService = latexRenderService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
@@ -97,7 +100,24 @@ public class DocumentExportService : IDocumentExportService
 
     public async Task<byte[]> ExportToPdfAsync(Guid documentId)
     {
-        var latex = await _renderService.RenderToLatexAsync(documentId);
+        // Go through LaTeXExportService so PDF uses the same preamble builder
+        // as the ZIP export — single source of truth for class/options/packages
+        // filtering and the journal shims.
+        var opts = new LaTeXExportOptions
+        {
+            Structure = "single",
+            IncludeImages = false,
+            DocumentClass = "article",
+            FontSize = "11pt",
+            PaperSize = "a4paper",
+        };
+        var projectStream = await _latexExportService.ExportToZipAsync(documentId, opts);
+        using var archive = new System.IO.Compression.ZipArchive(projectStream, System.IO.Compression.ZipArchiveMode.Read);
+        var mainEntry = archive.Entries.FirstOrDefault(e => e.Name == "main.tex");
+        if (mainEntry == null)
+            throw new InvalidOperationException("Generated LaTeX project has no main.tex");
+        using var reader = new System.IO.StreamReader(mainEntry.Open());
+        var latex = await reader.ReadToEndAsync();
         return await _latexRenderService.RenderToPdfAsync(latex, timeout: 60);
     }
 
