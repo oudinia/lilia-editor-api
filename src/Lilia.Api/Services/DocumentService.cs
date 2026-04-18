@@ -680,6 +680,9 @@ public class DocumentService : IDocumentService
             d.LineSpacing,
             d.ParagraphIndent,
             d.PageNumbering,
+            d.LatexDocumentClass,
+            d.LatexDocumentClassOptions,
+            d.LatexPackages,
             d.Blocks.Select(b => new BlockDto(
                 b.Id,
                 b.DocumentId,

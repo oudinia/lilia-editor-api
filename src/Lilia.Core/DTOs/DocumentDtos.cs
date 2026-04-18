@@ -65,6 +65,9 @@ public record DocumentDto(
     double? LineSpacing,
     string? ParagraphIndent,
     string? PageNumbering,
+    string? LatexDocumentClass,
+    string? LatexDocumentClassOptions,
+    string? LatexPackages,
     List<BlockDto> Blocks,
     List<BibliographyEntryDto> Bibliography,
     List<LabelDto> Labels
