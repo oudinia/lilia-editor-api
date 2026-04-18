@@ -761,6 +761,54 @@ public partial class RenderService : IRenderService
         return result;
     }
 
+    // Mirror of LaTeXExportService.BuildDocumentClassDirective but reads only
+    // from the Document — no LaTeXExportOptions available in this code path.
+    private static string BuildDocumentClassDirectiveFromDoc(Document doc)
+    {
+        var className = !string.IsNullOrWhiteSpace(doc.LatexDocumentClass) ? doc.LatexDocumentClass.Trim() : "article";
+        var opts = new List<string>();
+        opts.Add($"{doc.FontSize}pt");
+        opts.Add(string.Equals(doc.PaperSize, "letter", StringComparison.OrdinalIgnoreCase) ? "letterpaper" : "a4paper");
+        if (!string.IsNullOrWhiteSpace(doc.LatexDocumentClassOptions))
+        {
+            foreach (var t in doc.LatexDocumentClassOptions.Split(','))
+            {
+                var o = t.Trim();
+                if (!string.IsNullOrEmpty(o) && !opts.Contains(o)) opts.Add(o);
+            }
+        }
+        if (doc.Columns >= 2 && !opts.Any(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase)))
+        {
+            opts.Add("twocolumn");
+        }
+        return opts.Count > 0
+            ? $"\\documentclass[{string.Join(",", opts)}]{{{className}}}"
+            : $"\\documentclass{{{className}}}";
+    }
+
+    private static string BuildImportedPackageLinesFromDoc(Document doc)
+    {
+        if (string.IsNullOrWhiteSpace(doc.LatexPackages)) return string.Empty;
+        try
+        {
+            using var json = JsonDocument.Parse(doc.LatexPackages);
+            if (json.RootElement.ValueKind != JsonValueKind.Array) return string.Empty;
+            var sb = new StringBuilder();
+            sb.AppendLine("% Packages preserved from imported preamble");
+            foreach (var pkg in json.RootElement.EnumerateArray())
+            {
+                var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                var o = pkg.TryGetProperty("options", out var opel) ? opel.GetString() : null;
+                sb.AppendLine(string.IsNullOrWhiteSpace(o)
+                    ? $"\\usepackage{{{name}}}"
+                    : $"\\usepackage[{o}]{{{name}}}");
+            }
+            return sb.ToString();
+        }
+        catch { return string.Empty; }
+    }
+
     // LaTeX rendering
     public async Task<string> RenderToLatexAsync(Guid documentId)
     {
@@ -776,8 +824,15 @@ public partial class RenderService : IRenderService
 
         var latex = new StringBuilder();
 
-        // Preamble
-        latex.AppendLine(@"\documentclass[11pt,a4paper]{article}");
+        // Preamble — honour imported class / options / packages so PDFs compile
+        // against mnras/pnas/frontiers templates instead of bare article.
+        latex.AppendLine(BuildDocumentClassDirectiveFromDoc(doc));
+        // Imported packages first so journal-class dependencies load before our defaults.
+        var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
+        if (!string.IsNullOrEmpty(importedPkgs))
+        {
+            latex.AppendLine(importedPkgs);
+        }
         latex.AppendLine(LaTeXPreamble.Packages);
 
         // Multi-column support
