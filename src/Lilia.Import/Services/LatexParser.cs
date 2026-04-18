@@ -30,7 +30,10 @@ public class LatexParser : ILatexParser
         ["remark"]      = TheoremEnvironmentType.Remark,
         ["note"]        = TheoremEnvironmentType.Note,
         ["proof"]       = TheoremEnvironmentType.Proof,
-        ["algorithm"]   = TheoremEnvironmentType.Algorithm,
+        // NOTE: "algorithm" is handled by a dedicated parser branch that emits
+        // an ImportAlgorithm element — NOT as a theorem. If you add it here
+        // it gets stuffed into a theorem block with the algorithmic body as
+        // raw text, which is how BG-XXX was produced.
         ["exercise"]    = TheoremEnvironmentType.Exercise,
         ["solution"]    = TheoremEnvironmentType.Solution,
         ["axiom"]       = TheoremEnvironmentType.Axiom,
@@ -49,6 +52,7 @@ public class LatexParser : ILatexParser
         "itemize", "enumerate", "description",
         "quote", "quotation", "verse",
         "center", "flushleft", "flushright",
+        "algorithm", "algorithm2e", "algorithmic",
     };
 
     /// <summary>
@@ -606,6 +610,14 @@ public class LatexParser : ILatexParser
             if (theoremMatch.Success)
                 matches.Add((theoremMatch, "theorem"));
 
+            // Algorithm float: \begin{algorithm}[H] \caption{..} \label{..}
+            //   \begin{algorithmic}[1] ... \end{algorithmic} \end{algorithm}
+            // Must be matched before the catch-all env and AFTER any theorem
+            // match resolution so it doesn't collide.
+            var algorithmMatch = Regex.Match(remaining, @"\\begin\{algorithm\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{algorithm\}", RegexOptions.Singleline);
+            if (algorithmMatch.Success)
+                matches.Add((algorithmMatch, "algorithm"));
+
             // Abstract environment (P0-7)
             var abstractMatch = Regex.Match(remaining, @"\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}", RegexOptions.Singleline);
             if (abstractMatch.Success)
@@ -860,6 +872,28 @@ public class LatexParser : ILatexParser
                         Text = firstMatch.match.Groups[1].Value.Trim(),
                         Formatting = ParseLatexFormatting(firstMatch.match.Groups[1].Value.Trim()),
                     });
+                    break;
+
+                case "algorithm":
+                    {
+                        var algoBody = firstMatch.match.Groups[1].Value;
+                        var capMatch = Regex.Match(algoBody, @"\\caption\{([^}]+)\}");
+                        var lblMatch = Regex.Match(algoBody, @"\\label\{([^}]+)\}");
+                        var algorithmicMatch = Regex.Match(
+                            algoBody,
+                            @"\\begin\{algorithmic\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{algorithmic\}",
+                            RegexOptions.Singleline);
+                        var code = algorithmicMatch.Success
+                            ? algorithmicMatch.Groups[1].Value.Trim()
+                            : algoBody.Trim();
+                        document.Elements.Add(new ImportAlgorithm
+                        {
+                            Order = elementOrder++,
+                            Caption = capMatch.Success ? capMatch.Groups[1].Value.Trim() : null,
+                            Label = lblMatch.Success ? lblMatch.Groups[1].Value.Trim() : null,
+                            Code = code,
+                        });
+                    }
                     break;
 
                 case "bibliography":

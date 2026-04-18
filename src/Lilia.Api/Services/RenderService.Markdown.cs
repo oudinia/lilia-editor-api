@@ -77,6 +77,7 @@ public partial class RenderService
                 "tableofcontents" => "## Table of Contents",
                 "bibliography" => "",
                 "pagebreak" or "divider" or "columnbreak" => "---",
+                "columnlayout" => RenderColumnLayoutToMarkdown(content),
                 "embed" => RenderEmbedToMarkdown(content),
                 "algorithm" => RenderAlgorithmToMarkdown(content),
                 "callout" => RenderCalloutToMarkdown(content),
@@ -464,6 +465,18 @@ public partial class RenderService
     {
         if (string.IsNullOrEmpty(s)) return "";
         return s.Replace("[", "\\[").Replace("]", "\\]");
+    }
+
+    private static string RenderColumnLayoutToMarkdown(JsonElement content)
+    {
+        // Markdown has no native multi-column — emit an HTML fragment that
+        // survives GFM+HTML passthrough.
+        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "start" : "start";
+        if (string.Equals(mode, "end", StringComparison.OrdinalIgnoreCase))
+            return "</div>";
+        var columns = content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 2;
+        columns = Math.Clamp(columns, 1, 3);
+        return $"<div style=\"column-count: {columns};\">";
     }
 
     private static string? ReadLabel(JsonElement content)

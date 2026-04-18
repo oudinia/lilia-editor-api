@@ -1213,6 +1213,14 @@ public class ConvertController : ControllerBase
                             label = th.Label ?? "",
                         }));
                         break;
+                    case ImportAlgorithm algo:
+                        blocks.Add(new LatexBlockDto("algorithm", new
+                        {
+                            caption = algo.Caption ?? "",
+                            label = algo.Label ?? "",
+                            code = algo.Code,
+                        }));
+                        break;
                     case ImportAbstract ab:
                         blocks.Add(new LatexBlockDto("abstract", new { text = ConvertLatexFormattingToMarkdown(ab.Text) }));
                         break;

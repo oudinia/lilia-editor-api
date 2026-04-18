@@ -24,6 +24,7 @@ public enum ImportElementType
     Abstract,
     Blockquote,
     Theorem,
+    Algorithm,
     BibliographyEntry
 }
 

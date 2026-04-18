@@ -196,6 +196,7 @@ public partial class RenderService : IRenderService
                 "tableofcontents" => "<div class=\"table-of-contents\"><h3>Table of Contents</h3><p>Auto-generated from headings</p></div>",
                 "bibliography" => RenderBibliographyToHtml(content),
                 "columnbreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
+                "columnlayout" => RenderColumnLayoutToHtml(content),
                 "pagebreak" or "divider" => "<div class=\"page-break\"><span class=\"page-break-label\">Page Break</span></div>",
                 "embed" => RenderEmbedToHtml(content),
                 "algorithm" => RenderAlgorithmToHtml(content),
@@ -707,6 +708,36 @@ public partial class RenderService : IRenderService
         return html.ToString();
     }
 
+    /// <summary>
+    /// Paired marker block: `mode = "start" | "end"` with `columns = 1|2|3`.
+    /// Start opens a multicol region; end closes it. LaTeX export emits
+    /// `\begin{multicols}{N}` / `\end{multicols}`. HTML emits a column-count
+    /// wrapper open/close.
+    /// </summary>
+    private static string RenderColumnLayoutToLatex(JsonElement content)
+    {
+        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "start" : "start";
+        if (string.Equals(mode, "end", StringComparison.OrdinalIgnoreCase))
+            return @"\end{multicols}";
+        var columns = content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 2;
+        columns = Math.Clamp(columns, 1, 3);
+        // \begin{multicols}{1} is illegal — multicol requires >= 2. For columns=1
+        // emit \onecolumn which is the LaTeX idiom for single-column mid-document.
+        return columns >= 2
+            ? $@"\begin{{multicols}}{{{columns}}}"
+            : @"\onecolumn";
+    }
+
+    private static string RenderColumnLayoutToHtml(JsonElement content)
+    {
+        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "start" : "start";
+        if (string.Equals(mode, "end", StringComparison.OrdinalIgnoreCase))
+            return "</div><!-- /column-layout -->";
+        var columns = content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 2;
+        columns = Math.Clamp(columns, 1, 3);
+        return $"<div class=\"column-layout\" style=\"column-count: {columns}; column-gap: 1.5cm;\">";
+    }
+
     private string ProcessInlineContent(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -941,6 +972,7 @@ public partial class RenderService : IRenderService
                 "abstract" => RenderAbstractToLatex(content),
                 "tableofcontents" => @"\tableofcontents",
                 "columnbreak" => @"\columnbreak",
+                "columnlayout" => RenderColumnLayoutToLatex(content),
                 "pagebreak" or "divider" => @"\newpage",
                 "bibliography" => "", // handled separately via BibliographyEntries
                 "embed" => RenderEmbedToLatex(content),

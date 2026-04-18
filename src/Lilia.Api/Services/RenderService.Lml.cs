@@ -79,6 +79,7 @@ public partial class RenderService
                 "bibliography" => "",
                 "pagebreak" or "divider" => "@pagebreak",
                 "columnbreak" => "@columnbreak",
+                "columnlayout" => RenderColumnLayoutToLml(content),
                 "embed" => RenderEmbedToLml(content, label),
                 "algorithm" => RenderAlgorithmToLml(content, label),
                 "callout" => RenderCalloutToLml(content, label),
@@ -320,6 +321,16 @@ public partial class RenderService
             }
         }
         return sb.ToString().TrimEnd();
+    }
+
+    private static string RenderColumnLayoutToLml(JsonElement content)
+    {
+        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "start" : "start";
+        if (string.Equals(mode, "end", StringComparison.OrdinalIgnoreCase))
+            return "@end-columnlayout";
+        var columns = content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 2;
+        columns = Math.Clamp(columns, 1, 3);
+        return $"@columnlayout[columns={columns}]";
     }
 
     private static string? ReadLmlLabel(JsonElement content)

@@ -144,6 +144,29 @@ public class ImportCodeBlock : ImportElement
 }
 
 /// <summary>
+/// An algorithm float environment (\begin{algorithm}...\end{algorithm})
+/// containing a caption + algorithmic body. Emitted as an "algorithm" block
+/// in Lilia — NOT a theorem, NOT raw code.
+/// </summary>
+public class ImportAlgorithm : ImportElement
+{
+    public override ImportElementType Type => ImportElementType.Algorithm;
+
+    /// <summary>Caption from \caption{...} — the displayed title.</summary>
+    public string? Caption { get; set; }
+
+    /// <summary>Label from \label{...} — used by \ref{alg:xyz}.</summary>
+    public string? Label { get; set; }
+
+    /// <summary>
+    /// The algorithmic body — pseudocode lines with \STATE, \IF, \FOR, etc.
+    /// Preserved verbatim so the exporter can emit \begin{algorithmic}
+    /// around it again.
+    /// </summary>
+    public string Code { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// A table element that will become a Table block in Lilia.
 /// </summary>
 public class ImportTable : ImportElement

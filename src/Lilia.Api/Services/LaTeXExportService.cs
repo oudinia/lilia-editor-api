@@ -561,6 +561,7 @@ public class LaTeXExportService : ILaTeXExportService
                 "tableOfContents" => @"\tableofcontents" + "\n" + @"\newpage",
                 "pageBreak" => @"\newpage",
                 "columnBreak" => @"\columnbreak",
+                "columnLayout" => RenderColumnLayout(content),
                 "embed" => RenderEmbed(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
@@ -578,6 +579,19 @@ public class LaTeXExportService : ILaTeXExportService
     {
         var text = GetText(content);
         return FormatInlineContent(text);
+    }
+
+    private static string RenderColumnLayout(JsonElement content)
+    {
+        // Paired marker — mode="start" opens a multicols region, mode="end" closes it.
+        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "start" : "start";
+        if (string.Equals(mode, "end", StringComparison.OrdinalIgnoreCase))
+            return @"\end{multicols}";
+        var columns = content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 2;
+        columns = Math.Clamp(columns, 1, 3);
+        return columns >= 2
+            ? $@"\begin{{multicols}}{{{columns}}}"
+            : @"\onecolumn";
     }
 
     private string RenderHeading(JsonElement content)
