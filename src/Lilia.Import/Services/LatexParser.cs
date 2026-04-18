@@ -1066,6 +1066,7 @@ public class LatexParser : ILatexParser
             // Map aliases to canonical kinds.
             var kind = cmd switch
             {
+                "state" => "statement",
                 "elseif" => "elsif",
                 "forall" => "for",
                 _ => cmd,
