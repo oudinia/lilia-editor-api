@@ -280,7 +280,10 @@ public class LaTeXRenderController : ControllerBase
             RuleVersion = ValidationCacheService.RuleVersion,
             ValidatedAt = DateTime.UtcNow,
         });
-        _ = _validationCache.InvalidateOlderThanAsync(blockId, contentHash, ValidationCacheService.RuleVersion);
+        // Await — fire-and-forget on a scoped service races the request scope
+        // closing (DbContext gets disposed → transient failure exceptions).
+        // Invalidate is a single DELETE, cost is negligible.
+        await _validationCache.InvalidateOlderThanAsync(blockId, contentHash, ValidationCacheService.RuleVersion);
 
         return Ok(new { valid, error, warnings, blockId, cached = false });
     }
