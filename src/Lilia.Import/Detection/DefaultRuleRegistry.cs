@@ -29,6 +29,13 @@ public static class DefaultRuleRegistry
         rules.Add(TitleSubtitleOtherRule());           // Priority 106: remaining Title/Subtitle → paragraph
         rules.Add(HeadingCustomStyleRule());
         rules.Add(HeadingOutlineRule(options));
+        // Numbered headings ("1.1.1 Key Terms", "2.3 Methodology") — always
+        // on regardless of DetectHeadingsByFormatting. These are unambiguous
+        // heading markers that academic and report-style DOCX files rely on
+        // when authors don't apply Heading1/2/3 styles. Fires at 125, before
+        // HeadingFormattingRule (130) so it wins on the numbered-pattern
+        // case without depending on the formatting-heuristics flag.
+        rules.Add(NumberedHeadingRule());
         if (options.DetectHeadingsByFormatting)
         {
             rules.Add(HeadingFormattingRule());
@@ -354,6 +361,69 @@ public static class DefaultRuleRegistry
             OnMatch = (analysis, tracker) =>
             {
                 var level = analysis.OutlineLevel!.Value + 1;
+                tracker.OnHeadingEncountered(analysis.Text, level);
+            }
+        };
+    }
+
+    /// <summary>
+    /// Numbered-heading rule — "1.1.1 Key Terms", "2.3 Methodology", "A.1 Appendix".
+    /// Unambiguous heading marker regardless of styling. Fires before
+    /// HeadingFormattingRule so numbered headings always promote, even
+    /// when DetectHeadingsByFormatting is disabled.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex NumberedHeadingRegex =
+        new(@"^\s*(\d+(?:\.\d+)*)\.?\s+(\S.{0,90})$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static int? ExtractNumberedHeadingLevel(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var t = text.TrimEnd();
+        if (t.Length > 120) return null; // very long lines aren't headings
+        var m = NumberedHeadingRegex.Match(t);
+        if (!m.Success) return null;
+        var numberPart = m.Groups[1].Value;
+        // Require at least one letter in the title to exclude raw numeric lists.
+        if (!m.Groups[2].Value.Any(char.IsLetter)) return null;
+        var dotCount = numberPart.Count(c => c == '.');
+        // "1 Introduction" (dotCount=0) → L1 if short; else skip (risk of false positive on "1 million cases")
+        if (dotCount == 0)
+        {
+            return t.Length <= 60 ? 1 : (int?)null;
+        }
+        return Math.Min(dotCount + 1, 6);
+    }
+
+    private static ElementDetectionRule NumberedHeadingRule()
+    {
+        return new ElementDetectionRule
+        {
+            Id = "heading.numbered",
+            Name = "Heading by Numbered Pattern",
+            Priority = 125, // between outline (120) and formatting (130)
+            TargetType = ImportElementType.Heading,
+            Condition = new DetectionConditionFunc(
+                analysis => ExtractNumberedHeadingLevel(analysis.Text) != null,
+                "Text starts with a numbered-section pattern (1.1.1 Title)"),
+            CreateElements = (analysis, parser) =>
+            {
+                var level = ExtractNumberedHeadingLevel(analysis.Text)!.Value;
+                return
+                [
+                    new ImportHeading
+                    {
+                        Order = parser.NextElementOrder(),
+                        Level = level,
+                        Text = analysis.Text.Trim(),
+                        Formatting = analysis.Formatting,
+                        StyleId = analysis.StyleId
+                    }
+                ];
+            },
+            OnMatch = (analysis, tracker) =>
+            {
+                var level = ExtractNumberedHeadingLevel(analysis.Text)!.Value;
                 tracker.OnHeadingEncountered(analysis.Text, level);
             }
         };
