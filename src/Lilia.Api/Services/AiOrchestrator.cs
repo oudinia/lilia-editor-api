@@ -22,6 +22,7 @@ public class AiOrchestrator : IAiOrchestrator
     private readonly LiliaDbContext _context;
     private readonly IRedactionService _redaction;
     private readonly IChatClient _chatClient;
+    private readonly IEntitlementService? _entitlement;
     private readonly ILogger<AiOrchestrator> _logger;
     private readonly int _rateLimitPerHour;
 
@@ -30,11 +31,13 @@ public class AiOrchestrator : IAiOrchestrator
         IRedactionService redaction,
         IChatClient chatClient,
         IConfiguration config,
-        ILogger<AiOrchestrator> logger)
+        ILogger<AiOrchestrator> logger,
+        IEntitlementService? entitlement = null)
     {
         _context = context;
         _redaction = redaction;
         _chatClient = chatClient;
+        _entitlement = entitlement;
         _logger = logger;
         _rateLimitPerHour = int.TryParse(config["AI:RateLimitPerHour"], out var n) && n > 0 ? n : 60;
     }
@@ -119,6 +122,21 @@ public class AiOrchestrator : IAiOrchestrator
             await MarkAsync(requestId, "success", errorMessage: null,
                 promptTokens: promptTokens, completionTokens: completionTokens,
                 latencyMs: (int)sw.ElapsedMilliseconds, ct);
+
+            // Debit the AI credit ledger for this spend. Best-effort — if
+            // the entitlement service isn't wired (e.g. older DI) the call
+            // is a no-op. Credits use ceil(tokens / 1000).
+            if (_entitlement != null)
+            {
+                try
+                {
+                    await _entitlement.RecordAiSpendAsync(request.UserId, promptTokens + completionTokens, requestId, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "AI credit debit failed for user {UserId}", request.UserId);
+                }
+            }
 
             return new AiOrchestratorResult(requestId, "success", text, null,
                 promptTokens, completionTokens, redacted.TotalReplacements);
