@@ -200,7 +200,8 @@ public static class LaTeXPreamble
 \providecommand{\liliaSafeUseColorTheme}[1]{\IfFileExists{beamercolortheme#1.sty}{\usecolortheme{#1}}{}}
 \providecommand{\liliaSafeUseFontTheme}[1]{\IfFileExists{beamerfonttheme#1.sty}{\usefonttheme{#1}}{}}
 \providecommand{\liliaSafeUseInnerTheme}[1]{\IfFileExists{beamerinnertheme#1.sty}{\useinnertheme{#1}}{}}
-\providecommand{\liliaSafeUseOuterTheme}[1]{\IfFileExists{beamerouterthemeH#1.sty}{\useoutertheme{#1}}{}}
+\providecommand{\liliaSafeUseOuterTheme}[1]{\IfFileExists{beamerouterthemeH#1.sty}{\useoutertheme{#1}}{}}% typo-safe companion kept for back-compat
+\providecommand{\liliaSafeUseOutertheme}[1]{\IfFileExists{beamerouthertheme#1.sty}{\useoutertheme{#1}}{}}
 \makeatother
 ";
 
@@ -277,6 +278,37 @@ public static class LaTeXPreamble
 \@ifundefined{methods}{\newenvironment{methods}{\section*{Methods}}{}}{}
 \@ifundefined{highlights}{\newenvironment{highlights}{\paragraph*{Highlights}}{}}{}
 \makeatother
+";
+
+    /// <summary>
+    /// Shims for newsletter / newspaper-class commands. The `newspaper` package
+    /// depends on `yfonts.sty` (Fraktur) which isn't on vanilla texlive, so we
+    /// skip loading it and no-op the macros it would have defined. Same arc as
+    /// JournalShims — accept visual degradation, keep compile green.
+    /// </summary>
+    public const string NewspaperShims = @"% Shims for newspaper-package commands (defined only if missing)
+\providecommand{\SetPaperName}[1]{}
+\providecommand{\SetHeaderName}[1]{}
+\providecommand{\SetPaperLocation}[1]{}
+\providecommand{\SetPaperSlogan}[1]{}
+\providecommand{\SetPaperPrice}[1]{}
+\providecommand{\currentvolume}[1]{}
+\providecommand{\currentissue}[1]{}
+";
+
+    /// <summary>
+    /// Shims for Overleaf-custom calendar packages (OL-calendar-mods.sty).
+    /// These are defined locally inside Overleaf and aren't on texlive, so any
+    /// \renewcommand{\SundayColor}{...} etc. in imported bodies would crash on
+    /// undefined control sequence. Provide defaults so the renewcommand targets
+    /// exist; calendar rendering itself falls back to tikz/calendar defaults.
+    /// </summary>
+    public const string CalendarShims = @"% Shims for Overleaf calendar-template customisations
+\providecommand{\SundayColor}{red}
+\providecommand{\SaturdayColor}{red}
+\providecommand{\monthcolor}{black}
+\providecommand{\watermarkfile}{}
+\providecommand{\dhlist}{}
 ";
 
     /// <summary>

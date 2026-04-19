@@ -369,7 +369,11 @@ public class LaTeXExportService : ILaTeXExportService
         "wasysym", "mathabx", "stix", "stix2", "times",
         // XeTeX / LuaTeX-only font loaders — our pdflatex container can't
         // use them. Load lmodern-based defaults instead.
-        "fontspec", "unicode-math", "polyglossia"
+        "fontspec", "unicode-math", "polyglossia",
+        // newspaper (Overleaf newspaper template) requires yfonts.sty (Fraktur)
+        // which isn't on the default texlive install. We skip the package and
+        // provide no-op shims for its macros in LaTeXPreamble.NewspaperShims.
+        "newspaper", "yfonts"
     };
 
     // When we fall back to article (stored class not in SafeDocumentClasses),
@@ -514,6 +518,8 @@ public class LaTeXExportService : ILaTeXExportService
         sb.Append(LaTeXPreamble.JournalShims);
         sb.Append(LaTeXPreamble.CvShims);
         sb.Append(LaTeXPreamble.BeamerShims);
+        sb.Append(LaTeXPreamble.NewspaperShims);
+        sb.Append(LaTeXPreamble.CalendarShims);
         sb.AppendLine();
 
         // Graphics path for figures

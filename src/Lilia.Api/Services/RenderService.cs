@@ -819,7 +819,10 @@ public partial class RenderService : IRenderService
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
         "charter", "cmbright", "kpfonts", "eulervm",
         "wasysym", "mathabx", "stix", "stix2", "times",
-        "fontspec", "unicode-math", "polyglossia"
+        "fontspec", "unicode-math", "polyglossia",
+        // newspaper (Overleaf template) depends on yfonts.sty which isn't on
+        // default texlive. Shimmed via LaTeXPreamble.NewspaperShims.
+        "newspaper", "yfonts"
     };
 
     private static readonly HashSet<string> ArticleKnownOptions = new(StringComparer.OrdinalIgnoreCase)
@@ -930,6 +933,8 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.JournalShims);
         latex.AppendLine(LaTeXPreamble.CvShims);
         latex.AppendLine(LaTeXPreamble.BeamerShims);
+        latex.AppendLine(LaTeXPreamble.NewspaperShims);
+        latex.AppendLine(LaTeXPreamble.CalendarShims);
 
         // Multi-column support
         if (doc.Columns > 1)
