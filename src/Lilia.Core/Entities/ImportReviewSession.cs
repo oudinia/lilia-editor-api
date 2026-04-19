@@ -8,12 +8,15 @@ public class ImportReviewSession
     public Guid? JobId { get; set; }
     public string OwnerId { get; set; } = string.Empty;
     public string DocumentTitle { get; set; } = string.Empty;
-    public string Status { get; set; } = "in_progress"; // in_progress, imported, cancelled
+    public string Status { get; set; } = "in_progress"; // in_progress, parsing, pending_review, auto_finalized, imported, cancelled
     public JsonDocument? OriginalWarnings { get; set; }
     public Guid? DocumentId { get; set; }
     public JsonDocument? ParagraphTraces { get; set; }
     public string? SourceFilePath { get; set; }
     public string? RawImportData { get; set; }
+    public bool AutoFinalizeEnabled { get; set; } = false;
+    public int? QualityScore { get; set; }
+    public Guid? ProjectSessionId { get; set; } // Reserved for future multi-file project ingest layer
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }
@@ -26,4 +29,5 @@ public class ImportReviewSession
     public virtual ICollection<ImportReviewCollaborator> Collaborators { get; set; } = new List<ImportReviewCollaborator>();
     public virtual ICollection<ImportBlockComment> Comments { get; set; } = new List<ImportBlockComment>();
     public virtual ICollection<ImportReviewActivity> Activities { get; set; } = new List<ImportReviewActivity>();
+    public virtual ICollection<ImportDiagnostic> Diagnostics { get; set; } = new List<ImportDiagnostic>();
 }

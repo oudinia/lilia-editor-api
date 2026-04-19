@@ -43,4 +43,19 @@ public interface IImportReviewService
 
     // Paragraph traces
     Task<System.Text.Json.JsonElement?> GetParagraphTracesAsync(Guid sessionId, string userId);
+
+    // Called by LatexImportJobExecutor when auto-finalize gate passes. Skips
+    // permission + force-flag logic because the executor already proved the
+    // session is clean (0 errors, 0 risky warnings).
+    Task<FinalizeResultDto> FinalizeFromStagingAsync(
+        Guid sessionId,
+        string ownerId,
+        string documentTitle,
+        bool force,
+        CancellationToken ct = default
+    );
+
+    // Diagnostics (new import-review feature)
+    Task<List<ImportDiagnosticDto>> GetDiagnosticsAsync(Guid sessionId, string userId);
+    Task<ImportDiagnosticDto?> DismissDiagnosticAsync(Guid sessionId, Guid diagnosticId, string userId);
 }

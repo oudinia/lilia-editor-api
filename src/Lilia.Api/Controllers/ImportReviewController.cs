@@ -313,4 +313,33 @@ public class ImportReviewController : ControllerBase
 
         return Ok(traces);
     }
+
+    /// <summary>
+    /// List all diagnostics (parser issues, load-order traps, shim notifications)
+    /// for an import session. Ordered by severity then source line.
+    /// </summary>
+    [HttpGet("{id:guid}/diagnostics")]
+    public async Task<ActionResult<List<ImportDiagnosticDto>>> GetDiagnostics(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var diagnostics = await _reviewService.GetDiagnosticsAsync(id, userId);
+        return Ok(diagnostics);
+    }
+
+    /// <summary>
+    /// Dismiss a diagnostic (acknowledge; it still exists for audit but no
+    /// longer shows up in active badge counts).
+    /// </summary>
+    [HttpPost("{id:guid}/diagnostics/{diagnosticId:guid}/dismiss")]
+    public async Task<ActionResult<ImportDiagnosticDto>> DismissDiagnostic(Guid id, Guid diagnosticId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var result = await _reviewService.DismissDiagnosticAsync(id, diagnosticId, userId);
+        if (result == null) return NotFound();
+        return Ok(result);
+    }
 }

@@ -262,6 +262,12 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
+builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
+
+// DB-first LaTeX import pipeline (see plan valiant-waddling-otter + guideline
+// lilia-docs/docs/guidelines/import-export-db-first.md)
+builder.Services.AddScoped<BulkInsertHelper>();
+builder.Services.AddScoped<ILatexImportJobExecutor, LatexImportJobExecutor>();
 
 // Email service (Resend)
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();

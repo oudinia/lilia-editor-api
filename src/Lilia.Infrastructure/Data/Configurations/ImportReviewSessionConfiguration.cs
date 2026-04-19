@@ -21,6 +21,9 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
         builder.Property(s => s.SourceFilePath).HasColumnName("source_file_path").HasMaxLength(1000);
         builder.Property(s => s.RawImportData).HasColumnName("raw_import_data");
         builder.Property(s => s.DocumentId).HasColumnName("document_id");
+        builder.Property(s => s.AutoFinalizeEnabled).HasColumnName("auto_finalize_enabled").HasDefaultValue(false);
+        builder.Property(s => s.QualityScore).HasColumnName("quality_score");
+        builder.Property(s => s.ProjectSessionId).HasColumnName("project_session_id");
         builder.Property(s => s.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(s => s.ExpiresAt).HasColumnName("expires_at");

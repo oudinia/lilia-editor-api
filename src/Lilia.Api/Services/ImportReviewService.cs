@@ -253,130 +253,191 @@ public class ImportReviewService : IImportReviewService
 
     public async Task<FinalizeResultDto?> FinalizeSessionAsync(Guid sessionId, string userId, FinalizeSessionDto dto)
     {
+        // Permission + state gate. Lightweight projection only — no blocks loaded.
         var session = await _context.ImportReviewSessions
             .Include(s => s.Collaborators)
-            .Include(s => s.BlockReviews)
             .FirstOrDefaultAsync(s => s.Id == sessionId);
-
         if (session == null) return null;
+        if (GetUserRole(session, userId) != "owner") return null;
 
-        var role = GetUserRole(session, userId);
-        if (role != "owner") return null;
+        // The new staging flow transitions to pending_review (after auto-check)
+        // or auto_finalized; the legacy review-UI flow still uses in_progress.
+        // Accept any of those.
+        if (session.Status != "in_progress" && session.Status != "pending_review") return null;
 
-        if (session.Status != "in_progress") return null;
-
-        var blocks = session.BlockReviews.OrderBy(b => b.SortOrder).ToList();
-
-        // Check if all blocks are reviewed (unless force)
-        var pendingBlocks = blocks.Where(b => b.Status == "pending").ToList();
-        if (pendingBlocks.Any() && !dto.Force)
-        {
-            return null; // Controller will return 400
-        }
-
-        // If force, treat pending blocks as approved
-        if (dto.Force && pendingBlocks.Any())
-        {
-            foreach (var pending in pendingBlocks)
-            {
-                pending.Status = "approved";
-                pending.ReviewedBy = userId;
-                pending.ReviewedAt = DateTime.UtcNow;
-            }
-        }
-
-        // Create document from approved/edited blocks (skip rejected)
-        var approvedBlocks = blocks.Where(b => b.Status is "approved" or "edited").ToList();
-        var rejectedCount = blocks.Count(b => b.Status == "rejected");
+        var pendingCount = await _context.ImportBlockReviews
+            .CountAsync(b => b.SessionId == sessionId && b.Status == "pending");
+        if (pendingCount > 0 && !dto.Force) return null; // Controller returns 400
 
         var documentTitle = dto.DocumentTitle ?? session.DocumentTitle;
+        return await FinalizeInternalAsync(sessionId, userId, documentTitle, dto.Force, CancellationToken.None);
+    }
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+    public Task<FinalizeResultDto> FinalizeFromStagingAsync(
+        Guid sessionId, string ownerId, string documentTitle, bool force, CancellationToken ct = default)
+    {
+        // Trusted entrypoint — LatexImportJobExecutor already validated that the
+        // session is clean and that the owner matches. Skip the permission +
+        // status checks to avoid loading the session twice.
+        return FinalizeInternalAsync(sessionId, ownerId, documentTitle, force, ct);
+    }
 
+    // Core finalize — DB-first. All the per-block copy happens inside a single
+    // INSERT INTO blocks ... SELECT FROM import_block_reviews, so the review
+    // rows never visit .NET memory even for a 5 000-block thesis. See plan
+    // §4 and lilia-docs/docs/guidelines/import-export-db-first.md.
+    private async Task<FinalizeResultDto> FinalizeInternalAsync(
+        Guid sessionId, string ownerId, string documentTitle, bool force, CancellationToken ct)
+    {
+        await using var tx = await _context.Database.BeginTransactionAsync(ct);
         try
         {
-            var document = new Document
+            // If force=true, promote pending → approved via a single UPDATE.
+            // Staging realm never round-trips through app memory.
+            if (force)
             {
-                Id = Guid.NewGuid(),
-                OwnerId = userId,
-                Title = documentTitle,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            _context.Documents.Add(document);
-
-            var sortOrder = 0;
-            foreach (var review in approvedBlocks)
-            {
-                var content = review.CurrentContent ?? review.OriginalContent;
-                var type = review.CurrentType ?? review.OriginalType;
-
-                var block = new Block
-                {
-                    Id = Guid.NewGuid(),
-                    DocumentId = document.Id,
-                    Type = type,
-                    Content = JsonDocument.Parse(content.RootElement.GetRawText()),
-                    SortOrder = sortOrder++,
-                    Depth = review.Depth,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-
-                _context.Blocks.Add(block);
+                await _context.ImportBlockReviews
+                    .Where(b => b.SessionId == sessionId && b.Status == "pending")
+                    .ExecuteUpdateAsync(b => b
+                        .SetProperty(x => x.Status, "approved")
+                        .SetProperty(x => x.ReviewedBy, ownerId)
+                        .SetProperty(x => x.ReviewedAt, DateTime.UtcNow), ct);
             }
 
-            // Update session
-            session.Status = "imported";
-            session.DocumentId = document.Id;
-            session.UpdatedAt = DateTime.UtcNow;
+            var documentId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
 
-            // Update job if linked
-            if (session.JobId.HasValue)
-            {
-                var job = await _context.Jobs.FindAsync(session.JobId.Value);
-                if (job != null)
-                {
-                    job.DocumentId = document.Id;
-                    job.UpdatedAt = DateTime.UtcNow;
-                }
-            }
+            // Create the document row first — cheap, one INSERT.
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO documents (id, owner_id, title, created_at, updated_at)
+                VALUES ({documentId}, {ownerId}, {documentTitle}, {now}, {now})", ct);
 
-            // Log activity
+            // The centrepiece: copy approved/edited staged rows into real blocks
+            // without routing through the app layer. COALESCE picks edited
+            // content over original when the reviewer made changes.
+            var importedCount = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO blocks (id, document_id, type, content, sort_order, depth, created_at, updated_at)
+                SELECT
+                    gen_random_uuid(),
+                    {documentId},
+                    COALESCE(current_type, original_type),
+                    COALESCE(current_content, original_content),
+                    sort_order,
+                    depth,
+                    {now},
+                    {now}
+                FROM import_block_reviews
+                WHERE session_id = {sessionId}
+                  AND status IN ('approved','edited')
+                ORDER BY sort_order", ct);
+
+            var rejectedCount = await _context.ImportBlockReviews
+                .CountAsync(b => b.SessionId == sessionId && b.Status == "rejected", ct);
+
+            // Mark session as imported and link the new document.
+            await _context.ImportReviewSessions
+                .Where(s => s.Id == sessionId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.Status, "imported")
+                    .SetProperty(x => x.DocumentId, documentId)
+                    .SetProperty(x => x.UpdatedAt, now), ct);
+
+            // Link the job (if any). Keeps the job row pointing at the final doc.
+            await _context.Jobs
+                .Where(j => _context.ImportReviewSessions
+                    .Where(s => s.Id == sessionId)
+                    .Select(s => s.JobId)
+                    .Contains(j.Id))
+                .ExecuteUpdateAsync(j => j
+                    .SetProperty(x => x.DocumentId, documentId)
+                    .SetProperty(x => x.UpdatedAt, now), ct);
+
+            // Activity log. One row, tiny payload — safe to do via EF for the
+            // audit trail (atomic with the rest of this transaction).
             _context.ImportReviewActivities.Add(new ImportReviewActivity
             {
                 Id = Guid.NewGuid(),
                 SessionId = sessionId,
-                UserId = userId,
+                UserId = ownerId,
                 Action = "session_finalized",
                 Details = JsonDocument.Parse(JsonSerializer.Serialize(new
                 {
-                    documentId = document.Id,
-                    importedBlocks = approvedBlocks.Count,
+                    documentId,
+                    importedBlocks = importedCount,
                     skippedBlocks = rejectedCount
                 })),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = now
             });
+            await _context.SaveChangesAsync(ct);
 
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            await tx.CommitAsync(ct);
 
             _logger.LogInformation(
                 "[ImportReview] Session {SessionId} finalized — document {DocumentId} created with {BlockCount} blocks ({Skipped} skipped)",
-                sessionId, document.Id, approvedBlocks.Count, rejectedCount);
+                sessionId, documentId, importedCount, rejectedCount);
 
             return new FinalizeResultDto(
-                new FinalizedDocumentDto(document.Id, document.Title),
-                new FinalizeStatisticsDto(approvedBlocks.Count, rejectedCount)
+                new FinalizedDocumentDto(documentId, documentTitle),
+                new FinalizeStatisticsDto(importedCount, rejectedCount)
             );
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
+            await tx.RollbackAsync(ct);
             _logger.LogError(ex, "[ImportReview] Failed to finalize session {SessionId}", sessionId);
             throw;
         }
+    }
+
+    public async Task<List<ImportDiagnosticDto>> GetDiagnosticsAsync(Guid sessionId, string userId)
+    {
+        // Permission gate — use the existing role check.
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId);
+        if (session == null) return new();
+        if (GetUserRole(session, userId) is null) return new();
+
+        return await _context.ImportDiagnostics
+            .Where(d => d.SessionId == sessionId)
+            .OrderBy(d => d.Severity == "error" ? 0 : d.Severity == "warning" ? 1 : 2)
+            .ThenBy(d => d.SourceLineStart ?? int.MaxValue)
+            .Select(d => new ImportDiagnosticDto(
+                d.Id, d.SessionId, d.BlockId, d.ElementPath,
+                d.SourceLineStart, d.SourceLineEnd, d.SourceColStart, d.SourceColEnd,
+                d.SourceSnippet, d.Category, d.Severity, d.Code, d.Message,
+                d.SuggestedAction, d.AutoFixApplied, d.DocsUrl,
+                d.Dismissed, d.DismissedBy, d.DismissedAt, d.CreatedAt))
+            .ToListAsync();
+    }
+
+    public async Task<ImportDiagnosticDto?> DismissDiagnosticAsync(Guid sessionId, Guid diagnosticId, string userId)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId);
+        if (session == null) return null;
+        var role = GetUserRole(session, userId);
+        if (role != "owner" && role != "reviewer") return null;
+
+        var now = DateTime.UtcNow;
+        var updated = await _context.ImportDiagnostics
+            .Where(d => d.Id == diagnosticId && d.SessionId == sessionId)
+            .ExecuteUpdateAsync(d => d
+                .SetProperty(x => x.Dismissed, true)
+                .SetProperty(x => x.DismissedBy, userId)
+                .SetProperty(x => x.DismissedAt, now));
+        if (updated == 0) return null;
+
+        return await _context.ImportDiagnostics
+            .Where(d => d.Id == diagnosticId)
+            .Select(d => new ImportDiagnosticDto(
+                d.Id, d.SessionId, d.BlockId, d.ElementPath,
+                d.SourceLineStart, d.SourceLineEnd, d.SourceColStart, d.SourceColEnd,
+                d.SourceSnippet, d.Category, d.Severity, d.Code, d.Message,
+                d.SuggestedAction, d.AutoFixApplied, d.DocsUrl,
+                d.Dismissed, d.DismissedBy, d.DismissedAt, d.CreatedAt))
+            .FirstOrDefaultAsync();
     }
 
     // --- Block Operations ---

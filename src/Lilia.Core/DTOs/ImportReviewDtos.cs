@@ -137,6 +137,34 @@ public record FinalizeStatisticsDto(
     int SkippedBlocks
 );
 
+public record ImportDiagnosticDto(
+    Guid Id,
+    Guid SessionId,
+    string? BlockId,
+    string? ElementPath,
+    int? SourceLineStart,
+    int? SourceLineEnd,
+    int? SourceColStart,
+    int? SourceColEnd,
+    string? SourceSnippet,
+    string Category,
+    string Severity,
+    string Code,
+    string Message,
+    string? SuggestedAction,
+    bool AutoFixApplied,
+    string? DocsUrl,
+    bool Dismissed,
+    string? DismissedBy,
+    DateTime? DismissedAt,
+    DateTime CreatedAt
+);
+
+public record LatexImportUploadResponseDto(
+    Guid SessionId,
+    Guid JobId
+);
+
 public record ReviewCommentDto(
     Guid Id,
     string BlockId,
