@@ -109,18 +109,14 @@ public class ImportHintService : IImportHintService
     {
         if (!await CanAccessSessionAsync(sessionId, userId, ct)) return new();
         return await ProjectFindings(_context.ImportStructuralFindings.AsNoTracking()
-            .Where(f => f.SessionId == sessionId)
-            .OrderBy(f => f.Status == "pending" ? 0 : f.Status == "applied" ? 1 : 2)
-            .ThenBy(f => f.CreatedAt), ct);
+            .Where(f => f.SessionId == sessionId), ct);
     }
 
     public async Task<List<ImportStructuralFindingDto>> ListForDocumentAsync(Guid documentId, string userId, CancellationToken ct = default)
     {
         if (!await CanAccessDocumentAsync(documentId, userId, ct)) return new();
         return await ProjectFindings(_context.ImportStructuralFindings.AsNoTracking()
-            .Where(f => f.DocumentId == documentId)
-            .OrderBy(f => f.Status == "pending" ? 0 : f.Status == "applied" ? 1 : 2)
-            .ThenBy(f => f.CreatedAt), ct);
+            .Where(f => f.DocumentId == documentId), ct);
     }
 
     // ─── Apply + Dismiss (ExecuteUpdateAsync) ────────────────────────────
@@ -272,15 +268,21 @@ public class ImportHintService : IImportHintService
         // Materialise first — JsonDocument → JsonElement conversion can't be
         // translated to SQL by Npgsql. Then project in-memory.
         var rows = await q.ToListAsync(ct);
-        return rows.Select(f => new ImportStructuralFindingDto(
-            f.Id, f.SessionId, f.DocumentId, f.BlockId,
-            f.Kind, f.Severity, f.Title, f.Detail,
-            f.SuggestedAction, f.ActionKind,
-            f.ActionPayload == null
-                ? (JsonElement?)null
-                : JsonSerializer.Deserialize<JsonElement>(f.ActionPayload.RootElement.GetRawText()),
-            f.Status, f.ResolvedBy, f.ResolvedAt, f.CreatedAt, f.UpdatedAt
-        )).ToList();
+        // Sort in-memory — EF trips translating `OrderBy(f => f.Status == "pending" ? 0 : ...)`
+        // when the row type has a `JsonDocument?` column (jsonb). Result sets are tiny
+        // (<50 findings/doc), so LINQ-to-objects cost is negligible.
+        return rows
+            .OrderBy(f => f.Status == "pending" ? 0 : f.Status == "applied" ? 1 : 2)
+            .ThenBy(f => f.CreatedAt)
+            .Select(f => new ImportStructuralFindingDto(
+                f.Id, f.SessionId, f.DocumentId, f.BlockId,
+                f.Kind, f.Severity, f.Title, f.Detail,
+                f.SuggestedAction, f.ActionKind,
+                f.ActionPayload == null
+                    ? (JsonElement?)null
+                    : JsonSerializer.Deserialize<JsonElement>(f.ActionPayload.RootElement.GetRawText()),
+                f.Status, f.ResolvedBy, f.ResolvedAt, f.CreatedAt, f.UpdatedAt
+            )).ToList();
     }
 
     // ─── Rule pipeline ───────────────────────────────────────────────────
