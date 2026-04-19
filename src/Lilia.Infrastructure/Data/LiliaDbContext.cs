@@ -81,6 +81,13 @@ public class LiliaDbContext : DbContext
     public DbSet<BlockValidation> BlockValidations => Set<BlockValidation>();
     public DbSet<AiRequest> AiRequests => Set<AiRequest>();
 
+    // Entitlement / #59 — entity shells registered here; middleware + quota
+    // enforcement lands in a follow-up commit once the XeLaTeX Docker deploy
+    // is confirmed ACTIVE (DO supersede race, see memory).
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<UserPlan> UserPlans => Set<UserPlan>();
+    public DbSet<AiCreditLedger> AiCreditLedger => Set<AiCreditLedger>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
