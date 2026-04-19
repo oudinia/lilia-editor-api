@@ -58,4 +58,7 @@ public interface IImportReviewService
     // Diagnostics (new import-review feature)
     Task<List<ImportDiagnosticDto>> GetDiagnosticsAsync(Guid sessionId, string userId);
     Task<ImportDiagnosticDto?> DismissDiagnosticAsync(Guid sessionId, Guid diagnosticId, string userId);
+
+    // Document category — unlocks category-specialised finding rules.
+    Task<bool> SetSessionCategoryAsync(Guid sessionId, string userId, string? category);
 }

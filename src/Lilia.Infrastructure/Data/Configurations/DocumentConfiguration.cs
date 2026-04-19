@@ -59,6 +59,10 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.HelpSlug).HasColumnName("help_slug").HasMaxLength(200);
         builder.Property(d => d.SearchText).HasColumnName("search_text");
 
+        // Document category — drives category-specialised structural-finding
+        // rules + LaTeX class selection. Null = generic detection only.
+        builder.Property(d => d.DocumentCategory).HasColumnName("document_category").HasMaxLength(30);
+
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);
         builder.HasIndex(d => d.ShareLink).IsUnique();

@@ -411,6 +411,18 @@ public class ImportReviewService : IImportReviewService
             .ToListAsync();
     }
 
+    public async Task<bool> SetSessionCategoryAsync(Guid sessionId, string userId, string? category)
+    {
+        // Only owner can change category — categories drive downstream
+        // finding rules so we gate on write.
+        var affected = await _context.ImportReviewSessions
+            .Where(s => s.Id == sessionId && s.OwnerId == userId)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(x => x.DocumentCategory, category)
+                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+        return affected > 0;
+    }
+
     public async Task<ImportDiagnosticDto?> DismissDiagnosticAsync(Guid sessionId, Guid diagnosticId, string userId)
     {
         var session = await _context.ImportReviewSessions

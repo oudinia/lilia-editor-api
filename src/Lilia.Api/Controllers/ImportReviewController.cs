@@ -344,17 +344,56 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
-    /// Scan the session for Word→LaTeX transition hints. Computed on demand —
-    /// not persisted — so detection rules can evolve without schema churn.
-    /// Hints are advisory and actionable (each carries an ActionKind +
-    /// ActionPayload the frontend can wire to a single "Apply" button).
+    /// List structural findings for a session. Rows are persisted in
+    /// import_structural_findings — this endpoint is a pure SELECT.
+    /// Call POST .../hints/compute to (re)run the rule pipeline.
     /// </summary>
     [HttpGet("{id:guid}/hints")]
-    public async Task<ActionResult<List<ImportHintDto>>> GetHints(Guid id, [FromServices] IImportHintService hintService)
+    public async Task<ActionResult<List<ImportStructuralFindingDto>>> ListHints(Guid id, [FromServices] IImportHintService hintService)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        var hints = await hintService.ScanSessionAsync(id, userId);
+        var hints = await hintService.ListForSessionAsync(id, userId);
         return Ok(hints);
+    }
+
+    /// <summary>Recompute findings for this session. Clears pending rows, re-runs rules, bulk-inserts the new set.</summary>
+    [HttpPost("{id:guid}/hints/compute")]
+    public async Task<ActionResult<ComputeHintsResponseDto>> ComputeHints(Guid id, [FromServices] IImportHintService hintService)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var count = await hintService.ComputeForSessionAsync(id, userId);
+        return Ok(new ComputeHintsResponseDto(count));
+    }
+
+    /// <summary>Mark a structural finding applied.</summary>
+    [HttpPost("{id:guid}/hints/{findingId:guid}/apply")]
+    public async Task<IActionResult> ApplyHint(Guid id, Guid findingId, [FromServices] IImportHintService hintService)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var ok = await hintService.ApplyAsync(findingId, userId);
+        return ok ? Ok() : NotFound();
+    }
+
+    /// <summary>Dismiss a structural finding.</summary>
+    [HttpPost("{id:guid}/hints/{findingId:guid}/dismiss")]
+    public async Task<IActionResult> DismissHint(Guid id, Guid findingId, [FromServices] IImportHintService hintService)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var ok = await hintService.DismissAsync(findingId, userId);
+        return ok ? Ok() : NotFound();
+    }
+
+    /// <summary>Set the document category on a session (cv | thesis | report | research | business). Nullable.</summary>
+    [HttpPatch("{id:guid}/category")]
+    public async Task<IActionResult> SetSessionCategory(Guid id, [FromBody] SetDocumentCategoryDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var updated = await _reviewService.SetSessionCategoryAsync(id, userId, dto.Category);
+        return updated ? Ok() : NotFound();
     }
 }

@@ -77,6 +77,7 @@ public class LiliaDbContext : DbContext
     public DbSet<ImportBlockComment> ImportBlockComments => Set<ImportBlockComment>();
     public DbSet<ImportReviewActivity> ImportReviewActivities => Set<ImportReviewActivity>();
     public DbSet<ImportDiagnostic> ImportDiagnostics => Set<ImportDiagnostic>();
+    public DbSet<ImportStructuralFinding> ImportStructuralFindings => Set<ImportStructuralFinding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

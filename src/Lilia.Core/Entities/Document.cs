@@ -66,6 +66,11 @@ public class Document
     /// LaTeX, w:cols w:equalWidth in DOCX, and column-fill:balance in HTML.
     public bool BalancedColumns { get; set; }
 
+    /// Document category unlocks specialised structural-finding rules and
+    /// guides LaTeX class selection. Null = generic. Values:
+    /// "cv" | "thesis" | "report" | "research" | "business".
+    public string? DocumentCategory { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }

@@ -17,6 +17,9 @@ public class ImportReviewSession
     public bool AutoFinalizeEnabled { get; set; } = false;
     public int? QualityScore { get; set; }
     public Guid? ProjectSessionId { get; set; } // Reserved for future multi-file project ingest layer
+    // Document category unlocks specialised structural-finding rules. Null =
+    // generic detection only. Values: "cv" | "thesis" | "report" | "research" | "business"
+    public string? DocumentCategory { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }
@@ -30,4 +33,5 @@ public class ImportReviewSession
     public virtual ICollection<ImportBlockComment> Comments { get; set; } = new List<ImportBlockComment>();
     public virtual ICollection<ImportReviewActivity> Activities { get; set; } = new List<ImportReviewActivity>();
     public virtual ICollection<ImportDiagnostic> Diagnostics { get; set; } = new List<ImportDiagnostic>();
+    public virtual ICollection<ImportStructuralFinding> StructuralFindings { get; set; } = new List<ImportStructuralFinding>();
 }
