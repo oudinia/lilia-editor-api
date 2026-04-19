@@ -1,0 +1,8 @@
+# Canonical identity: Oussama Dinia <oussama.dinia@gmail.com>
+# Merges hostname-default and alternate-machine commit emails into the
+# canonical GitHub-verified address so `git shortlog`, `git blame`, and
+# GitHub's contribution graph credit all commits to one account.
+
+Oussama Dinia <oussama.dinia@gmail.com> <oussama@vmi3078948.contaboserver.net>
+Oussama Dinia <oussama.dinia@gmail.com> <al1139468@admin.totalhub.net>
+Oussama Dinia <oussama.dinia@gmail.com> oudinia <oussama.dinia@gmail.com>
