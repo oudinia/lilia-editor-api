@@ -167,6 +167,23 @@ public record LatexImportUploadResponseDto(
     Guid JobId
 );
 
+// Word→LaTeX (and LaTeX→LaTeX) transition hints surfaced on a review session.
+// Unlike diagnostics these are advisory, not persisted — computed on demand
+// by ImportHintService every time the frontend asks for them. Each hint
+// carries an ActionKind + ActionPayload so the frontend can offer a single
+// "Apply" button that routes to the right mutation (convert block type,
+// set document class, open edit modal, …).
+public record ImportHintDto(
+    Guid Id,
+    string Kind,                 // cv_section | personal_info | cv_class_suggestion | cv_list_style | …
+    string? BlockId,             // null = session-level hint
+    string Title,
+    string Detail,
+    string SuggestedAction,
+    string ActionKind,           // convert_block_type | set_document_class | open_edit_modal
+    JsonElement? ActionPayload
+);
+
 public record ReviewCommentDto(
     Guid Id,
     string BlockId,

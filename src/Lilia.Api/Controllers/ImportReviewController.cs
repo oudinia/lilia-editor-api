@@ -342,4 +342,19 @@ public class ImportReviewController : ControllerBase
         if (result == null) return NotFound();
         return Ok(result);
     }
+
+    /// <summary>
+    /// Scan the session for Word→LaTeX transition hints. Computed on demand —
+    /// not persisted — so detection rules can evolve without schema churn.
+    /// Hints are advisory and actionable (each carries an ActionKind +
+    /// ActionPayload the frontend can wire to a single "Apply" button).
+    /// </summary>
+    [HttpGet("{id:guid}/hints")]
+    public async Task<ActionResult<List<ImportHintDto>>> GetHints(Guid id, [FromServices] IImportHintService hintService)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var hints = await hintService.ScanSessionAsync(id, userId);
+        return Ok(hints);
+    }
 }

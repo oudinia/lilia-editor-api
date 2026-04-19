@@ -268,6 +268,7 @@ builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
 // lilia-docs/docs/guidelines/import-export-db-first.md)
 builder.Services.AddScoped<BulkInsertHelper>();
 builder.Services.AddScoped<ILatexImportJobExecutor, LatexImportJobExecutor>();
+builder.Services.AddScoped<IImportHintService, ImportHintService>();
 
 // Email service (Resend)
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
