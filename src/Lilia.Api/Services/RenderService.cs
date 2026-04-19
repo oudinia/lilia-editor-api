@@ -1016,6 +1016,7 @@ public partial class RenderService : IRenderService
                 "algorithm" => RenderAlgorithmToLatex(content),
                 "callout" => RenderCalloutToLatex(content),
                 "footnote" => RenderFootnoteToLatex(content),
+                "slide" => RenderSlideToLatex(content),
                 _ => $"% Unknown block type: {block.Type}"
             };
         }
@@ -1163,6 +1164,57 @@ public partial class RenderService : IRenderService
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         return $@"\footnote{{{ProcessLatexText(text)}}}";
+    }
+
+    private string RenderSlideToLatex(JsonElement content)
+    {
+        // Emits a Beamer frame. Only valid when the document class is
+        // beamer — the class-aware shim chooses the class; if the user
+        // mixes slide blocks into an article doc, LaTeX will complain
+        // and the block falls through as an unsupported env. That's an
+        // acceptable v1 trade-off; full "auto-switch to beamer when
+        // >50% of blocks are slides" is a follow-on.
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var subtitle = content.TryGetProperty("subtitle", out var s) ? s.GetString() ?? "" : "";
+        var body = content.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
+        var notes = content.TryGetProperty("notes", out var n) ? n.GetString() ?? "" : "";
+        var layout = content.TryGetProperty("layout", out var l) ? l.GetString() ?? "default" : "default";
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("\\begin{frame}");
+        if (!string.IsNullOrWhiteSpace(title))
+            sb.Append('{').Append(EscapeLatex(title)).Append('}');
+        if (!string.IsNullOrWhiteSpace(subtitle))
+            sb.Append('{').Append(EscapeLatex(subtitle)).Append('}');
+        sb.AppendLine();
+
+        var rendered = ProcessLatexText(body);
+        switch (layout)
+        {
+            case "centered":
+                sb.AppendLine("\\centering").AppendLine(rendered);
+                break;
+            case "title-only":
+                // Body suppressed for title-only slides.
+                break;
+            case "two-column":
+                // Split on the first line containing "---" (user convention).
+                var split = rendered.Split(new[] { "\n---\n" }, 2, StringSplitOptions.None);
+                sb.AppendLine("\\begin{columns}");
+                sb.AppendLine("\\column{0.5\\textwidth}").AppendLine(split[0]);
+                if (split.Length > 1)
+                    sb.AppendLine("\\column{0.5\\textwidth}").AppendLine(split[1]);
+                sb.AppendLine("\\end{columns}");
+                break;
+            default:
+                sb.AppendLine(rendered);
+                break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(notes))
+            sb.Append("\\note{").Append(ProcessLatexText(notes)).AppendLine("}");
+        sb.Append("\\end{frame}");
+        return sb.ToString();
     }
 
     private static readonly string[] ParagraphMathEnvironments = [

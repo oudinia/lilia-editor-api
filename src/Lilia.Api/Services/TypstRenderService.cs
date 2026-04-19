@@ -121,6 +121,7 @@ public class TypstRenderService : ITypstRenderService
                 "algorithm" => RenderAlgorithmToTypst(content),
                 "callout" => RenderCalloutToTypst(content),
                 "footnote" => RenderFootnoteToTypst(content),
+                "slide" => RenderSlideToTypst(content),
                 _ => $"// Unknown block type: {block.Type}"
             };
         }
@@ -400,6 +401,24 @@ public class TypstRenderService : ITypstRenderService
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         return $"#footnote[{ProcessTypstText(text)}]";
+    }
+
+    private static string RenderSlideToTypst(JsonElement content)
+    {
+        // Typst doesn't have a built-in Beamer analogue but Polylux /
+        // Touying are the common community packages. For v1 we emit a
+        // pagebreak + styled heading + content, which renders as a
+        // presentable slide in the Typst preview. Full Polylux output
+        // is a follow-on (requires importing the package at doc-level).
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var body = content.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("#pagebreak(weak: true)");
+        if (!string.IsNullOrWhiteSpace(title))
+            sb.Append("= ").AppendLine(EscapeTypst(title));
+        if (!string.IsNullOrWhiteSpace(body))
+            sb.AppendLine(ProcessTypstText(body));
+        return sb.ToString();
     }
 
     // --- Helpers ---

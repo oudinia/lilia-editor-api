@@ -7,6 +7,7 @@ namespace Lilia.Api.Services;
 public class BlockTypeService : IBlockTypeService
 {
     public const string CategoryDocument = "document";
+    public const string CategoryPresentation = "presentation";
     public const string CategoryInvoice = "invoice";
     public const string CategoryEpub = "epub";
 
@@ -35,6 +36,17 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", CategoryDocument, new { text = "" }),
             MakeBlockType(BlockTypes.Algorithm, "Algorithm", "Pseudocode algorithm block", "cpu", CategoryDocument, new { title = "", language = "pseudocode", code = "", label = "", caption = "" }),
             MakeBlockType(BlockTypes.Callout, "Callout", "Admonition or callout box (note, tip, warning, important, example)", "alert", CategoryDocument, new { variant = "note", title = "", text = "" }),
+
+            // Presentation
+            MakeBlockType(BlockTypes.Slide, "Slide", "Presentation slide — Beamer frame with title and content", "presentation", CategoryPresentation, new
+            {
+                title = "",
+                subtitle = "",
+                content = "",          // Markdown-ish body
+                notes = "",            // Speaker notes (exported to Beamer \note{...})
+                transition = "none",   // none | fade | push
+                layout = "default",    // default | title-only | two-column | centered
+            }),
 
             // CV / resume block types
             MakeBlockType(BlockTypes.PersonalInfo, "Personal Info", "Name, contact, and social profile — typically at the top of a CV", "idBadge2", CategoryDocument, new

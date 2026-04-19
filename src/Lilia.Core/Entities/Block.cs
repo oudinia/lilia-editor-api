@@ -51,6 +51,7 @@ public static class BlockTypes
     public const string Photo = "photo";
     public const string CvEntry = "cvEntry";
     public const string CvSection = "cvSection";
+    public const string Slide = "slide";
 
     // Invoice block types (inv- namespace)
     public const string InvHeader = "inv-header";
