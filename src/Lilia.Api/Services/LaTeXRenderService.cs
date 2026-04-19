@@ -88,10 +88,20 @@ public class LaTeXRenderService : ILaTeXRenderService
 
     public async Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30)
     {
+        return await RenderToPdfAsync(latex, "pdflatex", timeout);
+    }
+
+    /// <summary>
+    /// Engine-aware render. engine: "pdflatex" | "xelatex" | "lualatex".
+    /// Falls back to pdflatex for any unrecognised value. Callers reading
+    /// Document.LatexEngine pass it straight through.
+    /// </summary>
+    public async Task<byte[]> RenderToPdfAsync(string latex, string engine, int timeout = 30)
+    {
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _) = await CompileLatexAsync(latex, timeout);
+            var (pdf, _) = await CompileLatexAsync(latex, timeout, engine: ResolveEngine(engine));
             return pdf;
         }
         finally
@@ -324,7 +334,15 @@ public class LaTeXRenderService : ILaTeXRenderService
         _validationCache.TryAdd(hash, (result.Valid, result.Error, result.Warnings, DateTime.UtcNow));
     }
 
-    private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout, bool tolerant = false)
+    /// <summary>Normalise the engine name to one of the three supported binaries.</summary>
+    internal static string ResolveEngine(string? engine) => (engine ?? "").ToLowerInvariant() switch
+    {
+        "xelatex"  => "xelatex",
+        "lualatex" => "lualatex",
+        _          => "pdflatex",
+    };
+
+    private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout, bool tolerant = false, string engine = "pdflatex")
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -336,12 +354,16 @@ public class LaTeXRenderService : ILaTeXRenderService
             var logPath = Path.Combine(tmpDir, "document.log");
             await File.WriteAllTextAsync(texPath, latex);
 
-            // Run pdflatex twice (for references)
+            // Run the chosen engine twice (for references). pdflatex is the
+            // default; xelatex / lualatex take the same arg shape for our
+            // use-case so the build-args helper just passes the command
+            // through. Precompiled format is pdflatex-only, so other engines
+            // skip it implicitly in BuildPdflatexArgs.
             for (int pass = 0; pass < 2; pass++)
             {
                 var args = BuildPdflatexArgs(texPath, tmpDir, tolerant: tolerant);
                 var (exitCode, stdout, stderr) = await RunProcessAsync(
-                    "pdflatex",
+                    engine,
                     args,
                     tmpDir,
                     timeout
