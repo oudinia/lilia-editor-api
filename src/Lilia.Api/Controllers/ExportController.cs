@@ -103,6 +103,11 @@ public class ExportController : ControllerBase
         try
         {
             var pdfBytes = await _documentExportService.ExportToPdfAsync(docId);
+            if (pdfBytes == null || pdfBytes.Length < 100 || !pdfBytes.AsSpan(0, 4).SequenceEqual("%PDF"u8))
+            {
+                _logger.LogError("[Export] PDF for document {DocId} is empty or invalid ({Length} bytes) — tolerant compile produced no output", docId, pdfBytes?.Length ?? 0);
+                return StatusCode(500, new { message = "LaTeX produced an empty PDF. The document body is likely unsupported (e.g. pure TikZ with vendor-custom .sty).", error = "PDF compilation produced empty output" });
+            }
             var sanitizedTitle = SanitizeFilename(document.Title);
             return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
         }
