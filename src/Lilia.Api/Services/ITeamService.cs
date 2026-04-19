@@ -11,6 +11,7 @@ public interface ITeamService
     Task<bool> DeleteTeamAsync(Guid teamId, string userId);
     Task<List<TeamMemberDto>> GetTeamMembersAsync(Guid teamId, string userId);
     Task<TeamMemberDto?> InviteMemberAsync(Guid teamId, string userId, InviteTeamMemberDto dto);
+    Task<TeamMemberDto?> AddMemberByUserIdAsync(Guid teamId, string inviterUserId, AddTeamMemberByUserIdDto dto);
     Task<TeamMemberDto?> UpdateMemberRoleAsync(Guid teamId, string targetUserId, string userId, UpdateTeamMemberRoleDto dto);
     Task<bool> RemoveMemberAsync(Guid teamId, string targetUserId, string userId);
     Task<List<DocumentListDto>> GetTeamDocumentsAsync(Guid teamId, string userId);

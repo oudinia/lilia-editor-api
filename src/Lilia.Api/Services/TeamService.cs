@@ -9,11 +9,13 @@ public class TeamService : ITeamService
 {
     private readonly LiliaDbContext _context;
     private readonly IUserService _userService;
+    private readonly INotificationService? _notificationService;
 
-    public TeamService(LiliaDbContext context, IUserService userService)
+    public TeamService(LiliaDbContext context, IUserService userService, INotificationService? notificationService = null)
     {
         _context = context;
         _userService = userService;
+        _notificationService = notificationService;
     }
 
     public async Task<List<TeamDto>> GetTeamsAsync(string userId)
@@ -256,6 +258,83 @@ public class TeamService : ITeamService
         }
 
         await _context.SaveChangesAsync();
+
+        return new TeamMemberDto(
+            targetUser.Id,
+            targetUser.Name,
+            targetUser.Email,
+            targetUser.Image,
+            role.Name,
+            DateTime.UtcNow
+        );
+    }
+
+    /// <summary>
+    /// Add a user to a team directly by user-id. Used by the new in-app
+    /// share flow (per lilia-docs/specs/sharing-and-notifications.md):
+    /// the inviter has already picked the target via the privacy-safe
+    /// user search, so we never take an email here. Fires an in-app
+    /// notification (via INotificationService if available) so the
+    /// target sees it under the notification bell immediately.
+    /// </summary>
+    public async Task<TeamMemberDto?> AddMemberByUserIdAsync(Guid teamId, string inviterUserId, AddTeamMemberByUserIdDto dto)
+    {
+        var team = await _context.Teams
+            .Include(t => t.Groups.Where(g => g.IsDefault))
+            .FirstOrDefaultAsync(t => t.Id == teamId);
+        if (team == null || team.OwnerId != inviterUserId) return null;
+
+        var targetUser = await _context.Users.FindAsync(dto.UserId);
+        if (targetUser == null) return null;
+
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        if (role == null) return null;
+
+        var defaultGroup = team.Groups.FirstOrDefault(g => g.IsDefault);
+        if (defaultGroup == null) return null;
+
+        var existing = await _context.GroupMembers
+            .FirstOrDefaultAsync(gm => gm.GroupId == defaultGroup.Id && gm.UserId == targetUser.Id);
+
+        if (existing != null)
+        {
+            existing.RoleId = role.Id;
+        }
+        else
+        {
+            _context.GroupMembers.Add(new GroupMember
+            {
+                Id = Guid.NewGuid(),
+                GroupId = defaultGroup.Id,
+                UserId = targetUser.Id,
+                RoleId = role.Id,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        // In-app notification — email stays suppressed per the in-app-first
+        // directive. When Resend comes back online, enable the email path.
+        try
+        {
+            if (_notificationService != null)
+            {
+                var inviter = await _context.Users.FindAsync(inviterUserId);
+                var inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
+                await _notificationService.CreateAsync(
+                    targetUser.Id,
+                    "team_membership_added",
+                    $"{inviterName} added you to {team.Name}",
+                    $"Role: {role.Name}",
+                    $"/teams/{team.Id}"
+                );
+            }
+        }
+        catch
+        {
+            // Notification failure doesn't block the membership.
+        }
 
         return new TeamMemberDto(
             targetUser.Id,

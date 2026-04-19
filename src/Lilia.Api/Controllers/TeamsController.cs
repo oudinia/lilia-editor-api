@@ -91,6 +91,22 @@ public class TeamsController : ControllerBase
         return Ok(member);
     }
 
+    /// <summary>
+    /// Add a member by user-id (privacy-safe path — no email). Pairs with
+    /// the /api/users/search endpoint which resolves a picked user to
+    /// their id. Fires an in-app notification, no email send.
+    /// </summary>
+    [HttpPost("{id:guid}/members/addById")]
+    public async Task<ActionResult<TeamMemberDto>> AddMemberByUserId(Guid id, [FromBody] AddTeamMemberByUserIdDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var member = await _teamService.AddMemberByUserIdAsync(id, userId, dto);
+        if (member == null) return NotFound();
+        await _auditService.LogAsync("team.member.addById", "Team", id.ToString(), new { dto.UserId, dto.Role });
+        return Ok(member);
+    }
+
     [HttpPut("{id:guid}/members/{targetUserId}")]
     public async Task<ActionResult<TeamMemberDto>> UpdateMemberRole(Guid id, string targetUserId, [FromBody] UpdateTeamMemberRoleDto dto)
     {

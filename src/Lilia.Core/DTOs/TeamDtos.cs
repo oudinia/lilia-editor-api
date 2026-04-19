@@ -50,6 +50,12 @@ public record InviteTeamMemberDto(
     string Role
 );
 
+/// <summary>Direct add-by-userId — no email, uses the user search path.</summary>
+public record AddTeamMemberByUserIdDto(
+    string UserId,
+    string Role
+);
+
 public record UpdateTeamMemberRoleDto(
     string Role
 );
