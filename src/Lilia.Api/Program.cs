@@ -272,6 +272,7 @@ builder.Services.AddScoped<IImportHintService, ImportHintService>();
 builder.Services.AddScoped<IValidationCacheService, ValidationCacheService>();
 builder.Services.AddScoped<IRedactionService, RedactionService>();
 builder.Services.AddScoped<IAiOrchestrator, AiOrchestrator>();
+builder.Services.AddScoped<Lilia.Import.Services.ILatexProjectExtractor, Lilia.Import.Services.LatexProjectExtractor>();
 
 // Email service (Resend)
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();

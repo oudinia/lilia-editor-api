@@ -16,6 +16,7 @@ public class JobService : IJobService
     private readonly IDocxImportService _docxImportService;
     private readonly IPdfParser? _pdfParser;
     private readonly ILatexParser _latexParser;
+    private readonly Lilia.Import.Services.ILatexProjectExtractor _latexProjectExtractor;
     private readonly IImportProgressService _progressService;
     private readonly IImportReviewService _reviewService;
     private readonly ILogger<JobService> _logger;
@@ -28,6 +29,7 @@ public class JobService : IJobService
         IImportProgressService progressService,
         IImportReviewService reviewService,
         ILatexParser latexParser,
+        Lilia.Import.Services.ILatexProjectExtractor latexProjectExtractor,
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null)
     {
@@ -38,9 +40,15 @@ public class JobService : IJobService
         _progressService = progressService;
         _reviewService = reviewService;
         _latexParser = latexParser;
+        _latexProjectExtractor = latexProjectExtractor;
         _logger = logger;
         _pdfParser = pdfParser;
     }
+
+    // Zip files start with "PK" (0x50 0x4B), base64-encoded that becomes "UEs".
+    // Cheaper than decoding the full payload just to sniff the first two bytes.
+    private static bool LooksLikeBase64Zip(string base64) =>
+        !string.IsNullOrEmpty(base64) && base64.StartsWith("UEs", StringComparison.Ordinal);
 
     public async Task<List<JobListDto>> GetJobsAsync(string userId, string? status = null, string? jobType = null, int limit = 50, int offset = 0)
     {
@@ -452,6 +460,35 @@ public class JobService : IJobService
             }
             else if (request.Format.ToUpperInvariant() == "LATEX" || request.Format.ToUpperInvariant() == "LML")
             {
+                // Overleaf ".zip" projects arrive base64-encoded (see
+                // ImportDialog.tsx — zip content is readAsBase64 even for
+                // LATEX format). Detect the "PK\x03\x04" magic bytes and
+                // flatten the project into a single resolved .tex before
+                // continuing on the existing text path.
+                if (request.Format.ToUpperInvariant() == "LATEX" && LooksLikeBase64Zip(request.Content))
+                {
+                    try
+                    {
+                        var zipBytes = Convert.FromBase64String(request.Content);
+                        var extracted = _latexProjectExtractor.Extract(zipBytes);
+                        _logger.LogInformation(
+                            "[Import] Flattened zip project {Filename} → main {Main}, {ImgCount} images, {Notices} notices",
+                            request.Filename, extracted.MainFileName, extracted.ImagesFound.Count, extracted.Notices.Count);
+                        request = request with { Content = extracted.InlinedTex };
+                        // TODO(v2): persist notices as ImportDiagnostic rows so the
+                        // UI surfaces them in the review panel. For v1 they're
+                        // only in logs.
+                        foreach (var notice in extracted.Notices)
+                            _logger.LogInformation("[Import:zip] {Notice}", notice);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Import] Failed to extract zip project {Filename}", request.Filename);
+                        throw new InvalidOperationException(
+                            "Could not extract the .tex project from this zip: " + ex.Message, ex);
+                    }
+                }
+
                 // For LaTeX and LML, content is plain text
                 var title = !string.IsNullOrWhiteSpace(request.Title)
                     ? request.Title
