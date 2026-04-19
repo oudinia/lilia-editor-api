@@ -265,21 +265,42 @@ public static class DefaultRuleRegistry
                 var nameOrId = (analysis.StyleName ?? analysis.StyleId ?? "").ToLowerInvariant();
                 if (string.IsNullOrEmpty(nameOrId)) return false;
                 if (nameOrId.Contains("subtitle")) return false;
+                // Keyword set expanded from title/section/chapter to include
+                // "heading" / "subheading" so custom styles like
+                // "ThesisHeading", "CoverHeading", "LeadHandbookHeading1"
+                // lift to real headings. Exact "heading N" is already handled
+                // by heading.style (100) — this rule picks up the non-exact
+                // matches and anything else with these structural keywords.
                 return nameOrId.Contains("title")
                     || nameOrId.Contains("section")
-                    || nameOrId.Contains("chapter");
-            }, "Custom Title/Section/Chapter style via w:name or styleId"),
+                    || nameOrId.Contains("chapter")
+                    || nameOrId.Contains("heading");
+            }, "Custom Title/Section/Chapter/Heading style via w:name or styleId"),
             CreateElements = (analysis, parser) =>
             {
                 var level = 1;
                 var nameOrId = (analysis.StyleName ?? analysis.StyleId ?? "").ToLowerInvariant();
-                if (nameOrId.Contains("section") || nameOrId.Contains("chapter"))
+
+                // Level inference:
+                //   1) trailing digit on the style (e.g. "Heading 2", "Lead Handbook Heading 2")
+                //   2) "subheading" → one level under parent (default L2)
+                //   3) "section" / "chapter" digit (existing behavior)
+                //   4) default L1
+                var source = analysis.StyleId ?? analysis.StyleName ?? "";
+                var digitMatch = System.Text.RegularExpressions.Regex.Match(source, @"(\d+)\s*$");
+                if (digitMatch.Success && int.TryParse(digitMatch.Groups[1].Value, out var lvl) && lvl >= 1 && lvl <= 6)
                 {
-                    // Pull a trailing digit off either StyleName or StyleId.
-                    var source = analysis.StyleId ?? analysis.StyleName ?? "";
-                    var match = System.Text.RegularExpressions.Regex.Match(source, @"\d+");
-                    if (match.Success && int.TryParse(match.Value, out var lvl) && lvl >= 1 && lvl <= 6)
-                        level = lvl;
+                    level = lvl;
+                }
+                else if (nameOrId.Contains("subheading"))
+                {
+                    level = 2;
+                }
+                else if (nameOrId.Contains("section") || nameOrId.Contains("chapter"))
+                {
+                    var legacyMatch = System.Text.RegularExpressions.Regex.Match(source, @"\d+");
+                    if (legacyMatch.Success && int.TryParse(legacyMatch.Value, out var lvl2) && lvl2 >= 1 && lvl2 <= 6)
+                        level = lvl2;
                 }
 
                 return
