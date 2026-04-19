@@ -1330,7 +1330,9 @@ public class ImportReviewService : IImportReviewService
             session.DocumentId,
             session.OriginalWarnings != null
                 ? JsonSerializer.Deserialize<JsonElement>(session.OriginalWarnings.RootElement.GetRawText())
-                : null
+                : null,
+            session.AutoFinalizeEnabled,
+            session.QualityScore
         );
     }
 

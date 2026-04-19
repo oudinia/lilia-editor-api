@@ -70,7 +70,9 @@ public record ReviewSessionInfoDto(
     DateTime UpdatedAt,
     DateTime? ExpiresAt,
     Guid? DocumentId,
-    JsonElement? OriginalWarnings
+    JsonElement? OriginalWarnings,
+    bool AutoFinalizeEnabled,
+    int? QualityScore
 );
 
 public record BlockReviewDto(
