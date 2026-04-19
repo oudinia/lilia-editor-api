@@ -16,7 +16,7 @@ public interface IValidationCacheService
     /// Look up a cached validation. Returns null on miss. The caller should
     /// compile on miss and persist via <see cref="PersistAsync"/>.
     /// </summary>
-    Task<BlockValidation?> GetAsync(Guid blockId, string contentHash, CancellationToken ct = default);
+    Task<BlockValidation?> GetAsync(Guid blockId, string contentHash, string validator = "pdflatex", CancellationToken ct = default);
 
     /// <summary>Persist a freshly-computed validation. Conflict = no-op.</summary>
     Task PersistAsync(BlockValidation validation, CancellationToken ct = default);
@@ -68,13 +68,14 @@ public class ValidationCacheService : IValidationCacheService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    public async Task<BlockValidation?> GetAsync(Guid blockId, string contentHash, CancellationToken ct = default)
+    public async Task<BlockValidation?> GetAsync(Guid blockId, string contentHash, string validator = "pdflatex", CancellationToken ct = default)
     {
         return await _context.BlockValidations
             .AsNoTracking()
             .FirstOrDefaultAsync(v =>
                 v.BlockId == blockId &&
                 v.ContentHash == contentHash &&
+                v.Validator == validator &&
                 v.RuleVersion == RuleVersion,
                 ct);
     }
@@ -136,6 +137,9 @@ FROM latest;";
 
     public async Task InvalidateOlderThanAsync(Guid blockId, string keepHash, string ruleVersion, CancellationToken ct = default)
     {
+        // Scoped to rule-version only: both typst + pdflatex rows for
+        // the current hash are preserved; older hashes (any validator)
+        // for this block are purged together.
         await _context.BlockValidations
             .Where(v => v.BlockId == blockId && v.RuleVersion == ruleVersion && v.ContentHash != keepHash)
             .ExecuteDeleteAsync(ct);

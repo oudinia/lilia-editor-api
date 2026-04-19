@@ -52,6 +52,17 @@ public class BlockValidation
     /// </summary>
     public string RuleVersion { get; set; } = "v1";
 
+    /// <summary>
+    /// Which validator produced this row. "pdflatex" is authoritative but
+    /// slow (100–800 ms + Docker shell-out). "typst" is fast (&lt;150 ms,
+    /// WASM) and catches syntactic/type errors but misses LaTeX-specific
+    /// things like package availability or cite-key resolution. Cache
+    /// uniqueness is per (BlockId, ContentHash, Validator, RuleVersion)
+    /// so the same content can be validated under both validators and
+    /// both results persist. CHECK-constrained.
+    /// </summary>
+    public string Validator { get; set; } = "pdflatex";
+
     public DateTime ValidatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation (optional — the service doesn't need it, but EF wants a

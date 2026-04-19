@@ -201,7 +201,7 @@ public class BulkInsertHelper
 
         const string copy = @"COPY block_validations
             (id, block_id, document_id, content_hash, status,
-             error_message, warnings, rule_version, validated_at)
+             error_message, warnings, rule_version, validator, validated_at)
             FROM STDIN BINARY";
 
         await using var writer = await conn.BeginBinaryImportAsync(copy, ct);
@@ -218,6 +218,7 @@ public class BulkInsertHelper
             await WriteNullableStringAsync(writer, v.ErrorMessage, NpgsqlDbType.Text, ct);
             await WriteNullableJsonAsync(writer, v.Warnings, ct);
             await writer.WriteAsync(v.RuleVersion, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(string.IsNullOrEmpty(v.Validator) ? "pdflatex" : v.Validator, NpgsqlDbType.Varchar, ct);
             await writer.WriteAsync(v.ValidatedAt == default ? now : v.ValidatedAt, NpgsqlDbType.TimestampTz, ct);
             count++;
         }

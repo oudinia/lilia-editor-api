@@ -12,6 +12,8 @@ public class BlockValidationConfiguration : IEntityTypeConfiguration<BlockValida
         {
             t.HasCheckConstraint("ck_block_validation_status",
                 "status IN ('valid','error','warning')");
+            t.HasCheckConstraint("ck_block_validation_validator",
+                "validator IN ('pdflatex','typst')");
         });
 
         builder.HasKey(v => v.Id);
@@ -23,13 +25,15 @@ public class BlockValidationConfiguration : IEntityTypeConfiguration<BlockValida
         builder.Property(v => v.ErrorMessage).HasColumnName("error_message");
         builder.Property(v => v.Warnings).HasColumnName("warnings").HasColumnType("jsonb");
         builder.Property(v => v.RuleVersion).HasColumnName("rule_version").HasMaxLength(10).HasDefaultValue("v1").IsRequired();
+        builder.Property(v => v.Validator).HasColumnName("validator").HasMaxLength(20).HasDefaultValue("pdflatex").IsRequired();
         builder.Property(v => v.ValidatedAt).HasColumnName("validated_at").HasDefaultValueSql("NOW()");
 
-        // Unique (BlockId, ContentHash, RuleVersion) — never cache the same
-        // content twice for the same block under the same pipeline version.
-        builder.HasIndex(v => new { v.BlockId, v.ContentHash, v.RuleVersion })
+        // Unique (BlockId, ContentHash, Validator, RuleVersion) — same
+        // content + same validator + same pipeline never caches twice.
+        // Allows both typst + pdflatex rows to coexist for the same hash.
+        builder.HasIndex(v => new { v.BlockId, v.ContentHash, v.Validator, v.RuleVersion })
             .IsUnique()
-            .HasDatabaseName("ux_block_validation_block_hash_version");
+            .HasDatabaseName("ux_block_validation_block_hash_validator_version");
 
         // Document-level rollup index.
         builder.HasIndex(v => v.DocumentId).HasDatabaseName("ix_block_validation_document");

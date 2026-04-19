@@ -224,7 +224,10 @@ public class LaTeXRenderController : ControllerBase
         // Per-block validation is the hottest validation path (editor calls it
         // on every blur), so cache hits are the vast majority of traffic.
         var contentHash = _validationCache.ComputeHash(block);
-        var cached = await _validationCache.GetAsync(blockId, contentHash);
+        // Look up the authoritative pdflatex result. Typst rows for the
+        // same hash live alongside but are surfaced via the rollup + the
+        // typst-specific frontend path (two-tier #63).
+        var cached = await _validationCache.GetAsync(blockId, contentHash, "pdflatex");
         if (cached is not null)
         {
             return Ok(new
@@ -277,6 +280,7 @@ public class LaTeXRenderController : ControllerBase
             Status = status,
             ErrorMessage = error,
             Warnings = warningsDoc,
+            Validator = "pdflatex",
             RuleVersion = ValidationCacheService.RuleVersion,
             ValidatedAt = DateTime.UtcNow,
         });
@@ -299,6 +303,40 @@ public class LaTeXRenderController : ControllerBase
     {
         var rollup = await _validationCache.GetDocumentRollupAsync(documentId);
         return Ok(rollup);
+    }
+
+    /// <summary>
+    /// Persist a client-side Typst validation result. The editor WASM
+    /// Typst compiler catches syntax/type errors in &lt;150 ms; sending
+    /// the verdict here lets the DB-driven cache reflect it alongside
+    /// authoritative pdflatex results (two-tier #63).
+    /// </summary>
+    [HttpPost("block/{blockId:guid}/validate-typst")]
+    public async Task<IActionResult> RecordTypstValidation(Guid blockId, [FromBody] RecordTypstValidationRequest req)
+    {
+        var block = await GetBlockAsync(blockId);
+        if (block == null) return NotFound();
+
+        var contentHash = _validationCache.ComputeHash(block);
+        var warningsDoc = req.Warnings is { Length: > 0 }
+            ? System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(req.Warnings))
+            : null;
+        var status = !req.Valid ? "error" : (req.Warnings?.Length > 0 ? "warning" : "valid");
+
+        await _validationCache.PersistAsync(new Core.Entities.BlockValidation
+        {
+            BlockId = blockId,
+            DocumentId = block.DocumentId,
+            ContentHash = contentHash,
+            Status = status,
+            ErrorMessage = req.Error,
+            Warnings = warningsDoc,
+            Validator = "typst",
+            RuleVersion = ValidationCacheService.RuleVersion,
+            ValidatedAt = DateTime.UtcNow,
+        });
+
+        return Ok(new { blockId, contentHash, status, validator = "typst" });
     }
 
     /// <summary>
@@ -478,3 +516,9 @@ public record RenderLatexRequest(
 );
 
 public record ValidateLatexRequest(string Latex);
+
+public record RecordTypstValidationRequest(
+    bool Valid,
+    string? Error,
+    string[]? Warnings
+);
