@@ -275,13 +275,15 @@ public class ImportHintService : IImportHintService
             .OrderBy(f => f.Status == "pending" ? 0 : f.Status == "applied" ? 1 : 2)
             .ThenBy(f => f.CreatedAt)
             .Select(f => new ImportStructuralFindingDto(
-                f.Id, f.SessionId, f.DocumentId, f.BlockId,
-                f.Kind, f.Severity, f.Title, f.Detail,
-                f.SuggestedAction, f.ActionKind,
-                f.ActionPayload == null
+                Id: f.Id, SessionId: f.SessionId, DocumentId: f.DocumentId, BlockId: f.BlockId,
+                Kind: f.Kind, Severity: f.Severity, Title: f.Title, Detail: f.Detail,
+                SuggestedAction: f.SuggestedAction, ActionKind: f.ActionKind,
+                ActionPayload: f.ActionPayload == null
                     ? (JsonElement?)null
                     : JsonSerializer.Deserialize<JsonElement>(f.ActionPayload.RootElement.GetRawText()),
-                f.Status, f.ResolvedBy, f.ResolvedAt, f.CreatedAt, f.UpdatedAt
+                Status: f.Status, ResolvedBy: f.ResolvedBy, ResolvedAt: f.ResolvedAt,
+                CreatedAt: f.CreatedAt, UpdatedAt: f.UpdatedAt,
+                Source: f.Source
             )).ToList();
     }
 

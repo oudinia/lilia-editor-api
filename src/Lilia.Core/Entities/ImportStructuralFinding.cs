@@ -48,6 +48,11 @@ public class ImportStructuralFinding
     public string? ResolvedBy { get; set; }
     public DateTime? ResolvedAt { get; set; }
 
+    // Who produced this finding. Rules (deterministic in-process) vs AI
+    // (orchestrator-mediated Anthropic call) vs manual (user-created
+    // via the UI). CHECK-constrained in DB; default "rule" for legacy rows.
+    public string Source { get; set; } = "rule";      // rule | ai | manual
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

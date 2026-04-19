@@ -40,6 +40,8 @@ public class ImportStructuralFindingConfiguration : IEntityTypeConfiguration<Imp
                 "'convert_block_type','set_document_class','delete_block'," +
                 "'split_header_table','open_edit_modal','merge_list'" +
                 ")");
+            t.HasCheckConstraint("ck_structural_finding_source",
+                "source IN ('rule','ai','manual')");
         });
 
         builder.HasKey(f => f.Id);
@@ -57,6 +59,7 @@ public class ImportStructuralFindingConfiguration : IEntityTypeConfiguration<Imp
         builder.Property(f => f.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("pending").IsRequired();
         builder.Property(f => f.ResolvedBy).HasColumnName("resolved_by").HasMaxLength(255);
         builder.Property(f => f.ResolvedAt).HasColumnName("resolved_at");
+        builder.Property(f => f.Source).HasColumnName("source").HasMaxLength(10).HasDefaultValue("rule").IsRequired();
         builder.Property(f => f.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(f => f.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 

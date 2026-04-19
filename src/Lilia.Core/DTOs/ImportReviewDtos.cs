@@ -185,7 +185,8 @@ public record ImportStructuralFindingDto(
     string? ResolvedBy,
     DateTime? ResolvedAt,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    string Source = "rule"       // rule | ai | manual
 );
 
 public record SetDocumentCategoryDto(string? Category);
