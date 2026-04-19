@@ -244,28 +244,40 @@ public static class DefaultRuleRegistry
 
     private static ElementDetectionRule HeadingCustomStyleRule()
     {
+        // Match on either StyleName (language-neutral, Word's w:name) or
+        // StyleId (language-dependent, fallback). "Title" as a w:name is
+        // exact across locales; "section" / "chapter" appear as-is in
+        // both EN style names and French "Section"/"Chapter" variants.
+        static bool HasTokenInStyleName(ParagraphAnalysis a, string token)
+        {
+            return !string.IsNullOrEmpty(a.StyleName) &&
+                   a.StyleName.Contains(token, StringComparison.OrdinalIgnoreCase);
+        }
+
         return new ElementDetectionRule
         {
             Id = "heading.custom",
-            Name = "Heading by Custom Style",
+            Name = "Heading by Custom Style (language-neutral)",
             Priority = 110,
             TargetType = ImportElementType.Heading,
-            Condition = new CompositeCondition(CompositeCondition.CompositeMode.Or,
-                CompositeCondition.And(
-                    new StyleMatchCondition("title", StyleMatchMode.Contains),
-                    new NotCondition(new StyleMatchCondition("subtitle", StyleMatchMode.Contains))
-                ),
-                new StyleMatchCondition("section", StyleMatchMode.Contains),
-                new StyleMatchCondition("chapter", StyleMatchMode.Contains)
-            ),
+            Condition = new DetectionConditionFunc(analysis =>
+            {
+                var nameOrId = (analysis.StyleName ?? analysis.StyleId ?? "").ToLowerInvariant();
+                if (string.IsNullOrEmpty(nameOrId)) return false;
+                if (nameOrId.Contains("subtitle")) return false;
+                return nameOrId.Contains("title")
+                    || nameOrId.Contains("section")
+                    || nameOrId.Contains("chapter");
+            }, "Custom Title/Section/Chapter style via w:name or styleId"),
             CreateElements = (analysis, parser) =>
             {
                 var level = 1;
-                var lowerStyle = analysis.StyleId!.ToLowerInvariant();
-
-                if (lowerStyle.Contains("section") || lowerStyle.Contains("chapter"))
+                var nameOrId = (analysis.StyleName ?? analysis.StyleId ?? "").ToLowerInvariant();
+                if (nameOrId.Contains("section") || nameOrId.Contains("chapter"))
                 {
-                    var match = System.Text.RegularExpressions.Regex.Match(analysis.StyleId!, @"\d+");
+                    // Pull a trailing digit off either StyleName or StyleId.
+                    var source = analysis.StyleId ?? analysis.StyleName ?? "";
+                    var match = System.Text.RegularExpressions.Regex.Match(source, @"\d+");
                     if (match.Success && int.TryParse(match.Value, out var lvl) && lvl >= 1 && lvl <= 6)
                         level = lvl;
                 }
@@ -1012,6 +1024,21 @@ public static class DefaultRuleRegistry
             return 1;
         if (allBold && fontSize.HasValue && fontSize.Value >= 12)
             return 2;
+
+        // Bold-only mixed-case short text — subheadings like "Front-End",
+        // "Back-End", "Database" in Word CVs where the author bolded
+        // visually but Word left the font size inherited (so FontSizePoints
+        // is null). Conservative heuristic: require AllBold, short length,
+        // no sentence-ending punctuation (prevents false positives on
+        // bold lead-ins inside paragraphs). Assigns level 4 so it sits
+        // below typical h1-h3 sections.
+        if (allBold && text.Length <= 60 && text.Any(char.IsLetter))
+        {
+            var trimmed = text.TrimEnd();
+            var lastChar = trimmed.Length > 0 ? trimmed[^1] : ' ';
+            if (lastChar != '.' && lastChar != '!' && lastChar != '?' && lastChar != ':' && lastChar != ',' && lastChar != ';')
+                return 4;
+        }
 
         return null;
     }
