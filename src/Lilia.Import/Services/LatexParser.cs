@@ -568,6 +568,107 @@ public class LatexParser : ILatexParser
         return text.Trim();
     }
 
+    // Commands we preserve verbatim — they have semantic meaning the editor
+    // handles (citations, refs, hyperlinks, footnotes, math, labels).
+    private static readonly HashSet<string> PreservedInlineCommands = new(StringComparer.Ordinal)
+    {
+        "cite", "citep", "citet", "citeauthor", "citeyear", "nocite",
+        "ref", "pageref", "eqref", "autoref", "cref", "Cref",
+        "label", "href", "url", "hyperref",
+        "footnote", "footnotemark", "footnotetext",
+        "input", "include",
+    };
+
+    // Inline commands that render their argument as monospace code. We wrap
+    // the argument in Markdown backticks so LaTeX-about-LaTeX docs keep the
+    // visual hint ("\inlinecode{\section}" → "`\section`").
+    private static readonly HashSet<string> CodeDisplayInlineCommands = new(StringComparer.Ordinal)
+    {
+        "texttt", "inlinecode", "code", "cmdname", "macroname", "pkgname",
+        "filename", "path", "envname", "lstinline", "mintinline",
+    };
+
+    // Commands that map to bold / italic markdown so the styling isn't lost.
+    private static readonly Dictionary<string, (string Open, string Close)> MarkdownInlineWrappers = new(StringComparer.Ordinal)
+    {
+        ["textbf"] = ("**", "**"),
+        ["textit"] = ("*", "*"),
+        ["emph"]   = ("*", "*"),
+        ["underline"] = ("__", "__"),
+        // textsc / textrm / textsf — keep plain (Markdown has no small-caps / font-family inline).
+    };
+
+    /// <summary>
+    /// Normalise LaTeX inline commands inside a paragraph so no raw \cmd leaks
+    /// into the block text stored in the DB. Rules:
+    ///   - Code-display commands (\texttt, \inlinecode, \lstinline, \verb|...|,
+    ///     and other name-heuristic matches) → backtick-wrapped inline code.
+    ///   - Bold/italic/underline wrappers → Markdown equivalents.
+    ///   - Commands in PreservedInlineCommands (\cite, \ref, \href, …) stay
+    ///     verbatim for downstream renderers.
+    ///   - Any OTHER \cmd{arg} (unknown user macros) → just the arg.
+    /// Runs iteratively so nested wrappers collapse (\textbf{\textit{X}} → ***X***).
+    /// </summary>
+    private static string NormaliseInlineCommands(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        // Normalise escaped TeX marks first.
+        text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
+        text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
+
+        // Handle \verb<delim>...<delim> — the delimiter is a single non-letter
+        // char (typically | or +). LaTeX-about-LaTeX docs rely heavily on this.
+        text = Regex.Replace(
+            text,
+            @"\\verb\*?([^a-zA-Z\s])(.*?)\1",
+            m => "`" + m.Groups[2].Value + "`",
+            RegexOptions.Singleline);
+
+        // Iteratively process `\cmd{arg}` wrappers. Heuristic for "looks like
+        // a code-display command" catches user macros we don't know by name
+        // (e.g. \cmdref, \codeexample) — anything ending in "code" / "cmd" /
+        // "name" with a short arg.
+        var pattern = new Regex(@"\\([a-zA-Z]+)(?:\[[^\]]*\])?\{([^{}]*)\}");
+        string prev;
+        var guard = 0;
+        do
+        {
+            prev = text;
+            text = pattern.Replace(text, m =>
+            {
+                var cmd = m.Groups[1].Value;
+                var arg = m.Groups[2].Value;
+                if (PreservedInlineCommands.Contains(cmd)) return m.Value;
+                if (CodeDisplayInlineCommands.Contains(cmd) || LooksLikeCodeCommand(cmd))
+                    return "`" + arg + "`";
+                if (MarkdownInlineWrappers.TryGetValue(cmd, out var wrap))
+                    return wrap.Open + arg + wrap.Close;
+                return arg;
+            });
+            guard++;
+        } while (prev != text && guard < 10);
+
+        // Common LaTeX typography artefacts.
+        text = text.Replace("~", " ").Replace("\\,", " ").Replace("\\ ", " ");
+        // Collapse double spaces introduced by the stripping.
+        text = Regex.Replace(text, @"[ \t]{2,}", " ");
+        return text;
+    }
+
+    private static bool LooksLikeCodeCommand(string cmd)
+    {
+        // Heuristic: unknown macros whose name hints at code/command display.
+        // Keeps false-positive risk low (only triggers when the user clearly
+        // intended the macro to render monospace).
+        return cmd.EndsWith("code", StringComparison.OrdinalIgnoreCase)
+            || cmd.EndsWith("cmd", StringComparison.OrdinalIgnoreCase)
+            || cmd.EndsWith("command", StringComparison.OrdinalIgnoreCase)
+            || cmd.EndsWith("macro", StringComparison.OrdinalIgnoreCase)
+            || cmd.Equals("lstinline", StringComparison.OrdinalIgnoreCase)
+            || cmd.Equals("mintinline", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void ParseContent(string content, ImportDocument document, LatexImportOptions options)
     {
         var elementOrder = 0;
@@ -1022,14 +1123,23 @@ public class LatexParser : ILatexParser
             if (string.IsNullOrWhiteSpace(para) || para.StartsWith("%"))
                 continue;
 
-            // Detect inline formatting
+            // Detect inline formatting spans (offsets computed against raw LaTeX).
             var formatting = ParseLatexFormatting(para);
+            // Then normalise the text itself — strip known formatting wrappers
+            // AND unknown custom macros (\inlinecode{X} → X, \customMacro{X} → X).
+            // Without this, user-defined \newcommand wrappers leak into the
+            // block text as literal "\inlinecode{foo}" strings.
+            var normalised = NormaliseInlineCommands(para);
 
             document.Elements.Add(new ImportParagraph
             {
                 Order = elementOrder++,
-                Text = para,
+                Text = normalised,
                 Style = ParagraphStyle.Normal,
+                // Span offsets were computed against the pre-normalised text; the
+                // editor re-derives them from the normalised markdown-ish text so
+                // we don't ship stale offsets. Leave the list in case downstream
+                // detectors still use the span *types* for style hints.
                 Formatting = formatting
             });
         }
