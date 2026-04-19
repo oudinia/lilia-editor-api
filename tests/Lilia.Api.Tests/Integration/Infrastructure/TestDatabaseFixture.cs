@@ -17,13 +17,17 @@ public class TestDatabaseFixture : IAsyncLifetime
     {
         await _container.StartAsync();
 
-        // Create schema from EF Core model
+        // Run the full migration chain — ensures the schema matches what the
+        // app expects at prod (including every historical table still
+        // referenced by cleanup SQL, e.g. templates/formulas/snippets).
+        // Program.cs's Migrate is skipped in the Testing environment, so this
+        // is the single place migrations run for tests.
         var options = new DbContextOptionsBuilder<LiliaDbContext>()
             .UseNpgsql(ConnectionString)
             .Options;
 
         await using var context = new LiliaDbContext(options);
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.MigrateAsync();
 
         Factory = new LiliaWebApplicationFactory(ConnectionString);
     }

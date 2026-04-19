@@ -78,6 +78,8 @@ public class PreviewControllerTests
             null, null, null, null, // margins
             null, null, // header/footer
             null, null, null, // lineSpacing, paragraphIndent, pageNumbering
+            null, null, null, // latexDocumentClass, latexDocumentClassOptions, latexPackages
+            false, // balancedColumns
             new List<BlockDto>(),
             new List<BibliographyEntryDto>(),
             new List<LabelDto>()

@@ -589,9 +589,12 @@ app.MapGet("/health", async (LiliaDbContext db) =>
     }
 });
 
-// Apply pending EF Core migrations on startup (safe for single-instance DO deployment)
-using (var scope = app.Services.CreateScope())
+// Apply pending EF Core migrations on startup (safe for single-instance DO deployment).
+// Skip in the Testing environment — the xUnit fixture creates schema via
+// EnsureCreatedAsync and doesn't want to replay migrations on the seeded DB.
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
     await dbContext.Database.MigrateAsync();
 }

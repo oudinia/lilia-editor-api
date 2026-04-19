@@ -152,6 +152,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             DELETE FROM comments;
             DELETE FROM import_block_comments;
             DELETE FROM import_review_activities;
+            DELETE FROM import_diagnostics;
             DELETE FROM import_block_reviews;
             DELETE FROM import_review_collaborators;
             DELETE FROM import_review_sessions;
@@ -174,7 +175,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             DELETE FROM documents;
             DELETE FROM labels;
             DELETE FROM user_preferences;
-            DELETE FROM templates WHERE is_system = false;
+            -- templates table was removed (now represented as documents with is_template=true)
             DELETE FROM formulas WHERE is_system = false;
             DELETE FROM snippets WHERE is_system = false;
             DELETE FROM passkeys;
@@ -186,7 +187,6 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             DELETE FROM roles;
             DELETE FROM teams;
             DELETE FROM verifications;
-            UPDATE templates SET user_id = NULL;
             UPDATE formulas SET user_id = NULL;
             UPDATE snippets SET user_id = NULL;
             DELETE FROM users;
