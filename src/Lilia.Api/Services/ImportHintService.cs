@@ -269,7 +269,10 @@ public class ImportHintService : IImportHintService
 
     private async Task<List<ImportStructuralFindingDto>> ProjectFindings(IQueryable<ImportStructuralFinding> q, CancellationToken ct)
     {
-        return await q.Select(f => new ImportStructuralFindingDto(
+        // Materialise first — JsonDocument → JsonElement conversion can't be
+        // translated to SQL by Npgsql. Then project in-memory.
+        var rows = await q.ToListAsync(ct);
+        return rows.Select(f => new ImportStructuralFindingDto(
             f.Id, f.SessionId, f.DocumentId, f.BlockId,
             f.Kind, f.Severity, f.Title, f.Detail,
             f.SuggestedAction, f.ActionKind,
@@ -277,7 +280,7 @@ public class ImportHintService : IImportHintService
                 ? (JsonElement?)null
                 : JsonSerializer.Deserialize<JsonElement>(f.ActionPayload.RootElement.GetRawText()),
             f.Status, f.ResolvedBy, f.ResolvedAt, f.CreatedAt, f.UpdatedAt
-        )).ToListAsync(ct);
+        )).ToList();
     }
 
     // ─── Rule pipeline ───────────────────────────────────────────────────
