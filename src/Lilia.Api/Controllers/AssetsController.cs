@@ -13,11 +13,13 @@ public class AssetsController : ControllerBase
 {
     private readonly IAssetService _assetService;
     private readonly IDocumentService _documentService;
+    private readonly IDocumentSizeService _sizeService;
 
-    public AssetsController(IAssetService assetService, IDocumentService documentService)
+    public AssetsController(IAssetService assetService, IDocumentService documentService, IDocumentSizeService sizeService)
     {
         _assetService = assetService;
         _documentService = documentService;
+        _sizeService = sizeService;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -77,8 +79,32 @@ public class AssetsController : ControllerBase
             return BadRequest(new { message = "Only image files are allowed" });
 
         await using var stream = file.OpenReadStream();
-        var result = await _assetService.UploadAssetAsync(docId, userId, file.FileName, file.ContentType, file.Length, stream);
-        return Ok(result);
+        try
+        {
+            var result = await _assetService.UploadAssetAsync(docId, userId, file.FileName, file.ContentType, file.Length, stream);
+            return Ok(result);
+        }
+        catch (AssetTooLargeException ex)
+        {
+            return StatusCode(413, new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Return the document's storage footprint: block bytes, asset bytes,
+    /// counts, and an "unusually large" flag. Single SQL aggregate — no
+    /// rows transit the app.
+    /// </summary>
+    [HttpGet("/api/documents/{docId:guid}/size")]
+    public async Task<ActionResult<DocumentSizeDto>> GetSize(Guid docId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+            return Forbid();
+
+        var size = await _sizeService.GetSizeAsync(docId);
+        return Ok(size);
     }
 
     [HttpDelete("{id:guid}")]

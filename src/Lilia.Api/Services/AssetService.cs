@@ -10,11 +10,19 @@ public class AssetService : IAssetService
 {
     private readonly LiliaDbContext _context;
     private readonly IStorageService _storageService;
+    private readonly IAssetOptimizer _optimizer;
+    private readonly ILogger<AssetService> _logger;
 
-    public AssetService(LiliaDbContext context, IStorageService storageService)
+    public AssetService(
+        LiliaDbContext context,
+        IStorageService storageService,
+        IAssetOptimizer optimizer,
+        ILogger<AssetService> logger)
     {
         _context = context;
         _storageService = storageService;
+        _optimizer = optimizer;
+        _logger = logger;
     }
 
     public async Task<List<AssetDto>> GetAssetsAsync(Guid documentId)
@@ -73,21 +81,41 @@ public class AssetService : IAssetService
         if (document == null)
             throw new ArgumentException("Document not found");
 
+        // Buffer the upload into memory so the optimizer can inspect it.
+        // The optimizer enforces the 20 MB ceiling — RejectOverBytes — by
+        // throwing AssetTooLargeException, which the controller maps to 413.
+        using var ms = new MemoryStream();
+        await content.CopyToAsync(ms);
+        var rawBytes = ms.ToArray();
+
+        var optimized = _optimizer.Optimize(rawBytes, contentType);
+        if (optimized.Notice is { Length: > 0 })
+        {
+            _logger.LogInformation(
+                "[AssetUpload] doc={DocumentId} user={UserId} file={FileName} {Notice}",
+                documentId, userId, fileName, optimized.Notice);
+        }
+
         var assetId = Guid.NewGuid();
-        var extension = Path.GetExtension(fileName);
+        // If the optimiser changed the MIME (e.g. PNG→JPEG), reflect that
+        // in the storage key so the public URL serves the right type.
+        var extension = ExtensionFor(optimized.ContentType) ?? Path.GetExtension(fileName);
         var storageKey = $"{userId}/documents/{documentId}/images/{assetId}{extension}";
 
-        var publicUrl = await _storageService.UploadAsync(storageKey, content, contentType);
+        using var optimizedStream = new MemoryStream(optimized.Bytes);
+        var publicUrl = await _storageService.UploadAsync(storageKey, optimizedStream, optimized.ContentType);
 
         var asset = new Asset
         {
             Id = assetId,
             DocumentId = documentId,
             FileName = fileName,
-            FileType = contentType,
-            FileSize = fileSize,
+            FileType = optimized.ContentType,
+            FileSize = optimized.OptimizedSize,
             StorageKey = storageKey,
             Url = publicUrl,
+            Width = optimized.Width,
+            Height = optimized.Height,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -96,6 +124,15 @@ public class AssetService : IAssetService
 
         return MapToDto(asset);
     }
+
+    private static string? ExtensionFor(string mime) => mime.ToLowerInvariant() switch
+    {
+        "image/jpeg" => ".jpg",
+        "image/png"  => ".png",
+        "image/gif"  => ".gif",
+        "image/webp" => ".webp",
+        _            => null,
+    };
 
     public async Task<bool> DeleteAssetAsync(Guid documentId, Guid assetId)
     {
