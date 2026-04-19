@@ -314,6 +314,34 @@ public class LaTeXRenderController : ControllerBase
     }
 
     /// <summary>
+    /// List per-block validation errors + warnings for a document.
+    /// Intended for a "what's broken?" panel and for triaging — caller
+    /// gets block_id + status + error_message + validator + first
+    /// warning. Scoped to the authenticated user's docs.
+    /// </summary>
+    [HttpGet("{documentId:guid}/validation-errors")]
+    public async Task<IActionResult> ListValidationErrors(Guid documentId, CancellationToken ct)
+    {
+        var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+        var rows = await db.BlockValidations
+            .AsNoTracking()
+            .Where(v => v.DocumentId == documentId && v.Status != "valid")
+            .OrderBy(v => v.Validator)
+            .ThenByDescending(v => v.ValidatedAt)
+            .Select(v => new
+            {
+                blockId = v.BlockId,
+                status = v.Status,
+                validator = v.Validator,
+                errorMessage = v.ErrorMessage,
+                validatedAt = v.ValidatedAt,
+                contentHash = v.ContentHash,
+            })
+            .ToListAsync(ct);
+        return Ok(rows);
+    }
+
+    /// <summary>
     /// Persist a client-side Typst validation result. The editor WASM
     /// Typst compiler catches syntax/type errors in &lt;150 ms; sending
     /// the verdict here lets the DB-driven cache reflect it alongside
