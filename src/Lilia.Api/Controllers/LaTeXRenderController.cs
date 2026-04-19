@@ -62,7 +62,15 @@ public class LaTeXRenderController : ControllerBase
         try
         {
             var latex = await _renderService.RenderToLatexAsync(documentId);
-            var pdf = await _latexService.RenderToPdfAsync(latex);
+            // Pick the engine stored on the document so XeLaTeX / LuaLaTeX
+            // docs (fontspec / polyglossia / CJK) compile with the right
+            // binary. Unknown / empty falls back to pdflatex in ResolveEngine.
+            var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+            var engine = await db.Documents.AsNoTracking()
+                .Where(d => d.Id == documentId)
+                .Select(d => d.LatexEngine)
+                .FirstOrDefaultAsync() ?? "pdflatex";
+            var pdf = await _latexService.RenderToPdfAsync(latex, engine);
             return File(pdf, "application/pdf", $"document-{documentId}.pdf");
         }
         catch (Exception ex)

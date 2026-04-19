@@ -8,6 +8,7 @@ namespace Lilia.Api.Services;
 public interface ILaTeXRenderService
 {
     Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30);
+    Task<byte[]> RenderToPdfAsync(string latex, string engine, int timeout = 30);
     Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60);
     Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30);
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
