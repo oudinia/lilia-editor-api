@@ -21,6 +21,12 @@ public class R2StorageService : IStorageService
         var config = new AmazonS3Config
         {
             ServiceURL = configuration["R2:Endpoint"] ?? throw new InvalidOperationException("R2:Endpoint not configured"),
+            // AWS SDK v4 defaults to STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER
+            // for chunked uploads + checksums; Cloudflare R2 doesn't implement
+            // that signing variant yet (returns 501 "not implemented"). Force
+            // classic SigV4 by disabling payload chunking + trailing checksums.
+            RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
         };
 
         _s3Client = new AmazonS3Client(credentials, config);
@@ -35,7 +41,12 @@ public class R2StorageService : IStorageService
             BucketName = _bucketName,
             Key = key,
             InputStream = content,
-            ContentType = contentType
+            ContentType = contentType,
+            // Belt & suspenders: even with RequestChecksumCalculation set on
+            // the client config, some AWS SDK v4 code paths still negotiate
+            // the streaming trailer. Disable payload signing on the request
+            // too so R2 gets a clean PUT it can validate.
+            DisablePayloadSigning = true,
         };
 
         await _s3Client.PutObjectAsync(request);
