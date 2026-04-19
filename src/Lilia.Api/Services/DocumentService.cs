@@ -296,6 +296,14 @@ public class DocumentService : IDocumentService
         if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
         if (dto.AiEnabled.HasValue) document.AiEnabled = dto.AiEnabled.Value;
+        if (!string.IsNullOrWhiteSpace(dto.LatexEngine))
+        {
+            // Guard against arbitrary values; DB CHECK would reject but
+            // rejecting up-front gives a cleaner error to the caller.
+            var engine = dto.LatexEngine.ToLowerInvariant();
+            if (engine is "pdflatex" or "xelatex" or "lualatex")
+                document.LatexEngine = engine;
+        }
 
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -713,7 +721,8 @@ public class DocumentService : IDocumentService
                 dl.Label.Color,
                 dl.Label.CreatedAt
             )).ToList(),
-            AiEnabled: d.AiEnabled
+            AiEnabled: d.AiEnabled,
+            LatexEngine: string.IsNullOrEmpty(d.LatexEngine) ? "pdflatex" : d.LatexEngine
         );
     }
 

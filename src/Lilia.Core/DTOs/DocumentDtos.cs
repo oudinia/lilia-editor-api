@@ -72,7 +72,8 @@ public record DocumentDto(
     List<BlockDto> Blocks,
     List<BibliographyEntryDto> Bibliography,
     List<LabelDto> Labels,
-    bool AiEnabled = false
+    bool AiEnabled = false,
+    string LatexEngine = "pdflatex"
 );
 
 public record CreateDocumentDto(
@@ -107,7 +108,8 @@ public record UpdateDocumentDto(
     double? LineSpacing,
     string? ParagraphIndent,
     string? PageNumbering,
-    bool? AiEnabled
+    bool? AiEnabled,
+    string? LatexEngine
 );
 
 public record TrashDocumentDto(

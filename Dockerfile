@@ -29,6 +29,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dvipng \
     ghostscript \
     poppler-utils \
+    # XeLaTeX + LuaLaTeX engines — added for #23. texlive-xetex and
+    # texlive-luatex bring the compilers; the extra font packages are
+    # the common font-spec requirements for CJK / RTL / OpenType users.
+    texlive-xetex \
+    texlive-luatex \
+    fonts-liberation \
+    fonts-dejavu-core \
+    fonts-noto-core \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

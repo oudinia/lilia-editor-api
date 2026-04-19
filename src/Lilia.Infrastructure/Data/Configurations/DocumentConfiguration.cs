@@ -8,7 +8,11 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
 {
     public void Configure(EntityTypeBuilder<Document> builder)
     {
-        builder.ToTable("documents");
+        builder.ToTable("documents", t =>
+        {
+            t.HasCheckConstraint("ck_document_latex_engine",
+                "latex_engine IN ('pdflatex','xelatex','lualatex')");
+        });
 
         builder.HasKey(d => d.Id);
         builder.Property(d => d.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
@@ -63,6 +67,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         // rules + LaTeX class selection. Null = generic detection only.
         builder.Property(d => d.DocumentCategory).HasColumnName("document_category").HasMaxLength(30);
         builder.Property(d => d.AiEnabled).HasColumnName("ai_enabled").HasDefaultValue(false);
+        builder.Property(d => d.LatexEngine).HasColumnName("latex_engine").HasMaxLength(20).HasDefaultValue("pdflatex").IsRequired();
 
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);

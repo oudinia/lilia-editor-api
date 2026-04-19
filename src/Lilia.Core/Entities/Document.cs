@@ -76,6 +76,14 @@ public class Document
     // this + any future org/user-level gate via a simple AND.
     public bool AiEnabled { get; set; }
 
+    // Compile engine for this document. pdflatex is the default and
+    // handles the common case; xelatex / lualatex are auto-selected at
+    // import time when the source relies on fontspec / \setmainfont or
+    // similar XeTeX-only primitives. Users can later expose this in a
+    // settings UI if they want to force a specific engine. CHECK-constrained
+    // at the DB layer to the three supported values.
+    public string LatexEngine { get; set; } = "pdflatex";
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }
