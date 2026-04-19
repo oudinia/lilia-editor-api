@@ -22,6 +22,12 @@ public class DocxParser : IDocxParser
     private readonly List<ImportWarning> _warnings = [];
     private int _elementOrder;
     private ElementDetectionPipeline? _pipeline;
+    // Per-parse cache: styleId → StyleName from styles.xml. Populated lazily
+    // on first lookup per MainDocumentPart. Language-neutral style names
+    // ("heading 1", "heading 2", …) let us detect headings regardless of the
+    // authoring language (Word writes Titre/berschrift/Titolo/etc. as the
+    // styleId but always "heading N" as the w:name).
+    private readonly Dictionary<MainDocumentPart, Dictionary<string, string>> _styleNameCache = [];
 
     /// <summary>
     /// Create a DocxParser without OMML conversion (OMML XML only).
@@ -173,6 +179,9 @@ public class DocxParser : IDocxParser
         }
 
         var styleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+        // Resolve the language-neutral StyleName (from styles.xml <w:name>).
+        // Cheap: amortised O(1) per paragraph after the first lookup.
+        var styleName = styleId is null ? null : ResolveStyleName(mainPart, styleId);
         var numPr = para.ParagraphProperties?.NumberingProperties;
         var mathElements = para.Descendants<M.OfficeMath>().ToList();
         var shading = para.ParagraphProperties?.Shading;
@@ -194,6 +203,7 @@ public class DocxParser : IDocxParser
         return new ParagraphAnalysis
         {
             StyleId = styleId,
+            StyleName = styleName,
             Text = text,
             Formatting = formatting,
             FontFamily = GetFontFamily(para),
@@ -398,6 +408,38 @@ public class DocxParser : IDocxParser
             return FooterType.Even;
 
         return FooterType.Default;
+    }
+
+    /// <summary>
+    /// Resolve a Word style's language-neutral name (e.g. "heading 1") from
+    /// its localised styleId (e.g. "Titre1" in FR, "berschrift1" in DE).
+    /// Word always writes the <w:name> child in English regardless of the
+    /// authoring language, so matching on StyleName is language-independent.
+    /// Cached per MainDocumentPart.
+    /// </summary>
+    private string? ResolveStyleName(MainDocumentPart mainPart, string styleId)
+    {
+        if (!_styleNameCache.TryGetValue(mainPart, out var cache))
+        {
+            cache = BuildStyleNameMap(mainPart);
+            _styleNameCache[mainPart] = cache;
+        }
+        return cache.TryGetValue(styleId, out var name) ? name : null;
+    }
+
+    private static Dictionary<string, string> BuildStyleNameMap(MainDocumentPart mainPart)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var stylesPart = mainPart.StyleDefinitionsPart?.Styles;
+        if (stylesPart is null) return map;
+        foreach (var style in stylesPart.Descendants<Style>())
+        {
+            var id = style.StyleId?.Value;
+            var name = style.StyleName?.Val?.Value;
+            if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
+                map[id] = name;
+        }
+        return map;
     }
 
     private string ExtractTextFromParts(OpenXmlElement container)

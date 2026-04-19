@@ -13,8 +13,18 @@ public class ParagraphAnalysis
 {
     /// <summary>
     /// The paragraph style ID (e.g., "Heading1", "Normal", "Title").
+    /// Language-dependent: a French doc stores "Titre1" here, German
+    /// stores "berschrift1", etc. Prefer StyleName for language-neutral checks.
     /// </summary>
     public string? StyleId { get; init; }
+
+    /// <summary>
+    /// The style's <see cref="DocumentFormat.OpenXml.Wordprocessing.StyleName"/>
+    /// value from styles.xml — Word always writes this in English regardless
+    /// of the authoring language ("heading 1", "heading 2", "Title",
+    /// "Subtitle", …). Use this for language-neutral detection.
+    /// </summary>
+    public string? StyleName { get; init; }
 
     /// <summary>
     /// Plain text content extracted from the paragraph.

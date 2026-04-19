@@ -171,32 +171,42 @@ public static class DefaultRuleRegistry
     // Heading rules (100-199)
     // ========================================================================
 
-    // Word localises heading styleIds to the language the doc was authored in.
-    // `Heading1` (EN) becomes `Titre1` (FR) · `berschrift1` (DE, umlaut stripped)
-    // · `Ttulo1` (ES/PT, accent stripped) · `Titolo1` (IT) · `Kop1` (NL) ·
-    // `Nagwek1` (PL) · `Nadpis1` (CS). Matching by styleId is therefore
-    // language-dependent — a French-authored CV (tested 2026-04-19 on the
-    // CVOussamaDinia.docx sample) has 54 Titre3/Titre4 paragraphs that were
-    // silently dropped to paragraph blocks before this fix.
-    //
-    // Proper fix would read styles.xml and match on the `w:name` attribute
-    // ("heading 1"-"heading 9", language-neutral). Tactical fix: match the
-    // known localised styleId prefixes and extract the trailing level.
+    // Word stores every style's language-neutral name in <w:name>. For the
+    // built-in heading styles that's always "heading 1" .. "heading 9" in
+    // English, regardless of the authoring language. DocxParser surfaces that
+    // value as analysis.StyleName — match on it and we cover every Word
+    // localisation (Titre/berschrift/Titolo/Kop/…) for free.
+    private static readonly System.Text.RegularExpressions.Regex StyleNameHeading =
+        new(@"^heading\s*(\d)$",
+            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // Fallback for the rare case where StyleName is missing (custom styles,
+    // stripped docs). Matches localised styleIds we've seen in the wild.
     private static readonly System.Text.RegularExpressions.Regex LocalisedHeadingStyleId =
         new(@"^(?:Heading|Titre|berschrift|Uberschrift|Überschrift|Ttulo|T[ií]tulo|Titolo|Kop|Nagwek|Nagłówek|Nadpis)(\d)$",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    private static int? ExtractHeadingLevel(ParagraphAnalysis analysis)
+    {
+        // Preferred path: language-neutral StyleName from <w:name>.
+        if (!string.IsNullOrEmpty(analysis.StyleName))
+        {
+            var m = StyleNameHeading.Match(analysis.StyleName);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out var l1) && l1 >= 1 && l1 <= 9)
+                return l1;
+        }
+        // Fallback: localised styleId regex.
+        if (!string.IsNullOrEmpty(analysis.StyleId))
+        {
+            var m = LocalisedHeadingStyleId.Match(analysis.StyleId);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out var l2) && l2 >= 1 && l2 <= 9)
+                return l2;
+        }
+        return null;
+    }
+
     private static ElementDetectionRule HeadingStyleRule(ImportOptions options)
     {
-        static int? ExtractLevel(string styleId)
-        {
-            var m = LocalisedHeadingStyleId.Match(styleId);
-            if (!m.Success) return null;
-            if (!int.TryParse(m.Groups[1].Value, out var lvl)) return null;
-            if (lvl < 1 || lvl > 9) return null;
-            return lvl;
-        }
-
         return new ElementDetectionRule
         {
             Id = "heading.style",
@@ -205,14 +215,13 @@ public static class DefaultRuleRegistry
             TargetType = ImportElementType.Heading,
             Condition = new DetectionConditionFunc(analysis =>
             {
-                if (string.IsNullOrEmpty(analysis.StyleId)) return false;
-                var level = ExtractLevel(analysis.StyleId);
+                var level = ExtractHeadingLevel(analysis);
                 if (level is null) return false;
                 return level >= options.MinHeadingLevelForSection && level <= options.MaxHeadingLevelForSection;
-            }, "Heading style with level in configured range (multilingual)"),
+            }, "Heading style (matched via w:name — language-neutral)"),
             CreateElements = (analysis, parser) =>
             {
-                var level = ExtractLevel(analysis.StyleId!)!.Value;
+                var level = ExtractHeadingLevel(analysis)!.Value;
                 return
                 [
                     new ImportHeading
@@ -227,7 +236,7 @@ public static class DefaultRuleRegistry
             },
             OnMatch = (analysis, tracker) =>
             {
-                var level = ExtractLevel(analysis.StyleId!)!.Value;
+                var level = ExtractHeadingLevel(analysis)!.Value;
                 tracker.OnHeadingEncountered(analysis.Text, level);
             }
         };
