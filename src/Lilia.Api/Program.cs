@@ -271,6 +271,7 @@ builder.Services.AddScoped<ILatexImportJobExecutor, LatexImportJobExecutor>();
 builder.Services.AddScoped<IImportHintService, ImportHintService>();
 builder.Services.AddScoped<IValidationCacheService, ValidationCacheService>();
 builder.Services.AddScoped<IRedactionService, RedactionService>();
+builder.Services.AddScoped<IAiOrchestrator, AiOrchestrator>();
 
 // Email service (Resend)
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();

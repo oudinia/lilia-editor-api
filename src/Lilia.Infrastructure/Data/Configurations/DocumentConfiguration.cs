@@ -62,6 +62,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         // Document category — drives category-specialised structural-finding
         // rules + LaTeX class selection. Null = generic detection only.
         builder.Property(d => d.DocumentCategory).HasColumnName("document_category").HasMaxLength(30);
+        builder.Property(d => d.AiEnabled).HasColumnName("ai_enabled").HasDefaultValue(false);
 
         builder.HasIndex(d => d.OwnerId);
         builder.HasIndex(d => d.TeamId);

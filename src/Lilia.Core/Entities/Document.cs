@@ -71,6 +71,11 @@ public class Document
     /// "cv" | "thesis" | "report" | "research" | "business".
     public string? DocumentCategory { get; set; }
 
+    // Per-document AI opt-in. Default false; the user explicitly toggles
+    // this on per doc before any AI feature fires. The orchestrator checks
+    // this + any future org/user-level gate via a simple AND.
+    public bool AiEnabled { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }
