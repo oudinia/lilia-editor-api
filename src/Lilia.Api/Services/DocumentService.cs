@@ -295,6 +295,7 @@ public class DocumentService : IDocumentService
         if (dto.LineSpacing.HasValue) document.LineSpacing = dto.LineSpacing.Value;
         if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
+        if (dto.AiEnabled.HasValue) document.AiEnabled = dto.AiEnabled.Value;
 
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -711,7 +712,8 @@ public class DocumentService : IDocumentService
                 dl.Label.Name,
                 dl.Label.Color,
                 dl.Label.CreatedAt
-            )).ToList()
+            )).ToList(),
+            AiEnabled: d.AiEnabled
         );
     }
 

@@ -71,7 +71,8 @@ public record DocumentDto(
     bool BalancedColumns,
     List<BlockDto> Blocks,
     List<BibliographyEntryDto> Bibliography,
-    List<LabelDto> Labels
+    List<LabelDto> Labels,
+    bool AiEnabled = false
 );
 
 public record CreateDocumentDto(
@@ -105,7 +106,8 @@ public record UpdateDocumentDto(
     string? FooterText,
     double? LineSpacing,
     string? ParagraphIndent,
-    string? PageNumbering
+    string? PageNumbering,
+    bool? AiEnabled
 );
 
 public record TrashDocumentDto(

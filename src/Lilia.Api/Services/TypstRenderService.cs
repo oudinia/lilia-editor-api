@@ -421,7 +421,10 @@ public class TypstRenderService : ITypstRenderService
     {
         if (string.IsNullOrEmpty(text)) return "";
 
-        var result = text;
+        // Strip LaTeX artefacts BEFORE markdown processing — raw
+        // `\section{X}` / `\rule[...]{...}{...}` / `%% comment` lines
+        // leak into Typst as unbalanced delimiters and kill compilation.
+        var result = StripLatexArtefacts(text);
 
         // Protect math regions first
         var mathRegions = new List<string>();
@@ -454,6 +457,61 @@ public class TypstRenderService : ITypstRenderService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Remove / translate LaTeX residue that would otherwise leak into Typst
+    /// source and break compilation. Documents imported from DOCX or LaTeX
+    /// often carry raw commands the parser didn't translate (sectioning
+    /// commands, \rule, %% comments, etc.). We handle the common cases and
+    /// drop the rest so Typst at least gets valid syntax.
+    /// </summary>
+    internal static string StripLatexArtefacts(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        // LaTeX comments at start of line — `%` (single) and `%%` — Typst uses `//`.
+        text = Regex.Replace(text, @"(?m)^\s*%+[^\n]*", "");
+
+        // Sectioning commands → Typst heading markers.
+        text = Regex.Replace(text, @"\\section\*?\s*\{([^}]*)\}",       "= $1");
+        text = Regex.Replace(text, @"\\subsection\*?\s*\{([^}]*)\}",    "== $1");
+        text = Regex.Replace(text, @"\\subsubsection\*?\s*\{([^}]*)\}", "=== $1");
+        text = Regex.Replace(text, @"\\paragraph\s*\{([^}]*)\}",        "==== $1");
+
+        // Known inline text wrappers — keep the argument, drop the command.
+        text = Regex.Replace(text, @"\\(?:textbf|textit|emph|texttt|textsc|textrm|textsf|underline)\{([^{}]*)\}", "$1");
+
+        // Layout / spacing / rule macros we don't emulate — nuke the whole call.
+        text = Regex.Replace(text, @"\\(?:rule|vspace|hspace|vskip|hskip|noindent|par|newline|newpage|clearpage|cleardoublepage|linebreak|pagebreak)\b(?:\[[^\]]*\])?(?:\{[^}]*\})*", "");
+
+        // Generic `\cmd{arg}` fallback — strip command name, keep arg. This
+        // runs last so the specific rules above can translate what they
+        // understand first.
+        var prev = "";
+        var guard = 0;
+        while (prev != text && guard++ < 8)
+        {
+            prev = text;
+            text = Regex.Replace(text, @"\\[a-zA-Z]+\*?\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}", "$1");
+        }
+
+        // Bare LaTeX tokens with no argument (e.g. `\LaTeX`, `\TeX`, `\centering`).
+        text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
+        text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
+        // Anything remaining like `\centering`, `\small`, etc. — drop silently.
+        text = Regex.Replace(text, @"\\[a-zA-Z]+\*?\b", "");
+
+        // Literal backslashes from `\\ ` line breaks or leftover escapes —
+        // Typst will choke on them. Keep `\n` literal newlines.
+        text = text.Replace("\\\\", "\n");
+        text = text.Replace("\\", "");
+
+        // Collapse blank runs introduced by deletions.
+        text = Regex.Replace(text, @"[ \t]{2,}", " ");
+        text = Regex.Replace(text, @"\n{3,}", "\n\n");
+
+        return text;
     }
 
     /// <summary>
