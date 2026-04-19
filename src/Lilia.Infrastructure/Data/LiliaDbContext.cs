@@ -79,6 +79,7 @@ public class LiliaDbContext : DbContext
     public DbSet<ImportDiagnostic> ImportDiagnostics => Set<ImportDiagnostic>();
     public DbSet<ImportStructuralFinding> ImportStructuralFindings => Set<ImportStructuralFinding>();
     public DbSet<BlockValidation> BlockValidations => Set<BlockValidation>();
+    public DbSet<AiRequest> AiRequests => Set<AiRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
