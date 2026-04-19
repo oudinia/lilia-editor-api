@@ -218,7 +218,7 @@ public class ImportHintService : IImportHintService
         const string copy = @"COPY import_structural_findings
             (id, session_id, document_id, block_id, kind, severity,
              title, detail, suggested_action, action_kind, action_payload,
-             status, resolved_by, resolved_at, created_at, updated_at)
+             status, resolved_by, resolved_at, source, created_at, updated_at)
             FROM STDIN BINARY";
 
         await using var writer = await conn.BeginBinaryImportAsync(copy, ct);
@@ -241,6 +241,7 @@ public class ImportHintService : IImportHintService
             await writer.WriteAsync(f.Status, NpgsqlDbType.Varchar, ct);
             await WriteNullableString(writer, f.ResolvedBy, NpgsqlDbType.Varchar, ct);
             await WriteNullableTs(writer, f.ResolvedAt, ct);
+            await writer.WriteAsync(string.IsNullOrEmpty(f.Source) ? "rule" : f.Source, NpgsqlDbType.Varchar, ct);
             await writer.WriteAsync(f.CreatedAt == default ? now : f.CreatedAt, NpgsqlDbType.TimestampTz, ct);
             await writer.WriteAsync(now, NpgsqlDbType.TimestampTz, ct);
         }

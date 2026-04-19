@@ -272,6 +272,7 @@ builder.Services.AddScoped<IImportHintService, ImportHintService>();
 builder.Services.AddScoped<IValidationCacheService, ValidationCacheService>();
 builder.Services.AddScoped<IRedactionService, RedactionService>();
 builder.Services.AddScoped<IAiOrchestrator, AiOrchestrator>();
+builder.Services.AddScoped<IAiHintAugmenter, AiHintAugmenter>();
 builder.Services.AddScoped<Lilia.Import.Services.ILatexProjectExtractor, Lilia.Import.Services.LatexProjectExtractor>();
 builder.Services.AddSingleton<IAssetOptimizer, AssetOptimizerService>();
 builder.Services.AddScoped<IDocumentSizeService, DocumentSizeService>();

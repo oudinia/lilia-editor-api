@@ -141,6 +141,53 @@ public class BulkInsertHelper
     }
 
     /// <summary>
+    /// COPY-stream ImportStructuralFinding rows. Used by the rule pipeline
+    /// (source="rule") and the AI augmenter (source="ai").
+    /// </summary>
+    public async Task<int> BulkInsertStructuralFindingsAsync(
+        IEnumerable<ImportStructuralFinding> rows,
+        CancellationToken ct = default)
+    {
+        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync(ct);
+
+        const string copy = @"COPY import_structural_findings
+            (id, session_id, document_id, block_id, kind, severity,
+             title, detail, suggested_action, action_kind, action_payload,
+             status, resolved_by, resolved_at, source, created_at, updated_at)
+            FROM STDIN BINARY";
+
+        await using var writer = await conn.BeginBinaryImportAsync(copy, ct);
+        var count = 0;
+        var now = DateTime.UtcNow;
+        foreach (var f in rows)
+        {
+            await writer.StartRowAsync(ct);
+            await writer.WriteAsync(f.Id == Guid.Empty ? Guid.NewGuid() : f.Id, NpgsqlDbType.Uuid, ct);
+            if (f.SessionId is null) await writer.WriteNullAsync(ct); else await writer.WriteAsync(f.SessionId.Value, NpgsqlDbType.Uuid, ct);
+            if (f.DocumentId is null) await writer.WriteNullAsync(ct); else await writer.WriteAsync(f.DocumentId.Value, NpgsqlDbType.Uuid, ct);
+            await WriteNullableStringAsync(writer, f.BlockId, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(f.Kind, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(f.Severity, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(f.Title, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(f.Detail, NpgsqlDbType.Text, ct);
+            await writer.WriteAsync(f.SuggestedAction, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(f.ActionKind, NpgsqlDbType.Varchar, ct);
+            await WriteNullableJsonAsync(writer, f.ActionPayload, ct);
+            await writer.WriteAsync(f.Status, NpgsqlDbType.Varchar, ct);
+            await WriteNullableStringAsync(writer, f.ResolvedBy, NpgsqlDbType.Varchar, ct);
+            await WriteNullableTimestampAsync(writer, f.ResolvedAt, ct);
+            await writer.WriteAsync(string.IsNullOrEmpty(f.Source) ? "rule" : f.Source, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(f.CreatedAt == default ? now : f.CreatedAt, NpgsqlDbType.TimestampTz, ct);
+            await writer.WriteAsync(now, NpgsqlDbType.TimestampTz, ct);
+            count++;
+        }
+        await writer.CompleteAsync(ct);
+        return count;
+    }
+
+    /// <summary>
     /// COPY-stream BlockValidation rows — cache hits avoid N re-compiles,
     /// cache writes on compile success go through here too.
     /// </summary>

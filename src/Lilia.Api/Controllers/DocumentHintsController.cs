@@ -19,11 +19,16 @@ namespace Lilia.Api.Controllers;
 public class DocumentHintsController : ControllerBase
 {
     private readonly IImportHintService _hintService;
+    private readonly IAiHintAugmenter _aiAugmenter;
     private readonly LiliaDbContext _context;
 
-    public DocumentHintsController(IImportHintService hintService, LiliaDbContext context)
+    public DocumentHintsController(
+        IImportHintService hintService,
+        IAiHintAugmenter aiAugmenter,
+        LiliaDbContext context)
     {
         _hintService = hintService;
+        _aiAugmenter = aiAugmenter;
         _context = context;
     }
 
@@ -47,6 +52,27 @@ public class DocumentHintsController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var count = await _hintService.ComputeForDocumentAsync(documentId, userId);
         return Ok(new ComputeHintsResponseDto(count));
+    }
+
+    /// <summary>
+    /// AI-assisted hint augmentation. Runs a single Claude call over the
+    /// document's blocks asking for structural suggestions the rule pipeline
+    /// missed. Requires Document.AiEnabled = true (orchestrator enforces).
+    /// Idempotent: replaces any previous pending AI findings on this doc.
+    /// </summary>
+    [HttpPost("ai-augment")]
+    public async Task<ActionResult<AiAugmentResult>> AiAugment(Guid documentId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        // Access check piggy-backs on IImportHintService.ListForDocumentAsync
+        // (which also returns empty on forbidden). Explicit pre-check below.
+        var findings = await _hintService.ListForDocumentAsync(documentId, userId);
+        if (findings == null)
+            return Forbid();
+
+        var result = await _aiAugmenter.AugmentAsync(documentId, userId);
+        return Ok(result);
     }
 
     [HttpPost("{findingId:guid}/apply")]
