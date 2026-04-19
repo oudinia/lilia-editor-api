@@ -139,4 +139,42 @@ public class BulkInsertHelper
         if (v is null) await w.WriteNullAsync(ct);
         else await w.WriteAsync(v.RootElement.GetRawText(), NpgsqlDbType.Jsonb, ct);
     }
+
+    /// <summary>
+    /// COPY-stream BlockValidation rows — cache hits avoid N re-compiles,
+    /// cache writes on compile success go through here too.
+    /// </summary>
+    public async Task<int> BulkInsertBlockValidationsAsync(
+        IEnumerable<BlockValidation> rows,
+        CancellationToken ct = default)
+    {
+        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync(ct);
+
+        const string copy = @"COPY block_validations
+            (id, block_id, document_id, content_hash, status,
+             error_message, warnings, rule_version, validated_at)
+            FROM STDIN BINARY";
+
+        await using var writer = await conn.BeginBinaryImportAsync(copy, ct);
+        var count = 0;
+        var now = DateTime.UtcNow;
+        foreach (var v in rows)
+        {
+            await writer.StartRowAsync(ct);
+            await writer.WriteAsync(v.Id == Guid.Empty ? Guid.NewGuid() : v.Id, NpgsqlDbType.Uuid, ct);
+            await writer.WriteAsync(v.BlockId, NpgsqlDbType.Uuid, ct);
+            await writer.WriteAsync(v.DocumentId, NpgsqlDbType.Uuid, ct);
+            await writer.WriteAsync(v.ContentHash, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(v.Status, NpgsqlDbType.Varchar, ct);
+            await WriteNullableStringAsync(writer, v.ErrorMessage, NpgsqlDbType.Text, ct);
+            await WriteNullableJsonAsync(writer, v.Warnings, ct);
+            await writer.WriteAsync(v.RuleVersion, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(v.ValidatedAt == default ? now : v.ValidatedAt, NpgsqlDbType.TimestampTz, ct);
+            count++;
+        }
+        await writer.CompleteAsync(ct);
+        return count;
+    }
 }

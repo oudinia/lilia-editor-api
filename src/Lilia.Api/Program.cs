@@ -269,6 +269,7 @@ builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
 builder.Services.AddScoped<BulkInsertHelper>();
 builder.Services.AddScoped<ILatexImportJobExecutor, LatexImportJobExecutor>();
 builder.Services.AddScoped<IImportHintService, ImportHintService>();
+builder.Services.AddScoped<IValidationCacheService, ValidationCacheService>();
 
 // Email service (Resend)
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();

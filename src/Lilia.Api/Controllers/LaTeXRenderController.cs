@@ -15,6 +15,7 @@ public class LaTeXRenderController : ControllerBase
     private readonly IRenderService _renderService;
     private readonly ICompilationQueueService _compilationQueue;
     private readonly IAuditService _audit;
+    private readonly IValidationCacheService _validationCache;
     private readonly ILogger<LaTeXRenderController> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
 
@@ -23,6 +24,7 @@ public class LaTeXRenderController : ControllerBase
         IRenderService renderService,
         ICompilationQueueService compilationQueue,
         IAuditService audit,
+        IValidationCacheService validationCache,
         ILogger<LaTeXRenderController> logger,
         IServiceScopeFactory scopeFactory)
     {
@@ -30,6 +32,7 @@ public class LaTeXRenderController : ControllerBase
         _renderService = renderService;
         _compilationQueue = compilationQueue;
         _audit = audit;
+        _validationCache = validationCache;
         _logger = logger;
         _scopeFactory = scopeFactory;
     }
@@ -217,6 +220,26 @@ public class LaTeXRenderController : ControllerBase
         var block = await GetBlockAsync(blockId);
         if (block == null) return NotFound();
 
+        // Cache check: same content + same rule version → skip the compile.
+        // Per-block validation is the hottest validation path (editor calls it
+        // on every blur), so cache hits are the vast majority of traffic.
+        var contentHash = _validationCache.ComputeHash(block);
+        var cached = await _validationCache.GetAsync(blockId, contentHash);
+        if (cached is not null)
+        {
+            return Ok(new
+            {
+                valid = cached.Status != "error",
+                error = cached.ErrorMessage,
+                warnings = cached.Warnings is null
+                    ? Array.Empty<string>()
+                    : System.Text.Json.JsonSerializer.Deserialize<string[]>(cached.Warnings.RootElement.GetRawText()) ?? Array.Empty<string>(),
+                blockId,
+                cached = true,
+                validatedAt = cached.ValidatedAt
+            });
+        }
+
         var latex = _renderService.RenderBlockToLatex(block);
         var fullLatex = LaTeXPreamble.WrapForValidation(latex);
 
@@ -239,7 +262,40 @@ public class LaTeXRenderController : ControllerBase
 
         PersistCompilationEvent(result, "validate_block",
             documentId: block.DocumentId, blockId: blockId, blockType: block.Type);
-        return Ok(new { valid, error, warnings, blockId });
+
+        // Persist the freshly-computed result + invalidate older hashes for
+        // this block so the table doesn't balloon with stale versions.
+        var status = !valid ? "error" : (warnings?.Length > 0 ? "warning" : "valid");
+        var warningsDoc = warnings is { Length: > 0 }
+            ? System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(warnings))
+            : null;
+        await _validationCache.PersistAsync(new Core.Entities.BlockValidation
+        {
+            BlockId = blockId,
+            DocumentId = block.DocumentId,
+            ContentHash = contentHash,
+            Status = status,
+            ErrorMessage = error,
+            Warnings = warningsDoc,
+            RuleVersion = ValidationCacheService.RuleVersion,
+            ValidatedAt = DateTime.UtcNow,
+        });
+        _ = _validationCache.InvalidateOlderThanAsync(blockId, contentHash, ValidationCacheService.RuleVersion);
+
+        return Ok(new { valid, error, warnings, blockId, cached = false });
+    }
+
+    /// <summary>
+    /// Document-level validation rollup. Aggregates cached per-block
+    /// validation into a single counts DTO via one SQL statement — no
+    /// row transits the app. Intended for the editor's document-health
+    /// indicator.
+    /// </summary>
+    [HttpGet("{documentId:guid}/validation-rollup")]
+    public async Task<IActionResult> GetValidationRollup(Guid documentId)
+    {
+        var rollup = await _validationCache.GetDocumentRollupAsync(documentId);
+        return Ok(rollup);
     }
 
     /// <summary>
