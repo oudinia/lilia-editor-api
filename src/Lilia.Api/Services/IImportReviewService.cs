@@ -15,6 +15,15 @@ public interface IImportReviewService
     Task<BlockReviewDto?> ResetBlockAsync(Guid sessionId, string blockId, string userId);
     Task<int> BulkActionAsync(Guid sessionId, string userId, BulkActionDto dto);
 
+    /// <summary>
+    /// Tier 1 bulk-convert against staged blocks. Same four actions as the
+    /// document-level endpoint (to_list, to_ordered_list, merge_paragraph,
+    /// reheading) but operates on ImportBlockReview rows pre-finalize —
+    /// fixes the CV "3 headings that should be a list" case before the
+    /// import promotes into real Blocks.
+    /// </summary>
+    Task<BatchConvertResultDto?> BatchConvertBlockReviewsAsync(Guid sessionId, string userId, BatchConvertReviewBlocksDto dto);
+
     // Collaborators
     Task<CollaboratorInfoDto?> AddCollaboratorAsync(Guid sessionId, string userId, AddReviewCollaboratorDto dto);
     Task<bool> RemoveCollaboratorAsync(Guid sessionId, string targetUserId, string userId);

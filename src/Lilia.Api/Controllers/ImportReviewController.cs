@@ -175,6 +175,28 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
+    /// Tier 1 bulk-convert against staged blocks in the review session:
+    /// fold N into a list / ordered list, merge into paragraph, or re-level
+    /// a run of headings. Frontend surfaces this in the review UI so users
+    /// can fix "3 headings that should be a list" before finalize.
+    /// </summary>
+    [HttpPost("{id:guid}/batch-convert")]
+    public async Task<ActionResult<BatchConvertResultDto>> BatchConvert(Guid id, [FromBody] BatchConvertReviewBlocksDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (dto.BlockIds == null || dto.BlockIds.Count == 0)
+            return BadRequest(new { code = "EMPTY_SELECTION", message = "blockIds is required." });
+
+        var result = await _reviewService.BatchConvertBlockReviewsAsync(id, userId, dto);
+        if (result == null)
+            return BadRequest(new { code = "INVALID_ACTION_OR_BLOCKS", message = "Unknown action, missing blocks, or reheading level out of range." });
+
+        await SessionGroup(id).SendAsync("BulkConverted", new { action = dto.Action, blockIds = dto.BlockIds, userId });
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Add a collaborator to the review session
     /// </summary>
     [HttpPost("{id:guid}/collaborators")]

@@ -40,6 +40,18 @@ public record FinalizeSessionDto(
     bool Force = false
 );
 
+/// <summary>
+/// Tier 1 bulk-convert request against staged ImportBlockReview rows.
+/// BlockIds are the frontend-generated string IDs (not DB row Guids).
+/// Action: to_list | to_ordered_list | merge_paragraph | reheading.
+/// HeadingLevel (1-6) required for reheading.
+/// </summary>
+public record BatchConvertReviewBlocksDto(
+    List<string> BlockIds,
+    string Action,
+    int? HeadingLevel
+);
+
 public record AddReviewCollaboratorDto(
     string SessionId,
     string Email,
