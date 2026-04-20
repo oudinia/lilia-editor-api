@@ -18,7 +18,8 @@ public record JobDto(
     string? ErrorMessage,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    DateTime? CompletedAt
+    DateTime? CompletedAt,
+    Guid? ReviewSessionId = null
 );
 
 public record JobListDto(

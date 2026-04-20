@@ -96,7 +96,15 @@ public class JobService : IJobService
 
         if (job == null) return null;
 
-        return MapToDto(job);
+        // Client polls this endpoint as a SignalR fallback — include the
+        // linked import review session id so the polling path can drive
+        // navigation without a second round-trip. Cheap projection.
+        var reviewSessionId = await _context.ImportReviewSessions
+            .Where(s => s.JobId == jobId)
+            .Select(s => (Guid?)s.Id)
+            .FirstOrDefaultAsync();
+
+        return MapToDto(job) with { ReviewSessionId = reviewSessionId };
     }
 
     public async Task<JobDto> CreateExportJobAsync(string userId, CreateExportJobDto dto)
