@@ -1395,6 +1395,40 @@ public class ImportReviewService : IImportReviewService
         );
     }
 
+    // --- Reviews in progress dashboard ---
+
+    public async Task<List<ReviewSessionSummaryDto>> ListActiveSessionsAsync(string userId)
+    {
+        // DB-driven projection — counts computed inline via COUNT FILTER so
+        // we don't load block review rows into memory for the badge numbers.
+        var rows = await _context.ImportReviewSessions
+            .Where(s =>
+                s.OwnerId == userId
+                && s.Status != "imported"
+                && s.Status != "cancelled")
+            .OrderByDescending(s => s.UpdatedAt)
+            .Select(s => new
+            {
+                s.Id,
+                s.DocumentTitle,
+                s.Status,
+                s.CreatedAt,
+                s.UpdatedAt,
+                s.ExpiresAt,
+                TotalBlocks = s.BlockReviews.Count(),
+                ApprovedBlocks = s.BlockReviews.Count(br => br.Status == "approved" || br.Status == "edited"),
+                RejectedBlocks = s.BlockReviews.Count(br => br.Status == "rejected"),
+                PendingBlocks = s.BlockReviews.Count(br => br.Status == "pending"),
+            })
+            .ToListAsync();
+
+        return rows.Select(r => new ReviewSessionSummaryDto(
+            r.Id, r.DocumentTitle, r.Status,
+            r.TotalBlocks, r.ApprovedBlocks, r.RejectedBlocks, r.PendingBlocks,
+            r.CreatedAt, r.UpdatedAt, r.ExpiresAt
+        )).ToList();
+    }
+
     // --- Tier 1 bulk-convert ---
 
     // DB-driven bulk-convert against import_block_reviews. Pattern mirrors

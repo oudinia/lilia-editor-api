@@ -33,6 +33,21 @@ public class ImportReviewController : ControllerBase
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
     /// <summary>
+    /// List the user's in-progress review sessions — drives the "Reviews"
+    /// dashboard so users can resume a session instead of re-importing.
+    /// Excludes imported and cancelled sessions.
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<List<ReviewSessionSummaryDto>>> ListActiveSessions()
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var sessions = await _reviewService.ListActiveSessionsAsync(userId);
+        return Ok(sessions);
+    }
+
+    /// <summary>
     /// Create a new import review session
     /// </summary>
     [HttpPost]

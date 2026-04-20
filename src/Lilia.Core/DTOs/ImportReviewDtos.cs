@@ -52,6 +52,25 @@ public record BatchConvertReviewBlocksDto(
     int? HeadingLevel
 );
 
+/// <summary>
+/// Dashboard row for the "Reviews in progress" list. Keep projection cheap —
+/// no block payloads, just the counters needed to decide which session to
+/// resume. Status here is the session-level status (parsing / pending_review
+/// / auto_finalized / etc.).
+/// </summary>
+public record ReviewSessionSummaryDto(
+    Guid Id,
+    string DocumentTitle,
+    string Status,
+    int TotalBlocks,
+    int ApprovedBlocks,
+    int RejectedBlocks,
+    int PendingBlocks,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    DateTime? ExpiresAt
+);
+
 public record AddReviewCollaboratorDto(
     string SessionId,
     string Email,

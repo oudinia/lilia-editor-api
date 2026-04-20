@@ -7,6 +7,13 @@ public interface IImportReviewService
     // Session management
     Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto);
     Task<SessionDataDto?> GetSessionAsync(Guid sessionId, string userId);
+
+    /// <summary>
+    /// List the user's in-progress review sessions (status not in imported /
+    /// cancelled). Drives the Reviews-in-progress dashboard so users can
+    /// resume without re-importing.
+    /// </summary>
+    Task<List<ReviewSessionSummaryDto>> ListActiveSessionsAsync(string userId);
     Task<bool> CancelSessionAsync(Guid sessionId, string userId, bool permanent = false);
     Task<FinalizeResultDto?> FinalizeSessionAsync(Guid sessionId, string userId, FinalizeSessionDto dto);
 
