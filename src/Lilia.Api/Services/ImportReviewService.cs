@@ -1397,6 +1397,10 @@ public class ImportReviewService : IImportReviewService
 
     // --- Tier 1 bulk-convert ---
 
+    // DB-driven bulk-convert against import_block_reviews. Pattern mirrors
+    // BlockService.BatchConvertAsync — one tiny type projection for the
+    // heuristic, one UPDATE that reads current_content / original_content
+    // via coalesce in SQL (never transits .NET memory), one bulk DELETE.
     public async Task<BatchConvertResultDto?> BatchConvertBlockReviewsAsync(Guid sessionId, string userId, BatchConvertReviewBlocksDto dto)
     {
         if (dto.BlockIds.Count == 0) return null;
@@ -1409,144 +1413,193 @@ public class ImportReviewService : IImportReviewService
         var role = GetUserRole(session, userId);
         if (role == null || role == "viewer") return null;
 
-        var reviews = await _context.ImportBlockReviews
+        var metas = await _context.ImportBlockReviews
             .Where(br => br.SessionId == sessionId && dto.BlockIds.Contains(br.BlockId))
             .OrderBy(br => br.SortOrder)
+            .Select(br => new { br.BlockId, EffectiveType = br.CurrentType ?? br.OriginalType })
             .ToListAsync();
 
-        if (reviews.Count != dto.BlockIds.Count) return null;
+        if (metas.Count != dto.BlockIds.Count) return null;
 
         switch (dto.Action)
         {
             case "to_list":
-                return await FoldReviewsIntoAsync(session, reviews, userId, "list", ordered: false);
+                return await FoldReviewsSqlAsync(session, metas.Select(m => (m.BlockId, m.EffectiveType)).ToList(), userId, ordered: false);
             case "to_ordered_list":
-                return await FoldReviewsIntoAsync(session, reviews, userId, "list", ordered: true);
+                return await FoldReviewsSqlAsync(session, metas.Select(m => (m.BlockId, m.EffectiveType)).ToList(), userId, ordered: true);
             case "merge_paragraph":
-                return await MergeReviewsParagraphAsync(session, reviews, userId);
+                return await MergeReviewsSqlAsync(session, metas.Select(m => m.BlockId).ToList(), userId);
             case "reheading":
                 if (dto.HeadingLevel is null or < 1 or > 6) return null;
-                return await ReheadingReviewsAsync(session, reviews, userId, dto.HeadingLevel.Value);
+                return await ReheadingReviewsSqlAsync(session, metas.Where(m => m.EffectiveType == "heading").Select(m => m.BlockId).ToList(), userId, dto.HeadingLevel.Value);
             default:
                 return null;
         }
     }
 
-    // Fold N review rows into one list ImportBlockReview. The first row's
-    // SortOrder + BlockId survive; the rest are hard-deleted via
-    // ExecuteDeleteAsync so the staging table stays tight.
-    private async Task<BatchConvertResultDto> FoldReviewsIntoAsync(ImportReviewSession session, List<ImportBlockReview> reviews, string userId, string targetType, bool ordered)
+    private async Task<BatchConvertResultDto> FoldReviewsSqlAsync(ImportReviewSession session, List<(string BlockId, string Type)> metas, string userId, bool ordered)
     {
-        var first = reviews[0];
-        var items = reviews.Select(ExtractReviewText).Where(t => !string.IsNullOrWhiteSpace(t)).ToArray();
-        first.CurrentType = targetType;
-        first.CurrentContent = JsonSerializer.SerializeToDocument(new { items, ordered });
-        first.Status = "edited";
-        first.ReviewedBy = userId;
-        first.ReviewedAt = DateTime.UtcNow;
+        var treatFirstAsLabel = metas.Count >= 2 && metas[0].Type == "heading" && metas.Skip(1).All(m => m.Type != "heading");
+        var foldIds = (treatFirstAsLabel ? metas.Skip(1) : metas).Select(m => m.BlockId).ToArray();
+        var hostId = foldIds[0];
+        var deleteIds = foldIds.Skip(1).ToArray();
 
-        var idsToDelete = reviews.Skip(1).Select(r => r.BlockId).ToList();
-        await _context.ImportBlockReviews
-            .Where(br => br.SessionId == session.Id && idsToDelete.Contains(br.BlockId))
-            .ExecuteDeleteAsync();
+        const string sql = @"
+WITH fold AS (
+  SELECT block_id,
+         COALESCE(
+           NULLIF(COALESCE(current_content, original_content)->>'text', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'title', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'caption', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'code', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'latex', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'name', ''),
+           ''
+         ) AS text,
+         sort_order
+  FROM import_block_reviews
+  WHERE session_id = @session AND block_id = ANY(@fold_ids)
+  ORDER BY sort_order
+)
+UPDATE import_block_reviews br
+SET current_type = 'list',
+    current_content = jsonb_build_object(
+      'items',  COALESCE((SELECT jsonb_agg(to_jsonb(f.text) ORDER BY f.sort_order) FROM fold f WHERE f.text <> ''), '[]'::jsonb),
+      'ordered', @ordered::boolean),
+    status = 'edited',
+    reviewed_by = @user,
+    reviewed_at = NOW()
+WHERE br.session_id = @session AND br.block_id = @host;";
 
-        session.UpdatedAt = DateTime.UtcNow;
+        await _context.Database.ExecuteSqlRawAsync(sql,
+            new Npgsql.NpgsqlParameter("session", session.Id),
+            new Npgsql.NpgsqlParameter("fold_ids", foldIds),
+            new Npgsql.NpgsqlParameter("ordered", ordered),
+            new Npgsql.NpgsqlParameter("user", userId),
+            new Npgsql.NpgsqlParameter("host", hostId));
+
+        if (deleteIds.Length > 0)
+        {
+            await _context.ImportBlockReviews
+                .Where(br => br.SessionId == session.Id && deleteIds.Contains(br.BlockId))
+                .ExecuteDeleteAsync();
+        }
+
+        await LogActivityAsync(session.Id, userId, "blocks_folded", hostId, new { targetType = "list", ordered, count = metas.Count });
+
+        return await ProjectReviewsAsync(session.Id, treatFirstAsLabel ? new[] { metas[0].BlockId, hostId } : new[] { hostId });
+    }
+
+    private async Task<BatchConvertResultDto> MergeReviewsSqlAsync(ImportReviewSession session, List<string> ids, string userId)
+    {
+        var hostId = ids[0];
+        var deleteIds = ids.Skip(1).ToArray();
+
+        const string sql = @"
+WITH parts AS (
+  SELECT COALESCE(
+           NULLIF(COALESCE(current_content, original_content)->>'text', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'title', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'caption', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'code', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'latex', ''),
+           NULLIF(COALESCE(current_content, original_content)->>'name', ''),
+           ''
+         ) AS text,
+         sort_order
+  FROM import_block_reviews
+  WHERE session_id = @session AND block_id = ANY(@ids)
+)
+UPDATE import_block_reviews br
+SET current_type = 'paragraph',
+    current_content = jsonb_build_object(
+      'text', COALESCE((SELECT string_agg(text, E'\n\n' ORDER BY sort_order) FROM parts WHERE text <> ''), '')),
+    status = 'edited',
+    reviewed_by = @user,
+    reviewed_at = NOW()
+WHERE br.session_id = @session AND br.block_id = @host;";
+
+        await _context.Database.ExecuteSqlRawAsync(sql,
+            new Npgsql.NpgsqlParameter("session", session.Id),
+            new Npgsql.NpgsqlParameter("ids", ids.ToArray()),
+            new Npgsql.NpgsqlParameter("user", userId),
+            new Npgsql.NpgsqlParameter("host", hostId));
+
+        if (deleteIds.Length > 0)
+        {
+            await _context.ImportBlockReviews
+                .Where(br => br.SessionId == session.Id && deleteIds.Contains(br.BlockId))
+                .ExecuteDeleteAsync();
+        }
+
+        await LogActivityAsync(session.Id, userId, "blocks_merged", hostId, new { count = ids.Count });
+        return await ProjectReviewsAsync(session.Id, new[] { hostId });
+    }
+
+    private async Task<BatchConvertResultDto> ReheadingReviewsSqlAsync(ImportReviewSession session, List<string> headingIds, string userId, int level)
+    {
+        if (headingIds.Count == 0)
+            return new BatchConvertResultDto(Created: new List<BlockDto>(), DeletedIds: new List<Guid>());
+
+        const string sql = @"
+UPDATE import_block_reviews br
+SET current_type = 'heading',
+    current_content = jsonb_build_object(
+      'text', COALESCE(COALESCE(br.current_content, br.original_content)->>'text', ''),
+      'level', @level::int),
+    status = 'edited',
+    reviewed_by = @user,
+    reviewed_at = NOW()
+WHERE br.session_id = @session AND br.block_id = ANY(@ids)
+  AND COALESCE(br.current_type, br.original_type) = 'heading';";
+
+        await _context.Database.ExecuteSqlRawAsync(sql,
+            new Npgsql.NpgsqlParameter("session", session.Id),
+            new Npgsql.NpgsqlParameter("ids", headingIds.ToArray()),
+            new Npgsql.NpgsqlParameter("level", level),
+            new Npgsql.NpgsqlParameter("user", userId));
+
+        return await ProjectReviewsAsync(session.Id, headingIds.ToArray());
+    }
+
+    private async Task LogActivityAsync(Guid sessionId, string userId, string action, string blockId, object details)
+    {
+        // One-row insert via EF here is fine — activity feed is write-rare
+        // and the row is small. Session UpdatedAt moves via ExecuteUpdate.
         _context.ImportReviewActivities.Add(new ImportReviewActivity
         {
             Id = Guid.NewGuid(),
-            SessionId = session.Id,
+            SessionId = sessionId,
             UserId = userId,
-            Action = "blocks_folded",
-            BlockId = first.BlockId,
-            Details = JsonDocument.Parse(JsonSerializer.Serialize(new { targetType, ordered, count = reviews.Count })),
-            CreatedAt = DateTime.UtcNow
-        });
-
-        await _context.SaveChangesAsync();
-
-        // Reuse the document-side DTO — callers don't need the review-specific
-        // Reviewer join for this path (the card row re-fetches on its own).
-        return new BatchConvertResultDto(
-            Created: new List<BlockDto>
-            {
-                new(Guid.Empty, session.Id, first.CurrentType ?? first.OriginalType, first.CurrentContent.RootElement, first.SortOrder, null, 0, DateTime.UtcNow, DateTime.UtcNow),
-            },
-            DeletedIds: idsToDelete.Select(_ => Guid.Empty).ToList()); // Ids are string-scoped here; UI keys off BlockId.
-    }
-
-    private async Task<BatchConvertResultDto> MergeReviewsParagraphAsync(ImportReviewSession session, List<ImportBlockReview> reviews, string userId)
-    {
-        var first = reviews[0];
-        var merged = string.Join("\n\n", reviews.Select(ExtractReviewText).Where(t => !string.IsNullOrWhiteSpace(t)));
-        first.CurrentType = "paragraph";
-        first.CurrentContent = JsonSerializer.SerializeToDocument(new { text = merged });
-        first.Status = "edited";
-        first.ReviewedBy = userId;
-        first.ReviewedAt = DateTime.UtcNow;
-
-        var idsToDelete = reviews.Skip(1).Select(r => r.BlockId).ToList();
-        await _context.ImportBlockReviews
-            .Where(br => br.SessionId == session.Id && idsToDelete.Contains(br.BlockId))
-            .ExecuteDeleteAsync();
-
-        session.UpdatedAt = DateTime.UtcNow;
-        _context.ImportReviewActivities.Add(new ImportReviewActivity
-        {
-            Id = Guid.NewGuid(),
-            SessionId = session.Id,
-            UserId = userId,
-            Action = "blocks_merged",
-            BlockId = first.BlockId,
-            Details = JsonDocument.Parse(JsonSerializer.Serialize(new { count = reviews.Count })),
-            CreatedAt = DateTime.UtcNow
+            Action = action,
+            BlockId = blockId,
+            Details = JsonDocument.Parse(JsonSerializer.Serialize(details)),
+            CreatedAt = DateTime.UtcNow,
         });
         await _context.SaveChangesAsync();
-
-        return new BatchConvertResultDto(
-            Created: new List<BlockDto>
-            {
-                new(Guid.Empty, session.Id, first.CurrentType ?? first.OriginalType, first.CurrentContent.RootElement, first.SortOrder, null, 0, DateTime.UtcNow, DateTime.UtcNow),
-            },
-            DeletedIds: new List<Guid>());
+        await _context.ImportReviewSessions
+            .Where(s => s.Id == sessionId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
     }
 
-    private async Task<BatchConvertResultDto> ReheadingReviewsAsync(ImportReviewSession session, List<ImportBlockReview> reviews, string userId, int level)
+    private async Task<BatchConvertResultDto> ProjectReviewsAsync(Guid sessionId, string[] blockIds)
     {
-        foreach (var r in reviews)
-        {
-            var currentType = r.CurrentType ?? r.OriginalType;
-            if (currentType != "heading") continue;
-            var text = ExtractReviewText(r);
-            r.CurrentContent = JsonSerializer.SerializeToDocument(new { text, level });
-            r.CurrentType = "heading";
-            r.Status = "edited";
-            r.ReviewedBy = userId;
-            r.ReviewedAt = DateTime.UtcNow;
-        }
-        session.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        return new BatchConvertResultDto(Created: new List<BlockDto>(), DeletedIds: new List<Guid>());
-    }
-
-    private static string ExtractReviewText(ImportBlockReview br)
-    {
-        try
-        {
-            var content = br.CurrentContent ?? br.OriginalContent;
-            if (content == null) return string.Empty;
-            var root = content.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return string.Empty;
-            foreach (var field in new[] { "text", "title", "caption", "code", "latex", "name" })
+        // Small projection just to echo the new shapes back to the client.
+        var rows = await _context.ImportBlockReviews
+            .Where(br => br.SessionId == sessionId && blockIds.Contains(br.BlockId))
+            .OrderBy(br => br.SortOrder)
+            .Select(br => new
             {
-                if (root.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String)
-                    return v.GetString() ?? string.Empty;
-            }
-            return string.Empty;
-        }
-        catch
-        {
-            return string.Empty;
-        }
+                br.BlockId,
+                br.SortOrder,
+                Type = br.CurrentType ?? br.OriginalType,
+                Content = br.CurrentContent != null ? br.CurrentContent : br.OriginalContent,
+            })
+            .ToListAsync();
+
+        var created = rows.Select(r => new BlockDto(
+            Guid.Empty, sessionId, r.Type, r.Content.RootElement, r.SortOrder, null, 0, DateTime.UtcNow, DateTime.UtcNow))
+            .ToList();
+        return new BatchConvertResultDto(Created: created, DeletedIds: new List<Guid>());
     }
 }

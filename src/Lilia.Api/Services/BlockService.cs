@@ -267,130 +267,187 @@ public class BlockService : IBlockService
         return MapToDto(block);
     }
 
+    // Tier 1 bulk-convert — DB-driven throughout. The block content (JSONB)
+    // never transits .NET memory: we pull a tiny type/id projection to
+    // decide the heuristic, then do one UPDATE (with a CTE that reads the
+    // old content inline) and one bulk DELETE. Three round-trips, zero
+    // entity materialisation — consistent with the import pipeline rule.
     public async Task<BatchConvertResultDto?> BatchConvertAsync(Guid documentId, BatchConvertBlocksDto dto)
     {
-        if (dto.BlockIds.Count == 0)
-        {
-            return null;
-        }
+        if (dto.BlockIds.Count == 0) return null;
 
-        var blocks = await _context.Blocks
+        // Tiny projection — types + sort order, no JSONB — to drive the
+        // heading-as-label heuristic and existence check.
+        var metas = await _context.Blocks
             .Where(b => b.DocumentId == documentId && dto.BlockIds.Contains(b.Id))
             .OrderBy(b => b.SortOrder)
+            .Select(b => new { b.Id, b.Type })
             .ToListAsync();
 
-        if (blocks.Count != dto.BlockIds.Count)
-        {
-            // Unknown blockId or cross-document id — refuse, don't partial-apply.
-            return null;
-        }
+        if (metas.Count != dto.BlockIds.Count) return null;
 
         switch (dto.Action)
         {
             case "to_list":
-                return await ConvertToListAsync(documentId, blocks, ordered: false);
+                return await ConvertToListSqlAsync(documentId, metas.Select(m => (m.Id, m.Type)).ToList(), ordered: false);
             case "to_ordered_list":
-                return await ConvertToListAsync(documentId, blocks, ordered: true);
+                return await ConvertToListSqlAsync(documentId, metas.Select(m => (m.Id, m.Type)).ToList(), ordered: true);
             case "merge_paragraph":
-                return await MergeParagraphAsync(documentId, blocks);
+                return await MergeParagraphSqlAsync(documentId, metas.Select(m => m.Id).ToList());
             case "reheading":
                 if (dto.HeadingLevel is null or < 1 or > 6) return null;
-                return await ReheadingAsync(documentId, blocks, dto.HeadingLevel.Value);
+                return await ReheadingSqlAsync(documentId, metas.Where(m => m.Type == "heading").Select(m => m.Id).ToList(), dto.HeadingLevel.Value);
             default:
                 return null;
         }
     }
 
-    // Fold N blocks into one list block. First block's SortOrder is
-    // preserved; the other rows are deleted in a single ExecuteDeleteAsync.
-    private async Task<BatchConvertResultDto> ConvertToListAsync(Guid documentId, List<Block> blocks, bool ordered)
+    // Pure-SQL fold: CTE reads the old content text columns, aggregates
+    // into a jsonb array, and UPDATEs the host block's content + type.
+    // Heading-as-label heuristic: when metas[0] is heading and the rest
+    // are non-heading, keep metas[0] untouched and fold the tail.
+    private async Task<BatchConvertResultDto> ConvertToListSqlAsync(Guid documentId, List<(Guid Id, string Type)> metas, bool ordered)
     {
-        var first = blocks[0];
-        var items = blocks.Select(ExtractBlockText).Where(t => !string.IsNullOrWhiteSpace(t)).ToArray();
-        first.Type = "list";
-        first.Content = JsonSerializer.SerializeToDocument(new { items, ordered });
-        first.UpdatedAt = DateTime.UtcNow;
+        var treatFirstAsLabel = metas.Count >= 2
+            && metas[0].Type == "heading"
+            && metas.Skip(1).All(m => m.Type != "heading");
 
-        var idsToDelete = blocks.Skip(1).Select(b => b.Id).ToList();
-        await _context.Blocks
-            .Where(b => b.DocumentId == documentId && idsToDelete.Contains(b.Id))
-            .ExecuteDeleteAsync();
+        var foldIds = (treatFirstAsLabel ? metas.Skip(1) : metas).Select(m => m.Id).ToArray();
+        var hostId = foldIds[0];
+        var deleteIds = foldIds.Skip(1).ToArray();
 
-        await TouchDocumentAsync(documentId);
+        // CTE picks text from the first populated string field per row,
+        // aggregates into a jsonb array in sort order, and the UPDATE sets
+        // content = { items, ordered }. The fold-set rows are read in SQL
+        // only — no EF materialization.
+        const string sql = @"
+WITH fold AS (
+  SELECT id,
+         COALESCE(
+           NULLIF(content->>'text', ''),
+           NULLIF(content->>'title', ''),
+           NULLIF(content->>'caption', ''),
+           NULLIF(content->>'code', ''),
+           NULLIF(content->>'latex', ''),
+           NULLIF(content->>'name', ''),
+           ''
+         ) AS text,
+         sort_order
+  FROM blocks
+  WHERE document_id = @doc AND id = ANY(@fold_ids)
+  ORDER BY sort_order
+)
+UPDATE blocks b
+SET type = 'list',
+    content = jsonb_build_object(
+      'items',  COALESCE((SELECT jsonb_agg(to_jsonb(f.text) ORDER BY f.sort_order) FROM fold f WHERE f.text <> ''), '[]'::jsonb),
+      'ordered', @ordered::boolean),
+    updated_at = NOW()
+WHERE b.document_id = @doc AND b.id = @host;";
+
+        await _context.Database.ExecuteSqlRawAsync(sql,
+            new Npgsql.NpgsqlParameter("doc", documentId),
+            new Npgsql.NpgsqlParameter("fold_ids", foldIds),
+            new Npgsql.NpgsqlParameter("ordered", ordered),
+            new Npgsql.NpgsqlParameter("host", hostId));
+
+        if (deleteIds.Length > 0)
+        {
+            await _context.Blocks
+                .Where(b => b.DocumentId == documentId && deleteIds.Contains(b.Id))
+                .ExecuteDeleteAsync();
+        }
+
+        await TouchDocumentSqlAsync(documentId);
         await _previewCacheService.InvalidateCacheAsync(documentId);
+        return await ProjectCreatedAsync(documentId, treatFirstAsLabel ? new[] { metas[0].Id, hostId } : new[] { hostId }, deleteIds);
+    }
 
+    private async Task<BatchConvertResultDto> MergeParagraphSqlAsync(Guid documentId, List<Guid> ids)
+    {
+        var hostId = ids[0];
+        var deleteIds = ids.Skip(1).ToArray();
+
+        const string sql = @"
+WITH parts AS (
+  SELECT COALESCE(
+           NULLIF(content->>'text', ''),
+           NULLIF(content->>'title', ''),
+           NULLIF(content->>'caption', ''),
+           NULLIF(content->>'code', ''),
+           NULLIF(content->>'latex', ''),
+           NULLIF(content->>'name', ''),
+           ''
+         ) AS text,
+         sort_order
+  FROM blocks
+  WHERE document_id = @doc AND id = ANY(@ids)
+)
+UPDATE blocks b
+SET type = 'paragraph',
+    content = jsonb_build_object(
+      'text', COALESCE((SELECT string_agg(text, E'\n\n' ORDER BY sort_order) FROM parts WHERE text <> ''), '')),
+    updated_at = NOW()
+WHERE b.document_id = @doc AND b.id = @host;";
+
+        await _context.Database.ExecuteSqlRawAsync(sql,
+            new Npgsql.NpgsqlParameter("doc", documentId),
+            new Npgsql.NpgsqlParameter("ids", ids.ToArray()),
+            new Npgsql.NpgsqlParameter("host", hostId));
+
+        if (deleteIds.Length > 0)
+        {
+            await _context.Blocks
+                .Where(b => b.DocumentId == documentId && deleteIds.Contains(b.Id))
+                .ExecuteDeleteAsync();
+        }
+
+        await TouchDocumentSqlAsync(documentId);
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+        return await ProjectCreatedAsync(documentId, new[] { hostId }, deleteIds);
+    }
+
+    // Re-level: one UPDATE that rebuilds content.level for all heading rows
+    // in the selection. Text is read inline from the existing content (no
+    // .NET materialisation).
+    private async Task<BatchConvertResultDto> ReheadingSqlAsync(Guid documentId, List<Guid> headingIds, int level)
+    {
+        if (headingIds.Count == 0) return new BatchConvertResultDto(Created: new List<BlockDto>(), DeletedIds: new List<Guid>());
+
+        const string sql = @"
+UPDATE blocks b
+SET content = jsonb_build_object(
+      'text', COALESCE(b.content->>'text', ''),
+      'level', @level::int),
+    updated_at = NOW()
+WHERE b.document_id = @doc AND b.id = ANY(@ids) AND b.type = 'heading';";
+
+        await _context.Database.ExecuteSqlRawAsync(sql,
+            new Npgsql.NpgsqlParameter("doc", documentId),
+            new Npgsql.NpgsqlParameter("ids", headingIds.ToArray()),
+            new Npgsql.NpgsqlParameter("level", level));
+
+        await TouchDocumentSqlAsync(documentId);
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+        return await ProjectCreatedAsync(documentId, headingIds.ToArray(), Array.Empty<Guid>());
+    }
+
+    private async Task<BatchConvertResultDto> ProjectCreatedAsync(Guid documentId, Guid[] ids, Guid[] deletedIds)
+    {
+        var blocks = await _context.Blocks
+            .Where(b => b.DocumentId == documentId && ids.Contains(b.Id))
+            .OrderBy(b => b.SortOrder)
+            .ToListAsync();
         return new BatchConvertResultDto(
-            Created: new List<BlockDto> { MapToDto(first) },
-            DeletedIds: idsToDelete);
+            Created: blocks.Select(MapToDto).ToList(),
+            DeletedIds: deletedIds.ToList());
     }
 
-    // Join N block texts into one paragraph. Same SortOrder preservation.
-    private async Task<BatchConvertResultDto> MergeParagraphAsync(Guid documentId, List<Block> blocks)
+    private async Task TouchDocumentSqlAsync(Guid documentId)
     {
-        var first = blocks[0];
-        var merged = string.Join("\n\n", blocks.Select(ExtractBlockText).Where(t => !string.IsNullOrWhiteSpace(t)));
-        first.Type = "paragraph";
-        first.Content = JsonSerializer.SerializeToDocument(new { text = merged });
-        first.UpdatedAt = DateTime.UtcNow;
-
-        var idsToDelete = blocks.Skip(1).Select(b => b.Id).ToList();
-        await _context.Blocks
-            .Where(b => b.DocumentId == documentId && idsToDelete.Contains(b.Id))
-            .ExecuteDeleteAsync();
-
-        await TouchDocumentAsync(documentId);
-        await _previewCacheService.InvalidateCacheAsync(documentId);
-
-        return new BatchConvertResultDto(
-            Created: new List<BlockDto> { MapToDto(first) },
-            DeletedIds: idsToDelete);
-    }
-
-    // Bulk-set heading level on a run of heading blocks. Non-heading blocks
-    // in the selection are ignored (caller should not mix, but we're tolerant).
-    private async Task<BatchConvertResultDto> ReheadingAsync(Guid documentId, List<Block> blocks, int level)
-    {
-        var updated = new List<BlockDto>();
-        foreach (var b in blocks)
-        {
-            if (b.Type != "heading") continue;
-            var currentText = ExtractBlockText(b);
-            b.Content = JsonSerializer.SerializeToDocument(new { text = currentText, level });
-            b.UpdatedAt = DateTime.UtcNow;
-            updated.Add(MapToDto(b));
-        }
-
-        await TouchDocumentAsync(documentId);
-        await _previewCacheService.InvalidateCacheAsync(documentId);
-        return new BatchConvertResultDto(Created: updated, DeletedIds: new List<Guid>());
-    }
-
-    // Best-effort text extraction across block types — drives list items +
-    // merge output. Falls back to empty string when no obvious text field.
-    private static string ExtractBlockText(Block b)
-    {
-        try
-        {
-            var root = b.Content.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return string.Empty;
-            foreach (var field in new[] { "text", "title", "caption", "code", "latex", "name" })
-            {
-                if (root.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String)
-                    return v.GetString() ?? string.Empty;
-            }
-            return string.Empty;
-        }
-        catch
-        {
-            return string.Empty;
-        }
-    }
-
-    private async Task TouchDocumentAsync(Guid documentId)
-    {
-        var doc = await _context.Documents.FindAsync(documentId);
-        if (doc != null) doc.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+        await _context.Documents
+            .Where(d => d.Id == documentId)
+            .ExecuteUpdateAsync(d => d.SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
     }
 
     private static BlockDto MapToDto(Block b)
