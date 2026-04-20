@@ -241,30 +241,100 @@ public class BlockService : IBlockService
         return blocks.Values.OrderBy(b => b.SortOrder).Select(MapToDto).ToList();
     }
 
+    // DB-driven per-block type convert. Extracts text from the old content
+    // inline in SQL (handles paragraph/heading/equation/code/list items/
+    // table cells/theorem/abstract/blockquote shapes) and rebuilds the new
+    // content for the target type, preserving the text. Prevents the old
+    // behaviour of replacing a table with a blank paragraph — a 1x2
+    // "Name: John" table now becomes a paragraph with "Name — John".
     public async Task<BlockDto?> ConvertBlockAsync(Guid documentId, Guid blockId, string newType)
     {
-        var block = await _context.Blocks
-            .FirstOrDefaultAsync(b => b.DocumentId == documentId && b.Id == blockId);
+        // Allow-list — matches REASSIGNABLE_TYPES in the frontend. Anything
+        // else falls through to the default-content reset (no text carry).
+        var textCarrierTypes = new HashSet<string> { "paragraph", "heading", "list", "code", "blockquote", "abstract", "theorem", "equation" };
+        var resetsContent = !textCarrierTypes.Contains(newType);
 
-        if (block == null) return null;
+        if (resetsContent)
+        {
+            var defaultContent = _blockTypeService.GetDefaultContent(newType);
+            await _context.Blocks
+                .Where(b => b.DocumentId == documentId && b.Id == blockId)
+                .ExecuteUpdateAsync(b => b
+                    .SetProperty(x => x.Type, newType)
+                    .SetProperty(x => x.Content, defaultContent)
+                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+        }
+        else
+        {
+            // One UPDATE: reads old content inline via jsonb operators,
+            // flattens to a text scalar, rebuilds the new content shape
+            // via jsonb_build_object based on the target type. Zero rows
+            // transit .NET memory.
+            const string sql = @"
+WITH src AS (
+  SELECT
+    COALESCE(
+      NULLIF(content->>'text', ''),
+      NULLIF(content->>'title', ''),
+      NULLIF(content->>'caption', ''),
+      NULLIF(content->>'code', ''),
+      NULLIF(content->>'latex', ''),
+      NULLIF(content->>'name', ''),
+      CASE WHEN jsonb_typeof(content->'items') = 'array'
+        THEN (
+          SELECT string_agg(item_text, E'\n')
+          FROM jsonb_array_elements_text(content->'items') AS item_text
+          WHERE item_text <> ''
+        )
+      END,
+      CASE WHEN jsonb_typeof(content->'rows') = 'array'
+        THEN (
+          SELECT string_agg(cell_text, ' — ')
+          FROM jsonb_array_elements(content->'rows') WITH ORDINALITY AS r(row_val, row_idx),
+               jsonb_array_elements_text(r.row_val) AS cell_text
+          WHERE cell_text <> ''
+        )
+      END,
+      ''
+    ) AS text
+  FROM blocks
+  WHERE document_id = @doc AND id = @id
+)
+UPDATE blocks b
+SET type = @new_type,
+    content = CASE @new_type
+      WHEN 'paragraph'  THEN jsonb_build_object('text', (SELECT text FROM src))
+      WHEN 'heading'    THEN jsonb_build_object('text', (SELECT text FROM src), 'level', 1)
+      WHEN 'list'       THEN jsonb_build_object(
+                                'items', CASE WHEN (SELECT text FROM src) = '' THEN '[]'::jsonb
+                                              ELSE jsonb_build_array((SELECT text FROM src)) END,
+                                'ordered', false)
+      WHEN 'code'       THEN jsonb_build_object('code', (SELECT text FROM src), 'language', '')
+      WHEN 'blockquote' THEN jsonb_build_object('text', (SELECT text FROM src))
+      WHEN 'abstract'   THEN jsonb_build_object('text', (SELECT text FROM src))
+      WHEN 'theorem'    THEN jsonb_build_object('text', (SELECT text FROM src), 'theoremType', 'theorem', 'title', '', 'label', '')
+      WHEN 'equation'   THEN jsonb_build_object('latex', (SELECT text FROM src), 'equationMode', 'display')
+      ELSE b.content
+    END,
+    updated_at = NOW()
+WHERE b.document_id = @doc AND b.id = @id;";
 
-        block.Type = newType;
-        block.Content = _blockTypeService.GetDefaultContent(newType);
-        block.UpdatedAt = DateTime.UtcNow;
+            await _context.Database.ExecuteSqlRawAsync(sql,
+                new Npgsql.NpgsqlParameter("doc", documentId),
+                new Npgsql.NpgsqlParameter("id", blockId),
+                new Npgsql.NpgsqlParameter("new_type", newType));
+        }
 
-        // Update document timestamp
-        var document = await _context.Documents.FindAsync(documentId);
-        if (document != null) document.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        // Invalidate preview cache
+        await TouchDocumentSqlAsync(documentId);
         await _previewCacheService.InvalidateCacheAsync(documentId);
 
         _logger.LogInformation("ConvertBlockAsync: Block {BlockId} converted to type {NewType} in document {DocumentId}",
             blockId, newType, documentId);
 
-        return MapToDto(block);
+        var updated = await _context.Blocks
+            .Where(b => b.DocumentId == documentId && b.Id == blockId)
+            .FirstOrDefaultAsync();
+        return updated == null ? null : MapToDto(updated);
     }
 
     // Tier 1 bulk-convert — DB-driven throughout. The block content (JSONB)
