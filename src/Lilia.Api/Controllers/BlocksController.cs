@@ -1,6 +1,7 @@
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
+using Lilia.Import.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,9 +18,10 @@ public class BlocksController : ControllerBase
     private readonly IRenderService _renderService;
     private readonly IVersionService _versionService;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILatexFragmentParser _latexFragmentParser;
     private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, IServiceScopeFactory scopeFactory, ILogger<BlocksController> logger)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, IServiceScopeFactory scopeFactory, ILatexFragmentParser latexFragmentParser, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
@@ -27,6 +29,7 @@ public class BlocksController : ControllerBase
         _renderService = renderService;
         _versionService = versionService;
         _scopeFactory = scopeFactory;
+        _latexFragmentParser = latexFragmentParser;
         _logger = logger;
     }
 
@@ -185,4 +188,73 @@ public class BlocksController : ControllerBase
         var latex = _renderService.RenderBlockToLatex(block);
         return Ok(new { latex });
     }
+
+    /// <summary>
+    /// v2 "edit block as LaTeX" round-trip (#68). Parses the posted fragment
+    /// via ILatexFragmentParser, validates the top-level element matches the
+    /// current block type, and updates the block content. Gated on
+    /// <see cref="Document.ExperimentalLatexEdit"/> — 403 when the flag is off.
+    /// </summary>
+    [HttpPost("{id:guid}/from-latex")]
+    public async Task<ActionResult<BlockDto>> UpdateBlockFromLatex(Guid docId, Guid id, [FromBody] FromLatexRequest request, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+            return Forbid();
+
+        if (!await _documentService.IsExperimentalLatexEditEnabledAsync(docId))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                code = "EXPERIMENTAL_LATEX_EDIT_DISABLED",
+                message = "Enable \"Edit blocks as LaTeX (experimental)\" in document settings to use this surface.",
+            });
+        }
+
+        var existing = await _blockService.GetBlockAsync(docId, id);
+        if (existing == null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(request.Latex))
+        {
+            return UnprocessableEntity(new
+            {
+                code = "EMPTY_FRAGMENT",
+                diagnostics = new[] { new { severity = "error", code = "EMPTY_FRAGMENT", message = "LaTeX fragment is empty." } },
+            });
+        }
+
+        try
+        {
+            using var content = await _latexFragmentParser.ParseFragmentAsync(request.Latex, existing.Type, ct);
+            var updated = await _blockService.UpdateBlockAsync(docId, id, new UpdateBlockDto(
+                Type: null,
+                Content: content.RootElement.Clone(),
+                SortOrder: null,
+                ParentId: null,
+                Depth: null));
+            if (updated == null) return NotFound();
+            return Ok(updated);
+        }
+        catch (LatexFragmentParseException ex)
+        {
+            return UnprocessableEntity(new
+            {
+                code = ex.Code,
+                message = ex.Message,
+                diagnostics = ex.Diagnostics,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected failure parsing LaTeX fragment for block {BlockId}", id);
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                code = "INTERNAL",
+                message = "Failed to parse LaTeX fragment.",
+            });
+        }
+    }
+
+    public sealed record FromLatexRequest(string Latex);
 }

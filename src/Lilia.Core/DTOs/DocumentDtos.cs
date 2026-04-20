@@ -73,7 +73,8 @@ public record DocumentDto(
     List<BibliographyEntryDto> Bibliography,
     List<LabelDto> Labels,
     bool AiEnabled = false,
-    string LatexEngine = "pdflatex"
+    string LatexEngine = "pdflatex",
+    bool ExperimentalLatexEdit = false
 );
 
 public record CreateDocumentDto(
@@ -109,7 +110,8 @@ public record UpdateDocumentDto(
     string? ParagraphIndent,
     string? PageNumbering,
     bool? AiEnabled,
-    string? LatexEngine
+    string? LatexEngine,
+    bool? ExperimentalLatexEdit
 );
 
 public record TrashDocumentDto(

@@ -356,6 +356,7 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService>(sp =>
         sp.GetRequiredService<Lilia.Import.Interfaces.ILatexToOmmlConverter>(),
         sp.GetRequiredService<Lilia.Import.Interfaces.IEquationImageRenderer>()));
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexParser, Lilia.Import.Services.LatexParser>();
+builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lilia.Import.Services.LatexFragmentParser>();
 
 // Register PDF import services — provider-based (mathpix or mineru)
 var pdfProvider = builder.Configuration["PdfParser:Provider"] ?? "mineru";

@@ -84,6 +84,14 @@ public class Document
     // at the DB layer to the three supported values.
     public string LatexEngine { get; set; } = "pdflatex";
 
+    // Opt-in to the "edit block as LaTeX" surface (v2 round-trip). Default
+    // false. When true, BlockWrapper shows a LaTeX tab for supported block
+    // types and POST /api/blocks/{id}/from-latex accepts writes. Gated
+    // per-doc because the fragment→block reverse parse is lossy for rich
+    // types (tables, nested figure content) and we don't want silent
+    // corruption — users explicitly opt in.
+    public bool ExperimentalLatexEdit { get; set; }
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     public virtual Team? Team { get; set; }

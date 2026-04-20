@@ -32,6 +32,12 @@ public interface IDocumentService
     Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission);
 
     /// <summary>
+    /// Cheap projection: is the v2 "edit block as LaTeX" surface enabled for
+    /// this document? Used by BlocksController to gate POST /from-latex.
+    /// </summary>
+    Task<bool> IsExperimentalLatexEditEnabledAsync(Guid documentId);
+
+    /// <summary>
     /// Get paginated list of soft-deleted documents for a user
     /// </summary>
     Task<PaginatedResult<TrashDocumentDto>> GetTrashDocumentsPaginatedAsync(string userId, int page = 1, int pageSize = 20);

@@ -296,6 +296,7 @@ public class DocumentService : IDocumentService
         if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
         if (dto.AiEnabled.HasValue) document.AiEnabled = dto.AiEnabled.Value;
+        if (dto.ExperimentalLatexEdit.HasValue) document.ExperimentalLatexEdit = dto.ExperimentalLatexEdit.Value;
         if (!string.IsNullOrWhiteSpace(dto.LatexEngine))
         {
             // Guard against arbitrary values; DB CHECK would reject but
@@ -426,6 +427,14 @@ public class DocumentService : IDocumentService
 
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    public async Task<bool> IsExperimentalLatexEditEnabledAsync(Guid documentId)
+    {
+        return await _context.Documents
+            .Where(d => d.Id == documentId)
+            .Select(d => d.ExperimentalLatexEdit)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission)
@@ -722,7 +731,8 @@ public class DocumentService : IDocumentService
                 dl.Label.CreatedAt
             )).ToList(),
             AiEnabled: d.AiEnabled,
-            LatexEngine: string.IsNullOrEmpty(d.LatexEngine) ? "pdflatex" : d.LatexEngine
+            LatexEngine: string.IsNullOrEmpty(d.LatexEngine) ? "pdflatex" : d.LatexEngine,
+            ExperimentalLatexEdit: d.ExperimentalLatexEdit
         );
     }
 
