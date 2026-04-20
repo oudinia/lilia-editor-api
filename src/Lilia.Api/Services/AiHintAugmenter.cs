@@ -140,9 +140,17 @@ Rules:
         sb.AppendLine();
         foreach (var b in blocks)
         {
-            var text = ExtractText(b.Content);
+            // Pin locals as concrete types — when `b` is dynamic, every
+            // subsequent member access / operator (including the ..200
+            // Range indexer) dispatches through the C# dynamic binder,
+            // which mis-binds `string[Range]` and throws
+            // RuntimeBinderException ("The best overloaded method match
+            // for 'string.this[int]' has some invalid arguments").
+            string text = ExtractText(b.Content);
+            string id = b.Id.ToString();
+            string type = b.Type;
             if (text.Length > 200) text = text[..200] + "…";
-            sb.Append('[').Append(b.Id).Append("] ").Append(b.Type).Append(" | ").AppendLine(text);
+            sb.Append('[').Append(id).Append("] ").Append(type).Append(" | ").AppendLine(text);
         }
         sb.AppendLine();
         sb.AppendLine("Return findings as the JSON array specified in the system prompt.");
