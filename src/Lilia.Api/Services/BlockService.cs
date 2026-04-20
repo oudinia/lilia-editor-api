@@ -320,27 +320,41 @@ public class BlockService : IBlockService
         // aggregates into a jsonb array in sort order, and the UPDATE sets
         // content = { items, ordered }. The fold-set rows are read in SQL
         // only — no EF materialization.
+        // When a folded row is already a list, expand its items[] so the
+        // merged list inherits every child item instead of flattening to
+        // empty. Same pattern used on the import_block_reviews side.
         const string sql = @"
 WITH fold AS (
   SELECT id,
-         COALESCE(
-           NULLIF(content->>'text', ''),
-           NULLIF(content->>'title', ''),
-           NULLIF(content->>'caption', ''),
-           NULLIF(content->>'code', ''),
-           NULLIF(content->>'latex', ''),
-           NULLIF(content->>'name', ''),
-           ''
-         ) AS text,
-         sort_order
+         sort_order,
+         CASE
+           WHEN jsonb_typeof(content->'items') = 'array'
+             THEN content->'items'
+           ELSE jsonb_build_array(
+             COALESCE(
+               NULLIF(content->>'text', ''),
+               NULLIF(content->>'title', ''),
+               NULLIF(content->>'caption', ''),
+               NULLIF(content->>'code', ''),
+               NULLIF(content->>'latex', ''),
+               NULLIF(content->>'name', ''),
+               ''
+             )
+           )
+         END AS items_arr
   FROM blocks
   WHERE document_id = @doc AND id = ANY(@fold_ids)
-  ORDER BY sort_order
+),
+flat AS (
+  SELECT item_text, f.sort_order, t.ord
+  FROM fold f,
+       LATERAL jsonb_array_elements_text(f.items_arr) WITH ORDINALITY AS t(item_text, ord)
+  WHERE item_text <> ''
 )
 UPDATE blocks b
 SET type = 'list',
     content = jsonb_build_object(
-      'items',  COALESCE((SELECT jsonb_agg(to_jsonb(f.text) ORDER BY f.sort_order) FROM fold f WHERE f.text <> ''), '[]'::jsonb),
+      'items',   COALESCE((SELECT jsonb_agg(to_jsonb(item_text) ORDER BY sort_order, ord) FROM flat), '[]'::jsonb),
       'ordered', @ordered::boolean),
     updated_at = NOW()
 WHERE b.document_id = @doc AND b.id = @host;";
@@ -370,16 +384,24 @@ WHERE b.document_id = @doc AND b.id = @host;";
 
         const string sql = @"
 WITH parts AS (
-  SELECT COALESCE(
-           NULLIF(content->>'text', ''),
-           NULLIF(content->>'title', ''),
-           NULLIF(content->>'caption', ''),
-           NULLIF(content->>'code', ''),
-           NULLIF(content->>'latex', ''),
-           NULLIF(content->>'name', ''),
-           ''
-         ) AS text,
-         sort_order
+  SELECT sort_order,
+         CASE
+           WHEN jsonb_typeof(content->'items') = 'array'
+             THEN (
+               SELECT string_agg(item_text, E'\n')
+               FROM jsonb_array_elements_text(content->'items') AS item_text
+               WHERE item_text <> ''
+             )
+           ELSE COALESCE(
+             NULLIF(content->>'text', ''),
+             NULLIF(content->>'title', ''),
+             NULLIF(content->>'caption', ''),
+             NULLIF(content->>'code', ''),
+             NULLIF(content->>'latex', ''),
+             NULLIF(content->>'name', ''),
+             ''
+           )
+         END AS text
   FROM blocks
   WHERE document_id = @doc AND id = ANY(@ids)
 )

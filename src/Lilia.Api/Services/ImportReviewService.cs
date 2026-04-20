@@ -1444,27 +1444,44 @@ public class ImportReviewService : IImportReviewService
         var hostId = foldIds[0];
         var deleteIds = foldIds.Skip(1).ToArray();
 
+        // When a folded row is already a list, we expand its items[] array
+        // so the merged result inherits every child item rather than dropping
+        // to an empty list (previous bug — COALESCE only looked at scalar
+        // text fields). `fold` builds a jsonb array per row — single-item
+        // array for scalar blocks, passthrough for existing lists — and
+        // `flat` flattens via jsonb_array_elements_text.
         const string sql = @"
 WITH fold AS (
   SELECT block_id,
-         COALESCE(
-           NULLIF(COALESCE(current_content, original_content)->>'text', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'title', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'caption', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'code', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'latex', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'name', ''),
-           ''
-         ) AS text,
-         sort_order
+         sort_order,
+         CASE
+           WHEN jsonb_typeof(COALESCE(current_content, original_content)->'items') = 'array'
+             THEN COALESCE(current_content, original_content)->'items'
+           ELSE jsonb_build_array(
+             COALESCE(
+               NULLIF(COALESCE(current_content, original_content)->>'text', ''),
+               NULLIF(COALESCE(current_content, original_content)->>'title', ''),
+               NULLIF(COALESCE(current_content, original_content)->>'caption', ''),
+               NULLIF(COALESCE(current_content, original_content)->>'code', ''),
+               NULLIF(COALESCE(current_content, original_content)->>'latex', ''),
+               NULLIF(COALESCE(current_content, original_content)->>'name', ''),
+               ''
+             )
+           )
+         END AS items_arr
   FROM import_block_reviews
   WHERE session_id = @session AND block_id = ANY(@fold_ids)
-  ORDER BY sort_order
+),
+flat AS (
+  SELECT item_text, f.sort_order, t.ord
+  FROM fold f,
+       LATERAL jsonb_array_elements_text(f.items_arr) WITH ORDINALITY AS t(item_text, ord)
+  WHERE item_text <> ''
 )
 UPDATE import_block_reviews br
 SET current_type = 'list',
     current_content = jsonb_build_object(
-      'items',  COALESCE((SELECT jsonb_agg(to_jsonb(f.text) ORDER BY f.sort_order) FROM fold f WHERE f.text <> ''), '[]'::jsonb),
+      'items',   COALESCE((SELECT jsonb_agg(to_jsonb(item_text) ORDER BY sort_order, ord) FROM flat), '[]'::jsonb),
       'ordered', @ordered::boolean),
     status = 'edited',
     reviewed_by = @user,
@@ -1495,18 +1512,28 @@ WHERE br.session_id = @session AND br.block_id = @host;";
         var hostId = ids[0];
         var deleteIds = ids.Skip(1).ToArray();
 
+        // Merge handles list-shaped sources too — their items get joined with
+        // newlines into the merged paragraph text.
         const string sql = @"
 WITH parts AS (
-  SELECT COALESCE(
-           NULLIF(COALESCE(current_content, original_content)->>'text', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'title', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'caption', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'code', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'latex', ''),
-           NULLIF(COALESCE(current_content, original_content)->>'name', ''),
-           ''
-         ) AS text,
-         sort_order
+  SELECT sort_order,
+         CASE
+           WHEN jsonb_typeof(COALESCE(current_content, original_content)->'items') = 'array'
+             THEN (
+               SELECT string_agg(item_text, E'\n')
+               FROM jsonb_array_elements_text(COALESCE(current_content, original_content)->'items') AS item_text
+               WHERE item_text <> ''
+             )
+           ELSE COALESCE(
+             NULLIF(COALESCE(current_content, original_content)->>'text', ''),
+             NULLIF(COALESCE(current_content, original_content)->>'title', ''),
+             NULLIF(COALESCE(current_content, original_content)->>'caption', ''),
+             NULLIF(COALESCE(current_content, original_content)->>'code', ''),
+             NULLIF(COALESCE(current_content, original_content)->>'latex', ''),
+             NULLIF(COALESCE(current_content, original_content)->>'name', ''),
+             ''
+           )
+         END AS text
   FROM import_block_reviews
   WHERE session_id = @session AND block_id = ANY(@ids)
 )
