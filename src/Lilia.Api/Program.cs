@@ -278,8 +278,15 @@ builder.Services.AddScoped<Lilia.Import.Services.ILatexProjectExtractor, Lilia.I
 builder.Services.AddSingleton<IAssetOptimizer, AssetOptimizerService>();
 builder.Services.AddScoped<IDocumentSizeService, DocumentSizeService>();
 
-// Email service (Resend)
+// Email service (Resend). Missing key used to be a silent warning that
+// manifested as "invitation sent" UI confirmations with no actual email
+// going out. Log loudly at boot so Sentry catches it on the first
+// deploy after a config drift.
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
+if (string.IsNullOrEmpty(emailSettings.ResendApiKey))
+{
+    Console.Error.WriteLine("[BOOT] Email__ResendApiKey is not configured — invitations, share notifications, and every other outbound email will fail until it is set.");
+}
 builder.Services.AddSingleton(emailSettings);
 builder.Services.AddSingleton<IEmailService, EmailService>();
 

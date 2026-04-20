@@ -16,14 +16,16 @@ public class CollaboratorService : ICollaboratorService
     private readonly EmailSettings _emailSettings;
     private readonly INotificationService _notificationService;
     private readonly IStringLocalizer<SharedMessages> _localizer;
+    private readonly ILogger<CollaboratorService> _logger;
 
-    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer)
+    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger)
     {
         _context = context;
         _emailService = emailService;
         _emailSettings = emailSettings;
         _notificationService = notificationService;
         _localizer = localizer;
+        _logger = logger;
     }
 
     public async Task<CollaboratorListDto> GetCollaboratorsAsync(Guid documentId)
@@ -333,18 +335,23 @@ public class CollaboratorService : ICollaboratorService
                 await _context.SaveChangesAsync();
             }
 
-            // Send invite email with sign-up link
+            // Send invite email with sign-up link. Failures are logged but
+            // don't block the pending-invite row — the user can resend or
+            // share the URL manually. The boolean comes back in the DTO so
+            // the UI can surface "invite created but email failed".
             var signUpUrl = $"{_emailSettings.BaseUrl}/sign-up?email={Uri.EscapeDataString(dto.Email)}";
+            var pendingEmailSent = true;
             try
             {
                 await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, signUpUrl);
             }
-            catch
+            catch (Exception ex)
             {
-                // Email failure should not block the invite
+                pendingEmailSent = false;
+                _logger.LogError(ex, "Failed to send invite email to {Email} for document {DocumentId}", dto.Email, documentId);
             }
 
-            return new InviteResultDto(true, false, dto.Email, _localizer["InvitationSent"].Value);
+            return new InviteResultDto(true, false, dto.Email, pendingEmailSent ? _localizer["InvitationSent"].Value : "Invitation created but email delivery failed. Check server logs — likely the Resend API key is not set.");
         }
 
         // Prevent inviting yourself
@@ -355,16 +362,20 @@ public class CollaboratorService : ICollaboratorService
         if (result == null)
             return new InviteResultDto(false, true, dto.Email, _localizer["FailedToAddCollaborator"].Value);
 
-        // Send invite email
+        // Send invite email — collaborator already added, so a send
+        // failure isn't a hard error, but the message on the result DTO
+        // tells the UI to surface "email didn't go out, share link manually".
+        var emailSent = true;
         try
         {
             await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, documentUrl);
         }
-        catch
+        catch (Exception ex)
         {
-            // Email failure should not block the invite — collaborator was already added
+            emailSent = false;
+            _logger.LogError(ex, "Failed to send invite email to {Email} for document {DocumentId}", dto.Email, documentId);
         }
 
-        return new InviteResultDto(true, true, dto.Email, null);
+        return new InviteResultDto(true, true, dto.Email, emailSent ? null : "Collaborator added but email delivery failed. Check server logs — likely the Resend API key is not set.");
     }
 }

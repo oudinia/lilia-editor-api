@@ -42,8 +42,12 @@ public class EmailService : IEmailService
     {
         if (string.IsNullOrEmpty(_settings.ResendApiKey))
         {
-            _logger.LogWarning("Resend API key not configured — skipping email to {To}", to);
-            return;
+            // Raised from Warning to Error — every "invitation sent" UI
+            // confirmation without a delivered email is worse than a
+            // visible failure. Lands in Sentry so the missing env var is
+            // obvious rather than being dropped on the floor.
+            _logger.LogError("Resend API key not configured — email to {To} ({Subject}) NOT sent. Set Email__ResendApiKey in the app environment.", to, subject);
+            throw new InvalidOperationException("Email provider (Resend) not configured on this server.");
         }
 
         try
