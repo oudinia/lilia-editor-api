@@ -267,6 +267,132 @@ public class BlockService : IBlockService
         return MapToDto(block);
     }
 
+    public async Task<BatchConvertResultDto?> BatchConvertAsync(Guid documentId, BatchConvertBlocksDto dto)
+    {
+        if (dto.BlockIds.Count == 0)
+        {
+            return null;
+        }
+
+        var blocks = await _context.Blocks
+            .Where(b => b.DocumentId == documentId && dto.BlockIds.Contains(b.Id))
+            .OrderBy(b => b.SortOrder)
+            .ToListAsync();
+
+        if (blocks.Count != dto.BlockIds.Count)
+        {
+            // Unknown blockId or cross-document id — refuse, don't partial-apply.
+            return null;
+        }
+
+        switch (dto.Action)
+        {
+            case "to_list":
+                return await ConvertToListAsync(documentId, blocks, ordered: false);
+            case "to_ordered_list":
+                return await ConvertToListAsync(documentId, blocks, ordered: true);
+            case "merge_paragraph":
+                return await MergeParagraphAsync(documentId, blocks);
+            case "reheading":
+                if (dto.HeadingLevel is null or < 1 or > 6) return null;
+                return await ReheadingAsync(documentId, blocks, dto.HeadingLevel.Value);
+            default:
+                return null;
+        }
+    }
+
+    // Fold N blocks into one list block. First block's SortOrder is
+    // preserved; the other rows are deleted in a single ExecuteDeleteAsync.
+    private async Task<BatchConvertResultDto> ConvertToListAsync(Guid documentId, List<Block> blocks, bool ordered)
+    {
+        var first = blocks[0];
+        var items = blocks.Select(ExtractBlockText).Where(t => !string.IsNullOrWhiteSpace(t)).ToArray();
+        first.Type = "list";
+        first.Content = JsonSerializer.SerializeToDocument(new { items, ordered });
+        first.UpdatedAt = DateTime.UtcNow;
+
+        var idsToDelete = blocks.Skip(1).Select(b => b.Id).ToList();
+        await _context.Blocks
+            .Where(b => b.DocumentId == documentId && idsToDelete.Contains(b.Id))
+            .ExecuteDeleteAsync();
+
+        await TouchDocumentAsync(documentId);
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
+        return new BatchConvertResultDto(
+            Created: new List<BlockDto> { MapToDto(first) },
+            DeletedIds: idsToDelete);
+    }
+
+    // Join N block texts into one paragraph. Same SortOrder preservation.
+    private async Task<BatchConvertResultDto> MergeParagraphAsync(Guid documentId, List<Block> blocks)
+    {
+        var first = blocks[0];
+        var merged = string.Join("\n\n", blocks.Select(ExtractBlockText).Where(t => !string.IsNullOrWhiteSpace(t)));
+        first.Type = "paragraph";
+        first.Content = JsonSerializer.SerializeToDocument(new { text = merged });
+        first.UpdatedAt = DateTime.UtcNow;
+
+        var idsToDelete = blocks.Skip(1).Select(b => b.Id).ToList();
+        await _context.Blocks
+            .Where(b => b.DocumentId == documentId && idsToDelete.Contains(b.Id))
+            .ExecuteDeleteAsync();
+
+        await TouchDocumentAsync(documentId);
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+
+        return new BatchConvertResultDto(
+            Created: new List<BlockDto> { MapToDto(first) },
+            DeletedIds: idsToDelete);
+    }
+
+    // Bulk-set heading level on a run of heading blocks. Non-heading blocks
+    // in the selection are ignored (caller should not mix, but we're tolerant).
+    private async Task<BatchConvertResultDto> ReheadingAsync(Guid documentId, List<Block> blocks, int level)
+    {
+        var updated = new List<BlockDto>();
+        foreach (var b in blocks)
+        {
+            if (b.Type != "heading") continue;
+            var currentText = ExtractBlockText(b);
+            b.Content = JsonSerializer.SerializeToDocument(new { text = currentText, level });
+            b.UpdatedAt = DateTime.UtcNow;
+            updated.Add(MapToDto(b));
+        }
+
+        await TouchDocumentAsync(documentId);
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+        return new BatchConvertResultDto(Created: updated, DeletedIds: new List<Guid>());
+    }
+
+    // Best-effort text extraction across block types — drives list items +
+    // merge output. Falls back to empty string when no obvious text field.
+    private static string ExtractBlockText(Block b)
+    {
+        try
+        {
+            var root = b.Content.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return string.Empty;
+            foreach (var field in new[] { "text", "title", "caption", "code", "latex", "name" })
+            {
+                if (root.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String)
+                    return v.GetString() ?? string.Empty;
+            }
+            return string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private async Task TouchDocumentAsync(Guid documentId)
+    {
+        var doc = await _context.Documents.FindAsync(documentId);
+        if (doc != null) doc.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
     private static BlockDto MapToDto(Block b)
     {
         return new BlockDto(

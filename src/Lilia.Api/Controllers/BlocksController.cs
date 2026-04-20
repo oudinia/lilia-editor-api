@@ -257,4 +257,36 @@ public class BlocksController : ControllerBase
     }
 
     public sealed record FromLatexRequest(string Latex);
+
+    /// <summary>
+    /// Tier 1 bulk-convert: takes N adjacent blocks and folds them into a
+    /// list / merged paragraph, or re-levels a run of headings. See
+    /// <see cref="IBlockService.BatchConvertAsync"/> for semantics.
+    /// Returns 400 when the action is unknown, 404 if any blockId doesn't
+    /// belong to the document.
+    /// </summary>
+    [HttpPost("batch-convert")]
+    public async Task<ActionResult<BatchConvertResultDto>> BatchConvert(Guid docId, [FromBody] BatchConvertBlocksDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+            return Forbid();
+
+        if (dto.BlockIds == null || dto.BlockIds.Count == 0)
+        {
+            return BadRequest(new { code = "EMPTY_SELECTION", message = "blockIds is required." });
+        }
+
+        var result = await _blockService.BatchConvertAsync(docId, dto);
+        if (result == null)
+        {
+            return BadRequest(new
+            {
+                code = "INVALID_ACTION_OR_BLOCKS",
+                message = "Unknown action, unknown blockId, or missing heading level for reheading.",
+            });
+        }
+        return Ok(result);
+    }
 }

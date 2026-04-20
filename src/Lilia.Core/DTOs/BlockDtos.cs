@@ -51,6 +51,23 @@ public record ConvertBlockDto(
     string NewType
 );
 
+/// <summary>
+/// Tier 1 bulk-convert request. <see cref="BlockIds"/> must be non-empty and
+/// belong to the target document. <see cref="Action"/> is one of:
+/// "to_list", "to_ordered_list", "merge_paragraph", "reheading".
+/// <see cref="HeadingLevel"/> is required for "reheading" (1-6).
+/// </summary>
+public record BatchConvertBlocksDto(
+    List<Guid> BlockIds,
+    string Action,
+    int? HeadingLevel
+);
+
+public record BatchConvertResultDto(
+    List<BlockDto> Created,
+    List<Guid> DeletedIds
+);
+
 public record BlockTypeMetadataDto(
     string Type,
     string Label,
