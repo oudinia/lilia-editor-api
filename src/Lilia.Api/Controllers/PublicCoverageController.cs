@@ -49,11 +49,18 @@ public class PublicCoverageController : ControllerBase
 
         int Pkg(string level) => packages.FirstOrDefault(x => x.Level == level)?.Count ?? 0;
 
-        var categories = await _db.LatexPackages
+        // EF 10 can't translate GroupBy → record-constructor projections;
+        // the earlier two GroupBy queries work because they project into
+        // anonymous types. Mirror that pattern here and build the DTO in
+        // memory post-materialisation.
+        var categoryRaw = await _db.LatexPackages
             .GroupBy(p => p.Category)
-            .Select(g => new CategoryBreakdownDto(g.Key, g.Count()))
-            .OrderByDescending(x => x.Count)
+            .Select(g => new { Category = g.Key, Count = g.Count() })
             .ToListAsync(ct);
+        var categories = categoryRaw
+            .OrderByDescending(x => x.Count)
+            .Select(x => new CategoryBreakdownDto(x.Category, x.Count))
+            .ToList();
 
         var totalCovered = Tok("full") + Tok("partial") + Tok("shimmed");
         var totalTokens = tokens.Sum(x => x.Count);
