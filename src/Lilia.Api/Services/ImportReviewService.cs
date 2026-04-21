@@ -1853,11 +1853,14 @@ public class ImportReviewService : IImportReviewService
 
         // Merge into existing tab_progress jsonb via jsonb_set in SQL so
         // we don't round-trip the whole blob. DB-first per the project
-        // guideline.
+        // guideline. jsonb_build_object() is used in place of the literal
+        // '{}'::jsonb because EF's ExecuteSqlRawAsync scans the SQL for
+        // {N} placeholders and throws FormatException on the literal {}
+        // (LILIA-API-S, 2026-04-21).
         await _context.Database.ExecuteSqlRawAsync(@"
 UPDATE import_review_sessions
 SET tab_progress = jsonb_set(
-      COALESCE(tab_progress, '{}'::jsonb),
+      COALESCE(tab_progress, jsonb_build_object()),
       ARRAY[@tab]::text[],
       to_jsonb(@state::text),
       true),
