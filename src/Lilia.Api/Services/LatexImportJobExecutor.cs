@@ -30,6 +30,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     private readonly BulkInsertHelper _bulk;
     private readonly IImportReviewService _reviewService;
     private readonly IImportProgressService _progressService;
+    private readonly ILatexCatalogService _catalog;
     private readonly ILogger<LatexImportJobExecutor> _logger;
 
     public LatexImportJobExecutor(
@@ -38,6 +39,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         BulkInsertHelper bulk,
         IImportReviewService reviewService,
         IImportProgressService progressService,
+        ILatexCatalogService catalog,
         ILogger<LatexImportJobExecutor> logger)
     {
         _context = context;
@@ -45,6 +47,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         _bulk = bulk;
         _reviewService = reviewService;
         _progressService = progressService;
+        _catalog = catalog;
         _logger = logger;
     }
 
@@ -94,6 +97,22 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                 EnumerateDiagnostics(sessionId, parsed),
                 ct);
             _logger.LogInformation("[LatexImport] Staged {Count} diagnostics for session {Session}", stagedDiagnostics, sessionId);
+
+            // Phase 4.5 — Record catalog usage. Single pass over the raw
+            // source to collect (name, kind) counts, then resolve each via
+            // the catalog — unknown tokens auto-insert as coverage_level
+            // 'unsupported' and usage is bulk-upserted against the session.
+            // Failures here are non-fatal — import continues even if the
+            // catalog DB side trips.
+            try
+            {
+                await RecordCatalogUsageAsync(sessionId, loaded.RawImportData, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[LatexImport] Catalog usage record failed for session {Session} — import continuing", sessionId);
+            }
+
             await MarkJobAsync(jobId, JobStatus.Processing, progress: 80, ct);
 
             // Phase 5 — Score. Pure SQL aggregate.
@@ -224,5 +243,39 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                 .SetProperty(x => x.UpdatedAt, DateTime.UtcNow)
                 .SetProperty(x => x.CompletedAt, status == JobStatus.Completed || status == JobStatus.Failed ? DateTime.UtcNow : (DateTime?)null)
                 .SetProperty(x => x.ErrorMessage, errorMessage), ct);
+    }
+
+    // Scan the raw source for commands/environments, resolve each against
+    // the in-memory catalog, auto-insert unknowns as unsupported, and bulk-
+    // upsert per-session usage counts. Populates latex_token_usage —
+    // the fuel for the coverage dashboard + weekly triage.
+    private async Task RecordCatalogUsageAsync(Guid sessionId, string rawSource, CancellationToken ct)
+    {
+        var counts = LatexCatalogTokenScanner.Scan(rawSource);
+        if (counts.Count == 0) return;
+
+        var usages = new List<CatalogTokenUsage>(counts.Count);
+        foreach (var (key, count) in counts)
+        {
+            var (name, kind) = key;
+            // Lookup with package=null (kernel scope). The catalog's
+            // in-cache lookup falls back to kernel automatically if a
+            // package-scoped token is missing; for observability we just
+            // need *some* token id to attribute usage to.
+            var entry = _catalog.LookupToken(name, kind);
+            Guid tokenId;
+            if (entry is null)
+            {
+                tokenId = await _catalog.ReportUnknownAsync(name, kind, packageSlug: null, ct);
+            }
+            else
+            {
+                tokenId = entry.Id;
+            }
+            usages.Add(new CatalogTokenUsage(tokenId, count));
+        }
+
+        await _catalog.RecordUsageAsync(sessionId, usages, ct);
+        _logger.LogInformation("[LatexImport] Recorded {DistinctTokens} distinct tokens for session {Session}", usages.Count, sessionId);
     }
 }

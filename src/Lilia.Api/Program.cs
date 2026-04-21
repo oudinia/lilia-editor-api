@@ -365,6 +365,11 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService>(sp =>
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexParser, Lilia.Import.Services.LatexParser>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lilia.Import.Services.LatexFragmentParser>();
 
+// LaTeX catalog (Phase 2) — singleton in-memory cache seeded from DB at
+// boot. Preloaded just before the HTTP pipeline starts so the first
+// import doesn't pay the warmup cost.
+builder.Services.AddSingleton<ILatexCatalogService, LatexCatalogService>();
+
 // Register PDF import services — provider-based (mathpix or mineru)
 var pdfProvider = builder.Configuration["PdfParser:Provider"] ?? "mineru";
 if (pdfProvider == "mathpix")
@@ -614,6 +619,14 @@ if (!app.Environment.IsEnvironment("Testing"))
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
     await dbContext.Database.MigrateAsync();
+
+    // Warm the LaTeX catalog cache post-migration so the first import
+    // hits memory instead of paying the query cost mid-request.
+    var catalog = app.Services.GetRequiredService<ILatexCatalogService>();
+    if (catalog is LatexCatalogService concrete)
+    {
+        await concrete.PreloadAsync();
+    }
 }
 
 // Seed system templates
