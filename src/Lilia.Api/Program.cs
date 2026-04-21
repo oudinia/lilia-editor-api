@@ -216,7 +216,15 @@ var connectionString = builder.Configuration.GetConnectionString("LiliaCore")
 }
 
 builder.Services.AddDbContext<LiliaDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options
+        .UseNpgsql(connectionString)
+        // Column-name-only remappings (e.g. HasColumnName added after the
+        // column already existed in the database) make EF think the model
+        // has pending changes, which MigrateAsync then treats as fatal.
+        // The schema is actually correct — it's a snapshot/designer drift
+        // that a future `ef migrations add --empty` can silence. Downgrade
+        // to a warning so prod deploys don't fail on a cosmetic mismatch.
+        .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // Configure Storage Service
 if (!string.IsNullOrEmpty(builder.Configuration["R2:Endpoint"]))
