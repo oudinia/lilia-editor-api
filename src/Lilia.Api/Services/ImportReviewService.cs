@@ -1435,6 +1435,74 @@ public class ImportReviewService : IImportReviewService
     // BlockService.BatchConvertAsync — one tiny type projection for the
     // heuristic, one UPDATE that reads current_content / original_content
     // via coalesce in SQL (never transits .NET memory), one bulk DELETE.
+    public async Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return null;
+        if (GetUserRole(session, userId) == null) return null;
+
+        var review = await _context.ImportBlockReviews
+            .Where(br => br.SessionId == sessionId && br.BlockId == blockId)
+            .Select(br => new { br.BlockId, br.SourceRange, br.SourceFile })
+            .FirstOrDefaultAsync(ct);
+        if (review == null) return null;
+
+        // Preferred path — parser populated source_range during staging.
+        // Slice the session's RawImportData at (start..end) and return.
+        if (review.SourceRange != null
+            && review.SourceRange.RootElement.TryGetProperty("start", out var startEl)
+            && review.SourceRange.RootElement.TryGetProperty("end", out var endEl)
+            && startEl.TryGetInt32(out var start)
+            && endEl.TryGetInt32(out var end)
+            && !string.IsNullOrEmpty(session.RawImportData)
+            && start >= 0 && end > start && end <= session.RawImportData.Length)
+        {
+            var slice = session.RawImportData[start..end];
+            return new BlockSourceDto(blockId, slice, "parser", start, end, review.SourceFile);
+        }
+
+        // Fallback — legacy sessions (before the redesign migration) don't
+        // have source_range. Return an empty slice with origin="none" so
+        // the UI renders a "source unavailable" state; a follow-up slice
+        // will plumb a RenderService round-trip here.
+        return new BlockSourceDto(blockId, string.Empty, "none", null, null, review.SourceFile);
+    }
+
+    public async Task<bool> SetTabProgressAsync(Guid sessionId, string userId, SetTabProgressDto dto, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return false;
+        if (GetUserRole(session, userId) == null) return false;
+
+        // Accept any tab name — vocabulary is UI-enforced so adding a new
+        // tab doesn't need a schema change. State is pinned to the three
+        // agreed values.
+        if (dto.State is not ("unvisited" or "in_progress" or "done")) return false;
+
+        // Merge into existing tab_progress jsonb via jsonb_set in SQL so
+        // we don't round-trip the whole blob. DB-first per the project
+        // guideline.
+        await _context.Database.ExecuteSqlRawAsync(@"
+UPDATE import_review_sessions
+SET tab_progress = jsonb_set(
+      COALESCE(tab_progress, '{}'::jsonb),
+      ARRAY[@tab]::text[],
+      to_jsonb(@state::text),
+      true),
+    last_focused_tab = @tab,
+    updated_at = NOW()
+WHERE id = @id;",
+            new Npgsql.NpgsqlParameter("tab", dto.Tab),
+            new Npgsql.NpgsqlParameter("state", dto.State),
+            new Npgsql.NpgsqlParameter("id", sessionId));
+
+        return true;
+    }
+
     public async Task<BatchConvertResultDto?> BatchConvertBlockReviewsAsync(Guid sessionId, string userId, BatchConvertReviewBlocksDto dto)
     {
         if (dto.BlockIds.Count == 0) return null;

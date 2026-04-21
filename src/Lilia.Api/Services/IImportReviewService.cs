@@ -31,6 +31,21 @@ public interface IImportReviewService
     /// </summary>
     Task<BatchConvertResultDto?> BatchConvertBlockReviewsAsync(Guid sessionId, string userId, BatchConvertReviewBlocksDto dto);
 
+    /// <summary>
+    /// Return the raw LaTeX slice for a block — powers the "Source"
+    /// sub-tab in the redesigned review. Prefers the parser-populated
+    /// source_range column; falls back to a RenderService round-trip
+    /// when legacy sessions have no range stored.
+    /// </summary>
+    Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Set a single tab's progress state and bump last_focused_tab so the
+    /// Reviews list can link returning users back to where they stopped.
+    /// Non-sequential — any tab, any state, in any order.
+    /// </summary>
+    Task<bool> SetTabProgressAsync(Guid sessionId, string userId, SetTabProgressDto dto, CancellationToken ct = default);
+
     // Collaborators
     Task<CollaboratorInfoDto?> AddCollaboratorAsync(Guid sessionId, string userId, AddReviewCollaboratorDto dto);
     Task<bool> RemoveCollaboratorAsync(Guid sessionId, string targetUserId, string userId);

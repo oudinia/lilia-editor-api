@@ -53,6 +53,32 @@ public record BatchConvertReviewBlocksDto(
 );
 
 /// <summary>
+/// Source slice for a single review block — powers the "Source" sub-tab
+/// on the .tex redesign. When SourceRange was populated at parse time
+/// SliceOrigin is "parser"; fallback to renderer round-trip yields
+/// SliceOrigin = "render".
+/// </summary>
+public sealed record BlockSourceDto(
+    string BlockId,
+    string Latex,
+    string SliceOrigin,
+    int? Start,
+    int? End,
+    string? SourceFile
+);
+
+/// <summary>
+/// Update a single tab's progress state. The tab name is a string — the
+/// vocabulary is enforced only at the UI layer so adding new tabs
+/// doesn't require a schema change. State is unvisited / in_progress /
+/// done.
+/// </summary>
+public sealed record SetTabProgressDto(
+    string Tab,
+    string State
+);
+
+/// <summary>
 /// Dashboard row for the "Reviews in progress" list. Keep projection cheap —
 /// no block payloads, just the counters needed to decide which session to
 /// resume. Status here is the session-level status (parsing / pending_review

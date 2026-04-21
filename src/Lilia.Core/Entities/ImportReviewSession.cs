@@ -20,6 +20,30 @@ public class ImportReviewSession
     // Document category unlocks specialised structural-finding rules. Null =
     // generic detection only. Values: "cv" | "thesis" | "report" | "research" | "business"
     public string? DocumentCategory { get; set; }
+
+    /// <summary>
+    /// Source format for the import — drives the route dispatcher to the
+    /// correct format-specific review page. Values: "tex" | "project" |
+    /// "docx" | "markdown" | "pdf". Defaults to "tex" for back-compat.
+    /// </summary>
+    public string SourceFormat { get; set; } = "tex";
+
+    /// <summary>
+    /// Per-tab progress in the aspect-based review UI. Shape:
+    /// { structure: "unvisited|in_progress|done", content: ..., tables:
+    /// ..., media, math, citations, coverage, diagnostics }. The tab is
+    /// non-sequential — any order, any subset. The UI uses this to
+    /// render the progress strip; Finalize is the only tab that enforces
+    /// completeness (and only for errors, not warnings).
+    /// </summary>
+    public JsonDocument? TabProgress { get; set; }
+
+    /// <summary>
+    /// Last tab the user looked at — drives the "left off on Tables" hint
+    /// in the Reviews list so returning users land back in context.
+    /// </summary>
+    public string? LastFocusedTab { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }

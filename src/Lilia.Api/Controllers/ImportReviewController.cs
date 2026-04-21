@@ -390,6 +390,40 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
+    /// Raw LaTeX source slice for a single block — drives the "Source"
+    /// sub-tab on the .tex redesign. Prefers the parser-populated
+    /// SourceRange; falls back to rendering the block's current content
+    /// back to LaTeX when the range isn't available (legacy sessions
+    /// before the redesign migration).
+    /// </summary>
+    [HttpGet("{id:guid}/blocks/{blockId}/source")]
+    public async Task<ActionResult<object>> GetBlockSource(Guid id, string blockId, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var source = await _reviewService.GetBlockSourceAsync(id, blockId, userId, ct);
+        if (source == null) return NotFound();
+        return Ok(source);
+    }
+
+    /// <summary>
+    /// Per-tab progress update — drives the tab strip in the redesigned
+    /// review. Sets the tab_progress jsonb for a named tab + updates
+    /// last_focused_tab so returning users land back in context.
+    /// Non-sequential: any tab can be set to any state at any time.
+    /// </summary>
+    [HttpPut("{id:guid}/tab-progress")]
+    public async Task<ActionResult> SetTabProgress(Guid id, [FromBody] SetTabProgressDto dto, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var ok = await _reviewService.SetTabProgressAsync(id, userId, dto, ct);
+        return ok ? NoContent() : NotFound();
+    }
+
+    /// <summary>
     /// Dismiss a diagnostic (acknowledge; it still exists for audit but no
     /// longer shows up in active badge counts).
     /// </summary>

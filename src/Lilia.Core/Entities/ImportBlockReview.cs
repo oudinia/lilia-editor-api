@@ -20,6 +20,22 @@ public class ImportBlockReview
     public int SortOrder { get; set; }
     public int Depth { get; set; }
 
+    /// <summary>
+    /// Byte offsets into the owning session's RawImportData where this
+    /// block's LaTeX lives — powers the "Source" sub-tab on the .tex
+    /// redesign. Shape: { start: int, end: int }. Nullable — parser
+    /// populates best-effort during staging; the endpoint falls back to
+    /// RenderService.RenderBlockToLatex() when unset.
+    /// </summary>
+    public JsonDocument? SourceRange { get; set; }
+
+    /// <summary>
+    /// Overleaf / multi-file project imports — relative path of the
+    /// .tex file this block originated from. Null for single-file
+    /// imports. Drives per-file grouping in the tree view.
+    /// </summary>
+    public string? SourceFile { get; set; }
+
     // Navigation properties
     public virtual ImportReviewSession Session { get; set; } = null!;
     public virtual User? Reviewer { get; set; }
