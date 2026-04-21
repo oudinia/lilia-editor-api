@@ -76,7 +76,7 @@ public class LaTeXRenderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to render PDF for document {DocumentId}", documentId);
-            _ = _audit.LogAsync("latex_render_error", "document", documentId.ToString(), new
+            await _audit.LogAsync("latex_render_error", "document", documentId.ToString(), new
             {
                 format = "pdf",
                 error = ex.Message
@@ -100,7 +100,7 @@ public class LaTeXRenderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to render PNG for document {DocumentId}", documentId);
-            _ = _audit.LogAsync("latex_render_error", "document", documentId.ToString(), new
+            await _audit.LogAsync("latex_render_error", "document", documentId.ToString(), new
             {
                 format = "png",
                 error = ex.Message
@@ -128,7 +128,7 @@ public class LaTeXRenderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to render block {BlockId}", blockId);
-            _ = _audit.LogAsync("latex_render_error", "block", blockId.ToString(), new
+            await _audit.LogAsync("latex_render_error", "block", blockId.ToString(), new
             {
                 format = "png",
                 error = ex.Message
@@ -205,7 +205,7 @@ public class LaTeXRenderController : ControllerBase
         if (!valid)
         {
             _logger.LogWarning("LaTeX validation failed: {Error}", error);
-            _ = _audit.LogAsync("latex_validation_error", "latex", null, new
+            await _audit.LogAsync("latex_validation_error", "latex", null, new
             {
                 error,
                 warnings,
@@ -260,7 +260,7 @@ public class LaTeXRenderController : ControllerBase
         if (!valid)
         {
             _logger.LogWarning("Block {BlockId} LaTeX validation failed: {Error}", blockId, error);
-            _ = _audit.LogAsync("latex_validation_error", "block", blockId.ToString(), new
+            await _audit.LogAsync("latex_validation_error", "block", blockId.ToString(), new
             {
                 error,
                 warnings,
@@ -451,7 +451,7 @@ public class LaTeXRenderController : ControllerBase
             {
                 _logger.LogWarning("Document {DocumentId} LaTeX validation: valid={Valid}, errors={Error}, warnings={WarningCount}",
                     documentId, valid, error, allWarnings.Length);
-                _ = _audit.LogAsync("latex_validation_error", "document", documentId.ToString(), new
+                await _audit.LogAsync("latex_validation_error", "document", documentId.ToString(), new
                 {
                     valid,
                     error,
