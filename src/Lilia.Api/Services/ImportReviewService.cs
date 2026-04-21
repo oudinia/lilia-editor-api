@@ -16,11 +16,14 @@ public class ImportReviewService : IImportReviewService
     private readonly ILogger<ImportReviewService> _logger;
     private readonly IStringLocalizer<ImportReviewMessages> _localizer;
 
-    public ImportReviewService(LiliaDbContext context, ILogger<ImportReviewService> logger, IStringLocalizer<ImportReviewMessages> localizer)
+    private readonly IRenderService? _renderService;
+
+    public ImportReviewService(LiliaDbContext context, ILogger<ImportReviewService> logger, IStringLocalizer<ImportReviewMessages> localizer, IRenderService? renderService = null)
     {
         _context = context;
         _logger = logger;
         _localizer = localizer;
+        _renderService = renderService;
     }
 
     // --- Session Management ---
@@ -1741,9 +1744,17 @@ public class ImportReviewService : IImportReviewService
 
         var review = await _context.ImportBlockReviews
             .Where(br => br.SessionId == sessionId && br.BlockId == blockId)
-            .Select(br => new { br.BlockId, br.SourceRange, br.SourceFile })
+            .Select(br => new
+            {
+                br.BlockId,
+                br.SourceRange,
+                br.SourceFile,
+                Type = br.CurrentType ?? br.OriginalType,
+                Content = br.CurrentContent ?? br.OriginalContent,
+            })
             .FirstOrDefaultAsync(ct);
         if (review == null) return null;
+        var contentJson = JsonSerializer.Deserialize<JsonElement>(review.Content.RootElement.GetRawText());
 
         // Preferred path — parser populated source_range during staging.
         // Slice the session's RawImportData at (start..end) and return.
@@ -1756,14 +1767,35 @@ public class ImportReviewService : IImportReviewService
             && start >= 0 && end > start && end <= session.RawImportData.Length)
         {
             var slice = session.RawImportData[start..end];
-            return new BlockSourceDto(blockId, slice, "parser", start, end, review.SourceFile);
+            return new BlockSourceDto(blockId, slice, "parser", start, end, review.SourceFile, review.Type, contentJson);
         }
 
-        // Fallback — legacy sessions (before the redesign migration) don't
-        // have source_range. Return an empty slice with origin="none" so
-        // the UI renders a "source unavailable" state; a follow-up slice
-        // will plumb a RenderService round-trip here.
-        return new BlockSourceDto(blockId, string.Empty, "none", null, null, review.SourceFile);
+        // Fallback — legacy sessions don't have source_range populated.
+        // Re-render the block's current JSONB content to LaTeX via
+        // RenderService so the Source sub-tab still shows meaningful
+        // LaTeX. Marked origin="render" so the UI can flag it as a
+        // reconstructed view rather than the literal import source.
+        if (_renderService != null)
+        {
+            try
+            {
+                var block = new Block
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = sessionId,
+                    Type = review.Type,
+                    Content = review.Content,
+                };
+                var latex = _renderService.RenderBlockToLatex(block);
+                return new BlockSourceDto(blockId, latex, "render", null, null, review.SourceFile, review.Type, contentJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] RenderBlockToLatex failed for block {BlockId} — returning empty source", blockId);
+            }
+        }
+
+        return new BlockSourceDto(blockId, string.Empty, "none", null, null, review.SourceFile, review.Type, contentJson);
     }
 
     public async Task<bool> SetTabProgressAsync(Guid sessionId, string userId, SetTabProgressDto dto, CancellationToken ct = default)

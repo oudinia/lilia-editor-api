@@ -14,6 +14,20 @@ public abstract class ImportElement
     /// Type of the import element.
     /// </summary>
     public abstract ImportElementType Type { get; }
+
+    /// <summary>
+    /// Byte offset into the source where this element begins. Populated
+    /// best-effort by LatexParser at emission time; null for formats /
+    /// paths where offset tracking isn't available. Drives the "Source"
+    /// sub-tab on the import review redesign via
+    /// ImportBlockReview.SourceRange.
+    /// </summary>
+    public int? SourceStart { get; set; }
+
+    /// <summary>
+    /// Byte offset where this element ends (exclusive).
+    /// </summary>
+    public int? SourceEnd { get; set; }
 }
 
 /// <summary>

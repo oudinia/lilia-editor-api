@@ -64,7 +64,11 @@ public sealed record BlockSourceDto(
     string SliceOrigin,
     int? Start,
     int? End,
-    string? SourceFile
+    string? SourceFile,
+    // Block content + type so the UI can reuse existing block renderers
+    // for the "Preview" sub-tab without a second round-trip.
+    string? BlockType = null,
+    JsonElement? Content = null
 );
 
 /// <summary>
