@@ -1204,9 +1204,9 @@ public class LatexParser : ILatexParser
     }
 
     /// <summary>
-    /// Pre-parse normalisation for Batch A coverage work. Rewrites well-
-    /// known environment variants into their kernel equivalents so the
-    /// main parser can handle them as standard environments. Each
+    /// Pre-parse normalisation for Batch A + C coverage work. Rewrites
+    /// well-known environment variants into their kernel equivalents so
+    /// the main parser can handle them as standard environments. Each
     /// rewrite targets a catalog token whose coverage_level moves from
     /// partial/shimmed to full as a result.
     ///
@@ -1214,6 +1214,10 @@ public class LatexParser : ILatexParser
     ///   tabularx  → tabular  (column spec 'X' rewritten to 'l')
     ///   rSection  → section-like block (\begin{rSection}{Title}...
     ///                → \section*{Title} + body)
+    ///   frame     → section-like block (beamer slide → heading + body)
+    ///   frametitle → section* in-place
+    ///   framesubtitle → bold paragraph
+    ///   titlepage → \maketitle
     /// </summary>
     private static string NormaliseCoverageEnvironments(string content)
     {
@@ -1247,6 +1251,61 @@ public class LatexParser : ILatexParser
             content,
             @"\\end\{rSection\}",
             string.Empty);
+
+        // Beamer frames — the Q2 plan's biggest single coverage win (41
+        // hits in the last 7 days of prod imports). Three common forms
+        // are handled here; the lossy-for-export trade-off is flagged in
+        // the catalog notes.
+        //
+        //   \begin{frame}[options]{Title}body  →  \section*{Title} body
+        //   \begin{frame}{Title}body           →  \section*{Title} body
+        //   \begin{frame}\frametitle{T}body    →  (the \frametitle rewrite below handles this)
+        //   \begin{frame}body (no title)       →  body (no heading — still navigable via surrounding structure)
+        //
+        // Optional [options] is discarded at this level — frame options
+        // (label, allowframebreaks, fragile) aren't expressed in Lilia's
+        // block model today. The exporter regenerates beamer frames from
+        // document.latexDocumentClass metadata if needed.
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\begin\{frame\}\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}",
+            m => $"\\section*{{{m.Groups[1].Value}}}",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // Frames that don't supply a brace title (title comes later via
+        // \frametitle, or no title at all). Just drop the \begin{frame}
+        // marker; \frametitle below handles the title.
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\begin\{frame\}\s*(?:\[[^\]]*\])?",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\end\{frame\}",
+            string.Empty);
+
+        // \frametitle{title} anywhere inside a frame → \section*{title}
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\frametitle\s*\{([^}]*)\}",
+            m => $"\\section*{{{m.Groups[1].Value}}}",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // \framesubtitle{subtitle} → bold paragraph (no kernel equivalent)
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\framesubtitle\s*\{([^}]*)\}",
+            m => $"\\textbf{{{m.Groups[1].Value}}}\\par",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // \titlepage → \maketitle (standard kernel). Preserves title +
+        // author the user set in the preamble.
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\titlepage\b",
+            "\\maketitle");
 
         return content;
     }
