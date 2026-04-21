@@ -26,6 +26,8 @@ public class ImportBlockReviewConfiguration : IEntityTypeConfiguration<ImportBlo
         builder.Property(r => r.Warnings).HasColumnName("warnings").HasColumnType("jsonb");
         builder.Property(r => r.SortOrder).HasColumnName("sort_order").IsRequired();
         builder.Property(r => r.Depth).HasColumnName("depth").IsRequired();
+        builder.Property(r => r.SourceFile).HasColumnName("source_file");
+        builder.Property(r => r.SourceRange).HasColumnName("source_range").HasColumnType("jsonb");
 
         builder.HasIndex(r => r.SessionId);
         builder.HasIndex(r => new { r.SessionId, r.BlockId });
