@@ -18,7 +18,7 @@ public class PdfImportIntegrationTests : IntegrationTestBase
 
     public PdfImportIntegrationTests(TestDatabaseFixture fixture) : base(fixture) { }
 
-    public new async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
         await SeedUserAsync(_userId);
     }

@@ -1,5 +1,6 @@
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Testcontainers.PostgreSql;
 
 namespace Lilia.Api.Tests.Integration.Infrastructure;
@@ -24,6 +25,7 @@ public class TestDatabaseFixture : IAsyncLifetime
         // is the single place migrations run for tests.
         var options = new DbContextOptionsBuilder<LiliaDbContext>()
             .UseNpgsql(ConnectionString)
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
             .Options;
 
         await using var context = new LiliaDbContext(options);

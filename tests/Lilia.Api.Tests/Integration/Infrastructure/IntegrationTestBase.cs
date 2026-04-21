@@ -133,7 +133,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         return label;
     }
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public virtual Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync()
     {

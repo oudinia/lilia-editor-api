@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Lilia.Api.Tests.Integration.Infrastructure;
@@ -34,7 +35,9 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
             var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<LiliaDbContext>));
             if (descriptor != null) services.Remove(descriptor);
 
-            services.AddDbContext<LiliaDbContext>(options => options.UseNpgsql(_connectionString));
+            services.AddDbContext<LiliaDbContext>(options => options
+                .UseNpgsql(_connectionString)
+                .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
             // Replace auth with test scheme
             services.AddAuthentication(TestAuthHandler.SchemeName)

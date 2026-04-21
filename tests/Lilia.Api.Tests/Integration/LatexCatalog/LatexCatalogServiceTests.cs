@@ -174,7 +174,6 @@ public class LatexCatalogServiceTests : IntegrationTestBase
             Name = email,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            EmailVerified = true,
         };
         db.Users.Add(u);
         await db.SaveChangesAsync();
