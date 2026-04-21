@@ -79,6 +79,91 @@ public sealed record SetTabProgressDto(
 );
 
 /// <summary>
+/// Session hierarchy built server-side from the flat block list —
+/// headings carry their descendant blocks as children. Drives the
+/// TreePane in the .tex redesign; also usable by a CLI that wants to
+/// print an outline.
+/// </summary>
+public sealed record SessionTreeNodeDto(
+    string BlockId,
+    string Type,
+    string? Text,           // first ~80 chars of the block content
+    int? HeadingLevel,      // null for non-heading blocks
+    int? Depth,
+    string Status,          // pending / approved / rejected / edited
+    int ChildBlockCount,    // descendants including self
+    List<SessionTreeNodeDto> Children
+);
+
+public sealed record SessionTreeDto(
+    Guid SessionId,
+    int TotalBlocks,
+    List<SessionTreeNodeDto> Roots
+);
+
+/// <summary>
+/// Per-tab counters + derived "done" state. Pure SQL aggregate so a CLI
+/// can re-use it to print the same progress strip.
+/// </summary>
+public sealed record TabStatsDto(
+    Guid SessionId,
+    TabStatEntryDto Structure,
+    TabStatEntryDto Content,
+    TabStatEntryDto Tables,
+    TabStatEntryDto Media,
+    TabStatEntryDto Math,
+    TabStatEntryDto Citations,
+    TabStatEntryDto Coverage,
+    TabStatEntryDto Diagnostics,
+    string? LastFocusedTab
+);
+
+public sealed record TabStatEntryDto(
+    int Pending,       // blocks/items still needing attention in this tab
+    int Done,          // blocks/items resolved
+    int Total,         // total blocks/items
+    string ProgressState   // unvisited | in_progress | done — merged from tab_progress + derived
+);
+
+/// <summary>
+/// End-of-review snapshot — what happened during an import. Used for
+/// the History list's per-session page and for the CLI to print
+/// "here's what I did" in markdown / json / csv.
+/// </summary>
+public sealed record SessionReportDto(
+    Guid SessionId,
+    string DocumentTitle,
+    string Status,
+    string? SourceFormat,
+    DateTime CreatedAt,
+    DateTime? FinalizedAt,
+    double? DurationMinutes,
+    Guid? ProducedDocumentId,
+    ReportCountsDto Blocks,
+    ReportCountsDto Diagnostics,
+    int? QualityScore,
+    double? CoveragePercent,
+    List<ReportTokenDto> TopUnsupported,
+    int ActivityEventCount
+);
+
+public sealed record ReportCountsDto(
+    int Total,
+    int Approved,
+    int Rejected,
+    int Pending,
+    int Edited
+);
+
+public sealed record ReportTokenDto(
+    string Name,
+    string Kind,
+    string? PackageSlug,
+    int Count,
+    string CoverageLevel
+);
+
+/// <summary>
 /// Dashboard row for the "Reviews in progress" list. Keep projection cheap —
 /// no block payloads, just the counters needed to decide which session to
 /// resume. Status here is the session-level status (parsing / pending_review

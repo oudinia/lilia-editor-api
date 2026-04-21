@@ -36,17 +36,24 @@ public class ImportReviewController : ControllerBase
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
     /// <summary>
-    /// List the user's in-progress review sessions — drives the "Reviews"
-    /// dashboard so users can resume a session instead of re-importing.
-    /// Excludes imported and cancelled sessions.
+    /// List the user's review sessions — drives the "Reviews" dashboard
+    /// and the History tab. scope=active (default, excludes finalized
+    /// and cancelled), scope=history (finalized + cancelled only),
+    /// scope=all. Accepts optional format / date / document filters.
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<List<ReviewSessionSummaryDto>>> ListActiveSessions()
+    public async Task<ActionResult<List<ReviewSessionSummaryDto>>> ListSessions(
+        [FromQuery] string scope = "active",
+        [FromQuery] string? format = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] Guid? documentId = null,
+        CancellationToken ct = default)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        var sessions = await _reviewService.ListActiveSessionsAsync(userId);
+        var sessions = await _reviewService.ListSessionsAsync(userId, scope, format, from, to, documentId, ct);
         return Ok(sessions);
     }
 
@@ -421,6 +428,49 @@ public class ImportReviewController : ControllerBase
 
         var ok = await _reviewService.SetTabProgressAsync(id, userId, dto, ct);
         return ok ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Server-computed hierarchical tree — headings cascade children
+    /// via heading level. Drives the TreePane in the redesigned .tex
+    /// review UI and is available to CLI consumers that want an
+    /// outline.
+    /// </summary>
+    [HttpGet("{id:guid}/tree")]
+    public async Task<ActionResult<SessionTreeDto>> GetTree(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var tree = await _reviewService.GetSessionTreeAsync(id, userId, ct);
+        return tree == null ? NotFound() : Ok(tree);
+    }
+
+    /// <summary>
+    /// Per-tab counters + progress state. Drives the progress strip
+    /// in the redesigned review.
+    /// </summary>
+    [HttpGet("{id:guid}/tab-stats")]
+    public async Task<ActionResult<TabStatsDto>> GetTabStats(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var stats = await _reviewService.GetTabStatsAsync(id, userId, ct);
+        return stats == null ? NotFound() : Ok(stats);
+    }
+
+    /// <summary>
+    /// End-of-review snapshot — block totals, diagnostics breakdown,
+    /// coverage percentage, top unsupported tokens, timing. Drives
+    /// the per-session report page in the History tab + available to
+    /// CLI consumers for markdown/JSON/CSV export.
+    /// </summary>
+    [HttpGet("{id:guid}/report")]
+    public async Task<ActionResult<SessionReportDto>> GetReport(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var report = await _reviewService.GetSessionReportAsync(id, userId, ct);
+        return report == null ? NotFound() : Ok(report);
     }
 
     /// <summary>

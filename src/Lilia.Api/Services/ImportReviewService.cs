@@ -1435,6 +1435,302 @@ public class ImportReviewService : IImportReviewService
     // BlockService.BatchConvertAsync — one tiny type projection for the
     // heuristic, one UPDATE that reads current_content / original_content
     // via coalesce in SQL (never transits .NET memory), one bulk DELETE.
+    public async Task<SessionTreeDto?> GetSessionTreeAsync(Guid sessionId, string userId, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return null;
+        if (GetUserRole(session, userId) == null) return null;
+
+        // Pull every block in order. We need the JSONB content to extract
+        // heading level + preview text, but we read only the shape needed
+        // (projected, no entity tracking) to keep this cheap.
+        var rows = await _context.ImportBlockReviews
+            .Where(br => br.SessionId == sessionId)
+            .OrderBy(br => br.SortOrder)
+            .Select(br => new
+            {
+                br.BlockId,
+                Type = br.CurrentType ?? br.OriginalType,
+                Content = br.CurrentContent ?? br.OriginalContent,
+                br.Status,
+                br.Depth,
+            })
+            .ToListAsync(ct);
+
+        // Build the outline tree: headings own the blocks that follow
+        // them at deeper levels; non-heading leaves attach to the nearest
+        // enclosing heading.
+        var roots = new List<SessionTreeNodeDto>();
+        var stack = new Stack<(SessionTreeNodeDto Node, int Level, List<SessionTreeNodeDto> Children)>();
+
+        foreach (var r in rows)
+        {
+            var headingLevel = ReadHeadingLevel(r.Content);
+            var preview = ReadPreviewText(r.Content);
+            var node = new SessionTreeNodeDto(
+                BlockId: r.BlockId,
+                Type: r.Type,
+                Text: preview,
+                HeadingLevel: headingLevel,
+                Depth: r.Depth,
+                Status: r.Status,
+                ChildBlockCount: 1,
+                Children: new List<SessionTreeNodeDto>());
+
+            if (headingLevel.HasValue)
+            {
+                while (stack.Count > 0 && stack.Peek().Level >= headingLevel.Value)
+                    stack.Pop();
+
+                if (stack.Count == 0) roots.Add(node);
+                else stack.Peek().Children.Add(node);
+
+                stack.Push((node, headingLevel.Value, node.Children));
+            }
+            else
+            {
+                if (stack.Count == 0) roots.Add(node);
+                else stack.Peek().Children.Add(node);
+            }
+        }
+
+        // Post-order walk to compute descendant counts.
+        int CountDescendants(SessionTreeNodeDto n)
+        {
+            var total = 1;
+            foreach (var c in n.Children) total += CountDescendants(c);
+            return total;
+        }
+        var normalised = roots.Select(r => r with { ChildBlockCount = CountDescendants(r) }).ToList();
+
+        return new SessionTreeDto(sessionId, rows.Count, normalised);
+    }
+
+    // Extract a preview string from the block's JSONB content — first
+    // populated string field among the common keys. Truncates to 80
+    // chars for the tree label.
+    private static string? ReadPreviewText(JsonDocument? content)
+    {
+        if (content == null) return null;
+        var root = content.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        foreach (var key in new[] { "text", "title", "caption", "latex", "code", "name" })
+        {
+            if (root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                var s = (v.GetString() ?? string.Empty).Trim();
+                if (s.Length == 0) continue;
+                return s.Length > 80 ? s[..80] + "…" : s;
+            }
+        }
+        if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0)
+        {
+            return "(list of " + items.GetArrayLength() + ")";
+        }
+        return null;
+    }
+
+    private static int? ReadHeadingLevel(JsonDocument? content)
+    {
+        if (content == null) return null;
+        var root = content.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        if (root.TryGetProperty("level", out var lvl) && lvl.TryGetInt32(out var n)) return n;
+        return null;
+    }
+
+    public async Task<TabStatsDto?> GetTabStatsAsync(Guid sessionId, string userId, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return null;
+        if (GetUserRole(session, userId) == null) return null;
+
+        // Bucket all blocks by aspect once — avoids eight round-trips.
+        var buckets = await _context.ImportBlockReviews
+            .Where(br => br.SessionId == sessionId)
+            .Select(br => new
+            {
+                Type = br.CurrentType ?? br.OriginalType,
+                br.Status,
+            })
+            .ToListAsync(ct);
+
+        var diagCount = await _context.ImportDiagnostics.CountAsync(d => d.SessionId == sessionId && !d.Dismissed, ct);
+        var diagTotal = await _context.ImportDiagnostics.CountAsync(d => d.SessionId == sessionId, ct);
+
+        var tabProgress = session.TabProgress?.RootElement;
+        string ProgressFor(string tab, int pending, int total)
+        {
+            if (tabProgress?.ValueKind == JsonValueKind.Object
+                && tabProgress.Value.TryGetProperty(tab, out var raw)
+                && raw.ValueKind == JsonValueKind.String)
+            {
+                var stored = raw.GetString();
+                if (stored == "done") return "done";
+                if (stored == "in_progress") return "in_progress";
+            }
+            if (total == 0) return "unvisited";
+            return pending == 0 ? "done" : "unvisited";
+        }
+
+        TabStatEntryDto MakeEntry(string tab, Func<(string Type, string Status), bool> filter)
+        {
+            var rows = buckets.Where(filter).ToList();
+            var pending = rows.Count(r => r.Status == "pending");
+            var done = rows.Count(r => r.Status != "pending");
+            return new TabStatEntryDto(pending, done, rows.Count, ProgressFor(tab, pending, rows.Count));
+        }
+
+        var structureTypes = new[] { "heading", "tableOfContents" };
+        var contentTypes = new[] { "paragraph", "blockquote", "list", "abstract", "code" };
+        var mediaTypes = new[] { "figure", "image" };
+        var mathTypes = new[] { "equation", "theorem" };
+        var citationTypes = new[] { "bibliography" };
+
+        return new TabStatsDto(
+            SessionId: sessionId,
+            Structure: MakeEntry("structure", r => structureTypes.Contains(r.Type)),
+            Content: MakeEntry("content", r => contentTypes.Contains(r.Type)),
+            Tables: MakeEntry("tables", r => r.Type == "table"),
+            Media: MakeEntry("media", r => mediaTypes.Contains(r.Type)),
+            Math: MakeEntry("math", r => mathTypes.Contains(r.Type)),
+            Citations: MakeEntry("citations", r => citationTypes.Contains(r.Type)),
+            Coverage: new TabStatEntryDto(
+                Pending: 0, Done: 0, Total: 0,
+                ProgressState: ProgressFor("coverage", 0, 0)),
+            Diagnostics: new TabStatEntryDto(diagCount, diagTotal - diagCount, diagTotal, ProgressFor("diagnostics", diagCount, diagTotal)),
+            LastFocusedTab: session.LastFocusedTab);
+    }
+
+    public async Task<SessionReportDto?> GetSessionReportAsync(Guid sessionId, string userId, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return null;
+        if (GetUserRole(session, userId) == null) return null;
+
+        // One grouped query for block counts by status.
+        var byStatus = await _context.ImportBlockReviews
+            .Where(br => br.SessionId == sessionId)
+            .GroupBy(br => br.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        int Cnt(string s) => byStatus.FirstOrDefault(x => x.Status == s)?.Count ?? 0;
+        var blocks = new ReportCountsDto(
+            Total: byStatus.Sum(x => x.Count),
+            Approved: Cnt("approved"),
+            Rejected: Cnt("rejected"),
+            Pending: Cnt("pending"),
+            Edited: Cnt("edited"));
+
+        var diagBySeverity = await _context.ImportDiagnostics
+            .Where(d => d.SessionId == sessionId)
+            .GroupBy(d => d.Severity)
+            .Select(g => new { Severity = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        int Sev(string s) => diagBySeverity.FirstOrDefault(x => x.Severity == s)?.Count ?? 0;
+        var diagnostics = new ReportCountsDto(
+            Total: diagBySeverity.Sum(x => x.Count),
+            Approved: 0,
+            Rejected: 0,
+            Pending: Sev("error") + Sev("warning"),
+            Edited: Sev("info"));
+
+        var topUnsupported = await _context.LatexTokenUsages
+            .Where(u => u.SessionId == sessionId)
+            .Join(_context.LatexTokens.Where(t => t.CoverageLevel == "unsupported" || t.CoverageLevel == "none"),
+                u => u.TokenId,
+                t => t.Id,
+                (u, t) => new { t.Name, t.Kind, t.PackageSlug, u.Count, t.CoverageLevel })
+            .OrderByDescending(x => x.Count)
+            .Take(10)
+            .ToListAsync(ct);
+
+        var totalUsage = await _context.LatexTokenUsages
+            .Where(u => u.SessionId == sessionId)
+            .SumAsync(u => (int?)u.Count, ct) ?? 0;
+        var coveredUsage = await _context.LatexTokenUsages
+            .Where(u => u.SessionId == sessionId)
+            .Join(_context.LatexTokens.Where(t => t.CoverageLevel == "full" || t.CoverageLevel == "partial" || t.CoverageLevel == "shimmed"),
+                u => u.TokenId,
+                t => t.Id,
+                (u, _) => u.Count)
+            .SumAsync(c => (int?)c, ct) ?? 0;
+        double? coveragePercent = totalUsage == 0 ? null : Math.Round(100.0 * coveredUsage / totalUsage, 1);
+
+        var activityCount = await _context.ImportReviewActivities.CountAsync(a => a.SessionId == sessionId, ct);
+
+        DateTime? finalizedAt = null;
+        double? duration = null;
+        if (session.Status == "imported" || session.Status == "cancelled")
+        {
+            finalizedAt = session.UpdatedAt;
+            duration = Math.Round((session.UpdatedAt - session.CreatedAt).TotalMinutes, 1);
+        }
+
+        return new SessionReportDto(
+            SessionId: sessionId,
+            DocumentTitle: session.DocumentTitle,
+            Status: session.Status,
+            SourceFormat: session.SourceFormat,
+            CreatedAt: session.CreatedAt,
+            FinalizedAt: finalizedAt,
+            DurationMinutes: duration,
+            ProducedDocumentId: session.DocumentId,
+            Blocks: blocks,
+            Diagnostics: diagnostics,
+            QualityScore: session.QualityScore,
+            CoveragePercent: coveragePercent,
+            TopUnsupported: topUnsupported.Select(t => new ReportTokenDto(t.Name, t.Kind, t.PackageSlug, t.Count, t.CoverageLevel)).ToList(),
+            ActivityEventCount: activityCount);
+    }
+
+    public async Task<List<ReviewSessionSummaryDto>> ListSessionsAsync(string userId, string scope = "active", string? format = null, DateTime? from = null, DateTime? to = null, Guid? documentId = null, CancellationToken ct = default)
+    {
+        var q = _context.ImportReviewSessions.Where(s => s.OwnerId == userId);
+
+        q = scope switch
+        {
+            "history" => q.Where(s => s.Status == "imported" || s.Status == "cancelled"),
+            "all" => q,
+            _ => q.Where(s => s.Status != "imported" && s.Status != "cancelled"),
+        };
+
+        if (!string.IsNullOrWhiteSpace(format)) q = q.Where(s => s.SourceFormat == format);
+        if (from.HasValue) q = q.Where(s => s.CreatedAt >= from.Value);
+        if (to.HasValue) q = q.Where(s => s.CreatedAt <= to.Value);
+        if (documentId.HasValue) q = q.Where(s => s.DocumentId == documentId);
+
+        var rows = await q
+            .OrderByDescending(s => s.UpdatedAt)
+            .Select(s => new
+            {
+                s.Id,
+                s.DocumentTitle,
+                s.Status,
+                s.CreatedAt,
+                s.UpdatedAt,
+                s.ExpiresAt,
+                TotalBlocks = s.BlockReviews.Count(),
+                ApprovedBlocks = s.BlockReviews.Count(br => br.Status == "approved" || br.Status == "edited"),
+                RejectedBlocks = s.BlockReviews.Count(br => br.Status == "rejected"),
+                PendingBlocks = s.BlockReviews.Count(br => br.Status == "pending"),
+            })
+            .ToListAsync(ct);
+
+        return rows.Select(r => new ReviewSessionSummaryDto(
+            r.Id, r.DocumentTitle, r.Status,
+            r.TotalBlocks, r.ApprovedBlocks, r.RejectedBlocks, r.PendingBlocks,
+            r.CreatedAt, r.UpdatedAt, r.ExpiresAt
+        )).ToList();
+    }
+
     public async Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default)
     {
         var session = await _context.ImportReviewSessions

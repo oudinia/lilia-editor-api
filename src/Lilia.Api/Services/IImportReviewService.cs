@@ -46,6 +46,33 @@ public interface IImportReviewService
     /// </summary>
     Task<bool> SetTabProgressAsync(Guid sessionId, string userId, SetTabProgressDto dto, CancellationToken ct = default);
 
+    /// <summary>
+    /// Server-computed hierarchy. Headings cascade children via heading
+    /// level; blocks between/after headings become siblings. Used by
+    /// the redesigned TreePane and available to CLI consumers.
+    /// </summary>
+    Task<SessionTreeDto?> GetSessionTreeAsync(Guid sessionId, string userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Per-tab counters + merged progress state. Combines derived counts
+    /// (how many tables still pending?) with user-acknowledged
+    /// tab_progress from the session row.
+    /// </summary>
+    Task<TabStatsDto?> GetTabStatsAsync(Guid sessionId, string userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// End-of-review snapshot — drives the History list's per-session
+    /// report page. Content-negotiation friendly (JSON/CSV/Markdown
+    /// shaping is handled at the controller layer).
+    /// </summary>
+    Task<SessionReportDto?> GetSessionReportAsync(Guid sessionId, string userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// History-friendly session list with filters. scope = active
+    /// (non-finalized), history (finalized+cancelled), or all.
+    /// </summary>
+    Task<List<ReviewSessionSummaryDto>> ListSessionsAsync(string userId, string scope = "active", string? format = null, DateTime? from = null, DateTime? to = null, Guid? documentId = null, CancellationToken ct = default);
+
     // Collaborators
     Task<CollaboratorInfoDto?> AddCollaboratorAsync(Guid sessionId, string userId, AddReviewCollaboratorDto dto);
     Task<bool> RemoveCollaboratorAsync(Guid sessionId, string targetUserId, string userId);
