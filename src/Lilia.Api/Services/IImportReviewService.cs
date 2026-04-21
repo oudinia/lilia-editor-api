@@ -73,6 +73,14 @@ public interface IImportReviewService
     /// </summary>
     Task<List<ReviewSessionSummaryDto>> ListSessionsAsync(string userId, string scope = "active", string? format = null, DateTime? from = null, DateTime? to = null, Guid? documentId = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Aspect-filtered block list. aspect ∈ { structure | content |
+    /// tables | media | math | citations | all }. Returns the full
+    /// content JSONB so the UI / CLI can render the panel without a
+    /// second round-trip per block.
+    /// </summary>
+    Task<List<BlockReviewDto>> ListBlocksByAspectAsync(Guid sessionId, string userId, string aspect, CancellationToken ct = default);
+
     // Collaborators
     Task<CollaboratorInfoDto?> AddCollaboratorAsync(Guid sessionId, string userId, AddReviewCollaboratorDto dto);
     Task<bool> RemoveCollaboratorAsync(Guid sessionId, string targetUserId, string userId);

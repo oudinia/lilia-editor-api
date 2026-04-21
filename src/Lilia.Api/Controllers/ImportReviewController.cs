@@ -446,6 +446,24 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
+    /// Aspect-filtered blocks — each aspect tab fetches the blocks it
+    /// renders via this endpoint instead of pulling the whole session
+    /// and filtering client-side. Also lets a CLI consumer do
+    /// `lilia review {id} show --tab=tables`.
+    /// </summary>
+    [HttpGet("{id:guid}/blocks")]
+    public async Task<ActionResult<List<BlockReviewDto>>> GetBlocksByAspect(
+        Guid id,
+        [FromQuery] string aspect = "all",
+        CancellationToken ct = default)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var blocks = await _reviewService.ListBlocksByAspectAsync(id, userId, aspect, ct);
+        return Ok(blocks);
+    }
+
+    /// <summary>
     /// Per-tab counters + progress state. Drives the progress strip
     /// in the redesigned review.
     /// </summary>

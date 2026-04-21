@@ -1736,6 +1736,44 @@ public class ImportReviewService : IImportReviewService
         )).ToList();
     }
 
+    public async Task<List<BlockReviewDto>> ListBlocksByAspectAsync(Guid sessionId, string userId, string aspect, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return new List<BlockReviewDto>();
+        if (GetUserRole(session, userId) == null) return new List<BlockReviewDto>();
+
+        var typeSet = aspect switch
+        {
+            "structure" => new[] { "heading", "tableOfContents" },
+            "content"   => new[] { "paragraph", "blockquote", "list", "abstract", "code" },
+            "tables"    => new[] { "table" },
+            "media"     => new[] { "figure", "image" },
+            "math"      => new[] { "equation", "theorem" },
+            "citations" => new[] { "bibliography" },
+            _           => Array.Empty<string>(),
+        };
+
+        var query = _context.ImportBlockReviews.Where(br => br.SessionId == sessionId);
+        if (typeSet.Length > 0)
+        {
+            query = query.Where(br => typeSet.Contains(br.CurrentType ?? br.OriginalType));
+        }
+
+        var reviews = await query
+            .OrderBy(br => br.SortOrder)
+            .Include(br => br.Reviewer)
+            .ToListAsync(ct);
+
+        var commentCounts = new Dictionary<string, (int Total, int Unresolved)>();
+        return reviews.Select(br =>
+        {
+            commentCounts.TryGetValue(br.BlockId, out var counts);
+            return MapBlockReviewToDto(br, counts.Total, counts.Unresolved);
+        }).ToList();
+    }
+
     public async Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default)
     {
         var session = await _context.ImportReviewSessions
