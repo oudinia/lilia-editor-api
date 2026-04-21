@@ -182,6 +182,12 @@ public class LatexParser : ILatexParser
         // fontspec/unicode-math loads that would otherwise abort compilation.
         content = StripXeLuaConditionals(content);
 
+        // Batch A coverage — normalise well-known environment variants to
+        // their kernel equivalents so the rest of the parser doesn't need
+        // special cases for each. Cheap regex rewrites; the catalog rows
+        // for these tokens get upgraded from partial/shimmed → full.
+        content = NormaliseCoverageEnvironments(content);
+
         var document = new ImportDocument
         {
             SourcePath = sourcePath,
@@ -1195,6 +1201,54 @@ public class LatexParser : ILatexParser
         }
 
         return spans;
+    }
+
+    /// <summary>
+    /// Pre-parse normalisation for Batch A coverage work. Rewrites well-
+    /// known environment variants into their kernel equivalents so the
+    /// main parser can handle them as standard environments. Each
+    /// rewrite targets a catalog token whose coverage_level moves from
+    /// partial/shimmed to full as a result.
+    ///
+    /// Current rewrites:
+    ///   tabularx  → tabular  (column spec 'X' rewritten to 'l')
+    ///   rSection  → section-like block (\begin{rSection}{Title}...
+    ///                → \section*{Title} + body)
+    /// </summary>
+    private static string NormaliseCoverageEnvironments(string content)
+    {
+        // tabularx — swap `\begin{tabularx}{<width>}{<colspec>}...\end{tabularx}`
+        // to `\begin{tabular}{<cleaned-colspec>}...\end{tabular}`. `X`
+        // columns are variable-width in tabularx; we degrade them to `l`
+        // since the web view doesn't flex-size columns. Width specifier is
+        // dropped (tabular doesn't take it).
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\begin\{tabularx\}\s*\{[^}]*\}\s*\{([^}]*)\}",
+            m => $"\\begin{{tabular}}{{{m.Groups[1].Value.Replace('X', 'l')}}}",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\end\{tabularx\}",
+            "\\end{tabular}");
+
+        // rSection (resume class) — rewrite `\begin{rSection}{Title}body`
+        // into `\section*{Title} body`. `\end{rSection}` becomes a marker
+        // we can drop. Handles nested scopes because the section boundary
+        // follows LaTeX's usual rules once rewritten.
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\begin\{rSection\}\s*\{([^}]*)\}",
+            m => $"\\section*{{{m.Groups[1].Value}}}",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\\end\{rSection\}",
+            string.Empty);
+
+        return content;
     }
 
     /// <summary>
