@@ -21,6 +21,20 @@ public class BulkInsertHelper
         _context = context;
     }
 
+    // COPY must run on its own connection — sharing the DbContext's managed
+    // connection caused "Connection is busy" in Sentry (LILIA-API-Q, 234 hits
+    // in 48h) because EF would pipeline a subsequent query against the same
+    // connection while the COPY writer was still finalising. A fresh pooled
+    // connection is cheap (DO Managed PG sits behind pgBouncer) and keeps
+    // the staging writer isolated from EF's command pipeline.
+    private NpgsqlConnection OpenDedicatedConnection()
+    {
+        var connStr = _context.Database.GetConnectionString()
+            ?? throw new InvalidOperationException("No connection string configured for LiliaDbContext");
+        var c = new NpgsqlConnection(connStr);
+        return c;
+    }
+
     /// <summary>
     /// COPY-stream ImportBlockReview rows. Caller supplies an IEnumerable so the
     /// parser can yield rows lazily instead of materialising a List.
@@ -29,9 +43,8 @@ public class BulkInsertHelper
         IEnumerable<ImportBlockReview> rows,
         CancellationToken ct = default)
     {
-        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
+        await using var conn = OpenDedicatedConnection();
+        await conn.OpenAsync(ct);
 
         const string copy = @"COPY import_block_reviews
             (id, session_id, block_index, block_id, status,
@@ -72,9 +85,8 @@ public class BulkInsertHelper
         IEnumerable<ImportDiagnostic> rows,
         CancellationToken ct = default)
     {
-        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
+        await using var conn = OpenDedicatedConnection();
+        await conn.OpenAsync(ct);
 
         const string copy = @"COPY import_diagnostics
             (id, session_id, block_id, element_path,
@@ -148,9 +160,8 @@ public class BulkInsertHelper
         IEnumerable<ImportStructuralFinding> rows,
         CancellationToken ct = default)
     {
-        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
+        await using var conn = OpenDedicatedConnection();
+        await conn.OpenAsync(ct);
 
         const string copy = @"COPY import_structural_findings
             (id, session_id, document_id, block_id, kind, severity,
@@ -195,9 +206,8 @@ public class BulkInsertHelper
         IEnumerable<BlockValidation> rows,
         CancellationToken ct = default)
     {
-        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
+        await using var conn = OpenDedicatedConnection();
+        await conn.OpenAsync(ct);
 
         const string copy = @"COPY block_validations
             (id, block_id, document_id, content_hash, status,
