@@ -82,8 +82,11 @@ public class PublicCoverageController : ControllerBase
     /// Searchable + filterable package list. No pagination yet — catalog
     /// is &lt;100 packages at launch.
     /// </summary>
+    // VaryByQueryKeys requires AddResponseCaching + UseResponseCaching, which
+    // we don't register — the public CDN keys on URL + query automatically,
+    // so the attribute would only buy in-process caching we don't want.
     [HttpGet("packages")]
-    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any, VaryByQueryKeys = new[] { "category", "coverageLevel", "q" })]
+    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any)]
     public async Task<ActionResult<List<PublicPackageDto>>> Packages(
         [FromQuery] string? category = null,
         [FromQuery] string? coverageLevel = null,
@@ -113,7 +116,7 @@ public class PublicCoverageController : ControllerBase
     /// Drives the detail panel on the public coverage page.
     /// </summary>
     [HttpGet("packages/{slug}")]
-    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any, VaryByQueryKeys = new[] { "slug" })]
+    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any)]
     public async Task<ActionResult<PublicPackageDetailDto>> PackageDetail(string slug, CancellationToken ct)
     {
         var pkg = await _db.LatexPackages.AsNoTracking()
