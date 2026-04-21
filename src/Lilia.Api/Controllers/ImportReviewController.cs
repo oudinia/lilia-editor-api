@@ -14,15 +14,18 @@ public class ImportReviewController : ControllerBase
 {
     private readonly IImportReviewService _reviewService;
     private readonly IHubContext<ImportReviewHub> _hubContext;
+    private readonly ILatexCatalogService _catalog;
     private readonly ILogger<ImportReviewController> _logger;
 
     public ImportReviewController(
         IImportReviewService reviewService,
         IHubContext<ImportReviewHub> hubContext,
+        ILatexCatalogService catalog,
         ILogger<ImportReviewController> logger)
     {
         _reviewService = reviewService;
         _hubContext = hubContext;
+        _catalog = catalog;
         _logger = logger;
     }
 
@@ -363,6 +366,27 @@ public class ImportReviewController : ControllerBase
 
         var diagnostics = await _reviewService.GetDiagnosticsAsync(id, userId);
         return Ok(diagnostics);
+    }
+
+    /// <summary>
+    /// LaTeX coverage breakdown for this session — what tokens the
+    /// document used, how we handle each, and which ones are
+    /// unsupported. Powers the Coverage tab in the review UI.
+    /// </summary>
+    [HttpGet("{id:guid}/coverage")]
+    public async Task<ActionResult<SessionCoverage>> GetCoverage(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        // Existence + ownership check piggy-backs on GetSessionAsync —
+        // returns null when the user can't see the session, which keeps
+        // catalog usage private per-session.
+        var session = await _reviewService.GetSessionAsync(id, userId);
+        if (session == null) return NotFound();
+
+        var coverage = await _catalog.GetSessionCoverageAsync(id, ct);
+        return Ok(coverage);
     }
 
     /// <summary>

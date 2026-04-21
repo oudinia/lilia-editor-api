@@ -207,4 +207,62 @@ ON CONFLICT (token_id, session_id) DO UPDATE
             UnsupportedCount: Get("unsupported"),
             TopUnsupported: topUnsupported.Select(x => (x.Name, x.Kind, x.PackageSlug, x.Count)).ToList());
     }
+
+    public async Task<SessionCoverage> GetSessionCoverageAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
+
+        // One join — usage rows + token metadata + optional package
+        // display name, sorted so the UI gets the sharpest stuff first.
+        var rows = await db.LatexTokenUsages
+            .Where(u => u.SessionId == sessionId)
+            .Join(db.LatexTokens,
+                  u => u.TokenId,
+                  t => t.Id,
+                  (u, t) => new { u.Count, t.Name, t.Kind, t.PackageSlug, t.CoverageLevel, t.MapsToBlockType, t.SemanticCategory, t.Notes })
+            .GroupJoin(db.LatexPackages,
+                       x => x.PackageSlug,
+                       p => p.Slug,
+                       (x, pkgs) => new { x, pkg = pkgs.FirstOrDefault() })
+            .Select(r => new SessionCoverageRow(
+                r.x.Name,
+                r.x.Kind,
+                r.x.PackageSlug,
+                r.pkg != null ? r.pkg.DisplayName : null,
+                r.x.CoverageLevel,
+                r.x.MapsToBlockType,
+                r.x.SemanticCategory,
+                r.x.Count,
+                r.x.Notes))
+            .ToListAsync(ct);
+
+        // Sort in-memory — order: unsupported > none > partial > shimmed
+        // > full, then by count desc. Worst stuff first for the user.
+        var rank = new Dictionary<string, int>
+        {
+            ["unsupported"] = 0,
+            ["none"] = 1,
+            ["partial"] = 2,
+            ["shimmed"] = 3,
+            ["full"] = 4,
+        };
+        var ordered = rows
+            .OrderBy(r => rank.TryGetValue(r.CoverageLevel, out var v) ? v : 99)
+            .ThenByDescending(r => r.Count)
+            .ThenBy(r => r.Name)
+            .ToList();
+
+        int By(string level) => rows.Where(r => r.CoverageLevel == level).Sum(r => r.Count);
+
+        return new SessionCoverage(
+            TotalTokens: rows.Sum(r => r.Count),
+            DistinctTokens: rows.Count,
+            FullCount: By("full"),
+            PartialCount: By("partial"),
+            ShimmedCount: By("shimmed"),
+            NoneCount: By("none"),
+            UnsupportedCount: By("unsupported"),
+            Tokens: ordered);
+    }
 }

@@ -51,6 +51,13 @@ public interface ILatexCatalogService
     /// release smoke test. Returns counts grouped by coverage_level.
     /// </summary>
     Task<CatalogCoverageReport> GetCoverageReportAsync(TimeSpan window, CancellationToken ct = default);
+
+    /// <summary>
+    /// Per-session coverage breakdown — drives the Coverage tab on the
+    /// import review page. Users see what their document contains, how
+    /// we handle each token, and which pieces are unsupported.
+    /// </summary>
+    Task<SessionCoverage> GetSessionCoverageAsync(Guid sessionId, CancellationToken ct = default);
 }
 
 public sealed record CatalogTokenEntry(
@@ -92,3 +99,29 @@ public sealed record CatalogCoverageReport(
     int NoneCount,
     int UnsupportedCount,
     IReadOnlyList<(string Name, string Kind, string? Package, int Count)> TopUnsupported);
+
+/// <summary>
+/// Per-session coverage projection — powers the review UI's Coverage tab.
+/// Totals roll up across the session; Tokens lists every distinct token
+/// with its count so the UI can render a sortable table.
+/// </summary>
+public sealed record SessionCoverage(
+    int TotalTokens,
+    int DistinctTokens,
+    int FullCount,
+    int PartialCount,
+    int ShimmedCount,
+    int NoneCount,
+    int UnsupportedCount,
+    IReadOnlyList<SessionCoverageRow> Tokens);
+
+public sealed record SessionCoverageRow(
+    string Name,
+    string Kind,
+    string? PackageSlug,
+    string? PackageDisplay,
+    string CoverageLevel,
+    string? MapsToBlockType,
+    string? SemanticCategory,
+    int Count,
+    string? Notes);
