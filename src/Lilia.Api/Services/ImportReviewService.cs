@@ -1553,7 +1553,8 @@ public class ImportReviewService : IImportReviewService
         if (GetUserRole(session, userId) == null) return null;
 
         // Bucket all blocks by aspect once — avoids eight round-trips.
-        var buckets = await _context.ImportBlockReviews
+        // Named tuple (not anonymous) so the local MakeEntry Func binds.
+        var projected = await _context.ImportBlockReviews
             .Where(br => br.SessionId == sessionId)
             .Select(br => new
             {
@@ -1561,6 +1562,7 @@ public class ImportReviewService : IImportReviewService
                 br.Status,
             })
             .ToListAsync(ct);
+        var buckets = projected.Select(p => (Type: p.Type, Status: p.Status)).ToList();
 
         var diagCount = await _context.ImportDiagnostics.CountAsync(d => d.SessionId == sessionId && !d.Dismissed, ct);
         var diagTotal = await _context.ImportDiagnostics.CountAsync(d => d.SessionId == sessionId, ct);
