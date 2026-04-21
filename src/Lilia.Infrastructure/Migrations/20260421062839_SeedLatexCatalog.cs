@@ -88,7 +88,16 @@ INSERT INTO latex_packages (slug, display_name, category, coverage_level, covera
 ('etoolbox',        'etoolbox',        'utility',      'full',       'Programming helpers — preserved verbatim', 'https://ctan.org/pkg/etoolbox'),
 ('pdfpages',        'pdfpages',        'utility',      'none',       'Included PDF pages preserved for re-export only', 'https://ctan.org/pkg/pdfpages'),
 ('appendix',        'appendix',        'utility',      'partial',    'appendices environment preserved as a section', 'https://ctan.org/pkg/appendix'),
-('calendar',        'calendar',        'utility',      'none',       'Calendar typesetting preserved verbatim', 'https://ctan.org/pkg/calendar')
+('calendar',        'calendar',        'utility',      'none',       'Calendar typesetting preserved verbatim', 'https://ctan.org/pkg/calendar'),
+-- Class-packages: tokens reference these as package_slug so they must exist as packages too.
+-- LaTeX-wise this is legit — e.g. \documentclass{beamer} OR \usepackage{beamer}. Keep the
+-- class rows authoritative for class-specific metadata; duplicate here purely for the FK.
+('beamer',          'beamer',          'presentation', 'shimmed',    'Class-package — frame / block / titlepage tokens attach here', 'https://ctan.org/pkg/beamer'),
+('moderncv',        'moderncv',        'cv',           'shimmed',    'Class-package — CV command family attaches here', 'https://ctan.org/pkg/moderncv'),
+('tufte-book',      'tufte-book',      'layout',       'partial',    'Class-package — marginfigure / fullwidth / twothirdswidth', 'https://ctan.org/pkg/tufte-latex'),
+('resume',          'resume',          'cv',           'shimmed',    'Class-package — rSection lives here', NULL),
+('exam',            'exam',            'utility',      'partial',    'Class-package — question / problem / solution', 'https://ctan.org/pkg/exam'),
+('letter',          'letter',          'layout',       'partial',    'Class-package — letter body environment', NULL)
 ON CONFLICT (slug) DO NOTHING;
 ");
 
