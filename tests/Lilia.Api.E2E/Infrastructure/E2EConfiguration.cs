@@ -12,7 +12,8 @@ public sealed class E2EConfiguration
     public static E2EConfiguration Instance => _instance.Value;
 
     public string ApiBaseUrl { get; init; } = "http://localhost:5001";
-    public string AuthMode { get; init; } = "DevJwt"; // "DevJwt" | "Kinde"
+    public string AuthMode { get; init; } = "DevJwt"; // "DevJwt" | "Kinde" | "StaticToken"
+    public string StaticToken { get; init; } = "";
     public KindeConfig Kinde { get; init; } = new();
     public Dictionary<string, TestUserConfig> TestUsers { get; init; } = new();
 

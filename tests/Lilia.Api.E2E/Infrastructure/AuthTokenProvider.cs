@@ -29,6 +29,7 @@ public static class AuthTokenProvider
             var token = config.AuthMode switch
             {
                 "Kinde" => await GetKindeTokenAsync(config.Kinde),
+                "StaticToken" => GetStaticToken(config.StaticToken),
                 _ => GenerateDevJwt(user),
             };
 
@@ -68,6 +69,22 @@ public static class AuthTokenProvider
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    /// <summary>
+    /// Returns a pre-issued JWT supplied via config (E2E__StaticToken).
+    /// Useful when you have a user token from a browser session and want
+    /// to run read-heavy tests without provisioning M2M credentials.
+    /// The same token is used for every test user — so multi-user
+    /// authorization tests will not behave correctly in this mode.
+    /// </summary>
+    private static string GetStaticToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            throw new InvalidOperationException(
+                "StaticToken mode selected but E2E__StaticToken is empty. " +
+                "Set it to a valid bearer JWT.");
+        return token;
     }
 
     /// <summary>
