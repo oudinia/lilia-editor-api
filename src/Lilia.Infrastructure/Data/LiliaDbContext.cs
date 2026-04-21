@@ -88,9 +88,109 @@ public class LiliaDbContext : DbContext
     public DbSet<UserPlan> UserPlans => Set<UserPlan>();
     public DbSet<AiCreditLedger> AiCreditLedger => Set<AiCreditLedger>();
 
+    // LaTeX catalog (v1, Phase 1). The parser consults these tables at
+    // import time to decide how to handle each token; unknown tokens
+    // auto-insert with coverage_level='unsupported' so we accumulate
+    // observability on what users throw at us. Seeded via migration.
+    public DbSet<LatexPackage> LatexPackages => Set<LatexPackage>();
+    public DbSet<LatexToken> LatexTokens => Set<LatexToken>();
+    public DbSet<LatexDocumentClass> LatexDocumentClasses => Set<LatexDocumentClass>();
+    public DbSet<LatexTokenUsage> LatexTokenUsages => Set<LatexTokenUsage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // --- LaTeX catalog ---
+        modelBuilder.Entity<LatexPackage>(e =>
+        {
+            e.ToTable("latex_packages", t =>
+            {
+                t.HasCheckConstraint("ck_latex_package_coverage", "coverage_level IN ('full','partial','shimmed','none','unsupported')");
+                t.HasCheckConstraint("ck_latex_package_category", "category IN ('math','graphics','bibliography','layout','language','font','cv','presentation','code','table','reference','utility')");
+            });
+            e.HasKey(x => x.Slug);
+            e.Property(x => x.Slug).HasColumnName("slug").HasMaxLength(80);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(200).IsRequired();
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(40).IsRequired();
+            e.Property(x => x.CoverageLevel).HasColumnName("coverage_level").HasMaxLength(20).IsRequired();
+            e.Property(x => x.CoverageNotes).HasColumnName("coverage_notes");
+            e.Property(x => x.CtanUrl).HasColumnName("ctan_url").HasMaxLength(500);
+            e.Property(x => x.Version).HasColumnName("version").HasMaxLength(40);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => x.Category).HasDatabaseName("ix_latex_package_category");
+            e.HasIndex(x => x.CoverageLevel).HasDatabaseName("ix_latex_package_coverage");
+        });
+
+        modelBuilder.Entity<LatexToken>(e =>
+        {
+            e.ToTable("latex_tokens", t =>
+            {
+                t.HasCheckConstraint("ck_latex_token_kind", "kind IN ('command','environment','declaration','length','counter')");
+                t.HasCheckConstraint("ck_latex_token_coverage", "coverage_level IN ('full','partial','shimmed','none','unsupported')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(120).IsRequired();
+            e.Property(x => x.Kind).HasColumnName("kind").HasMaxLength(20).IsRequired();
+            e.Property(x => x.PackageSlug).HasColumnName("package_slug").HasMaxLength(80);
+            e.Property(x => x.Arity).HasColumnName("arity");
+            e.Property(x => x.OptionalArity).HasColumnName("optional_arity");
+            e.Property(x => x.ExpectsBody).HasColumnName("expects_body").HasDefaultValue(false);
+            e.Property(x => x.SemanticCategory).HasColumnName("semantic_category").HasMaxLength(40);
+            e.Property(x => x.MapsToBlockType).HasColumnName("maps_to_block_type").HasMaxLength(40);
+            e.Property(x => x.CoverageLevel).HasColumnName("coverage_level").HasMaxLength(20).IsRequired();
+            e.Property(x => x.Notes).HasColumnName("notes");
+            e.Property(x => x.AliasOf).HasColumnName("alias_of");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+            e.HasOne(x => x.Package).WithMany(p => p.Tokens).HasForeignKey(x => x.PackageSlug).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Alias).WithMany().HasForeignKey(x => x.AliasOf).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => new { x.Name, x.Kind, x.PackageSlug }).IsUnique().HasDatabaseName("ux_latex_token_name_kind_pkg");
+            e.HasIndex(x => x.Name).HasDatabaseName("ix_latex_token_name");
+            e.HasIndex(x => x.CoverageLevel).HasDatabaseName("ix_latex_token_coverage");
+            e.HasIndex(x => x.PackageSlug).HasDatabaseName("ix_latex_token_package").HasFilter("package_slug IS NOT NULL");
+        });
+
+        modelBuilder.Entity<LatexDocumentClass>(e =>
+        {
+            e.ToTable("latex_document_classes", t =>
+            {
+                t.HasCheckConstraint("ck_latex_class_category", "category IN ('cv','article','report','book','presentation','letter','memoir','other')");
+                t.HasCheckConstraint("ck_latex_class_coverage", "coverage_level IN ('full','partial','shimmed','none','unsupported')");
+                t.HasCheckConstraint("ck_latex_class_engine", "default_engine IS NULL OR default_engine IN ('pdflatex','xelatex','lualatex')");
+            });
+            e.HasKey(x => x.Slug);
+            e.Property(x => x.Slug).HasColumnName("slug").HasMaxLength(80);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(200).IsRequired();
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(40).IsRequired();
+            e.Property(x => x.CoverageLevel).HasColumnName("coverage_level").HasMaxLength(20).IsRequired();
+            e.Property(x => x.DefaultEngine).HasColumnName("default_engine").HasMaxLength(20);
+            e.Property(x => x.RequiredPackages).HasColumnName("required_packages").HasColumnType("jsonb");
+            e.Property(x => x.ShimName).HasColumnName("shim_name").HasMaxLength(80);
+            e.Property(x => x.Notes).HasColumnName("notes");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => x.Category).HasDatabaseName("ix_latex_class_category");
+        });
+
+        modelBuilder.Entity<LatexTokenUsage>(e =>
+        {
+            e.ToTable("latex_token_usage");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.TokenId).HasColumnName("token_id");
+            e.Property(x => x.SessionId).HasColumnName("session_id");
+            e.Property(x => x.Count).HasColumnName("count").HasDefaultValue(1);
+            e.Property(x => x.FirstSeenAt).HasColumnName("first_seen_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.LastSeenAt).HasColumnName("last_seen_at").HasDefaultValueSql("NOW()");
+            e.HasOne(x => x.Token).WithMany().HasForeignKey(x => x.TokenId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Session).WithMany().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TokenId, x.SessionId }).IsUnique().HasDatabaseName("ux_latex_token_usage_token_session");
+            e.HasIndex(x => x.SessionId).HasDatabaseName("ix_latex_token_usage_session");
+            e.HasIndex(x => x.LastSeenAt).HasDatabaseName("ix_latex_token_usage_last_seen");
+        });
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(LiliaDbContext).Assembly);
     }
