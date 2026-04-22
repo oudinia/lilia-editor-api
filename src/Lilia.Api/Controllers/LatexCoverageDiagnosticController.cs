@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Lilia.Api.Services;
+using Lilia.Core.Entities;
 using Lilia.Import.Services;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -14,17 +15,20 @@ namespace Lilia.Api.Controllers;
 [ApiController]
 [Route("api/public/latex-coverage/diag")]
 [AllowAnonymous]
-public class LatexCoverageDiagnosticController : ControllerBase
+public partial class LatexCoverageDiagnosticController : ControllerBase
 {
     private readonly ILatexCatalogService _catalog;
     private readonly LiliaDbContext _db;
+    private readonly ILatexImportJobExecutor _executor;
 
     public LatexCoverageDiagnosticController(
         ILatexCatalogService catalog,
-        LiliaDbContext db)
+        LiliaDbContext db,
+        ILatexImportJobExecutor executor)
     {
         _catalog = catalog;
         _db = db;
+        _executor = executor;
     }
 
     [HttpGet("state")]
@@ -156,3 +160,111 @@ public class LatexCoverageDiagnosticController : ControllerBase
 }
 
 public sealed record DiagSelfTestRequest(string RawSource, Guid? SessionId = null);
+
+public sealed record DiagRunImportRequest(string RawSource, string? OwnerId = null, string? Title = null);
+
+// Injected as an extension on the existing controller via a partial class
+// would be cleaner, but the controller is small — keeping it one file.
+public partial class LatexCoverageDiagnosticController
+{
+    // Drives the full production import pipeline end-to-end against a caller-
+    // supplied LaTeX source. Bypasses upload + auth by creating the session +
+    // job directly and awaiting the executor inline. Returns the final DB
+    // state (block / diagnostic / usage counts) so the caller can verify
+    // exactly what the pipeline produced. Intended for catalog-coverage
+    // diagnosis; do not wire into any user-facing flow.
+    [HttpPost("run-import")]
+    public async Task<IActionResult> RunImport(
+        [FromBody] DiagRunImportRequest req,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(req.RawSource))
+            return BadRequest(new { error = "rawSource required" });
+
+        var ownerId = req.OwnerId;
+        if (string.IsNullOrEmpty(ownerId))
+        {
+            ownerId = await _db.Users.OrderBy(u => u.CreatedAt).Select(u => u.Id).FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(ownerId))
+                return BadRequest(new { error = "no user in DB; pass ownerId" });
+        }
+
+        var now = DateTime.UtcNow;
+        var jobId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var title = string.IsNullOrEmpty(req.Title)
+            ? $"[diag] {now:yyyy-MM-dd HH:mm:ss}"
+            : req.Title;
+
+        _db.Jobs.Add(new Job
+        {
+            Id = jobId,
+            TenantId = ownerId,
+            UserId = ownerId,
+            JobType = JobTypes.Import,
+            Status = JobStatus.Pending,
+            Progress = 0,
+            SourceFormat = "latex",
+            TargetFormat = "lilia",
+            SourceFileName = "diag-fixture.tex",
+            InputFileSize = req.RawSource.Length,
+            Direction = "INBOUND",
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+        _db.ImportReviewSessions.Add(new ImportReviewSession
+        {
+            Id = sessionId,
+            JobId = jobId,
+            OwnerId = ownerId,
+            DocumentTitle = title,
+            SourceFormat = "tex",
+            Status = "parsing",
+            RawImportData = req.RawSource,
+            AutoFinalizeEnabled = false,
+            CreatedAt = now,
+            UpdatedAt = now,
+            ExpiresAt = now.AddDays(1),
+        });
+        await _db.SaveChangesAsync(ct);
+
+        var sw = Stopwatch.StartNew();
+        object? runException = null;
+        try
+        {
+            await _executor.RunAsync(jobId, sessionId, ct);
+        }
+        catch (Exception ex)
+        {
+            runException = new
+            {
+                type = ex.GetType().FullName,
+                message = ex.Message,
+                innerType = ex.InnerException?.GetType().FullName,
+                innerMessage = ex.InnerException?.Message,
+                stack = ex.ToString()
+            };
+        }
+        sw.Stop();
+
+        var job = await _db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        var blockCount = await _db.ImportBlockReviews.CountAsync(b => b.SessionId == sessionId, ct);
+        var diagCount = await _db.ImportDiagnostics.CountAsync(d => d.SessionId == sessionId, ct);
+        var usageCount = await _db.LatexTokenUsages.CountAsync(u => u.SessionId == sessionId, ct);
+
+        return Ok(new
+        {
+            sessionId,
+            jobId,
+            ownerId,
+            elapsedMs = sw.ElapsedMilliseconds,
+            jobStatus = job?.Status,
+            jobProgress = job?.Progress,
+            jobError = job?.ErrorMessage,
+            blockCount,
+            diagnosticCount = diagCount,
+            usageCount,
+            runException
+        });
+    }
+}

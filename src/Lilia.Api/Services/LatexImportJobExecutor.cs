@@ -110,9 +110,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             }
             catch (Exception ex)
             {
-                // Error-level so Sentry picks it up. Non-fatal for the import
-                // flow but we want it loud — the previous Warning hid the bug.
-                _logger.LogError(ex, "[LatexImport] Catalog usage record failed for session {Session} — import continuing", sessionId);
+                _logger.LogWarning(ex, "[LatexImport] Catalog usage record failed for session {Session} — import continuing", sessionId);
             }
 
             await MarkJobAsync(jobId, JobStatus.Processing, progress: 80, ct);
