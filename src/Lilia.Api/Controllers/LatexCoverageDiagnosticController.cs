@@ -173,10 +173,15 @@ public partial class LatexCoverageDiagnosticController
     // state (block / diagnostic / usage counts) so the caller can verify
     // exactly what the pipeline produced. Intended for catalog-coverage
     // diagnosis; do not wire into any user-facing flow.
+    //
+    // ?keep=true preserves the session for follow-up inspection. Default is
+    // to delete the session + job (cascades usage / block / diagnostic rows)
+    // after counts are captured, so runs don't pollute owner session lists.
     [HttpPost("run-import")]
     public async Task<IActionResult> RunImport(
         [FromBody] DiagRunImportRequest req,
-        CancellationToken ct)
+        [FromQuery] bool keep = false,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(req.RawSource))
             return BadRequest(new { error = "rawSource required" });
@@ -252,6 +257,17 @@ public partial class LatexCoverageDiagnosticController
         var diagCount = await _db.ImportDiagnostics.CountAsync(d => d.SessionId == sessionId, ct);
         var usageCount = await _db.LatexTokenUsages.CountAsync(u => u.SessionId == sessionId, ct);
 
+        var cleaned = false;
+        if (!keep)
+        {
+            // Cascade from import_review_sessions deletes block reviews,
+            // diagnostics, usage rows, activities, collaborators, comments.
+            // Job row has no cascade — delete it separately.
+            await _db.ImportReviewSessions.Where(s => s.Id == sessionId).ExecuteDeleteAsync(ct);
+            await _db.Jobs.Where(j => j.Id == jobId).ExecuteDeleteAsync(ct);
+            cleaned = true;
+        }
+
         return Ok(new
         {
             sessionId,
@@ -264,7 +280,36 @@ public partial class LatexCoverageDiagnosticController
             blockCount,
             diagnosticCount = diagCount,
             usageCount,
-            runException
+            runException,
+            cleaned
         });
+    }
+
+    // Sweep up any diag sessions left behind (e.g. ?keep=true runs whose caller
+    // forgot to clean up, or historical pollution from earlier diag passes).
+    // Matches on document_title LIKE '[diag]%' which is the title prefix set
+    // by RunImport. Returns counts of each row type removed via cascade.
+    [HttpPost("cleanup")]
+    public async Task<IActionResult> CleanupDiagSessions(CancellationToken ct)
+    {
+        var ids = await _db.ImportReviewSessions
+            .Where(s => EF.Functions.Like(s.DocumentTitle, "[diag]%"))
+            .Select(s => new { s.Id, s.JobId })
+            .ToListAsync(ct);
+
+        if (ids.Count == 0)
+            return Ok(new { sessionsRemoved = 0, jobsRemoved = 0 });
+
+        var sessionIds = ids.Select(x => x.Id).ToArray();
+        var jobIds = ids.Where(x => x.JobId.HasValue).Select(x => x.JobId!.Value).ToArray();
+
+        var sessionsRemoved = await _db.ImportReviewSessions
+            .Where(s => sessionIds.Contains(s.Id))
+            .ExecuteDeleteAsync(ct);
+        var jobsRemoved = await _db.Jobs
+            .Where(j => jobIds.Contains(j.Id))
+            .ExecuteDeleteAsync(ct);
+
+        return Ok(new { sessionsRemoved, jobsRemoved });
     }
 }
