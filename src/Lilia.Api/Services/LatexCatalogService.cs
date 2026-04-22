@@ -154,6 +154,8 @@ RETURNING id;";
         var list = tokens.ToList();
         if (list.Count == 0) return;
 
+        _logger.LogInformation("[LatexCatalog] RecordUsageAsync start session={Session} usages={Count}", sessionId, list.Count);
+
         // One bulk-upsert — build a multi-row INSERT with ON CONFLICT
         // incrementing the count. DB-first: rows never transit .NET.
         using var scope = _scopeFactory.CreateScope();
@@ -173,7 +175,8 @@ ON CONFLICT (token_id, session_id) DO UPDATE
             parameters.Add(new NpgsqlParameter($"t{i}", list[i].TokenId));
             parameters.Add(new NpgsqlParameter($"c{i}", list[i].Count));
         }
-        await db.Database.ExecuteSqlRawAsync(sql, parameters.Cast<object>().ToArray());
+        var rows = await db.Database.ExecuteSqlRawAsync(sql, parameters.Cast<object>().ToArray());
+        _logger.LogInformation("[LatexCatalog] RecordUsageAsync done session={Session} sqlRows={Rows}", sessionId, rows);
     }
 
     public async Task<CatalogCoverageReport> GetCoverageReportAsync(TimeSpan window, CancellationToken ct = default)

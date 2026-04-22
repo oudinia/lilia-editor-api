@@ -110,7 +110,9 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[LatexImport] Catalog usage record failed for session {Session} — import continuing", sessionId);
+                // Error-level so Sentry picks it up. Non-fatal for the import
+                // flow but we want it loud — the previous Warning hid the bug.
+                _logger.LogError(ex, "[LatexImport] Catalog usage record failed for session {Session} — import continuing", sessionId);
             }
 
             await MarkJobAsync(jobId, JobStatus.Processing, progress: 80, ct);
@@ -252,6 +254,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     private async Task RecordCatalogUsageAsync(Guid sessionId, string rawSource, CancellationToken ct)
     {
         var counts = LatexCatalogTokenScanner.Scan(rawSource);
+        _logger.LogInformation("[LatexImport] Scanner found {Distinct} distinct tokens in {Len} bytes for session {Session}",
+            counts.Count, rawSource?.Length ?? 0, sessionId);
         if (counts.Count == 0) return;
 
         var usages = new List<CatalogTokenUsage>(counts.Count);
