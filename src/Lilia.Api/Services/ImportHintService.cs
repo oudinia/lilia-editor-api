@@ -6,8 +6,6 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using NpgsqlTypes;
 
 namespace Lilia.Api.Services;
 
@@ -42,11 +40,13 @@ public interface IImportHintService
 public class ImportHintService : IImportHintService
 {
     private readonly LiliaDbContext _context;
+    private readonly BulkInsertHelper _bulk;
     private readonly ILogger<ImportHintService> _logger;
 
-    public ImportHintService(LiliaDbContext context, ILogger<ImportHintService> logger)
+    public ImportHintService(LiliaDbContext context, BulkInsertHelper bulk, ILogger<ImportHintService> logger)
     {
         _context = context;
+        _bulk = bulk;
         _logger = logger;
     }
 
@@ -210,58 +210,7 @@ public class ImportHintService : IImportHintService
     private async Task BulkInsertAsync(List<ImportStructuralFinding> rows, CancellationToken ct)
     {
         if (rows.Count == 0) return;
-
-        var conn = (NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
-
-        const string copy = @"COPY import_structural_findings
-            (id, session_id, document_id, block_id, kind, severity,
-             title, detail, suggested_action, action_kind, action_payload,
-             status, resolved_by, resolved_at, source, created_at, updated_at)
-            FROM STDIN BINARY";
-
-        await using var writer = await conn.BeginBinaryImportAsync(copy, ct);
-        var now = DateTime.UtcNow;
-        foreach (var f in rows)
-        {
-            await writer.StartRowAsync(ct);
-            await writer.WriteAsync(f.Id == Guid.Empty ? Guid.NewGuid() : f.Id, NpgsqlDbType.Uuid, ct);
-            await WriteNullableGuid(writer, f.SessionId, ct);
-            await WriteNullableGuid(writer, f.DocumentId, ct);
-            await WriteNullableString(writer, f.BlockId, NpgsqlDbType.Varchar, ct);
-            await writer.WriteAsync(f.Kind, NpgsqlDbType.Varchar, ct);
-            await writer.WriteAsync(f.Severity, NpgsqlDbType.Varchar, ct);
-            await writer.WriteAsync(f.Title, NpgsqlDbType.Varchar, ct);
-            await writer.WriteAsync(f.Detail, NpgsqlDbType.Text, ct);
-            await writer.WriteAsync(f.SuggestedAction, NpgsqlDbType.Varchar, ct);
-            await writer.WriteAsync(f.ActionKind, NpgsqlDbType.Varchar, ct);
-            if (f.ActionPayload is null) await writer.WriteNullAsync(ct);
-            else await writer.WriteAsync(f.ActionPayload.RootElement.GetRawText(), NpgsqlDbType.Jsonb, ct);
-            await writer.WriteAsync(f.Status, NpgsqlDbType.Varchar, ct);
-            await WriteNullableString(writer, f.ResolvedBy, NpgsqlDbType.Varchar, ct);
-            await WriteNullableTs(writer, f.ResolvedAt, ct);
-            await writer.WriteAsync(string.IsNullOrEmpty(f.Source) ? "rule" : f.Source, NpgsqlDbType.Varchar, ct);
-            await writer.WriteAsync(f.CreatedAt == default ? now : f.CreatedAt, NpgsqlDbType.TimestampTz, ct);
-            await writer.WriteAsync(now, NpgsqlDbType.TimestampTz, ct);
-        }
-        await writer.CompleteAsync(ct);
-    }
-
-    private static async Task WriteNullableGuid(NpgsqlBinaryImporter w, Guid? v, CancellationToken ct)
-    {
-        if (v is null) await w.WriteNullAsync(ct);
-        else await w.WriteAsync(v.Value, NpgsqlDbType.Uuid, ct);
-    }
-    private static async Task WriteNullableString(NpgsqlBinaryImporter w, string? v, NpgsqlDbType t, CancellationToken ct)
-    {
-        if (v is null) await w.WriteNullAsync(ct);
-        else await w.WriteAsync(v, t, ct);
-    }
-    private static async Task WriteNullableTs(NpgsqlBinaryImporter w, DateTime? v, CancellationToken ct)
-    {
-        if (v is null) await w.WriteNullAsync(ct);
-        else await w.WriteAsync(v.Value, NpgsqlDbType.TimestampTz, ct);
+        await _bulk.BulkInsertStructuralFindingsAsync(rows, ct);
     }
 
     private async Task<List<ImportStructuralFindingDto>> ProjectFindings(IQueryable<ImportStructuralFinding> q, CancellationToken ct)

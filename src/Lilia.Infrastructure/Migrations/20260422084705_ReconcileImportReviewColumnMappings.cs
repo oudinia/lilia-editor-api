@@ -5,21 +5,21 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Lilia.Infrastructure.Migrations
 {
     /// <summary>
-    /// An earlier revision of 20260421105112_AddImportReviewRedesignColumns
-    /// landed in prod with PascalCase column names (TabProgress,
-    /// SourceFormat, LastFocusedTab, SourceFile, SourceRange) before we
-    /// rewrote the file to use snake_case. Because __EFMigrationsHistory
-    /// records the migration as applied, editing the file in place was a
-    /// no-op for prod — queries kept hitting 42703 "column 'tab_progress'
-    /// does not exist".
+    /// Reconciles the PascalCase → snake_case column drift on
+    /// import_review_sessions and import_block_reviews. An earlier rewrite of
+    /// 20260421105112_AddImportReviewRedesignColumns landed two follow-ups
+    /// (RenameRedesignColumnsToSnakeCase, EnsureRedesignColumnsExist) that
+    /// shipped without .Designer.cs files and were silently skipped by
+    /// Database.MigrateAsync(). Prod was repaired by hand on 2026-04-22; this
+    /// migration captures that repair as a first-class, registered migration
+    /// so fresh databases and any still-drifted environments converge.
     ///
-    /// This rename migration reconciles prod: every column that ended up
-    /// PascalCase gets moved to the snake_case name the runtime SQL and
-    /// HasColumnName mappings agree on. Guarded with pg_attribute checks
-    /// so the migration is a no-op on databases that were set up after
-    /// the file rewrite (dev / local / fresh).
+    /// Idempotent on every path:
+    ///   - prod (already snake_case)     guards skip, ALTER re-asserts default
+    ///   - fresh DB (already snake_case) guards skip, ALTER re-asserts default
+    ///   - drifted DB (still PascalCase) renames fire, ALTER sets default
     /// </summary>
-    public partial class RenameRedesignColumnsToSnakeCase : Migration
+    public partial class ReconcileImportReviewColumnMappings : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -42,15 +42,24 @@ DO $$ BEGIN
     ALTER TABLE public.import_block_reviews RENAME COLUMN ""SourceRange"" TO source_range;
   END IF;
 END $$;
+
+ALTER TABLE public.import_review_sessions
+  ADD COLUMN IF NOT EXISTS tab_progress     jsonb,
+  ADD COLUMN IF NOT EXISTS last_focused_tab text,
+  ADD COLUMN IF NOT EXISTS source_format    text NOT NULL DEFAULT 'tex';
+
+ALTER TABLE public.import_block_reviews
+  ADD COLUMN IF NOT EXISTS source_file  text,
+  ADD COLUMN IF NOT EXISTS source_range jsonb;
+
+ALTER TABLE public.import_review_sessions ALTER COLUMN source_format SET DEFAULT 'tex';
 ");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Intentional no-op. The rename is a one-way reconcile — the
-            // code+snapshot only ever expects the snake_case names going
-            // forward, so a PascalCase restoration would break the app.
+            // No-op — one-way reconcile. Snapshot and runtime only expect snake_case.
         }
     }
 }

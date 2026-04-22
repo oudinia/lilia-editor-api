@@ -1,5 +1,6 @@
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Lilia.Api.Services;
 
@@ -49,10 +50,16 @@ SELECT
     (SELECT COUNT(*) FROM assets WHERE document_id = @p0)                                              AS asset_count,
     (SELECT COALESCE(SUM(file_size), 0)::bigint FROM assets WHERE document_id = @p0)                   AS asset_bytes;";
 
-        var conn = (Npgsql.NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync(ct);
+        // Use a dedicated pooled connection rather than the DbContext's managed
+        // one — sharing it with EF caused "Connection is busy" (Sentry
+        // LILIA-API-Q). A fresh NpgsqlConnection is cheap; Npgsql's pool
+        // reuses the same underlying socket when idle.
+        var connStr = _context.Database.GetConnectionString()
+            ?? throw new InvalidOperationException("No connection string configured for LiliaDbContext");
+        await using var conn = new NpgsqlConnection(connStr);
+        await conn.OpenAsync(ct);
 
-        await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+        await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("p0", documentId);
 
         await using var r = await cmd.ExecuteReaderAsync(ct);

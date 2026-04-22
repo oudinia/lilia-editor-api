@@ -4,6 +4,7 @@ using System.Text.Json;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Lilia.Api.Services;
 
@@ -113,11 +114,15 @@ SELECT
     COUNT(*) FILTER (WHERE status = 'error')                        AS error_blocks
 FROM latest;";
 
-        var conn = (Npgsql.NpgsqlConnection)_context.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
+        // Dedicated pooled connection — concurrent block validations share a
+        // scoped DbContext and colliding on its connection was the root cause
+        // of "Connection is busy" (Sentry LILIA-API-Q, 234 events).
+        var connStr = _context.Database.GetConnectionString()
+            ?? throw new InvalidOperationException("No connection string configured for LiliaDbContext");
+        await using var conn = new NpgsqlConnection(connStr);
+        await conn.OpenAsync(ct);
 
-        await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+        await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("p0", documentId);
         cmd.Parameters.AddWithValue("p1", RuleVersion);
 

@@ -1,7 +1,7 @@
 name: EF migrations drift check
 
 # Blocks any PR that introduces an EF model change without a corresponding
-# migration. Catches the kind of drift that built up over Feb–Apr 2026 (see
+# migration. Catches the kind of drift that built up over Feb-Apr 2026 (see
 # database/025_reconcile_drift.sql) at the source.
 
 on:
@@ -36,9 +36,34 @@ jobs:
       - name: Check for pending model changes
         run: |
           set -e
-          dotnet ef migrations has-pending-model-changes \
-            --project src/Lilia.Infrastructure \
-            --startup-project src/Lilia.Api \
-            && echo "::error::EF model has changes that aren't captured in a migration. Run 'dotnet ef migrations add <name>' before merging." \
-            && exit 1 \
-            || echo "EF model and migrations are in sync."
+          if dotnet ef migrations has-pending-model-changes \
+              --project src/Lilia.Infrastructure \
+              --startup-project src/Lilia.Api; then
+            echo "EF model and migrations are in sync."
+          else
+            echo "::error::EF model has changes that aren't captured in a migration. Run 'dotnet ef migrations add <name>' before merging."
+            exit 1
+          fi
+
+      - name: Check every migration has a .Designer.cs companion
+        # A migration .cs file without its generated .Designer.cs is invisible
+        # to EF at runtime (not registered in the migrations assembly), so
+        # Database.MigrateAsync() silently skips it. See the April 21 redesign
+        # incident — two rename/ensure migrations shipped without designers
+        # and production diverged until it was patched by hand on April 22.
+        run: |
+          set -e
+          cd src/Lilia.Infrastructure/Migrations
+          orphans=""
+          for cs in $(ls *.cs 2>/dev/null | grep -vE '\.Designer\.cs$|ModelSnapshot\.cs$'); do
+            base="${cs%.cs}"
+            if [ ! -f "${base}.Designer.cs" ]; then
+              orphans="${orphans}${cs}\n"
+            fi
+          done
+          if [ -n "$orphans" ]; then
+            echo "::error::Migration file(s) missing .Designer.cs — EF will silently skip these at runtime. Regenerate with 'dotnet ef migrations add':"
+            printf "%b" "$orphans"
+            exit 1
+          fi
+          echo "All migrations have Designer.cs companions."
