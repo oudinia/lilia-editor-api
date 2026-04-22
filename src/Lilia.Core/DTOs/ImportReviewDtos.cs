@@ -21,18 +21,20 @@ public record CreateReviewBlockDto(
     int Depth
 );
 
+// SessionId / BlockId are accepted for backward compatibility but ignored —
+// both come from the route. Clients can omit them.
 public record UpdateBlockReviewDto(
-    string SessionId,
-    string BlockId,
     string? Status = null,
     JsonElement? CurrentContent = null,
-    string? CurrentType = null
+    string? CurrentType = null,
+    string? SessionId = null,
+    string? BlockId = null
 );
 
 public record BulkActionDto(
-    string SessionId,
     string Action, // approveAll, rejectErrors, approveHighConfidence, resetAll, approveSelected, rejectSelected
-    List<string>? BlockIds = null
+    List<string>? BlockIds = null,
+    string? SessionId = null
 );
 
 public record FinalizeSessionDto(
@@ -193,15 +195,15 @@ public record AddReviewCollaboratorDto(
 );
 
 public record AddReviewCommentDto(
-    string SessionId,
     string BlockId,
-    string Content
+    string Content,
+    string? SessionId = null
 );
 
 public record UpdateReviewCommentDto(
-    string SessionId,
-    string CommentId,
-    bool Resolved
+    bool Resolved,
+    string? SessionId = null,
+    string? CommentId = null
 );
 
 // --- Response DTOs ---
@@ -218,7 +220,11 @@ public record ReviewSessionInfoDto(
     Guid? DocumentId,
     JsonElement? OriginalWarnings,
     bool AutoFinalizeEnabled,
-    int? QualityScore
+    int? QualityScore,
+    string? DocumentCategory = null,
+    string SourceFormat = "tex",
+    string? LastFocusedTab = null,
+    JsonElement? TabProgress = null
 );
 
 public record BlockReviewDto(

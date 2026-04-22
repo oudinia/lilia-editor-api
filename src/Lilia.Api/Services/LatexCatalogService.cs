@@ -109,9 +109,15 @@ public class LatexCatalogService : ILatexCatalogService
             return existing.Id;
         }
 
-        // DB-first upsert — one SQL statement, zero .NET entity tracking.
+        // Raw ADO on a dedicated pooled connection — EF Core 10 refuses to
+        // compose SqlQueryRaw + FirstAsync against an INSERT ... RETURNING
+        // statement ("non-composable SQL"), and a fresh connection also
+        // keeps us off EF's scoped connection (same rationale as the rest
+        // of the catalog code path).
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
+        var connStr = db.Database.GetConnectionString()
+            ?? throw new InvalidOperationException("No connection string configured for LiliaDbContext");
 
         const string sql = @"
 INSERT INTO latex_tokens (id, name, kind, package_slug, coverage_level, notes, created_at, updated_at)
@@ -121,11 +127,16 @@ VALUES (gen_random_uuid(), @name, @kind, @pkg, 'unsupported',
 ON CONFLICT (name, kind, package_slug) DO UPDATE SET updated_at = NOW()
 RETURNING id;";
 
-        var idResult = await db.Database.SqlQueryRaw<Guid>(sql,
-            new NpgsqlParameter("name", name),
-            new NpgsqlParameter("kind", kind),
-            new NpgsqlParameter("pkg", (object?)packageSlug ?? DBNull.Value)
-        ).FirstAsync(ct);
+        await using var conn = new NpgsqlConnection(connStr);
+        await conn.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("name", name);
+        cmd.Parameters.AddWithValue("kind", kind);
+        cmd.Parameters.AddWithValue("pkg", (object?)packageSlug ?? DBNull.Value);
+        var scalar = await cmd.ExecuteScalarAsync(ct);
+        if (scalar is null || scalar is DBNull)
+            throw new InvalidOperationException($"INSERT ... RETURNING produced no row for ({kind} '{name}').");
+        var idResult = (Guid)scalar;
 
         // Patch cache so the next parse in this process skips the DB round trip.
         var entry = new CatalogTokenEntry(idResult, name, kind, packageSlug,

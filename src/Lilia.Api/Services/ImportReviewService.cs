@@ -1347,7 +1347,13 @@ public class ImportReviewService : IImportReviewService
                 ? JsonSerializer.Deserialize<JsonElement>(session.OriginalWarnings.RootElement.GetRawText())
                 : null,
             session.AutoFinalizeEnabled,
-            session.QualityScore
+            session.QualityScore,
+            session.DocumentCategory,
+            session.SourceFormat,
+            session.LastFocusedTab,
+            session.TabProgress != null
+                ? JsonSerializer.Deserialize<JsonElement>(session.TabProgress.RootElement.GetRawText())
+                : null
         );
     }
 
