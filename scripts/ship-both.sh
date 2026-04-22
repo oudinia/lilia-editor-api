@@ -55,11 +55,20 @@ wait_active() {
   echo "    timed out" >&2; return 1
 }
 
-latest_deploy_for() {
-  # Grab the newest deployment ID in any non-terminal phase (BUILDING /
-  # DEPLOYING / PENDING). If nothing is in flight, return empty.
-  doctl apps list-deployments "$APP_ID" --format ID,Phase --no-header 2>/dev/null \
-    | awk '$2=="BUILDING" || $2=="DEPLOYING" || $2=="PENDING" { print $1; exit }'
+deploy_for_commit() {
+  # Poll for up to 2 minutes waiting for a deployment whose Cause
+  # contains the given short commit hash. DO's webhook can take a
+  # beat to pick up the push; polling is more reliable than a fixed
+  # sleep. Echoes the deployment ID on stdout, empty on timeout.
+  local short="$1"
+  for _ in $(seq 1 24); do
+    local id
+    id="$(doctl apps list-deployments "$APP_ID" --format ID,Cause --no-header 2>/dev/null \
+      | grep -F "commit $short" | awk '{print $1}' | head -1)"
+    if [[ -n "$id" ]]; then echo "$id"; return 0; fi
+    sleep 5
+  done
+  return 1
 }
 
 # ── 1. API ─────────────────────────────────────────────────────────────
@@ -67,9 +76,9 @@ if [[ "$API_AHEAD" -gt 0 ]]; then
   echo
   echo "▸ pushing API ($API_AHEAD commit(s))"
   git -C "$API_DIR" push origin main
-  sleep 10
-  API_DEPLOY="$(latest_deploy_for)"
-  [[ -n "$API_DEPLOY" ]] || { echo "no API deploy spawned"; exit 1; }
+  API_SHA="$(git -C "$API_DIR" rev-parse --short=7 HEAD)"
+  API_DEPLOY="$(deploy_for_commit "$API_SHA")" || { echo "no deploy picked up commit $API_SHA after 2 min"; exit 1; }
+  echo "  deploy=$API_DEPLOY  commit=$API_SHA"
   wait_active "$API_DEPLOY"
 fi
 
@@ -78,9 +87,9 @@ if [[ "$EDITOR_AHEAD" -gt 0 ]]; then
   echo
   echo "▸ pushing editor ($EDITOR_AHEAD commit(s))"
   git -C "$EDITOR_DIR" push origin main
-  sleep 10
-  EDITOR_DEPLOY="$(latest_deploy_for)"
-  [[ -n "$EDITOR_DEPLOY" ]] || { echo "no editor deploy spawned"; exit 1; }
+  EDITOR_SHA="$(git -C "$EDITOR_DIR" rev-parse --short=7 HEAD)"
+  EDITOR_DEPLOY="$(deploy_for_commit "$EDITOR_SHA")" || { echo "no deploy picked up commit $EDITOR_SHA after 2 min"; exit 1; }
+  echo "  deploy=$EDITOR_DEPLOY  commit=$EDITOR_SHA"
   wait_active "$EDITOR_DEPLOY"
 fi
 
