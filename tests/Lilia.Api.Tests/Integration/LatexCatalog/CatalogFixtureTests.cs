@@ -294,19 +294,27 @@ Body paragraph.
     public async Task shim_tabularx_rewrites_to_tabular_and_emits_table()
     {
         var parser = CreateParser();
-        var doc = await ParseAsync(parser, @"\begin{tabularx}{\linewidth}{|l|c|X|}
+        // Wrap in \begin{table}…\end{table} because the parser's table
+        // handler only scans for \begin{tabular}…\end{tabular} inside a
+        // table float. That's a separate coverage issue (bare tabularx
+        // outside a table env is still a catalog partial at best); this
+        // fixture verifies the *shim* path — tabularx rewriting to
+        // tabular — not the parser's unwrapped-tabular limitation.
+        var doc = await ParseAsync(parser, @"\begin{table}
+\centering
+\begin{tabularx}{\linewidth}{|l|c|X|}
 \hline
 header & mid & right \\
 \hline
 a & b & c \\
 \hline
-\end{tabularx}");
+\end{tabularx}
+\caption{test}
+\end{table}");
 
-        // tabularx is rewritten to tabular at preamble-normalisation
-        // time (commit 9afe55c), so it should produce a real table
-        // block rather than a passthrough.
         var tables = doc.GetElements<ImportTable>().ToList();
-        tables.Should().NotBeEmpty("shimmed tabularx should emit ImportTable like kernel tabular");
+        tables.Should().NotBeEmpty(
+            "shim rewrites tabularx → tabular (commit 9afe55c); wrapped in a table env, that produces ImportTable");
     }
 
     // ---- pass-through ------------------------------------------------

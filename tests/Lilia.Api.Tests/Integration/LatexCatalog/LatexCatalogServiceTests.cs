@@ -148,7 +148,11 @@ public class LatexCatalogServiceTests : IntegrationTestBase
 
         var fullToken = catalog.LookupToken("section", "command")!.Id;
         var partialToken = catalog.LookupToken("minipage", "environment")!.Id;
-        var shimmedToken = catalog.LookupToken("frame", "environment")!.Id;
+        // \cvitem (moderncv) is shimmed at the seed layer — still shimmed
+        // after today's honesty passes. \frame used to be shimmed but
+        // was demoted to partial when we clarified that beamer imports
+        // flatten overlays rather than rewriting via a class shim.
+        var shimmedToken = catalog.LookupToken("cvitem", "command", "moderncv")!.Id;
 
         await catalog.RecordUsageAsync(sessionId, new[]
         {
