@@ -233,16 +233,13 @@ public class PublicCoverageController : ControllerBase
 
         // Hand-counted from tests/Lilia.Api.Tests/Integration/LatexCatalog/
         // CatalogFixtureTests. Update when adding/removing fixtures.
-        // Current: 11 fixtures covering 10 handler kinds
-        // (section-regex, citation-regex, known-structural × 2,
-        //  theorem-like, algorithmic, math-katex, math-env,
-        //  inline-markdown, inline-preserved, metadata-extract,
-        //  inline-code). Remaining to reach 16: shim, pass-through,
-        //  parser-regex, passthrough, inline-catch-all.
+        // Now at 15 handler kinds covered out of 16; math-env and
+        // known-structural each have one extra fixture so the test
+        // file holds 17 fixtures.
         var tests = new ImplementationTestsDto(
             CiAssertions: 3,
             CiAssertionsDescription: "Catalog integrity: every covered row has a handler kind, all handler kinds are whitelisted, no row is unclassified.",
-            PerHandlerFixtures: 10,
+            PerHandlerFixtures: 15,
             PerHandlerFixturesTarget: 16,
             PerHandlerFixturesDescription: "Canonical fixture per handler kind that parses through the pipeline and checks the output block type.");
 

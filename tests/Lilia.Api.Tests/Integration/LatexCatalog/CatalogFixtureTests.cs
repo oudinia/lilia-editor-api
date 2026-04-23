@@ -287,4 +287,104 @@ Body paragraph.
         text.Should().Contain("`", "CodeDisplayInlineCommands should wrap the argument in Markdown backticks");
         text.Should().Contain("grep -r foo");
     }
+
+    // ---- shim --------------------------------------------------------
+
+    [Fact]
+    public async Task shim_tabularx_rewrites_to_tabular_and_emits_table()
+    {
+        var parser = CreateParser();
+        var doc = await ParseAsync(parser, @"\begin{tabularx}{\linewidth}{|l|c|X|}
+\hline
+header & mid & right \\
+\hline
+a & b & c \\
+\hline
+\end{tabularx}");
+
+        // tabularx is rewritten to tabular at preamble-normalisation
+        // time (commit 9afe55c), so it should produce a real table
+        // block rather than a passthrough.
+        var tables = doc.GetElements<ImportTable>().ToList();
+        tables.Should().NotBeEmpty("shimmed tabularx should emit ImportTable like kernel tabular");
+    }
+
+    // ---- pass-through ------------------------------------------------
+
+    [Fact]
+    public async Task pass_through_spacing_env_unwraps_body()
+    {
+        var parser = CreateParser();
+        var doc = await ParseAsync(parser, @"\begin{spacing}{1.5}
+\section{Section inside spacing}
+Content paragraph.
+\end{spacing}");
+
+        // PassThroughEnvironments drops the wrapper — the \section
+        // inside should still be recognised as a heading, not buried
+        // inside a passthrough block.
+        var headings = doc.GetElements<ImportHeading>().ToList();
+        headings.Should().Contain(h => h.Text == "Section inside spacing",
+            "pass-through envs should expose their body to the normal parse path");
+    }
+
+    // ---- parser-regex ------------------------------------------------
+
+    [Fact]
+    public async Task parser_regex_strips_documentclass_and_usepackage_from_body()
+    {
+        // \documentclass and \usepackage live in the preamble; the
+        // parser recognises and records them but doesn't emit them as
+        // blocks inside the body. Assert they don't leak into any
+        // ImportParagraph text.
+        var parser = CreateParser();
+        var source = @"\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\begin{document}
+Body paragraph.
+\end{document}";
+        var doc = await parser.ParseTextAsync(source);
+
+        var paragraphs = doc.GetElements<ImportParagraph>().ToList();
+        var joined = string.Join(" ", paragraphs.Select(p => p.Text));
+        joined.Should().NotContain("\\documentclass", "preamble should be stripped before body parsing");
+        joined.Should().NotContain("\\usepackage", "preamble should be stripped before body parsing");
+        joined.Should().Contain("Body paragraph");
+    }
+
+    // ---- passthrough -------------------------------------------------
+
+    [Fact]
+    public async Task passthrough_unknown_env_becomes_raw_latex_block()
+    {
+        var parser = CreateParser();
+        var doc = await ParseAsync(parser, @"\begin{noldefinedcustomenv}
+Some content that will not render but must round-trip.
+\end{noldefinedcustomenv}");
+
+        var passthroughs = doc.GetElements<ImportLatexPassthrough>().ToList();
+        passthroughs.Should().NotBeEmpty(
+            "unknown environments should land as ImportLatexPassthrough so content survives round-trip");
+        passthroughs[0].LatexCode.Should().Contain("noldefinedcustomenv");
+    }
+
+    // ---- inline-catch-all --------------------------------------------
+
+    [Fact]
+    public async Task inline_catch_all_extracts_unknown_command_argument()
+    {
+        var parser = CreateParser();
+        var doc = await ParseAsync(parser,
+            @"The \completelymadeupcmd{important phrase} in the middle of a sentence.");
+
+        var paragraphs = doc.GetElements<ImportParagraph>().ToList();
+        paragraphs.Should().NotBeEmpty();
+        var text = string.Join(" ", paragraphs.Select(p => p.Text));
+        text.Should().Contain("important phrase",
+            "inline catch-all should extract the arg when the command name is unknown");
+        text.Should().NotContain("\\completelymadeupcmd",
+            "the command name itself should not leak into the paragraph text");
+    }
 }
