@@ -74,6 +74,13 @@ public class LiliaDbContext : DbContext
     public DbSet<ImportDefinition> ImportDefinitions => Set<ImportDefinition>();
     public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
     public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();
+
+    // Mirror realm (FT-IMP-001 stage 6) — rev_* tables coexist with the
+    // legacy import_block_reviews during migration. Stage 8 (idempotent
+    // checkout) wires finalize against these; stage 7 adds the rest of
+    // the mirror (assets / bibliography / labels / formulas / tags).
+    public DbSet<RevDocument> RevDocuments => Set<RevDocument>();
+    public DbSet<RevBlock> RevBlocks => Set<RevBlock>();
     public DbSet<ImportReviewCollaborator> ImportReviewCollaborators => Set<ImportReviewCollaborator>();
     public DbSet<ImportBlockComment> ImportBlockComments => Set<ImportBlockComment>();
     public DbSet<ImportReviewActivity> ImportReviewActivities => Set<ImportReviewActivity>();
