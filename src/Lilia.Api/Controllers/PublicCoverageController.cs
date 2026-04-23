@@ -220,9 +220,9 @@ public class PublicCoverageController : ControllerBase
             new(
                 Id: "end-to-end-fixtures",
                 Title: "One fixture per handler kind, asserted in CI",
-                Status: "planned",
-                ProgressPercent: 0,
-                Detail: "Will prove every 'full' claim end-to-end — parse a canonical sample, assert the rendered output shape."),
+                Status: "in_progress",
+                ProgressPercent: 94, // 15 of 16 handler kinds covered
+                Detail: "15 of 16 handler kinds now have a canonical fixture: the parser produces the claimed block type end-to-end, asserted in CI."),
             new(
                 Id: "typst-oracle",
                 Title: "Independent validation via a Typst compiler",
