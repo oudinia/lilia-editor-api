@@ -229,6 +229,103 @@ public class PublicCoverageController : ControllerBase
         return Ok(new PublicTokenSearchResultDto(total, offset, limit, items));
     }
 
+    // Kernel sectioning commands available under each document-class
+    // category. Article-likes get \section → \subparagraph (5 levels);
+    // book-likes add \part and \chapter on top. Presentation (beamer)
+    // replaces \chapter with \frame; letter has no sectioning.
+    //
+    // Hardcoded here rather than on a new column because the set is
+    // small, slow-moving, and derivable from the class category. If
+    // this grows fancy we'll promote it to a `valid_sections text[]`
+    // column on latex_document_classes and a migration.
+    private static readonly string[] ArticleSectioning =
+        { "section", "subsection", "subsubsection", "paragraph", "subparagraph" };
+    private static readonly string[] BookSectioning =
+        { "part", "chapter", "section", "subsection", "subsubsection", "paragraph", "subparagraph" };
+    private static readonly string[] BeamerSectioning =
+        { "section", "subsection", "frame" };
+    private static readonly Dictionary<string, string[]> SectioningByCategory = new()
+    {
+        ["article"] = ArticleSectioning,
+        ["report"] = BookSectioning,     // report has \chapter
+        ["book"] = BookSectioning,
+        ["memoir"] = BookSectioning,
+        ["presentation"] = BeamerSectioning,
+        ["letter"] = Array.Empty<string>(),  // letter uses \opening / \closing, no sectioning
+        ["cv"] = Array.Empty<string>(),      // cv classes define their own; surfaced via class-specific tokens
+        ["other"] = Array.Empty<string>(),
+    };
+
+    /// <summary>
+    /// Per-class detail — fuels the class-detail drawer. Carries the
+    /// kernel sectioning commands relevant to the class's category plus
+    /// every token in the catalog attributed to a package with the
+    /// same slug (moderncv / altacv / resume / beamer etc. — these ship
+    /// as packages + classes sharing a name).
+    /// </summary>
+    [HttpGet("classes/{slug}")]
+    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any)]
+    public async Task<ActionResult<PublicClassDetailDto>> ClassDetail(string slug, CancellationToken ct)
+    {
+        var cls = await _db.LatexDocumentClasses.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Slug == slug, ct);
+        if (cls is null) return NotFound();
+
+        // Sectioning commands relevant for this class's category. We
+        // look up the kernel rows so the response carries their real
+        // coverage_level (e.g. \chapter is 'partial' because it's not
+        // in the parser's section regex — that's genuinely useful for
+        // a book user to see).
+        var sectioningNames = SectioningByCategory.TryGetValue(cls.Category, out var names)
+            ? names
+            : Array.Empty<string>();
+        List<PublicSectioningCommandDto> sectioning = new();
+        if (sectioningNames.Length > 0)
+        {
+            var rows = await _db.LatexTokens.AsNoTracking()
+                .Where(t => t.Kind == "command"
+                         && t.PackageSlug == null
+                         && sectioningNames.Contains(t.Name))
+                .ToListAsync(ct);
+            // Preserve the canonical order of sectioningNames rather
+            // than DB order so \part → \chapter → \section → … reads
+            // top-down for users.
+            sectioning = sectioningNames
+                .Select(n => rows.FirstOrDefault(r => r.Name == n))
+                .Where(r => r is not null)
+                .Select(r => new PublicSectioningCommandDto(
+                    r!.Name, r.CoverageLevel, r.MapsToBlockType, r.Notes))
+                .ToList();
+        }
+
+        // Class-specific tokens — classes whose slug matches a package
+        // slug (beamer, moderncv, altacv, resume, exam, memoir,
+        // tufte-book) carry tokens like \cvitem / \rSection / \frame.
+        var classTokens = await _db.LatexTokens.AsNoTracking()
+            .Where(t => t.PackageSlug == slug)
+            .OrderBy(t => t.Kind).ThenBy(t => t.Name)
+            .Select(t => new PublicTokenRowDto(
+                t.Name,
+                t.Kind,
+                t.PackageSlug,
+                t.CoverageLevel,
+                t.MapsToBlockType,
+                t.HandlerKind,
+                t.SemanticCategory,
+                t.Notes))
+            .ToListAsync(ct);
+
+        return Ok(new PublicClassDetailDto(
+            Slug: cls.Slug,
+            DisplayName: cls.DisplayName,
+            Category: cls.Category,
+            CoverageLevel: cls.CoverageLevel,
+            DefaultEngine: cls.DefaultEngine,
+            Notes: cls.Notes,
+            Sectioning: sectioning,
+            ClassSpecificTokens: classTokens));
+    }
+
     /// <summary>
     /// Document classes — articled / beamer / moderncv etc. Small list,
     /// returned ungated so the coverage page can render a "classes we
@@ -277,6 +374,22 @@ public sealed record PublicPackageDetailDto(
 public sealed record PublicTokenDto(string Name, string Kind, string CoverageLevel, string? MapsToBlockType, string? SemanticCategory, string? Notes);
 
 public sealed record PublicClassDto(string Slug, string DisplayName, string Category, string CoverageLevel, string? DefaultEngine, string? Notes);
+
+public sealed record PublicSectioningCommandDto(
+    string Name,
+    string CoverageLevel,
+    string? MapsToBlockType,
+    string? Notes);
+
+public sealed record PublicClassDetailDto(
+    string Slug,
+    string DisplayName,
+    string Category,
+    string CoverageLevel,
+    string? DefaultEngine,
+    string? Notes,
+    List<PublicSectioningCommandDto> Sectioning,
+    List<PublicTokenRowDto> ClassSpecificTokens);
 
 // Token search carries PackageSlug + HandlerKind so the UI can show
 // which package (or "kernel") the token belongs to and link the row
