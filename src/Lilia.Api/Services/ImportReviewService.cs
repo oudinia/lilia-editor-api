@@ -500,6 +500,15 @@ public class ImportReviewService : IImportReviewService
             review.ReviewedAt = DateTime.UtcNow;
         }
 
+        // SortOrder write-through. Clients use this for drag-reorder from
+        // the Studio-parity review page. No rebalancing here — callers
+        // choose integer or fractional orderings as they see fit. A future
+        // bulk-reorder endpoint can renumber if sortOrders get sparse.
+        if (dto.SortOrder.HasValue)
+        {
+            review.SortOrder = dto.SortOrder.Value;
+        }
+
         session.UpdatedAt = DateTime.UtcNow;
 
         // Log activity

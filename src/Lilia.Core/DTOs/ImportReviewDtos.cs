@@ -23,10 +23,15 @@ public record CreateReviewBlockDto(
 
 // SessionId / BlockId are accepted for backward compatibility but ignored —
 // both come from the route. Clients can omit them.
+// SortOrder supports drag-reorder from the Studio-parity review page:
+// client updates it on drop; server writes to the ImportBlockReview row
+// without shuffling neighbours (neighbouring sortOrders stay stable —
+// clients can rebalance later if ordering becomes sparse).
 public record UpdateBlockReviewDto(
     string? Status = null,
     JsonElement? CurrentContent = null,
     string? CurrentType = null,
+    int? SortOrder = null,
     string? SessionId = null,
     string? BlockId = null
 );
