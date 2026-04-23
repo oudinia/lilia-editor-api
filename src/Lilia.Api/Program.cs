@@ -378,6 +378,12 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lili
 // import doesn't pay the warmup cost.
 builder.Services.AddSingleton<ILatexCatalogService, LatexCatalogService>();
 
+// ITokenRouter — catalog-backed dispatch decisions for LatexParser
+// (Stage 3 of the parser-reads-catalog plan). LatexParser holds a
+// reference via its constructor today without consuming it; the
+// replacement of the hardcoded HashSets happens in follow-up commits.
+builder.Services.AddSingleton<Lilia.Import.Services.ITokenRouter, CatalogTokenRouter>();
+
 // Register PDF import services — provider-based (mathpix or mineru)
 var pdfProvider = builder.Configuration["PdfParser:Provider"] ?? "mineru";
 if (pdfProvider == "mathpix")

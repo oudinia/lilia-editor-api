@@ -11,6 +11,21 @@ public class LatexParser : ILatexParser
 {
     private static readonly string[] SupportedExtensions = [".tex"];
 
+    // Router that resolves (name, kind) → parser-handler decision via
+    // the DB-backed catalog. Stage 3 of the parser-reads-catalog
+    // migration uses this to replace the hardcoded HashSets below; for
+    // now it's only stored, no call sites consume it yet.
+    // NullTokenRouter keeps parameterless-construction callers (tests,
+    // library consumers) working unchanged.
+    private readonly ITokenRouter _router;
+
+    public LatexParser() : this(NullTokenRouter.Instance) { }
+
+    public LatexParser(ITokenRouter router)
+    {
+        _router = router ?? NullTokenRouter.Instance;
+    }
+
     /// <summary>
     /// Theorem-style environments LaTeX papers use. Mapped to TheoremEnvironmentType.
     /// </summary>
