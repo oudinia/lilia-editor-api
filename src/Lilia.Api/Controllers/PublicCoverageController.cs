@@ -231,10 +231,18 @@ public class PublicCoverageController : ControllerBase
                 Detail: "Second opinion on every 'full' claim — if Typst can't round-trip it, we demote. Stretch goal, not the critical path."),
         };
 
+        // Hand-counted from tests/Lilia.Api.Tests/Integration/LatexCatalog/
+        // CatalogFixtureTests. Update when adding/removing fixtures.
+        // Current: 11 fixtures covering 10 handler kinds
+        // (section-regex, citation-regex, known-structural × 2,
+        //  theorem-like, algorithmic, math-katex, math-env,
+        //  inline-markdown, inline-preserved, metadata-extract,
+        //  inline-code). Remaining to reach 16: shim, pass-through,
+        //  parser-regex, passthrough, inline-catch-all.
         var tests = new ImplementationTestsDto(
             CiAssertions: 3,
             CiAssertionsDescription: "Catalog integrity: every covered row has a handler kind, all handler kinds are whitelisted, no row is unclassified.",
-            PerHandlerFixtures: 0,
+            PerHandlerFixtures: 10,
             PerHandlerFixturesTarget: 16,
             PerHandlerFixturesDescription: "Canonical fixture per handler kind that parses through the pipeline and checks the output block type.");
 
