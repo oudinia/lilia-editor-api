@@ -141,6 +141,78 @@ public class PublicCoverageController : ControllerBase
     }
 
     /// <summary>
+    /// Token-level search — "does Lilia handle \section / \paragraph /
+    /// \frac ...". Drives the keyword-search panel on the public
+    /// Coverage page so typing "section" returns the \section row
+    /// instead of zero package hits.
+    ///
+    /// Query params:
+    ///   q              — substring match on name / maps_to_block_type / handler_kind
+    ///   kind           — command | environment
+    ///   coverageLevel  — full | partial | shimmed | none | unsupported
+    ///   handlerKind    — section-regex | math-katex | citation-regex | ...
+    ///   package        — restrict to one package slug (or 'kernel' for null)
+    ///   limit / offset — default 50 / 0; limit capped at 200
+    /// </summary>
+    [HttpGet("tokens")]
+    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any)]
+    public async Task<ActionResult<PublicTokenSearchResultDto>> Tokens(
+        [FromQuery] string? q = null,
+        [FromQuery] string? kind = null,
+        [FromQuery] string? coverageLevel = null,
+        [FromQuery] string? handlerKind = null,
+        [FromQuery] string? package = null,
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0,
+        CancellationToken ct = default)
+    {
+        if (limit <= 0) limit = 50;
+        if (limit > 200) limit = 200;
+        if (offset < 0) offset = 0;
+
+        var query = _db.LatexTokens.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(kind)) query = query.Where(t => t.Kind == kind);
+        if (!string.IsNullOrWhiteSpace(coverageLevel)) query = query.Where(t => t.CoverageLevel == coverageLevel);
+        if (!string.IsNullOrWhiteSpace(handlerKind)) query = query.Where(t => t.HandlerKind == handlerKind);
+
+        if (!string.IsNullOrWhiteSpace(package))
+        {
+            // 'kernel' is how the UI refers to rows with a null package_slug.
+            query = package.Equals("kernel", StringComparison.OrdinalIgnoreCase)
+                ? query.Where(t => t.PackageSlug == null)
+                : query.Where(t => t.PackageSlug == package);
+        }
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var needle = $"%{q.Trim()}%";
+            query = query.Where(t =>
+                EF.Functions.ILike(t.Name, needle)
+                || (t.MapsToBlockType != null && EF.Functions.ILike(t.MapsToBlockType, needle))
+                || (t.HandlerKind != null && EF.Functions.ILike(t.HandlerKind, needle)));
+        }
+
+        var total = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderBy(t => t.Kind).ThenBy(t => t.Name).ThenBy(t => t.PackageSlug)
+            .Skip(offset).Take(limit)
+            .Select(t => new PublicTokenRowDto(
+                t.Name,
+                t.Kind,
+                t.PackageSlug,
+                t.CoverageLevel,
+                t.MapsToBlockType,
+                t.HandlerKind,
+                t.SemanticCategory,
+                t.Notes))
+            .ToListAsync(ct);
+
+        return Ok(new PublicTokenSearchResultDto(total, offset, limit, items));
+    }
+
+    /// <summary>
     /// Document classes — articled / beamer / moderncv etc. Small list,
     /// returned ungated so the coverage page can render a "classes we
     /// support" section.
@@ -185,3 +257,22 @@ public sealed record PublicPackageDetailDto(
 public sealed record PublicTokenDto(string Name, string Kind, string CoverageLevel, string? MapsToBlockType, string? SemanticCategory, string? Notes);
 
 public sealed record PublicClassDto(string Slug, string DisplayName, string Category, string CoverageLevel, string? DefaultEngine, string? Notes);
+
+// Token search carries PackageSlug + HandlerKind so the UI can show
+// which package (or "kernel") the token belongs to and link the row
+// back to a package drawer.
+public sealed record PublicTokenRowDto(
+    string Name,
+    string Kind,
+    string? PackageSlug,
+    string CoverageLevel,
+    string? MapsToBlockType,
+    string? HandlerKind,
+    string? SemanticCategory,
+    string? Notes);
+
+public sealed record PublicTokenSearchResultDto(
+    int Total,
+    int Offset,
+    int Limit,
+    List<PublicTokenRowDto> Items);
