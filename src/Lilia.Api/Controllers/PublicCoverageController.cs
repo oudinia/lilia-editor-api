@@ -158,6 +158,103 @@ public class PublicCoverageController : ControllerBase
     }
 
     /// <summary>
+    /// "How we measure coverage" — drives the collapsible status card
+    /// on the public page. Describes the rollout stages that back the
+    /// coverage claims, how many CI assertions are enforcing them, and
+    /// the current catalog snapshot. Deliberately NOT exposing
+    /// internal audit buckets or engineer-estimate trust percentages.
+    /// </summary>
+    [HttpGet("implementation-status")]
+    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Any)]
+    public async Task<ActionResult<PublicImplementationStatusDto>> ImplementationStatus(CancellationToken ct)
+    {
+        // Catalog snapshot drives two fields: the coverage counts and the
+        // handler-kind distribution. Only cover coverage level != 'none'
+        // in the totals so the 'none' bucket (reserved for tokens with
+        // zero handling) doesn't inflate the denominator.
+        var coverageCounts = await _db.LatexTokens
+            .GroupBy(t => t.CoverageLevel)
+            .Select(g => new { Level = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        int Cov(string level) => coverageCounts.FirstOrDefault(x => x.Level == level)?.Count ?? 0;
+
+        var handlerKindRaw = await _db.LatexTokens
+            .Where(t => t.HandlerKind != null
+                     && (t.CoverageLevel == "full"
+                      || t.CoverageLevel == "partial"
+                      || t.CoverageLevel == "shimmed"))
+            .GroupBy(t => t.HandlerKind!)
+            .Select(g => new { Kind = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var handlerKinds = handlerKindRaw
+            .OrderByDescending(x => x.Count)
+            .Select(x => new HandlerKindBreakdownDto(x.Kind, x.Count))
+            .ToList();
+
+        var totalTokens = coverageCounts.Sum(x => x.Count);
+
+        // Stages & test tallies are hardcoded — they describe
+        // engineering milestones, not catalog state. Update this list
+        // as stages land or shift.
+        var stages = new List<ImplementationStageDto>
+        {
+            new(
+                Id: "truthful-catalog",
+                Title: "Every token we list is catalogued with a handler",
+                Status: "shipped",
+                ProgressPercent: 100,
+                Detail: $"{Cov("full") + Cov("partial") + Cov("shimmed")} tokens at coverage level full, partial, or shimmed — each declares which parser routing path handles it."),
+            new(
+                Id: "ci-contract",
+                Title: "Build breaks if the catalog drifts from the parser",
+                Status: "shipped",
+                ProgressPercent: 100,
+                Detail: "Integration test asserts every covered token has a handler kind from a whitelisted set. Any new value fails the build until reviewed."),
+            new(
+                Id: "catalog-driven-dispatch",
+                Title: "Parser reads routing from the catalog instead of hardcoded lists",
+                Status: "in_progress",
+                ProgressPercent: 10,
+                Detail: "The catalog cache now carries handler_kind; the parser refactor to consult it is the next active work."),
+            new(
+                Id: "end-to-end-fixtures",
+                Title: "One fixture per handler kind, asserted in CI",
+                Status: "planned",
+                ProgressPercent: 0,
+                Detail: "Will prove every 'full' claim end-to-end — parse a canonical sample, assert the rendered output shape."),
+            new(
+                Id: "typst-oracle",
+                Title: "Independent validation via a Typst compiler",
+                Status: "planned",
+                ProgressPercent: 0,
+                Detail: "Second opinion on every 'full' claim — if Typst can't round-trip it, we demote. Stretch goal, not the critical path."),
+        };
+
+        var tests = new ImplementationTestsDto(
+            CiAssertions: 3,
+            CiAssertionsDescription: "Catalog integrity: every covered row has a handler kind, all handler kinds are whitelisted, no row is unclassified.",
+            PerHandlerFixtures: 0,
+            PerHandlerFixturesTarget: 16,
+            PerHandlerFixturesDescription: "Canonical fixture per handler kind that parses through the pipeline and checks the output block type.");
+
+        var snapshot = new CatalogSnapshotDto(
+            TotalTokens: totalTokens,
+            Full: Cov("full"),
+            Partial: Cov("partial"),
+            Shimmed: Cov("shimmed"),
+            Unsupported: Cov("unsupported"),
+            None: Cov("none"),
+            HandlerKinds: handlerKinds);
+
+        return Ok(new PublicImplementationStatusDto(
+            MeasuredAt: DateTime.UtcNow,
+            Stages: stages,
+            Tests: tests,
+            CatalogSnapshot: snapshot));
+    }
+
+    /// <summary>
     /// Token-level search — "does Lilia handle \section / \paragraph /
     /// \frac ...". Drives the keyword-search panel on the public
     /// Coverage page so typing "section" returns the \section row
@@ -409,3 +506,34 @@ public sealed record PublicTokenSearchResultDto(
     int Offset,
     int Limit,
     List<PublicTokenRowDto> Items);
+
+// Implementation-status surface. Engineering milestones, CI tallies, and
+// the catalog-state-of-the-world, translated into user-friendly copy.
+public sealed record ImplementationStageDto(
+    string Id,
+    string Title,
+    string Status,          // shipped | in_progress | planned
+    int ProgressPercent,    // 0..100
+    string Detail);
+
+public sealed record ImplementationTestsDto(
+    int CiAssertions,
+    string CiAssertionsDescription,
+    int PerHandlerFixtures,
+    int PerHandlerFixturesTarget,
+    string PerHandlerFixturesDescription);
+
+public sealed record CatalogSnapshotDto(
+    int TotalTokens,
+    int Full,
+    int Partial,
+    int Shimmed,
+    int Unsupported,
+    int None,
+    List<HandlerKindBreakdownDto> HandlerKinds);
+
+public sealed record PublicImplementationStatusDto(
+    DateTime MeasuredAt,
+    List<ImplementationStageDto> Stages,
+    ImplementationTestsDto Tests,
+    CatalogSnapshotDto CatalogSnapshot);
