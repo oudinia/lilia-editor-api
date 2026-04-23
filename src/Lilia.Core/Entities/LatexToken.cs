@@ -51,6 +51,18 @@ public class LatexToken
     /// <summary>Same vocabulary as LatexPackage.CoverageLevel.</summary>
     public string CoverageLevel { get; set; } = "none";
 
+    /// <summary>
+    /// Name of the parser routing path that handles this token — the
+    /// contract between the catalog and LatexParser.cs. Must be one of
+    /// the kinds enumerated in CatalogIntegrityTests (CI fails on drift).
+    /// Values: shim / algorithmic / section-regex / citation-regex /
+    /// metadata-extract / inline-preserved / inline-code / inline-markdown
+    /// / theorem-like / known-structural / pass-through / math-env /
+    /// math-katex / parser-regex / catch-all-arg / passthrough.
+    /// Null for coverage_level='unsupported'/'none' (no handler claimed).
+    /// </summary>
+    public string? HandlerKind { get; set; }
+
     public string? Notes { get; set; }
 
     /// <summary>When set, this token is a synonym of another (e.g. \citep → \cite). Parser resolves on load.</summary>

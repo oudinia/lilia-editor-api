@@ -141,6 +141,7 @@ public class LiliaDbContext : DbContext
             e.Property(x => x.SemanticCategory).HasColumnName("semantic_category").HasMaxLength(40);
             e.Property(x => x.MapsToBlockType).HasColumnName("maps_to_block_type").HasMaxLength(40);
             e.Property(x => x.CoverageLevel).HasColumnName("coverage_level").HasMaxLength(20).IsRequired();
+            e.Property(x => x.HandlerKind).HasColumnName("handler_kind").HasMaxLength(40);
             e.Property(x => x.Notes).HasColumnName("notes");
             e.Property(x => x.AliasOf).HasColumnName("alias_of");
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
