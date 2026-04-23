@@ -492,6 +492,23 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
+    /// Pre-checkout summary (FT-IMP-001 §Summary sheet content). Drives
+    /// the /import-summary/:sessionId page shown when the user ticked
+    /// "show summary before importing" on upload. Returns source signals
+    /// (file + format + lines + packages + class + engine), content
+    /// breakdown (block-type counts), coverage %, quality (error /
+    /// warning / score), and an estimated review time heuristic.
+    /// </summary>
+    [HttpGet("{id:guid}/summary")]
+    public async Task<ActionResult<SessionSummaryDto>> GetSummary(Guid id, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var summary = await _reviewService.GetSessionSummaryAsync(id, userId, ct);
+        return summary == null ? NotFound() : Ok(summary);
+    }
+
+    /// <summary>
     /// Dismiss a diagnostic (acknowledge; it still exists for audit but no
     /// longer shows up in active badge counts).
     /// </summary>

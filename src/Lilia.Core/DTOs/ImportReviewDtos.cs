@@ -170,6 +170,38 @@ public sealed record ReportTokenDto(
 );
 
 /// <summary>
+/// Pre-checkout summary for the import summary sheet (FT-IMP-001 §Summary
+/// sheet content). Composed from the same signals as the end-of-review
+/// report plus source / format / coverage / estimate fields. Consumed by
+/// the upload dialog when the user ticked "show summary before importing"
+/// and by the /import-summary/:sessionId page the user lands on.
+/// </summary>
+public sealed record SessionSummaryDto(
+    Guid SessionId,
+    string Status,
+    // SOURCE
+    string? SourceFileName,
+    string? SourceFormat,
+    int? Lines,
+    int? PackageCount,
+    // FORMAT (document class + engine hint, LaTeX-specific for now)
+    string? DocumentClass,
+    string? Engine,
+    // CONTENT
+    Dictionary<string, int> BlockCountsByType,
+    int TotalBlocks,
+    // COVERAGE
+    double? CoverageMappedPercent,
+    int UnsupportedTokenCount,
+    // QUALITY
+    int ErrorCount,
+    int WarningCount,
+    int? QualityScore,
+    // ESTIMATED REVIEW
+    int EstimatedReviewMinutes
+);
+
+/// <summary>
 /// Dashboard row for the "Reviews in progress" list. Keep projection cheap —
 /// no block payloads, just the counters needed to decide which session to
 /// resume. Status here is the session-level status (parsing / pending_review

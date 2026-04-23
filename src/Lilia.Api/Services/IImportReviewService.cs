@@ -68,6 +68,15 @@ public interface IImportReviewService
     Task<SessionReportDto?> GetSessionReportAsync(Guid sessionId, string userId, CancellationToken ct = default);
 
     /// <summary>
+    /// Pre-checkout summary (FT-IMP-001 §Summary sheet content). Drives
+    /// the modal/page the user sees when they ticked "show summary before
+    /// importing" on upload. Composed of source/format signals + block-
+    /// type breakdown + coverage % + quality + estimated review time.
+    /// Returns null when session is missing or the caller can't see it.
+    /// </summary>
+    Task<SessionSummaryDto?> GetSessionSummaryAsync(Guid sessionId, string userId, CancellationToken ct = default);
+
+    /// <summary>
     /// History-friendly session list with filters. scope = active
     /// (non-finalized), history (finalized+cancelled), or all.
     /// </summary>
