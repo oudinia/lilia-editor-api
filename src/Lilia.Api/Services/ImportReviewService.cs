@@ -263,6 +263,26 @@ public class ImportReviewService : IImportReviewService
         if (session == null) return null;
         if (GetUserRole(session, userId) != "owner") return null;
 
+        // FT-IMP-001 stage 8 — idempotent checkout. If the instance already
+        // produced a document (retry after network blip, refresh that sees
+        // a stale state, etc.), short-circuit to the existing document
+        // instead of creating a duplicate. The `imported` status + non-null
+        // DocumentId combo is our "already done" signal.
+        if (session.Status == "imported" && session.DocumentId.HasValue)
+        {
+            var existingDoc = await _context.Documents
+                .FirstOrDefaultAsync(d => d.Id == session.DocumentId.Value);
+            if (existingDoc != null)
+            {
+                var importedBlocks = await _context.Blocks.CountAsync(b => b.DocumentId == existingDoc.Id);
+                return new FinalizeResultDto(
+                    new FinalizedDocumentDto(existingDoc.Id, existingDoc.Title),
+                    new FinalizeStatisticsDto(ImportedBlocks: importedBlocks, SkippedBlocks: 0));
+            }
+            // Document row was purged but session still says imported —
+            // fall through and let FinalizeInternalAsync re-create it.
+        }
+
         // The new staging flow transitions to pending_review (after auto-check)
         // or auto_finalized; the legacy review-UI flow still uses in_progress.
         // Accept any of those.
