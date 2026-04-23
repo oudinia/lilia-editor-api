@@ -54,7 +54,7 @@ public class LatexCatalogService : ILatexCatalogService
             {
                 var entry = new CatalogTokenEntry(t.Id, t.Name, t.Kind, t.PackageSlug,
                     t.Arity, t.OptionalArity, t.ExpectsBody, t.SemanticCategory,
-                    t.MapsToBlockType, t.CoverageLevel, t.AliasOf);
+                    t.MapsToBlockType, t.CoverageLevel, t.AliasOf, t.HandlerKind);
                 _tokens[(t.Name, t.Kind, t.PackageSlug ?? string.Empty)] = entry;
             }
 

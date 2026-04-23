@@ -71,7 +71,8 @@ public sealed record CatalogTokenEntry(
     string? SemanticCategory,
     string? MapsToBlockType,
     string CoverageLevel,
-    Guid? AliasOf);
+    Guid? AliasOf,
+    string? HandlerKind = null);
 
 public sealed record CatalogPackageEntry(
     string Slug,
