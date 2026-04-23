@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Lilia.Api.Hubs;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
+using Lilia.Infrastructure.Data;
 
 namespace Lilia.Api.Controllers;
 
@@ -506,6 +508,94 @@ public class ImportReviewController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var summary = await _reviewService.GetSessionSummaryAsync(id, userId, ct);
         return summary == null ? NotFound() : Ok(summary);
+    }
+
+    /// <summary>
+    /// Session-scoped rerun (FT-IMP-001 stage 5). Convenience wrapper
+    /// around the definition-scoped <c>POST /import-definitions/{id}/rerun</c>
+    /// for clients holding a sessionId (= the current review page).
+    /// Resolves the session's definitionId and delegates. Returns the
+    /// new session id so the client can navigate to it.
+    /// </summary>
+    [HttpPost("{id:guid}/rerun")]
+    public async Task<ActionResult<object>> Rerun(Guid id, [FromServices] LiliaDbContext db, [FromServices] IServiceScopeFactory scopeFactory, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var session = await db.ImportReviewSessions
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (session == null) return NotFound();
+        if (session.OwnerId != userId) return Forbid();
+        if (session.DefinitionId == null)
+            return BadRequest(new { message = "Session predates the FT-IMP-001 migration — no definition attached. Re-upload to use rerun." });
+
+        var definition = await db.ImportDefinitions
+            .FirstOrDefaultAsync(d => d.Id == session.DefinitionId.Value, ct);
+        if (definition == null) return NotFound(new { message = "Definition missing." });
+
+        // Mark prior non-terminal instances superseded, spawn a new one.
+        // Same logic as ImportDefinitionsController.Rerun — could factor
+        // into a shared service method later; inline for now to keep the
+        // PR small.
+        var supersedeStates = new[] { "parsing", "pending_review", "auto_finalized", "in_progress", "failed" };
+        var supersededCount = await db.ImportReviewSessions
+            .Where(s => s.DefinitionId == definition.Id && supersedeStates.Contains(s.Status))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Status, "superseded")
+                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow), ct);
+
+        var now = DateTime.UtcNow;
+        var newJobId = Guid.NewGuid();
+        var newSessionId = Guid.NewGuid();
+
+        db.Jobs.Add(new Lilia.Core.Entities.Job
+        {
+            Id = newJobId,
+            TenantId = userId,
+            UserId = userId,
+            JobType = Lilia.Core.Entities.JobTypes.Import,
+            Status = Lilia.Core.Entities.JobStatus.Pending,
+            Progress = 0,
+            SourceFormat = definition.SourceFormat,
+            TargetFormat = "lilia",
+            SourceFileName = definition.SourceFileName,
+            Direction = "INBOUND",
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+        db.ImportReviewSessions.Add(new Lilia.Core.Entities.ImportReviewSession
+        {
+            Id = newSessionId,
+            DefinitionId = definition.Id,
+            JobId = newJobId,
+            OwnerId = userId,
+            DocumentTitle = System.IO.Path.GetFileNameWithoutExtension(definition.SourceFileName),
+            Status = "parsing",
+            RawImportData = definition.RawSource,
+            CreatedAt = now,
+            UpdatedAt = now,
+            ExpiresAt = now.AddDays(30),
+            SourceFormat = definition.SourceFormat,
+        });
+        await db.SaveChangesAsync(ct);
+
+        // Fire the parse job in a background scope.
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            var jobExec = scope.ServiceProvider.GetRequiredService<ILatexImportJobExecutor>();
+            try
+            {
+                await jobExec.RunAsync(newJobId, newSessionId, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[ImportRerun] Background parse failed for rerun job {JobId}", newJobId);
+            }
+        });
+
+        return Ok(new { sessionId = newSessionId, jobId = newJobId, supersededCount });
     }
 
     /// <summary>

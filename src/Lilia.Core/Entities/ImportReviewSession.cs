@@ -5,6 +5,17 @@ namespace Lilia.Core.Entities;
 public class ImportReviewSession
 {
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// FT-IMP-001: the owning import definition (= source file + user).
+    /// Created alongside the session on upload. Nullable during the
+    /// 2026-04-23 migration — the backfill sets it for every existing
+    /// row, then a follow-up migration flips it to NOT NULL once live
+    /// traffic has rebuilt.
+    /// </summary>
+    public Guid? DefinitionId { get; set; }
+    public virtual ImportDefinition? Definition { get; set; }
+
     public Guid? JobId { get; set; }
     public string OwnerId { get; set; } = string.Empty;
     public string DocumentTitle { get; set; } = string.Empty;

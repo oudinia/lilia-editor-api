@@ -76,7 +76,23 @@ public class ImportsController : ControllerBase
         var now = DateTime.UtcNow;
         var jobId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
+        var definitionId = Guid.NewGuid();
         var title = Path.GetFileNameWithoutExtension(file.FileName ?? "Imported LaTeX");
+
+        // FT-IMP-001: every upload creates an ImportDefinition (the
+        // immutable source) + an initial ImportReviewSession (the first
+        // instance). Retry later creates a new instance on the same
+        // definition without re-uploading — see
+        // POST /api/lilia/import-definitions/{id}/rerun.
+        _context.ImportDefinitions.Add(new ImportDefinition
+        {
+            Id = definitionId,
+            OwnerId = userId,
+            SourceFileName = file.FileName ?? $"{title}.tex",
+            SourceFormat = "latex",
+            RawSource = source,
+            CreatedAt = now,
+        });
 
         // Persist the job + session in one SaveChanges. Both rows fit — no
         // bulk helper needed.
@@ -99,6 +115,7 @@ public class ImportsController : ControllerBase
         _context.ImportReviewSessions.Add(new ImportReviewSession
         {
             Id = sessionId,
+            DefinitionId = definitionId,
             JobId = jobId,
             OwnerId = userId,
             DocumentTitle = title,
