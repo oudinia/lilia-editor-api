@@ -23,10 +23,15 @@ public record CreateReviewBlockDto(
 
 // SessionId / BlockId are accepted for backward compatibility but ignored —
 // both come from the route. Clients can omit them.
+// SortOrder supports drag-reorder from the Studio-parity review page:
+// client updates it on drop; server writes to the ImportBlockReview row
+// without shuffling neighbours (neighbouring sortOrders stay stable —
+// clients can rebalance later if ordering becomes sparse).
 public record UpdateBlockReviewDto(
     string? Status = null,
     JsonElement? CurrentContent = null,
     string? CurrentType = null,
+    int? SortOrder = null,
     string? SessionId = null,
     string? BlockId = null
 );
@@ -167,6 +172,38 @@ public sealed record ReportTokenDto(
     string? PackageSlug,
     int Count,
     string CoverageLevel
+);
+
+/// <summary>
+/// Pre-checkout summary for the import summary sheet (FT-IMP-001 §Summary
+/// sheet content). Composed from the same signals as the end-of-review
+/// report plus source / format / coverage / estimate fields. Consumed by
+/// the upload dialog when the user ticked "show summary before importing"
+/// and by the /import-summary/:sessionId page the user lands on.
+/// </summary>
+public sealed record SessionSummaryDto(
+    Guid SessionId,
+    string Status,
+    // SOURCE
+    string? SourceFileName,
+    string? SourceFormat,
+    int? Lines,
+    int? PackageCount,
+    // FORMAT (document class + engine hint, LaTeX-specific for now)
+    string? DocumentClass,
+    string? Engine,
+    // CONTENT
+    Dictionary<string, int> BlockCountsByType,
+    int TotalBlocks,
+    // COVERAGE
+    double? CoverageMappedPercent,
+    int UnsupportedTokenCount,
+    // QUALITY
+    int ErrorCount,
+    int WarningCount,
+    int? QualityScore,
+    // ESTIMATED REVIEW
+    int EstimatedReviewMinutes
 );
 
 /// <summary>

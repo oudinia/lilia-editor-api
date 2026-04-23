@@ -71,6 +71,7 @@ public class LiliaDbContext : DbContext
     public DbSet<Feedback> Feedback => Set<Feedback>();
 
     // Import review
+    public DbSet<ImportDefinition> ImportDefinitions => Set<ImportDefinition>();
     public DbSet<ImportReviewSession> ImportReviewSessions => Set<ImportReviewSession>();
     public DbSet<ImportBlockReview> ImportBlockReviews => Set<ImportBlockReview>();
     public DbSet<ImportReviewCollaborator> ImportReviewCollaborators => Set<ImportReviewCollaborator>();

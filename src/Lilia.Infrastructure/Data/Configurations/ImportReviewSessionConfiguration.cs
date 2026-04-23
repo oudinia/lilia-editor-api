@@ -12,6 +12,7 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
 
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+        builder.Property(s => s.DefinitionId).HasColumnName("definition_id");
         builder.Property(s => s.JobId).HasColumnName("job_id");
         builder.Property(s => s.OwnerId).HasColumnName("owner_id").HasMaxLength(255).IsRequired();
         builder.Property(s => s.DocumentTitle).HasColumnName("document_title").HasMaxLength(500).IsRequired();
@@ -49,5 +50,14 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
             .WithMany()
             .HasForeignKey(s => s.DocumentId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // FT-IMP-001: definition → many instances. Nullable during the
+        // 2026-04-23 migration; backfill sets it for every existing row.
+        builder.HasOne(s => s.Definition)
+            .WithMany(d => d.Instances)
+            .HasForeignKey(s => s.DefinitionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(s => s.DefinitionId);
     }
 }

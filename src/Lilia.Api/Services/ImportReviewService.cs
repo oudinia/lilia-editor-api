@@ -500,6 +500,15 @@ public class ImportReviewService : IImportReviewService
             review.ReviewedAt = DateTime.UtcNow;
         }
 
+        // SortOrder write-through. Clients use this for drag-reorder from
+        // the Studio-parity review page. No rebalancing here — callers
+        // choose integer or fractional orderings as they see fit. A future
+        // bulk-reorder endpoint can renumber if sortOrders get sparse.
+        if (dto.SortOrder.HasValue)
+        {
+            review.SortOrder = dto.SortOrder.Value;
+        }
+
         session.UpdatedAt = DateTime.UtcNow;
 
         // Log activity
@@ -1700,6 +1709,109 @@ public class ImportReviewService : IImportReviewService
             CoveragePercent: coveragePercent,
             TopUnsupported: topUnsupported.Select(t => new ReportTokenDto(t.Name, t.Kind, t.PackageSlug, t.Count, t.CoverageLevel)).ToList(),
             ActivityEventCount: activityCount);
+    }
+
+    public async Task<SessionSummaryDto?> GetSessionSummaryAsync(Guid sessionId, string userId, CancellationToken ct = default)
+    {
+        var session = await _context.ImportReviewSessions
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session == null) return null;
+        if (GetUserRole(session, userId) == null) return null;
+
+        // Block counts grouped by the block's effective type (current
+        // overrides original). Staying on ImportBlockReview while PR2 is
+        // pending — PR3 renames to rev_blocks without changing this
+        // aggregation shape.
+        var byType = await _context.ImportBlockReviews
+            .Where(br => br.SessionId == sessionId)
+            .GroupBy(br => br.CurrentType ?? br.OriginalType)
+            .Select(g => new { Type = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var blockCountsByType = byType.ToDictionary(x => x.Type, x => x.Count);
+        var totalBlocks = byType.Sum(x => x.Count);
+
+        // Diagnostics by severity. Two buckets matter for the summary:
+        // errors (gate the Import button) and warnings (informational).
+        var diagBySeverity = await _context.ImportDiagnostics
+            .Where(d => d.SessionId == sessionId)
+            .GroupBy(d => d.Severity)
+            .Select(g => new { Severity = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var errorCount = diagBySeverity.FirstOrDefault(x => x.Severity == "error")?.Count ?? 0;
+        var warningCount = diagBySeverity.FirstOrDefault(x => x.Severity == "warning")?.Count ?? 0;
+
+        // Coverage % — fraction of recorded source tokens whose catalog
+        // entry is full/partial/shimmed. Null when nothing recorded (non-
+        // LaTeX formats currently don't populate latex_token_usage).
+        var totalUsage = await _context.LatexTokenUsages
+            .Where(u => u.SessionId == sessionId)
+            .SumAsync(u => (int?)u.Count, ct) ?? 0;
+        double? coverageMappedPercent = null;
+        if (totalUsage > 0)
+        {
+            var coveredUsage = await _context.LatexTokenUsages
+                .Where(u => u.SessionId == sessionId)
+                .Join(_context.LatexTokens.Where(t => t.CoverageLevel == "full" || t.CoverageLevel == "partial" || t.CoverageLevel == "shimmed"),
+                    u => u.TokenId, t => t.Id, (u, _) => u.Count)
+                .SumAsync(c => (int?)c, ct) ?? 0;
+            coverageMappedPercent = Math.Round(100.0 * coveredUsage / totalUsage, 1);
+        }
+        var unsupportedTokenCount = await _context.LatexTokenUsages
+            .Where(u => u.SessionId == sessionId)
+            .Join(_context.LatexTokens.Where(t => t.CoverageLevel == "unsupported" || t.CoverageLevel == "none"),
+                u => u.TokenId, t => t.Id, (u, _) => u)
+            .CountAsync(ct);
+
+        // Source-text signals — only meaningful for LaTeX-ish inputs where
+        // RawImportData holds the .tex / .md / etc. text. DOCX uploads
+        // persist a different payload; we leave the fields null.
+        int? lines = null;
+        int? packageCount = null;
+        string? documentClass = null;
+        string? engine = null;
+        if (!string.IsNullOrEmpty(session.RawImportData) && (session.SourceFormat == "latex" || session.SourceFormat == "tex" || session.SourceFormat == "markdown"))
+        {
+            var raw = session.RawImportData;
+            lines = raw.Count(c => c == '\n') + 1;
+            if (session.SourceFormat == "latex" || session.SourceFormat == "tex")
+            {
+                packageCount = System.Text.RegularExpressions.Regex
+                    .Matches(raw, @"\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}")
+                    .Count;
+                var classMatch = System.Text.RegularExpressions.Regex
+                    .Match(raw, @"\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}");
+                documentClass = classMatch.Success ? classMatch.Groups[1].Value : null;
+                // Naive engine sniff: fontspec / unicode-math imply xelatex/lualatex.
+                engine = System.Text.RegularExpressions.Regex.IsMatch(raw, @"\\usepackage(?:\[[^\]]*\])?\{(fontspec|unicode-math)\}")
+                    ? "xelatex"
+                    : "pdflatex";
+            }
+        }
+
+        // Estimated review heuristic (seconds → minutes). Block scan is
+        // cheap (~2 s each), errors need real work (~60 s), warnings
+        // require a glance (~30 s). Tune by telemetry once live.
+        var estimatedSeconds = (totalBlocks * 2) + (errorCount * 60) + (warningCount * 30);
+        var estimatedReviewMinutes = Math.Max(1, (int)Math.Ceiling(estimatedSeconds / 60.0));
+
+        return new SessionSummaryDto(
+            SessionId: sessionId,
+            Status: session.Status,
+            SourceFileName: session.DocumentTitle,
+            SourceFormat: session.SourceFormat,
+            Lines: lines,
+            PackageCount: packageCount,
+            DocumentClass: documentClass,
+            Engine: engine,
+            BlockCountsByType: blockCountsByType,
+            TotalBlocks: totalBlocks,
+            CoverageMappedPercent: coverageMappedPercent,
+            UnsupportedTokenCount: unsupportedTokenCount,
+            ErrorCount: errorCount,
+            WarningCount: warningCount,
+            QualityScore: session.QualityScore,
+            EstimatedReviewMinutes: estimatedReviewMinutes);
     }
 
     public async Task<List<ReviewSessionSummaryDto>> ListSessionsAsync(string userId, string scope = "active", string? format = null, DateTime? from = null, DateTime? to = null, Guid? documentId = null, CancellationToken ct = default)
