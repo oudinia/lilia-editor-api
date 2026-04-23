@@ -62,6 +62,22 @@ public class PublicCoverageController : ControllerBase
             .Select(x => new CategoryBreakdownDto(x.Category, x.Count))
             .ToList();
 
+        // Handler-kind breakdown for the facet chip row on the public
+        // page. Only covered rows (full / partial / shimmed) count —
+        // unsupported rows have no handler_kind.
+        var handlerKindRaw = await _db.LatexTokens
+            .Where(t => t.HandlerKind != null
+                     && (t.CoverageLevel == "full"
+                      || t.CoverageLevel == "partial"
+                      || t.CoverageLevel == "shimmed"))
+            .GroupBy(t => t.HandlerKind!)
+            .Select(g => new { Kind = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var handlerKinds = handlerKindRaw
+            .OrderByDescending(x => x.Count)
+            .Select(x => new HandlerKindBreakdownDto(x.Kind, x.Count))
+            .ToList();
+
         var totalCovered = Tok("full") + Tok("partial") + Tok("shimmed");
         var totalTokens = tokens.Sum(x => x.Count);
         var sloPercent = totalTokens == 0 ? 0 : Math.Round(100.0 * totalCovered / totalTokens, 1);
@@ -75,7 +91,8 @@ public class PublicCoverageController : ControllerBase
             CoveragePercent: sloPercent,
             Tokens: new CoverageCountsDto(Tok("full"), Tok("partial"), Tok("shimmed"), Tok("none"), Tok("unsupported")),
             Packages: new CoverageCountsDto(Pkg("full"), Pkg("partial"), Pkg("shimmed"), Pkg("none"), Pkg("unsupported")),
-            Categories: categories));
+            Categories: categories,
+            HandlerKinds: handlerKinds));
     }
 
     /// <summary>
@@ -237,11 +254,14 @@ public sealed record PublicCoverageSummaryDto(
     double CoveragePercent,
     CoverageCountsDto Tokens,
     CoverageCountsDto Packages,
-    List<CategoryBreakdownDto> Categories);
+    List<CategoryBreakdownDto> Categories,
+    List<HandlerKindBreakdownDto> HandlerKinds);
 
 public sealed record CoverageCountsDto(int Full, int Partial, int Shimmed, int None, int Unsupported);
 
 public sealed record CategoryBreakdownDto(string Category, int Count);
+
+public sealed record HandlerKindBreakdownDto(string Kind, int Count);
 
 public sealed record PublicPackageDto(string Slug, string DisplayName, string Category, string CoverageLevel, string? Notes, string? CtanUrl);
 
