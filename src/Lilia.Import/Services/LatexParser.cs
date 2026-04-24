@@ -74,6 +74,54 @@ public class LatexParser : ILatexParser
         CheckDrift(name, "command", "inline-markdown", MarkdownInlineWrappers.ContainsKey(name));
 
     /// <summary>
+    /// Boot-time audit: walk every parser HashSet and, for each member,
+    /// ask the router what handler_kind the catalog claims. Anything
+    /// orphaned (catalog returns null or a non-matching kind that isn't
+    /// a legitimate alternate handler) lands in a single summary log
+    /// entry so operators see the alignment picture on each deploy,
+    /// without waiting for a request to hit the drifted token.
+    ///
+    /// Meant to be called exactly once per process, after
+    /// ILatexCatalogService.PreloadAsync has populated the cache.
+    /// Safe to call multiple times; just repeats the log.
+    /// </summary>
+    public void AuditCatalogAlignment()
+    {
+        if (_router is NullTokenRouter) return;
+
+        var orphansInCatalog = new List<string>();
+
+        void Check(string name, string kind, string expected)
+        {
+            var routerKind = _router.HandlerKindFor(name, kind);
+            // Orphan = catalog has no row at all. A different non-null
+            // handler_kind is multi-handler (see CheckDrift doc) and
+            // not an orphan.
+            if (routerKind is null)
+                orphansInCatalog.Add($"{kind}/'{name}' (expected {expected})");
+        }
+
+        foreach (var env in KnownEnvironments) Check(env, "environment", "known-structural");
+        foreach (var env in TheoremEnvironments.Keys) Check(env, "environment", "theorem-like");
+        foreach (var env in PassThroughEnvironments) Check(env, "environment", "pass-through");
+        foreach (var cmd in PreservedInlineCommands) Check(cmd, "command", "inline-preserved");
+        foreach (var cmd in CodeDisplayInlineCommands) Check(cmd, "command", "inline-code");
+        foreach (var cmd in MarkdownInlineWrappers.Keys) Check(cmd, "command", "inline-markdown");
+
+        if (orphansInCatalog.Count == 0)
+        {
+            _logger.LogInformation("[LatexParser] Catalog audit clean — all hardcoded HashSet members have a catalog row.");
+        }
+        else
+        {
+            _logger.LogWarning(
+                "[LatexParser] Catalog audit found {Count} orphan(s) — HashSet members with no catalog row: {Orphans}",
+                orphansInCatalog.Count,
+                string.Join(", ", orphansInCatalog));
+        }
+    }
+
+    /// <summary>
     /// Shared drift-detection helper. Compares a local HashSet verdict
     /// against the router's <c>handler_kind</c>. Returns the local
     /// verdict unchanged; the router is observed, never authoritative.

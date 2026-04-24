@@ -641,6 +641,17 @@ if (!app.Environment.IsEnvironment("Testing"))
     {
         await concrete.PreloadAsync();
     }
+
+    // Stage-3 boot-time audit — walk every hardcoded HashSet in
+    // LatexParser and log any member without a matching catalog row.
+    // Proactive complement to the per-request drift check; one log
+    // entry per deploy so operators see the alignment picture without
+    // waiting for a request to hit the drifted token.
+    var parser = app.Services.GetRequiredService<Lilia.Import.Interfaces.ILatexParser>();
+    if (parser is Lilia.Import.Services.LatexParser concreteParser)
+    {
+        concreteParser.AuditCatalogAlignment();
+    }
 }
 
 // Seed system templates
