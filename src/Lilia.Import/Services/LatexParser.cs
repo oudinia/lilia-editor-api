@@ -52,10 +52,26 @@ public class LatexParser : ILatexParser
     private bool IsPassThroughEnvironment(string envName) =>
         CheckDrift(envName, "environment", "pass-through", PassThroughEnvironments.Contains(envName));
 
-    // NOTE: inline-command HashSets (PreservedInlineCommands /
-    // CodeDisplayInlineCommands / MarkdownInlineWrappers) are consumed
-    // from a static Normalise method; converting those call sites to
-    // instance-scoped drift checks is a separate commit.
+    /// <summary>
+    /// Stage-3 parallel-run for PreservedInlineCommands lookup
+    /// (\cite / \ref / \label / \href / \url / \footnote / …).
+    /// </summary>
+    private bool IsPreservedInlineCommand(string name) =>
+        CheckDrift(name, "command", "inline-preserved", PreservedInlineCommands.Contains(name));
+
+    /// <summary>
+    /// Stage-3 parallel-run for CodeDisplayInlineCommands lookup
+    /// (\texttt / \verb / \lstinline / \path / …).
+    /// </summary>
+    private bool IsCodeDisplayInlineCommand(string name) =>
+        CheckDrift(name, "command", "inline-code", CodeDisplayInlineCommands.Contains(name));
+
+    /// <summary>
+    /// Stage-3 parallel-run for MarkdownInlineWrappers lookup
+    /// (\textbf / \textit / \emph / \underline).
+    /// </summary>
+    private bool IsMarkdownInlineWrapper(string name) =>
+        CheckDrift(name, "command", "inline-markdown", MarkdownInlineWrappers.ContainsKey(name));
 
     /// <summary>
     /// Shared drift-detection helper — compares a local HashSet verdict
@@ -682,7 +698,7 @@ public class LatexParser : ILatexParser
     ///   - Any OTHER \cmd{arg} (unknown user macros) → just the arg.
     /// Runs iteratively so nested wrappers collapse (\textbf{\textit{X}} → ***X***).
     /// </summary>
-    private static string NormaliseInlineCommands(string text)
+    private string NormaliseInlineCommands(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
 
@@ -712,10 +728,10 @@ public class LatexParser : ILatexParser
             {
                 var cmd = m.Groups[1].Value;
                 var arg = m.Groups[2].Value;
-                if (PreservedInlineCommands.Contains(cmd)) return m.Value;
-                if (CodeDisplayInlineCommands.Contains(cmd) || LooksLikeCodeCommand(cmd))
+                if (IsPreservedInlineCommand(cmd)) return m.Value;
+                if (IsCodeDisplayInlineCommand(cmd) || LooksLikeCodeCommand(cmd))
                     return "`" + arg + "`";
-                if (MarkdownInlineWrappers.TryGetValue(cmd, out var wrap))
+                if (IsMarkdownInlineWrapper(cmd) && MarkdownInlineWrappers.TryGetValue(cmd, out var wrap))
                     return wrap.Open + arg + wrap.Close;
                 return arg;
             });
@@ -1182,7 +1198,7 @@ public class LatexParser : ILatexParser
         }
     }
 
-    private static void AddParagraphs(string content, ImportDocument document, ref int elementOrder)
+    private void AddParagraphs(string content, ImportDocument document, ref int elementOrder)
     {
         // Split by double newlines to get paragraphs
         var paragraphs = Regex.Split(content, @"\n\s*\n")
