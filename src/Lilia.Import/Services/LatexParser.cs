@@ -74,18 +74,34 @@ public class LatexParser : ILatexParser
         CheckDrift(name, "command", "inline-markdown", MarkdownInlineWrappers.ContainsKey(name));
 
     /// <summary>
-    /// Shared drift-detection helper — compares a local HashSet verdict
-    /// against the router's <c>handler_kind</c> view and logs a Warning
-    /// on disagreement. Returns the local verdict unchanged so call
-    /// sites behave exactly as before.
+    /// Shared drift-detection helper. Compares a local HashSet verdict
+    /// against the router's <c>handler_kind</c>. Returns the local
+    /// verdict unchanged; the router is observed, never authoritative.
+    ///
+    /// Only two cases emit a Warning:
+    /// <list type="bullet">
+    ///   <item>Orphan in parser: HashSet says True, router says null
+    ///   (catalog has no row for this token → catalog is lying by
+    ///   omission).</item>
+    ///   <item>Orphan in catalog: HashSet says False, router says the
+    ///   exact expected kind (catalog claims we handle it, parser
+    ///   disagrees).</item>
+    /// </list>
+    ///
+    /// Multi-handler tokens (e.g. \cite — citation-regex primary,
+    /// PreservedInlineCommands fallback) are NOT drift — the router
+    /// returning a different non-null handler kind is consistent with
+    /// the parser having several valid paths for the same token.
     /// </summary>
     private bool CheckDrift(string name, string kind, string expectedHandler, bool localVerdict)
     {
         if (_router is NullTokenRouter) return localVerdict;
 
         var routerKind = _router.HandlerKindFor(name, kind);
-        var routerVerdict = routerKind == expectedHandler;
-        if (localVerdict != routerVerdict)
+        var isRealDrift =
+            (localVerdict && routerKind is null)                              // parser handles it, catalog doesn't
+            || (!localVerdict && routerKind == expectedHandler);              // catalog claims this exact handler, parser doesn't
+        if (isRealDrift)
         {
             _logger.LogWarning(
                 "[TokenRouter drift] {Kind} '{Name}' hashset[{Expected}]={Local} router={RouterKind} (treating as {Decision})",
