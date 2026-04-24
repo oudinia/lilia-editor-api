@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using Lilia.Import.Interfaces;
 using Lilia.Import.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lilia.Import.Services;
 
@@ -13,17 +15,41 @@ public class LatexParser : ILatexParser
 
     // Router that resolves (name, kind) → parser-handler decision via
     // the DB-backed catalog. Stage 3 of the parser-reads-catalog
-    // migration uses this to replace the hardcoded HashSets below; for
-    // now it's only stored, no call sites consume it yet.
-    // NullTokenRouter keeps parameterless-construction callers (tests,
-    // library consumers) working unchanged.
+    // migration runs the router in parallel with the hardcoded HashSets
+    // below — HashSets are the source of truth for behavior; router
+    // is observed for drift. Divergences land in _logger so we can
+    // spot when the catalog and parser disagree before the final swap.
     private readonly ITokenRouter _router;
+    private readonly ILogger<LatexParser> _logger;
 
     public LatexParser() : this(NullTokenRouter.Instance) { }
 
-    public LatexParser(ITokenRouter router)
+    public LatexParser(ITokenRouter router, ILogger<LatexParser>? logger = null)
     {
         _router = router ?? NullTokenRouter.Instance;
+        _logger = logger ?? NullLogger<LatexParser>.Instance;
+    }
+
+    /// <summary>
+    /// Stage-3 parallel-run for KnownEnvironments lookup. Returns the
+    /// HashSet answer (authoritative) but also consults the router and
+    /// logs Warning on disagreement. Centralised so every call site
+    /// picks up the instrumentation at once when we add more.
+    /// </summary>
+    private bool IsKnownEnvironment(string envName)
+    {
+        var fromHash = KnownEnvironments.Contains(envName);
+        if (_router is NullTokenRouter) return fromHash;
+
+        var routerKind = _router.HandlerKindFor(envName, "environment");
+        var fromRouter = routerKind == "known-structural";
+        if (fromHash != fromRouter)
+        {
+            _logger.LogWarning(
+                "[TokenRouter drift] env={Env} hashset={Hash} router={RouterKind} (treating as {Decision})",
+                envName, fromHash, routerKind ?? "<null>", fromHash);
+        }
+        return fromHash;
     }
 
     /// <summary>
@@ -802,9 +828,12 @@ public class LatexParser : ILatexParser
                 continue; // restart the match search against the rewritten stream
             }
 
-            // Catch-all: any \begin{X}…\end{X} not handled above (P1-6)
+            // Catch-all: any \begin{X}…\end{X} not handled above (P1-6).
+            // IsKnownEnvironment runs the Stage-3 parallel check — same
+            // behaviour, plus drift logging when the catalog's
+            // handler_kind disagrees with the HashSet.
             var unknownEnvMatch = Regex.Match(remaining, @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
-            if (unknownEnvMatch.Success && !KnownEnvironments.Contains(unknownEnvMatch.Groups[1].Value) && !TheoremEnvironments.ContainsKey(unknownEnvMatch.Groups[1].Value))
+            if (unknownEnvMatch.Success && !IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) && !TheoremEnvironments.ContainsKey(unknownEnvMatch.Groups[1].Value))
                 matches.Add((unknownEnvMatch, "unknown_env"));
 
             // Find the first match
