@@ -315,6 +315,19 @@ public class ImportFlowTests : IntegrationTestBase
         res.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task DefinitionRerun_Returns403_WhenDefinitionBelongsToAnotherUser()
+    {
+        // Ownership check lives on the definition, not the session —
+        // symmetric with the session-rerun cross-user guard but worth
+        // testing separately since they're independent controllers.
+        var (definitionId, _) = await SeedDefinitionAndSessionAsync(
+            ownerId: OtherUserId, status: "failed");
+        var res = await _ownerClient.PostAsync(
+            $"/api/lilia/import-definitions/{definitionId}/rerun", content: null);
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     // =====================================================
     // POST /sessions/{id}/finalize  (idempotent)
     // =====================================================
@@ -353,6 +366,22 @@ public class ImportFlowTests : IntegrationTestBase
             .CountAsync();
         docsForOwner.Should().Be(1,
             "idempotent finalize must not create a second document on retry");
+    }
+
+    [Fact]
+    public async Task Finalize_Returns400_WhenPendingBlocksAndForceFalse()
+    {
+        // Seeded blocks land with Status="pending" — without force=true
+        // the service returns null (controller flips it to 400
+        // BadRequest with a human-readable message). Guards the
+        // "review every block" workflow from accidental bypass.
+        var (_, sessionId) = await SeedDefinitionAndSessionAsync(
+            status: "pending_review", blockCount: 3);
+
+        var res = await _ownerClient.PostAsJsonAsync(
+            $"/api/lilia/import-review/sessions/{sessionId}/finalize",
+            new { force = false });
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     // =====================================================
