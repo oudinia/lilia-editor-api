@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
+using Lilia.Core.Interfaces;
+using Lilia.Import.Services;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
@@ -17,13 +19,23 @@ public class ImportReviewService : IImportReviewService
     private readonly IStringLocalizer<ImportReviewMessages> _localizer;
 
     private readonly IRenderService? _renderService;
+    private readonly IStorageService? _storageService;
+    private readonly ILatexProjectExtractor? _projectExtractor;
 
-    public ImportReviewService(LiliaDbContext context, ILogger<ImportReviewService> logger, IStringLocalizer<ImportReviewMessages> localizer, IRenderService? renderService = null)
+    public ImportReviewService(
+        LiliaDbContext context,
+        ILogger<ImportReviewService> logger,
+        IStringLocalizer<ImportReviewMessages> localizer,
+        IRenderService? renderService = null,
+        IStorageService? storageService = null,
+        ILatexProjectExtractor? projectExtractor = null)
     {
         _context = context;
         _logger = logger;
         _localizer = localizer;
         _renderService = renderService;
+        _storageService = storageService;
+        _projectExtractor = projectExtractor;
     }
 
     // --- Session Management ---
@@ -386,6 +398,24 @@ public class ImportReviewService : IImportReviewService
 
             var rejectedCount = await _context.ImportBlockReviews
                 .CountAsync(b => b.SessionId == sessionId && b.Status == "rejected", ct);
+
+            // Stage Overleaf zip assets: if the upload was a .zip project,
+            // the raw zip is preserved at uploads/imports/{jobId}.zip.
+            // Re-extract here, upload every non-.tex file to R2 as an
+            // Asset row on the new document, and wire the three block-
+            // level categories that can be linked: images → figure.src,
+            // .bib → BibliographyEntry, .py/.js/etc → code block content
+            // when referenced by \lstinputlisting.
+            try
+            {
+                await StageZipAssetsAsync(sessionId, documentId, ownerId, now, ct);
+            }
+            catch (Exception ex)
+            {
+                // Asset staging is non-fatal — the document is created
+                // either way, just without the extra files.
+                _logger.LogWarning(ex, "[ImportReview] Failed to stage zip assets for session {SessionId}", sessionId);
+            }
 
             // Mark session as imported and link the new document.
             await _context.ImportReviewSessions
@@ -2269,5 +2299,201 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
             Guid.Empty, sessionId, r.Type, r.Content.RootElement, r.SortOrder, null, 0, DateTime.UtcNow, DateTime.UtcNow))
             .ToList();
         return new BatchConvertResultDto(Created: created, DeletedIds: new List<Guid>());
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Overleaf zip asset staging — called at finalize time.
+    //  Re-extracts the preserved zip, uploads files to R2 + creates
+    //  Asset rows, then wires images / .bib / code listings into the
+    //  corresponding blocks on the finalized document.
+    // ─────────────────────────────────────────────────────────────────
+
+    private async Task StageZipAssetsAsync(
+        Guid sessionId, Guid documentId, string ownerId, DateTime now, CancellationToken ct)
+    {
+        if (_storageService is null || _projectExtractor is null) return;
+
+        // Jobs.Id is the key for the saved zip. Look it up via the session.
+        var jobId = await _context.ImportReviewSessions
+            .Where(s => s.Id == sessionId)
+            .Select(s => s.JobId)
+            .FirstOrDefaultAsync(ct);
+        if (jobId == null || jobId == Guid.Empty) return;
+
+        var zipPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+            "uploads", "imports", $"{jobId}.zip");
+        if (!File.Exists(zipPath)) return;
+
+        byte[] zipBytes;
+        try
+        {
+            zipBytes = await File.ReadAllBytesAsync(zipPath, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[ImportReview] Could not read zip at {Path}", zipPath);
+            return;
+        }
+
+        Lilia.Import.Services.LatexProjectResult extracted;
+        try
+        {
+            extracted = _projectExtractor.Extract(zipBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[ImportReview] Re-extract failed for session {SessionId}", sessionId);
+            return;
+        }
+
+        // Per-filename → Asset url map, used to rewrite figure blocks'
+        // src attribute and code-listing block content after upload.
+        var byFilename = new Dictionary<string, (Guid AssetId, string Url)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var f in extracted.Files)
+        {
+            var assetId = Guid.NewGuid();
+            var ext = Path.GetExtension(f.Path);
+            var storageKey = $"{ownerId}/documents/{documentId}/import-assets/{assetId}{ext}";
+
+            // Upload to storage. Failures are logged + skipped — we don't
+            // want one bad asset to kill the finalize transaction.
+            string url;
+            try
+            {
+                using var stream = new MemoryStream(f.Bytes);
+                await _storageService.UploadAsync(storageKey, stream, f.ContentType);
+                url = _storageService.GetPublicUrl(storageKey);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] Failed to upload asset {Path}", f.Path);
+                continue;
+            }
+
+            _context.Assets.Add(new Asset
+            {
+                Id = assetId,
+                DocumentId = documentId,
+                FileName = Path.GetFileName(f.Path),
+                FileType = f.ContentType,
+                FileSize = f.Bytes.Length,
+                StorageKey = storageKey,
+                Url = url,
+                UserId = ownerId,
+                CreatedAt = now,
+            });
+
+            // Map by both full path and bare filename so \includegraphics{foo}
+            // and \includegraphics{./img/foo.png} both resolve.
+            byFilename[f.Path] = (assetId, url);
+            byFilename[Path.GetFileName(f.Path)] = (assetId, url);
+            byFilename[Path.GetFileNameWithoutExtension(f.Path)] = (assetId, url);
+        }
+        await _context.SaveChangesAsync(ct);
+
+        // Wire 1/3 — rewrite figure blocks' content.src to the R2 URL
+        // when src matches a staged image filename (with/without extension).
+        var images = extracted.Files
+            .Where(f => f.Kind == Lilia.Import.Services.LatexProjectFileKinds.Image)
+            .ToList();
+        if (images.Count > 0)
+        {
+            await RewriteFigureBlocksToAssetsAsync(documentId, byFilename, ct);
+        }
+
+        // Wire 2/3 — parse .bib files and create BibliographyEntry rows.
+        var bibs = extracted.Files
+            .Where(f => f.Kind == Lilia.Import.Services.LatexProjectFileKinds.Bib)
+            .ToList();
+        foreach (var bib in bibs)
+        {
+            try
+            {
+                var content = System.Text.Encoding.UTF8.GetString(bib.Bytes);
+                var entries = BibTexParser.Parse(content);
+                foreach (var e in entries)
+                {
+                    _context.BibliographyEntries.Add(new BibliographyEntry
+                    {
+                        Id = Guid.NewGuid(),
+                        DocumentId = documentId,
+                        CiteKey = e.CiteKey,
+                        EntryType = e.EntryType,
+                        Data = JsonDocument.Parse(JsonSerializer.Serialize(e.Fields)),
+                        CreatedAt = now,
+                        UpdatedAt = now,
+                    });
+                }
+                _logger.LogInformation("[ImportReview] Imported {Count} bibliography entries from {Path}", entries.Count, bib.Path);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] Failed to parse .bib {Path}", bib.Path);
+            }
+        }
+        await _context.SaveChangesAsync(ct);
+
+        // Wire 3/3 — \lstinputlisting{foo.py} wire-up is deferred
+        // post-launch. The referenced files are already staged as
+        // Asset rows, just not inlined into code blocks yet. Users
+        // can view them via the asset URL.
+
+        // Surface extractor notices as ImportDiagnostic rows so the
+        // review panel shows the summary. Info severity because these
+        // are informational, not blocking.
+        foreach (var notice in extracted.Notices)
+        {
+            _context.ImportDiagnostics.Add(new ImportDiagnostic
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                Severity = "warning",
+                Category = "auto_shimmed",
+                Message = notice,
+                CreatedAt = now,
+            });
+        }
+        if (extracted.Notices.Count > 0)
+            await _context.SaveChangesAsync(ct);
+    }
+
+    private async Task RewriteFigureBlocksToAssetsAsync(
+        Guid documentId,
+        Dictionary<string, (Guid AssetId, string Url)> byFilename,
+        CancellationToken ct)
+    {
+        var figureBlocks = await _context.Blocks
+            .Where(b => b.DocumentId == documentId && b.Type == "figure")
+            .ToListAsync(ct);
+
+        var updated = 0;
+        foreach (var block in figureBlocks)
+        {
+            var contentObj = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+                block.Content.RootElement.GetRawText()) ?? new();
+            if (!contentObj.TryGetValue("src", out var srcObj)) continue;
+            var src = srcObj?.ToString();
+            if (string.IsNullOrEmpty(src)) continue;
+
+            // Try full path, then bare filename, then without extension.
+            if (!byFilename.TryGetValue(src, out var hit))
+            {
+                var fname = Path.GetFileName(src);
+                if (!byFilename.TryGetValue(fname, out hit))
+                {
+                    var bare = Path.GetFileNameWithoutExtension(src);
+                    if (!byFilename.TryGetValue(bare, out hit)) continue;
+                }
+            }
+
+            contentObj["src"] = hit.Url;
+            contentObj["assetId"] = hit.AssetId.ToString();
+            block.Content = JsonDocument.Parse(JsonSerializer.Serialize(contentObj));
+            block.UpdatedAt = DateTime.UtcNow;
+            updated++;
+        }
+        if (updated > 0) await _context.SaveChangesAsync(ct);
+        _logger.LogInformation("[ImportReview] Rewrote {Count} figure blocks to R2 asset URLs", updated);
     }
 }

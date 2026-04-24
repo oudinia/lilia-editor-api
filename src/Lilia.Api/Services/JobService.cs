@@ -487,8 +487,8 @@ public class JobService : IJobService
                         var zipBytes = Convert.FromBase64String(request.Content);
                         var extracted = _latexProjectExtractor.Extract(zipBytes);
                         _logger.LogInformation(
-                            "[Import] Flattened zip project {Filename} → main {Main}, {ImgCount} images, {Notices} notices",
-                            request.Filename, extracted.MainFileName, extracted.ImagesFound.Count, extracted.Notices.Count);
+                            "[Import] Flattened zip project {Filename} → main {Main}, {FileCount} files, {Notices} notices",
+                            request.Filename, extracted.MainFileName, extracted.Files.Count, extracted.Notices.Count);
                         request = request with { Content = extracted.InlinedTex };
                         // TODO(v2): persist notices as ImportDiagnostic rows so the
                         // UI surfaces them in the review panel. For v1 they're
