@@ -87,9 +87,47 @@ public class LatexCatalogService : ILatexCatalogService
         // Fast path — assume preloaded. If not, caller will fall through
         // to ReportUnknownAsync which awaits EnsureLoaded as a safety net.
         if (!_loaded) return null;
+
+        // 1) Direct hit on the requested scope.
         if (_tokens.TryGetValue((name, kind, packageSlug ?? string.Empty), out var direct)) return direct;
-        // Fallback to kernel scope if package-scoped lookup missed.
+
+        // 2) If the caller named a package, fall back to kernel.
         if (packageSlug != null && _tokens.TryGetValue((name, kind, string.Empty), out var kernel)) return kernel;
+
+        // 3) If the caller didn't name a package and the kernel scope
+        //    has no row (or only a stale `unsupported` one that was
+        //    deleted), pick the best package-scoped row that shares
+        //    (name, kind). Prefer higher coverage (full > partial >
+        //    shimmed > none > unsupported). This keeps a scanner-style
+        //    caller — parser or diag — honest about coverage even
+        //    when a token is only catalogued under a specific package
+        //    (e.g. \theorem is at amsthm scope, not kernel).
+        if (packageSlug == null)
+        {
+            CatalogTokenEntry? best = null;
+            var bestRank = int.MaxValue;
+            foreach (var kv in _tokens)
+            {
+                if (kv.Key.Name == name && kv.Key.Kind == kind)
+                {
+                    var rank = kv.Value.CoverageLevel switch
+                    {
+                        "full" => 0,
+                        "partial" => 1,
+                        "shimmed" => 2,
+                        "none" => 3,
+                        _ => 4, // unsupported
+                    };
+                    if (rank < bestRank)
+                    {
+                        best = kv.Value;
+                        bestRank = rank;
+                    }
+                }
+            }
+            return best;
+        }
+
         return null;
     }
 
