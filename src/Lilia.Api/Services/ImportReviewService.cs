@@ -338,10 +338,17 @@ public class ImportReviewService : IImportReviewService
             // The centrepiece: copy approved/edited staged rows into real blocks
             // without routing through the app layer. COALESCE picks edited
             // content over original when the reviewer made changes.
+            //
+            // 2026-04-24: changed from gen_random_uuid() to reusing
+            // import_block_reviews.id as the block id. This gives us a
+            // deterministic mapping from import BlockId (string) → new
+            // block.Id (guid) via `ibr.block_id → ibr.id → blocks.id`,
+            // which the comments-transfer INSERT below relies on to
+            // persist review comments onto the finalized document.
             var importedCount = await _context.Database.ExecuteSqlInterpolatedAsync($@"
                 INSERT INTO blocks (id, document_id, type, content, sort_order, depth, created_at, updated_at)
                 SELECT
-                    gen_random_uuid(),
+                    id,
                     {documentId},
                     COALESCE(current_type, original_type),
                     COALESCE(current_content, original_content),
@@ -353,6 +360,29 @@ public class ImportReviewService : IImportReviewService
                 WHERE session_id = {sessionId}
                   AND status IN ('approved','edited')
                 ORDER BY sort_order", ct);
+
+            // Transfer review comments onto the finalized document's blocks.
+            // Mapping: ImportBlockComment.BlockId (string) joins to
+            // ImportBlockReview.BlockId (string); the reused id from above
+            // becomes the Comment.BlockId (guid) on the real document.
+            // Skipped for rejected/deleted blocks — their comments are
+            // discarded along with the block.
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO comments (id, document_id, block_id, user_id, content, resolved, created_at, updated_at)
+                SELECT
+                    gen_random_uuid(),
+                    {documentId},
+                    ibr.id,
+                    ibc.user_id,
+                    ibc.content,
+                    ibc.resolved,
+                    {now},
+                    {now}
+                FROM import_block_comments ibc
+                JOIN import_block_reviews ibr
+                    ON ibr.session_id = ibc.session_id AND ibr.block_id = ibc.block_id
+                WHERE ibc.session_id = {sessionId}
+                    AND ibr.status IN ('approved','edited')", ct);
 
             var rejectedCount = await _context.ImportBlockReviews
                 .CountAsync(b => b.SessionId == sessionId && b.Status == "rejected", ct);
