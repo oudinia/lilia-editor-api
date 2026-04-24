@@ -220,9 +220,9 @@ public class PublicCoverageController : ControllerBase
             new(
                 Id: "end-to-end-fixtures",
                 Title: "One fixture per handler kind, asserted in CI",
-                Status: "in_progress",
-                ProgressPercent: 94, // 15 of 16 handler kinds covered
-                Detail: "15 of 16 handler kinds now have a canonical fixture: the parser produces the claimed block type end-to-end, asserted in CI."),
+                Status: "shipped",
+                ProgressPercent: 100, // all 16 handler kinds covered (known-structural has 2)
+                Detail: "All 16 handler kinds now have a canonical fixture running in CI — the parser produces the claimed block type end-to-end."),
             new(
                 Id: "typst-oracle",
                 Title: "Independent validation via a Typst compiler",
@@ -233,13 +233,14 @@ public class PublicCoverageController : ControllerBase
 
         // Hand-counted from tests/Lilia.Api.Tests/Integration/LatexCatalog/
         // CatalogFixtureTests. Update when adding/removing fixtures.
-        // Now at 15 handler kinds covered out of 16; math-env and
-        // known-structural each have one extra fixture so the test
-        // file holds 17 fixtures.
+        // 16 handler kinds with at least one fixture each (known-structural
+        // has 2 — itemize + figure — for an empirical 17 fixtures total).
+        // CiAssertions is 4 now: the orphan-audit check joined the
+        // integrity suite in the Stage-3 work.
         var tests = new ImplementationTestsDto(
-            CiAssertions: 3,
-            CiAssertionsDescription: "Catalog integrity: every covered row has a handler kind, all handler kinds are whitelisted, no row is unclassified.",
-            PerHandlerFixtures: 15,
+            CiAssertions: 4,
+            CiAssertionsDescription: "Catalog integrity: every covered row has a handler kind, all handler kinds are whitelisted, no row is unclassified, and every parser HashSet member has a catalog row.",
+            PerHandlerFixtures: 16,
             PerHandlerFixturesTarget: 16,
             PerHandlerFixturesDescription: "Canonical fixture per handler kind that parses through the pipeline and checks the output block type.");
 
