@@ -16,6 +16,7 @@ public interface IStudioService
     // Preview
     Task<BlockPreviewDto?> GetBlockPreviewAsync(Guid blockId, string format);
     Task<BlockPreviewDto> RenderBlockPreviewAsync(Guid documentId, Guid blockId, string format);
+    Task<Dictionary<string, string>> GetBlockPreviewsForDocumentAsync(Guid documentId, string format);
 
     // Session
     Task<StudioSessionDto?> GetSessionAsync(string userId, Guid documentId);

@@ -176,6 +176,23 @@ public class StudioController : ControllerBase
         return Ok(rendered);
     }
 
+    /// <summary>
+    /// Batch: return all cached block previews for a document in a single
+    /// call. Kills the N+1 that bit StudioCardFlow — 235 blocks used to
+    /// mean 235 requests on first load. This endpoint returns a dict
+    /// keyed by blockId with the cached content per format, so the
+    /// client pre-populates its in-memory map before card-level components
+    /// mount. Cache-misses still fall back to the single-block GET.
+    /// </summary>
+    [HttpGet("blocks/previews")]
+    public async Task<IActionResult> GetBlockPreviewsBatch(
+        Guid docId,
+        [FromQuery] string format = "latex")
+    {
+        var map = await _studioService.GetBlockPreviewsForDocumentAsync(docId, format);
+        return Ok(map);
+    }
+
     // --- Session ---
 
     [HttpGet("session")]

@@ -295,6 +295,35 @@ public class StudioService : IStudioService
         return new BlockPreviewDto(preview.BlockId, preview.Format, preview.Data, preview.RenderedAt);
     }
 
+    /// <summary>
+    /// Batch read — all cached previews for a document in a single SQL
+    /// round-trip. Response is keyed by blockId (string) so the client
+    /// can drop it straight into a map keyed by block.id. Blocks that
+    /// haven't been rendered yet are simply absent from the response —
+    /// the caller falls back to individual on-demand rendering.
+    /// </summary>
+    public async Task<Dictionary<string, string>> GetBlockPreviewsForDocumentAsync(
+        Guid documentId, string format)
+    {
+        // Join blocks → block_previews so we get one query scoped by
+        // document without pulling every preview across every doc.
+        // AsNoTracking — we're returning content, not mutating.
+        var rows = await _db.BlockPreviews
+            .AsNoTracking()
+            .Where(bp => bp.Format == format
+                      && _db.Blocks.Any(b => b.Id == bp.BlockId && b.DocumentId == documentId))
+            .Select(bp => new { bp.BlockId, bp.Data })
+            .ToListAsync();
+
+        var result = new Dictionary<string, string>(rows.Count);
+        foreach (var r in rows)
+        {
+            if (r.Data == null) continue;
+            result[r.BlockId.ToString()] = System.Text.Encoding.UTF8.GetString(r.Data);
+        }
+        return result;
+    }
+
     public async Task<BlockPreviewDto> RenderBlockPreviewAsync(Guid documentId, Guid blockId, string format)
     {
         var block = await _db.Blocks
