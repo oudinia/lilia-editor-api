@@ -807,6 +807,16 @@ public class LatexParser : ILatexParser
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
 
+        // \href{URL}{LABEL} → [LABEL](URL). The editor has no downstream
+        // renderer for raw \href like it does for \cite/\ref, so leaving
+        // it as LaTeX means users see "\href{...}{...}" in blocks.
+        text = Regex.Replace(
+            text,
+            @"\\href\{([^{}]*)\}\{([^{}]*)\}",
+            m => "[" + m.Groups[2].Value + "](" + m.Groups[1].Value + ")");
+        // \url{URL} → URL (no markdown link wrapper needed; URL is its own label).
+        text = Regex.Replace(text, @"\\url\{([^{}]*)\}", m => m.Groups[1].Value);
+
         // Handle \verb<delim>...<delim> — the delimiter is a single non-letter
         // char (typically | or +). LaTeX-about-LaTeX docs rely heavily on this.
         text = Regex.Replace(
@@ -861,6 +871,9 @@ public class LatexParser : ILatexParser
 
         // Common LaTeX typography artefacts.
         text = text.Replace("~", " ").Replace("\\,", " ").Replace("\\ ", " ");
+        // Literal-character escapes: \&, \%, \#, \_, \$ render as the bare
+        // char. Without this, imported text shows "R\&D" instead of "R&D".
+        text = Regex.Replace(text, @"\\([&%#_$])", "$1");
         // Collapse double spaces introduced by the stripping.
         text = Regex.Replace(text, @"[ \t]{2,}", " ");
         return text.Trim();
