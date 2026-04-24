@@ -31,6 +31,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     private readonly IImportReviewService _reviewService;
     private readonly IImportProgressService _progressService;
     private readonly ILatexCatalogService _catalog;
+    private readonly IConfiguration _config;
     private readonly ILogger<LatexImportJobExecutor> _logger;
 
     public LatexImportJobExecutor(
@@ -40,6 +41,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         IImportReviewService reviewService,
         IImportProgressService progressService,
         ILatexCatalogService catalog,
+        IConfiguration config,
         ILogger<LatexImportJobExecutor> logger)
     {
         _context = context;
@@ -48,6 +50,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         _reviewService = reviewService;
         _progressService = progressService;
         _catalog = catalog;
+        _config = config;
         _logger = logger;
     }
 
@@ -90,6 +93,29 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                 EnumerateBlockReviews(sessionId, parsed.Elements),
                 ct);
             _logger.LogInformation("[LatexImport] Staged {Count} block reviews for session {Session}", stagedBlocks, sessionId);
+
+            // Phase 3.5 — Optional rev_* mirror dual-write (FT-IMP-001 §5 #1).
+            // Off by default; flip Features:ImportRevDualWrite=true in appsettings
+            // or DO App Platform env to enable. Failures are non-fatal — the
+            // primary pipeline (ImportBlockReview) is still authoritative, so a
+            // broken mirror must not take imports down.
+            if (_config.GetValue<bool>("Features:ImportRevDualWrite"))
+            {
+                try
+                {
+                    var mirrored = await StageRevMirrorAsync(sessionId, loaded.DocumentTitle, parsed.Elements, ct);
+                    _logger.LogInformation(
+                        "[LatexImport] Mirrored {Count} blocks to rev_* for session {Session}",
+                        mirrored, sessionId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "[LatexImport] rev_* mirror failed for session {Session} — primary pipeline unaffected",
+                        sessionId);
+                }
+            }
+
             await MarkJobAsync(jobId, JobStatus.Processing, progress: 60, ct);
 
             // Phase 4 — Stage diagnostics via COPY.
@@ -176,6 +202,53 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                     .SetProperty(x => x.UpdatedAt, DateTime.UtcNow), ct);
             await tracker.ReportFailedAsync(ex.Message);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// FT-IMP-001 dual-write: insert a RevDocument for the instance and
+    /// bulk-COPY a RevBlock per parsed element. Runs only when
+    /// Features:ImportRevDualWrite is enabled. The rows mirror the
+    /// ImportBlockReview side 1:1 so a future read-side flip can compare
+    /// them without special-case migration.
+    /// </summary>
+    private async Task<int> StageRevMirrorAsync(
+        Guid sessionId,
+        string documentTitle,
+        List<ImportElement> elements,
+        CancellationToken ct)
+    {
+        var revDocId = Guid.NewGuid();
+        _context.RevDocuments.Add(new RevDocument
+        {
+            Id = revDocId,
+            InstanceId = sessionId,
+            Title = documentTitle,
+            SourceFormat = "tex",
+        });
+        await _context.SaveChangesAsync(ct);
+
+        return await _bulk.BulkInsertRevBlocksAsync(
+            EnumerateRevBlocks(revDocId, elements),
+            ct);
+    }
+
+    // Mirrors EnumerateBlockReviews — same (type, content) mapping, different target shape.
+    private static IEnumerable<RevBlock> EnumerateRevBlocks(Guid revDocumentId, List<ImportElement> elements)
+    {
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var (type, content) = MapImportElementToBlock(elements[i]);
+            yield return new RevBlock
+            {
+                Id = Guid.NewGuid(),
+                RevDocumentId = revDocumentId,
+                Type = type,
+                Content = JsonDocument.Parse(JsonSerializer.Serialize(content)),
+                SortOrder = i * 100,
+                Depth = 0,
+                Status = "kept",
+            };
         }
     }
 
