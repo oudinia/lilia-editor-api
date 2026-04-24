@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Lilia.Api.Services;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -157,5 +158,39 @@ public class CatalogIntegrityTests : IntegrationTestBase
             "'unsupported'. Rows: {0}",
             string.Join(", ", unclassified.Select(v =>
                 $"{v.Kind} '{v.Name}' ({v.PackageSlug ?? "kernel"}) @ {v.CoverageLevel}")));
+    }
+
+    [Fact]
+    public async Task Parser_HashSets_have_no_catalog_orphans()
+    {
+        // Mirrors the boot-time audit wired into Program.cs. Runs every
+        // hardcoded HashSet member in LatexParser through the router and
+        // asserts each has a catalog row (non-null handler_kind). Keeps
+        // the catalog in lockstep with the parser's dispatch reality:
+        // adding a token to KnownEnvironments / TheoremEnvironments /
+        // PassThroughEnvironments / PreservedInlineCommands /
+        // CodeDisplayInlineCommands / MarkdownInlineWrappers without
+        // also cataloguing it fails the build.
+        //
+        // Program.cs's PreloadAsync is skipped in the Testing
+        // environment, so the test primes the cache itself before
+        // the parser-level audit consults it.
+        using var scope = Fixture.Factory.Services.CreateScope();
+        var catalog = scope.ServiceProvider.GetRequiredService<ILatexCatalogService>();
+        if (catalog is Lilia.Api.Services.LatexCatalogService concrete)
+        {
+            await concrete.PreloadAsync();
+        }
+
+        var parser = (Lilia.Import.Services.LatexParser)
+            scope.ServiceProvider.GetRequiredService<Lilia.Import.Interfaces.ILatexParser>();
+
+        var orphans = parser.FindCatalogOrphans();
+
+        orphans.Should().BeEmpty(
+            "LatexParser HashSet members must have a matching catalog row. " +
+            "If this test fails, either add a catalog migration covering the new tokens " +
+            "or remove them from the HashSet. Orphans: {0}",
+            string.Join(", ", orphans));
     }
 }

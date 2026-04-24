@@ -74,22 +74,18 @@ public class LatexParser : ILatexParser
         CheckDrift(name, "command", "inline-markdown", MarkdownInlineWrappers.ContainsKey(name));
 
     /// <summary>
-    /// Boot-time audit: walk every parser HashSet and, for each member,
-    /// ask the router what handler_kind the catalog claims. Anything
-    /// orphaned (catalog returns null or a non-matching kind that isn't
-    /// a legitimate alternate handler) lands in a single summary log
-    /// entry so operators see the alignment picture on each deploy,
-    /// without waiting for a request to hit the drifted token.
+    /// Walks every parser HashSet and, for each member, asks the
+    /// router what handler_kind the catalog claims. Returns the list
+    /// of orphans — HashSet members with NO catalog row. Does not log.
     ///
-    /// Meant to be called exactly once per process, after
-    /// ILatexCatalogService.PreloadAsync has populated the cache.
-    /// Safe to call multiple times; just repeats the log.
+    /// Pure function over the router state; safe to call from tests or
+    /// from production-boot wrappers like <see cref="AuditCatalogAlignment"/>.
     /// </summary>
-    public void AuditCatalogAlignment()
+    public IReadOnlyList<string> FindCatalogOrphans()
     {
-        if (_router is NullTokenRouter) return;
+        if (_router is NullTokenRouter) return Array.Empty<string>();
 
-        var orphansInCatalog = new List<string>();
+        var orphans = new List<string>();
 
         void Check(string name, string kind, string expected)
         {
@@ -98,7 +94,7 @@ public class LatexParser : ILatexParser
             // handler_kind is multi-handler (see CheckDrift doc) and
             // not an orphan.
             if (routerKind is null)
-                orphansInCatalog.Add($"{kind}/'{name}' (expected {expected})");
+                orphans.Add($"{kind}/'{name}' (expected {expected})");
         }
 
         foreach (var env in KnownEnvironments) Check(env, "environment", "known-structural");
@@ -108,7 +104,24 @@ public class LatexParser : ILatexParser
         foreach (var cmd in CodeDisplayInlineCommands) Check(cmd, "command", "inline-code");
         foreach (var cmd in MarkdownInlineWrappers.Keys) Check(cmd, "command", "inline-markdown");
 
-        if (orphansInCatalog.Count == 0)
+        return orphans;
+    }
+
+    /// <summary>
+    /// Boot-time audit wrapper — calls <see cref="FindCatalogOrphans"/>
+    /// and logs a single summary line at Information / Warning so
+    /// operators see the alignment picture on each deploy.
+    ///
+    /// Meant to be called exactly once per process, after
+    /// ILatexCatalogService.PreloadAsync has populated the cache.
+    /// Safe to call multiple times; just repeats the log.
+    /// </summary>
+    public void AuditCatalogAlignment()
+    {
+        if (_router is NullTokenRouter) return;
+
+        var orphans = FindCatalogOrphans();
+        if (orphans.Count == 0)
         {
             _logger.LogInformation("[LatexParser] Catalog audit clean — all hardcoded HashSet members have a catalog row.");
         }
@@ -116,8 +129,8 @@ public class LatexParser : ILatexParser
         {
             _logger.LogWarning(
                 "[LatexParser] Catalog audit found {Count} orphan(s) — HashSet members with no catalog row: {Orphans}",
-                orphansInCatalog.Count,
-                string.Join(", ", orphansInCatalog));
+                orphans.Count,
+                string.Join(", ", orphans));
         }
     }
 
