@@ -78,6 +78,55 @@ public class BulkInsertHelper
     }
 
     /// <summary>
+    /// COPY-stream RevBlock rows. Used by the FT-IMP-001 parser dual-write
+    /// (handoff §5 #1) to populate `rev_blocks` alongside
+    /// `import_block_reviews`. Shape matches the final `blocks` table
+    /// exactly so checkout can INSERT...SELECT verbatim.
+    ///
+    /// Caller must already have created the owning RevDocument row —
+    /// RevBlocks have an FK to `rev_documents.id` with cascade delete.
+    /// </summary>
+    public async Task<int> BulkInsertRevBlocksAsync(
+        IEnumerable<RevBlock> rows,
+        CancellationToken ct = default)
+    {
+        await using var conn = OpenDedicatedConnection();
+        await conn.OpenAsync(ct);
+
+        const string copy = @"COPY rev_blocks
+            (id, rev_document_id, type, content, sort_order, parent_id,
+             depth, path, status, metadata, confidence, warnings,
+             created_at, updated_at)
+            FROM STDIN BINARY";
+
+        await using var writer = await conn.BeginBinaryImportAsync(copy, ct);
+        var count = 0;
+        var now = DateTime.UtcNow;
+        foreach (var r in rows)
+        {
+            await writer.StartRowAsync(ct);
+            await writer.WriteAsync(r.Id == Guid.Empty ? Guid.NewGuid() : r.Id, NpgsqlDbType.Uuid, ct);
+            await writer.WriteAsync(r.RevDocumentId, NpgsqlDbType.Uuid, ct);
+            await writer.WriteAsync(r.Type, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(r.Content.RootElement.GetRawText(), NpgsqlDbType.Jsonb, ct);
+            await writer.WriteAsync(r.SortOrder, NpgsqlDbType.Integer, ct);
+            if (r.ParentId is null) await writer.WriteNullAsync(ct);
+            else await writer.WriteAsync(r.ParentId.Value, NpgsqlDbType.Uuid, ct);
+            await writer.WriteAsync(r.Depth, NpgsqlDbType.Integer, ct);
+            await WriteNullableStringAsync(writer, r.Path, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(string.IsNullOrEmpty(r.Status) ? "kept" : r.Status, NpgsqlDbType.Varchar, ct);
+            await writer.WriteAsync(r.Metadata.RootElement.GetRawText(), NpgsqlDbType.Jsonb, ct);
+            await WriteNullableIntAsync(writer, r.Confidence, ct);
+            await WriteNullableJsonAsync(writer, r.Warnings, ct);
+            await writer.WriteAsync(r.CreatedAt == default ? now : r.CreatedAt, NpgsqlDbType.TimestampTz, ct);
+            await writer.WriteAsync(r.UpdatedAt == default ? now : r.UpdatedAt, NpgsqlDbType.TimestampTz, ct);
+            count++;
+        }
+        await writer.CompleteAsync(ct);
+        return count;
+    }
+
+    /// <summary>
     /// COPY-stream ImportDiagnostic rows. Same shape as block reviews — no
     /// change tracking, single network round-trip regardless of row count.
     /// </summary>
