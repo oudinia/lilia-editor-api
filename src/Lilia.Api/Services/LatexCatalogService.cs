@@ -272,7 +272,7 @@ ON CONFLICT (token_id, session_id) DO UPDATE
             .Join(db.LatexTokens,
                   u => u.TokenId,
                   t => t.Id,
-                  (u, t) => new { u.Count, t.Name, t.Kind, t.PackageSlug, t.CoverageLevel, t.MapsToBlockType, t.SemanticCategory, t.Notes })
+                  (u, t) => new { u.Count, t.Name, t.Kind, t.PackageSlug, t.CoverageLevel, t.MapsToBlockType, t.SemanticCategory, t.Notes, t.HandlerKind })
             .GroupJoin(db.LatexPackages,
                        x => x.PackageSlug,
                        p => p.Slug,
@@ -286,7 +286,8 @@ ON CONFLICT (token_id, session_id) DO UPDATE
                 r.x.MapsToBlockType,
                 r.x.SemanticCategory,
                 r.x.Count,
-                r.x.Notes))
+                r.x.Notes,
+                r.x.HandlerKind))
             .ToListAsync(ct);
 
         // Sort in-memory — order: unsupported > none > partial > shimmed

@@ -125,4 +125,5 @@ public sealed record SessionCoverageRow(
     string? MapsToBlockType,
     string? SemanticCategory,
     int Count,
-    string? Notes);
+    string? Notes,
+    string? HandlerKind);
