@@ -158,6 +158,118 @@ public class OverleafImportTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Finalize_StagesAssets_RewritesFigure_ImportsBib()
+    {
+        await SeedUserAsync(UserId);
+        using var client = CreateClientAs(UserId);
+
+        // Parser recognises \includegraphics only when wrapped in a
+        // figure environment (LatexParser.cs case "figure"). Bare
+        // \includegraphics falls through as text — logged as a
+        // post-launch gap, verified separately below.
+        var texSource =
+            "\\documentclass{article}\n" +
+            "\\usepackage{graphicx}\n" +
+            "\\begin{document}\n" +
+            "\\section{Intro}\n" +
+            "Some text before the figure.\n" +
+            "\\begin{figure}\n" +
+            "\\includegraphics[width=0.5\\textwidth]{photo.png}\n" +
+            "\\caption{Test caption}\n" +
+            "\\end{figure}\n" +
+            "Citation demo: \\cite{smith2024}.\n" +
+            "\\end{document}\n";
+        var bibSource =
+            "@article{smith2024,\n" +
+            "  author = {Smith, John},\n" +
+            "  title  = {On regression},\n" +
+            "  journal= {J. Stats},\n" +
+            "  year   = 2024\n" +
+            "}\n";
+        var png1x1 = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==");
+
+        var zipBytes = BuildZip(new List<(string, byte[])>
+        {
+            ("main.tex", System.Text.Encoding.UTF8.GetBytes(texSource)),
+            ("photo.png", png1x1),
+            ("refs.bib", System.Text.Encoding.UTF8.GetBytes(bibSource)),
+        });
+
+        // Upload with autoFinalize so the session finalizes immediately
+        // and StageZipAssetsAsync runs as part of FinalizeInternalAsync.
+        using var form = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(zipBytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        form.Add(fileContent, "file", "overleaf-figure-test.zip");
+
+        var res = await client.PostAsync("/api/lilia/imports/latex?autoFinalize=true", form);
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var body = System.Text.Json.JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        var sessionId = body.RootElement.GetProperty("sessionId").GetGuid();
+
+        // The zip + parse + finalize chain is async (fire-and-forget Task.Run
+        // in ImportsController). Poll until the session reports `imported` so
+        // the test is deterministic.
+        Guid? documentId = null;
+        for (var attempt = 0; attempt < 60; attempt++)
+        {
+            await using var db = Fixture.Factory.Services.CreateScope()
+                .ServiceProvider.GetRequiredService<LiliaDbContext>();
+            var session = await db.ImportReviewSessions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == sessionId);
+            if (session?.Status == "imported" && session.DocumentId.HasValue)
+            {
+                documentId = session.DocumentId;
+                break;
+            }
+            await Task.Delay(500);
+        }
+        documentId.Should().NotBeNull("session should reach 'imported' status within 30s");
+
+        await using var verifyDb = Fixture.Factory.Services.CreateScope()
+            .ServiceProvider.GetRequiredService<LiliaDbContext>();
+
+        // 3 assets expected: photo.png + refs.bib + (nothing else — no .sty)
+        // Actually the extractor puts .bib in its own category but still
+        // uploads as an Asset via the common staging loop. So 2 assets.
+        var assets = await verifyDb.Assets
+            .AsNoTracking()
+            .Where(a => a.DocumentId == documentId!.Value)
+            .ToListAsync();
+        assets.Should().Contain(a => a.FileName == "photo.png" && a.FileType.StartsWith("image/"),
+            "the photo should be staged to storage");
+        assets.Should().Contain(a => a.FileName == "refs.bib",
+            "the .bib should also be staged as an Asset");
+
+        // 1 bibliography entry expected from @article{smith2024, ...}
+        var bibs = await verifyDb.BibliographyEntries
+            .AsNoTracking()
+            .Where(b => b.DocumentId == documentId!.Value)
+            .ToListAsync();
+        bibs.Should().HaveCount(1);
+        bibs[0].CiteKey.Should().Be("smith2024");
+        bibs[0].EntryType.Should().Be("article");
+
+        // Figure block should exist AND have src rewritten to the R2 (local
+        // in tests) URL — not the raw filename "photo.png".
+        var figures = await verifyDb.Blocks
+            .AsNoTracking()
+            .Where(b => b.DocumentId == documentId!.Value && b.Type == "figure")
+            .ToListAsync();
+        figures.Should().HaveCount(1, "the parser recognises \\includegraphics");
+        var src = figures[0].Content.RootElement.TryGetProperty("src", out var s) ? s.GetString() : "";
+        src.Should().NotBeNullOrEmpty();
+        src.Should().NotBe("photo.png", "src should be rewritten to the asset URL, not the raw filename");
+        src.Should().EndWith(".png", "rewritten URL should preserve the image extension");
+        src.Should().Contain("import-assets", "rewritten URL should point at the storage path");
+        figures[0].Content.RootElement.TryGetProperty("assetId", out var _).Should().BeTrue(
+            "StageZipAssetsAsync should attach an assetId reference to the figure");
+    }
+
+    [Fact]
     public void BibTexParser_ParsesCommonEntries()
     {
         var input = """

@@ -839,11 +839,31 @@ public class LatexParser : ILatexParser
             guard++;
         } while (prev != text && guard < 10);
 
+        // 2026-04-25: strip bare layout macros — commands without {arg}
+        // that just emit layout instructions the block model can't
+        // express. Previously these leaked into block text as raw
+        // "\noindent", "\hfill", "\\", "\\[-3pt]", etc.
+        // Explicit allow-list keeps false positives low; unlisted bare
+        // \cmd names still pass through in case the user relies on
+        // them in a literal LaTeX passthrough block.
+        text = Regex.Replace(
+            text,
+            @"\\(noindent|hfill|hspace\*?|vspace\*?|bigskip|medskip|smallskip|par|newline|linebreak|pagebreak|clearpage|newpage|quad|qquad)\b",
+            "");
+        // Line-break \\ and \\[3pt] / \\[-3pt]. Drop the spacing — it's
+        // layout-only. Keeps double backslashes inside math environments
+        // safe since this runs on paragraph/list text, not math.
+        text = Regex.Replace(text, @"\\\\\s*(?:\[[^\]]*\])?", " ");
+        // NOTE: we deliberately do NOT unwrap stray `{X}` pairs here.
+        // That would break preserved commands like \cite{key} whose
+        // braces are part of the reference syntax downstream
+        // components depend on (citation harvest, ref extraction).
+
         // Common LaTeX typography artefacts.
         text = text.Replace("~", " ").Replace("\\,", " ").Replace("\\ ", " ");
         // Collapse double spaces introduced by the stripping.
         text = Regex.Replace(text, @"[ \t]{2,}", " ");
-        return text;
+        return text.Trim();
     }
 
     private static bool LooksLikeCodeCommand(string cmd)
@@ -1170,10 +1190,15 @@ public class LatexParser : ILatexParser
                                 itemText = itemText[optMatch.Length..];
                             }
                             if (string.IsNullOrWhiteSpace(itemText)) continue;
+                            // 2026-04-25 fix: list items must run through the
+                            // same inline-normalisation pipeline as paragraphs,
+                            // otherwise \textbf{…}, \textit{…}, \hfill, \\, etc.
+                            // leak into the block text verbatim.
+                            var normalisedItem = NormaliseInlineCommands(itemText);
                             document.Elements.Add(new ImportListItem
                             {
                                 Order = elementOrder++,
-                                Text = itemText,
+                                Text = normalisedItem,
                                 IsNumbered = isNumbered,
                                 ListMarker = marker,
                                 Formatting = ParseLatexFormatting(itemText),

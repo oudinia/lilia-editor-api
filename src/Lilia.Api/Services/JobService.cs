@@ -860,7 +860,10 @@ public class JobService : IJobService
             ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
             ImportListItem li => ("list", new { items = new[] { li.Text }, ordered = li.IsNumbered }),
             ImportPageBreak => ("pageBreak", new { }),
-            ImportImage img => ("figure", new { src = "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
+            // Same fix as LatexImportJobExecutor.MapImportElementToBlock —
+            // carry the \includegraphics filename so downstream asset
+            // staging can rewrite it to the storage URL.
+            ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
             ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
             _ => ("paragraph", new { text = "" }),
         };

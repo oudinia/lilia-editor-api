@@ -301,7 +301,11 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
         ImportListItem li => ("list", new { items = new[] { li.Text }, ordered = li.IsNumbered }),
         ImportPageBreak => ("pageBreak", new { }),
-        ImportImage img => ("figure", new { src = "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
+        // 2026-04-25 fix: carry the parsed \includegraphics filename into
+        // content.src so StageZipAssetsAsync can rewrite it to the R2 URL
+        // at finalize. Previously src was hard-coded empty, discarding
+        // the filename and producing placeholder figure blocks.
+        ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
         ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
         _ => ("paragraph", new { text = "" }),
     };
