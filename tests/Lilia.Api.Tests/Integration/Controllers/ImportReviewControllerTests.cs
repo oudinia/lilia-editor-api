@@ -781,26 +781,11 @@ public class ImportReviewControllerTests : IntegrationTestBase
     // Edge Cases
     // =====================================================
 
-    [Fact]
-    public async Task FinalizeSession_CannotFinalizeTwice()
-    {
-        await SeedDefaultUsers();
-        var (sessionId, _) = await CreateSessionWithBlocks("Double Finalize", 2);
-
-        await Client.PostAsJsonAsync(
-            $"{BaseUrl}/{sessionId}/bulk-action",
-            new { sessionId = sessionId.ToString(), action = "approveAll" });
-
-        // First finalize succeeds
-        var response1 = await Client.PostAsJsonAsync(
-            $"{BaseUrl}/{sessionId}/finalize", new { });
-        response1.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        // Second finalize fails (status is now "imported", not "in_progress")
-        var response2 = await Client.PostAsJsonAsync(
-            $"{BaseUrl}/{sessionId}/finalize", new { });
-        response2.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
+    // FinalizeSession_CannotFinalizeTwice was retired 2026-04-24:
+    // FT-IMP-001 stage 8 made finalize idempotent (status=imported +
+    // DocumentId short-circuits to the existing document). The new
+    // contract is covered by ImportFlowTests.Finalize_IsIdempotent_
+    // WhenCalledTwice.
 
     [Fact]
     public async Task UpdateBlock_WithContentAndType_MarksAsEdited()
