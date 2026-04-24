@@ -36,20 +36,46 @@ public class LatexParser : ILatexParser
     /// logs Warning on disagreement. Centralised so every call site
     /// picks up the instrumentation at once when we add more.
     /// </summary>
-    private bool IsKnownEnvironment(string envName)
-    {
-        var fromHash = KnownEnvironments.Contains(envName);
-        if (_router is NullTokenRouter) return fromHash;
+    private bool IsKnownEnvironment(string envName) =>
+        CheckDrift(envName, "environment", "known-structural", KnownEnvironments.Contains(envName));
 
-        var routerKind = _router.HandlerKindFor(envName, "environment");
-        var fromRouter = routerKind == "known-structural";
-        if (fromHash != fromRouter)
+    /// <summary>
+    /// Stage-3 parallel-run for TheoremEnvironments lookup. Same
+    /// pattern — HashSet answer authoritative, router observed.
+    /// </summary>
+    private bool IsTheoremEnvironment(string envName) =>
+        CheckDrift(envName, "environment", "theorem-like", TheoremEnvironments.ContainsKey(envName));
+
+    /// <summary>
+    /// Stage-3 parallel-run for PassThroughEnvironments lookup.
+    /// </summary>
+    private bool IsPassThroughEnvironment(string envName) =>
+        CheckDrift(envName, "environment", "pass-through", PassThroughEnvironments.Contains(envName));
+
+    // NOTE: inline-command HashSets (PreservedInlineCommands /
+    // CodeDisplayInlineCommands / MarkdownInlineWrappers) are consumed
+    // from a static Normalise method; converting those call sites to
+    // instance-scoped drift checks is a separate commit.
+
+    /// <summary>
+    /// Shared drift-detection helper — compares a local HashSet verdict
+    /// against the router's <c>handler_kind</c> view and logs a Warning
+    /// on disagreement. Returns the local verdict unchanged so call
+    /// sites behave exactly as before.
+    /// </summary>
+    private bool CheckDrift(string name, string kind, string expectedHandler, bool localVerdict)
+    {
+        if (_router is NullTokenRouter) return localVerdict;
+
+        var routerKind = _router.HandlerKindFor(name, kind);
+        var routerVerdict = routerKind == expectedHandler;
+        if (localVerdict != routerVerdict)
         {
             _logger.LogWarning(
-                "[TokenRouter drift] env={Env} hashset={Hash} router={RouterKind} (treating as {Decision})",
-                envName, fromHash, routerKind ?? "<null>", fromHash);
+                "[TokenRouter drift] {Kind} '{Name}' hashset[{Expected}]={Local} router={RouterKind} (treating as {Decision})",
+                kind, name, expectedHandler, localVerdict, routerKind ?? "<null>", localVerdict);
         }
-        return fromHash;
+        return localVerdict;
     }
 
     /// <summary>
@@ -819,7 +845,7 @@ public class LatexParser : ILatexParser
                 remaining,
                 @"\\begin\{([A-Za-z]+)\}(?:\{[^}]*\})?(?:\[[^\]]*\])?([\s\S]*?)\\end\{\1\}",
                 RegexOptions.Singleline);
-            if (passThroughMatch.Success && PassThroughEnvironments.Contains(passThroughMatch.Groups[1].Value))
+            if (passThroughMatch.Success && IsPassThroughEnvironment(passThroughMatch.Groups[1].Value))
             {
                 var before = remaining[..passThroughMatch.Index];
                 var body = passThroughMatch.Groups[2].Value;
@@ -829,11 +855,11 @@ public class LatexParser : ILatexParser
             }
 
             // Catch-all: any \begin{X}…\end{X} not handled above (P1-6).
-            // IsKnownEnvironment runs the Stage-3 parallel check — same
-            // behaviour, plus drift logging when the catalog's
+            // Is*Environment helpers run the Stage-3 parallel check —
+            // same behaviour, plus drift logging when the catalog's
             // handler_kind disagrees with the HashSet.
             var unknownEnvMatch = Regex.Match(remaining, @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
-            if (unknownEnvMatch.Success && !IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) && !TheoremEnvironments.ContainsKey(unknownEnvMatch.Groups[1].Value))
+            if (unknownEnvMatch.Success && !IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) && !IsTheoremEnvironment(unknownEnvMatch.Groups[1].Value))
                 matches.Add((unknownEnvMatch, "unknown_env"));
 
             // Find the first match
