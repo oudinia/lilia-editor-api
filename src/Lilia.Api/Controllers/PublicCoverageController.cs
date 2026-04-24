@@ -215,8 +215,8 @@ public class PublicCoverageController : ControllerBase
                 Id: "catalog-driven-dispatch",
                 Title: "Parser reads routing from the catalog instead of hardcoded lists",
                 Status: "in_progress",
-                ProgressPercent: 25,
-                Detail: "The parser now receives a catalog-backed router in its constructor; replacing each hardcoded set with a router lookup is underway one category at a time."),
+                ProgressPercent: 50,
+                Detail: "The parser now runs the catalog router in parallel with its internal lookups across six dispatch sets (envs: known-structural, theorem-like, pass-through; inlines: preserved, code, markdown). Any catalog drift logs as a warning. Once a release cycle passes clean, the internal lists come out."),
             new(
                 Id: "end-to-end-fixtures",
                 Title: "One fixture per handler kind, asserted in CI",
