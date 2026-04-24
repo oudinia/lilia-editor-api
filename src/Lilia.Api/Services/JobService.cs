@@ -359,7 +359,14 @@ public class JobService : IJobService
                         {
                             createdDocument = await _context.Documents.FindAsync(finalizeResult.Document.Id);
                             job.DocumentId = finalizeResult.Document.Id;
-                            reviewSessionId = null; // Hide session from caller — document is ready
+                            // 2026-04-24: do NOT null the reviewSessionId here.
+                            // The frontend routes skip-review to /import-summary/
+                            // {sessionId} so the user sees counts/quality
+                            // before the editor; the summary endpoint still
+                            // works after finalize (status = "imported"). The
+                            // "Import" button there is idempotent via
+                            // FinalizeSessionAsync and returns the existing
+                            // document.
                             _logger.LogInformation("[Import] SkipReview: auto-finalized into document {DocId}", finalizeResult.Document.Id);
                         }
                     }
