@@ -74,6 +74,27 @@ public class LatexParser : ILatexParser
         CheckDrift(name, "command", "inline-markdown", MarkdownInlineWrappers.ContainsKey(name));
 
     /// <summary>
+    /// Stage-3 drift check for regex-based dispatch sites (section,
+    /// citation, metadata-extract). When a regex alternation matches a
+    /// specific command, we expect the catalog to have that command at
+    /// the matching <paramref name="expectedHandler"/>. Only logs if
+    /// the router returns null — consistent with the two-orphan
+    /// semantics in <see cref="CheckDrift"/>.
+    /// </summary>
+    private void CheckRegexDispatchDrift(string name, string expectedHandler)
+    {
+        if (_router is NullTokenRouter) return;
+
+        var routerKind = _router.HandlerKindFor(name, "command");
+        if (routerKind is null)
+        {
+            _logger.LogWarning(
+                "[TokenRouter drift] command '{Name}' regex-site[{Expected}]=<matched> router=<null> (orphan)",
+                name, expectedHandler);
+        }
+    }
+
+    /// <summary>
     /// Walks every parser HashSet and, for each member, asks the
     /// router what handler_kind the catalog claims. Returns the list
     /// of orphans — HashSet members with NO catalog row. Does not log.
@@ -361,6 +382,7 @@ public class LatexParser : ILatexParser
             var titleMatch = MatchBalanced(content, "title");
             if (titleMatch.HasValue)
             {
+                CheckRegexDispatchDrift("title", "metadata-extract");
                 document.Title = StripInlineCommandsForPlainText(titleMatch.Value.Inner);
             }
         }
@@ -373,6 +395,7 @@ public class LatexParser : ILatexParser
         var authorMatch = MatchBalanced(content, "author");
         if (authorMatch.HasValue)
         {
+            CheckRegexDispatchDrift("author", "metadata-extract");
             document.Metadata.Author = StripInlineCommandsForPlainText(authorMatch.Value.Inner);
         }
 
@@ -380,6 +403,7 @@ public class LatexParser : ILatexParser
         var dateMatch = MatchBalanced(content, "date");
         if (dateMatch.HasValue)
         {
+            CheckRegexDispatchDrift("date", "metadata-extract");
             document.Metadata.Date = StripInlineCommandsForPlainText(dateMatch.Value.Inner);
         }
 
@@ -848,7 +872,10 @@ public class LatexParser : ILatexParser
             // Sections — \section / \subsection / \subsubsection / \paragraph / \subparagraph (P1-1)
             var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{([^}]+)\}");
             if (sectionMatch.Success)
+            {
+                CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");
                 matches.Add((sectionMatch, "section"));
+            }
 
             // Equation environments
             if (options.ConvertEquationEnvironments)
