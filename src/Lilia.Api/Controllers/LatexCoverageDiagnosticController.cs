@@ -31,6 +31,131 @@ public partial class LatexCoverageDiagnosticController : ControllerBase
         _executor = executor;
     }
 
+    /// <summary>
+    /// Returns every piece of data the editor UI surfaces will consume
+    /// for a given LaTeX body — the pre-upload modal, the paste-flow
+    /// preview, and (via the same shape) the import-review Coverage
+    /// tab. Lets the front-end be built against a concrete contract
+    /// and lets us test the data pipeline in isolation via curl +
+    /// fixtures, no UI required.
+    ///
+    /// Response shape matches the five UI surfaces documented in
+    /// lilia-docs/technical/latex-coverage-editor-ui-integration.md.
+    /// </summary>
+    [HttpPost("ui-preview")]
+    public async Task<IActionResult> UiPreview(
+        [FromBody] DiagUiPreviewRequest req,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(req.RawSource))
+            return BadRequest(new { error = "rawSource required" });
+
+        // Scan the source — same path the real import takes at Phase 4.5.
+        var scan = LatexCatalogTokenScanner.Scan(req.RawSource);
+
+        // Per-token resolution against the catalog. For unknowns we do
+        // NOT auto-insert — this endpoint is side-effect-free (the
+        // live /diag/self-test and /diag/run-import do insertion).
+        var rows = new List<TokenResolutionRow>(scan.Count);
+        foreach (var (key, count) in scan)
+        {
+            var entry = _catalog.LookupToken(key.Name, key.Kind);
+            rows.Add(new TokenResolutionRow(
+                Name: key.Name,
+                Kind: key.Kind,
+                Count: count,
+                CoverageLevel: entry?.CoverageLevel ?? "unsupported",
+                HandlerKind: entry?.HandlerKind,
+                MapsToBlockType: entry?.MapsToBlockType,
+                // CatalogTokenEntry doesn't carry Notes in the cached
+                // shape — those live only in the DB. We skip surfacing
+                // them here; the UI can link to /tokens/{name} if
+                // users want the note text.
+                Notes: null,
+                PackageSlug: entry?.PackageSlug));
+        }
+
+        // Aggregate by coverage level (counts of distinct tokens, not
+        // usage occurrences — matches how the public Hero counts).
+        var byLevel = new Dictionary<string, UiLevelSummary>
+        {
+            ["full"]        = new(0, new List<string>()),
+            ["partial"]     = new(0, new List<string>()),
+            ["shimmed"]     = new(0, new List<string>()),
+            ["none"]        = new(0, new List<string>()),
+            ["unsupported"] = new(0, new List<string>()),
+        };
+        foreach (var r in rows)
+        {
+            var bucket = byLevel[r.CoverageLevel];
+            var display = r.Kind == "environment" ? $"\\begin{{{r.Name}}}" : $"\\{r.Name}";
+            // Keep a small sample per bucket (up to 10) so the UI
+            // can show users "here's what these look like." Full
+            // list lives in `tokens` for drill-down.
+            if (bucket.Examples.Count < 10)
+                bucket.Examples.Add(display);
+            byLevel[r.CoverageLevel] = bucket with { Count = bucket.Count + 1 };
+        }
+
+        // Aggregate by handler_kind — feeds the facet chips.
+        var byHandler = rows
+            .Where(r => r.HandlerKind is not null)
+            .GroupBy(r => r.HandlerKind!)
+            .Select(g => new UiHandlerSummary(g.Key, g.Count()))
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        // Headline numbers — the two Hero stats.
+        var distinctTokens = rows.Count;
+        var renderedNatively = byLevel["full"].Count + byLevel["partial"].Count + byLevel["shimmed"].Count;
+        var preservedAsSource = byLevel["none"].Count + byLevel["unsupported"].Count;
+        var renderedPct = distinctTokens == 0 ? 100.0 : Math.Round(100.0 * renderedNatively / distinctTokens, 1);
+        var preservedPct = distinctTokens == 0 ? 0.0 : Math.Round(100.0 * preservedAsSource / distinctTokens, 1);
+
+        // Per-token detail only for the unsupported bucket — the
+        // actionable one for the pre-upload modal. Other buckets live
+        // in `tokens` for full drill-down.
+        var unsupportedDetail = rows
+            .Where(r => r.CoverageLevel == "unsupported")
+            .OrderByDescending(r => r.Count)
+            .Select(r => new UiUnsupportedToken(
+                Name: r.Name,
+                Kind: r.Kind,
+                Occurrences: r.Count,
+                Guidance: r.Kind == "environment"
+                    ? $"Unknown environment — body will be preserved as raw LaTeX in an embed block; it round-trips on export."
+                    : $"Unknown command — literal '\\{r.Name}' may appear in paragraph text if the command has no arguments; if it takes an argument, the argument survives."))
+            .ToList();
+
+        // Copy helpers — opinionated defaults the UI can display verbatim
+        // or override. Kept here so every surface uses the same phrasing
+        // (consistency + localisation later).
+        var headline = distinctTokens == 0
+            ? "Nothing to import yet."
+            : $"Lilia will render {renderedPct:0.#}% of this document natively.";
+        var subheading = preservedAsSource == 0
+            ? "Every token in this document is handled — no raw LaTeX will leak through."
+            : $"The remaining {preservedPct:0.#}% — {preservedAsSource} token{(preservedAsSource == 1 ? "" : "s")} — will be preserved as raw LaTeX. Nothing is lost; everything round-trips on export.";
+
+        return Ok(new DiagUiPreviewResponse(
+            Summary: new UiSummary(
+                TotalTokens: distinctTokens,
+                TotalOccurrences: rows.Sum(r => r.Count),
+                RenderedNatively: renderedNatively,
+                PreservedAsSource: preservedAsSource,
+                RenderedPercent: renderedPct,
+                PreservedPercent: preservedPct),
+            ByLevel: byLevel,
+            ByHandler: byHandler,
+            UnsupportedTokens: unsupportedDetail,
+            Tokens: rows,
+            Copy: new UiCopy(
+                Headline: headline,
+                Subheading: subheading,
+                CtaProceed: preservedAsSource == 0 ? "Import" : "Import anyway",
+                CtaCancel: "Cancel")));
+    }
+
     [HttpGet("state")]
     public async Task<IActionResult> State(CancellationToken ct)
     {
@@ -160,6 +285,45 @@ public partial class LatexCoverageDiagnosticController : ControllerBase
 }
 
 public sealed record DiagSelfTestRequest(string RawSource, Guid? SessionId = null);
+
+// UI-preview contract — every surface in
+// lilia-docs/technical/latex-coverage-editor-ui-integration.md
+// consumes one of these shapes.
+public sealed record DiagUiPreviewRequest(string RawSource);
+
+public sealed record TokenResolutionRow(
+    string Name,
+    string Kind,
+    int Count,
+    string CoverageLevel,
+    string? HandlerKind,
+    string? MapsToBlockType,
+    string? Notes,
+    string? PackageSlug);
+
+public sealed record UiLevelSummary(int Count, List<string> Examples);
+
+public sealed record UiHandlerSummary(string Kind, int Count);
+
+public sealed record UiUnsupportedToken(string Name, string Kind, int Occurrences, string Guidance);
+
+public sealed record UiSummary(
+    int TotalTokens,
+    int TotalOccurrences,
+    int RenderedNatively,
+    int PreservedAsSource,
+    double RenderedPercent,
+    double PreservedPercent);
+
+public sealed record UiCopy(string Headline, string Subheading, string CtaProceed, string CtaCancel);
+
+public sealed record DiagUiPreviewResponse(
+    UiSummary Summary,
+    Dictionary<string, UiLevelSummary> ByLevel,
+    List<UiHandlerSummary> ByHandler,
+    List<UiUnsupportedToken> UnsupportedTokens,
+    List<TokenResolutionRow> Tokens,
+    UiCopy Copy);
 
 public sealed record DiagRunImportRequest(string RawSource, string? OwnerId = null, string? Title = null);
 
