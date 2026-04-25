@@ -1,0 +1,201 @@
+% EXPECTED-LEAKS: lipsum
+%------------------------
+% Latex CV Template for COS Northeastern University Faculty
+% Author: Zoe Kearney
+
+% Formatting: https://www.overleaf.com/latex/templates/coles-resume-template/qhpynjcvjpcj
+
+% Follows: Template Dossier Documents, Office of the Provost, Northeastern; July 1, 2025 version (https://provost.northeastern.edu/faculty-affairs/). 
+
+%Disclaimer: This template is intended to complement Northeastern University’s dossier guidelines for tenure and promotion cases, as well as discipline-specific CV standards.
+
+% License: LaTeX Project Public License 1.3c
+%------------------------
+
+% Document class and font size
+\documentclass[a4paper,9pt]{extarticle}
+
+% Packages
+\usepackage[utf8]{inputenc} % For input encoding
+\usepackage{geometry} % For page margins
+\geometry{a4paper, margin=1in} % Set paper size and margins
+\usepackage{titlesec} % For section title formatting
+\usepackage{enumitem} % For itemized list formatting
+\usepackage{hyperref} % For hyperlinks
+\usepackage{lipsum} % For filler text
+\usepackage{changepage} %For Indenting
+
+% Formatting
+\setlist{noitemsep} % Removes item separation
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}[\titlerule] % Section title format
+\titlespacing*{\section}{0pt}{\baselineskip}{\baselineskip} % Section title spacing
+\newenvironment{subs} %Indenting
+  {\adjustwidth{2em}{0pt}}
+  {\endadjustwidth}
+
+%-------------------------------------------------------------------------------
+%-------------------------------------------------------------------------------
+% Begin document
+\begin{document}
+
+% Disable page numbers
+\pagestyle{empty}
+
+% Header
+\begin{center}
+    \textbf{\Large LOREM IPSUM }\\[3pt] % Name
+    \textbf{Curriculum Vitae}\\[1pt] % CV
+    City, State | \href{mailto:example@example.com}{example@example.com} | \href{https://www.linkedin.com/in/loremipsum}{Website or LinkedIn} % Contact info
+\end{center}
+
+%------------------------
+% Education and Employment Section
+\section*{EDUCATION \& EMPLOYMENT HISTORY}
+    \noindent
+    \newline
+    \textbf{Degree Name} \\
+    Year of completion: \\ 
+    Institution \\ 
+    Department \\
+    \lipsum[1][1-4] \\
+
+    \noindent
+    \textbf{Degree Name} \\
+    Year of completion: \\ 
+    Institution \\ 
+    Department \\
+    \lipsum[1][1-4] \\
+    
+    \noindent
+    \textbf{Position Title} \\
+    Time Period: \\
+    Institution \\ 
+    Department \\
+    \lipsum[1][1-4] \\
+    
+    \noindent
+    \textbf{Position Title} \\
+    Time Period: \\
+    Institution \\ 
+    Department \\
+    \lipsum[1][1-4] 
+
+%------------------------
+% Publications Section
+\section*{PUBLICATIONS}
+    \subsection*{Reviewed Articles}
+        \lipsum[1][5-11]
+    \subsection*{Non-Reviewed Articles}
+        \lipsum[1][5-11]
+    \subsection*{Books}
+        \lipsum[1][5-11]
+    \subsection*{Book Chapters}
+        \lipsum[1][5-11]
+    \subsection*{Abstracts}
+        \lipsum[1][5-11]
+    \subsection*{Other}
+        \lipsum[1][5-11]
+
+%------------------------
+% Creative activity section
+\section*{CREATIVE ACTIVITY}
+    \subsection*{Publications}
+        \lipsum[1][1-5]
+    \subsection*{Presentations}
+        \lipsum[1][1-5]
+    \subsection*{Performance}
+        \lipsum[1][1-5]
+    \subsection*{Exhibition}
+        \lipsum[1][1-5]
+    \subsection*{Projects}
+        \lipsum[1][1-5]
+
+%------------------------
+% Grants Section
+\section*{GRANTS}
+    \subsection*{External Grants}
+    \begin{subs}
+        \subsubsection*{Funded}
+            Proposal Title: \\
+            Funding Agency: \\
+            Role Status: \\
+            Percentage of Attributed Effort: \\
+            Total direct costs and annual budget:\\
+            Coverage Period:
+        \subsubsection*{Pending}
+            Proposal Title:\\
+            Funding Agency:\\
+            Role Status: \\
+            Percentage of Attributed Effort: \\
+            Total direct costs and annual budget:
+        \subsubsection*{Not Funded (Optional but recommended)}
+            Proposal Title:\\
+            Funding Agency:\\
+            Role Status: \\
+            Percentage of Attributed Effort: 
+    \end{subs}
+    \subsection*{Internal Grants}
+    \begin{subs}
+        \subsubsection*{Funded}
+            Proposal Title:\\
+            Funding Agency:\\
+            Role Status: \\
+            Percentage of Attributed Effort: \\
+            Total direct costs and annual budget:\\
+            Coverage Period:
+        \subsubsection*{Pending}
+            Proposal Title:\\
+            Funding Agency:\\
+            Role Status: \\
+            Percentage of Attributed Effort: \\
+            Total direct costs and annual budget:
+        \subsubsection*{Not Funded (Optional but recommended)}
+            Proposal Title:\\
+            Funding Agency:\\
+            Role Status: \\
+            Percentage of Attributed Effort: 
+    \end{subs}
+
+%------------------------
+% Teaching and Advising Section
+\section*{TEACHING AND ADVISING}
+    \subsection*{Courses}
+        Course Title:\\
+        Term and Year Taught:\\
+        Number of Students:\\
+        Additional Course Information:
+    \subsection*{Supervision of Graduate Students}
+        Student Name:\\
+        Candidate Level (masters, doctoral):\\
+        Completion Dates:\\
+        Thesis/Dissertation Title: 
+    \subsection*{Supervision of Undergraduate Students}
+        Student Name:\\
+        Completion Dates:\\
+        Honors Thesis Title: 
+    \subsection*{Advising Activities}
+        \lipsum[1][5-11]
+
+%------------------------
+% Service and Professional Development Section
+\section*{SERVICE \& PROFESSIONAL DEVELOPMENT}
+    \subsection*{Service to the Institution}
+    \begin{subs}
+        \subsubsection*{Department Service} 
+            \lipsum[1][5-8]
+        \subsubsection*{College Service}
+            \lipsum[1][5-8]
+        \subsubsection*{University Service}
+            \lipsum[1][5-8]
+    \end{subs}
+    \subsection*{Service to the Discipline and Profession}
+        \lipsum[1][3-9]
+    \subsection*{Service to the Community and Public}
+        \lipsum[1][3-9]
+    \subsection*{Professional Development}
+    \lipsum[1][3-9]
+
+% End document
+\end{document}
+%-------------------------------------------------------------------------------
+%-------------------------------------------------------------------------------

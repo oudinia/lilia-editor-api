@@ -369,6 +369,14 @@ public class LatexParser : ILatexParser
         // for these tokens get upgraded from partial/shimmed → full.
         content = NormaliseCoverageEnvironments(content);
 
+        // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
+        // early so the structural dispatcher below doesn't accidentally
+        // match \section / \begin inside a verb body. Without this,
+        // input like `\verb+\section{x}+` was split into a bogus
+        // heading. Converting to backtick-wrapped code keeps the
+        // content visible and structurally inert.
+        content = CollapseVerbInlines(content);
+
         var document = new ImportDocument
         {
             SourcePath = sourcePath,
@@ -817,19 +825,55 @@ public class LatexParser : ILatexParser
         // \url{URL} → URL (no markdown link wrapper needed; URL is its own label).
         text = Regex.Replace(text, @"\\url\{([^{}]*)\}", m => m.Groups[1].Value);
 
-        // Handle \verb<delim>...<delim> — the delimiter is a single non-letter
-        // char (typically | or +). LaTeX-about-LaTeX docs rely heavily on this.
+        // Handle \verb<delim>...<delim> and \lstinline<delim>...<delim>
+        // — the delimiter is a single non-letter char (typically | or +).
+        // LaTeX-about-LaTeX docs rely heavily on this. \mintinline takes
+        // a language arg first: \mintinline{lang}|code|.
         text = Regex.Replace(
             text,
             @"\\verb\*?([^a-zA-Z\s])(.*?)\1",
             m => "`" + m.Groups[2].Value + "`",
             RegexOptions.Singleline);
+        text = Regex.Replace(
+            text,
+            @"\\lstinline(?:\[[^\]]*\])?([^a-zA-Z\s])(.*?)\1",
+            m => "`" + m.Groups[2].Value + "`",
+            RegexOptions.Singleline);
+        text = Regex.Replace(
+            text,
+            @"\\mintinline\{[^{}]*\}([^a-zA-Z\s])(.*?)\1",
+            m => "`" + m.Groups[2].Value + "`",
+            RegexOptions.Singleline);
+
+        // Single-char TeX specials (before the brace-arg processor
+        // swallows them). \textbackslash → \, \ldots/\dots → …
+        text = Regex.Replace(text, @"\\textbackslash\s*\{\s*\}", @"\");
+        text = Regex.Replace(text, @"\\textbackslash\b", @"\");
+        text = Regex.Replace(text, @"\\(?:ldots|dots|cdots|ddots|vdots)\s*\{\s*\}", "…");
+        text = Regex.Replace(text, @"\\(?:ldots|dots|cdots|ddots|vdots)\b", "…");
+        // Named accents without an argument: \ss → ß, \ae → æ, etc.
+        text = Regex.Replace(text, @"\\ss\b", "ß");
+        text = Regex.Replace(text, @"\\SS\b", "ẞ");
+        text = Regex.Replace(text, @"\\ae\b", "æ");
+        text = Regex.Replace(text, @"\\AE\b", "Æ");
+        text = Regex.Replace(text, @"\\oe\b", "œ");
+        text = Regex.Replace(text, @"\\OE\b", "Œ");
+        text = Regex.Replace(text, @"\\aa\b", "å");
+        text = Regex.Replace(text, @"\\AA\b", "Å");
+        text = Regex.Replace(text, @"\\o\b", "ø");
+        text = Regex.Replace(text, @"\\O\b", "Ø");
+        text = Regex.Replace(text, @"\\l\b", "ł");
+        text = Regex.Replace(text, @"\\L\b", "Ł");
 
         // Iteratively process `\cmd{arg}` wrappers. Heuristic for "looks like
         // a code-display command" catches user macros we don't know by name
         // (e.g. \cmdref, \codeexample) — anything ending in "code" / "cmd" /
         // "name" with a short arg.
-        var pattern = new Regex(@"\\([a-zA-Z]+)(?:\[[^\]]*\])?\{([^{}]*)\}");
+        // The brace-arg regex accepts one level of nested balanced braces
+        // so cases like \textbf{word {with braces} inside} still match —
+        // previously they fell through as leaks because the outer body
+        // contained `{...}`.
+        var pattern = new Regex(@"\\([a-zA-Z]+)(?:\[[^\]]*\])?\{((?:[^{}]|\{[^{}]*\})*)\}");
         string prev;
         var guard = 0;
         do
@@ -839,7 +883,16 @@ public class LatexParser : ILatexParser
             {
                 var cmd = m.Groups[1].Value;
                 var arg = m.Groups[2].Value;
-                if (IsPreservedInlineCommand(cmd)) return m.Value;
+                if (IsPreservedInlineCommand(cmd))
+                {
+                    // Normalise the argument so nested formatting
+                    // (\footnote{\textbf{X}}) doesn't leak into block
+                    // text. The command wrapper itself stays raw because
+                    // downstream passes (bibliography, ref resolver,
+                    // footnote pass) need the \cmd{arg} form.
+                    var inner = NormaliseInlineCommands(arg);
+                    return @"\" + cmd + "{" + inner + "}";
+                }
                 if (IsCodeDisplayInlineCommand(cmd) || LooksLikeCodeCommand(cmd))
                     return "`" + arg + "`";
                 if (IsMarkdownInlineWrapper(cmd) && MarkdownInlineWrappers.TryGetValue(cmd, out var wrap))
@@ -858,8 +911,32 @@ public class LatexParser : ILatexParser
         // them in a literal LaTeX passthrough block.
         text = Regex.Replace(
             text,
-            @"\\(noindent|hfill|hspace\*?|vspace\*?|bigskip|medskip|smallskip|par|newline|linebreak|pagebreak|clearpage|newpage|quad|qquad)\b",
+            @"\\(noindent|hfill|vfill|hspace\*?|vspace\*?|bigskip|medskip|smallskip|par|newline|linebreak|pagebreak|clearpage|newpage|quad|qquad"
+            // Font sizes & series/shape switches (bare) — layout only.
+            + @"|tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge"
+            + @"|bfseries|mdseries|itshape|slshape|scshape|upshape|rmfamily|sffamily|ttfamily"
+            + @"|em|it|bf|sl|sc|rm|sf|tt|normalfont"
+            // Structural / layout directives that the parser already
+            // emits as dedicated blocks (or ignores in block text).
+            + @"|frontmatter|mainmatter|backmatter|appendix|maketitle|makeatletter|makeatother"
+            + @"|tableofcontents|listoffigures|listoftables|printbibliography|printindex"
+            + @"|centering|raggedright|raggedleft|flushleft|flushright"
+            // Table rule macros — if they survive into cell text it
+            // means the table parser leaked them; strip so the cell
+            // text is clean regardless.
+            + @"|hline|toprule|midrule|bottomrule|cline|cmidrule"
+            // Date / misc markers rendered as text but with no block model.
+            + @"|today"
+            + @")\b",
             "");
+        // FontAwesome icon commands (fontawesome, fontawesome5, academicons):
+        // \faGithub, \faicon{linkedin}, \faIcon{env}, \ai{orcid}. These are
+        // glyph-only — safe to drop from block text; the user's CV will
+        // still read correctly without the icon.
+        text = Regex.Replace(text, @"\\fa[A-Z][A-Za-z]*\b\s*\{?\s*\}?", "");
+        text = Regex.Replace(text, @"\\faIcon\s*\{[^{}]*\}", "");
+        text = Regex.Replace(text, @"\\faicon\s*\{[^{}]*\}", "");
+        text = Regex.Replace(text, @"\\ai\s*\{[^{}]*\}", "");
         // Line-break \\ and \\[3pt] / \\[-3pt]. Drop the spacing — it's
         // layout-only. Keeps double backslashes inside math environments
         // safe since this runs on paragraph/list text, not math.
@@ -877,6 +954,28 @@ public class LatexParser : ILatexParser
         // Collapse double spaces introduced by the stripping.
         text = Regex.Replace(text, @"[ \t]{2,}", " ");
         return text.Trim();
+    }
+
+    private static readonly Regex VerbInlineRx = new(
+        @"\\verb\*?([^a-zA-Z\s])(.*?)\1",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex LstInlineRx = new(
+        @"\\lstinline(?:\[[^\]]*\])?([^a-zA-Z\s])(.*?)\1",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex MintInlineRx = new(
+        @"\\mintinline\{[^{}]*\}([^a-zA-Z\s])(.*?)\1",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+
+    private static string CollapseVerbInlines(string text)
+    {
+        // Run each rx once in order — bodies can't overlap so a single
+        // pass suffices. Inside verbatim envs these strings don't exist
+        // (the env is matched as a whole by the structural dispatcher),
+        // so there's no risk of trampling env bodies.
+        text = VerbInlineRx.Replace(text, m => "`" + m.Groups[2].Value + "`");
+        text = LstInlineRx.Replace(text, m => "`" + m.Groups[2].Value + "`");
+        text = MintInlineRx.Replace(text, m => "`" + m.Groups[2].Value + "`");
+        return text;
     }
 
     private static bool LooksLikeCodeCommand(string cmd)

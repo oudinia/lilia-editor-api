@@ -1,0 +1,7 @@
+% KNOWN-INVALID: references image file that does not exist — parser tolerates missing assets
+\documentclass{article}
+\usepackage{graphicx}
+
+\begin{document}
+\begin{figure}\includegraphics{img}\caption{x}\end{figure}
+\end{document}

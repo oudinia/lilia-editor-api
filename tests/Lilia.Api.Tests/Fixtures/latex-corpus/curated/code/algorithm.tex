@@ -1,0 +1,18 @@
+\documentclass{article}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\begin{document}
+\begin{algorithm}
+  \caption{Euclid's GCD}
+  \begin{algorithmic}
+    \Require $a, b \in \mathbb{N}$
+    \Ensure $\gcd(a,b)$
+    \While{$b \neq 0$}
+      \State $t \gets b$
+      \State $b \gets a \bmod b$
+      \State $a \gets t$
+    \EndWhile
+    \Return $a$
+  \end{algorithmic}
+\end{algorithm}
+\end{document}

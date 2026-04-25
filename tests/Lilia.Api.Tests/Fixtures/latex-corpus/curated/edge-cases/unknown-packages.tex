@@ -1,0 +1,11 @@
+\documentclass{article}
+\usepackage{fictional-pkg}
+\usepackage{made-up}
+\renewcommand{\foo}{bar}
+\begin{document}
+Some content before. \fictionalcmd{arg1}{arg2} unknown command.
+\begin{madeupenv}
+Body of a totally unknown env.
+\end{madeupenv}
+Text after.
+\end{document}

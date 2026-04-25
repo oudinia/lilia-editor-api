@@ -1,0 +1,150 @@
+\documentclass[11pt,a4paper]{article}
+
+%----------------------------------------------------------------------------------------
+%	PACKAGES
+%----------------------------------------------------------------------------------------
+\usepackage[left=0.8in,top=0.8in,right=0.8in,bottom=0.8in]{geometry} 
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[default]{sourcesanspro} 
+\usepackage{xcolor}      
+\usepackage{titlesec}    
+\usepackage{enumitem}    
+\usepackage{parskip}     
+
+%----------------------------------------------------------------------------------------
+%	COLORS & STYLES
+%----------------------------------------------------------------------------------------
+\definecolor{titleblue}{HTML}{00199e} 
+\definecolor{subtitleblue}{HTML}{2ec1e0} 
+\definecolor{darktext}{HTML}{222222} 
+
+\color{darktext}
+\linespread{0.9} 
+\setlength{\parskip}{0.1em} 
+
+\titleformat{\section}{\Large\bfseries\color{titleblue}}{}{0em}{} 
+\titlespacing*{\section}{0pt}{0.7em}{0.15em}
+
+\newcommand{\blueitem}[1]{\textcolor{subtitleblue}{\textbf{#1}}}
+
+\setlist[itemize]{label=\textbullet, leftmargin=*, noitemsep, topsep=0pt, parsep=0pt}
+
+%----------------------------------------------------------------------------------------
+%	DOCUMENT CONTENT
+%----------------------------------------------------------------------------------------
+\begin{document}
+
+%--- HEADER ---
+{\Huge \textbf{\textcolor{titleblue}{Your Name}}} \vspace{0.2em}
+
+City, Country \\
+Mobile: +00 00 000 0000 \\
+Email: your.email@example.com \\
+LinkedIn: xxx.com/in/yourprofile \\
+GitHub: xxx.com/yourusername \\
+Scholar: Scholar Profile \\
+Nationality: Your Nationality
+
+\vspace{0.4em}
+
+%--- PERSONAL PROFILE ---
+\section*{Personal Profile}
+Robotics researcher specializing in Vision-Language-Action (VLA) models and robot learning for complex manipulation. I build end-to-end systems across simulation and hardware, with expertise in teleoperation, 3D vision, and collision-aware motion planning.
+
+%--- EDUCATION ---
+\section*{Education}
+
+\blueitem{2024 -- 2026: MSc in Robotics} \\
+\textit{University Name, Location} \\
+Full academic scholarship \\
+\textbf{Supervised by} Supervisor Name. \\
+\textbf{GPA:} 3.88/4.00 \\
+\textbf{Relevant Coursework:} Visual Object Recognition, Robotic Intelligence, Autonomous Navigation. \\
+\textbf{Thesis:} Modular Primitives for Multi-Modal Robotic Action Models (In Progress)
+
+\vspace{0.3em}
+
+\blueitem{2019 -- 2023: B.Eng in Electrical and Electronic Engineering} \\
+\textit{University Name, Location} \\
+\textbf{GPA:} 3.92/4.00 \\
+\textbf{Honors:} Dean's List, First Class Honors. \\
+\textbf{Relevant Coursework:} Linear Control Systems, Applied AI, Digital Signal Processing. \\
+\textbf{Thesis:} Adaptive Control for Heterogeneous Multi-Agent Systems.
+
+\vspace{0.2em}
+\textbf{Key Research Interests:} Robot Learning, Geometric Computer Vision, Teleoperation.
+
+%--- EXPERIENCE ---
+\section*{Experience}
+
+\blueitem{May 2025 -- Aug 2025: Robotics Research Intern} \\
+\textit{Tech Company or Research Lab}
+\begin{itemize}
+    \item Engineered a VR-integrated teleoperation suite for industrial manipulators to facilitate large-scale VLA data collection.
+    \item Benchmarked deployment performance of state-of-the-art foundation models on physical hardware.
+    \item Investigated novel techniques for in-context policy adaptation in unstructured environments.
+\end{itemize}
+
+\vspace{0.3em}
+
+\blueitem{Sept 2023 -- May 2024: Software Engineering Intern} \\
+\textit{Tech Company, Location}
+\begin{itemize}
+    \item Programmed C\# and C++ middleware for automated hardware validation systems.
+    \item Optimized legacy GUI modules, resulting in improved system response times during testing.
+    \item Collaborated with the systems team to integrate firmware updates for semiconductor equipment.
+\end{itemize}
+
+%--- PUBLICATIONS ---
+\section*{Academic Publications}
+
+\blueitem{Geometry-Aware VLA Architecture: Infusing 3D Context into Vision-Language-Action Models.} Under review. [arXiv] \\
+\textit{\textbf{Your Name}, Co-Author 1, Co-Author 2, Co-Author 3.}
+
+\vspace{0.2em}
+
+\blueitem{Self-Supervised World Modeling for Robotic Skill Acquisition.} Under review. [arXiv] \\
+\textit{Co-Author 1, \textbf{Your Name}, Co-Author 2.}
+
+\vspace{0.2em}
+
+\blueitem{Hybrid Neural Networks for Robust Speech Emotion Classification.} International Conference on ML. \\
+\textit{\textbf{Your Name}, Co-Author 1, Co-Author 2.}
+
+%--- PROJECTS ---
+\section*{Projects/Research}
+
+\blueitem{Autonomous Agricultural Manipulation System | 2025} \\
+\textit{University Robotics Lab}
+\begin{itemize}
+    \item Developed a point-cloud-based pipeline for object identification and harvesting in occluded scenarios.
+    \item Implemented collision-aware motion planning, reducing accidental contact with obstacles by over 65\%.
+    \item Integrated the system using NVIDIA Isaac Sim and successfully validated on a physical robotic arm.
+\end{itemize}
+
+%--- SKILLS ---
+\section*{Skills}
+Python, C/C++, Linux (Ubuntu), ROS/ROS2, PyTorch, NVIDIA Isaac Sim, MATLAB \\
+Languages: English (Fluent), Arabic (Native)
+
+%--- REFERENCES ---
+\section*{References}
+
+\begin{minipage}[t]{0.48\textwidth}
+    \textbf{Reference Name 1} \\
+    Principal Investigator \\
+    Department of Robotics \\
+    University or Institute Name \\
+    Email: reference1@example.com
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+    \textbf{Reference Name 2} \\
+    Senior Research Scientist \\
+    Computer Vision Group \\
+    University or Institute Name \\
+    Email: reference2@example.com
+\end{minipage}
+
+\end{document}

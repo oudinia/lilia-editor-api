@@ -1,0 +1,14 @@
+% EXPECTED-LEAKS: item
+% KNOWN ISSUE: the lazy-regex list env matcher matches the inner \end{enumerate} as the outer end, so the final items leak raw \item. Balanced-env matcher is the real fix.
+\documentclass{article}
+\begin{document}
+\begin{enumerate}
+  \item Outer one
+  \begin{enumerate}
+    \item Inner 1.1
+    \item Inner 1.2
+  \end{enumerate}
+  \item Outer two
+  \item Outer three
+\end{enumerate}
+\end{document}

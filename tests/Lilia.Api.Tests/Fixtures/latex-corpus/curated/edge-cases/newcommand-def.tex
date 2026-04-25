@@ -1,0 +1,8 @@
+% EXPECTED-LEAKS: mylink
+\documentclass{article}
+\newcommand{\mycmd}[1]{\textbf{#1}}
+\newcommand{\mylink}{example}
+\def\mydef#1{\emph{#1}}
+\begin{document}
+Using \mycmd{custom bold}, \mylink, and \mydef{def italic}.
+\end{document}

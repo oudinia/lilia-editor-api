@@ -32,4 +32,10 @@
     <ProjectReference Include="..\..\src\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Fixtures\latex-corpus\**\*.tex">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

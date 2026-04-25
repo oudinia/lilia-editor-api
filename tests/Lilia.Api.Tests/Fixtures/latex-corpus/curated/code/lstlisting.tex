@@ -1,0 +1,11 @@
+\documentclass{article}
+\usepackage{listings}
+\begin{document}
+\begin{lstlisting}[language=Python]
+def fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+\end{lstlisting}
+Inline \lstinline|print("hi")|.
+\end{document}

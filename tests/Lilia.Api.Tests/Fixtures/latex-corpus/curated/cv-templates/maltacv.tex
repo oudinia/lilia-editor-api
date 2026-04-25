@@ -1,0 +1,207 @@
+% EXPECTED-LEAKS: documentclass, orcid, makecvheader, divider
+%%%%%%%%%%%%%%%%%
+% This is an sample CV template created using maltacv.cls
+% (May 2020) written by Riccardo Mancini, based on the 
+% AltaCV template by LianTze Lim (liantze@gmail.com).
+%
+%% It may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%%%%%%%%%%%%%%%%
+
+%% If you need to pass whatever options to xcolor
+\PassOptionsToPackage{dvipsnames}{xcolor}
+
+%% If you are using \orcid or academicons
+%% icons, make sure you have the academicons
+%% option here, and compile with XeLaTeX
+%% or LuaLaTeX.
+% \documentclass[10pt,a4paper,academicons]{altacv}
+
+\documentclass[10pt,a4paper,ragged2e]{maltacv}
+
+%% AltaCV uses the fontawesome and academicon fonts
+%% and packages.
+%% See texdoc.net/pkg/fontawecome and http://texdoc.net/pkg/academicons for full list of symbols. You MUST compile with XeLaTeX or LuaLaTeX if you want to use academicons.
+
+% Change the font if you want to
+% If using pdflatex:
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% \usepackage[default]{lato}
+\usepackage{tgheros}
+\renewcommand*\familydefault{\sfdefault} %% Only if the base font of the document is to be sans serif
+
+\usepackage{setspace}
+
+\usepackage{mathpazo}
+\usepackage{textcomp}
+\usepackage{multicol}
+
+% Color schemes:
+% raisinblack_flame
+% darkpurple_princetonorange
+% blue_claret
+% eerieblack_eggplant
+% outerspace_forestgreen   
+% raisinblack_midnightgreen
+% teal_brown
+% indigo
+% blue
+% violet
+% you can set your custom colors with:
+% \definecolor{AccentBody}{HTML}{002642}
+% \definecolor{Primary}{HTML}{840032}
+% \colorlet{primary}{Primary}
+% \colorlet{accent_body}{AccentBody}
+
+% this is my favourite but change it as you like
+\setcolorscheme{raisinblack_flame}
+\setlength\multicolsep{0pt}
+
+% Change the bullets for itemize and rating marker
+% for \cvskill if you want to
+\renewcommand{\itemmarker}{{\small\textbullet}}
+
+%% sample.bib contains your publications
+%% NOT SUPPORTED YET
+% \addbibresource{sample.bib}
+
+\name{John Snow}
+\firstname{John}
+\familyname{Snow}
+
+\begin{document}
+\tagline{M.Sc. Snack Science student}
+\personalinfo{%
+  % Not all of these are required!
+  % You can add your own with \printinfo{symbol}{detail}
+  \email{me@myself.me}
+  % \birthday{25\textsuperscript{th} Dec 0}
+  % \homepage{www.homepage.com/}
+  % \twitter{@twitterhandle}
+  \linkedin{kesselrun}
+  \github{manciukic}
+  \phone{+01 234 567 89AB}
+  % \mailaddress{lorem ipsum, dolor, sit, AM, 57846}
+  % \location{Nowhere, Italy}
+  %% You MUST add the academicons option to \documentclass, then compile with LuaLaTeX or XeLaTeX, if you want to use \orcid or other academicons commands.
+  % \orcid{orcid.org/0000-0000-0000-0000}
+}
+
+\bio{I really like animals and snacks in all their shapes. I'm a big fan of tv series and I know everything about them. Please hire me in order to increase your revenues by 100 Kinder Delice.}
+
+\makecvheader
+
+\cvsection{Skills}
+\begin{center}
+  \begin{multicols}{5} % adjust #cols as needed
+    \cvlistitem{Pizza}{}
+    \cvlistitem{Chocolate}{}
+    \cvlistitem{Spacecrafts}{}
+    \cvlistitem{Star wars}{}
+    \cvlistitem{Narcos}{}
+    \cvlistitem{Team work}{}
+    \cvlistitem{Hard work}{}
+    \cvlistitem{Any softskill}{}
+    \cvlistitem{Programming lang}{}
+    % \cvlistitem{Another P. lang}{}
+  \end{multicols}
+\end{center}
+
+% put Experience before Education if you are no longer a student
+\cvsection{Education}
+\medskip
+\begin{multicols}{2}
+
+  \cvuniversity{M.Sc. Snack Science}{University of Nowhere}{2019 -- 2021 (expected)}{}% last param is location
+  \begin{itemize}
+      \item Curriculum Cocoa and derivatives
+      \item Current GPA: 3.5
+  \end{itemize}
+
+  % this helps if columns are not the same
+  \vfill\null
+  \columnbreak
+
+  \cvuniversity{B.Sc. Snack Science}{University of Nowhere}{2016 -- 2019}{}
+  \begin{itemize}
+      \item Final grade: the highest!
+      \item GPA: 3
+      \item Thesis: ``Pizza is the best: a comparative analysis''
+  \end{itemize}
+\end{multicols}
+
+\medskip
+\cvsection{Experience}
+
+\cvexperience{Another Summer Internship}{Yet another best place in the world}{Jul -- Sep 2019 (10 weeks)}{Kangaroo island, Australia}{Kangaroo, Echidna, Wallaby, Tasman devil}
+\begin{itemize}
+  \item Saw many many anumals 
+  \item Increased by animal knowledge by 100\% by getting to know the best jumping animals in the whole world.
+\end{itemize}
+
+\divider
+
+\cvexperience{Summer Internship}{The best place in the world}{Jul -- Sep 2019 (10 weeks)}{Pisa, Italy}{Leaning tower, white dome, lot of holes in the street, teamwork}
+\begin{itemize}
+  \item Studied how leaned is the leaning tower
+  \item Increased tower leaning by 0.00001\% by climbing on it using my climbing skills (I have proficiency).
+  \item IRL, this section should be bigger but I'm out of fantasy
+\end{itemize}
+
+\divider
+
+\cvsubsection{Other Activities and Projects}
+\medskip
+\begin{multicols}{3}
+  \cvlistitem{Pizza maker}{from 2014 -- 100+ pizzas}  
+  \cvlistitem{Computer Club}{from 2016 -- Senior Member}  
+  \cvlistitem{Big brother}{from 2005 -- experience with children}
+  \cvlistitem{Semester project}{Spring 2020 -- School project}
+  \cvlistitem{Built another volcano}{Fall 2019 -- School project}
+  \cvlistitem{Built a volcano}{Winter 2018 -- Science fair project}
+\end{multicols}
+
+\medskip
+\cvsection{Awards}
+\medskip
+\begin{multicols}{3}
+  \cvlistitem{Fastest hamburger eater}{Nation-wide contest with 100 participants.}
+
+  % this helps if columns are not the same
+  \vfill\null
+  \columnbreak
+
+  \cvlistitem{Kessel run record}{Less than 12 parsecs}
+  
+  % this helps if columns are not the same
+  \vfill\null
+  \columnbreak
+
+  \cvlistitem{Best enemy award}{Awarded by my sworn enemy}
+  
+\end{multicols}
+
+\cvsection{Languages}
+\medskip
+
+\begin{multicols}{3} % adjust cols as needed
+  \cvlistitem{Common}{Mother tongue}
+  \columnbreak
+  
+  \cvlistitem{Orcish}{Conversationally fluent}
+  \columnbreak
+  
+  \cvlistitem{Elfish}{Basic knowledge}
+  \columnbreak
+  
+\end{multicols}
+
+% try to keep it on one page only !
+
+\end{document}

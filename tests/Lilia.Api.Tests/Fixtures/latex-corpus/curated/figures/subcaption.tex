@@ -1,0 +1,19 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\begin{document}
+\begin{figure}
+  \centering
+  \begin{subfigure}[b]{0.4\textwidth}
+    \includegraphics[width=\linewidth]{img-a}
+    \caption{First subfig}
+    \label{fig:a}
+  \end{subfigure}
+  \begin{subfigure}[b]{0.4\textwidth}
+    \includegraphics[width=\linewidth]{img-b}
+    \caption{Second subfig}
+    \label{fig:b}
+  \end{subfigure}
+  \caption{Two side-by-side.}
+\end{figure}
+\end{document}

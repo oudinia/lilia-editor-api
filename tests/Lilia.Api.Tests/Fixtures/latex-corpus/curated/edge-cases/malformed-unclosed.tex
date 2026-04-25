@@ -1,0 +1,9 @@
+% EXPECTED-LEAKS: textbf, textit, item
+% KNOWN-INVALID: intentionally malformed — verifies parser tolerance, not pdflatex-valid.
+\documentclass{article}
+\begin{document}
+A paragraph with \textbf{unclosed bold.
+Next paragraph \textit{also unclosed.
+\begin{itemize}
+\item Missing end tag
+\end{document}

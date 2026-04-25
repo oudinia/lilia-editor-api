@@ -1,0 +1,19 @@
+\documentclass{article}
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}
+\begin{document}
+\begin{definition}
+A group is a set with a binary operation satisfying closure, associativity, identity, and inverse.
+\end{definition}
+\begin{theorem}[Cayley]
+Every group is isomorphic to a subgroup of a symmetric group.
+\end{theorem}
+\begin{lemma}
+If $G$ is cyclic, it is abelian.
+\end{lemma}
+\begin{proof}
+Let $g$ generate $G$. Then every element is $g^k$, and $g^a g^b = g^{a+b} = g^b g^a$.
+\end{proof}
+\end{document}
