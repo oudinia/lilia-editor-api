@@ -26,6 +26,22 @@ public class LaTeXExportService : ILaTeXExportService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Test-only entry point that bypasses the DB. Generates the
+    /// single-file LaTeX source from in-memory document + blocks. Used
+    /// by LatexRoundtripTests to verify parse → blocks → export →
+    /// re-parse preserves block structure across the corpus.
+    /// </summary>
+    public string BuildSingleFileLatex(
+        Document doc,
+        List<Block> blocks,
+        List<BibliographyEntry> bibEntries,
+        LaTeXExportOptions options)
+    {
+        var files = GenerateSingleFile(doc, blocks, bibEntries, options);
+        return files.First(f => f.Path == "main.tex").Content;
+    }
+
     public async Task<Stream> ExportToZipAsync(Guid documentId, LaTeXExportOptions options)
     {
         var doc = await _context.Documents
