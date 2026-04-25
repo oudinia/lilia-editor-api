@@ -1,0 +1,47 @@
+\documentclass[11pt]{article}
+\usepackage{geometry}
+\usepackage{enumitem}
+\geometry{margin=1in}
+
+\title{Research Grant Proposal: Scalable Graph Learning}
+\author{Principal Investigator: Dr Lee}
+\date{Funding Year 2026--2028}
+
+\begin{document}
+\maketitle
+
+\section{Specific Aims}
+We propose a three-year program to develop scalable graph neural network methods for trillion-edge graphs encountered in citation networks and web corpora.
+
+\textbf{Aim 1:} Develop a subgraph sampling method with provable approximation guarantees.
+
+\textbf{Aim 2:} Build and release an open-source framework for large-graph training.
+
+\textbf{Aim 3:} Apply the methods to three application domains: recommendation, fraud detection, and scientific knowledge graphs.
+
+\section{Significance and Innovation}
+Current graph learning methods do not scale beyond a few billion edges without compromising accuracy or requiring prohibitive compute. This program addresses that gap.
+
+\section{Research Plan}
+
+\subsection{Year 1: Theoretical foundations}
+We will derive approximation bounds for our sampling method and validate empirically on medium-scale graphs.
+
+\subsection{Year 2: Framework implementation}
+We will implement the framework on top of PyTorch Geometric and open-source it.
+
+\subsection{Year 3: Applications}
+We will apply the framework to citation, commerce, and biomedical graphs in collaboration with industry partners.
+
+\section{Timeline and Deliverables}
+\begin{itemize}
+  \item Y1 Q2: theoretical paper submitted
+  \item Y2 Q1: framework public beta
+  \item Y2 Q4: framework v1.0 release
+  \item Y3 Q3: three application papers submitted
+\end{itemize}
+
+\section{Budget}
+Total requested: \$750{,}000 over three years, covering two PhD students, compute, and travel.
+
+\end{document}

@@ -1,0 +1,33 @@
+\documentclass{article}
+\usepackage{array}
+\usepackage{dcolumn}
+
+\newcolumntype{d}[1]{D{.}{.}{#1}}
+
+\begin{document}
+
+\section{Decimal-aligned columns}
+
+\begin{tabular}{l d{3.2} d{2.4}}
+  \hline
+  Measurement & Value & Uncertainty \\
+  \hline
+  Length    & 123.45  & 0.0021 \\
+  Mass      &   5.67  & 0.0007 \\
+  Time      &   0.89  & 0.0012 \\
+  Pressure  & 101.32  & 0.0045 \\
+  \hline
+\end{tabular}
+
+\section{Custom column with array}
+
+\begin{tabular}{|>{\bfseries}l|>{\itshape}c|r|}
+  \hline
+  Bold left & Italic centre & Plain right \\
+  \hline
+  alpha & beta & 1 \\
+  gamma & delta & 2 \\
+  \hline
+\end{tabular}
+
+\end{document}

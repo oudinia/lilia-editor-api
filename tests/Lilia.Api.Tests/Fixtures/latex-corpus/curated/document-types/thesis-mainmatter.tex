@@ -1,0 +1,65 @@
+\documentclass[a4paper,11pt,twoside]{book}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}[chapter]
+
+\title{Foundations of Homotopy Type Theory}
+\author{Dana Wallace}
+\date{2026}
+
+\begin{document}
+
+\frontmatter
+\maketitle
+\tableofcontents
+\listoffigures
+
+\chapter{Preface}
+This thesis examines the connections between homotopy theory and dependent type theory, with emphasis on univalence.
+
+\mainmatter
+
+\chapter{Preliminaries}
+\label{chap:prelim}
+
+\section{Type Theory Basics}
+A judgement $a : A$ asserts that term $a$ has type $A$.
+
+\begin{definition}
+A type $A$ is called contractible when there exists an element $a : A$ such that for every $x : A$ we have $x = a$.
+\end{definition}
+
+\begin{theorem}[Univalence]
+For types $A, B$ the canonical map $(A = B) \to (A \simeq B)$ is itself an equivalence.
+\end{theorem}
+
+\begin{proof}
+See \Cref{chap:univalence} for the full argument.
+\end{proof}
+
+\chapter{Homotopical Structure}
+
+\section{Paths and Loops}
+Identity types $\text{Id}_A(x, y)$ correspond to paths in the space interpretation.
+
+\section{Higher Inductive Types}
+The circle $S^1$ is presented by a point and a loop.
+
+\chapter{Univalence}
+\label{chap:univalence}
+
+The chapter develops the main technical machinery.
+
+\backmatter
+
+\chapter{Appendix A: Notation}
+A brief reference for the notation used throughout.
+
+\end{document}

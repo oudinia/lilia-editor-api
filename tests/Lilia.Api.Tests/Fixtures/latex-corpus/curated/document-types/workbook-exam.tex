@@ -1,0 +1,41 @@
+% EXPECTED-LEAKS: question, choice, CorrectChoice, solution, fillwithlines, printanswers, pointsinmargin
+\documentclass[12pt,answers,addpoints]{exam}
+
+\printanswers
+
+\begin{document}
+
+\begin{center}
+  {\bfseries\Large Workbook: Algebra Practice}\\[0.2cm]
+  Chapter 3 --- Quadratic Equations
+\end{center}
+
+\begin{questions}
+
+\question[5] Solve $x^2 - 5x + 6 = 0$.
+
+\begin{solution}
+Factoring: $(x-2)(x-3) = 0$, so $x = 2$ or $x = 3$.
+\end{solution}
+
+\question[5] Solve $2x^2 - 8 = 0$.
+
+\begin{solution}
+$x^2 = 4$, so $x = \pm 2$.
+\end{solution}
+
+\question[10] Complete the square: $x^2 + 6x - 7 = 0$.
+
+\begin{solution}
+$x^2 + 6x = 7$, $(x+3)^2 = 16$, $x + 3 = \pm 4$, $x = 1$ or $x = -7$.
+\end{solution}
+
+\question[10] The sum of two numbers is 12 and their product is 27. Find the numbers.
+
+\begin{solution}
+Let the numbers be $a$ and $12-a$. Then $a(12-a) = 27$, so $a^2 - 12a + 27 = 0$, giving $a = 3$ or $a = 9$. The pair is $\{3, 9\}$.
+\end{solution}
+
+\end{questions}
+
+\end{document}

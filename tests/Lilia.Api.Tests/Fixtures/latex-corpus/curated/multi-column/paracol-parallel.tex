@@ -1,0 +1,28 @@
+% EXPECTED-LEAKS: switchcolumn, column, paracol, colseprule
+\documentclass{article}
+\usepackage{paracol}
+
+\begin{document}
+
+\section{Parallel columns with paracol}
+
+Text before the parallel region.
+
+\begin{paracol}{2}
+\colseprule
+
+Left column text, paragraph one.
+
+Left column continues here with more content.
+
+\switchcolumn
+
+Right column, corresponding paragraph one.
+
+Right column second paragraph in parallel with the left.
+
+\end{paracol}
+
+Text after the parallel region.
+
+\end{document}

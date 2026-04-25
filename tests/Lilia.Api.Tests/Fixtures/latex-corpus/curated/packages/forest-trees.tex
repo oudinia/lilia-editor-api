@@ -1,0 +1,28 @@
+% EXPECTED-LEAKS: forset
+\documentclass{article}
+\usepackage[linguistics]{forest}
+
+\begin{document}
+
+\section{Syntactic trees with forest}
+
+\begin{forest}
+[S
+  [NP [Det [the]] [N [dog]]]
+  [VP [V [chased]] [NP [Det [the]] [N [cat]]]]
+]
+\end{forest}
+
+\begin{forest}
+[Expr
+  [Binop [+]
+    [Literal [5]]
+    [Binop [*]
+      [Literal [3]]
+      [Literal [4]]
+    ]
+  ]
+]
+\end{forest}
+
+\end{document}

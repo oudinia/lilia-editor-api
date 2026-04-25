@@ -1,0 +1,36 @@
+% EXPECTED-LEAKS: institute, orcidID, email, inst, titlerunning, authorrunning, and
+\documentclass{llncs}
+
+\begin{document}
+
+\title{Efficient Verification of Smart Contracts}
+
+\titlerunning{Efficient Verification}
+
+\author{First Author\orcidID{0000-0001-2345-6789} \and Second Author\orcidID{0000-0002-3456-7890}}
+
+\authorrunning{F. Author and S. Author}
+
+\institute{Example University \email{first@example.edu} \and Research Lab \email{second@example.org}}
+
+\maketitle
+
+\begin{abstract}
+We propose a static-analysis framework for smart contracts that proves absence of reentrancy bugs in seconds. Evaluation on 10{,}000 real-world contracts shows 98\% successful verification.
+\end{abstract}
+
+\keywords{smart contracts \and static analysis \and verification}
+
+\section{Introduction}
+Smart contracts hold billions in assets. Formal guarantees about their behaviour are essential.
+
+\section{Framework}
+Our framework uses a combination of symbolic execution and pre-condition inference.
+
+\section{Evaluation}
+We evaluated on a corpus of Ethereum mainnet contracts collected in Q1 2026.
+
+\section{Conclusion}
+Practical formal verification of smart contracts is increasingly within reach.
+
+\end{document}

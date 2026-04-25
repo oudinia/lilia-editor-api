@@ -1,0 +1,28 @@
+\documentclass{article}
+\usepackage{graphicx}
+\begin{document}
+
+\section{Side-by-side minipage columns}
+
+Text before the two-column layout.
+
+\noindent
+\begin{minipage}[t]{0.48\textwidth}
+\subsection*{Left column}
+Content on the left. This minipage hosts whatever block content we want, including lists:
+\begin{itemize}
+  \item First bullet
+  \item Second bullet
+  \item Third bullet
+\end{itemize}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\subsection*{Right column}
+Content on the right. Another minipage with distinct content, possibly a table or inline math like $f(x) = x^2$.
+
+A second paragraph on the right.
+\end{minipage}
+
+Text after the two-column layout, back to full width.
+\end{document}

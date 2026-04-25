@@ -1,0 +1,25 @@
+% EXPECTED-LEAKS: rowcolor, colbegin, rowfont
+\documentclass{article}
+\usepackage[table]{xcolor}
+
+\definecolor{headerBg}{RGB}{220, 230, 240}
+
+\begin{document}
+
+\section{Coloured rows}
+
+\begin{tabular}{|l|r|r|}
+  \hline
+  \rowcolor{headerBg}
+  Region & Q1 Revenue & Q2 Revenue \\
+  \hline
+  North & \$1.2M & \$1.4M \\
+  \rowcolor{gray!15}
+  South & \$0.9M & \$1.1M \\
+  East  & \$2.1M & \$2.3M \\
+  \rowcolor{gray!15}
+  West  & \$1.8M & \$1.9M \\
+  \hline
+\end{tabular}
+
+\end{document}

@@ -1,0 +1,54 @@
+\documentclass{book}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}{Example}[section]
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+\title{Lecture Notes on Real Analysis}
+\author{Prof. Frank Miller}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\chapter{Sequences and Limits}
+
+\section{Convergence}
+
+\begin{definition}
+A sequence $(a_n)$ of real numbers converges to $L \in \mathbb{R}$ if for every $\varepsilon > 0$ there exists $N \in \mathbb{N}$ such that $|a_n - L| < \varepsilon$ whenever $n \geq N$.
+\end{definition}
+
+\begin{theorem}[Uniqueness of limits]
+If $a_n \to L$ and $a_n \to M$, then $L = M$.
+\end{theorem}
+
+\begin{proof}
+Suppose $L \neq M$. Take $\varepsilon = |L - M|/3$. Both definitions give $N$ past which $|a_n - L| < \varepsilon$ and $|a_n - M| < \varepsilon$. Then $|L - M| \leq |L - a_n| + |a_n - M| < 2\varepsilon$, contradiction.
+\end{proof}
+
+\begin{example}
+The sequence $a_n = 1/n$ converges to $0$. Given $\varepsilon$, pick $N > 1/\varepsilon$.
+\end{example}
+
+\begin{remark}
+Convergence is a local property: changing finitely many terms cannot affect the limit.
+\end{remark}
+
+\section{Cauchy Sequences}
+
+\begin{definition}
+A sequence $(a_n)$ is Cauchy if for every $\varepsilon > 0$ there exists $N$ such that $|a_m - a_n| < \varepsilon$ for all $m, n \geq N$.
+\end{definition}
+
+\begin{proposition}
+Every convergent sequence is Cauchy.
+\end{proposition}
+\end{document}

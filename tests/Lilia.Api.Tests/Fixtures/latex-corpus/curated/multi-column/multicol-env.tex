@@ -1,0 +1,30 @@
+\documentclass{article}
+\usepackage{multicol}
+\usepackage{lipsum}
+
+\begin{document}
+
+\section{Multi-column with multicol package}
+
+Paragraph before the multi-column region.
+
+\begin{multicols}{2}
+First column paragraph. Some sample text that fills up space so the columns wrap naturally.
+
+Second paragraph inside the first column continues the flow.
+\end{multicols}
+
+Content between multi-column regions.
+
+\begin{multicols}{3}
+Three columns now. Tight typography for index-style layouts.
+
+Each entry is short.
+
+Another short entry.
+
+More entries here.
+\end{multicols}
+
+Final single-column content after.
+\end{document}

@@ -1,0 +1,52 @@
+% EXPECTED-LEAKS: IEEEauthorblockN, IEEEauthorblockA, IEEEkeywords, thanks
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\begin{document}
+\title{A Scalable Approach to Distributed Consensus}
+
+\author{\IEEEauthorblockN{Alice Smith\IEEEauthorrefmark{1} and Bob Jones\IEEEauthorrefmark{2}}
+\IEEEauthorblockA{\IEEEauthorrefmark{1}Dept.\ of Computer Science, Example University\\
+Email: alice@example.edu}
+\IEEEauthorblockA{\IEEEauthorrefmark{2}Research Institute\\
+Email: bob@example.org}}
+
+\maketitle
+
+\begin{abstract}
+We present a new distributed consensus protocol that scales to thousands of nodes while maintaining linearisability. Experimental evaluation shows a 3x throughput improvement over prior work \cite{raft2014}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+consensus, distributed systems, scalability
+\end{IEEEkeywords}
+
+\section{Introduction}
+Distributed consensus underpins modern fault-tolerant systems. Prior approaches such as Paxos \cite{paxos1998} and Raft \cite{raft2014} rely on a single leader, creating a throughput ceiling.
+
+\section{Related Work}
+Lamport's original Paxos paper \cite{paxos1998} introduced the classic single-decree formulation. Multi-Paxos \cite{paxos-live} later extended this to log replication.
+
+\section{Protocol}
+Our protocol operates in two phases. In phase one, nodes exchange proposals using formula $v = f(t, q)$. In phase two, commit happens when $|q| \geq n/2 + 1$.
+
+\begin{equation}
+\Pr[\text{agreement}] \geq 1 - e^{-n/c}
+\label{eq:agreement}
+\end{equation}
+
+Equation~\eqref{eq:agreement} bounds the failure probability.
+
+\section{Evaluation}
+Figure~\ref{fig:tput} shows throughput as a function of cluster size.
+
+\section{Conclusion}
+Future work includes Byzantine fault tolerance.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

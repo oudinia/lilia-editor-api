@@ -1,0 +1,31 @@
+% EXPECTED-LEAKS: a0poster, VeryHuge
+\documentclass[portrait,a0paper,fontscale=0.3]{a0poster}
+\usepackage{multicol}
+
+\begin{document}
+
+\begin{center}
+  {\VeryHuge Reconstructing 3D Scenes from Sparse Views}\\[0.5cm]
+  {\Large Alice Anderson, Bob Baker \hspace{1cm} Example University}
+\end{center}
+
+\begin{multicols}{3}
+
+\section*{Abstract}
+We introduce a neural implicit representation that reconstructs 3D scenes from as few as three input views.
+
+\section*{Background}
+Neural radiance fields (NeRF) require dense view coverage. Sparse-view reconstruction is an active research area.
+
+\section*{Method}
+Our model uses a transformer backbone to aggregate features across input views, with a volumetric rendering head.
+
+\section*{Results}
+On the NeRF Synthetic benchmark, our model outperforms pixelNeRF by 2dB PSNR with three input views.
+
+\section*{Conclusion}
+Sparse-view reconstruction is viable with learned priors. Future work extends to dynamic scenes.
+
+\end{multicols}
+
+\end{document}

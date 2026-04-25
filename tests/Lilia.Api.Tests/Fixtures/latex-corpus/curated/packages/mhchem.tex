@@ -1,0 +1,21 @@
+% EXPECTED-LEAKS: ce
+\documentclass{article}
+\usepackage[version=4]{mhchem}
+
+\begin{document}
+
+\section{Chemistry with mhchem}
+
+Water is \ce{H2O} and carbon dioxide is \ce{CO2}.
+
+Combustion of methane: \ce{CH4 + 2O2 -> CO2 + 2H2O}.
+
+Equilibrium: \ce{N2 + 3H2 <=> 2NH3}.
+
+Ionic dissociation: \ce{NaCl -> Na+ + Cl-}.
+
+Isotope: \ce{^{14}C} and \ce{^{235}U}.
+
+Complex: \ce{[Cu(NH3)4]^2+}.
+
+\end{document}

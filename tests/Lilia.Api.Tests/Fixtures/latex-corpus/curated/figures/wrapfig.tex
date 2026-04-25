@@ -1,0 +1,24 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{wrapfig}
+
+\begin{document}
+
+\section{Wrapped figure alongside text}
+
+\begin{wrapfigure}{r}{0.35\textwidth}
+  \centering
+  \includegraphics[width=0.3\textwidth]{diagram}
+  \caption{An illustrative figure flowed alongside the prose.}
+  \label{fig:wrap}
+\end{wrapfigure}
+
+The wrapfig package lets a figure be flowed alongside the body text rather than taking a full horizontal slice of the page. The syntax \texttt{wrapfigure\{r\}\{width\}} places the figure on the right with the specified width.
+
+This paragraph demonstrates the wrapping: the text flows around the figure, saving vertical space on the page. Useful for small illustrations that relate directly to a nearby paragraph.
+
+Keep in mind that wrapfig has quirks with line-breaking and should not span across multiple text blocks. See Figure~\ref{fig:wrap} for reference.
+
+After the wrapped region, paragraphs resume full-width.
+
+\end{document}

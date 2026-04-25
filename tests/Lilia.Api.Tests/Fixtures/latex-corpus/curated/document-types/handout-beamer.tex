@@ -1,0 +1,35 @@
+\documentclass[handout]{beamer}
+\usepackage{amsmath}
+
+\title{Intro to Linear Algebra}
+\author{Prof Martinez}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Vectors}
+  A vector in $\mathbb{R}^n$ is an ordered tuple $(x_1, \ldots, x_n)$.
+  \begin{itemize}
+    \item Addition: component-wise.
+    \item Scalar multiplication: each component scaled.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Matrices}
+  A matrix is a rectangular array of numbers. An $m \times n$ matrix has $m$ rows and $n$ columns.
+\end{frame}
+
+\begin{frame}{Matrix multiplication}
+  For $A \in \mathbb{R}^{m \times n}$ and $B \in \mathbb{R}^{n \times p}$, the product $AB \in \mathbb{R}^{m \times p}$ has entries
+  $$ (AB)_{ij} = \sum_{k=1}^{n} A_{ik} B_{kj}. $$
+\end{frame}
+
+\begin{frame}{Linear independence}
+  Vectors $v_1, \ldots, v_k$ are linearly independent if
+  $\sum c_i v_i = 0 \implies c_1 = \cdots = c_k = 0$.
+\end{frame}
+
+\end{document}

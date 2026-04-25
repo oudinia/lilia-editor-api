@@ -1,0 +1,26 @@
+% EXPECTED-LEAKS: signature, address, opening, closing, ps, encl, cc, startletter, endletter
+\documentclass{letter}
+\signature{Elena Kim}
+\address{123 Example Lane \\ Springfield, IL 62701}
+
+\begin{document}
+
+\begin{letter}{Hiring Manager \\ Acme Corporation \\ 456 Enterprise Blvd \\ New York, NY 10001}
+
+\opening{Dear Hiring Manager,}
+
+I am writing to apply for the Senior Engineer position advertised on your careers page. With over eight years of experience building distributed systems, I believe I would contribute immediately to your team.
+
+Attached please find my resume and portfolio. I am particularly interested in Acme's work on real-time analytics, having led a similar initiative at my current role that reduced query latency by 60\%.
+
+I would welcome the opportunity to discuss how my background aligns with your needs. Thank you for your consideration.
+
+\closing{Sincerely,}
+
+\ps{P.S. I'll be in New York next week and could meet in person if convenient.}
+
+\encl{Resume, Portfolio, References}
+
+\end{letter}
+
+\end{document}

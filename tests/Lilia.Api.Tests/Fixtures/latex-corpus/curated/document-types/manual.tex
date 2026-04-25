@@ -1,0 +1,57 @@
+\documentclass[11pt]{book}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\lstset{basicstyle=\ttfamily\small, breaklines=true}
+
+\title{Cloud CLI User Manual}
+\author{Engineering Documentation}
+\date{Version 3.1 --- April 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\chapter{Getting Started}
+
+\section{Installation}
+Install via Homebrew on macOS:
+\begin{lstlisting}[language=bash]
+brew install cloudcli
+\end{lstlisting}
+
+Or on Debian/Ubuntu:
+\begin{lstlisting}[language=bash]
+curl -fsSL https://get.cloudcli.example.com | bash
+\end{lstlisting}
+
+\section{Authentication}
+Run the login command to authenticate interactively:
+\begin{lstlisting}[language=bash]
+cloud login
+\end{lstlisting}
+
+\chapter{Reference}
+
+\section{The \texttt{deploy} command}
+Deploy a service to an environment:
+\begin{lstlisting}[language=bash]
+cloud deploy --service api --env production
+\end{lstlisting}
+
+Supported flags:
+\begin{itemize}
+  \item \texttt{--service NAME} --- the service to deploy
+  \item \texttt{--env ENV} --- target environment (staging, production)
+  \item \texttt{--wait} --- block until deployment is healthy
+  \item \texttt{--rollback-on-error} --- automatic rollback on failure
+\end{itemize}
+
+\section{The \texttt{status} command}
+Check the deployment status:
+\begin{lstlisting}[language=bash]
+cloud status --service api
+\end{lstlisting}
+
+\end{document}

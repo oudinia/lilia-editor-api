@@ -1,0 +1,26 @@
+% EXPECTED-LEAKS: pagestyle, fancyhf, fancyhead, fancyfoot, renewcommand, thepage, leftmark, rightmark
+\documentclass{article}
+\usepackage{fancyhdr}
+\usepackage[margin=2cm,headheight=14pt]{geometry}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textit{Document Title}}
+\fancyhead[R]{\thepage}
+\fancyfoot[C]{Confidential Draft}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\begin{document}
+
+\section{Introduction}
+Document body starts here. The header shows the title on the left and page number on the right.
+
+\section{Another section}
+More content. The footer has a centred confidentiality marker.
+
+\newpage
+
+\section{Continued}
+This page has the same headers and footers applied via \texttt{fancyhdr}.
+
+\end{document}

@@ -1,0 +1,48 @@
+\documentclass{book}
+\usepackage{amsmath,amssymb,amsthm}
+
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[chapter]
+\newtheorem{example}{Example}[chapter]
+
+\begin{document}
+
+\chapter{Groups and Homomorphisms}
+
+\section{Basic definitions}
+
+\begin{definition}
+A \emph{group} is a pair $(G, \cdot)$ where $G$ is a set and $\cdot$ is a binary operation $G \times G \to G$ satisfying:
+\begin{enumerate}
+  \item Associativity: $(a \cdot b) \cdot c = a \cdot (b \cdot c)$ for all $a, b, c \in G$.
+  \item Identity: there exists $e \in G$ with $e \cdot a = a \cdot e = a$ for all $a \in G$.
+  \item Inverses: for every $a \in G$ there exists $a^{-1} \in G$ with $a \cdot a^{-1} = a^{-1} \cdot a = e$.
+\end{enumerate}
+\end{definition}
+
+\begin{example}
+$(\mathbb{Z}, +)$, $(\mathbb{Q}^\times, \cdot)$, and $(S_n, \circ)$ are all groups.
+\end{example}
+
+\section{Homomorphisms}
+
+\begin{definition}
+A \emph{homomorphism} $\varphi: G \to H$ is a map satisfying $\varphi(ab) = \varphi(a)\varphi(b)$ for all $a, b \in G$.
+\end{definition}
+
+\begin{theorem}[First isomorphism theorem]
+If $\varphi: G \to H$ is a homomorphism, then $G/\ker\varphi \cong \operatorname{im}\varphi$.
+\end{theorem}
+
+\begin{proof}
+The map $\bar\varphi: G/\ker\varphi \to \operatorname{im}\varphi$ defined by $\bar\varphi(g\ker\varphi) = \varphi(g)$ is well-defined (choice of coset representative is irrelevant), injective, and surjective onto its image.
+\end{proof}
+
+\begin{corollary}
+The quotient $\mathbb{Z}/n\mathbb{Z}$ is isomorphic to the image of the reduction map $\mathbb{Z} \to \mathbb{Z}/n\mathbb{Z}$.
+\end{corollary}
+
+\end{document}

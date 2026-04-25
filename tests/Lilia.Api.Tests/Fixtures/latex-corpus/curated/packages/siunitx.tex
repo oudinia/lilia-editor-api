@@ -1,0 +1,26 @@
+% EXPECTED-LEAKS: SI, si, num, ang, SIrange, numrange, sisetup, metre, second, ampere, ohm, volt, kilogram, joule, kelvin, coulomb, per
+\documentclass{article}
+\usepackage{siunitx}
+
+\sisetup{per-mode=symbol}
+
+\begin{document}
+
+\section{Units with siunitx}
+
+The speed of light is $c = \SI{299792458}{\metre\per\second}$ in vacuum.
+
+A current of \SI{5}{\ampere} through a resistance of \SI{10}{\ohm} produces a voltage of \SI{50}{\volt}.
+
+Pure numbers with separators: \num{1234567.89}. Angles: \ang{45.3}.
+
+A range: \SIrange{10}{100}{\kilogram}.
+
+Table of constants:
+\begin{tabular}{ll}
+  Planck & \SI{6.62607015e-34}{\joule\second} \\
+  Boltzmann & \SI{1.380649e-23}{\joule\per\kelvin} \\
+  Elementary charge & \SI{1.602176634e-19}{\coulomb}
+\end{tabular}
+
+\end{document}

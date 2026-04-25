@@ -1,0 +1,45 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb,amsthm,amsfonts}
+
+\begin{document}
+
+\section{Heavy amsmath constructs}
+
+Operator with limits:
+\[
+\lim_{n \to \infty} \sum_{k=1}^{n} \frac{1}{k^2} = \frac{\pi^2}{6}
+\]
+
+Aligned environment:
+\begin{align}
+  (a + b)^2 &= a^2 + 2ab + b^2 \\
+  (a + b)^3 &= a^3 + 3a^2 b + 3ab^2 + b^3 \\
+  (a + b)^n &= \sum_{k=0}^{n} \binom{n}{k} a^{n-k} b^k
+\end{align}
+
+Conditionally split:
+\[
+\operatorname{sgn}(x) = \begin{cases}
+  -1 & \text{if } x < 0, \\
+  0 & \text{if } x = 0, \\
+  +1 & \text{if } x > 0.
+\end{cases}
+\]
+
+Matrix operations:
+\[
+A = \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix}, \quad
+A^{-1} = \frac{1}{\det A} \begin{pmatrix} a_{22} & -a_{12} \\ -a_{21} & a_{11} \end{pmatrix}
+\]
+
+Continued fraction:
+\[
+\phi = 1 + \cfrac{1}{1 + \cfrac{1}{1 + \cfrac{1}{1 + \cdots}}}
+\]
+
+Over/under:
+\[
+\underbrace{a_1 + a_2 + \cdots + a_n}_{\text{sum}} = \overbrace{n \cdot \bar a}^{\text{mean times count}}
+\]
+
+\end{document}

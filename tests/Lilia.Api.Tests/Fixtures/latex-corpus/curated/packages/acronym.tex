@@ -1,0 +1,22 @@
+% EXPECTED-LEAKS: acro, ac, acl, acs, acresetall
+\documentclass{article}
+\usepackage{acronym}
+
+\begin{document}
+
+\section{Acronyms}
+
+\begin{acronym}
+  \acro{API}{Application Programming Interface}
+  \acro{REST}{Representational State Transfer}
+  \acro{HTTP}{HyperText Transfer Protocol}
+  \acro{URL}{Uniform Resource Locator}
+\end{acronym}
+
+An \ac{API} is a contract between software components. Popular styles include \ac{REST}, which uses standard \ac{HTTP} verbs and \ac{URL}-based addressing.
+
+Subsequent references shorten automatically: another \ac{API} call, another \ac{HTTP} request.
+
+Full forms: \acl{API}, \acl{REST}.
+
+\end{document}

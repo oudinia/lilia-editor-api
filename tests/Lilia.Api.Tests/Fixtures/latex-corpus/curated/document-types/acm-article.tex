@@ -1,0 +1,48 @@
+% EXPECTED-LEAKS: affiliation, email, institution, city, country, orcid, settopmatter, printacmref, copyrightyear, acmConference, ccsdesc
+\documentclass[sigconf]{acmart}
+
+\settopmatter{printacmref=false}
+\copyrightyear{2026}
+\acmConference[SIGMOD '26]{ACM SIGMOD 2026}{June 2026}{Seattle, WA}
+
+\begin{document}
+\title{Learned Cardinality Estimation at Scale}
+
+\author{Carol Davis}
+\affiliation{%
+  \institution{Example Corp}
+  \city{San Francisco}
+  \country{USA}
+}
+\email{carol@example.com}
+
+\begin{abstract}
+Cardinality estimation is a long-standing database problem. We propose a learned model that reduces estimation error by 40\% on industrial workloads.
+\end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+<concept><concept_id>10002951.10002952.10003219</concept_id>
+<concept_desc>Information systems~Query optimization</concept_desc></concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Information systems~Query optimization}
+
+\keywords{cardinality, learned indexes, query optimization}
+
+\maketitle
+
+\section{Introduction}
+Modern databases rely on accurate cardinality estimates to choose efficient query plans. Traditional histogram-based approaches break down under skew and correlated predicates.
+
+\section{Model Architecture}
+Our neural estimator uses an encoder-decoder topology with attention over predicate columns.
+
+\section{Experimental Results}
+We evaluate on IMDB, TPC-H, and a proprietary dataset. Table results show 40\% reduction in median q-error.
+
+\section{Conclusion}
+Learned models complement traditional statistics and warrant deeper production study.
+
+\end{document}

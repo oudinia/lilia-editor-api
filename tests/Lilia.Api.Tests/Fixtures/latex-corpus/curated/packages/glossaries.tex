@@ -1,0 +1,20 @@
+% EXPECTED-LEAKS: makeglossaries, newglossaryentry, gls, Gls, printglossaries
+\documentclass{article}
+\usepackage[acronym]{glossaries}
+
+\makeglossaries
+
+\newglossaryentry{api}{name={API},description={Application Programming Interface}}
+\newglossaryentry{rest}{name={REST},description={Representational State Transfer}}
+
+\begin{document}
+
+\section{Using glossaries}
+
+An \gls{api} exposes functionality to clients. The \gls{rest} style has become dominant for web \gls{api}s.
+
+\gls{rest} is stateless and uses standard HTTP verbs.
+
+\printglossaries
+
+\end{document}

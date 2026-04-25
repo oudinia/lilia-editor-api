@@ -1,0 +1,42 @@
+% EXPECTED-LEAKS: printanswers, question, choice, CorrectChoice, solution, fillwithlines, bonuspoints, pointsofquestion, qformat
+\documentclass[12pt,answers]{exam}
+\usepackage{amsmath}
+
+\printanswers
+
+\begin{document}
+
+\begin{center}
+{\Large Midterm Exam --- CS 101} \\
+\vspace{0.2cm}
+Name: \rule{5cm}{0.2pt} \hfill Date: \rule{3cm}{0.2pt}
+\end{center}
+
+\begin{questions}
+
+\question[10] What is the time complexity of binary search on a sorted array of size $n$?
+
+\begin{choices}
+  \choice $O(n)$
+  \choice $O(n^2)$
+  \CorrectChoice $O(\log n)$
+  \choice $O(1)$
+\end{choices}
+
+\begin{solution}
+Binary search halves the search space at each step, giving logarithmic complexity.
+\end{solution}
+
+\question[15] Prove that the sum $1 + 2 + \cdots + n = \frac{n(n+1)}{2}$ for all positive integers $n$.
+
+\begin{solution}
+By induction on $n$. Base case: $n = 1$ gives $1 = 1(2)/2$. Inductive step: assume the formula holds for $k$; then $1 + 2 + \cdots + k + (k+1) = \frac{k(k+1)}{2} + (k+1) = \frac{(k+1)(k+2)}{2}$.
+\end{solution}
+
+\question[25] Implement quicksort in pseudocode. Analyse the worst-case and expected runtime.
+
+\fillwithlines{3in}
+
+\end{questions}
+
+\end{document}

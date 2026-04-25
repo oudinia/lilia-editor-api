@@ -1,0 +1,41 @@
+% EXPECTED-LEAKS: affiliation, ead, cortext, cormark, fnmark, fntext, author
+\documentclass[preprint,12pt]{elsarticle}
+
+\journal{Journal of Computational Methods}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Adaptive Mesh Refinement for Shock-Dominated Flows}
+
+\author[lab1]{Hana Ito\corref{cor1}}
+\ead{hana.ito@example.edu}
+\author[lab2]{Luka Petrovic}
+\cortext[cor1]{Corresponding author}
+\affiliation[lab1]{organization={Institute of Applied Mathematics},addressline={City, Country}}
+\affiliation[lab2]{organization={Research Centre}}
+
+\begin{abstract}
+We present an adaptive mesh refinement strategy that reduces compute requirements by 3x on shock-dominated flow problems while preserving accuracy.
+\end{abstract}
+
+\begin{keyword}
+mesh refinement \sep shock capture \sep computational fluid dynamics
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+Shock-dominated flows remain computationally demanding. Uniform meshes waste resolution in smooth regions.
+
+\section{Method}
+Our refinement indicator combines gradient magnitude with vorticity, weighted by local cell size.
+
+\section{Results}
+On the double Mach reflection benchmark, we achieve comparable solution quality to a uniform mesh with one third the cell count.
+
+\section{Conclusion}
+Adaptive refinement is a promising path for cost reduction in large-scale CFD simulations.
+
+\end{document}

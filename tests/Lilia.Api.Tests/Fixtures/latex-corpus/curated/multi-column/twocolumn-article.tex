@@ -1,0 +1,39 @@
+\documentclass[twocolumn,10pt]{article}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\title{Two-Column Article Example}
+\author{Author}
+\date{2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This is a two-column article demonstrating the \texttt{twocolumn} class option combined with full-width abstract and title.
+\end{abstract}
+
+\section{Introduction}
+The two-column format is standard in academic publishing, providing denser information per page.
+
+\section{Method}
+Our method consists of three steps: preprocessing, modelling, and postprocessing. Each step handles distinct subtasks.
+
+\section{Column-Spanning Figure}
+
+\begin{figure*}[t]
+\centering
+Figure spanning both columns would go here.
+\caption{A wide figure that crosses both columns using \texttt{figure*}.}
+\label{fig:wide}
+\end{figure*}
+
+\section{Results}
+Performance data in Figure~\ref{fig:wide}.
+
+\section{Discussion}
+We observe that the two-column format affects line-break decisions and table widths.
+
+\section{Conclusion}
+Future work extends this to three-column variants.
+\end{document}

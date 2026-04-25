@@ -1,0 +1,45 @@
+\documentclass{article}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{colorlinks,linkcolor=blue,urlcolor=blue}
+
+\title{Why We Rewrote Our Auth Layer (A Post-Mortem)}
+\author{Engineering Blog}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+If you're here, you've probably seen the incident report already. This post covers what led to the rewrite, what we tried, and what worked.
+
+\section*{Background}
+Our auth layer was written five years ago when we had fewer than 10{,}000 users. It aged out around the 1M mark --- token validation alone was adding 40ms to every request.
+
+\section*{What we tried first}
+We tried to optimise the existing implementation. Moved validation to a cache. Cut the per-request overhead in half. Not enough.
+
+Then we tried sharding the session store. Helped, but the original design was never meant for this scale, and we kept hitting edge cases.
+
+\section*{The rewrite}
+After about a week of trying to shore up the old system, we made the call to rewrite. Three engineers, six weeks, a parallel rollout with shadow traffic comparison.
+
+Key design choices:
+\begin{itemize}
+  \item Stateless tokens (JWT) instead of session-backed lookups
+  \item Revocation list cached in Redis with 30-second TTL
+  \item Asymmetric keys so verify doesn't require a shared secret
+\end{itemize}
+
+\section*{Rollout}
+Shadow traffic for two weeks, then a 1\% canary, then 10\%, then 100\%. No incidents.
+
+\section*{Results}
+Token validation now adds 2ms per request (was 40ms). The old auth service has been retired.
+
+\section*{Lessons}
+Try to optimise before rewriting. When you do rewrite, run in shadow long enough to catch edge cases. Rollout gradually even when shadow looks clean.
+
+Questions? Email us at \href{mailto:eng@example.com}{eng@example.com}.
+
+\end{document}

@@ -1,0 +1,35 @@
+% EXPECTED-LEAKS: ce
+\documentclass{article}
+\usepackage[version=4]{mhchem}
+\usepackage{graphicx}
+
+\title{Catalytic Hydrogenation of Alkenes}
+\author{Dr Patel}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+Hydrogenation adds \ce{H2} across a carbon--carbon double bond in the presence of a metal catalyst such as \ce{Pd} or \ce{Pt}.
+
+\section{Mechanism}
+The overall transformation is:
+\[
+\ce{CH2=CH2 + H2 ->[\text{Pd/C}] CH3-CH3}
+\]
+
+The reaction proceeds via surface adsorption of hydrogen onto the metal followed by sequential H-atom transfer.
+
+\section{Selectivity}
+Sterically hindered alkenes react more slowly. Competition with isomerisation can reduce selectivity.
+
+\section{Kinetics}
+Under excess \ce{H2}, the reaction is pseudo-first-order in alkene:
+\[
+\text{rate} = k[\text{alkene}]
+\]
+
+\section{Conclusion}
+Catalyst choice and support matter as much as the alkene itself.
+
+\end{document}

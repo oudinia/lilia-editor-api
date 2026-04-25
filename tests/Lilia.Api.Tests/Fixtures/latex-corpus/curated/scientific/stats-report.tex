@@ -1,0 +1,39 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\title{A/B Test Analysis: Checkout Flow}
+\author{Data Team}
+
+\begin{document}
+\maketitle
+
+\section{Hypothesis}
+We tested whether a simplified checkout flow (variant B) increases conversion over the existing flow (variant A).
+
+$H_0$: $p_A = p_B$ vs $H_1$: $p_A \neq p_B$.
+
+\section{Data}
+
+\begin{tabular}{lrrr}
+  \toprule
+  Variant & Visitors & Conversions & Rate \\
+  \midrule
+  A (control) & 12{,}348 & 1{,}247 & 10.10\% \\
+  B (treatment) & 12{,}412 & 1{,}389 & 11.19\% \\
+  \bottomrule
+\end{tabular}
+
+\section{Test statistic}
+Using a two-proportion $z$-test,
+\[
+  z = \frac{\hat p_B - \hat p_A}{\sqrt{\hat p(1-\hat p)(1/n_A + 1/n_B)}} \approx 2.63.
+\]
+
+The two-sided $p$-value is $p \approx 0.0086$.
+
+\section{Conclusion}
+We reject $H_0$ at the 5\% level. Variant B is associated with a 1.09 percentage-point lift in conversion. 95\% CI on the absolute lift: $[0.28\%, 1.90\%]$.
+
+\end{document}

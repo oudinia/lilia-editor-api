@@ -1,0 +1,51 @@
+\documentclass{report}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+
+\title{Internal Technical Report: Database Sharding Strategy}
+\author{Infrastructure Team}
+\date{Q2 2026}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+
+\chapter{Executive Summary}
+This report evaluates three sharding strategies (range, hash, directory-based) for our primary write path.
+
+\chapter{Background}
+Our write volume has grown 4x year-over-year. Single-primary Postgres is approaching its IOPS ceiling.
+
+\section{Current architecture}
+A single Postgres 15 primary handles all writes; two replicas serve reads.
+
+\section{Growth projections}
+At current growth, we expect to exhaust the primary's capacity by late 2026.
+
+\chapter{Evaluation}
+
+\section{Range-based sharding}
+\textbf{Pros.} Simple to reason about, easy range scans.
+
+\textbf{Cons.} Hot shards for monotonic keys.
+
+\section{Hash-based sharding}
+\textbf{Pros.} Even load distribution.
+
+\textbf{Cons.} Range scans require scatter-gather.
+
+\section{Directory-based sharding}
+\textbf{Pros.} Flexible shard assignment per-tenant.
+
+\textbf{Cons.} Directory lookup overhead on every query.
+
+\chapter{Recommendation}
+We recommend hash-based sharding keyed on \texttt{tenant\_id} for the write path, with per-tenant read routing for range queries.
+
+\chapter{Appendix}
+See \url{https://wiki.internal/sharding-design} for implementation details.
+
+\end{document}

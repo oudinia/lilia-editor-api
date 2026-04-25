@@ -1,0 +1,46 @@
+\documentclass[11pt]{article}
+\usepackage{geometry}
+\usepackage{hyperref}
+\geometry{margin=1in}
+
+\title{PhD Proposal: Differential Privacy in Federated Learning}
+\author{Sarah Kim \\ Advisor: Prof. Roberts}
+
+\begin{document}
+\maketitle
+
+\section{Problem Statement}
+Federated learning trains models across devices without centralising raw data. Differential privacy adds formal guarantees but introduces accuracy-utility trade-offs.
+
+\section{Research Questions}
+\begin{enumerate}
+  \item How can the privacy budget be allocated adaptively across training rounds?
+  \item What is the optimal combination of clipping and noise for gradient aggregation?
+  \item Can we achieve privacy-preserving personalisation?
+\end{enumerate}
+
+\section{Proposed Work}
+
+\subsection{Year 1}
+Analyse existing adaptive budget allocation schemes and derive lower bounds.
+
+\subsection{Year 2}
+Develop and empirically validate a new scheme on benchmark datasets (FedMNIST, FedCelebA).
+
+\subsection{Year 3}
+Extend to personalised federated learning and write dissertation.
+
+\section{Expected Contributions}
+\begin{itemize}
+  \item Theoretical: tighter lower bounds on adaptive privacy allocation.
+  \item Empirical: reference implementation and benchmark suite.
+  \item Applied: deployment in one or two industry collaborations.
+\end{itemize}
+
+\section{Timeline}
+First results paper: Q4 Year 1. Benchmark release: Q2 Year 2. Personalisation paper: Q1 Year 3. Thesis draft: Q4 Year 3.
+
+\section{Related Work}
+Prior work has examined static privacy budgets~\cite{dp-fl-2020} and gradient clipping~\cite{clipping-2021}. Adaptive strategies remain under-explored.
+
+\end{document}

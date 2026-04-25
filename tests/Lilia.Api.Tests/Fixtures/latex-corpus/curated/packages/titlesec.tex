@@ -1,0 +1,19 @@
+% EXPECTED-LEAKS: titleformat, titlespacing, thesection, filright, hsize
+\documentclass{article}
+\usepackage{titlesec}
+
+\titleformat{\section}{\Large\bfseries\color{blue}}{\thesection}{1em}{}
+\titlespacing{\section}{0pt}{2ex}{1ex}
+
+\begin{document}
+
+\section{First section}
+Custom-formatted section heading. Blue, large, bold.
+
+\section{Second section}
+Same styling applied consistently.
+
+\subsection{A subsection}
+Nested heading.
+
+\end{document}

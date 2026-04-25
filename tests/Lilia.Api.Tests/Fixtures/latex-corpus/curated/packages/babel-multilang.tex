@@ -1,0 +1,27 @@
+% EXPECTED-LEAKS: foreignlanguage, selectlanguage
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[main=english,french,german,spanish]{babel}
+
+\begin{document}
+
+\section{Multi-language document}
+
+This paragraph is in English.
+
+\selectlanguage{french}
+Ce paragraphe est en français avec des guillemets appropriés et des traits d'union.
+
+\selectlanguage{german}
+Dieser Absatz ist auf Deutsch geschrieben, mit Umlauten wie Ä, Ö, Ü und ß.
+
+\selectlanguage{spanish}
+Este párrafo está en español, con signos de interrogación invertidos: ¿cómo estás?
+
+\selectlanguage{english}
+Back to English.
+
+A mixed-language sentence: \foreignlanguage{french}{bonjour}, \foreignlanguage{german}{guten Tag}, hello.
+
+\end{document}

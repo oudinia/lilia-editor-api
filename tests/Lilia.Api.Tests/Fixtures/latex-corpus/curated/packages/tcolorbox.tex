@@ -1,0 +1,23 @@
+% EXPECTED-LEAKS: tcbset, tcolorboxenvironment
+\documentclass{article}
+\usepackage[most]{tcolorbox}
+
+\begin{document}
+
+\section{Boxed content with tcolorbox}
+
+\begin{tcolorbox}[colback=blue!5,colframe=blue!75,title=Info]
+This is an informational callout. Useful for highlighting definitions or tips in technical documentation.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=red!5,colframe=red!75,title=Warning]
+Do not run this command on production systems without a backup.
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,title=Long content]
+A long quote that may span pages. The \texttt{breakable} option allows this.
+
+Multiple paragraphs inside the box are supported.
+\end{tcolorbox}
+
+\end{document}

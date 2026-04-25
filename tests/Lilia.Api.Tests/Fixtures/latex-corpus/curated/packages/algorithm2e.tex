@@ -1,0 +1,37 @@
+\documentclass{article}
+\usepackage[ruled,vlined]{algorithm2e}
+
+\begin{document}
+
+\section{Algorithms with algorithm2e}
+
+\begin{algorithm}
+  \KwIn{list $L$ of integers, target $t$}
+  \KwOut{index of $t$ in $L$ or $-1$}
+  $i \leftarrow 0$\;
+  \While{$i < |L|$}{
+    \If{$L[i] == t$}{
+      \Return $i$\;
+    }
+    $i \leftarrow i + 1$\;
+  }
+  \Return $-1$\;
+  \caption{Linear search}
+\end{algorithm}
+
+\begin{algorithm}
+  \KwData{sorted array $A$, key $k$}
+  \KwResult{index of $k$ or $-1$}
+  $\ell \leftarrow 0$\;
+  $r \leftarrow |A| - 1$\;
+  \While{$\ell \leq r$}{
+    $m \leftarrow \lfloor (\ell + r)/2 \rfloor$\;
+    \uIf{$A[m] == k$}{\Return $m$\;}
+    \uElseIf{$A[m] < k$}{$\ell \leftarrow m + 1$\;}
+    \Else{$r \leftarrow m - 1$\;}
+  }
+  \Return $-1$\;
+  \caption{Binary search}
+\end{algorithm}
+
+\end{document}

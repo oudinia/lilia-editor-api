@@ -1,0 +1,45 @@
+% EXPECTED-LEAKS: settopmatter, acmConference, copyrightyear, affiliation, institution, ccsdesc, additionalaffiliation, country, city
+\documentclass[sigchi]{acmart}
+
+\settopmatter{printacmref=false}
+
+\copyrightyear{2026}
+\acmConference[CHI '26]{ACM CHI 2026}{May 4--9, 2026}{Honolulu}
+
+\begin{document}
+
+\title{Ambient Voice Assistants in Domestic Settings}
+
+\author{User Researcher}
+\affiliation{%
+  \institution{Example HCI Lab}
+  \city{Boston}
+  \country{USA}
+}
+
+\begin{abstract}
+We report a diary study of 22 families using ambient voice assistants over 12 weeks. We find routine breakdowns and trust erosion driven by mishearings.
+\end{abstract}
+
+\ccsdesc[500]{Human-centered computing~Empirical studies in HCI}
+
+\keywords{voice assistants, ambient computing, diary study}
+
+\maketitle
+
+\section{Introduction}
+Voice assistants are now ubiquitous in domestic spaces. Their ambient, always-listening nature raises open questions about reliability and privacy.
+
+\section{Method}
+We conducted a 12-week diary study with 22 households recruited through local community boards.
+
+\section{Findings}
+Participants reported an average of 3.4 mishearings per week per household. Trust in the device dropped significantly when mishearings had consequential actions (e.g.\ unintended purchases).
+
+\section{Discussion}
+Design implications include more conservative defaults for consequential actions and better transparency about what was heard.
+
+\section{Conclusion}
+Ambient assistants require design attention to the failure path, not just the success path.
+
+\end{document}

@@ -1,0 +1,49 @@
+\documentclass[landscape,10pt]{article}
+\usepackage[landscape,margin=0.5cm]{geometry}
+\usepackage{multicol}
+
+\begin{document}
+
+\begin{center}
+\textbf{\Large Git Cheatsheet}
+\end{center}
+
+\begin{multicols}{3}
+
+\section*{Initialisation}
+\texttt{git init} creates a new repository.
+
+\texttt{git clone URL} downloads an existing one.
+
+\section*{Staging}
+\texttt{git add FILE} stages changes.
+
+\texttt{git reset FILE} unstages.
+
+\section*{Commits}
+\texttt{git commit -m "msg"} records staged changes.
+
+\texttt{git log} shows history.
+
+\section*{Branching}
+\texttt{git branch NAME} creates a branch.
+
+\texttt{git checkout NAME} switches to it.
+
+\texttt{git merge NAME} combines branches.
+
+\section*{Remotes}
+\texttt{git push} uploads commits.
+
+\texttt{git pull} downloads commits.
+
+\texttt{git fetch} downloads without merging.
+
+\section*{Undo}
+\texttt{git revert SHA} undoes a commit.
+
+\texttt{git reset --hard} discards changes.
+
+\end{multicols}
+
+\end{document}

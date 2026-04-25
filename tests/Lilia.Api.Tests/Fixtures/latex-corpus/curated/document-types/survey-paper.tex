@@ -1,0 +1,54 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\title{A Survey of Vector Databases}
+\author{Review Team}
+\date{2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We survey 15+ vector database systems across four axes: index type, distance metric, hybrid search support, and operational maturity.
+\end{abstract}
+
+\section{Introduction}
+Vector databases have emerged as a critical component of modern retrieval-augmented AI pipelines. This survey organises the design space.
+
+\section{Index Types}
+
+\subsection{Tree-based}
+Systems like Annoy use random-projection trees.
+
+\subsection{Graph-based}
+HNSW has become the de-facto standard. Systems based on HNSW include Faiss, Milvus, and Weaviate.
+
+\subsection{Quantisation}
+Product quantisation trades recall for memory. IVF-PQ combines inverted files with PQ for scale.
+
+\section{Distance Metrics}
+Most systems support cosine, Euclidean (L2), and inner-product. Some also support Hamming, Jaccard, and custom metrics.
+
+\section{Hybrid Search}
+Hybrid search combines vector similarity with lexical (BM25) or structured filters. Approaches vary in how they fuse scores.
+
+\section{Operational Maturity}
+
+\begin{itemize}
+  \item Replication: most mature systems support synchronous and asynchronous replication.
+  \item Consistency: eventual consistency is common; strict consistency requires careful design.
+  \item Scale: petabyte-scale deployments exist but are rare outside hyperscalers.
+\end{itemize}
+
+\section{Conclusion}
+The field is consolidating around HNSW-based approaches. Differentiation now comes from hybrid-search capabilities and operational tooling.
+
+\section*{Related Surveys}
+See \cite{survey2022,survey2023,survey2024} for prior reviews.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}

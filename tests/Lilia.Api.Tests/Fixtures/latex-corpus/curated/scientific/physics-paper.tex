@@ -1,0 +1,38 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\title{On the Quantum Harmonic Oscillator}
+\author{Grace Hopper}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We review the spectrum of the quantum harmonic oscillator and its ladder-operator derivation.
+\end{abstract}
+
+\section{Hamiltonian}
+The standard Hamiltonian is
+\begin{equation}
+  \hat H = \frac{\hat p^2}{2m} + \frac{1}{2} m \omega^2 \hat x^2.
+\end{equation}
+
+\section{Ladder operators}
+Define
+\[
+  \hat a = \sqrt{\frac{m\omega}{2\hbar}} \left( \hat x + \frac{i}{m\omega} \hat p \right),
+\]
+and its Hermitian conjugate $\hat a^\dagger$. The commutator is $[\hat a, \hat a^\dagger] = 1$.
+
+\section{Spectrum}
+Eigenvalues of $\hat H$ are
+\begin{equation}
+  E_n = \hbar\omega\left(n + \tfrac{1}{2}\right), \quad n = 0, 1, 2, \ldots
+\end{equation}
+
+\section{Coherent states}
+The eigenstates of $\hat a$ satisfy $\hat a \ket{\alpha} = \alpha \ket{\alpha}$ and are quasi-classical.
+
+\end{document}

@@ -924,7 +924,7 @@ public class LatexParser : ILatexParser
             // Table rule macros — if they survive into cell text it
             // means the table parser leaked them; strip so the cell
             // text is clean regardless.
-            + @"|hline|toprule|midrule|bottomrule|cline|cmidrule"
+            + @"|hline|toprule|midrule|bottomrule|cline|cmidrule|hrule|vrule"
             // Date / misc markers rendered as text but with no block model.
             + @"|today"
             + @")\b",
@@ -1002,7 +1002,10 @@ public class LatexParser : ILatexParser
             var matches = new List<(Match match, string type)>();
 
             // Sections — \section / \subsection / \subsubsection / \paragraph / \subparagraph (P1-1)
-            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{([^}]+)\}");
+            // Section title allows one level of nested braces so cases
+            // like \section{The \texttt{deploy} command} capture the
+            // full title instead of truncating at the first `}`.
+            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{((?:[^{}]|\{[^{}]*\})+)\}");
             if (sectionMatch.Success)
             {
                 CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");
@@ -1136,7 +1139,7 @@ public class LatexParser : ILatexParser
             {
                 case "section":
                     var sectionType = firstMatch.match.Groups[1].Value;
-                    var sectionTitle = firstMatch.match.Groups[2].Value;
+                    var sectionTitle = NormaliseInlineCommands(firstMatch.match.Groups[2].Value);
                     var level = sectionType switch
                     {
                         "section"       => 1,
@@ -1347,12 +1350,15 @@ public class LatexParser : ILatexParser
                     break;
 
                 case "abstract":
-                    document.Elements.Add(new ImportAbstract
                     {
-                        Order = elementOrder++,
-                        Text = firstMatch.match.Groups[1].Value.Trim(),
-                        Formatting = ParseLatexFormatting(firstMatch.match.Groups[1].Value.Trim()),
-                    });
+                        var abstractBody = firstMatch.match.Groups[1].Value.Trim();
+                        document.Elements.Add(new ImportAbstract
+                        {
+                            Order = elementOrder++,
+                            Text = NormaliseInlineCommands(abstractBody),
+                            Formatting = ParseLatexFormatting(abstractBody),
+                        });
+                    }
                     break;
 
                 case "algorithm":

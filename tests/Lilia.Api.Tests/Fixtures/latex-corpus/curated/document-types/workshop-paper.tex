@@ -1,0 +1,37 @@
+\documentclass{article}
+\usepackage[final]{neurips_2024}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\title{Faster Inference via Speculative Decoding at Scale}
+
+\author{%
+  Workshop Authors \\
+  Example Research \\
+  \texttt{authors@example.com}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We apply speculative decoding with a distilled draft model to achieve 2.3x inference speedup on a 70B target model with no quality regression.
+\end{abstract}
+
+\section{Introduction}
+Autoregressive generation is memory-bandwidth-bound at scale. Speculative decoding generates tokens from a small draft model and verifies them against the target.
+
+\section{Method}
+Our approach trains a 1B draft model using distillation from the 70B target. At inference, the draft generates $k$ candidate tokens which the target verifies in a single forward pass.
+
+\section{Results}
+Measured on our production traffic, we see 2.3x speedup with token-level accuracy unchanged within noise.
+
+\section{Related Work}
+Prior work \cite{specdecode2023} introduced speculative decoding. We extend with a learned scheduler that adapts $k$ per-request.
+
+\section{Conclusion}
+Speculative decoding is compatible with production serving and worth deploying at scale.
+
+\end{document}
