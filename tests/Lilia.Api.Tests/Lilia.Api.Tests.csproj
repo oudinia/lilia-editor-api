@@ -36,6 +36,12 @@
     <None Update="Fixtures\latex-corpus\**\*.tex">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="Fixtures\docx-corpus\**\*.docx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- HandcraftedDocxGenerator is its own console project; exclude
+         its sources from the test assembly compilation. -->
+    <Compile Remove="Fixtures\docx-corpus\scripts\**" />
   </ItemGroup>
 
 </Project>

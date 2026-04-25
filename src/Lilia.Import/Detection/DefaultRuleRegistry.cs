@@ -43,6 +43,15 @@ public static class DefaultRuleRegistry
 
         // === Priority 300-399: Lists ===
         rules.Add(ListRule());
+        // 2026-04-25: Word users frequently bypass real list styles and
+        // type a bullet glyph at the start of plain paragraphs. The
+        // resulting paragraphs visually look like a list but lack
+        // numbering properties — so the proper-list rule above misses
+        // them and we ship raw "• item" paragraphs to the editor.
+        // ManualBulletRule fires at 320 (after real lists) to convert
+        // those paragraphs into list-item blocks with the leading glyph
+        // stripped.
+        rules.Add(ManualBulletRule());
 
         // === Priority 400-499: Equations ===
         rules.Add(EquationRule());
@@ -560,6 +569,71 @@ public static class DefaultRuleRegistry
                     analysis.NumberingProperties!,
                     analysis.MainDocumentPart);
                 return listItem != null ? [listItem] : null;
+            },
+            OnMatch = (_, tracker) =>
+            {
+                tracker.EndAbstractSection();
+            }
+        };
+    }
+
+    // Unicode bullet glyphs Word users type when bypassing list styles.
+    // Conservative set — only true bullet characters, not "*" or "-"
+    // which would risk false positives on prose.
+    private static readonly char[] ManualBulletGlyphs = ['•', '▪', '‣', '◦', '●', '■', '◆', '★', '►'];
+
+    private static readonly System.Text.RegularExpressions.Regex ManualBulletRx = new(
+        @"^\s*([•▪‣◦●■◆★►])\s+\S",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static ElementDetectionRule ManualBulletRule()
+    {
+        return new ElementDetectionRule
+        {
+            Id = "list.manual-bullet",
+            Name = "Manual Bulleted List Item",
+            Priority = 320,
+            TargetType = ImportElementType.ListItem,
+            Condition = new DetectionConditionFunc(analysis =>
+            {
+                if (analysis.HasNumberingProperties) return false; // proper list rule already handled it
+                if (string.IsNullOrWhiteSpace(analysis.Text)) return false;
+                return ManualBulletRx.IsMatch(analysis.Text);
+            }, "Paragraph starts with a bullet glyph (• ▪ ‣ ◦ ● ■ ◆ ★ ►)"),
+            CreateElements = (analysis, parser) =>
+            {
+                // Strip the leading whitespace + bullet glyph + spacing so
+                // the resulting list-item text is clean.
+                var raw = analysis.Text;
+                var stripped = ManualBulletRx.Replace(raw, m => m.Value[^1].ToString(), 1);
+                // The replacement keeps only the first non-space char of
+                // the captured suffix; that loses preceding whitespace
+                // before the actual word. Do the slice manually for clarity.
+                var idx = 0;
+                while (idx < raw.Length && char.IsWhiteSpace(raw[idx])) idx++;
+                if (idx < raw.Length && Array.IndexOf(ManualBulletGlyphs, raw[idx]) >= 0) idx++;
+                while (idx < raw.Length && char.IsWhiteSpace(raw[idx])) idx++;
+                stripped = idx < raw.Length ? raw[idx..] : string.Empty;
+
+                // Estimate a nesting level from the leading-space count
+                // (0 spaces = level 0, 4 spaces = level 1, …). Conservative —
+                // works for the common "indented bullet tree" Word pattern.
+                var leading = 0;
+                while (leading < raw.Length && raw[leading] == ' ') leading++;
+                var level = Math.Min(leading / 4, 5);
+
+                return
+                [
+                    new ImportListItem
+                    {
+                        Order = parser.NextElementOrder(),
+                        Text = stripped,
+                        Formatting = analysis.Formatting,
+                        Level = level,
+                        IsNumbered = false,
+                        ListMarker = "•",
+                    }
+                ];
             },
             OnMatch = (_, tracker) =>
             {
