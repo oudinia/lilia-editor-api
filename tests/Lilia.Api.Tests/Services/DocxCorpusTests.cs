@@ -105,6 +105,28 @@ public class DocxCorpusTests
         leaks.Should().BeEmpty(
             $"no Word-specific artefacts should leak into block text for {fixtureRel}. " +
             $"First leaks: {string.Join(" ; ", leaks.Take(5).Select(l => $"[{l.Block}/{l.Label}] near \"{l.Snippet}\""))}");
+
+        // Filename-driven minimums: fixtures named to exercise a
+        // specific Word feature must produce the corresponding block
+        // type, otherwise the parser silently dropped the feature.
+        AssertMinimumBlockTypes(fixtureRel, doc);
+    }
+
+    private static void AssertMinimumBlockTypes(string fixtureRel, ImportDocument doc)
+    {
+        var name = Path.GetFileNameWithoutExtension(fixtureRel).ToLowerInvariant();
+        var types = doc.Elements.Select(e => e.Type).ToHashSet();
+
+        if (name.StartsWith("equation-") && name.Contains("omml"))
+        {
+            types.Should().Contain(ImportElementType.Equation,
+                $"{fixtureRel}: OMML equation fixture must produce at least one Equation block");
+        }
+        if (name.StartsWith("footnote-"))
+        {
+            types.Should().Contain(ImportElementType.Footnote,
+                $"{fixtureRel}: footnote fixture must produce at least one Footnote block");
+        }
     }
 
     private static IEnumerable<(string Label, string Text, bool IsListItem)> EnumerateTextSurfaces(ImportElement el)
