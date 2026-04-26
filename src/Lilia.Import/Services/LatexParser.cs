@@ -1056,6 +1056,19 @@ public class LatexParser : ILatexParser
                 var tableMatch = Regex.Match(remaining, @"\\begin\{table(\*?)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{table\1\}", RegexOptions.Singleline);
                 if (tableMatch.Success)
                     matches.Add((tableMatch, tableMatch.Groups[1].Value == "*" ? "table*" : "table"));
+
+                // Bare tabular — \begin{tabular}{spec}…\end{tabular} with no
+                // surrounding \begin{table} float wrapper. Without this the
+                // env falls into the unknown-env catch-all and the user sees
+                // raw \begin{tabular} latex in the preview (SG-117). When a
+                // table wraps it, the table regex matches earlier and wins
+                // the OrderBy(Index).First() race so this never double-fires.
+                var bareTabularMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{tabular\}(?:\[[^\]]*\])?\{([^}]*)\}([\s\S]*?)\\end\{tabular\}",
+                    RegexOptions.Singleline);
+                if (bareTabularMatch.Success)
+                    matches.Add((bareTabularMatch, "tabular"));
             }
 
             // Lists — itemize / enumerate / description (P0-1)
@@ -1284,6 +1297,16 @@ public class LatexParser : ILatexParser
                             Message = "Could not parse table structure"
                         });
                     }
+                    break;
+
+                case "tabular":
+                    // Bare tabular — Groups[1] is the column spec, Groups[2]
+                    // is the body (rows). Same downstream handling as a
+                    // table-wrapped tabular but without a float float spec.
+                    var bareTable = ParseTabular(firstMatch.match.Groups[2].Value);
+                    bareTable.Order = elementOrder++;
+                    bareTable.Span = "column";
+                    document.Elements.Add(bareTable);
                     break;
 
                 case "list":
