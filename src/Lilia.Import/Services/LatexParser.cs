@@ -21,13 +21,18 @@ public class LatexParser : ILatexParser
     // spot when the catalog and parser disagree before the final swap.
     private readonly ITokenRouter _router;
     private readonly ILogger<LatexParser> _logger;
+    private readonly IImportTelemetrySink _telemetry;
 
     public LatexParser() : this(NullTokenRouter.Instance) { }
 
-    public LatexParser(ITokenRouter router, ILogger<LatexParser>? logger = null)
+    public LatexParser(
+        ITokenRouter router,
+        ILogger<LatexParser>? logger = null,
+        IImportTelemetrySink? telemetry = null)
     {
         _router = router ?? NullTokenRouter.Instance;
         _logger = logger ?? NullLogger<LatexParser>.Instance;
+        _telemetry = telemetry ?? new NoopImportTelemetrySink();
     }
 
     /// <summary>
@@ -1464,6 +1469,17 @@ public class LatexParser : ILatexParser
                         {
                             Type = ImportWarningType.UnsupportedElement,
                             Message = $"Preserved unsupported LaTeX environment '{envName}' as a raw passthrough block — content will round-trip on export but won't render in the editor preview.",
+                        });
+                        // FT-TELEMETRY-001: surface the silent fall-through so
+                        // we can backfill handlers for the most-hit envs.
+                        _telemetry.Record(new ImportTelemetryRecord
+                        {
+                            EventKind = "unknown_env",
+                            Severity = "warn",
+                            SourceFormat = "latex",
+                            TokenOrEnv = envName,
+                            BlockKindEmitted = "embed",
+                            SampleText = rawLatex.Length > 200 ? rawLatex.Substring(0, 200) : rawLatex,
                         });
                     }
                     break;

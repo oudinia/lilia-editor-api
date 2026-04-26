@@ -6,6 +6,7 @@ using Lilia.Api.Hubs;
 using Lilia.Api.Middleware;
 using Lilia.Api.Services;
 using Lilia.Core.Interfaces;
+using Lilia.Import.Services;
 using Lilia.Infrastructure.Data;
 using Lilia.Infrastructure.Data.Seeds;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -271,6 +272,13 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
+
+// Import telemetry sink (FT-TELEMETRY-001) — captures silent fallbacks
+// + coverage gaps from the import pipeline. DbImportTelemetrySink
+// buffers via a Channel and flushes batches from a single background
+// loop so the parser hot path never touches the DB connection pool.
+builder.Services.AddSingleton<IImportTelemetrySink, DbImportTelemetrySink>();
+builder.Services.AddHostedService<ImportTelemetryFlusher>();
 
 // DB-first LaTeX import pipeline (see plan valiant-waddling-otter + guideline
 // lilia-docs/docs/guidelines/import-export-db-first.md)
