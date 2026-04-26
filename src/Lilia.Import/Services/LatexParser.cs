@@ -258,6 +258,20 @@ public class LatexParser : ILatexParser
         "small", "footnotesize", "scriptsize", "tiny",
         "large", "Large", "LARGE", "huge", "Huge",
         "normalsize",
+        // Layout wrappers — they don't introduce structure; the body
+        // contains real content (paragraphs, headings, lists). Without
+        // pass-through they hit the unknown-env catch-all and the whole
+        // wrapped section becomes one raw embed block.
+        // Added 2026-04-27 from FT-TELEMETRY-001 stage-1 flood: minipage
+        // and multicols dominated the unknown_env counts. Doc-class
+        // structural envs (frontmatter, letter) and language wrappers
+        // (CJK*, IEEEkeywords, acronym) belong here too — same shape.
+        "minipage", "multicols", "paracol", "tcolorbox",
+        "frontmatter", "backmatter", "mainmatter",
+        "letter",
+        "IEEEkeywords", "keywords",
+        "acronym", "acronyms",
+        "CJK", "CJK*",
     };
 
     /// <summary>
@@ -1053,6 +1067,17 @@ public class LatexParser : ILatexParser
                 var figureMatch = Regex.Match(remaining, @"\\begin\{figure(\*?)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{figure\1\}", RegexOptions.Singleline);
                 if (figureMatch.Success)
                     matches.Add((figureMatch, figureMatch.Groups[1].Value == "*" ? "figure*" : "figure"));
+
+                // wrapfigure — \begin{wrapfigure}{l|r}{width}…\end{wrapfigure}.
+                // Same downstream handling as figure (extract \includegraphics
+                // + \caption); just a different opener. Without this we leak
+                // the entire env body as raw LaTeX.
+                var wrapFigureMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{wrapfigure\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}([\s\S]*?)\\end\{wrapfigure\}",
+                    RegexOptions.Singleline);
+                if (wrapFigureMatch.Success)
+                    matches.Add((wrapFigureMatch, "figure"));
             }
 
             // Table environments — same starred-variant handling as figures.
@@ -1061,6 +1086,18 @@ public class LatexParser : ILatexParser
                 var tableMatch = Regex.Match(remaining, @"\\begin\{table(\*?)\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{table\1\}", RegexOptions.Singleline);
                 if (tableMatch.Success)
                     matches.Add((tableMatch, tableMatch.Groups[1].Value == "*" ? "table*" : "table"));
+
+                // longtable — \begin{longtable}{spec}body…\end{longtable}.
+                // Same column-spec brace-balanced regex as bare tabular;
+                // rows have \endfirsthead / \endhead / \endfoot directives
+                // that we strip in ParseTabular. Emits as a `tabular` match
+                // so it goes through the same case branch.
+                var longtableMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{longtable\}(?:\[[^\]]*\])?\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}([\s\S]*?)\\end\{longtable\}",
+                    RegexOptions.Singleline);
+                if (longtableMatch.Success)
+                    matches.Add((longtableMatch, "tabular"));
 
                 // Bare tabular — \begin{tabular}{spec}…\end{tabular} with no
                 // surrounding \begin{table} float wrapper. Without this the
@@ -1118,9 +1155,15 @@ public class LatexParser : ILatexParser
             // They add styling only, no structure — drop the wrapper and splice
             // the body back into the stream so \section inside \begin{spacing}
             // still becomes a heading block instead of being slurped into embed.
+            // Opener args can appear in any order — `\begin{minipage}[t]{0.48\textwidth}`
+            // and `\begin{tcolorbox}{title}` both legal. Brace arg also
+            // tolerates one level of nested braces (`{0.48\textwidth}`,
+            // `{\dimexpr…}`). Pre-fix this regex required brace-then-
+            // bracket and skipped the brace when bracket came first,
+            // leaking the opener into the body as a phantom paragraph.
             var passThroughMatch = Regex.Match(
                 remaining,
-                @"\\begin\{([A-Za-z]+)\}(?:\{[^}]*\})?(?:\[[^\]]*\])?([\s\S]*?)\\end\{\1\}",
+                @"\\begin\{([A-Za-z*]+)\}(?:\s*(?:\[[^\]]*\]|\{(?:[^{}]|\{[^{}]*\})*\}))*([\s\S]*?)\\end\{\1\}",
                 RegexOptions.Singleline);
             if (passThroughMatch.Success && IsPassThroughEnvironment(passThroughMatch.Groups[1].Value))
             {
@@ -1963,11 +2006,16 @@ public class LatexParser : ILatexParser
                 continue;
 
             // Count and strip leading horizontal-rule directives.
-            var stripped = Regex.Replace(trimmedRow, @"\\hline\b|\\cline\{[^}]*\}|\\toprule\b|\\midrule\b|\\bottomrule\b", m =>
-            {
-                hlineCountSoFar++;
-                return string.Empty;
-            }).Trim();
+            // longtable directives (\endfirsthead, \endhead, \endfoot,
+            // \endlastfoot, \caption{…}\\) live in the body too — they
+            // mark header/footer row boundaries that don't belong in cells.
+            var stripped = Regex.Replace(trimmedRow,
+                @"\\hline\b|\\cline\{[^}]*\}|\\toprule\b|\\midrule\b|\\bottomrule\b|\\endfirsthead\b|\\endhead\b|\\endfoot\b|\\endlastfoot\b|\\kill\b",
+                m =>
+                {
+                    hlineCountSoFar++;
+                    return string.Empty;
+                }).Trim();
 
             if (string.IsNullOrEmpty(stripped))
                 continue;
