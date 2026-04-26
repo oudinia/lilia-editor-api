@@ -1063,9 +1063,13 @@ public class LatexParser : ILatexParser
                 // raw \begin{tabular} latex in the preview (SG-117). When a
                 // table wraps it, the table regex matches earlier and wins
                 // the OrderBy(Index).First() race so this never double-fires.
+                // Column spec uses brace-balanced match up to 3 levels deep
+                // so `>{\itshape}c` and `@{\hspace{3cm}}r@{}` parse cleanly.
+                // Without this, `[^}]*` truncates at the first `}` and the
+                // remaining spec leaks into the body as a phantom row.
                 var bareTabularMatch = Regex.Match(
                     remaining,
-                    @"\\begin\{tabular\}(?:\[[^\]]*\])?\{([^}]*)\}([\s\S]*?)\\end\{tabular\}",
+                    @"\\begin\{tabular\}(?:\[[^\]]*\])?\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}([\s\S]*?)\\end\{tabular\}",
                     RegexOptions.Singleline);
                 if (bareTabularMatch.Success)
                     matches.Add((bareTabularMatch, "tabular"));
@@ -1273,7 +1277,9 @@ public class LatexParser : ILatexParser
                 case "table":
                 case "table*":
                     var tableContent = firstMatch.match.Groups[2].Value;
-                    var tabularMatch = Regex.Match(tableContent, @"\\begin\{tabular\}\{([^}]*)\}([\s\S]*?)\\end\{tabular\}", RegexOptions.Singleline);
+                    // Same brace-balanced col-spec regex as the bare-tabular
+                    // matcher — `[^}]*` truncates on `>{\itshape}c` etc.
+                    var tabularMatch = Regex.Match(tableContent, @"\\begin\{tabular\}(?:\[[^\]]*\])?\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}([\s\S]*?)\\end\{tabular\}", RegexOptions.Singleline);
 
                     if (tabularMatch.Success)
                     {
@@ -1794,6 +1800,133 @@ public class LatexParser : ILatexParser
         return lines;
     }
 
+    /// <summary>
+    /// Strip pure-presentation LaTeX markup from a tabular cell so the
+    /// preview / export pipeline doesn't surface raw `\itshape`,
+    /// `\hspace`, `\textbf`, `\multicolumn` etc. as user-visible text.
+    /// Order matters: standalone commands first (so they don't end up
+    /// inside an unwrapped `\textbf{…}` body), then unwrap content
+    /// commands, then the multi-arg specials.
+    /// </summary>
+    private static string CleanCellText(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+        var s = raw;
+
+        // 1. Standalone font shape/series/family commands — apply to
+        //    following text in LaTeX, no semantic value in plain cell text.
+        s = Regex.Replace(s, @"\\(itshape|bfseries|rmfamily|sffamily|ttfamily|upshape|slshape|scshape|mdseries|normalfont)\b\s*", "");
+
+        // 2. Standalone font-size commands.
+        s = Regex.Replace(s, @"\\(LARGE|Large|large|normalsize|small|footnotesize|scriptsize|tiny|huge|Huge)\b\s*", "");
+
+        // 3. Spacing commands with brace arg: \hspace{X} / \vspace{X}.
+        foreach (var name in new[] { "hspace*", "hspace", "vspace*", "vspace", "hphantom", "vphantom", "phantom" })
+        {
+            s = StripBraceArgCommand(s, name);
+        }
+
+        // 4. Spacing tokens without arg.
+        s = Regex.Replace(s, @"\\(quad|qquad)\b", " ");
+        s = Regex.Replace(s, @"\\[,;:!]", " ");
+
+        // 5. Multicolumn / multirow — keep just the content arg, drop the
+        //    span / spec metadata.
+        s = UnwrapNAryCommand(s, "multicolumn", argCount: 3, keepArg: 3);
+        s = UnwrapNAryCommand(s, "multirow*", argCount: 3, keepArg: 3);
+        s = UnwrapNAryCommand(s, "multirow", argCount: 3, keepArg: 3);
+
+        // 6. Content-bearing wrappers — unwrap to the inner body.
+        foreach (var name in new[] { "textbf", "textit", "emph", "underline", "texttt", "textsf", "textrm", "textsc", "textmd", "textnormal" })
+        {
+            s = UnwrapBraceArgCommand(s, name);
+        }
+
+        return Regex.Replace(s, @"\s+", " ").Trim();
+    }
+
+    /// <summary>Find a brace-balanced group starting at the given index
+    /// (which must point to '{'). Returns the inner content (without the
+    /// braces) and the position just past the closing brace.</summary>
+    private static (string Content, int EndExclusive)? ExtractBraceBody(string text, int openBraceIndex)
+    {
+        if (openBraceIndex < 0 || openBraceIndex >= text.Length || text[openBraceIndex] != '{') return null;
+        int depth = 0;
+        for (int i = openBraceIndex; i < text.Length; i++)
+        {
+            if (text[i] == '{') depth++;
+            else if (text[i] == '}')
+            {
+                depth--;
+                if (depth == 0) return (text.Substring(openBraceIndex + 1, i - openBraceIndex - 1), i + 1);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Remove every occurrence of <c>\name{…}</c> (including the
+    /// brace arg) from the text. Brace-balanced.</summary>
+    private static string StripBraceArgCommand(string text, string name)
+    {
+        var pattern = @"\\" + Regex.Escape(name) + @"\s*\{";
+        while (true)
+        {
+            var m = Regex.Match(text, pattern);
+            if (!m.Success) break;
+            var openIdx = m.Index + m.Length - 1;
+            var body = ExtractBraceBody(text, openIdx);
+            if (body == null) break;
+            text = text.Substring(0, m.Index) + text.Substring(body.Value.EndExclusive);
+        }
+        return text;
+    }
+
+    /// <summary>Replace every occurrence of <c>\name{X}</c> with <c>X</c>
+    /// (unwraps the brace arg). Brace-balanced; handles nested commands.</summary>
+    private static string UnwrapBraceArgCommand(string text, string name)
+    {
+        var pattern = @"\\" + Regex.Escape(name) + @"\s*\{";
+        // Iterate until no more matches; each replacement may expose more.
+        for (var guard = 0; guard < 64; guard++)
+        {
+            var m = Regex.Match(text, pattern);
+            if (!m.Success) break;
+            var openIdx = m.Index + m.Length - 1;
+            var body = ExtractBraceBody(text, openIdx);
+            if (body == null) break;
+            text = text.Substring(0, m.Index) + body.Value.Content + text.Substring(body.Value.EndExclusive);
+        }
+        return text;
+    }
+
+    /// <summary>Replace every occurrence of <c>\name{a}{b}…{n}</c> with
+    /// just the <paramref name="keepArg"/>-th brace arg (1-indexed).
+    /// Brace-balanced; bails on malformed input.</summary>
+    private static string UnwrapNAryCommand(string text, string name, int argCount, int keepArg)
+    {
+        if (keepArg < 1 || keepArg > argCount) return text;
+        var pattern = @"\\" + Regex.Escape(name) + @"\s*\{";
+        for (var guard = 0; guard < 64; guard++)
+        {
+            var m = Regex.Match(text, pattern);
+            if (!m.Success) break;
+            var pos = m.Index + m.Length - 1;
+            var args = new List<(string Content, int EndExclusive)>(argCount);
+            var ok = true;
+            for (var a = 0; a < argCount; a++)
+            {
+                if (pos >= text.Length || text[pos] != '{') { ok = false; break; }
+                var body = ExtractBraceBody(text, pos);
+                if (body == null) { ok = false; break; }
+                args.Add(body.Value);
+                pos = body.Value.EndExclusive;
+            }
+            if (!ok) break;
+            text = text.Substring(0, m.Index) + args[keepArg - 1].Content + text.Substring(args[^1].EndExclusive);
+        }
+        return text;
+    }
+
     private static ImportTable ParseTabular(string tabularContent)
     {
         var table = new ImportTable();
@@ -1828,7 +1961,16 @@ public class LatexParser : ILatexParser
 
             foreach (var cell in cells)
             {
-                var cellText = cell.Trim();
+                // Clean the cell BEFORE computing formatting spans so the
+                // raw `\textbf` / `\itshape` / `\multicolumn` markup doesn't
+                // leak into block text or downstream rendering. We lose the
+                // FormattingSpan signal for these (the export round-trip no
+                // longer re-applies bold inside cells), but keeping the raw
+                // markup in the text caused worse downstream behaviour:
+                // `EscapeLatex` turned `\textbf{X}` into visible escaped
+                // junk, and the no-leak invariant flagged every cell as a
+                // leak.
+                var cellText = CleanCellText(cell.Trim());
                 row.Add(new ImportTableCell
                 {
                     Text = cellText,
