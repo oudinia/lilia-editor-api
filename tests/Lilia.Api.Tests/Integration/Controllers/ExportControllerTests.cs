@@ -269,4 +269,153 @@ public class ExportControllerTests : IntegrationTestBase
         var mainTex = ReadEntry(archive, "main.tex");
         mainTex.Should().Contain(@"\documentclass[12pt,letterpaper]{report}");
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // ?mode= variants — added 2026-04-26 to support direct .tex
+    // download + inline preview alongside the existing zip default.
+    // ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ExportLatex_ModeZip_explicit_equivalent_to_default()
+    {
+        var doc = await SeedDocWithBlocks();
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Hi."}""", 0);
+
+        var defaultResp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex");
+        var explicitResp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=zip");
+
+        defaultResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        explicitResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        defaultResp.Content.Headers.ContentType!.MediaType.Should().Be("application/zip");
+        explicitResp.Content.Headers.ContentType!.MediaType.Should().Be("application/zip");
+
+        var a = await defaultResp.Content.ReadAsByteArrayAsync();
+        var b = await explicitResp.Content.ReadAsByteArrayAsync();
+        // Allow ±300 bytes for ZIP timestamp metadata jitter
+        Math.Abs(a.Length - b.Length).Should().BeLessThan(300);
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModeTex_returns_single_file_attachment()
+    {
+        var doc = await SeedDocWithBlocks();
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Section A","level":1}""", 0);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body text under section A."}""", 1);
+
+        var resp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=tex");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp.Content.Headers.ContentType!.MediaType.Should().Be("application/x-tex");
+        resp.Content.Headers.ContentDisposition!.DispositionType.Should().Be("attachment");
+        resp.Content.Headers.ContentDisposition.FileName.Should().EndWith(".tex");
+
+        var text = await resp.Content.ReadAsStringAsync();
+        text.Should().Contain(@"\documentclass");
+        text.Should().Contain(@"\begin{document}");
+        text.Should().Contain(@"\end{document}");
+        text.Should().Contain("Section A");
+        text.Should().Contain("Body text under section A");
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModePreview_returns_text_inline_no_disposition()
+    {
+        var doc = await SeedDocWithBlocks();
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Preview body."}""", 0);
+
+        var resp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=preview");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
+        resp.Content.Headers.ContentType!.CharSet?.ToLowerInvariant().Should().Be("utf-8");
+
+        // No Content-Disposition: browser should display inline.
+        resp.Content.Headers.ContentDisposition.Should().BeNull();
+
+        var text = await resp.Content.ReadAsStringAsync();
+        text.Should().Contain(@"\documentclass");
+        text.Should().Contain("Preview body");
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModeInvalid_returns_400_with_explanation()
+    {
+        var doc = await SeedDocWithBlocks();
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"x"}""", 0);
+
+        var resp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=docx");
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().Contain("Unknown mode");
+        body.Should().Contain("zip");
+        body.Should().Contain("tex");
+        body.Should().Contain("preview");
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModeTex_filename_sanitised()
+    {
+        await SeedUserAsync(UserId, "test@lilia.test", "Test User");
+        var doc = await SeedDocumentAsync(UserId, "Weird/Title:With?Chars*.tex");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"x"}""", 0);
+
+        var resp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=tex");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var fileName = resp.Content.Headers.ContentDisposition!.FileName ?? "";
+        fileName.Should().NotContain("/");
+        fileName.Should().NotContain("?");
+        fileName.Should().NotContain("*");
+        fileName.Should().NotContain(":");
+        fileName.Should().EndWith(".tex");
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModeTex_empty_doc_returns_well_formed_skeleton()
+    {
+        await SeedUserAsync(UserId, "test@lilia.test", "Test User");
+        var doc = await SeedDocumentAsync(UserId, "Empty doc");
+
+        var resp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=tex");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var text = await resp.Content.ReadAsStringAsync();
+        text.Should().Contain(@"\documentclass");
+        text.Should().Contain(@"\begin{document}");
+        text.Should().Contain(@"\end{document}");
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModeTex_missing_doc_returns_404()
+    {
+        var resp = await Client.GetAsync($"/api/documents/{Guid.NewGuid()}/export/latex?mode=tex");
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ExportLatex_ModePreview_missing_doc_returns_404()
+    {
+        var resp = await Client.GetAsync($"/api/documents/{Guid.NewGuid()}/export/latex?mode=preview");
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // Round-trip parity: tex mode content === main.tex inside the zip
+    // for the same doc + options. Locks in the contract that "?mode=tex"
+    // is just "the main.tex of the zip without the wrapping".
+    [Fact]
+    public async Task ExportLatex_ModeTex_matches_zip_main_tex()
+    {
+        var doc = await SeedDocWithBlocks();
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Title","level":1}""", 0);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body."}""", 1);
+
+        var zipResp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex");
+        var (archive, ms) = await GetZipResponse(zipResp);
+        using var _ = archive;
+        using var __ = ms;
+        var zipMainTex = ReadEntry(archive, "main.tex");
+
+        var texResp = await Client.GetAsync($"/api/documents/{doc.Id}/export/latex?mode=tex");
+        var texContent = await texResp.Content.ReadAsStringAsync();
+
+        // Whitespace / line-ending normalisation — single-file content
+        // should equal the main.tex from the zip.
+        zipMainTex.Trim().Should().Be(texContent.Trim());
+    }
 }

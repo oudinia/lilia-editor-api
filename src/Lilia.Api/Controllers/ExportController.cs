@@ -41,10 +41,23 @@ public class ExportController : ControllerBase
     }
 
     /// <summary>
-    /// Export document as a LaTeX project ZIP file
+    /// Export document as LaTeX. Three response modes via ?mode= query:
+    ///   - <c>zip</c> (default): full project zip with main.tex, references.bib (if any), README.txt.
+    ///                           Suits multi-file Overleaf workflows.
+    ///   - <c>tex</c>: just main.tex as a downloadable single file. Suits single-file power users
+    ///                 who don't want the zip wrapper for a doc with no extra assets.
+    ///   - <c>preview</c>: just main.tex inline (text/plain), no Content-Disposition.
+    ///                     Browser shows it as text. Suits in-app preview / "view source" UIs.
+    ///
+    /// All other LaTeXExportOptions still apply (structure, bibliographyStyle, etc.) for the
+    /// zip mode; tex/preview always emit a single-file rendering regardless of the structure
+    /// option.
     /// </summary>
     [HttpGet("latex")]
-    public async Task<IActionResult> ExportLatex(Guid docId, [FromQuery] LaTeXExportOptions options)
+    public async Task<IActionResult> ExportLatex(
+        Guid docId,
+        [FromQuery] LaTeXExportOptions options,
+        [FromQuery] string? mode = null)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -54,11 +67,47 @@ public class ExportController : ControllerBase
         if (document == null)
             return NotFound();
 
-        _logger.LogInformation("[Export] LaTeX export for document {DocId} by user {UserId}", docId, userId);
+        var sanitizedTitle = SanitizeFilename(document.Title);
+        var modeNorm = (mode ?? "zip").Trim().ToLowerInvariant();
+
+        if (modeNorm == "tex" || modeNorm == "preview")
+        {
+            _logger.LogInformation("[Export] LaTeX {Mode} export for document {DocId} by user {UserId}", modeNorm, docId, userId);
+
+            // Load blocks + bibliography to call the in-memory helper (no zip step).
+            var docWithBlocks = await _dbContext.Documents
+                .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+                .Include(d => d.BibliographyEntries)
+                .FirstOrDefaultAsync(d => d.Id == docId);
+            if (docWithBlocks == null) return NotFound();
+
+            var texContent = _latexExportService.BuildSingleFileLatex(
+                docWithBlocks,
+                docWithBlocks.Blocks.OrderBy(b => b.SortOrder).ToList(),
+                docWithBlocks.BibliographyEntries?.ToList() ?? new(),
+                options);
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(texContent);
+
+            if (modeNorm == "preview")
+            {
+                // Inline render in the browser. No Content-Disposition so
+                // the response is shown as text rather than downloaded.
+                return File(bytes, "text/plain; charset=utf-8");
+            }
+
+            // Direct .tex download.
+            return File(bytes, "application/x-tex", $"{sanitizedTitle}.tex");
+        }
+
+        if (modeNorm != "zip")
+        {
+            return BadRequest(new { error = $"Unknown mode '{mode}'. Allowed: zip (default), tex, preview." });
+        }
+
+        _logger.LogInformation("[Export] LaTeX zip export for document {DocId} by user {UserId}", docId, userId);
 
         var zipStream = await _latexExportService.ExportToZipAsync(docId, options);
-
-        var sanitizedTitle = SanitizeFilename(document.Title);
         return File(zipStream, "application/zip", $"{sanitizedTitle}.zip");
     }
 
@@ -223,10 +272,25 @@ public class ExportController : ControllerBase
             ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
     }
 
+    // Strip OS-unsafe filename chars regardless of host platform.
+    // Path.GetInvalidFileNameChars() returns only `/` and `\0` on Linux,
+    // which is too lenient for filenames we send back to the browser
+    // (the user may be on Windows / Android / iOS). Replace anything
+    // in the cross-platform unsafe set + control chars + collapse
+    // whitespace.
+    private static readonly char[] InvalidFilenameChars =
+        new[] { '<', '>', ':', '"', '/', '\\', '|', '?', '*', '\0' }
+        .Concat(Enumerable.Range(1, 31).Select(c => (char)c))
+        .ToArray();
+
     private static string SanitizeFilename(string title)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = new string(title.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+        if (string.IsNullOrWhiteSpace(title)) return "document";
+        var sanitized = new string(title
+            .Select(c => InvalidFilenameChars.Contains(c) ? '_' : c)
+            .ToArray());
+        sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"\s+", "_");
+        sanitized = sanitized.Trim('_', '.');
         return string.IsNullOrWhiteSpace(sanitized) ? "document" : sanitized;
     }
 }
