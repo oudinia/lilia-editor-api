@@ -277,6 +277,43 @@ public class LatexParser : ILatexParser
         // unwrapped to markdown. Pass-through lets the parser pick
         // those up as ordinary paragraphs.
         "cvtable", "twenty", "subs",
+        // Beamer slide containers — `\begin{block}{Title}body\end{block}`
+        // is a callout wrapper; body is real content (paragraphs, lists,
+        // figures). Pass-through emits the body as ordinary blocks; the
+        // title arg gets stripped by the opener-args regex. We lose the
+        // callout-name display but stop leaking the wrapper as raw
+        // LaTeX in a giant embed (Beamer flood — block/alertblock/
+        // exampleblock dominated unknown_env counts).
+        "block", "alertblock", "exampleblock", "examples", "tblock",
+        "columns", "column", "frame",
+        "ex", // exercise/example wrapper from various exam classes
+        // Brazilian abnTeX thesis structures — `\begin{resumo}body...`
+        // wraps an abstract; `dedicatoria` / `agradecimentos` /
+        // `folhaderosto` / `fichacatalografica` / `apendicesenv` /
+        // `anexosenv` are all thesis-section wrappers. Body is real
+        // content.
+        "dedicatoria", "agradecimentos", "resumo", "folhaderosto",
+        "fichacatalografica", "apendicesenv", "anexosenv",
+        // Standard thesis/book structures — content wrappers.
+        "titlepage", "titlingpage", "declaration", "acknowledgements",
+        "abbreviations", "constants", "symbols", "appendices",
+        // Tufte-LaTeX: floats/margins (we lose the side-margin layout
+        // but keep the content). marginfigure/margintable/marginlisting
+        // become regular figure/table content.
+        "fullwidth", "docspec", "Sbox",
+        // Other styled callouts — content wrappers across packages.
+        "kaobox", "kaocounter", "svgraybox", "trailer", "questype",
+        "important", "warning", "note", "tip",
+        // Pedagogy callouts (non-theorem variants).
+        "notation", "problem", "vocabulary",
+        // Tracklayout helpers.
+        "addmargin",
+        // Poster wrapper.
+        "poster",
+        // Resume / CV variants.
+        "rSubsection", "entrylist", "barchart",
+        // Invoice template wrapper.
+        "invoicetable",
     };
 
     /// <summary>
@@ -1090,6 +1127,32 @@ public class LatexParser : ILatexParser
                     RegexOptions.Singleline);
                 if (wrapFigureMatch.Success)
                     matches.Add((wrapFigureMatch, "figure"));
+
+                // Tufte-LaTeX margin floats — same shape as figure (one
+                // optional offset arg, then body with \includegraphics +
+                // \caption). marginlisting / margintable are similar; we
+                // route them all through the figure handler so the body's
+                // image + caption surface correctly.
+                var marginFigureMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{marginfigure\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{marginfigure\}",
+                    RegexOptions.Singleline);
+                if (marginFigureMatch.Success)
+                    matches.Add((marginFigureMatch, "figure"));
+
+                var marginTableMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{margintable\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{margintable\}",
+                    RegexOptions.Singleline);
+                if (marginTableMatch.Success)
+                    matches.Add((marginTableMatch, "table"));
+
+                var marginListingMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{marginlisting\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{marginlisting\}",
+                    RegexOptions.Singleline);
+                if (marginListingMatch.Success)
+                    matches.Add((marginListingMatch, "figure"));
             }
 
             // Table environments — same starred-variant handling as figures.
@@ -1110,6 +1173,30 @@ public class LatexParser : ILatexParser
                     RegexOptions.Singleline);
                 if (longtableMatch.Success)
                     matches.Add((longtableMatch, "tabular"));
+
+                // supertabular / sidewaystable / wraptable — table variants
+                // with the same column-spec + body shape as tabular. All
+                // route through the same case branch.
+                var supertabularMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{supertabular\}(?:\[[^\]]*\])?\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}([\s\S]*?)\\end\{supertabular\}",
+                    RegexOptions.Singleline);
+                if (supertabularMatch.Success)
+                    matches.Add((supertabularMatch, "tabular"));
+
+                var sidewaysMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{sidewaystable\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{sidewaystable\}",
+                    RegexOptions.Singleline);
+                if (sidewaysMatch.Success)
+                    matches.Add((sidewaysMatch, "table"));
+
+                var wrapTableMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{wraptable\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}([\s\S]*?)\\end\{wraptable\}",
+                    RegexOptions.Singleline);
+                if (wrapTableMatch.Success)
+                    matches.Add((wrapTableMatch, "table"));
 
                 // Bare tabular — \begin{tabular}{spec}…\end{tabular} with no
                 // surrounding \begin{table} float wrapper. Without this the
