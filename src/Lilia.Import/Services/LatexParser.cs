@@ -314,6 +314,13 @@ public class LatexParser : ILatexParser
         "rSubsection", "entrylist", "barchart",
         // Invoice template wrapper.
         "invoicetable",
+        // Flood-3 catch-up: pedagogy + framed wrappers + i18n variants.
+        "homeworkProblem", "question",
+        "mdframed", "twothirdswidth",
+        "monthCalendar",
+        "IEEEbiography", "IEEEbiographynophoto",
+        "acknowledgement", // singular variant of acknowledgements
+        "teorem", // Portuguese/Spanish theorem alias — body is theorem-like
     };
 
     /// <summary>
@@ -1098,6 +1105,13 @@ public class LatexParser : ILatexParser
                 var bracketMathMatch = Regex.Match(remaining, @"\\\[([\s\S]*?)\\\]", RegexOptions.Singleline);
                 if (bracketMathMatch.Success)
                     matches.Add((bracketMathMatch, "displaymath_bracket"));
+
+                // \begin{displaymath}…\end{displaymath} — same shape as
+                // the dollar form, just the env-named variant. Routes to
+                // the same case branch.
+                var displaymathEnvMatch = Regex.Match(remaining, @"\\begin\{displaymath\}([\s\S]*?)\\end\{displaymath\}", RegexOptions.Singleline);
+                if (displaymathEnvMatch.Success)
+                    matches.Add((displaymathEnvMatch, "displaymath_dollar"));
             }
 
             // Code environments — capture the optional [args] / {args} so language extraction works
