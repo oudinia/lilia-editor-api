@@ -42,6 +42,30 @@ public class TypstFixtureCombinatorialTests
         new Fx("paragraph dollar escape",    "paragraph", """{"text":"Cost is $5 and $10"}"""),
         new Fx("paragraph hashtag escape",   "paragraph", """{"text":"Use #hashtag and #another"}"""),
 
+        // LaTeX-literal pass — these appear in real imported CV / paper
+        // paragraphs and used to trigger silent_fallback. Each must
+        // compile cleanly through Typst now.
+        new Fx("LaTeX literal: \\noindent stripped", "paragraph",
+            """{"text":"\\noindent Hello after noindent"}"""),
+        new Fx("LaTeX literal: \\hfill spring",      "paragraph",
+            """{"text":"Left text \\hfill Right text"}"""),
+        new Fx("LaTeX literal: \\\\\\\\ line break", "paragraph",
+            """{"text":"First line \\\\ Second line"}"""),
+        new Fx("LaTeX literal: \\textbf",            "paragraph",
+            """{"text":"This is \\textbf{strongly emphasised} content"}"""),
+        new Fx("LaTeX literal: \\textit",            "paragraph",
+            """{"text":"This is \\textit{italicised} content"}"""),
+        new Fx("LaTeX literal: \\emph",              "paragraph",
+            """{"text":"This is \\emph{emphasised} content"}"""),
+        new Fx("LaTeX literal: \\underline",         "paragraph",
+            """{"text":"This is \\underline{underlined} content"}"""),
+        new Fx("LaTeX literal: \\textsc smallcaps",  "paragraph",
+            """{"text":"Author: \\textsc{Smith} et al."}"""),
+        new Fx("LaTeX literal: CV-shape mix",        "paragraph",
+            """{"text":"\\noindent\\textbf{Preparatory Classes for Engineering Schools (CPGE)} \\hfill \\textit{2008}\\\\"}"""),
+        new Fx("LaTeX literal: \\enquote",           "paragraph",
+            """{"text":"\\enquote{Hello, world}"}"""),
+
         new Fx("heading h1",                 "heading",   """{"text":"Introduction","level":1}"""),
         new Fx("heading h2",                 "heading",   """{"text":"Method","level":2}"""),
         new Fx("heading h3",                 "heading",   """{"text":"Variant","level":3}"""),

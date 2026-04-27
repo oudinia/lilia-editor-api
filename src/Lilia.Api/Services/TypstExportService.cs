@@ -384,6 +384,16 @@ public class TypstExportService : ITypstExportService
         // 2. Inline code `text` — same backtick syntax in Typst.
         s = Regex.Replace(s, @"`([^`]+)`", m => Ph($"`{m.Groups[1].Value}`"));
 
+        // 2.5. LaTeX literal pass — first-N high-frequency commands the
+        //      parser passes through unchanged from imported documents
+        //      (CV, journal article paste, etc.). Driven by post-launch
+        //      silent_fallback telemetry: top gap was \\noindent /
+        //      \\hfill / \\\\ pass-through hitting Typst's parser.
+        //      Strategy: rewrite into the markdown / Typst surface that
+        //      later steps already understand, so each command needs
+        //      one regex and no extra placeholder bookkeeping.
+        s = TranslateLatexLiterals(s, Ph);
+
         // 3. Bold **text** → Typst *text*. Captured content is escaped
         //    so dollar/hashtag/etc. inside don't break parse.
         s = Regex.Replace(s, @"\*\*([^*]+)\*\*", m => Ph($"*{EscapeTypstInline(m.Groups[1].Value)}*"));
@@ -490,6 +500,68 @@ public class TypstExportService : ITypstExportService
         "a5" => "a5",
         _ => "a4",
     };
+
+    /// <summary>
+    /// Top-N LaTeX inline commands that show up in imported document
+    /// content (CVs in particular). Each command rewrites into the
+    /// markdown / Typst surface that later FormatInline steps already
+    /// know how to emit, so we don't grow the placeholder table or
+    /// double-emit. Driven by real silent_fallback telemetry —
+    /// extend as new top-rank gaps surface.
+    /// </summary>
+    private static string TranslateLatexLiterals(string s, Func<string, string> placeholder)
+    {
+        // Layout primitives that produce no visible output in Typst.
+        s = Regex.Replace(s, @"\\noindent\b\s*", "");
+        s = Regex.Replace(s, @"\\indent\b\s*", "");
+        s = Regex.Replace(s, @"\\par\b\s*", "\n\n");
+        s = Regex.Replace(s, @"\\medskip\b\s*", "");
+        s = Regex.Replace(s, @"\\smallskip\b\s*", "");
+        s = Regex.Replace(s, @"\\bigskip\b\s*", "");
+
+        // Horizontal fill — Typst uses #h(1fr) for "spring" spacing.
+        // Wrap in a placeholder so escape pass doesn't break the #h() syntax.
+        s = Regex.Replace(s, @"\\hfill\b\s*", _ => placeholder("#h(1fr) "));
+
+        // Explicit line break — LaTeX `\\` (or `\\\\` after JSON escape).
+        // Both collapse to Typst's single-backslash line break in source.
+        s = Regex.Replace(s, @"\\\\(?!\\)", _ => placeholder(" \\ "));
+        s = Regex.Replace(s, @"\\linebreak\b\s*", _ => placeholder(" \\ "));
+        s = Regex.Replace(s, @"\\newline\b\s*", _ => placeholder(" \\ "));
+
+        // Inline font-shape commands → markdown so the existing bold/italic
+        // regexes catch them on the next pass. Note \textbf{...} can nest;
+        // we only translate the outermost pair, which is enough for the
+        // overwhelmingly common case of a flat run of text.
+        s = Regex.Replace(s, @"\\textbf\{([^{}]+)\}", "**$1**");
+        s = Regex.Replace(s, @"\\textit\{([^{}]+)\}", "*$1*");
+        s = Regex.Replace(s, @"\\emph\{([^{}]+)\}", "*$1*");
+        s = Regex.Replace(s, @"\\texttt\{([^{}]+)\}", "`$1`");
+
+        // Underline + small caps — no markdown equivalent; emit Typst
+        // function calls via placeholder so escaping doesn't touch them.
+        s = Regex.Replace(s, @"\\underline\{([^{}]+)\}",
+            m => placeholder($"#underline[{EscapeTypstInline(m.Groups[1].Value)}]"));
+        s = Regex.Replace(s, @"\\textsc\{([^{}]+)\}",
+            m => placeholder($"#smallcaps[{EscapeTypstInline(m.Groups[1].Value)}]"));
+
+        // Quotation environments — flatten to literal quotes since
+        // Typst's #quote() at inline scope adds visual ceremony users
+        // didn't ask for in body text.
+        s = Regex.Replace(s, @"\\enquote\{([^{}]+)\}", "“$1”");
+        s = Regex.Replace(s, @"\\textquote\{([^{}]+)\}", "“$1”");
+
+        // Section commands accidentally placed inside paragraph content
+        // (CV imports do this). Promote to Typst heading marker in-line;
+        // the marker only renders as a heading when at start of line, so
+        // mid-paragraph occurrences degrade gracefully to literal text.
+        s = Regex.Replace(s, @"\\section\*?\{([^{}]+)\}", "\n= $1\n");
+        s = Regex.Replace(s, @"\\subsection\*?\{([^{}]+)\}", "\n== $1\n");
+        s = Regex.Replace(s, @"\\subsubsection\*?\{([^{}]+)\}", "\n=== $1\n");
+        s = Regex.Replace(s, @"\\paragraph\*?\{([^{}]+)\}", "\n==== $1\n");
+
+        return s;
+    }
 
     private static string MapFont(string? family) => family?.ToLowerInvariant() switch
     {
