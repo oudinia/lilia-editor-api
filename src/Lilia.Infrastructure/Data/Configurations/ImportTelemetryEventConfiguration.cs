@@ -15,7 +15,7 @@ public class ImportTelemetryEventConfiguration : IEntityTypeConfiguration<Import
             t.HasCheckConstraint("ck_telemetry_severity",
                 "severity IN ('info','warn','error')");
             t.HasCheckConstraint("ck_telemetry_source_format",
-                "source_format IN ('latex','docx','epub','pdf','lml','overleaf-zip')");
+                "source_format IN ('latex','docx','epub','pdf','lml','overleaf-zip','typst')");
             t.HasCheckConstraint("ck_telemetry_event_kind",
                 "event_kind IN (" +
                 "'unknown_env','unhandled_token','silent_fallback'," +
