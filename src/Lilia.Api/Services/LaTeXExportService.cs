@@ -15,15 +15,18 @@ public class LaTeXExportService : ILaTeXExportService
     private readonly LiliaDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ILogger<LaTeXExportService> _logger;
+    private readonly Lilia.Import.Services.IImportTelemetrySink _telemetry;
 
     public LaTeXExportService(
         LiliaDbContext context,
         IStorageService storageService,
-        ILogger<LaTeXExportService> logger)
+        ILogger<LaTeXExportService> logger,
+        Lilia.Import.Services.IImportTelemetrySink? telemetry = null)
     {
         _context = context;
         _storageService = storageService;
         _logger = logger;
+        _telemetry = telemetry ?? new Lilia.Import.Services.NoopImportTelemetrySink();
     }
 
     /// <summary>
@@ -641,7 +644,7 @@ public class LaTeXExportService : ILaTeXExportService
                 "embed" => RenderEmbed(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
-                _ => ""
+                _ => RenderUnknownBlock(block),
             };
         }
         catch (Exception ex)
@@ -649,6 +652,26 @@ public class LaTeXExportService : ILaTeXExportService
             _logger.LogWarning(ex, "Failed to render block {BlockId} to LaTeX for export", block.Id);
             return $"% Error rendering block: {block.Id}";
         }
+    }
+
+    /// <summary>
+    /// Default-case fallback in the export switch — emit a comment
+    /// marker so the user sees the block's location and writes a
+    /// telemetry row so the dev team sees the silent fallback. Tier 3
+    /// of the export defence-in-depth strategy.
+    /// </summary>
+    private string RenderUnknownBlock(Block block)
+    {
+        _telemetry.Record(new Lilia.Import.Services.ImportTelemetryRecord
+        {
+            EventKind = "silent_fallback",
+            Severity = "warn",
+            SourceFormat = "latex",
+            TokenOrEnv = block.Type,
+            BlockKindEmitted = "comment",
+            SampleText = $"block.id={block.Id}",
+        });
+        return $"% [Unsupported block type for LaTeX export: {block.Type}]";
     }
 
     private string RenderParagraph(JsonElement content)

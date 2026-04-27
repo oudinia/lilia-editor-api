@@ -386,7 +386,8 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.IEquationImageRenderer>(sp
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService>(sp =>
     new Lilia.Import.Services.DocxExportService(
         sp.GetRequiredService<Lilia.Import.Interfaces.ILatexToOmmlConverter>(),
-        sp.GetRequiredService<Lilia.Import.Interfaces.IEquationImageRenderer>()));
+        sp.GetRequiredService<Lilia.Import.Interfaces.IEquationImageRenderer>(),
+        sp.GetService<Lilia.Import.Services.IImportTelemetrySink>()));
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexParser, Lilia.Import.Services.LatexParser>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lilia.Import.Services.LatexFragmentParser>();
 
