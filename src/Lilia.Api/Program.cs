@@ -368,8 +368,17 @@ builder.Services.AddScoped<IAiService, AiService>();
 // Register AI assistant service (math generation, writing improvement, block classification)
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 
-// Register Lilia.Import services for document conversion
-builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService, Lilia.Import.Services.DocxImportService>();
+// Register Lilia.Import services for document conversion. DocxParser
+// gets the IImportTelemetrySink so DOCX warnings flow into the same
+// import_telemetry_events table as LaTeX warnings (FT-TELEMETRY-001
+// stage 2).
+builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxImportService>(sp =>
+{
+    var omml = new Lilia.Import.Converters.OmmlToLatexConverter();
+    var telemetry = sp.GetService<Lilia.Import.Services.IImportTelemetrySink>();
+    var parser = new Lilia.Import.Services.DocxParser(omml, telemetry);
+    return new Lilia.Import.Services.DocxImportService(parser, omml, new Lilia.Import.Services.LiliaDocumentConverter());
+});
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexToOmmlConverter, Lilia.Import.Converters.LatexToOmmlConverter>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.IEquationImageRenderer>(sp =>
     new Lilia.Api.Services.LaTeXEquationImageRenderer(

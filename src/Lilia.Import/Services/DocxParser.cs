@@ -18,10 +18,12 @@ namespace Lilia.Import.Services;
 public class DocxParser : IDocxParser
 {
     private readonly IOmmlConverter? _ommlConverter;
+    private readonly IImportTelemetrySink _telemetry;
     private ImportOptions _options = ImportOptions.Default;
     private readonly List<ImportWarning> _warnings = [];
     private int _elementOrder;
     private ElementDetectionPipeline? _pipeline;
+    private string? _currentSourceFile;
     // Per-parse cache: styleId → StyleName from styles.xml. Populated lazily
     // on first lookup per MainDocumentPart. Language-neutral style names
     // ("heading 1", "heading 2", …) let us detect headings regardless of the
@@ -35,16 +37,68 @@ public class DocxParser : IDocxParser
     public DocxParser()
     {
         _ommlConverter = null;
+        _telemetry = new NoopImportTelemetrySink();
     }
 
     /// <summary>
     /// Create a DocxParser with OMML to LaTeX conversion.
     /// </summary>
     /// <param name="ommlConverter">The OMML to LaTeX converter.</param>
-    public DocxParser(IOmmlConverter ommlConverter)
+    /// <param name="telemetry">Optional sink for FT-TELEMETRY-001 events; defaults to no-op.</param>
+    public DocxParser(IOmmlConverter ommlConverter, IImportTelemetrySink? telemetry = null)
     {
         _ommlConverter = ommlConverter ?? throw new ArgumentNullException(nameof(ommlConverter));
+        _telemetry = telemetry ?? new NoopImportTelemetrySink();
     }
+
+    /// <summary>
+    /// Bridge from the existing _warnings collection to the telemetry sink.
+    /// Each ImportWarning becomes an `import_telemetry_events` row tagged
+    /// `parser_warning` so the production telemetry table reflects DOCX
+    /// fall-throughs alongside the LaTeX ones (FT-TELEMETRY-001 stage 2).
+    /// Called from ParseAsync after the file has been processed; we drain
+    /// the per-call warning batch in one shot to keep the parser hot path
+    /// uncoupled from the sink.
+    /// </summary>
+    private void EmitWarningsAsTelemetry()
+    {
+        foreach (var w in _warnings)
+        {
+            _telemetry.Record(new ImportTelemetryRecord
+            {
+                EventKind = ClassifyWarning(w.Type),
+                Severity = "warn",
+                SourceFormat = "docx",
+                TokenOrEnv = w.Type.ToString(),
+                SampleText = w.Message.Length > 200 ? w.Message[..200] : w.Message,
+                SourceFileName = _currentSourceFile,
+                Metadata = w.Details is null && w.ElementIndex is null
+                    ? null
+                    : System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        elementIndex = w.ElementIndex,
+                        details = w.Details,
+                    }),
+            });
+        }
+    }
+
+    /// <summary>
+    /// Map ImportWarningType → telemetry event_kind. Closed vocabulary
+    /// matches the CHECK constraint in the import_telemetry_events table.
+    /// </summary>
+    private static string ClassifyWarning(ImportWarningType type) => type switch
+    {
+        ImportWarningType.UnsupportedElement       => "unsupported_block_emitted",
+        ImportWarningType.UnknownStyle             => "unknown_token",
+        ImportWarningType.EquationConversionFailed => "partial_parse",
+        ImportWarningType.ImageExtractionFailed    => "partial_parse",
+        ImportWarningType.FormattingLost           => "cmd_passthrough",
+        ImportWarningType.NestedTableSkipped       => "silent_fallback",
+        ImportWarningType.MergedCellsSimplified    => "silent_fallback",
+        ImportWarningType.ContentTruncated         => "partial_parse",
+        _                                          => "parser_warning",
+    };
 
     /// <inheritdoc />
     public bool CanParse(string filePath)
@@ -59,6 +113,7 @@ public class DocxParser : IDocxParser
         _options = options ?? ImportOptions.Default;
         _warnings.Clear();
         _elementOrder = 0;
+        _currentSourceFile = Path.GetFileName(filePath);
 
         // Build the detection pipeline
         var defaultRules = DefaultRuleRegistry.BuildRules(_options);
@@ -140,6 +195,12 @@ public class DocxParser : IDocxParser
                 $"Failed to parse document: {ex.Message}"));
             importDoc.Warnings = [.. _warnings];
         }
+
+        // FT-TELEMETRY-001 stage 2: drain ImportWarnings to the central
+        // telemetry sink so DOCX fall-throughs surface in
+        // import_telemetry_events alongside LaTeX ones. No-op sink in
+        // tests; production sink batches via Channel + background flusher.
+        EmitWarningsAsTelemetry();
 
         return Task.FromResult(importDoc);
     }
