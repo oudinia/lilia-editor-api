@@ -258,6 +258,12 @@ builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IRenderService, RenderService>();
 builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
+
+// Typst — fast preview engine (live preview path). pdflatex stays
+// the export path for publication-grade output. Engine selection
+// happens in PreviewService; user picks neither.
+builder.Services.AddScoped<ITypstExportService, TypstExportService>();
+builder.Services.AddSingleton<ITypstCompileService, TypstCompileService>();
 builder.Services.AddScoped<IDocumentExportService, DocumentExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<IStudioService, StudioService>();

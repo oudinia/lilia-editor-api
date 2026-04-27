@@ -25,10 +25,16 @@ public class PreviewControllerTests
         _documentServiceMock = new Mock<IDocumentService>();
         _loggerMock = new Mock<ILogger<PreviewController>>();
 
+        // Typst services + db context — null-tolerant for existing
+        // tests that don't exercise the /typst route (it's a new
+        // endpoint added in the pre-launch Typst foundation work).
         _sut = new PreviewController(
             _renderServiceMock.Object,
             _cacheServiceMock.Object,
             _documentServiceMock.Object,
+            new Lilia.Api.Services.TypstExportService(),
+            new Lilia.Api.Services.TypstCompileService(),
+            null!,
             _loggerMock.Object);
 
         // Setup default authenticated user

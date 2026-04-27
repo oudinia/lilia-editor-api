@@ -1,7 +1,9 @@
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
+using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Controllers;
 
@@ -13,17 +15,26 @@ public class PreviewController : ControllerBase
     private readonly IRenderService _renderService;
     private readonly IPreviewCacheService _cacheService;
     private readonly IDocumentService _documentService;
+    private readonly ITypstExportService _typstExporter;
+    private readonly ITypstCompileService _typstCompiler;
+    private readonly LiliaDbContext _context;
     private readonly ILogger<PreviewController> _logger;
 
     public PreviewController(
         IRenderService renderService,
         IPreviewCacheService cacheService,
         IDocumentService documentService,
+        ITypstExportService typstExporter,
+        ITypstCompileService typstCompiler,
+        LiliaDbContext context,
         ILogger<PreviewController> logger)
     {
         _renderService = renderService;
         _cacheService = cacheService;
         _documentService = documentService;
+        _typstExporter = typstExporter;
+        _typstCompiler = typstCompiler;
+        _context = context;
         _logger = logger;
     }
 
@@ -303,5 +314,78 @@ public class PreviewController : ControllerBase
             DateTime.UtcNow,
             cacheKey
         ));
+    }
+
+    /// <summary>
+    /// Fast live-preview path via the Typst engine. Returns the
+    /// document as SVG bytes (for inline rendering) or PDF (for
+    /// download). Sub-second compile vs pdflatex's 8–30s, which is
+    /// what makes Typst the live-preview engine — pdflatex stays the
+    /// publication-export path.
+    ///
+    /// Falls back gracefully if the Typst binary is missing
+    /// (TypstCompileService returns a Failure result; we surface it
+    /// as a 503 with structured error so the editor can fall back to
+    /// the slower pdflatex preview).
+    ///
+    /// User-facing UI never says "Typst" — this endpoint is the live-
+    /// preview path, period. Engine selection happens server-side.
+    /// </summary>
+    [HttpGet("typst")]
+    public async Task<IActionResult> GetTypstPreview(
+        Guid docId,
+        [FromQuery] string format = "svg")
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { error = "No valid authentication token provided" });
+
+        var document = await _context.Documents
+            .Where(d => d.Id == docId && d.OwnerId == userId)
+            .FirstOrDefaultAsync();
+        if (document == null) return NotFound();
+
+        var blocks = await _context.Blocks
+            .Where(b => b.DocumentId == docId)
+            .OrderBy(b => b.SortOrder)
+            .ToListAsync();
+
+        var typstSource = _typstExporter.BuildTypstDocument(document, blocks);
+
+        var outputFormat = format.ToLowerInvariant() switch
+        {
+            "pdf" => TypstOutputFormat.Pdf,
+            "png" => TypstOutputFormat.Png,
+            _ => TypstOutputFormat.Svg,
+        };
+
+        var result = await _typstCompiler.CompileAsync(typstSource, outputFormat);
+
+        if (!result.Success)
+        {
+            _logger.LogWarning("[Preview/typst] Compile failed for {DocId}: {Error}", docId, result.Error);
+            // 503: temporary inability to render. Editor can fall back
+            // to /html or /latex preview paths.
+            return StatusCode(503, new
+            {
+                error = "Typst compile failed",
+                detail = result.Error,
+                fallback = "/api/documents/" + docId + "/preview/html",
+            });
+        }
+
+        _logger.LogInformation(
+            "[Preview/typst] {DocId} compiled in {ElapsedMs}ms (format={Format}, totalReq={TotalMs}ms)",
+            docId, result.Elapsed.TotalMilliseconds, outputFormat, sw.ElapsedMilliseconds);
+
+        var contentType = outputFormat switch
+        {
+            TypstOutputFormat.Pdf => "application/pdf",
+            TypstOutputFormat.Png => "image/png",
+            _ => "image/svg+xml",
+        };
+        Response.Headers["X-Typst-Compile-Ms"] = result.Elapsed.TotalMilliseconds.ToString("F0");
+        return File(result.Output!, contentType);
     }
 }
