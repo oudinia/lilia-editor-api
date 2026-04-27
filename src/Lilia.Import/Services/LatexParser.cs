@@ -317,10 +317,32 @@ public class LatexParser : ILatexParser
         // Flood-3 catch-up: pedagogy + framed wrappers + i18n variants.
         "homeworkProblem", "question",
         "mdframed", "twothirdswidth",
-        "monthCalendar",
+        "monthCalendar", "calendar",
         "IEEEbiography", "IEEEbiographynophoto",
         "acknowledgement", // singular variant of acknowledgements
         "teorem", // Portuguese/Spanish theorem alias — body is theorem-like
+        // Flood-3 second wave — tcolorbox-style callouts, framed
+        // wrappers, thesis structure variants. All wrap real content.
+        "talert", "texample", "tpatternbox",
+        "titleframe", "outlineframe",
+        "summary", // Czech-thesis abstract wrapper
+        "window", // framed package (image + wrapped text)
+        "instlist", // instruction list (Brazilian thesis)
+        "tips", "overview", "backgroundinformation", "legaltext", "programcode",
+        "body", // thesis body wrapper
+        "pseudoc", // pseudocode env (treat as code-like wrapper for now)
+        // Flood-3 third wave.
+        "tanim", // Turkish theorem-like
+        "keyword", // Elsevier elsarticle keyword wrapper
+        "sciabstract", // Science journal abstract
+        "tocentry", // ACS journals TOC entry
+        "scheme", // chemistry scheme float
+        "suppinfo", // ACS supplementary info
+        "info", "warn", "tip", // pedagogy/callout (tip already had a typo `tip` vs `tips` — both safe)
+        "subquestion", // exam package
+        "file", "commandline", // editorial code blocks
+        "refsection", // biblatex ref section
+        "aenumerate", // alpha enumerate (list-like; lose styling)
     };
 
     /// <summary>
@@ -1090,7 +1112,7 @@ public class LatexParser : ILatexParser
             // Equation environments
             if (options.ConvertEquationEnvironments)
             {
-                var eqEnvMatch = Regex.Match(remaining, @"\\begin\{(equation|align|gather|multline)\*?\}([\s\S]*?)\\end\{\1\*?\}", RegexOptions.Singleline);
+                var eqEnvMatch = Regex.Match(remaining, @"\\begin\{(equation|align|gather|multline|eqnarray)\*?\}([\s\S]*?)\\end\{\1\*?\}", RegexOptions.Singleline);
                 if (eqEnvMatch.Success)
                     matches.Add((eqEnvMatch, "equation_env"));
             }
@@ -1112,6 +1134,13 @@ public class LatexParser : ILatexParser
                 var displaymathEnvMatch = Regex.Match(remaining, @"\\begin\{displaymath\}([\s\S]*?)\\end\{displaymath\}", RegexOptions.Singleline);
                 if (displaymathEnvMatch.Success)
                     matches.Add((displaymathEnvMatch, "displaymath_dollar"));
+
+                // \begin{math}…\end{math} — env form of inline math.
+                // Same handling as displaymath; we don't distinguish
+                // inline-vs-display once it's a block.
+                var mathEnvMatch = Regex.Match(remaining, @"\\begin\{math\}([\s\S]*?)\\end\{math\}", RegexOptions.Singleline);
+                if (mathEnvMatch.Success)
+                    matches.Add((mathEnvMatch, "displaymath_dollar"));
             }
 
             // Code environments — capture the optional [args] / {args} so language extraction works
