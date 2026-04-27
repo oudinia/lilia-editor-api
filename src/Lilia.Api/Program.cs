@@ -264,6 +264,7 @@ builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 // happens in PreviewService; user picks neither.
 builder.Services.AddScoped<ITypstExportService, TypstExportService>();
 builder.Services.AddSingleton<ITypstCompileService, TypstCompileService>();
+builder.Services.AddScoped<IPreviewRenderService, PreviewRenderService>();
 builder.Services.AddScoped<IDocumentExportService, DocumentExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<IStudioService, StudioService>();

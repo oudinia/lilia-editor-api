@@ -15,6 +15,7 @@ public interface IDocumentExportService
     Task<ExportDocument> BuildExportDocumentAsync(Guid documentId);
     Task<byte[]> ExportToDocxAsync(Guid documentId);
     Task<byte[]> ExportToPdfAsync(Guid documentId);
+    Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId);
 }
 
 public class DocumentExportService : IDocumentExportService
@@ -24,6 +25,7 @@ public class DocumentExportService : IDocumentExportService
     private readonly IRenderService _renderService;
     private readonly ILaTeXExportService _latexExportService;
     private readonly ILaTeXRenderService _latexRenderService;
+    private readonly IPreviewRenderService _previewRender;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DocumentExportService> _logger;
 
@@ -33,6 +35,7 @@ public class DocumentExportService : IDocumentExportService
         IRenderService renderService,
         ILaTeXExportService latexExportService,
         ILaTeXRenderService latexRenderService,
+        IPreviewRenderService previewRender,
         IHttpClientFactory httpClientFactory,
         ILogger<DocumentExportService> logger)
     {
@@ -41,6 +44,7 @@ public class DocumentExportService : IDocumentExportService
         _renderService = renderService;
         _latexExportService = latexExportService;
         _latexRenderService = latexRenderService;
+        _previewRender = previewRender;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
@@ -101,9 +105,25 @@ public class DocumentExportService : IDocumentExportService
 
     public async Task<byte[]> ExportToPdfAsync(Guid documentId)
     {
-        // Go through LaTeXExportService so PDF uses the same preamble builder
-        // as the ZIP export — single source of truth for class/options/packages
-        // filtering and the journal shims.
+        var (pdf, _) = await ExportToPdfWithEngineAsync(documentId);
+        return pdf;
+    }
+
+    public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId)
+    {
+        // Phase 2 step 9 — Typst-first preview path. Sub-second compile when
+        // it works; on any failure we silently fall through to the existing
+        // pdflatex pipeline below. Telemetry on every fallback is recorded
+        // inside TryTypstPdfAsync so we see real-world coverage gaps.
+        var typstPdf = await _previewRender.TryTypstPdfAsync(documentId);
+        if (typstPdf is not null && typstPdf.Length > 0)
+        {
+            return (typstPdf, "typst");
+        }
+
+        // pdflatex fallback — go through LaTeXExportService so PDF uses the
+        // same preamble builder as the ZIP export — single source of truth
+        // for class/options/packages filtering and the journal shims.
         var opts = new LaTeXExportOptions
         {
             Structure = "single",
@@ -121,7 +141,8 @@ public class DocumentExportService : IDocumentExportService
         var latex = await reader.ReadToEndAsync();
         // Tolerant mode — body errors produce a partial PDF instead of 500.
         // Preamble errors still surface (no PDF file generated → exception).
-        return await _latexRenderService.RenderToPdfTolerantAsync(latex, timeout: 60);
+        var pdflatexPdf = await _latexRenderService.RenderToPdfTolerantAsync(latex, timeout: 60);
+        return (pdflatexPdf, "pdflatex");
     }
 
     private async Task<ExportBlock?> ConvertBlockAsync(Block block, int theoremCounter)

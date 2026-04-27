@@ -13,6 +13,7 @@ public class LaTeXRenderController : ControllerBase
 {
     private readonly ILaTeXRenderService _latexService;
     private readonly IRenderService _renderService;
+    private readonly IPreviewRenderService _previewRender;
     private readonly ICompilationQueueService _compilationQueue;
     private readonly IAuditService _audit;
     private readonly IValidationCacheService _validationCache;
@@ -22,6 +23,7 @@ public class LaTeXRenderController : ControllerBase
     public LaTeXRenderController(
         ILaTeXRenderService latexService,
         IRenderService renderService,
+        IPreviewRenderService previewRender,
         ICompilationQueueService compilationQueue,
         IAuditService audit,
         IValidationCacheService validationCache,
@@ -30,6 +32,7 @@ public class LaTeXRenderController : ControllerBase
     {
         _latexService = latexService;
         _renderService = renderService;
+        _previewRender = previewRender;
         _compilationQueue = compilationQueue;
         _audit = audit;
         _validationCache = validationCache;
@@ -61,17 +64,10 @@ public class LaTeXRenderController : ControllerBase
     {
         try
         {
-            var latex = await _renderService.RenderToLatexAsync(documentId);
-            // Pick the engine stored on the document so XeLaTeX / LuaLaTeX
-            // docs (fontspec / polyglossia / CJK) compile with the right
-            // binary. Unknown / empty falls back to pdflatex in ResolveEngine.
-            var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
-            var engine = await db.Documents.AsNoTracking()
-                .Where(d => d.Id == documentId)
-                .Select(d => d.LatexEngine)
-                .FirstOrDefaultAsync() ?? "pdflatex";
-            var pdf = await _latexService.RenderToPdfAsync(latex, engine);
-            return File(pdf, "application/pdf", $"document-{documentId}.pdf");
+            var result = await _previewRender.RenderPdfAsync(documentId, HttpContext.RequestAborted);
+            Response.Headers["X-Render-Engine"] = result.Engine;
+            Response.Headers["X-Render-Ms"] = result.ElapsedMs.ToString();
+            return File(result.Pdf, "application/pdf", $"document-{documentId}.pdf");
         }
         catch (Exception ex)
         {
