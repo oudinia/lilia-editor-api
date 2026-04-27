@@ -272,6 +272,11 @@ public class LatexParser : ILatexParser
         "IEEEkeywords", "keywords",
         "acronym", "acronyms",
         "CJK", "CJK*",
+        // CV-template envs — body is a list of \cvitem / \cvevent /
+        // \twentyitem children, which NormaliseCvMacros has already
+        // unwrapped to markdown. Pass-through lets the parser pick
+        // those up as ordinary paragraphs.
+        "cvtable", "twenty", "subs",
     };
 
     /// <summary>
@@ -387,6 +392,13 @@ public class LatexParser : ILatexParser
         // special cases for each. Cheap regex rewrites; the catalog rows
         // for these tokens get upgraded from partial/shimmed → full.
         content = NormaliseCoverageEnvironments(content);
+
+        // CV-template macros — unwrap the common moderncv/altacv/cv-templates
+        // commands to plain markdown so they round-trip through the editor
+        // instead of leaking as raw \cmd in block text. Each \cvX{...}{...}
+        // becomes `**field1** — field2 — …` then the rest of the parser
+        // treats them as ordinary paragraphs / list items.
+        content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
         // early so the structural dispatcher below doesn't accidentally
@@ -1640,6 +1652,97 @@ public class LatexParser : ILatexParser
     ///   framesubtitle → bold paragraph
     ///   titlepage → \maketitle
     /// </summary>
+    /// <summary>
+    /// Unwrap moderncv / altacv / hipster-cv / twentysecondscv macros to
+    /// markdown so they survive the import as readable content. Each
+    /// `\cvX{a}{b}{c}{d}` becomes a paragraph like `**a** — *b* — c — d`
+    /// that downstream parsing renders cleanly. Standalone separator
+    /// commands (`\divider`, `\columnbreak`, `\switchcolumn`) are stripped
+    /// — they're layout-only and have no content meaning in the editor.
+    ///
+    /// Why this is here instead of NormaliseInlineCommands: it runs once
+    /// up-front on the whole content stream, not per-paragraph. The
+    /// resulting markdown lands in regular block.text so every downstream
+    /// surface (preview, export, round-trip) gets it for free.
+    /// </summary>
+    private static string NormaliseCvMacros(string content)
+    {
+        // 4-arg CV macros: typically {date}{title}{org}{location-or-detail}.
+        // Format as `**title** — *org* — date — detail` (title-first reads
+        // better in a list-of-experiences style).
+        content = ExpandCvMacro(content, "cvevent", 4,
+            args => $"**{args[1].Trim()}** — *{args[2].Trim()}* — {args[0].Trim()} — {args[3].Trim()}");
+        content = ExpandCvMacro(content, "cvdegree", 4,
+            args => $"**{args[2].Trim()}** in **{args[1].Trim()}** — {args[0].Trim()} — {args[3].Trim()}");
+        content = ExpandCvMacro(content, "cvitem", 4,
+            args => $"**{args[1].Trim()}** — *{args[2].Trim()}* — {args[0].Trim()} — {args[3].Trim()}");
+
+        // 3-arg variants.
+        content = ExpandCvMacro(content, "cvitemwithcomment", 3,
+            args => $"**{args[0].Trim()}** — {args[1].Trim()} — {args[2].Trim()}");
+        content = ExpandCvMacro(content, "cvpubitem", 3,
+            args => $"**{args[0].Trim()}** by *{args[1].Trim()}* — {args[2].Trim()}");
+        content = ExpandCvMacro(content, "cvuniversity", 3,
+            args => $"**{args[0].Trim()}** — {args[1].Trim()} — {args[2].Trim()}");
+
+        // 2-arg variants.
+        content = ExpandCvMacro(content, "cvitemshort", 2,
+            args => $"**{args[0].Trim()}** — {args[1].Trim()}");
+        content = ExpandCvMacro(content, "cvuniversity", 2,
+            args => $"**{args[0].Trim()}** — {args[1].Trim()}");
+        content = ExpandCvMacro(content, "cvlistitem", 2,
+            args => $"- {args[0].Trim()}: {args[1].Trim()}");
+
+        // Twentysecondscv: \twentyitem{date}{title}{location}{description}.
+        content = ExpandCvMacro(content, "twentyitem", 4,
+            args => $"**{args[1].Trim()}** — *{args[2].Trim()}* — {args[0].Trim()} — {args[3].Trim()}");
+
+        // Standalone layout separators — strip with surrounding whitespace.
+        content = Regex.Replace(content,
+            @"\\(divider|switchcolumn|columnbreak|sepspace|smallskip|medskip|bigskip|hbadness)\s*(\d+)?\s*",
+            "\n", RegexOptions.IgnoreCase);
+
+        return content;
+    }
+
+    /// <summary>
+    /// Generic helper for the CV macro family: find every `\name{…}{…}…`
+    /// (n brace args), pass the args to <paramref name="formatter"/>, and
+    /// splice the result back in. Brace-balanced via ExtractBraceBody.
+    /// </summary>
+    private static string ExpandCvMacro(string content, string name, int argCount, Func<string[], string> formatter)
+    {
+        var pattern = @"\\" + Regex.Escape(name) + @"\b\s*\{";
+        for (var guard = 0; guard < 256; guard++)
+        {
+            var m = Regex.Match(content, pattern);
+            if (!m.Success) break;
+            var pos = m.Index + m.Length - 1;
+            var args = new string[argCount];
+            var ok = true;
+            int endExclusive = pos;
+            for (int i = 0; i < argCount; i++)
+            {
+                if (pos >= content.Length || content[pos] != '{') { ok = false; break; }
+                var body = ExtractBraceBody(content, pos);
+                if (body == null) { ok = false; break; }
+                args[i] = body.Value.Content;
+                pos = body.Value.EndExclusive;
+                endExclusive = pos;
+            }
+            if (!ok)
+            {
+                // Skip this occurrence — malformed input. Move forward
+                // by 1 to avoid infinite loop on the same match.
+                content = content.Substring(0, m.Index) + " " + content.Substring(m.Index + m.Length);
+                continue;
+            }
+            var replacement = formatter(args);
+            content = content.Substring(0, m.Index) + replacement + content.Substring(endExclusive);
+        }
+        return content;
+    }
+
     private static string NormaliseCoverageEnvironments(string content)
     {
         // tabularx — swap `\begin{tabularx}{<width>}{<colspec>}...\end{tabularx}`
