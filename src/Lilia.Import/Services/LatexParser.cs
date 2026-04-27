@@ -343,6 +343,10 @@ public class LatexParser : ILatexParser
         "file", "commandline", // editorial code blocks
         "refsection", // biblatex ref section
         "aenumerate", // alpha enumerate (list-like; lose styling)
+        // Flood-4 last-mile.
+        "recipemethods", "recipeingredients", // recipe template
+        "invoice", // invoice template (different from invoicetable)
+        "rem", // Spanish/Portuguese remark/theorem alias
     };
 
     /// <summary>
@@ -1182,6 +1186,17 @@ public class LatexParser : ILatexParser
                     RegexOptions.Singleline);
                 if (marginFigureMatch.Success)
                     matches.Add((marginFigureMatch, "figure"));
+
+                // Replace wrapfigure regex with a flexible opener — real
+                // usage is `\begin{wrapfigure}[lines]{l|r}[overhang]{width}`
+                // (4 args: [lines]{align}[overhang]{width}). The previous
+                // regex only matched 2-arg form so 4-arg variants leaked.
+                var wrapFigureFlexMatch = Regex.Match(
+                    remaining,
+                    @"\\begin\{wrapfigure\}(?:\s*(?:\[[^\]]*\]|\{[^}]*\}))*([\s\S]*?)\\end\{wrapfigure\}",
+                    RegexOptions.Singleline);
+                if (wrapFigureFlexMatch.Success)
+                    matches.Add((wrapFigureFlexMatch, "figure"));
 
                 var marginTableMatch = Regex.Match(
                     remaining,
