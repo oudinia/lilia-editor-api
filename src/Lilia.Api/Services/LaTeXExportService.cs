@@ -782,7 +782,11 @@ public class LaTeXExportService : ILaTeXExportService
         var command = commands[Math.Min(level - 1, 4)];
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{label}}}" : "";
-        return $@"\{command}{{{EscapeLatex(text)}}}{labelPart}";
+        // Route through FormatInlineContent so `**Important**` becomes
+        // `\textbf{Important}` (parity with paragraph + preview render).
+        // Pre-fix the heading hit EscapeLatex directly which kept the
+        // markdown asterisks literal.
+        return $@"\{command}{{{FormatInlineContent(text)}}}{labelPart}";
     }
 
     private string RenderEquation(JsonElement content)
@@ -1074,10 +1078,18 @@ public class LaTeXExportService : ILaTeXExportService
         // 2. Inline code: `text` → \texttt{text}
         result = Regex.Replace(result, @"`([^`]+)`", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
-        // 3. Bold: *text* → \textbf{text}
-        result = Regex.Replace(result, @"\*([^*]+)\*", m => Ph($@"\textbf{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        // 3. Bold: **text** → \textbf{text} (canonical markdown form;
+        //    matches what tiptapToBlockContent emits + sanitizeToHtml
+        //    on the preview side. Pre-fix the exporter only handled
+        //    single `*` for bold which inverted the convention.)
+        result = Regex.Replace(result, @"\*\*([^*]+)\*\*", m => Ph($@"\textbf{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
-        // 4. Italic: _text_ → \textit{text}
+        // 4. Italic: *text* → \textit{text} (single asterisk is italic
+        //    per markdown convention).
+        result = Regex.Replace(result, @"(?<!\*)\*([^*]+)\*(?!\*)", m => Ph($@"\textit{{{EscapeLatex(m.Groups[1].Value)}}}"));
+
+        // 5. Italic alias: _text_ → \textit{text} (BlockRenderer accepts
+        //    both forms; exporter aligns).
         result = Regex.Replace(result, @"_([^_]+)_", m => Ph($@"\textit{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 5. References: @ref{label} → \ref{label}
