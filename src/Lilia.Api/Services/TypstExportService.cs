@@ -60,7 +60,11 @@ public class TypstExportService : ITypstExportService
         sb.AppendLine($"// {EscapeTypstComment(doc.Title ?? "Untitled")}");
         sb.AppendLine($"#set document(title: {QuoteTypst(doc.Title ?? "Untitled")})");
         sb.AppendLine($"#set page(paper: {QuoteTypst(MapPaper(doc.PaperSize))})");
-        sb.AppendLine($"#set text(font: {QuoteTypst(MapFont(doc.FontFamily))}, size: 11pt)");
+        // Font fallback list — Typst tries each in order. "New Computer
+        // Modern" ships bundled with the typst binary so compile never
+        // fails on a missing system font; production servers also have
+        // Linux Libertine installed via the Dockerfile.
+        sb.AppendLine($"#set text(font: ({MapFontList(doc.FontFamily)}), size: 11pt)");
         sb.AppendLine($"#set par(justify: true)");
         sb.AppendLine();
 
@@ -225,21 +229,78 @@ public class TypstExportService : ITypstExportService
     {
         if (!content.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             return "// [Empty list]";
-        var ordered = content.TryGetProperty("ordered", out var o) && o.GetBoolean();
-        var marker = ordered ? "+" : "-";
+        var ordered = ResolveOrdered(content);
         var sb = new StringBuilder();
+        AppendListItems(items, ordered, depth: 0, sb);
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Walks the items array recursively. Each level adds two spaces of
+    /// indentation — Typst's native syntax for nested lists. Item shape
+    /// matches what the editor's RenderService.RenderListItemToHtml
+    /// already accepts: string OR { text|richText, children?: [...] }.
+    /// </summary>
+    private static void AppendListItems(JsonElement items, bool ordered, int depth, StringBuilder sb)
+    {
+        if (items.ValueKind != JsonValueKind.Array) return;
+        var marker = ordered ? "+" : "-";
+        var indent = new string(' ', depth * 2);
         foreach (var item in items.EnumerateArray())
         {
             string text;
+            JsonElement? children = null;
             if (item.ValueKind == JsonValueKind.String)
+            {
                 text = item.GetString() ?? "";
-            else if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("text", out var t))
-                text = t.GetString() ?? "";
+            }
+            else if (item.ValueKind == JsonValueKind.Object)
+            {
+                if (item.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                {
+                    text = t.GetString() ?? "";
+                }
+                else if (item.TryGetProperty("richText", out var rt) && rt.ValueKind == JsonValueKind.Array)
+                {
+                    var rsb = new StringBuilder();
+                    foreach (var span in rt.EnumerateArray())
+                    {
+                        if (span.TryGetProperty("text", out var st) && st.ValueKind == JsonValueKind.String)
+                            rsb.Append(st.GetString());
+                    }
+                    text = rsb.ToString();
+                }
+                else
+                {
+                    text = "";
+                }
+                if (item.TryGetProperty("children", out var ch) && ch.ValueKind == JsonValueKind.Array && ch.GetArrayLength() > 0)
+                    children = ch;
+            }
             else
+            {
                 text = item.ToString();
-            sb.AppendLine($"{marker} {FormatInline(text)}");
+            }
+
+            sb.AppendLine($"{indent}{marker} {FormatInline(text)}");
+            if (children.HasValue)
+            {
+                // Nested list inherits parent's ordered/unordered. The
+                // editor model doesn't currently let users mix ordered
+                // and unordered within the same tree, mirroring the
+                // HTML renderer's inheritance.
+                AppendListItems(children.Value, ordered, depth + 1, sb);
+            }
         }
-        return sb.ToString().TrimEnd();
+    }
+
+    private static bool ResolveOrdered(JsonElement content)
+    {
+        if (content.TryGetProperty("listType", out var lt) && lt.ValueKind == JsonValueKind.String)
+            return lt.GetString() == "ordered";
+        if (content.TryGetProperty("ordered", out var o) && o.ValueKind == JsonValueKind.True)
+            return true;
+        return false;
     }
 
     private static string RenderBlockquote(JsonElement content)
@@ -436,6 +497,29 @@ public class TypstExportService : ITypstExportService
         "mono" or "monospace" => "DejaVu Sans Mono",
         _ => "Linux Libertine",
     };
+
+    /// <summary>
+    /// Comma-separated quoted font list for Typst's <c>font: (..., ...)</c>
+    /// syntax. Always ends with "New Computer Modern" — bundled with the
+    /// typst binary so compile never fails on missing system fonts.
+    /// </summary>
+    private static string MapFontList(string? family)
+    {
+        var primary = MapFont(family);
+        // "New Computer Modern" is the typst-bundled fallback that always
+        // resolves. For monospace contexts the secondary fallback differs.
+        var fallbacks = family?.ToLowerInvariant() is "mono" or "monospace"
+            ? new[] { "DejaVu Sans Mono", "New Computer Modern Mono", "New Computer Modern" }
+            : new[] { primary, "New Computer Modern" };
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unique = new List<string>();
+        foreach (var f in fallbacks)
+        {
+            if (seen.Add(f)) unique.Add(f);
+        }
+        return string.Join(", ", unique.Select(QuoteTypst));
+    }
 }
 
 public interface ITypstExportService
