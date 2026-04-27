@@ -84,6 +84,28 @@ public class LatexExportFixtureTests
             "list", """{"items":["one","two"],"ordered":true}""",
             ExpectIn: new[] { @"\begin{enumerate}", @"\item one", @"\item two", @"\end{enumerate}" }),
 
+        // Nested lists — recursive children walk (parity with the
+        // recursive HTML renderer + Typst exporter; LaTeX exporter
+        // used to flatten silently and lose the nesting).
+        new Fx("list nested 2 levels",
+            "list", """{"ordered":false,"items":[{"text":"top","children":[{"text":"sub-1"},{"text":"sub-2"}]},{"text":"top-2"}]}""",
+            ExpectIn: new[] {
+                @"\item top",
+                @"\begin{itemize}",
+                @"\item sub-1",
+                @"\item sub-2",
+                @"\end{itemize}",
+                @"\item top-2",
+            }),
+        new Fx("list nested 3 levels",
+            "list", """{"ordered":true,"items":[{"text":"a","children":[{"text":"a.1","children":[{"text":"a.1.i"}]}]}]}""",
+            ExpectIn: new[] {
+                @"\begin{enumerate}",
+                @"\item a",
+                @"\item a.1",
+                @"\item a.1.i",
+            }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

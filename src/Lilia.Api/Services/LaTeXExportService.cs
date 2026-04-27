@@ -1000,19 +1000,44 @@ public class LaTeXExportService : ILaTeXExportService
 
         var env = isOrdered ? "enumerate" : "itemize";
         var sb = new StringBuilder();
-        sb.AppendLine($@"\begin{{{env}}}");
-
         if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
-            foreach (var item in items.EnumerateArray())
+            AppendListItems(items, env, depth: 0, sb);
+        }
+        else
+        {
+            sb.AppendLine($@"\begin{{{env}}}");
+            sb.Append($@"\end{{{env}}}");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Walks the items array recursively, emitting nested
+    /// itemize/enumerate environments inside each <c>\item</c>. Nested
+    /// lists inherit the parent env (LaTeX itself permits mixing — e.g.
+    /// <c>itemize</c> inside <c>enumerate</c> — but the editor's data
+    /// model doesn't currently let users author that, mirroring the
+    /// HTML renderer's inheritance). Indentation is cosmetic.
+    /// </summary>
+    private void AppendListItems(JsonElement items, string env, int depth, StringBuilder sb)
+    {
+        if (items.ValueKind != JsonValueKind.Array) return;
+        var indent = new string(' ', depth * 2);
+        sb.AppendLine($@"{indent}\begin{{{env}}}");
+        foreach (var item in items.EnumerateArray())
+        {
+            var itemText = ExtractItemText(item);
+            sb.AppendLine($@"{indent}\item {FormatInlineContent(itemText)}");
+            if (item.ValueKind == JsonValueKind.Object &&
+                item.TryGetProperty("children", out var children) &&
+                children.ValueKind == JsonValueKind.Array &&
+                children.GetArrayLength() > 0)
             {
-                var itemText = ExtractItemText(item);
-                sb.AppendLine($@"\item {FormatInlineContent(itemText)}");
+                AppendListItems(children, env, depth + 1, sb);
             }
         }
-
-        sb.Append($@"\end{{{env}}}");
-        return sb.ToString();
+        sb.AppendLine($@"{indent}\end{{{env}}}");
     }
 
     private string RenderBlockquote(JsonElement content)
