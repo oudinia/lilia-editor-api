@@ -547,6 +547,10 @@ public class TypstExportService : ITypstExportService
         // \frac{a}{b} → frac(a, b) — Typst's function-call syntax.
         s = Regex.Replace(s, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "frac($1, $2)");
 
+        // Matrix environments — Typst uses mat(..., delim: "X") with
+        // semicolons between rows, commas between columns.
+        s = ConvertMatrixEnvironments(s);
+
         // \sqrt{x} → sqrt(x) ; \sqrt[n]{x} → root(n, x)
         s = Regex.Replace(s, @"\\sqrt\[([^\]]+)\]\{([^{}]+)\}", "root($1, $2)");
         s = Regex.Replace(s, @"\\sqrt\{([^{}]+)\}", "sqrt($1)");
@@ -624,6 +628,52 @@ public class TypstExportService : ITypstExportService
             or "bibliography" => true,
         _ => false,
     };
+
+    /// <summary>
+    /// Translate LaTeX matrix environments
+    /// (<c>pmatrix</c>, <c>bmatrix</c>, <c>vmatrix</c>, <c>Vmatrix</c>,
+    /// <c>matrix</c>) to Typst's <c>mat(...)</c> function. LaTeX uses
+    /// <c>&amp;</c> for column separators and <c>\\\\</c> for row
+    /// separators; Typst uses <c>,</c> and <c>;</c>. Each variant maps
+    /// to a different <c>delim:</c> argument.
+    /// </summary>
+    private static string ConvertMatrixEnvironments(string s)
+    {
+        var matrixVariants = new (string Env, string? Delim)[]
+        {
+            ("pmatrix", "("),
+            ("bmatrix", "["),
+            ("Bmatrix", "{"),
+            ("vmatrix", "|"),
+            ("Vmatrix", "||"),
+            ("matrix",  null),
+        };
+        foreach (var (env, delim) in matrixVariants)
+        {
+            var pattern = $@"\\begin\{{{env}\}}(.*?)\\end\{{{env}\}}";
+            s = Regex.Replace(s, pattern, m =>
+            {
+                var body = m.Groups[1].Value.Trim();
+                // Strip optional row-spacing like \\\\[5pt] → \\\\
+                body = Regex.Replace(body, @"\\\\\s*\[[^\]]*\]", @"\\");
+                // Split rows on \\ (LaTeX line break in math)
+                var rows = body.Split(new[] { @"\\" }, StringSplitOptions.None)
+                    .Select(r => r.Trim())
+                    .Where(r => r.Length > 0)
+                    .ToList();
+                // Each row: split on `&`, comma-join
+                var typstRows = rows.Select(r =>
+                {
+                    var cols = r.Split('&').Select(c => c.Trim());
+                    return string.Join(", ", cols);
+                });
+                var inner = string.Join("; ", typstRows);
+                var delimArg = delim is null ? "" : $"delim: \"{delim}\", ";
+                return $"mat({delimArg}{inner})";
+            }, RegexOptions.Singleline);
+        }
+        return s;
+    }
 
     /// <summary>
     /// External / placeholder image URLs can't be resolved at compile

@@ -87,6 +87,10 @@ public class TypstFixtureCombinatorialTests
         new Fx("equation \\frac",            "equation",  """{"latex":"\\frac{a}{b}","mode":"display"}"""),
         new Fx("equation greek bare",        "equation",  """{"latex":"\\alpha + \\beta","mode":"display"}"""),
         new Fx("equation \\sum",             "equation",  """{"latex":"\\sum_{i=1}^n i","mode":"display"}"""),
+        new Fx("equation pmatrix",           "equation",  """{"latex":"\\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix}","mode":"display"}"""),
+        new Fx("equation bmatrix",           "equation",  """{"latex":"\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}","mode":"display"}"""),
+        new Fx("equation vmatrix det",       "equation",  """{"latex":"\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}","mode":"display"}"""),
+        new Fx("equation matrix bare",       "equation",  """{"latex":"\\begin{matrix} 1 & 2 \\\\ 3 & 4 \\end{matrix}","mode":"display"}"""),
 
         new Fx("list ordered",               "list",      """{"ordered":true,"items":["one","two","three"]}"""),
         new Fx("list unordered",             "list",      """{"ordered":false,"items":["alpha","beta"]}"""),
