@@ -182,7 +182,22 @@ public class TypstExportService : ITypstExportService
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         if (string.IsNullOrEmpty(src))
             return "// [Figure without source]";
+
         var captionPart = string.IsNullOrEmpty(caption) ? "" : $", caption: [{FormatInline(caption)}]";
+
+        // Figures with external / placeholder URLs can't be resolved
+        // inside Typst's sandboxed file system at compile time. Render
+        // a drawn placeholder rect instead so the rest of the document
+        // still compiles via the fast preview path. The LaTeX export
+        // path resolves the real asset on the export path.
+        if (IsUnresolvableFigureSrc(src))
+        {
+            // Typst rect with fill+stroke; placed inside #figure so
+            // captions still render via the standard caption slot.
+            var inner = "rect(width: 80%, height: 4cm, fill: rgb(\"#f3f4f6\"), stroke: rgb(\"#d1d5db\"), inset: 1em, radius: 4pt)[#align(center + horizon)[#text(fill: rgb(\"#9ca3af\"))[Image placeholder]]]";
+            return $"#figure({inner}{captionPart})";
+        }
+
         return $"#figure(image({QuoteTypst(src)}){captionPart})";
     }
 
@@ -436,13 +451,83 @@ public class TypstExportService : ITypstExportService
     {
         if (string.IsNullOrEmpty(latex)) return "";
         var s = latex;
-        // \frac{a}{b} → frac(a, b) — Typst uses function syntax for fractions
-        // Keep as \frac for now since Typst's math mode accepts most
-        // \-prefixed commands (alpha, beta, sum, int, etc.).
-        // The most jarring divergence is \\ for line break which isn't
-        // valid Typst math; convert to '\' (single backslash in Typst is
-        // a line break in math mode).
+
+        // Top-N LaTeX math commands surfaced by silent_fallback telemetry.
+        // Typst math mode accepts most LaTeX greek/operators as-is
+        // (\alpha, \sum, \int, \in, \to, etc.) but its font-family
+        // commands have a different syntax. Translate the families
+        // first; arguments inside {...} pass through untouched.
+        s = Regex.Replace(s, @"\\mathbb\{([^{}]+)\}", "bb($1)");
+        s = Regex.Replace(s, @"\\mathcal\{([^{}]+)\}", "cal($1)");
+        s = Regex.Replace(s, @"\\mathbf\{([^{}]+)\}", "bold($1)");
+        s = Regex.Replace(s, @"\\mathit\{([^{}]+)\}", "italic($1)");
+        s = Regex.Replace(s, @"\\mathrm\{([^{}]+)\}", "upright($1)");
+        s = Regex.Replace(s, @"\\mathsf\{([^{}]+)\}", "sans($1)");
+        s = Regex.Replace(s, @"\\mathtt\{([^{}]+)\}", "mono($1)");
+        s = Regex.Replace(s, @"\\mathfrak\{([^{}]+)\}", "frak($1)");
+
+        // \text{X} inside math mode → upright text. Typst spells this
+        // as `"X"` (literal string in math).
+        s = Regex.Replace(s, @"\\text\{([^{}]+)\}", "\"$1\"");
+
+        // \\ inside math is a line break in LaTeX. Typst math line
+        // break is single backslash; remap to avoid the parser
+        // treating it as escape.
+        s = Regex.Replace(s, @"\\\\(?!\\)", "\\ ");
+
+        // Big operators that need a name swap (LaTeX → Typst name).
+        var operatorRenames = new (string From, string To)[]
+        {
+            ("int",    "integral"),
+            ("iint",   "integral.double"),
+            ("iiint",  "integral.triple"),
+            ("oint",   "integral.cont"),
+            ("prod",   "product"),
+            ("coprod", "product.co"),
+            ("lim",    "limits.lim"),
+            ("limsup", "limits.lim.sup"),
+            ("liminf", "limits.lim.inf"),
+        };
+        foreach (var (from, to) in operatorRenames)
+        {
+            s = Regex.Replace(s, $@"\\{from}\b", to);
+        }
+
+        // Functions / operators Typst math accepts as bare identifiers
+        // — just strip the leading LaTeX backslash.
+        var bareOps = new[]
+        {
+            "sum",
+            "min", "max", "sup", "inf",
+            "sin", "cos", "tan", "cot", "sec", "csc",
+            "arcsin", "arccos", "arctan",
+            "sinh", "cosh", "tanh",
+            "log", "ln", "exp", "det", "dim", "ker", "deg",
+            "gcd", "hom", "arg", "Pr", "mod",
+        };
+        foreach (var op in bareOps)
+        {
+            s = Regex.Replace(s, $@"\\{op}\b", op);
+        }
+
         return s;
+    }
+
+    /// <summary>
+    /// External / placeholder image URLs can't be resolved at compile
+    /// time inside Typst's sandboxed file system. Detect them and emit
+    /// a drawn placeholder box so the doc still compiles via the
+    /// transparent preview path; the LaTeX fallback resolves the real
+    /// asset on the export path.
+    /// </summary>
+    private static bool IsUnresolvableFigureSrc(string src)
+    {
+        if (string.IsNullOrEmpty(src)) return true;
+        if (src.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return true;
+        if (src.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return true;
+        if (src.StartsWith("/api/placeholder/", StringComparison.OrdinalIgnoreCase)) return true;
+        if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     private static string EscapeTypstInline(string text)

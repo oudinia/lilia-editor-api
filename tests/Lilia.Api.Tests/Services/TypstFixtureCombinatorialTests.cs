@@ -113,10 +113,29 @@ public class TypstFixtureCombinatorialTests
         // resolution. Expected fallback for now.
         new Fx("bibliography (no .bib in preview ctx)", "bibliography", """{}""", ExpectCompile: false),
 
-        // figure — Typst expects an actual asset path. For the preview
-        // context we have no asset, so this is a known fallback case
-        // (the ZIP/export path resolves real images alongside main.typ).
-        new Fx("figure (no asset in preview ctx)", "figure", """{"src":"img.png","caption":"x"}""", ExpectCompile: false),
+        // figure with external/placeholder URL → Typst can't resolve
+        // the file inside the sandbox; we now render a drawn
+        // placeholder box so the doc compiles cleanly. Real local
+        // assets still flow through #figure(image(...)) (and remain
+        // unresolved without the asset write — covered below).
+        new Fx("figure (placeholder URL → compile via drawn box)", "figure",
+            """{"src":"/api/placeholder/600/350","caption":"Architecture diagram"}"""),
+        new Fx("figure (https URL → compile via drawn box)", "figure",
+            """{"src":"https://example.com/img.png","caption":"x"}"""),
+        new Fx("figure (local path no asset in preview ctx)", "figure",
+            """{"src":"img.png","caption":"x"}""", ExpectCompile: false),
+
+        // Math — top LaTeX→Typst translations from telemetry
+        new Fx("equation \\mathbb",          "equation",
+            """{"latex":"x \\in \\mathbb{R}","mode":"inline"}"""),
+        new Fx("equation \\mathcal",         "equation",
+            """{"latex":"\\mathcal{H}^2","mode":"inline"}"""),
+        new Fx("equation \\mathbf",          "equation",
+            """{"latex":"\\mathbf{v} \\cdot \\mathbf{w}","mode":"inline"}"""),
+        new Fx("equation \\mathrm differential","equation",
+            """{"latex":"\\int f(x) \\mathrm{d}x","mode":"display"}"""),
+        new Fx("equation \\text in math",    "equation",
+            """{"latex":"x = y \\text{ if and only if } z","mode":"display"}"""),
 
         // table — minimal 2x2 grid; ImportTable shape is rows[][] of cells.
         new Fx("table 2x2",                  "table",     """{"rows":[[{"text":"A"},{"text":"B"}],[{"text":"C"},{"text":"D"}]]}"""),
