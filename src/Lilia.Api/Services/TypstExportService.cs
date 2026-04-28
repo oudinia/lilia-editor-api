@@ -422,8 +422,13 @@ public class TypstExportService : ITypstExportService
 
         var s = text;
 
-        // 1. Inline math $x^2$ — Typst uses same $...$ syntax. Pass through.
-        s = Regex.Replace(s, @"\$([^$]+)\$", m => Ph($"${m.Groups[1].Value}$"));
+        // 1. Inline math $x^2$ — Typst uses same $...$ syntax, BUT
+        //    LaTeX math commands ($\mathbb{R}$, $\int$ etc.) need the
+        //    same translation that equation blocks get. Otherwise an
+        //    inline math literal inside a paragraph/theorem/abstract
+        //    breaks the whole-document Typst compile and forces a
+        //    silent_fallback to pdflatex.
+        s = Regex.Replace(s, @"\$([^$]+)\$", m => Ph($"${LatexMathToTypst(m.Groups[1].Value)}$"));
 
         // 2. Inline code `text` — same backtick syntax in Typst.
         s = Regex.Replace(s, @"`([^`]+)`", m => Ph($"`{m.Groups[1].Value}`"));
@@ -516,7 +521,10 @@ public class TypstExportService : ITypstExportService
         };
         foreach (var (from, to) in operatorRenames)
         {
-            s = Regex.Replace(s, $@"\\{from}\b", to);
+            // `\b` doesn't fire between letter and `_` (both word chars),
+            // so use an explicit non-letter lookahead. End-of-string also
+            // counts as a valid match boundary.
+            s = Regex.Replace(s, $@"\\{from}(?![A-Za-z])", to);
         }
 
         // Functions / operators Typst math accepts as bare identifiers
@@ -533,8 +541,41 @@ public class TypstExportService : ITypstExportService
         };
         foreach (var op in bareOps)
         {
-            s = Regex.Replace(s, $@"\\{op}\b", op);
+            s = Regex.Replace(s, $@"\\{op}(?![A-Za-z])", op);
         }
+
+        // \frac{a}{b} → frac(a, b) — Typst's function-call syntax.
+        s = Regex.Replace(s, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "frac($1, $2)");
+
+        // \sqrt{x} → sqrt(x) ; \sqrt[n]{x} → root(n, x)
+        s = Regex.Replace(s, @"\\sqrt\[([^\]]+)\]\{([^{}]+)\}", "root($1, $2)");
+        s = Regex.Replace(s, @"\\sqrt\{([^{}]+)\}", "sqrt($1)");
+
+        // Greek letters — Typst math accepts these as bare identifiers
+        // ("alpha", "beta", "Gamma", etc.). Strip the leading backslash.
+        var greekLowercase = new[]
+        {
+            "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon",
+            "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda",
+            "mu", "nu", "xi", "pi", "varpi", "rho", "varrho", "sigma",
+            "varsigma", "tau", "upsilon", "phi", "varphi", "chi", "psi",
+            "omega",
+        };
+        var greekUppercase = new[]
+        {
+            "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma",
+            "Upsilon", "Phi", "Psi", "Omega",
+        };
+        foreach (var g in greekLowercase.Concat(greekUppercase))
+        {
+            s = Regex.Replace(s, $@"\\{g}(?![A-Za-z])", g);
+        }
+
+        // _{X} / ^{X} → Typst's _(X) / ^(X) for multi-char sub/super
+        // scripts. LaTeX requires braces; Typst uses parens for groups.
+        // Single-char sub/super (`x_i`, `x^2`) work in both unchanged.
+        s = Regex.Replace(s, @"_\{([^{}]+)\}", "_($1)");
+        s = Regex.Replace(s, @"\^\{([^{}]+)\}", "^($1)");
 
         return s;
     }

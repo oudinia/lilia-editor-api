@@ -78,15 +78,15 @@ public class TypstFixtureCombinatorialTests
         new Fx("heading h6 cap",             "heading",   """{"text":"Deep","level":9}"""),
         new Fx("heading inline bold",        "heading",   """{"text":"**Important** result","level":2}"""),
 
-        // Math is the design-doc-known LatexToTypstMath gap. Expected
-        // to fall back to pdflatex in production. Tests assert the
-        // known-fallback shape so we notice when (a) coverage improves
-        // or (b) the gap unexpectedly widens.
-        new Fx("equation display (LaTeX→Typst gap)", "equation",  """{"latex":"E = mc^2","mode":"display"}""", ExpectCompile: false),
+        // Math fixtures — most originally documented LaTeX→Typst gaps
+        // now compile after the LatexMathToTypst expansion. Two-letter
+        // variable adjacency ("mc^2", "dx") still trips Typst's
+        // single-letter math identifier rule and remains a known gap.
+        new Fx("equation display mc^2 (LaTeX→Typst gap)", "equation",  """{"latex":"E = mc^2","mode":"display"}""", ExpectCompile: false),
         new Fx("equation inline plain",      "equation",  """{"latex":"a + b","mode":"inline"}"""),
-        new Fx("equation \\frac (LaTeX→Typst gap)",  "equation",  """{"latex":"\\frac{a}{b}","mode":"display"}""", ExpectCompile: false),
-        new Fx("equation greek (LaTeX→Typst gap)",   "equation",  """{"latex":"\\alpha + \\beta","mode":"display"}""", ExpectCompile: false),
-        new Fx("equation \\sum (LaTeX→Typst gap)",   "equation",  """{"latex":"\\sum_{i=1}^n i","mode":"display"}""", ExpectCompile: false),
+        new Fx("equation \\frac",            "equation",  """{"latex":"\\frac{a}{b}","mode":"display"}"""),
+        new Fx("equation greek bare",        "equation",  """{"latex":"\\alpha + \\beta","mode":"display"}"""),
+        new Fx("equation \\sum",             "equation",  """{"latex":"\\sum_{i=1}^n i","mode":"display"}"""),
 
         new Fx("list ordered",               "list",      """{"ordered":true,"items":["one","two","three"]}"""),
         new Fx("list unordered",             "list",      """{"ordered":false,"items":["alpha","beta"]}"""),
@@ -134,6 +134,16 @@ public class TypstFixtureCombinatorialTests
         // Math — top LaTeX→Typst translations from telemetry
         new Fx("equation \\mathbb",          "equation",
             """{"latex":"x \\in \\mathbb{R}","mode":"inline"}"""),
+        new Fx("paragraph with inline \\mathbb math", "paragraph",
+            """{"text":"Let $\\mathbb{R}$ be the real numbers."}"""),
+        new Fx("theorem with inline \\mathcal math",  "theorem",
+            """{"theoremType":"theorem","content":"For Hilbert space $\\mathcal{H}^2$, ...","numbered":true}"""),
+        new Fx("paragraph with inline \\sum math",    "paragraph",
+            """{"text":"Compute $\\sum_{i=1}^n a_i$ over the index."}"""),
+        // \\int f(x) dx — "dx" is two letters touching; LaTeX parses
+        // as `d` + `x`, Typst as identifier `dx`. Real fallback case.
+        new Fx("paragraph with inline \\int dx (LaTeX→Typst gap)", "paragraph",
+            """{"text":"Compute $\\int f(x) dx$ over the interval."}""", ExpectCompile: false),
         new Fx("equation \\mathcal",         "equation",
             """{"latex":"\\mathcal{H}^2","mode":"inline"}"""),
         new Fx("equation \\mathbf",          "equation",
