@@ -91,6 +91,7 @@ public class PreviewRenderService : IPreviewRenderService
     {
         Document? doc;
         List<Block> blocks;
+        List<BibliographyEntry> bibEntries;
         try
         {
             doc = await _db.Documents.AsNoTracking()
@@ -100,6 +101,13 @@ public class PreviewRenderService : IPreviewRenderService
             blocks = await _db.Blocks.AsNoTracking()
                 .Where(b => b.DocumentId == documentId)
                 .OrderBy(b => b.SortOrder)
+                .ToListAsync(ct);
+
+            // Load bib entries so #bibliography("references.bib") in
+            // the generated Typst source resolves at compile time. Empty
+            // list is fine — we just don't write the asset.
+            bibEntries = await _db.BibliographyEntries.AsNoTracking()
+                .Where(b => b.DocumentId == documentId)
                 .ToListAsync(ct);
         }
         catch (Exception ex)
@@ -119,7 +127,20 @@ public class PreviewRenderService : IPreviewRenderService
             return null;
         }
 
-        var result = await _typstCompiler.CompileAsync(source, TypstOutputFormat.Pdf, ct);
+        // Drop a references.bib alongside main.typ when there are
+        // entries; otherwise we'd hit "file not found" inside the
+        // compile temp dir. Generated source emits the directive
+        // unconditionally — see TypstExportService.RenderBibliography.
+        Dictionary<string, string>? assets = null;
+        if (bibEntries.Count > 0)
+        {
+            assets = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["references.bib"] = BibTeXSerializer.Serialize(bibEntries),
+            };
+        }
+
+        var result = await _typstCompiler.CompileAsync(source, TypstOutputFormat.Pdf, assets, ct);
         if (result.Success && result.Output is { Length: > 0 })
         {
             return result.Output;

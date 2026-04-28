@@ -141,6 +141,61 @@ public class TypstFixtureCombinatorialTests
         return pathEnv.Split(Path.PathSeparator).Any(dir => File.Exists(Path.Combine(dir, "typst")));
     }
 
+    /// <summary>
+    /// Bibliography block compiles cleanly when a references.bib
+    /// asset is supplied alongside main.typ. This is the path
+    /// PreviewRenderService.TryTypstPdfAsync wires up — load bib
+    /// entries from DB, serialize via BibTeXSerializer, hand to
+    /// CompileAsync as an asset file. Without the asset the directive
+    /// errors with "file not found" (covered by the ExpectCompile=false
+    /// fixture below).
+    /// </summary>
+    [Fact]
+    public async Task Bibliography_block_compiles_when_references_bib_supplied()
+    {
+        if (!TypstAvailable()) return;
+
+        var exporter = new TypstExportService();
+        var compiler = new TypstCompileService();
+
+        var doc = new Document
+        {
+            Id = Guid.NewGuid(),
+            Title = "Fixture-bib",
+            OwnerId = "test-user",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = doc.Id,
+            Type = "bibliography",
+            Content = JsonDocument.Parse("""{}"""),
+            SortOrder = 0,
+        };
+
+        var source = exporter.BuildTypstDocument(doc, new List<Block> { block });
+
+        // Minimal valid BibTeX entry — gets written as references.bib
+        // alongside main.typ, which is what the directive resolves to.
+        const string bib = """
+            @article{smith2024,
+              author = {Smith, J.},
+              title = {On Things},
+              year = {2024},
+            }
+            """;
+        var assets = new Dictionary<string, string> { ["references.bib"] = bib };
+
+        var result = await compiler.CompileAsync(source, TypstOutputFormat.Pdf, assets);
+
+        result.Success.Should().BeTrue($"compile failed: {result.Error}\n--- source ---\n{source}");
+        result.Output.Should().NotBeNullOrEmpty();
+        var head = System.Text.Encoding.ASCII.GetString(result.Output!.AsSpan(0, 4).ToArray());
+        head.Should().StartWith("%PDF");
+    }
+
     [Theory]
     [MemberData(nameof(Fixtures))]
     public async Task Single_block_document_compiles(Fx f)

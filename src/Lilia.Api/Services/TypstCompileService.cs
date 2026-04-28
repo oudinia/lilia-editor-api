@@ -49,9 +49,16 @@ public class TypstCompileService : ITypstCompileService
     /// message + stderr on the unhappy path. Never throws — every
     /// failure mode flows through TypstCompileResult.
     /// </summary>
-    public async Task<TypstCompileResult> CompileAsync(
+    public Task<TypstCompileResult> CompileAsync(
         string source,
         TypstOutputFormat format = TypstOutputFormat.Svg,
+        CancellationToken ct = default) =>
+        CompileAsync(source, format, assetFiles: null, ct);
+
+    public async Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
         CancellationToken ct = default)
     {
         var binary = ResolveBinary();
@@ -79,6 +86,24 @@ public class TypstCompileService : ITypstCompileService
             var outputFile = Path.Combine(workDir, $"main.{outputExt}");
 
             await File.WriteAllTextAsync(sourceFile, source, Encoding.UTF8, ct);
+
+            // Optional sibling files (references.bib, image assets, etc.).
+            // Filenames are taken at face value — caller must keep them
+            // safe (no traversal). Anything outside the work dir is
+            // silently skipped to keep this hardened against bad input.
+            if (assetFiles is { Count: > 0 })
+            {
+                foreach (var (name, content) in assetFiles)
+                {
+                    if (string.IsNullOrWhiteSpace(name) || name.Contains("..") || Path.IsPathRooted(name))
+                        continue;
+                    var path = Path.Combine(workDir, name);
+                    if (!path.StartsWith(workDir, StringComparison.Ordinal)) continue;
+                    var dir = Path.GetDirectoryName(path);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    await File.WriteAllTextAsync(path, content, Encoding.UTF8, ct);
+                }
+            }
 
             var stopwatch = Stopwatch.StartNew();
             var psi = new ProcessStartInfo
@@ -212,6 +237,20 @@ public interface ITypstCompileService
     Task<TypstCompileResult> CompileAsync(
         string source,
         TypstOutputFormat format = TypstOutputFormat.Svg,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Compile with sibling files written into the temp work dir
+    /// alongside <c>main.typ</c>. Used by the preview path to drop a
+    /// generated <c>references.bib</c> next to the source so
+    /// <c>#bibliography("references.bib")</c> resolves at compile
+    /// time. Filenames must be relative and must not traverse out
+    /// of the work dir; anything else is silently skipped.
+    /// </summary>
+    Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
         CancellationToken ct = default);
 }
 
