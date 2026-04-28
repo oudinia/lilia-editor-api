@@ -520,6 +520,22 @@ public class TypstExportService : ITypstExportService
         // as `"X"` (literal string in math).
         s = Regex.Replace(s, @"\\text\{([^{}]+)\}", "\"$1\"");
 
+        // Matrix environments — must run BEFORE the line-break
+        // translation below, because the matrix split relies on
+        // the LaTeX `\\\\` row-separator surviving intact. Doing
+        // the line-break pass first would turn it into `\ ` and
+        // every matrix would render as a single row.
+        s = ConvertMatrixEnvironments(s);
+
+        // Spacing commands → Typst equivalents. Run before bareOps
+        // strip so `\quad` doesn't end up half-stripped.
+        s = Regex.Replace(s, @"\\quad(?![A-Za-z])", "quad");
+        s = Regex.Replace(s, @"\\qquad(?![A-Za-z])", "wide");
+        s = Regex.Replace(s, @"\\,(?![A-Za-z])", "thin");
+        s = Regex.Replace(s, @"\\;(?![A-Za-z])", "med");
+        s = Regex.Replace(s, @"\\:(?![A-Za-z])", "med");
+        s = Regex.Replace(s, @"\\!(?![A-Za-z])", "");
+
         // \\ inside math is a line break in LaTeX. Typst math line
         // break is single backslash; remap to avoid the parser
         // treating it as escape.
@@ -565,10 +581,8 @@ public class TypstExportService : ITypstExportService
 
         // \frac{a}{b} → frac(a, b) — Typst's function-call syntax.
         s = Regex.Replace(s, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "frac($1, $2)");
-
-        // Matrix environments — Typst uses mat(..., delim: "X") with
-        // semicolons between rows, commas between columns.
-        s = ConvertMatrixEnvironments(s);
+        // (matrix env conversion moved earlier in the pipeline so it
+        // runs before the `\\\\` line-break replacement.)
 
         // \sqrt{x} → sqrt(x) ; \sqrt[n]{x} → root(n, x)
         s = Regex.Replace(s, @"\\sqrt\[([^\]]+)\]\{([^{}]+)\}", "root($1, $2)");

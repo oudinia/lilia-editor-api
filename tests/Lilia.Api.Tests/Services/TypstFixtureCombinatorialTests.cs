@@ -91,6 +91,8 @@ public class TypstFixtureCombinatorialTests
         new Fx("equation bmatrix",           "equation",  """{"latex":"\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}","mode":"display"}"""),
         new Fx("equation vmatrix det",       "equation",  """{"latex":"\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}","mode":"display"}"""),
         new Fx("equation matrix bare",       "equation",  """{"latex":"\\begin{matrix} 1 & 2 \\\\ 3 & 4 \\end{matrix}","mode":"display"}"""),
+        new Fx("equation \\quad spacing",    "equation",  """{"latex":"a + b \\quad c + d","mode":"display"}"""),
+        new Fx("equation matrix + \\quad",   "equation",  """{"latex":"X = \\begin{pmatrix} 0 & 1 \\\\ 1 & 0 \\end{pmatrix}, \\quad Y = \\begin{pmatrix} 0 & -i \\\\ i & 0 \\end{pmatrix}","mode":"display"}"""),
 
         new Fx("list ordered",               "list",      """{"ordered":true,"items":["one","two","three"]}"""),
         new Fx("list unordered",             "list",      """{"ordered":false,"items":["alpha","beta"]}"""),
