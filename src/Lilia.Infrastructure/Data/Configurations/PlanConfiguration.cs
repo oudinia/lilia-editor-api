@@ -11,7 +11,7 @@ public class PlanConfiguration : IEntityTypeConfiguration<Plan>
         builder.ToTable("plans", t =>
         {
             t.HasCheckConstraint("ck_plan_slug",
-                "slug IN ('free','student','pro','team','epub','compliance_pro','enterprise')");
+                "slug IN ('free','beta','conversion','student','pro','team','epub','compliance_pro','enterprise')");
         });
 
         builder.HasKey(p => p.Id);
