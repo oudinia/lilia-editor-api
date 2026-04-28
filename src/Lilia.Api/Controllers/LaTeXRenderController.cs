@@ -2,6 +2,7 @@ using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Controllers;
@@ -162,6 +163,7 @@ public class LaTeXRenderController : ControllerBase
     /// </summary>
     [HttpGet("svg")]
     [AllowAnonymous]
+    [EnableRateLimiting("strict")]
     [ResponseCache(Duration = 86400)]
     public async Task<IActionResult> RenderSvg([FromQuery] string latex, [FromQuery] bool display = true)
     {

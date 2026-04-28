@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using Microsoft.Extensions.AI;
 using Serilog;
 
@@ -317,7 +318,9 @@ builder.Services.AddSingleton<IEmailService, EmailService>();
 // Add distributed cache (in-memory for now, swap to Redis with 1 line when scaling)
 builder.Services.AddDistributedMemoryCache();
 
-// Rate limiting
+// Rate limiting — strict policy partitions by client IP so one abuser can't
+// exhaust the bucket for everyone. Auth-sensitive and anonymous endpoints
+// (convert, latex render) opt in via [EnableRateLimiting("strict")].
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -326,10 +329,18 @@ builder.Services.AddRateLimiter(options =>
         config.PermitLimit = 100;
         config.Window = TimeSpan.FromMinutes(1);
     });
-    options.AddFixedWindowLimiter("strict", config =>
+    options.AddPolicy("strict", httpContext =>
     {
-        config.PermitLimit = 10;
-        config.Window = TimeSpan.FromMinutes(1);
+        var partitionKey = httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()
+            ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+            });
     });
 });
 

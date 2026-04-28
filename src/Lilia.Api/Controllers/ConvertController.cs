@@ -5,6 +5,7 @@ using Lilia.Import.Interfaces;
 using Lilia.Import.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Caching.Distributed;
 
 namespace Lilia.Api.Controllers;
@@ -16,6 +17,7 @@ namespace Lilia.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [AllowAnonymous]
+[EnableRateLimiting("strict")]
 public class ConvertController : ControllerBase
 {
     private readonly IDocxImportService _docxImportService;
