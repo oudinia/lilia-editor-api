@@ -579,14 +579,23 @@ public class TypstExportService : ITypstExportService
             s = Regex.Replace(s, $@"\\{op}(?![A-Za-z])", op);
         }
 
-        // \frac{a}{b} → frac(a, b) — Typst's function-call syntax.
-        s = Regex.Replace(s, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "frac($1, $2)");
-        // (matrix env conversion moved earlier in the pipeline so it
-        // runs before the `\\\\` line-break replacement.)
-
         // \sqrt{x} → sqrt(x) ; \sqrt[n]{x} → root(n, x)
+        // MUST run before \frac so a nested `\frac{1}{\sqrt{2}}` has
+        // the inner braces resolved before \frac's `[^{}]+` test.
         s = Regex.Replace(s, @"\\sqrt\[([^\]]+)\]\{([^{}]+)\}", "root($1, $2)");
         s = Regex.Replace(s, @"\\sqrt\{([^{}]+)\}", "sqrt($1)");
+
+        // \frac{a}{b} → frac(a, b) — Typst's function-call syntax.
+        // Apply in a loop so nested `\frac{\frac{a}{b}}{c}` resolves
+        // bottom-up (each pass eats the innermost match).
+        for (int pass = 0; pass < 5; pass++)
+        {
+            var next = Regex.Replace(s, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "frac($1, $2)");
+            if (next == s) break;
+            s = next;
+        }
+        // (matrix env conversion moved earlier in the pipeline so it
+        // runs before the `\\\\` line-break replacement.)
 
         // Greek letters — Typst math accepts these as bare identifiers
         // ("alpha", "beta", "Gamma", etc.). Strip the leading backslash.
