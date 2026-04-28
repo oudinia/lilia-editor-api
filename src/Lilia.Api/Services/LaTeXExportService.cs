@@ -141,8 +141,12 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine();
         }
 
-        // Main content
+        // Main content — strip a duplicate-title leading heading. LaTeX
+        // imports often promote \title{X} into a top-level heading
+        // block whose text matches doc.Title; combined with \maketitle
+        // above, the user sees the title twice.
         var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography").ToList();
+        mainBlocks = StripDuplicateTitleHeading(doc.Title, mainBlocks);
         sb.AppendLine(BlocksToLatex(mainBlocks));
 
         // Bibliography
@@ -604,6 +608,52 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── Block rendering ────────────────────────────────────────────────
 
+    /// <summary>
+    /// Drop the leading heading block when its text matches the doc
+    /// title (case-insensitive, normalized whitespace). Pairs with
+    /// the unconditional \title{X}+\maketitle in the preamble — without
+    /// this, LaTeX-imported docs render the title twice.
+    /// </summary>
+    private static List<Block> StripDuplicateTitleHeading(string? title, List<Block> blocks)
+    {
+        if (string.IsNullOrWhiteSpace(title) || blocks.Count == 0) return blocks;
+        var canon = NormalizeTitleForCompare(title);
+        // Look for the FIRST heading; non-heading content blocks before
+        // it short-circuit (their presence means the title heading
+        // isn't the leading element).
+        Block? leadingHeading = null;
+        foreach (var b in blocks)
+        {
+            if (string.Equals(b.Type, "heading", StringComparison.OrdinalIgnoreCase))
+            {
+                leadingHeading = b;
+                break;
+            }
+            if (IsTitleStripContentBlock(b.Type)) return blocks;
+        }
+        if (leadingHeading == null) return blocks;
+        try
+        {
+            var text = leadingHeading.Content.RootElement.TryGetProperty("text", out var t)
+                ? t.GetString() ?? "" : "";
+            if (NormalizeTitleForCompare(text) == canon)
+                return blocks.Where(b => b.Id != leadingHeading.Id).ToList();
+        }
+        catch { /* malformed — keep block */ }
+        return blocks;
+    }
+
+    private static string NormalizeTitleForCompare(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(s.Trim().ToLowerInvariant(), @"\s+", " ");
+
+    private static bool IsTitleStripContentBlock(string type) => type?.ToLowerInvariant() switch
+    {
+        "paragraph" or "equation" or "figure" or "table" or "code"
+            or "list" or "blockquote" or "theorem" or "abstract"
+            or "bibliography" => true,
+        _ => false,
+    };
+
     private string BlocksToLatex(List<Block> blocks)
     {
         var parts = new List<string>();
@@ -788,7 +838,24 @@ public class LaTeXExportService : ILaTeXExportService
         // `\textbf{Important}` (parity with paragraph + preview render).
         // Pre-fix the heading hit EscapeLatex directly which kept the
         // markdown asterisks literal.
-        return $@"\{command}{{{FormatInlineContent(text)}}}{labelPart}";
+        // Strip baked-in numbering prefix ("1. ", "1.1 ", "I. ", "A. ")
+        // mirroring SectionKeywordRegistry.StripNumberingPrefix on the
+        // import path. Without this, LaTeX auto-numbering shows the
+        // number twice ("2  1. Introduction") in the rendered PDF and
+        // the TOC, since legacy imports baked the prefix into text.
+        var stripped = StripBakedNumberingPrefixForHeading(text);
+        return $@"\{command}{{{FormatInlineContent(stripped)}}}{labelPart}";
+    }
+
+    /// <summary>
+    /// Mirror of <c>SectionKeywordRegistry.StripNumberingPrefix</c>.
+    /// </summary>
+    private static string StripBakedNumberingPrefixForHeading(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var match = System.Text.RegularExpressions.Regex.Match(text,
+            @"^(?:\d+(?:\.\d+)*\.?\s+|[IVXLC]+\.\s+|[A-Z]\.\s+)(.+)$");
+        return match.Success ? match.Groups[1].Value : text;
     }
 
     private string RenderEquation(JsonElement content)

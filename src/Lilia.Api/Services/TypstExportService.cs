@@ -68,6 +68,13 @@ public class TypstExportService : ITypstExportService
         sb.AppendLine($"#set par(justify: true)");
         sb.AppendLine();
 
+        // Title heading — emit `= Title` so Typst has a visible title.
+        // BUT: imported documents (LaTeX, DOCX) often promote \title{X}
+        // into a top-level heading block whose text matches the doc
+        // title. If we always emit our own `= Title` AND the matching
+        // heading block also renders, the user sees the title twice.
+        // Skip the duplicate block via FirstHeadingMatchesTitle below.
+        var titleDuplicateBlockId = FindTitleDuplicateBlockId(doc.Title, blocks);
         if (!string.IsNullOrEmpty(doc.Title))
         {
             sb.AppendLine($"= {EscapeTypstInline(doc.Title)}");
@@ -76,6 +83,8 @@ public class TypstExportService : ITypstExportService
 
         foreach (var block in blocks.OrderBy(b => b.SortOrder))
         {
+            if (titleDuplicateBlockId.HasValue && block.Id == titleDuplicateBlockId.Value)
+                continue;
             var rendered = RenderBlock(block);
             if (!string.IsNullOrWhiteSpace(rendered))
             {
@@ -161,7 +170,24 @@ public class TypstExportService : ITypstExportService
         // Typst heading: '= L1', '== L2', '=== L3', etc. Capped at 6
         // (matches HTML/markdown convention).
         var prefix = new string('=', Math.Clamp(level, 1, 6));
-        return $"{prefix} {FormatInline(text)}";
+        // Strip baked-in numbering prefix ("1. ", "1.1 ", "I. ", "A. ")
+        // — legacy imports stored the section number inside the heading
+        // text. With Typst auto-numbering on (and TOC entries deriving
+        // from heading text), leaving the prefix in shows the number
+        // twice in the rendered PDF.
+        return $"{prefix} {FormatInline(StripBakedNumberingPrefix(text))}";
+    }
+
+    /// <summary>
+    /// Mirror of <c>SectionKeywordRegistry.StripNumberingPrefix</c> from
+    /// the import path. Catches "1. ", "1.1 ", "1.1.1 ", "I. ", "II. ",
+    /// "A. " — leaves anything not numeric/roman/alpha-prefix alone.
+    /// </summary>
+    private static string StripBakedNumberingPrefix(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var match = Regex.Match(text, @"^(?:\d+(?:\.\d+)*\.?\s+|[IVXLC]+\.\s+|[A-Z]\.\s+)(.+)$");
+        return match.Success ? match.Groups[1].Value : text;
     }
 
     private static string RenderEquation(JsonElement content)
@@ -512,6 +538,51 @@ public class TypstExportService : ITypstExportService
 
         return s;
     }
+
+    /// <summary>
+    /// Find the first heading block whose text matches the document
+    /// title (case-insensitive, trim, normalize whitespace). When such
+    /// a block exists, callers skip rendering it so the title doesn't
+    /// double up alongside the explicit `= Title` line. Returns null
+    /// when there's no duplicate.
+    /// </summary>
+    private static Guid? FindTitleDuplicateBlockId(string? title, List<Block> blocks)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return null;
+        var canonTitle = NormalizeTitle(title);
+        foreach (var block in blocks.OrderBy(b => b.SortOrder))
+        {
+            if (!string.Equals(block.Type, "heading", StringComparison.OrdinalIgnoreCase))
+            {
+                // Only a *leading* heading counts as a duplicate-title;
+                // a heading further down is just the user's own H1.
+                // Stop at the first non-heading content block.
+                if (IsContentBlock(block.Type)) return null;
+                continue;
+            }
+            try
+            {
+                var text = block.Content.RootElement.TryGetProperty("text", out var t)
+                    ? t.GetString() ?? ""
+                    : "";
+                if (NormalizeTitle(text) == canonTitle) return block.Id;
+            }
+            catch { /* malformed content — skip */ }
+            return null; // first heading didn't match → no dedup
+        }
+        return null;
+    }
+
+    private static string NormalizeTitle(string s) =>
+        Regex.Replace(s.Trim().ToLowerInvariant(), @"\s+", " ");
+
+    private static bool IsContentBlock(string type) => type?.ToLowerInvariant() switch
+    {
+        "paragraph" or "equation" or "figure" or "table" or "code"
+            or "list" or "blockquote" or "theorem" or "abstract"
+            or "bibliography" => true,
+        _ => false,
+    };
 
     /// <summary>
     /// External / placeholder image URLs can't be resolved at compile

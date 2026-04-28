@@ -67,6 +67,12 @@ public class TypstFixtureCombinatorialTests
             """{"text":"\\enquote{Hello, world}"}"""),
 
         new Fx("heading h1",                 "heading",   """{"text":"Introduction","level":1}"""),
+        new Fx("heading strips baked '1. ' prefix", "heading",
+            """{"text":"1. Introduction","level":1}"""),
+        new Fx("heading strips '1.2.3 ' multi-level prefix", "heading",
+            """{"text":"1.2.3 Subsubsection","level":3}"""),
+        new Fx("heading strips Roman 'IV. ' prefix", "heading",
+            """{"text":"IV. Methods","level":1}"""),
         new Fx("heading h2",                 "heading",   """{"text":"Method","level":2}"""),
         new Fx("heading h3",                 "heading",   """{"text":"Variant","level":3}"""),
         new Fx("heading h6 cap",             "heading",   """{"text":"Deep","level":9}"""),

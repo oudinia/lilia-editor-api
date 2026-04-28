@@ -140,6 +140,23 @@ public class LatexExportFixtureTests
             ExpectIn: new[] { @"\columnbreak" },
             ExpectNotIn: new[] { "Unsupported block type" }),
 
+        // Heading numbering — baked-in legacy prefixes get stripped so
+        // LaTeX auto-numbering doesn't double up.
+        new Fx("heading strips baked '1. ' prefix",
+            "heading", """{"text":"1. Introduction","level":1}""",
+            ExpectIn: new[] { @"\section{Introduction}" },
+            ExpectNotIn: new[] { "1. Introduction" }),
+        new Fx("heading strips '1.2 ' multi-level prefix",
+            "heading", """{"text":"1.2 Subsection","level":2}""",
+            ExpectIn: new[] { @"\subsection{Subsection}" },
+            ExpectNotIn: new[] { "1.2 Subsection" }),
+        new Fx("heading strips Roman 'IV. ' prefix",
+            "heading", """{"text":"IV. Methods","level":1}""",
+            ExpectIn: new[] { @"\section{Methods}" }),
+        new Fx("heading does NOT strip non-numeric leading words",
+            "heading", """{"text":"Future Work","level":2}""",
+            ExpectIn: new[] { @"\subsection{Future Work}" }),
+
         // === regressions / leak guards ===
         new Fx("REGRESSION: list item with bold markdown survives to \\textbf",
             "list", """{"items":["**important** result","plain"]}""",
