@@ -1166,8 +1166,27 @@ public class LaTeXExportService : ILaTeXExportService
 
         var result = text;
 
-        // 1. Inline math: $x^2$ → pass through as-is
+        // 1a. Display math: $$x^2$$ → pass through as-is. MUST run
+        // before single-$ rule so the outer pair isn't mistaken for
+        // two adjacent inline-math spans.
+        result = Regex.Replace(result, @"\$\$([^$]+)\$\$", m => Ph($"$${m.Groups[1].Value}$$"));
+
+        // 1b. Inline math: $x^2$ → pass through as-is
         result = Regex.Replace(result, @"\$([^$]+)\$", m => Ph($"${m.Groups[1].Value}$"));
+
+        // 1c. Native LaTeX commands users type directly (\cite, \ref,
+        //     \eqref, \url, \href, \label, \footnote). Without these,
+        //     EscapeLatex turns "\cite{X}" into "\textbackslash{}cite\{X\}"
+        //     which renders as literal text in the PDF instead of a
+        //     resolved citation. The placeholder preserves the command
+        //     verbatim through the escape pass.
+        result = Regex.Replace(result, @"\\cite\{([^}]+)\}", m => Ph($@"\cite{{{m.Groups[1].Value}}}"));
+        result = Regex.Replace(result, @"\\eqref\{([^}]+)\}", m => Ph($@"\eqref{{{m.Groups[1].Value}}}"));
+        result = Regex.Replace(result, @"\\ref\{([^}]+)\}", m => Ph($@"\ref{{{m.Groups[1].Value}}}"));
+        result = Regex.Replace(result, @"\\url\{([^}]+)\}", m => Ph($@"\url{{{m.Groups[1].Value}}}"));
+        result = Regex.Replace(result, @"\\href\{([^}]+)\}\{([^}]+)\}", m => Ph($@"\href{{{m.Groups[1].Value}}}{{{m.Groups[2].Value}}}"));
+        result = Regex.Replace(result, @"\\label\{([^}]+)\}", m => Ph($@"\label{{{m.Groups[1].Value}}}"));
+        result = Regex.Replace(result, @"\\footnote\{([^}]+)\}", m => Ph($@"\footnote{{{m.Groups[1].Value}}}"));
 
         // 2. Inline code: `text` → \texttt{text}
         result = Regex.Replace(result, @"`([^`]+)`", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));

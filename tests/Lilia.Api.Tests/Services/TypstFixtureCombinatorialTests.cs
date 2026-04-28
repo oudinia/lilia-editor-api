@@ -140,6 +140,26 @@ public class TypstFixtureCombinatorialTests
             """{"latex":"x \\in \\mathbb{R}","mode":"inline"}"""),
         new Fx("paragraph with inline \\mathbb math", "paragraph",
             """{"text":"Let $\\mathbb{R}$ be the real numbers."}"""),
+        // Native citation/ref translate to @key — but Typst needs the
+        // referenced label to exist in the document for compile to
+        // succeed. Standalone-block fixtures don't carry a bib /
+        // labelled element, so these are expected fallbacks at the
+        // single-block level. PreviewRenderService DOES write
+        // references.bib for the full-document path, so production
+        // citations resolve correctly (covered by
+        // Bibliography_block_compiles_when_references_bib_supplied).
+        new Fx("paragraph with native \\cite (no bib in fixture ctx → fallback)", "paragraph",
+            """{"text":"As shown in \\cite{smith2024}, the result holds."}""", ExpectCompile: false),
+        new Fx("paragraph with native \\ref (no label in fixture ctx → fallback)", "paragraph",
+            """{"text":"See Theorem \\ref{thm:main} for the proof."}""", ExpectCompile: false),
+        new Fx("paragraph with native \\url",         "paragraph",
+            """{"text":"Available at \\url{https://example.com}."}"""),
+        new Fx("paragraph with native \\href",        "paragraph",
+            """{"text":"See \\href{https://lilia.com}{the docs}."}"""),
+        new Fx("paragraph with native \\footnote",    "paragraph",
+            """{"text":"This claim\\footnote{See appendix A.} is supported."}"""),
+        new Fx("paragraph with display math $$",      "paragraph",
+            """{"text":"The identity is: $$a^2 + b^2 = c^2$$ in any right triangle."}"""),
         new Fx("theorem with inline \\mathcal math",  "theorem",
             """{"theoremType":"theorem","content":"For Hilbert space $\\mathcal{H}^2$, ...","numbered":true}"""),
         new Fx("paragraph with inline \\sum math",    "paragraph",

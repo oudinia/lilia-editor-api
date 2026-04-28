@@ -140,6 +140,31 @@ public class LatexExportFixtureTests
             ExpectIn: new[] { @"\columnbreak" },
             ExpectNotIn: new[] { "Unsupported block type" }),
 
+        // Native LaTeX commands users type directly — must NOT be
+        // escaped by EscapeLatex. Without these placeholder rules,
+        // "\cite{X}" turns into "\textbackslash{}cite\{X\}" and renders
+        // as literal text in the PDF instead of a resolved citation.
+        new Fx("native \\cite preserved",
+            "paragraph", """{"text":"As in \\cite{smith2024}."}""",
+            ExpectIn: new[] { @"\cite{smith2024}" },
+            ExpectNotIn: new[] { @"\textbackslash" }),
+        new Fx("native \\ref preserved",
+            "paragraph", """{"text":"See Theorem \\ref{thm:x}."}""",
+            ExpectIn: new[] { @"\ref{thm:x}" },
+            ExpectNotIn: new[] { @"\textbackslash" }),
+        new Fx("native \\url preserved",
+            "paragraph", """{"text":"At \\url{https://x.com}."}""",
+            ExpectIn: new[] { @"\url{https://x.com}" }),
+        new Fx("native \\href preserved",
+            "paragraph", """{"text":"See \\href{https://x.com}{here}."}""",
+            ExpectIn: new[] { @"\href{https://x.com}{here}" }),
+        new Fx("native \\footnote preserved",
+            "paragraph", """{"text":"X\\footnote{Y}."}""",
+            ExpectIn: new[] { @"\footnote{Y}" }),
+        new Fx("display math $$ preserved",
+            "paragraph", """{"text":"$$a^2+b^2=c^2$$"}""",
+            ExpectIn: new[] { "$$a^2+b^2=c^2$$" }),
+
         // Heading numbering — baked-in legacy prefixes get stripped so
         // LaTeX auto-numbering doesn't double up.
         new Fx("heading strips baked '1. ' prefix",

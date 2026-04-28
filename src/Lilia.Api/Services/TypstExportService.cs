@@ -422,12 +422,18 @@ public class TypstExportService : ITypstExportService
 
         var s = text;
 
-        // 1. Inline math $x^2$ — Typst uses same $...$ syntax, BUT
-        //    LaTeX math commands ($\mathbb{R}$, $\int$ etc.) need the
-        //    same translation that equation blocks get. Otherwise an
-        //    inline math literal inside a paragraph/theorem/abstract
-        //    breaks the whole-document Typst compile and forces a
-        //    silent_fallback to pdflatex.
+        // 1a. Display math $$x^2$$ — convert to Typst's `$ X $` form
+        //     (Typst doesn't have a separate display-math syntax;
+        //     spaces inside $...$ enable display layout). MUST run
+        //     before the single-$ rule so the outer pair isn't read
+        //     as two adjacent inline spans.
+        s = Regex.Replace(s, @"\$\$([^$]+)\$\$", m => Ph($"$ {LatexMathToTypst(m.Groups[1].Value)} $"));
+
+        // 1b. Inline math $x^2$ — Typst uses same $...$ syntax, BUT
+        //     LaTeX math commands ($\mathbb{R}$, $\int$ etc.) need
+        //     translation. Otherwise an inline math literal inside a
+        //     paragraph/theorem/abstract breaks the whole-document
+        //     Typst compile and forces a silent_fallback to pdflatex.
         s = Regex.Replace(s, @"\$([^$]+)\$", m => Ph($"${LatexMathToTypst(m.Groups[1].Value)}$"));
 
         // 2. Inline code `text` — same backtick syntax in Typst.
@@ -455,13 +461,26 @@ public class TypstExportService : ITypstExportService
             m => Ph($"_{EscapeTypstInline(m.Groups[1].Value)}_"));
 
         // 6. References / citations — Typst uses @label syntax for both.
+        s = Regex.Replace(s, @"\\eqref\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
         s = Regex.Replace(s, @"\\ref\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
         s = Regex.Replace(s, @"\\cite\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
         s = Regex.Replace(s, @"@ref\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
         s = Regex.Replace(s, @"@cite\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
 
-        // 7. URLs.
+        // 7. URLs + links.
         s = Regex.Replace(s, @"\\url\{([^}]+)\}", m => Ph($"#link({QuoteTypst(m.Groups[1].Value)})"));
+        s = Regex.Replace(s, @"\\href\{([^}]+)\}\{([^}]+)\}",
+            m => Ph($"#link({QuoteTypst(m.Groups[1].Value)})[{EscapeTypstInline(m.Groups[2].Value)}]"));
+
+        // 7.5. \footnote{X} — Typst uses #footnote[X]
+        s = Regex.Replace(s, @"\\footnote\{([^}]+)\}",
+            m => Ph($"#footnote[{EscapeTypstInline(m.Groups[1].Value)}]"));
+
+        // 7.6. \label{X} — Typst uses <X> after the heading/element.
+        // For inline contexts we drop the label (Typst's label semantics
+        // attach to preceding content; mid-paragraph labels rarely make
+        // semantic sense). Keeps the source compiling.
+        s = Regex.Replace(s, @"\\label\{([^}]+)\}", m => Ph($"<{m.Groups[1].Value}>"));
 
         // 8. Escape remaining plain text (everything not in placeholders).
         s = EscapeTypstInline(s);
