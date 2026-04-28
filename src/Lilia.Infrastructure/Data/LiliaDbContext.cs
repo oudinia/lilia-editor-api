@@ -108,6 +108,13 @@ public class LiliaDbContext : DbContext
     public DbSet<LatexDocumentClass> LatexDocumentClasses => Set<LatexDocumentClass>();
     public DbSet<LatexTokenUsage> LatexTokenUsages => Set<LatexTokenUsage>();
 
+    // Typst translation catalog — parallel to the LaTeX side. Captures
+    // the LaTeX → Typst translation rules we ship in TypstExportService
+    // plus the known gaps that force a silent fallback to pdflatex.
+    // Joined to import_telemetry_events at report time for coverage.
+    public DbSet<TypstTranslationHandler> TypstTranslationHandlers => Set<TypstTranslationHandler>();
+    public DbSet<TypstTranslationGap> TypstTranslationGaps => Set<TypstTranslationGap>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -202,6 +209,51 @@ public class LiliaDbContext : DbContext
             e.HasIndex(x => new { x.TokenId, x.SessionId }).IsUnique().HasDatabaseName("ux_latex_token_usage_token_session");
             e.HasIndex(x => x.SessionId).HasDatabaseName("ix_latex_token_usage_session");
             e.HasIndex(x => x.LastSeenAt).HasDatabaseName("ix_latex_token_usage_last_seen");
+        });
+
+        // --- Typst translation catalog ---
+        modelBuilder.Entity<TypstTranslationHandler>(e =>
+        {
+            e.ToTable("typst_translation_handlers", t =>
+            {
+                t.HasCheckConstraint("ck_typst_handler_status",
+                    "status IN ('active','deprecated','planned')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.HandlerKey).HasColumnName("handler_key").HasMaxLength(80).IsRequired();
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(40).IsRequired();
+            e.Property(x => x.SourcePattern).HasColumnName("source_pattern").IsRequired();
+            e.Property(x => x.TypstEmit).HasColumnName("typst_emit").IsRequired();
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(20).IsRequired().HasDefaultValue("active");
+            e.Property(x => x.ShippedAt).HasColumnName("shipped_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.ShippedIn).HasColumnName("shipped_in").HasMaxLength(40);
+            e.Property(x => x.Notes).HasColumnName("notes");
+            e.HasIndex(x => x.HandlerKey).IsUnique().HasDatabaseName("ux_typst_handler_key");
+            e.HasIndex(x => new { x.Category, x.Status }).HasDatabaseName("ix_typst_handler_category_status");
+        });
+
+        modelBuilder.Entity<TypstTranslationGap>(e =>
+        {
+            e.ToTable("typst_translation_gaps", t =>
+            {
+                t.HasCheckConstraint("ck_typst_gap_mitigation",
+                    "mitigation_status IN ('none','workaround','scheduled','shipped')");
+                t.HasCheckConstraint("ck_typst_gap_severity",
+                    "blocking_severity IN ('info','warn','error')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.GapKey).HasColumnName("gap_key").HasMaxLength(80).IsRequired();
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(40).IsRequired();
+            e.Property(x => x.SamplePattern).HasColumnName("sample_pattern").IsRequired();
+            e.Property(x => x.TypstErrorShape).HasColumnName("typst_error_shape").HasMaxLength(120);
+            e.Property(x => x.MitigationStatus).HasColumnName("mitigation_status").HasMaxLength(20).IsRequired().HasDefaultValue("none");
+            e.Property(x => x.BlockingSeverity).HasColumnName("blocking_severity").HasMaxLength(20).IsRequired().HasDefaultValue("info");
+            e.Property(x => x.Notes).HasColumnName("notes");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => x.GapKey).IsUnique().HasDatabaseName("ux_typst_gap_key");
+            e.HasIndex(x => new { x.MitigationStatus, x.BlockingSeverity }).HasDatabaseName("ix_typst_gap_mitigation_severity");
         });
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(LiliaDbContext).Assembly);

@@ -265,6 +265,7 @@ builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 builder.Services.AddScoped<ITypstExportService, TypstExportService>();
 builder.Services.AddSingleton<ITypstCompileService, TypstCompileService>();
 builder.Services.AddScoped<IPreviewRenderService, PreviewRenderService>();
+builder.Services.AddScoped<ITypstCoverageService, TypstCoverageService>();
 builder.Services.AddScoped<IDocumentExportService, DocumentExportService>();
 builder.Services.AddScoped<IPreviewCacheService, PreviewCacheService>();
 builder.Services.AddScoped<IStudioService, StudioService>();
