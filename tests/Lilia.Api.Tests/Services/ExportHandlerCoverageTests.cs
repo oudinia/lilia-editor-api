@@ -57,8 +57,10 @@ public class ExportHandlerCoverageTests
     public void Latex_exporter_has_case_for_block_type(string blockType)
     {
         var src = File.ReadAllText(LatexExportPath);
-        // Match `"<type>" => …` in the RenderBlock switch.
-        var pattern = $"\"{blockType}\"\\s*=>";
+        // Match `"<type>" =>` for solo cases OR `"<type>" or "..." =>`
+        // for combined-alias cases (lowercase legacy forms now ride
+        // alongside canonical camelCase). Mirrors the Typst gate.
+        var pattern = $"\"{blockType}\"\\s*(=>|or\\s+\")";
         src.Should().MatchRegex(pattern,
             $"LaTeXExportService.RenderBlock should have a case for '{blockType}' — " +
             "without it the block silently falls to the empty default and " +
