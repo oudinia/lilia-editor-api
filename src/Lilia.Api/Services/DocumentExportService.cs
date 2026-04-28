@@ -15,7 +15,7 @@ public interface IDocumentExportService
     Task<ExportDocument> BuildExportDocumentAsync(Guid documentId);
     Task<byte[]> ExportToDocxAsync(Guid documentId);
     Task<byte[]> ExportToPdfAsync(Guid documentId);
-    Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId);
+    Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId, string? engineHint = null);
 }
 
 public class DocumentExportService : IDocumentExportService
@@ -105,20 +105,36 @@ public class DocumentExportService : IDocumentExportService
 
     public async Task<byte[]> ExportToPdfAsync(Guid documentId)
     {
-        var (pdf, _) = await ExportToPdfWithEngineAsync(documentId);
+        var (pdf, _) = await ExportToPdfWithEngineAsync(documentId, null);
         return pdf;
     }
 
-    public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId)
+    public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId, string? engineHint = null)
     {
-        // Phase 2 step 9 — Typst-first preview path. Sub-second compile when
-        // it works; on any failure we silently fall through to the existing
-        // pdflatex pipeline below. Telemetry on every fallback is recorded
-        // inside TryTypstPdfAsync so we see real-world coverage gaps.
-        var typstPdf = await _previewRender.TryTypstPdfAsync(documentId);
-        if (typstPdf is not null && typstPdf.Length > 0)
+        // engineHint = "typst"     → Typst only, throw if it fails
+        // engineHint = "pdflatex"  → skip Typst, go straight to pdflatex
+        // null / "auto" / anything else → existing behavior (Typst first,
+        //                                  silent fallback to pdflatex)
+        var hint = (engineHint ?? "auto").Trim().ToLowerInvariant();
+
+        if (hint != "pdflatex")
         {
-            return (typstPdf, "typst");
+            // Phase 2 step 9 — Typst-first preview path. Sub-second compile
+            // when it works; on any failure we silently fall through to the
+            // existing pdflatex pipeline below (unless caller asked for
+            // typst-only). Telemetry on every fallback is recorded inside
+            // TryTypstPdfAsync so we see real-world coverage gaps.
+            var typstPdf = await _previewRender.TryTypstPdfAsync(documentId);
+            if (typstPdf is not null && typstPdf.Length > 0)
+            {
+                return (typstPdf, "typst");
+            }
+            if (hint == "typst")
+            {
+                throw new InvalidOperationException(
+                    "Typst engine could not produce a PDF for this document. " +
+                    "Try the pdflatex engine instead.");
+            }
         }
 
         // pdflatex fallback — go through LaTeXExportService so PDF uses the

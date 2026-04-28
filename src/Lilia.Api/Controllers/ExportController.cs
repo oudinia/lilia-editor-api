@@ -134,10 +134,11 @@ public class ExportController : ControllerBase
     }
 
     /// <summary>
-    /// Export document as a PDF file
+    /// Export document as a PDF file. Optional engine query param:
+    /// "auto" (default — Typst with pdflatex fallback), "typst", or "pdflatex".
     /// </summary>
     [HttpGet("pdf")]
-    public async Task<IActionResult> ExportPdf(Guid docId)
+    public async Task<IActionResult> ExportPdf(Guid docId, [FromQuery] string engine = "auto")
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -147,11 +148,11 @@ public class ExportController : ControllerBase
         if (document == null)
             return NotFound();
 
-        _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId}", docId, userId);
+        _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId} (engine={Engine})", docId, userId, engine);
 
         try
         {
-            var (pdfBytes, engine) = await _documentExportService.ExportToPdfWithEngineAsync(docId);
+            var (pdfBytes, engineUsed) = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine);
             if (pdfBytes == null || pdfBytes.Length < 100 || !pdfBytes.AsSpan(0, 4).SequenceEqual("%PDF"u8))
             {
                 _logger.LogError("[Export] PDF for document {DocId} is empty or invalid ({Length} bytes) — tolerant compile produced no output", docId, pdfBytes?.Length ?? 0);
@@ -160,7 +161,7 @@ public class ExportController : ControllerBase
             // Hidden engine signal — used by E2E to assert the transparent
             // Typst path is taken when the document is in its supported set.
             // Users never see this; the editor surfaces a data-engine attr.
-            Response.Headers["X-Render-Engine"] = engine;
+            Response.Headers["X-Render-Engine"] = engineUsed;
             var sanitizedTitle = SanitizeFilename(document.Title);
             return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
         }
