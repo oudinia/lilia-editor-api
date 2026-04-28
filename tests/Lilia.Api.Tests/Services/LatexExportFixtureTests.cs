@@ -120,11 +120,25 @@ public class LatexExportFixtureTests
         new Fx("pageBreak: \\newpage",
             "pageBreak", """{}""",
             ExpectIn: new[] { @"\newpage" }),
+        new Fx("pagebreak (lowercase legacy form)",
+            "pagebreak", """{}""",
+            ExpectIn: new[] { @"\newpage" },
+            ExpectNotIn: new[] { "Unsupported block type" }),
 
         // tableOfContents
         new Fx("tableOfContents: \\tableofcontents",
             "tableOfContents", """{}""",
             ExpectIn: new[] { @"\tableofcontents" }),
+        new Fx("tableofcontents (lowercase legacy form)",
+            "tableofcontents", """{}""",
+            ExpectIn: new[] { @"\tableofcontents" },
+            ExpectNotIn: new[] { "Unsupported block type" }),
+
+        // columnBreak — lowercase legacy form
+        new Fx("columnbreak (lowercase legacy form)",
+            "columnbreak", """{}""",
+            ExpectIn: new[] { @"\columnbreak" },
+            ExpectNotIn: new[] { "Unsupported block type" }),
 
         // === regressions / leak guards ===
         new Fx("REGRESSION: list item with bold markdown survives to \\textbf",

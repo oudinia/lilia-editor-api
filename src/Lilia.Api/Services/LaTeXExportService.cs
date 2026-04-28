@@ -633,9 +633,11 @@ public class LaTeXExportService : ILaTeXExportService
                 "list" => RenderList(content),
                 "blockquote" => RenderBlockquote(content),
                 "theorem" => RenderTheorem(content),
-                "tableOfContents" => @"\tableofcontents" + "\n" + @"\newpage",
-                "pageBreak" => @"\newpage",
-                "columnBreak" => @"\columnbreak",
+                // Match both canonical camelCase (BlockTypes constants)
+                // and the all-lowercase forms legacy / imported data uses.
+                "tableOfContents" or "tableofcontents" or "toc" => @"\tableofcontents" + "\n" + @"\newpage",
+                "pageBreak" or "pagebreak" or "page_break" => @"\newpage",
+                "columnBreak" or "columnbreak" or "column_break" => @"\columnbreak",
                 "columnLayout" => RenderColumnLayout(content),
                 "personalInfo" => RenderPersonalInfo(content),
                 "photo" => RenderPhoto(content),

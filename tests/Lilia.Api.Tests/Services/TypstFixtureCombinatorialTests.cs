@@ -98,10 +98,13 @@ public class TypstFixtureCombinatorialTests
         new Fx("theorem",                    "theorem",   """{"theoremType":"theorem","content":"For all primes p, p > 1.","numbered":true}"""),
 
         new Fx("tableOfContents",            "tableOfContents", """{}"""),
+        new Fx("tableofcontents lowercase",  "tableofcontents", """{}"""),
         new Fx("toc alias",                  "toc",       """{}"""),
         new Fx("pageBreak",                  "pageBreak", """{}"""),
+        new Fx("pagebreak lowercase",        "pagebreak", """{}"""),
         new Fx("page_break alias",           "page_break","""{}"""),
         new Fx("columnBreak",                "columnBreak","""{}"""),
+        new Fx("columnbreak lowercase",      "columnbreak","""{}"""),
         new Fx("divider alias",              "divider",   """{}"""),
 
         // Bibliography emits #bibliography("references.bib") but the
