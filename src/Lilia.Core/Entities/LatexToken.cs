@@ -65,6 +65,19 @@ public class LatexToken
 
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Optional snippet inserted by the editor when the user picks this
+    /// token from the InsertionsPanel or ⌘K palette. Use the literal
+    /// string <c>|CURSOR|</c> to mark where the caret should land after
+    /// insertion. NULL falls back to the default templates in
+    /// <c>insertTokenIntoEditor</c> (commands → <c>\name{|CURSOR|}</c>;
+    /// environments → <c>\begin{name}\n  |CURSOR|\n\end{name}</c>).
+    ///
+    /// Edited via Lilia Admin; data-driven so launching new tokens with
+    /// quality starter snippets doesn't require an editor redeploy.
+    /// </summary>
+    public string? InsertTemplate { get; set; }
+
     /// <summary>When set, this token is a synonym of another (e.g. \citep → \cite). Parser resolves on load.</summary>
     public Guid? AliasOf { get; set; }
 

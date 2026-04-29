@@ -79,7 +79,8 @@ public class InsertionsController : ControllerBase
                 t.SemanticCategory,
                 t.CoverageLevel,
                 t.ExpectsBody,
-                t.Notes))
+                t.Notes,
+                t.InsertTemplate))
             .ToListAsync(ct);
 
         _logger.LogInformation(
@@ -132,4 +133,10 @@ public sealed record InsertionDto(
     string? SemanticCategory,
     string CoverageLevel,
     bool ExpectsBody,
-    string? Notes);
+    string? Notes,
+    /// <summary>
+    /// Optional starter snippet for this token. <c>|CURSOR|</c> marks
+    /// where the editor caret lands post-insert. NULL means the editor
+    /// uses its default templates (see insertTokenIntoEditor).
+    /// </summary>
+    string? InsertTemplate);
