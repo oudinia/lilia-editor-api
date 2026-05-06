@@ -81,6 +81,15 @@ public class InsertionEventsController : ControllerBase
     /// Top tokens by insertion count over the recent window. Drives
     /// the weekly catalog backfill triage. Default window 30 days,
     /// configurable up to 365.
+    ///
+    /// Implementation note (LILIA-125): the original LINQ used
+    /// <c>g.Select(x =&gt; x.UserId).Distinct().Count()</c> inside the
+    /// GroupBy projection, which Npgsql can't translate
+    /// (https://learn.microsoft.com/ef-core/querying/client-eval).
+    /// We project the small pre-aggregate (token + user) into memory
+    /// then group there. Volume is low (telemetry started 2026-04-29);
+    /// switch to raw SQL with <c>COUNT(DISTINCT user_id)</c> when the
+    /// row count gets uncomfortable.
     /// </summary>
     [HttpGet("stats/top")]
     public async Task<ActionResult<List<InsertionStatRow>>> GetTopTokens(
@@ -92,8 +101,19 @@ public class InsertionEventsController : ControllerBase
         limit = Math.Clamp(limit, 1, 200);
         var since = DateTime.UtcNow.AddDays(-windowDays);
 
-        var rows = await _db.LatexInsertionEvents.AsNoTracking()
+        var raw = await _db.LatexInsertionEvents.AsNoTracking()
             .Where(e => e.CreatedAt >= since)
+            .Select(e => new
+            {
+                e.TokenName,
+                e.TokenKind,
+                e.TokenPackageSlug,
+                e.UserId,
+                e.WrappedSelection,
+            })
+            .ToListAsync(ct);
+
+        var rows = raw
             .GroupBy(e => new { e.TokenName, e.TokenKind, e.TokenPackageSlug })
             .Select(g => new InsertionStatRow(
                 g.Key.TokenName,
@@ -105,7 +125,7 @@ public class InsertionEventsController : ControllerBase
             ))
             .OrderByDescending(r => r.Hits)
             .Take(limit)
-            .ToListAsync(ct);
+            .ToList();
 
         return Ok(rows);
     }
@@ -113,6 +133,9 @@ public class InsertionEventsController : ControllerBase
     /// <summary>
     /// Source-mix breakdown — which surface drives most insertions.
     /// Tells us where to invest UX polish.
+    ///
+    /// Implementation note (LILIA-125): same client-side group as
+    /// <see cref="GetTopTokens"/> — see comment there.
     /// </summary>
     [HttpGet("stats/sources")]
     public async Task<ActionResult<List<InsertionSourceRow>>> GetSourceMix(
@@ -122,8 +145,12 @@ public class InsertionEventsController : ControllerBase
         windowDays = Math.Clamp(windowDays, 1, 365);
         var since = DateTime.UtcNow.AddDays(-windowDays);
 
-        var rows = await _db.LatexInsertionEvents.AsNoTracking()
+        var raw = await _db.LatexInsertionEvents.AsNoTracking()
             .Where(e => e.CreatedAt >= since)
+            .Select(e => new { e.Source, e.UserId })
+            .ToListAsync(ct);
+
+        var rows = raw
             .GroupBy(e => e.Source)
             .Select(g => new InsertionSourceRow(
                 g.Key,
@@ -131,7 +158,7 @@ public class InsertionEventsController : ControllerBase
                 g.Select(x => x.UserId).Distinct().Count()
             ))
             .OrderByDescending(r => r.Hits)
-            .ToListAsync(ct);
+            .ToList();
 
         return Ok(rows);
     }
