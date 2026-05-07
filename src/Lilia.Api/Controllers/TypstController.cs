@@ -41,27 +41,13 @@ public class TypstController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Render a document as Typst source and compile to PDF.
-    /// </summary>
-    [HttpGet("/api/documents/{documentId:guid}/preview/typst")]
-    public async Task<IActionResult> PreviewDocumentTypst(Guid documentId)
-    {
-        if (!_typstService.IsAvailable)
-            return StatusCode(503, new { error = "Typst binary is not available on this server" });
-
-        try
-        {
-            var typstSource = await _typstService.RenderToTypstAsync(documentId);
-            var pdf = await _typstService.CompileTypstToPdfAsync(typstSource);
-            return File(pdf, "application/pdf", $"document-{documentId}.pdf");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to preview document {DocumentId} as Typst", documentId);
-            return BadRequest(new { error = ex.Message });
-        }
-    }
+    // NOTE: a `GET /api/documents/{documentId:guid}/preview/typst` route used
+    // to live here. It collided with PreviewController.GetTypstPreview, which
+    // is the canonical preview endpoint — it goes through TypstExporter
+    // (documentclass-aware), supports ?format=svg|pdf|png for inline preview
+    // vs download, and returns 503 with structured fallback hints. Removing
+    // the duplicate here resolves the AmbiguousMatchException (LILIA-135).
+    // Continue using PreviewController for the preview path.
 
     /// <summary>
     /// Export a document as Typst source (.typ file).
