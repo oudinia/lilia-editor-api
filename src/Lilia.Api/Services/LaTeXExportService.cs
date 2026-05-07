@@ -434,9 +434,12 @@ public class LaTeXExportService : ILaTeXExportService
         {
             using var json = JsonDocument.Parse(doc.LatexPackages);
             if (json.RootElement.ValueKind != JsonValueKind.Array) return string.Empty;
-            var sb = new StringBuilder();
+            // LILIA-130: emit the comment header only if at least one
+            // package actually goes into the body. See RenderService for
+            // the same fix; both paths shared the original behavior of
+            // emitting the comment unconditionally.
+            var body = new StringBuilder();
             var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            sb.AppendLine("% Packages preserved from imported preamble (IfFileExists-wrapped)");
             foreach (var pkg in json.RootElement.EnumerateArray())
             {
                 var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
@@ -447,9 +450,12 @@ public class LaTeXExportService : ILaTeXExportService
                 var load = string.IsNullOrWhiteSpace(opts)
                     ? $"\\usepackage{{{name}}}"
                     : $"\\usepackage[{opts}]{{{name}}}";
-                sb.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
+                body.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
             }
-            return sb.ToString();
+            if (body.Length == 0) return string.Empty;
+            return "% Packages preserved from imported preamble (IfFileExists-wrapped)"
+                 + Environment.NewLine
+                 + body.ToString();
         }
         catch
         {
