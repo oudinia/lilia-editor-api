@@ -92,6 +92,7 @@ public class PreviewRenderService : IPreviewRenderService
         Document? doc;
         List<Block> blocks;
         List<BibliographyEntry> bibEntries;
+        List<BlockGroup> layoutGroups;
         try
         {
             doc = await _db.Documents.AsNoTracking()
@@ -109,6 +110,15 @@ public class PreviewRenderService : IPreviewRenderService
             bibEntries = await _db.BibliographyEntries.AsNoTracking()
                 .Where(b => b.DocumentId == documentId)
                 .ToListAsync(ct);
+
+            // Layout-dimension groups so the exporter can wrap the
+            // right runs in `#columns(N)` (LILIA-136). Other dimensions
+            // are not consulted here.
+            layoutGroups = await _db.BlockGroups.AsNoTracking()
+                .Where(g => g.DocumentId == documentId
+                         && g.Dimension == BlockGroupDimensions.Layout)
+                .Include(g => g.Memberships)
+                .ToListAsync(ct);
         }
         catch (Exception ex)
         {
@@ -119,7 +129,7 @@ public class PreviewRenderService : IPreviewRenderService
         string source;
         try
         {
-            source = _typstExporter.BuildTypstDocument(doc, blocks);
+            source = _typstExporter.BuildTypstDocument(doc, blocks, layoutGroups);
         }
         catch (Exception ex)
         {

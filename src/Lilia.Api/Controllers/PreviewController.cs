@@ -1,5 +1,6 @@
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
+using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -351,7 +352,15 @@ public class PreviewController : ControllerBase
             .OrderBy(b => b.SortOrder)
             .ToListAsync();
 
-        var typstSource = _typstExporter.BuildTypstDocument(document, blocks);
+        // Load layout-dimension groups so the exporter can wrap the
+        // right block runs in `#columns(N)`. Other dimensions are
+        // ignored here — exporter only consults the layout dimension.
+        var layoutGroups = await _context.BlockGroups
+            .Where(g => g.DocumentId == docId && g.Dimension == BlockGroupDimensions.Layout)
+            .Include(g => g.Memberships)
+            .ToListAsync();
+
+        var typstSource = _typstExporter.BuildTypstDocument(document, blocks, layoutGroups);
 
         var outputFormat = format.ToLowerInvariant() switch
         {
