@@ -45,10 +45,22 @@ public class TypstExportService : ITypstExportService
     /// Build a complete Typst document from in-memory blocks. Mirrors
     /// LaTeXExportService.BuildSingleFileLatex — same shape, different
     /// output language.
+    ///
+    /// Column handling (LILIA-136): per-block "effective column count"
+    /// is derived from layout-dimension groups (see <see cref="BlockGroup"/>).
+    /// Blocks NOT in any layout group fall back to <c>doc.Columns</c>
+    /// (the doc-level default we shipped in LILIA-135). Contiguous
+    /// blocks with the same effective count are batched into a single
+    /// <c>#columns(N)[ ... ]</c> wrapper; runs of 1 column are emitted
+    /// inline. This composes naturally — a 2-col doc with a 1-col
+    /// layout group around the abstract gets a single-column abstract
+    /// followed by a `#columns(2)[...]` body, matching the standard
+    /// academic-paper shape.
     /// </summary>
     public string BuildTypstDocument(
         Document doc,
         List<Block> blocks,
+        IReadOnlyList<BlockGroup>? layoutGroups = null,
         TypstExportOptions? options = null)
     {
         options ??= new TypstExportOptions();
@@ -74,16 +86,6 @@ public class TypstExportService : ITypstExportService
         // title. If we always emit our own `= Title` AND the matching
         // heading block also renders, the user sees the title twice.
         // Skip the duplicate block via FirstHeadingMatchesTitle below.
-        //
-        // Column handling (LILIA-135): when `doc.Columns >= 2` we wrap
-        // the body in `#columns(N)[ ... ]` and keep the title outside
-        // the wrapper. The title naturally spans the full page width
-        // (academic-paper convention) and `#columns()` balances the
-        // body across columns, matching LaTeX's `multicol` semantics.
-        // We chose this over `#set page(columns: N)` because the
-        // page-level form does not balance — short docs leave column
-        // 2 visibly empty, which read as "the toggle does nothing."
-        // Reference: typst.app/docs/reference/layout/columns.
         var titleDuplicateBlockId = FindTitleDuplicateBlockId(doc.Title, blocks);
         if (!string.IsNullOrEmpty(doc.Title))
         {
@@ -91,30 +93,74 @@ public class TypstExportService : ITypstExportService
             sb.AppendLine();
         }
 
-        var colCount = Math.Clamp(doc.Columns, 1, 3);
-        if (colCount > 1)
+        var defaultCols = Math.Clamp(doc.Columns, 1, 3);
+        var blockToCols = BuildBlockColumnMap(layoutGroups, defaultCols);
+
+        // Emit blocks in run-batches of equal effective column count.
+        // Switching column count flushes the current run wrapper and
+        // opens a new one. Single-column runs are emitted inline (no
+        // wrapper) since `#columns(1)[...]` is a no-op that just adds
+        // visual noise to the source.
+        var orderedBlocks = blocks
+            .Where(b => !titleDuplicateBlockId.HasValue || b.Id != titleDuplicateBlockId.Value)
+            .OrderBy(b => b.SortOrder)
+            .ToList();
+
+        int? currentRunCols = null;
+        foreach (var block in orderedBlocks)
         {
-            sb.AppendLine($"#columns({colCount})[");
+            var rendered = RenderBlock(block);
+            if (string.IsNullOrWhiteSpace(rendered)) continue;
+
+            var blockCols = blockToCols.TryGetValue(block.Id, out var n) ? n : defaultCols;
+
+            if (blockCols != currentRunCols)
+            {
+                if (currentRunCols is > 1) sb.AppendLine("]");
+                if (blockCols > 1) sb.AppendLine($"#columns({blockCols})[");
+                currentRunCols = blockCols;
+            }
+
+            sb.AppendLine(rendered);
+            sb.AppendLine();
         }
 
-        foreach (var block in blocks.OrderBy(b => b.SortOrder))
+        if (currentRunCols is > 1) sb.AppendLine("]");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Map each block id to its effective column count. Layout-dimension
+    /// groups override the document-level default. Blocks not in any
+    /// layout group are absent from the map (callers fall back to default).
+    /// </summary>
+    private static Dictionary<Guid, int> BuildBlockColumnMap(
+        IReadOnlyList<BlockGroup>? layoutGroups,
+        int defaultCols)
+    {
+        var map = new Dictionary<Guid, int>();
+        if (layoutGroups == null) return map;
+
+        foreach (var group in layoutGroups)
         {
-            if (titleDuplicateBlockId.HasValue && block.Id == titleDuplicateBlockId.Value)
-                continue;
-            var rendered = RenderBlock(block);
-            if (!string.IsNullOrWhiteSpace(rendered))
+            if (group.Dimension != BlockGroupDimensions.Layout) continue;
+
+            int cols = defaultCols;
+            if (group.Attributes.RootElement.TryGetProperty("columns", out var colsProp)
+                && colsProp.ValueKind == JsonValueKind.Number
+                && colsProp.TryGetInt32(out var raw))
             {
-                sb.AppendLine(rendered);
-                sb.AppendLine();
+                cols = Math.Clamp(raw, 1, 3);
+            }
+
+            foreach (var membership in group.Memberships)
+            {
+                map[membership.BlockId] = cols;
             }
         }
 
-        if (colCount > 1)
-        {
-            sb.AppendLine("]");
-        }
-
-        return sb.ToString();
+        return map;
     }
 
     /// <summary>Public test entry — render a single block to its
@@ -909,7 +955,11 @@ public class TypstExportService : ITypstExportService
 
 public interface ITypstExportService
 {
-    string BuildTypstDocument(Document doc, List<Block> blocks, TypstExportOptions? options = null);
+    string BuildTypstDocument(
+        Document doc,
+        List<Block> blocks,
+        IReadOnlyList<BlockGroup>? layoutGroups = null,
+        TypstExportOptions? options = null);
     string RenderBlockForTest(Block block);
 }
 
