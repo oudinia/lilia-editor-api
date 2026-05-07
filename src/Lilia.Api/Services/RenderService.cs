@@ -834,9 +834,15 @@ public partial class RenderService : IRenderService
         {
             using var json = JsonDocument.Parse(doc.LatexPackages);
             if (json.RootElement.ValueKind != JsonValueKind.Array) return string.Empty;
-            var sb = new StringBuilder();
+            // LILIA-130: build the body first, then prepend the comment
+            // only when at least one package actually emitted. Previously
+            // we wrote the comment unconditionally, so a doc whose
+            // LatexPackages array contained only DefaultPreamblePackages
+            // (or was empty after filtering) ended up with a "Packages
+            // preserved from imported preamble" header followed by
+            // nothing — confusing on new (non-imported) docs.
+            var body = new StringBuilder();
             var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            sb.AppendLine("% Packages preserved from imported preamble (IfFileExists-wrapped)");
             foreach (var pkg in json.RootElement.EnumerateArray())
             {
                 var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
@@ -847,9 +853,12 @@ public partial class RenderService : IRenderService
                 var load = string.IsNullOrWhiteSpace(o)
                     ? $"\\usepackage{{{name}}}"
                     : $"\\usepackage[{o}]{{{name}}}";
-                sb.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
+                body.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
             }
-            return sb.ToString();
+            if (body.Length == 0) return string.Empty;
+            return "% Packages preserved from imported preamble (IfFileExists-wrapped)"
+                 + Environment.NewLine
+                 + body.ToString();
         }
         catch { return string.Empty; }
     }
