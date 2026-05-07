@@ -792,17 +792,10 @@ public partial class RenderService : IRenderService
         return result;
     }
 
-    // Mirror of LaTeXExportService.BuildDocumentClassDirective but reads only
-    // from the Document — no LaTeXExportOptions available in this code path.
-    private static readonly HashSet<string> SafeDocumentClasses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "article", "report", "book", "letter", "minimal",
-        "amsart", "amsbook", "amsproc",
-        "memoir",
-        "scrartcl", "scrbook", "scrreprt",
-        "beamer", "beamerposter"
-    };
-
+    // Set of package names already loaded by the default preamble — used
+    // by BuildImportedPackageLinesFromDoc to avoid double-loading them
+    // when the imported preamble had them. Class directive / option
+    // logic moved to LaTeXPreambleBuilder under LILIA-120.
     private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
     {
         "inputenc", "fontenc", "textcomp", "lmodern",
@@ -825,57 +818,14 @@ public partial class RenderService : IRenderService
         "newspaper", "yfonts"
     };
 
-    private static readonly HashSet<string> ArticleKnownOptions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "10pt", "11pt", "12pt",
-        "a4paper", "a5paper", "letterpaper", "legalpaper", "executivepaper", "b5paper",
-        "landscape", "portrait",
-        "onecolumn", "twocolumn",
-        "oneside", "twoside",
-        "openright", "openany",
-        "final", "draft",
-        "titlepage", "notitlepage",
-        "fleqn", "leqno",
-        "openbib",
-    };
-
-    private static string? CleanClassOption(string raw)
-    {
-        var t = raw;
-        var pct = t.IndexOf('%');
-        if (pct >= 0) t = t.Substring(0, pct);
-        t = t.Trim();
-        if (t.Length == 0) return null;
-        if (t.Any(c => c == '\r' || c == '\n' || c == '\t')) return null;
-        return t;
-    }
-
-    private static string BuildDocumentClassDirectiveFromDoc(Document doc)
-    {
-        var stored = doc.LatexDocumentClass?.Trim();
-        var usingStored = !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored);
-        var className = usingStored ? stored! : "article";
-        var opts = new List<string>();
-        opts.Add($"{doc.FontSize}pt");
-        opts.Add(string.Equals(doc.PaperSize, "letter", StringComparison.OrdinalIgnoreCase) ? "letterpaper" : "a4paper");
-        if (!string.IsNullOrWhiteSpace(doc.LatexDocumentClassOptions))
-        {
-            foreach (var t in doc.LatexDocumentClassOptions.Split(','))
-            {
-                var o = CleanClassOption(t);
-                if (o == null) continue;
-                if (!usingStored && !ArticleKnownOptions.Contains(o)) continue;
-                if (!opts.Contains(o)) opts.Add(o);
-            }
-        }
-        if (doc.Columns >= 2 && !opts.Any(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase)))
-        {
-            opts.Add("twocolumn");
-        }
-        return opts.Count > 0
-            ? $"\\documentclass[{string.Join(",", opts)}]{{{className}}}"
-            : $"\\documentclass{{{className}}}";
-    }
+    /// <summary>
+    /// Class directive builder — thin wrapper over
+    /// <see cref="LaTeXPreambleBuilder.BuildClassDirective"/>. The
+    /// duplicate logic that used to live here was consolidated under
+    /// LILIA-120 so export and live-render emit identical preambles.
+    /// </summary>
+    private static string BuildDocumentClassDirectiveFromDoc(Document doc) =>
+        LaTeXPreambleBuilder.BuildClassDirective(doc);
 
     private static string BuildImportedPackageLinesFromDoc(Document doc)
     {
@@ -936,15 +886,28 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.NewspaperShims);
         latex.AppendLine(LaTeXPreamble.CalendarShims);
 
-        // Multi-column support
-        if (doc.Columns > 1)
+        // Layout settings (margins, line spacing, paragraph indent, page
+        // numbering, header/footer, font family, columns) — owned by
+        // LaTeXPreambleBuilder so this path emits the same preamble as
+        // the export ZIP. Multi-column wrapping (multicol package +
+        // \begin{multicols}) is included here when BalancedColumns is on
+        // OR when Columns >= 2 — the live preview always uses multicol
+        // for >1 column docs since it was the historical behaviour
+        // before LILIA-120.
+        var layout = LaTeXPreambleBuilder.BuildLayoutPreamble(doc);
+        if (!string.IsNullOrWhiteSpace(layout))
+        {
+            latex.AppendLine(layout);
+        }
+        // Live-render compatibility: when BalancedColumns is OFF but
+        // Columns >= 2, we still want multicol available for the body
+        // wrapper below (this matches the preview's pre-LILIA-120
+        // behaviour). The class option twocolumn was already added to
+        // the directive — multicol on top is harmless (it's a no-op
+        // unless \begin{multicols} is invoked).
+        if (doc.Columns > 1 && !doc.BalancedColumns)
         {
             latex.AppendLine(@"\usepackage{multicol}");
-            latex.AppendLine($@"\setlength{{\columnsep}}{{{doc.ColumnGap}cm}}");
-            if (doc.ColumnSeparator == "rule")
-            {
-                latex.AppendLine(@"\setlength{\columnseprule}{0.4pt}");
-            }
         }
 
         latex.AppendLine();
@@ -957,8 +920,17 @@ public partial class RenderService : IRenderService
         latex.AppendLine(@"\maketitle");
         latex.AppendLine();
 
-        // Multi-column wrapper
-        if (doc.Columns > 1)
+        // Multi-column wrapper. BalancedColumns uses the builder's
+        // wrappers (so we honour the requested column count); legacy
+        // unbalanced multi-column docs keep the historical
+        // \begin{multicols}{N} wrapper from the previous code path.
+        var bodyOpener = LaTeXPreambleBuilder.BuildBodyOpener(doc);
+        if (!string.IsNullOrEmpty(bodyOpener))
+        {
+            latex.AppendLine(bodyOpener);
+            latex.AppendLine();
+        }
+        else if (doc.Columns > 1)
         {
             latex.AppendLine($@"\begin{{multicols}}{{{doc.Columns}}}");
             latex.AppendLine();
@@ -971,8 +943,14 @@ public partial class RenderService : IRenderService
             latex.AppendLine(RenderBlockToLatex(block));
         }
 
-        // Close multi-column wrapper
-        if (doc.Columns > 1)
+        // Close multi-column wrapper (paired with the opener above).
+        var bodyCloser = LaTeXPreambleBuilder.BuildBodyCloser(doc);
+        if (!string.IsNullOrEmpty(bodyCloser))
+        {
+            latex.AppendLine();
+            latex.AppendLine(bodyCloser);
+        }
+        else if (doc.Columns > 1)
         {
             latex.AppendLine();
             latex.AppendLine(@"\end{multicols}");
