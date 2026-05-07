@@ -74,11 +74,27 @@ public class TypstExportService : ITypstExportService
         // title. If we always emit our own `= Title` AND the matching
         // heading block also renders, the user sees the title twice.
         // Skip the duplicate block via FirstHeadingMatchesTitle below.
+        //
+        // Column handling (LILIA-135): when `doc.Columns >= 2` we wrap
+        // the body in `#columns(N)[ ... ]` and keep the title outside
+        // the wrapper. The title naturally spans the full page width
+        // (academic-paper convention) and `#columns()` balances the
+        // body across columns, matching LaTeX's `multicol` semantics.
+        // We chose this over `#set page(columns: N)` because the
+        // page-level form does not balance — short docs leave column
+        // 2 visibly empty, which read as "the toggle does nothing."
+        // Reference: typst.app/docs/reference/layout/columns.
         var titleDuplicateBlockId = FindTitleDuplicateBlockId(doc.Title, blocks);
         if (!string.IsNullOrEmpty(doc.Title))
         {
             sb.AppendLine($"= {EscapeTypstInline(doc.Title)}");
             sb.AppendLine();
+        }
+
+        var colCount = Math.Clamp(doc.Columns, 1, 3);
+        if (colCount > 1)
+        {
+            sb.AppendLine($"#columns({colCount})[");
         }
 
         foreach (var block in blocks.OrderBy(b => b.SortOrder))
@@ -91,6 +107,11 @@ public class TypstExportService : ITypstExportService
                 sb.AppendLine(rendered);
                 sb.AppendLine();
             }
+        }
+
+        if (colCount > 1)
+        {
+            sb.AppendLine("]");
         }
 
         return sb.ToString();
