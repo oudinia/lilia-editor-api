@@ -147,7 +147,22 @@ public class LaTeXExportService : ILaTeXExportService
         // above, the user sees the title twice.
         var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography").ToList();
         mainBlocks = StripDuplicateTitleHeading(doc.Title, mainBlocks);
+
+        // Balanced-columns body wrapper (multicol). Empty for non-balanced
+        // docs — the twocolumn class option handles those upstream.
+        var bodyOpener = LaTeXPreambleBuilder.BuildBodyOpener(doc);
+        var bodyCloser = LaTeXPreambleBuilder.BuildBodyCloser(doc);
+        if (!string.IsNullOrEmpty(bodyOpener))
+        {
+            sb.AppendLine(bodyOpener);
+            sb.AppendLine();
+        }
         sb.AppendLine(BlocksToLatex(mainBlocks));
+        if (!string.IsNullOrEmpty(bodyCloser))
+        {
+            sb.AppendLine();
+            sb.AppendLine(bodyCloser);
+        }
 
         // Bibliography
         if (bibEntries.Count > 0)
@@ -352,20 +367,12 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── Package/preamble generation ────────────────────────────────────
 
-    // Classes the DO App Platform container reliably provides. Anything outside
-    // this list (mnras, aastex, pnas, IEEEtran, etc.) requires a .cls we don't
-    // ship, so we fall back to article and rely on shim commands.
-    private static readonly HashSet<string> SafeDocumentClasses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "article", "report", "book", "letter", "minimal",
-        "amsart", "amsbook", "amsproc",
-        "memoir",
-        "scrartcl", "scrbook", "scrreprt",
-        // Presentation classes — beamer and beamerposter ship with texlive-full.
-        // Keeping the class means \\begin{frame} compiles as a real slide instead
-        // of being shimmed into article text.
-        "beamer", "beamerposter"
-    };
+    // Document-class allow-list, article-known options, and the
+    // CleanClassOption helper used to live here. They were consolidated
+    // into LaTeXPreambleBuilder under LILIA-120 so the export and
+    // live-preview paths stay in lock-step. Keep DefaultPreamblePackages
+    // here — it's specific to the imported-package emission path that
+    // export owns, not class-directive logic.
 
     // Packages our default preamble already loads OR packages that conflict
     // with it (typeface-swappers redefining math commands that amsmath owns).
@@ -399,80 +406,19 @@ public class LaTeXExportService : ILaTeXExportService
         "newspaper", "yfonts"
     };
 
-    // When we fall back to article (stored class not in SafeDocumentClasses),
-    // most stored options are class-specific garbage (e.g. sidecolor=gray!50,
-    // sectioncolor=materialblue for sixtysecondscv). Only forward options
-    // that article actually understands; drop the rest silently to keep
-    // \documentclass[…]{article} parseable.
-    private static readonly HashSet<string> ArticleKnownOptions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "10pt", "11pt", "12pt",
-        "a4paper", "a5paper", "letterpaper", "legalpaper", "executivepaper", "b5paper",
-        "landscape", "portrait",
-        "onecolumn", "twocolumn",
-        "oneside", "twoside",
-        "openright", "openany",
-        "final", "draft",
-        "titlepage", "notitlepage",
-        "fleqn", "leqno",
-        "openbib",
-    };
-
     /// <summary>
-    /// Clean one class-option token: strip the LaTeX comment marker and
-    /// everything after it, trim whitespace, drop anything empty. Also
-    /// drops multi-line artefacts (if a token still contains a newline
-    /// after comment stripping it was malformed in the source).
-    /// </summary>
-    private static string? CleanClassOption(string raw)
-    {
-        var t = raw;
-        var pct = t.IndexOf('%');
-        if (pct >= 0) t = t.Substring(0, pct);
-        // Collapse any internal whitespace (newline + tab) — article options
-        // are always short tokens without embedded whitespace.
-        t = t.Trim();
-        if (t.Length == 0) return null;
-        if (t.Any(c => c == '\r' || c == '\n' || c == '\t')) return null;
-        return t;
-    }
-
-    /// <summary>
-    /// Build the `\documentclass[...]{...}` directive honoring the stored
-    /// imported preamble (LatexDocumentClass/LatexDocumentClassOptions) and
-    /// merging in font size, paper size, and twocolumn (if doc.Columns >= 2).
+    /// Build the `\documentclass[...]{...}` directive. Thin wrapper over
+    /// <see cref="LaTeXPreambleBuilder.BuildClassDirective"/>; kept here
+    /// only as a stable entry point for the export call sites. The
+    /// builder is the single source of truth — see LILIA-120.
     /// </summary>
     private static string BuildDocumentClassDirective(Document doc, LaTeXExportOptions options)
     {
-        var storedClass = doc.LatexDocumentClass?.Trim();
-        var usingStoredClass = !string.IsNullOrWhiteSpace(storedClass) && SafeDocumentClasses.Contains(storedClass);
-        var className = usingStoredClass ? storedClass! : options.DocumentClass;
-
-        var classOpts = new List<string>();
-        if (!string.IsNullOrEmpty(options.FontSize)) classOpts.Add(options.FontSize);
-        if (!string.IsNullOrEmpty(options.PaperSize)) classOpts.Add(options.PaperSize);
-
-        if (!string.IsNullOrWhiteSpace(doc.LatexDocumentClassOptions))
-        {
-            foreach (var rawTok in doc.LatexDocumentClassOptions.Split(','))
-            {
-                var t = CleanClassOption(rawTok);
-                if (t == null) continue;
-                // On article fallback, only forward article-known options;
-                // silently drop class-specific garbage (sidecolor=gray!50, etc.).
-                if (!usingStoredClass && !ArticleKnownOptions.Contains(t)) continue;
-                if (!classOpts.Contains(t)) classOpts.Add(t);
-            }
-        }
-
-        if (doc.Columns >= 2 && !classOpts.Any(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase)))
-        {
-            classOpts.Add("twocolumn");
-        }
-
-        return classOpts.Count > 0
-            ? $"\\documentclass[{string.Join(",", classOpts)}]{{{className}}}"
-            : $"\\documentclass{{{className}}}";
+        return LaTeXPreambleBuilder.BuildClassDirective(
+            doc,
+            fontSizeOverride: string.IsNullOrEmpty(options.FontSize) ? null : options.FontSize,
+            paperSizeOverride: string.IsNullOrEmpty(options.PaperSize) ? null : options.PaperSize,
+            fallbackClass: options.DocumentClass);
     }
 
     /// <summary>
@@ -577,30 +523,20 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine(@"\usepackage[version=4]{mhchem}");
         }
 
-        // Margins via geometry
-        var marginParts = new List<string>();
-        if (!string.IsNullOrEmpty(doc.MarginTop)) marginParts.Add($"top={doc.MarginTop}");
-        if (!string.IsNullOrEmpty(doc.MarginBottom)) marginParts.Add($"bottom={doc.MarginBottom}");
-        if (!string.IsNullOrEmpty(doc.MarginLeft)) marginParts.Add($"left={doc.MarginLeft}");
-        if (!string.IsNullOrEmpty(doc.MarginRight)) marginParts.Add($"right={doc.MarginRight}");
-        if (marginParts.Count > 0)
+        // Layout settings (margins, line spacing, paragraph indent, page
+        // numbering, header/footer, font family, column gap/separator,
+        // multicol package). All routed through the consolidated builder
+        // so export and live-render stay in sync — see LILIA-120.
+        var layout = LaTeXPreambleBuilder.BuildLayoutPreamble(
+            doc,
+            // Honour the legacy options.LineSpacing override only when
+            // the document itself doesn't set a line-spacing value;
+            // otherwise the document's stored setting wins.
+            lineSpacingOverride: doc.LineSpacing.HasValue ? null : options.LineSpacing);
+        if (!string.IsNullOrWhiteSpace(layout))
         {
             sb.AppendLine();
-            sb.AppendLine("% Page margins");
-            sb.AppendLine($@"\usepackage[{string.Join(",", marginParts)}]{{geometry}}");
-        }
-
-        // Line spacing (setspace already loaded in shared preamble)
-        if (options.LineSpacing != 1.0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("% Line spacing");
-            if (Math.Abs(options.LineSpacing - 1.5) < 0.01)
-                sb.AppendLine(@"\onehalfspacing");
-            else if (Math.Abs(options.LineSpacing - 2.0) < 0.01)
-                sb.AppendLine(@"\doublespacing");
-            else
-                sb.AppendLine($@"\setstretch{{{options.LineSpacing}}}");
+            sb.Append(layout);
         }
 
         return sb.ToString();
