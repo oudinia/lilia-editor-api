@@ -375,6 +375,91 @@ public class DocumentsControllerTests : IntegrationTestBase
         doc.ColumnGap.Should().Be(2.0);
     }
 
+    // --- PUT /api/documents/{id} documentclass-first popover fields (LILIA-131) ---
+
+    [Fact]
+    public async Task UpdateDocument_DocumentClassAndCategory_Persist()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Class Update Test");
+
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            documentClass = "book",
+            documentCategory = "book"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.LatexDocumentClass.Should().Be("book");
+        doc.DocumentCategory.Should().Be("book");
+    }
+
+    [Fact]
+    public async Task UpdateDocument_StructuredOptions_BuildLatexDocumentClassOptions()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Options Update Test");
+
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            sides = "two",
+            titlePage = true,
+            orientation = "landscape"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        // Tokens emitted in this order: twoside, titlepage, landscape.
+        doc!.LatexDocumentClassOptions.Should().Be("twoside,titlepage,landscape");
+    }
+
+    [Fact]
+    public async Task UpdateDocument_StructuredOptions_DefaultsOmitTokens()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Defaults Update Test");
+
+        // Article-class baseline: oneside (no twoside), inline title (no titlepage),
+        // portrait (no landscape) — none of these emit tokens.
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            sides = "one",
+            titlePage = false,
+            orientation = "portrait"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.LatexDocumentClassOptions.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateDocument_PartialStructuredOptions_PreservesUnsentFields()
+    {
+        await SeedDefaultUsers();
+        var seeded = await SeedDocumentAsync(UserId, "Partial Options Test");
+
+        // First set all three.
+        await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            sides = "two",
+            titlePage = true,
+            orientation = "landscape"
+        });
+
+        // Then update only orientation. The other two should be preserved.
+        var response = await Client.PutAsJsonAsync($"/api/documents/{seeded.Id}", new
+        {
+            orientation = "portrait"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        // sides=two and titlePage=true preserved; landscape removed.
+        doc!.LatexDocumentClassOptions.Should().Be("twoside,titlepage");
+    }
+
     [Fact]
     public async Task UpdateDocument_PartialLayoutUpdate_PreservesOtherFields()
     {

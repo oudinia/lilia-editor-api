@@ -334,6 +334,27 @@ public class DocumentService : IDocumentService
                 document.LatexEngine = engine;
         }
 
+        // Documentclass-first popover fields (LILIA-131). The editor's
+        // DocumentStamp popover sends DocumentClass / DocumentCategory
+        // directly, plus structured Sides / TitlePage / Orientation that
+        // get translated into the LatexDocumentClassOptions blob — same
+        // logic as CreateDocumentAsync. Cross-team contract is locked in
+        // lilia-docs/teams/2026-05-06-documentclass-first/01-shared-contract.md.
+        if (dto.DocumentClass != null) document.LatexDocumentClass = dto.DocumentClass;
+        if (dto.DocumentCategory != null) document.DocumentCategory = dto.DocumentCategory;
+        // Rebuild the options blob when any of the three structured options
+        // arrives. The popover always sends all three together, so reading
+        // current values for the unprovided ones isn't strictly necessary —
+        // but defensive against a partial payload from a future caller.
+        if (dto.Sides != null || dto.TitlePage.HasValue || dto.Orientation != null)
+        {
+            var existing = ParseExistingOptions(document.LatexDocumentClassOptions);
+            var sides = dto.Sides ?? existing.Sides;
+            var titlePage = dto.TitlePage ?? existing.TitlePage;
+            var orientation = dto.Orientation ?? existing.Orientation;
+            document.LatexDocumentClassOptions = BuildClassOptionsString(sides, titlePage, orientation);
+        }
+
         document.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -673,16 +694,53 @@ public class DocumentService : IDocumentService
     ///   TitlePage = true       → "titlepage"
     ///   Orientation != portrait→ "landscape"
     /// </summary>
-    private static string? BuildClassOptionsString(CreateDocumentDto dto)
+    private static string? BuildClassOptionsString(CreateDocumentDto dto) =>
+        BuildClassOptionsString(dto.Sides, dto.TitlePage, dto.Orientation);
+
+    /// <summary>
+    /// Build the LatexDocumentClassOptions blob from the three structured
+    /// options the popover (LILIA-122) and create dialog (LILIA-123) send.
+    /// Shared by Create + Update paths so both routes write the same string.
+    /// </summary>
+    private static string? BuildClassOptionsString(string? sides, bool titlePage, string? orientation)
     {
         var tokens = new List<string>();
-        if (string.Equals(dto.Sides, "two", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(sides, "two", StringComparison.OrdinalIgnoreCase))
             tokens.Add("twoside");
-        if (dto.TitlePage)
+        if (titlePage)
             tokens.Add("titlepage");
-        if (string.Equals(dto.Orientation, "landscape", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(orientation, "landscape", StringComparison.OrdinalIgnoreCase))
             tokens.Add("landscape");
         return tokens.Count == 0 ? null : string.Join(",", tokens);
+    }
+
+    /// <summary>
+    /// Parse an existing LatexDocumentClassOptions blob back to the three
+    /// structured options. Lets UpdateDocumentAsync rebuild the blob without
+    /// losing fields the caller didn't send. Defensive against unexpected
+    /// tokens (other class options the user typed manually); only the three
+    /// we own are extracted.
+    /// </summary>
+    private static (string Sides, bool TitlePage, string Orientation) ParseExistingOptions(string? blob)
+    {
+        // Defaults matching the article-class baseline (one-sided, inline title,
+        // portrait) — same as CreateDocumentDto's defaults so a missing blob
+        // round-trips identically.
+        var sides = "one";
+        var titlePage = false;
+        var orientation = "portrait";
+        if (string.IsNullOrWhiteSpace(blob)) return (sides, titlePage, orientation);
+        foreach (var raw in blob.Split(','))
+        {
+            var t = raw.Trim();
+            if (string.Equals(t, "twoside", StringComparison.OrdinalIgnoreCase)) sides = "two";
+            else if (string.Equals(t, "oneside", StringComparison.OrdinalIgnoreCase)) sides = "one";
+            else if (string.Equals(t, "titlepage", StringComparison.OrdinalIgnoreCase)) titlePage = true;
+            else if (string.Equals(t, "notitlepage", StringComparison.OrdinalIgnoreCase)) titlePage = false;
+            else if (string.Equals(t, "landscape", StringComparison.OrdinalIgnoreCase)) orientation = "landscape";
+            else if (string.Equals(t, "portrait", StringComparison.OrdinalIgnoreCase)) orientation = "portrait";
+        }
+        return (sides, titlePage, orientation);
     }
 
     private static string NormalisePaperSize(string? raw)
@@ -804,7 +862,8 @@ public class DocumentService : IDocumentService
             )).ToList(),
             AiEnabled: d.AiEnabled,
             LatexEngine: string.IsNullOrEmpty(d.LatexEngine) ? "pdflatex" : d.LatexEngine,
-            ExperimentalLatexEdit: d.ExperimentalLatexEdit
+            ExperimentalLatexEdit: d.ExperimentalLatexEdit,
+            DocumentCategory: d.DocumentCategory
         );
     }
 
