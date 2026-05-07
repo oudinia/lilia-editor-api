@@ -29,6 +29,26 @@ public class LatexDocumentClass
     /// <summary>Name of the shim service, if we remap this class at import (moderncv, altacv, resume).</summary>
     public string? ShimName { get; set; }
 
+    /// <summary>
+    /// LILIA-121 D1 — JSON array of sectioning block keys this class supports.
+    /// Read by <c>BlockTypesController.GetBlockTypes(?docId=...)</c> to filter
+    /// the editor's slash menu / ⌘K palette / insertions panel so users can't
+    /// insert <c>\chapter</c> in an article doc (pdflatex error at compile)
+    /// or <c>\frontmatter</c> outside of book/memoir.
+    ///
+    /// Stored as a JSON string array of canonical sectioning slugs:
+    ///   "part", "chapter", "section", "subsection", "subsubsection",
+    ///   "paragraph", "subparagraph", "frontmatter", "mainmatter",
+    ///   "backmatter", "appendix"
+    ///
+    /// Non-sectioning block types (paragraph, list, equation, figure, table,
+    /// code, blockquote, theorem, abstract, bibliography, tableOfContents,
+    /// pageBreak) are always allowed in every class and not enumerated here.
+    /// Null = catalog row pre-dates the column and the editor should fall
+    /// back to "everything allowed" until the next reseed.
+    /// </summary>
+    public string? AllowedBlocks { get; set; }
+
     public string? Notes { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

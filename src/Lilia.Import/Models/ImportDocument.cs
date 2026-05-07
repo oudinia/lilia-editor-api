@@ -166,9 +166,38 @@ public class ImportMetadata
     public string? DocumentClass { get; set; }
 
     /// <summary>
-    /// Options passed to \documentclass[...]{...} (e.g. "11pt,a4paper,twocolumn").
+    /// Options passed to \documentclass[...]{...} after recognised tokens
+    /// (font size, paper size, columns) have been split off into the
+    /// structured fields below. Only unrecognised / class-specific tokens
+    /// remain — e.g. "landscape", "twoside", "manuscript", "acmsmall".
+    /// Empty string when every token was recognised.
+    ///
+    /// LILIA-121 (C1): pre-sync, this field held the verbatim blob
+    /// "11pt,a4paper,twocolumn"; post-sync the recognised tokens live on
+    /// FontSize / PaperSize / Columns and only the leftovers stay here, so
+    /// re-export doesn't double-emit.
     /// </summary>
     public string? DocumentClassOptions { get; set; }
+
+    /// <summary>
+    /// 10 / 11 / 12 — extracted from "10pt" / "11pt" / "12pt" in the
+    /// \documentclass options. Null when the source didn't request a
+    /// specific size; caller should keep the existing default.
+    /// </summary>
+    public int? FontSize { get; set; }
+
+    /// <summary>
+    /// "a4" / "letter" / "a5" / "legal" / "executive" / "b5" — extracted
+    /// from "a4paper" / "letterpaper" / etc. Null when the source didn't
+    /// request a specific paper size.
+    /// </summary>
+    public string? PaperSize { get; set; }
+
+    /// <summary>
+    /// 1 / 2 — set when "onecolumn" / "twocolumn" appears in the
+    /// \documentclass options. Null otherwise (caller keeps its default).
+    /// </summary>
+    public int? Columns { get; set; }
 
     /// <summary>
     /// Packages requested via \usepackage — name → optional bracket args.

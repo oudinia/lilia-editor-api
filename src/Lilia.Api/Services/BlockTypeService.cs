@@ -11,6 +11,33 @@ public class BlockTypeService : IBlockTypeService
     public const string CategoryInvoice = "invoice";
     public const string CategoryEpub = "epub";
 
+    /// <summary>
+    /// LILIA-121 D1 — sectioning slugs that map to actual block-type keys
+    /// in the catalog. When a class doesn't allow these slugs the
+    /// corresponding catalog entry is filtered out of the response.
+    /// Sectioning slugs that DON'T have a catalog entry (chapter, section,
+    /// subsection, …) are exposed via
+    /// <see cref="DocumentBlockTypesResult.AllowedSections"/> instead — the
+    /// editor uses them to gate heading levels.
+    /// </summary>
+    private static readonly Dictionary<string, string> SectioningSlugToBlockType = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // The block-type catalog ships frontMatter / backMatter / chapterBreak
+        // under the ePub category. They double as the LaTeX equivalents for
+        // book/memoir, so we filter them in/out by class membership.
+        ["frontmatter"] = BlockTypes.FrontMatter,
+        ["backmatter"] = BlockTypes.BackMatter,
+        ["chapter"] = BlockTypes.ChapterBreak,
+    };
+
+    /// <summary>
+    /// Subset of catalog block types that are class-aware (only shown when
+    /// the document's class allows the corresponding sectioning slug).
+    /// Other block types in the catalog are always allowed.
+    /// </summary>
+    private static readonly HashSet<string> ClassFilteredBlockTypes =
+        SectioningSlugToBlockType.Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
     private static readonly List<BlockTypeMetadataDto> BlockTypeDefinitions = BuildBlockTypes();
 
     private static List<BlockTypeMetadataDto> BuildBlockTypes()
@@ -261,5 +288,50 @@ public class BlockTypeService : IBlockTypeService
     {
         return BlockTypeDefinitions.Any(b =>
             b.Type.Equals(blockType, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public DocumentBlockTypesResult FilterForDocument(
+        IReadOnlyList<string> allowedSections,
+        string? documentClass,
+        string? query = null,
+        string? category = null)
+    {
+        var baseList = SearchBlockTypes(query ?? string.Empty, category);
+
+        // No allowed-sections list (class isn't seeded with sectioning info,
+        // or caller passed empty) → pass the catalog through unchanged. The
+        // editor falls back to the legacy class-agnostic behavior — matches
+        // the brief's "no docId, no filter" backward-compat rule.
+        if (allowedSections.Count == 0)
+        {
+            return new DocumentBlockTypesResult
+            {
+                BlockTypes = baseList,
+                AllowedSections = [],
+                DocumentClass = documentClass,
+            };
+        }
+
+        // Filter the catalog: drop any class-aware block type whose
+        // corresponding sectioning slug isn't in the allowed list. Block
+        // types not in the class-aware set are always kept (paragraph, list,
+        // equation, …).
+        var allowedBlockTypes = SectioningSlugToBlockType
+            .Where(kv => allowedSections.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
+            .Select(kv => kv.Value)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var filtered = baseList
+            .Where(bt =>
+                !ClassFilteredBlockTypes.Contains(bt.Type)
+                || allowedBlockTypes.Contains(bt.Type))
+            .ToList();
+
+        return new DocumentBlockTypesResult
+        {
+            BlockTypes = filtered,
+            AllowedSections = [.. allowedSections],
+            DocumentClass = documentClass,
+        };
     }
 }
