@@ -317,4 +317,63 @@ public class BlocksControllerTests : IntegrationTestBase
         blocks![0].Id.Should().Be(block2.Id);
         blocks[1].Id.Should().Be(block1.Id);
     }
+
+    // --- LILIA-146: insert-at-position shifts existing rows ---
+
+    [Fact]
+    public async Task CreateBlock_AtCollidingSortOrder_ShiftsExistingRowsUp()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+        // Three pre-existing blocks at sort_order 0, 1, 2.
+        var existingA = await SeedBlockAsync(doc.Id, "paragraph", """{"text":"A"}""", 0);
+        var existingB = await SeedBlockAsync(doc.Id, "paragraph", """{"text":"B"}""", 1);
+        var existingC = await SeedBlockAsync(doc.Id, "paragraph", """{"text":"C"}""", 2);
+
+        // Insert at sort_order=1 (collides with B). Pre-LILIA-146 this
+        // landed at 1 alongside B with unstable visual ordering; now
+        // B/C shift up to 2/3 and the new block lands cleanly at 1.
+        var response = await Client.PostAsJsonAsync($"/api/documents/{doc.Id}/blocks", new
+        {
+            type = "paragraph",
+            content = JsonSerializer.Deserialize<JsonElement>("""{"text":"NEW"}"""),
+            sortOrder = 1,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Re-list and verify the order: A(0), NEW(1), B(2), C(3).
+        var listResp = await Client.GetAsync($"/api/documents/{doc.Id}/blocks");
+        var blocks = await listResp.Content.ReadFromJsonAsync<List<BlockDto>>();
+        blocks.Should().HaveCount(4);
+        blocks!.Select(b => b.SortOrder).Should().BeEquivalentTo(new[] { 0, 1, 2, 3 }, o => o.WithStrictOrdering());
+        blocks[0].Id.Should().Be(existingA.Id);
+        blocks[1].Type.Should().Be("paragraph"); // the new block
+        blocks[2].Id.Should().Be(existingB.Id);
+        blocks[3].Id.Should().Be(existingC.Id);
+    }
+
+    [Fact]
+    public async Task CreateBlock_AtNonCollidingSortOrder_DoesNotShift()
+    {
+        var (doc, _) = await SeedDocWithOwner();
+        // Hole between sort_order 0 and 5.
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"A"}""", 0);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"B"}""", 5);
+
+        // Insert at sort_order=2 — nothing exists at 2 or above except
+        // the row at 5, which still gets shifted to 6 because the WHERE
+        // is `>= insertAt`. Acceptable trade-off: a "hole" insert
+        // pushes anything above; the alternative (smart hole-fill) is
+        // more code for a marginal case.
+        var response = await Client.PostAsJsonAsync($"/api/documents/{doc.Id}/blocks", new
+        {
+            type = "paragraph",
+            content = JsonSerializer.Deserialize<JsonElement>("""{"text":"NEW"}"""),
+            sortOrder = 2,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var listResp = await Client.GetAsync($"/api/documents/{doc.Id}/blocks");
+        var blocks = await listResp.Content.ReadFromJsonAsync<List<BlockDto>>();
+        blocks!.Select(b => b.SortOrder).Should().BeEquivalentTo(new[] { 0, 2, 6 }, o => o.WithStrictOrdering());
+    }
 }

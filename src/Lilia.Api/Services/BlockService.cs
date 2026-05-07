@@ -51,6 +51,24 @@ public class BlockService : IBlockService
             .Where(b => b.DocumentId == documentId)
             .MaxAsync(b => (int?)b.SortOrder) ?? -1;
 
+        // LILIA-146: when the caller specifies a sortOrder (typical
+        // "insert at position N" path used by the inter-block inserter
+        // on every surface), shift all rows at or above N by +1 to make
+        // room. Without this, insertions land at the requested value
+        // alongside any existing row(s) at the same sortOrder; tie-break
+        // is by id/created_at and the visual ordering becomes
+        // unpredictable. Prod has multiple rows at sort_order=0,1,…
+        // because earlier insertion paths didn't shift either, so this
+        // only prevents NEW collisions — reconciling existing collisions
+        // is a separate pass (not in this slice).
+        var resolvedSortOrder = dto.SortOrder ?? (maxSortOrder + 1);
+        if (dto.SortOrder.HasValue)
+        {
+            await _context.Blocks
+                .Where(b => b.DocumentId == documentId && b.SortOrder >= dto.SortOrder.Value)
+                .ExecuteUpdateAsync(s => s.SetProperty(b => b.SortOrder, b => b.SortOrder + 1));
+        }
+
         var block = new Block
         {
             Id = Guid.NewGuid(),
@@ -59,7 +77,7 @@ public class BlockService : IBlockService
             Content = dto.Content.HasValue
                 ? JsonDocument.Parse(dto.Content.Value.GetRawText())
                 : JsonDocument.Parse("{}"),
-            SortOrder = dto.SortOrder ?? (maxSortOrder + 1),
+            SortOrder = resolvedSortOrder,
             ParentId = dto.ParentId,
             Depth = dto.Depth ?? 0,
             CreatedAt = DateTime.UtcNow,
