@@ -191,6 +191,7 @@ public class LiliaDbContext : DbContext
             e.Property(x => x.DefaultEngine).HasColumnName("default_engine").HasMaxLength(20);
             e.Property(x => x.RequiredPackages).HasColumnName("required_packages").HasColumnType("jsonb");
             e.Property(x => x.ShimName).HasColumnName("shim_name").HasMaxLength(80);
+            e.Property(x => x.AllowedBlocks).HasColumnName("allowed_blocks").HasColumnType("jsonb");
             e.Property(x => x.Notes).HasColumnName("notes");
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");

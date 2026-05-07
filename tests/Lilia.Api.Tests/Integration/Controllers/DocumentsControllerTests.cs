@@ -126,6 +126,118 @@ public class DocumentsControllerTests : IntegrationTestBase
         var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
         doc!.Title.Should().Be("Untitled");
         doc.Language.Should().Be("en");
+        // LILIA-121: even an empty body lands on the article default class
+        // so downstream code (LaTeX export, block-type filter) always has
+        // a class to work with.
+        doc.LatexDocumentClass.Should().Be("article");
+    }
+
+    // ── LILIA-121 — documentclass-first DTO ───────────────────────────────
+
+    [Fact]
+    public async Task CreateDocument_WithBookClass_PullsEngineAndClassMetadata()
+    {
+        await SeedDefaultUsers();
+
+        var response = await Client.PostAsJsonAsync("/api/documents", new
+        {
+            title = "My Thesis",
+            documentCategory = "report",
+            documentClass = "book",
+            paperSize = "a4",
+            fontSize = 11,
+            columns = 1,
+            sides = "two",
+            titlePage = true,
+            orientation = "portrait"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc.Should().NotBeNull();
+        doc!.LatexDocumentClass.Should().Be("book");
+        doc.PaperSize.Should().Be("a4");
+        doc.FontSize.Should().Be(11);
+        doc.Columns.Should().Be(1);
+        // The structured options (paper size, font size, columns) live on
+        // their own columns; only the leftover non-structured tokens go
+        // into the options blob. Sides=two → "twoside", titlePage=true →
+        // "titlepage". Order matches the build-string contract.
+        doc.LatexDocumentClassOptions.Should().Be("twoside,titlepage");
+        // book seed doesn't set a non-pdflatex engine today, so we just
+        // confirm the engine got resolved (default or seeded).
+        doc.LatexEngine.Should().BeOneOf("pdflatex", "xelatex", "lualatex");
+    }
+
+    [Fact]
+    public async Task CreateDocument_WithArticleDefaults_HasNoOptionsTokens()
+    {
+        await SeedDefaultUsers();
+
+        var response = await Client.PostAsJsonAsync("/api/documents", new
+        {
+            title = "Quick paper",
+            documentCategory = "article",
+            documentClass = "article",
+            paperSize = "a4",
+            fontSize = 11,
+            columns = 1,
+            sides = "one",
+            titlePage = false,
+            orientation = "portrait"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.LatexDocumentClass.Should().Be("article");
+        // sides=one is the default for article (no "twoside" emitted),
+        // titlePage=false (no "titlepage"), orientation=portrait (no
+        // "landscape") → empty options blob.
+        doc.LatexDocumentClassOptions.Should().BeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task CreateDocument_WithLandscape_AppendsLandscapeToken()
+    {
+        await SeedDefaultUsers();
+
+        var response = await Client.PostAsJsonAsync("/api/documents", new
+        {
+            title = "Landscape doc",
+            documentClass = "article",
+            documentCategory = "article",
+            paperSize = "a4",
+            fontSize = 11,
+            columns = 1,
+            sides = "one",
+            titlePage = false,
+            orientation = "landscape"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.LatexDocumentClassOptions.Should().Be("landscape");
+    }
+
+    [Fact]
+    public async Task CreateDocument_WithModerncv_StampsCvCategory()
+    {
+        await SeedDefaultUsers();
+
+        var response = await Client.PostAsJsonAsync("/api/documents", new
+        {
+            title = "My CV",
+            documentCategory = "cv",
+            documentClass = "moderncv",
+            paperSize = "a4",
+            fontSize = 10,
+            columns = 1
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
+        doc!.LatexDocumentClass.Should().Be("moderncv");
+        doc.FontSize.Should().Be(10);
     }
 
     // --- GET /api/documents/{id} ---

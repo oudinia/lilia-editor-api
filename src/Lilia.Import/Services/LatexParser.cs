@@ -516,13 +516,24 @@ public class LatexParser : ILatexParser
             document.Metadata.Date = StripInlineCommandsForPlainText(dateMatch.Value.Inner);
         }
 
-        // Extract \documentclass[options]{class}
+        // Extract \documentclass[options]{class} and split the options blob
+        // into structured columns (font size, paper size, columns) so the
+        // create flow can land them on Document.* directly. Anything not
+        // recognised stays in DocumentClassOptions verbatim — see
+        // ClassOptionsParser for the recognised-token list and rationale.
         var docClassMatch = Regex.Match(content, @"\\documentclass(?:\[([^\]]*)\])?\{([^}]+)\}");
         if (docClassMatch.Success)
         {
             document.Metadata.DocumentClass = docClassMatch.Groups[2].Value.Trim();
             if (docClassMatch.Groups[1].Success)
-                document.Metadata.DocumentClassOptions = docClassMatch.Groups[1].Value.Trim();
+            {
+                var rawOptions = docClassMatch.Groups[1].Value.Trim();
+                var parsed = ClassOptionsParser.Parse(rawOptions);
+                document.Metadata.FontSize = parsed.FontSize;
+                document.Metadata.PaperSize = parsed.PaperSize;
+                document.Metadata.Columns = parsed.Columns;
+                document.Metadata.DocumentClassOptions = parsed.RemainingOptions;
+            }
         }
 
         // Extract all \usepackage[...]{name1,name2,...} references.

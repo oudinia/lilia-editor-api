@@ -77,15 +77,13 @@ public record DocumentDto(
     bool ExperimentalLatexEdit = false
 );
 
-public record CreateDocumentDto(
-    string? Title,
-    Guid? TeamId,
-    string? Language,
-    string? PaperSize,
-    string? FontFamily,
-    int? FontSize,
-    Guid? TemplateId
-);
+// CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
+// part of LILIA-121 (documentclass-first). The DTO now carries the document
+// class + universal class options (paper size, font size, columns, sides,
+// title page, orientation) so the create dialog can publish a fully-formed
+// preamble in a single round-trip. See:
+//   src/Lilia.Api/Models/Documents/CreateDocumentDto.cs
+//   lilia-docs/teams/2026-05-06-documentclass-first/01-shared-contract.md
 
 public record UpdateDocumentDto(
     string? Title,

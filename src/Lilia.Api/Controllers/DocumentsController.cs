@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Lilia.Api.Models.Documents;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -98,12 +99,13 @@ public class DocumentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        // Truncate overly long titles to prevent DB overflow
+        // Truncate overly long titles to prevent DB overflow.
         if (dto.Title?.Length > 255)
-            dto = dto with { Title = dto.Title[..255] };
+            dto.Title = dto.Title[..255];
 
         var document = await _documentService.CreateDocumentAsync(userId, dto);
-        await _auditService.LogAsync("document.create", "Document", document.Id.ToString(), new { dto.Title, dto.TeamId });
+        await _auditService.LogAsync("document.create", "Document", document.Id.ToString(),
+            new { dto.Title, dto.TeamId, dto.DocumentClass, dto.DocumentCategory });
         return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
     }
 

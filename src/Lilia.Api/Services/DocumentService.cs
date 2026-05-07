@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Lilia.Api.Models.Documents;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -190,19 +191,46 @@ public class DocumentService : IDocumentService
 
     public async Task<DocumentDto> CreateDocumentAsync(string userId, CreateDocumentDto dto)
     {
+        // Normalise the structured class options up-front so the same value
+        // applies whether we land on the structured columns (PaperSize,
+        // FontSize, Columns) or the LatexDocumentClassOptions blob below.
+        var paperSize = NormalisePaperSize(dto.PaperSize);
+        var fontSize = NormaliseFontSize(dto.FontSize);
+        var columns = NormaliseColumns(dto.Columns);
+
         var document = new Document
         {
             Id = Guid.NewGuid(),
             OwnerId = userId,
             TeamId = dto.TeamId,
-            Title = dto.Title ?? "Untitled",
-            Language = dto.Language ?? "en",
-            PaperSize = dto.PaperSize ?? "a4",
-            FontFamily = dto.FontFamily ?? "serif",
-            FontSize = dto.FontSize ?? 12,
+            Title = string.IsNullOrWhiteSpace(dto.Title) ? "Untitled" : dto.Title,
+            Language = string.IsNullOrWhiteSpace(dto.Language) ? "en" : dto.Language,
+            PaperSize = paperSize,
+            FontFamily = string.IsNullOrWhiteSpace(dto.FontFamily) ? "serif" : dto.FontFamily,
+            FontSize = fontSize,
+            Columns = columns,
+            BalancedColumns = dto.BalancedColumns,
+            DocumentCategory = string.IsNullOrWhiteSpace(dto.DocumentCategory) ? null : dto.DocumentCategory,
+            LatexDocumentClass = string.IsNullOrWhiteSpace(dto.DocumentClass) ? "article" : dto.DocumentClass,
+            LatexDocumentClassOptions = BuildClassOptionsString(dto),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
+
+        // Look up the class in the seeded latex_document_classes table to
+        // pull DefaultEngine + RequiredPackages. Unknown / user-typed
+        // classes ("Other") fall back to pdflatex with no auto-loaded
+        // packages — matching the seed default for "article".
+        var classRow = await _context.LatexDocumentClasses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Slug == document.LatexDocumentClass);
+        if (classRow != null)
+        {
+            if (!string.IsNullOrWhiteSpace(classRow.DefaultEngine))
+                document.LatexEngine = classRow.DefaultEngine;
+            if (!string.IsNullOrWhiteSpace(classRow.RequiredPackages))
+                document.LatexPackages = classRow.RequiredPackages;
+        }
 
         // If creating from template, copy blocks from template document
         if (dto.TemplateId.HasValue)
@@ -631,6 +659,50 @@ public class DocumentService : IDocumentService
             sampleDocs.Count, userId);
 
         return sampleDocs.Count;
+    }
+
+    /// <summary>
+    /// Builds the comma-joined LaTeX \documentclass options string from the
+    /// non-structured create-DTO options. PaperSize / FontSize / Columns are
+    /// stored on the structured Document columns and merged at export time;
+    /// they do NOT appear here, otherwise we'd double-emit the same option
+    /// in the rendered preamble (same bug the C1 import-sync helper fixes).
+    ///
+    /// Tokens emitted only when non-default for the article base class:
+    ///   Sides = "two"          → "twoside"
+    ///   TitlePage = true       → "titlepage"
+    ///   Orientation != portrait→ "landscape"
+    /// </summary>
+    private static string? BuildClassOptionsString(CreateDocumentDto dto)
+    {
+        var tokens = new List<string>();
+        if (string.Equals(dto.Sides, "two", StringComparison.OrdinalIgnoreCase))
+            tokens.Add("twoside");
+        if (dto.TitlePage)
+            tokens.Add("titlepage");
+        if (string.Equals(dto.Orientation, "landscape", StringComparison.OrdinalIgnoreCase))
+            tokens.Add("landscape");
+        return tokens.Count == 0 ? null : string.Join(",", tokens);
+    }
+
+    private static string NormalisePaperSize(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "a4";
+        return raw.ToLowerInvariant() switch
+        {
+            "a4" or "a5" or "letter" or "legal" or "executive" or "b5" => raw.ToLowerInvariant(),
+            _ => "a4"
+        };
+    }
+
+    private static int NormaliseFontSize(int raw)
+    {
+        return raw is 10 or 11 or 12 ? raw : 11;
+    }
+
+    private static int NormaliseColumns(int raw)
+    {
+        return Math.Clamp(raw, 1, 2);
     }
 
     private static string GenerateShareLink()

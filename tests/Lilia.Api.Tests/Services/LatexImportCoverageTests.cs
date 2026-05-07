@@ -553,7 +553,16 @@ public class LatexImportCoverageTests
         var doc = await ParseAsync(latex);
 
         doc.Metadata.DocumentClass.Should().Be("article");
-        doc.Metadata.DocumentClassOptions.Should().Be("11pt,a4paper,twocolumn");
+        // LILIA-121 (C1): recognised structured-column tokens (font size,
+        // paper size, columns) now land on dedicated metadata fields and
+        // are stripped from the leftover blob so re-export doesn't double-
+        // emit them. Previously this assertion expected the verbatim string
+        // "11pt,a4paper,twocolumn"; see ClassOptionsParserTests +
+        // LatexParserClassOptionsTests for the round-trip contract.
+        doc.Metadata.FontSize.Should().Be(11);
+        doc.Metadata.PaperSize.Should().Be("a4");
+        doc.Metadata.Columns.Should().Be(2);
+        doc.Metadata.DocumentClassOptions.Should().BeEmpty();
     }
 
     [Fact]

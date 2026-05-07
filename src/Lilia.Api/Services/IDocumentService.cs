@@ -1,3 +1,4 @@
+using Lilia.Api.Models.Documents;
 using Lilia.Core.DTOs;
 
 namespace Lilia.Api.Services;
