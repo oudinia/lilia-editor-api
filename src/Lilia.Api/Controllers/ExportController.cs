@@ -222,7 +222,7 @@ public class ExportController : ControllerBase
 
         var html = await _renderService.RenderToHtmlAsync(docId);
         var title = SanitizeFilename(document.Title);
-        var htmlDocument = $"<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>{System.Net.WebUtility.HtmlEncode(document.Title)}</title></head><body>\n{html}\n</body></html>\n";
+        var htmlDocument = BuildHtmlExportWrapper(document, html);
 
         if (!bundleImages)
         {
@@ -297,5 +297,57 @@ public class ExportController : ControllerBase
         sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"\s+", "_");
         sanitized = sanitized.Trim('_', '.');
         return string.IsNullOrWhiteSpace(sanitized) ? "document" : sanitized;
+    }
+
+    /// <summary>
+    /// Wrap the rendered block HTML in a complete HTML document with a
+    /// visible title heading and minimum readable styling (LILIA-140).
+    ///
+    /// Before this change the wrapper emitted only <code>&lt;title&gt;</code>
+    /// (browser-tab text) plus the raw blocks — no &lt;h1&gt;, no CSS,
+    /// no margins. Users opening the export saw an unstyled wall of
+    /// edge-to-edge text with no visible title and reported it as an
+    /// "empty document". The fix is purely the wrapper; per-block HTML
+    /// continues to come from <see cref="RenderService.RenderToHtmlAsync"/>.
+    /// </summary>
+    private static string BuildHtmlExportWrapper(Lilia.Core.DTOs.DocumentDto doc, string body)
+    {
+        var encodedTitle = System.Net.WebUtility.HtmlEncode(doc.Title ?? "Untitled");
+        // Sparse, opinion-light CSS — just enough to make the file
+        // legible standalone. Anyone wanting branded styling should
+        // open it in their own template; we don't impose tokens here
+        // because the export is meant to be portable.
+        var css = """
+            :root { color-scheme: light dark; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; max-width: 760px; margin: 2.5rem auto; padding: 0 1.5rem; line-height: 1.6; color: #222; }
+            h1.lilia-doc-title { font-size: 2rem; font-weight: 700; margin: 0 0 1.5rem; line-height: 1.25; }
+            h2, h3, h4, h5, h6 { line-height: 1.3; }
+            p { margin: 0.6em 0; }
+            pre, code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.95em; }
+            pre { background: #f5f5f5; padding: 0.75em 1em; border-radius: 4px; overflow-x: auto; }
+            blockquote { border-left: 3px solid #ccc; padding-left: 1em; color: #555; margin: 0.8em 0; }
+            figure { margin: 1.2em 0; text-align: center; }
+            figure img { max-width: 100%; height: auto; }
+            figcaption { font-size: 0.9em; color: #666; margin-top: 0.4em; }
+            table { border-collapse: collapse; margin: 0.8em 0; }
+            table th, table td { border: 1px solid #ccc; padding: 0.4em 0.7em; }
+            .lilia-preview { max-width: none; }
+            @media (prefers-color-scheme: dark) { body { background: #1a1a1a; color: #e0e0e0; } pre { background: #2a2a2a; } figcaption, blockquote { color: #aaa; } }
+            """;
+        return $"""
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1">
+              <title>{encodedTitle}</title>
+              <style>{css}</style>
+            </head>
+            <body>
+              <h1 class="lilia-doc-title">{encodedTitle}</h1>
+              {body}
+            </body>
+            </html>
+            """;
     }
 }
