@@ -889,25 +889,14 @@ public partial class RenderService : IRenderService
         // Layout settings (margins, line spacing, paragraph indent, page
         // numbering, header/footer, font family, columns) — owned by
         // LaTeXPreambleBuilder so this path emits the same preamble as
-        // the export ZIP. Multi-column wrapping (multicol package +
-        // \begin{multicols}) is included here when BalancedColumns is on
-        // OR when Columns >= 2 — the live preview always uses multicol
-        // for >1 column docs since it was the historical behaviour
-        // before LILIA-120.
+        // the export ZIP. The builder loads \usepackage{multicol} only
+        // when BalancedColumns is on (matched by the body wrapper below).
+        // Unbalanced multi-column docs are handled by the `twocolumn`
+        // class option upstream — no multicol package needed there.
         var layout = LaTeXPreambleBuilder.BuildLayoutPreamble(doc);
         if (!string.IsNullOrWhiteSpace(layout))
         {
             latex.AppendLine(layout);
-        }
-        // Live-render compatibility: when BalancedColumns is OFF but
-        // Columns >= 2, we still want multicol available for the body
-        // wrapper below (this matches the preview's pre-LILIA-120
-        // behaviour). The class option twocolumn was already added to
-        // the directive — multicol on top is harmless (it's a no-op
-        // unless \begin{multicols} is invoked).
-        if (doc.Columns > 1 && !doc.BalancedColumns)
-        {
-            latex.AppendLine(@"\usepackage{multicol}");
         }
 
         latex.AppendLine();
@@ -920,19 +909,17 @@ public partial class RenderService : IRenderService
         latex.AppendLine(@"\maketitle");
         latex.AppendLine();
 
-        // Multi-column wrapper. BalancedColumns uses the builder's
-        // wrappers (so we honour the requested column count); legacy
-        // unbalanced multi-column docs keep the historical
-        // \begin{multicols}{N} wrapper from the previous code path.
+        // Multi-column wrapper. Only emitted for balanced multicol docs;
+        // unbalanced two-column is handled by the `twocolumn` class option
+        // upstream (set by LaTeXPreambleBuilder). Wrapping the body in
+        // \begin{multicols} when twocolumn is also active produces a
+        // contradictory layout AND fails to compile because we only load
+        // \usepackage{multicol} when BalancedColumns is on. (Bug found
+        // 2026-05-07 — LILIA-129.)
         var bodyOpener = LaTeXPreambleBuilder.BuildBodyOpener(doc);
         if (!string.IsNullOrEmpty(bodyOpener))
         {
             latex.AppendLine(bodyOpener);
-            latex.AppendLine();
-        }
-        else if (doc.Columns > 1)
-        {
-            latex.AppendLine($@"\begin{{multicols}}{{{doc.Columns}}}");
             latex.AppendLine();
         }
 
@@ -944,16 +931,12 @@ public partial class RenderService : IRenderService
         }
 
         // Close multi-column wrapper (paired with the opener above).
+        // Same rule: only when BalancedColumns is on. See opener comment.
         var bodyCloser = LaTeXPreambleBuilder.BuildBodyCloser(doc);
         if (!string.IsNullOrEmpty(bodyCloser))
         {
             latex.AppendLine();
             latex.AppendLine(bodyCloser);
-        }
-        else if (doc.Columns > 1)
-        {
-            latex.AppendLine();
-            latex.AppendLine(@"\end{multicols}");
         }
 
         // Bibliography
