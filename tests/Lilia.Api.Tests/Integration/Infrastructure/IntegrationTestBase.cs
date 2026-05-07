@@ -171,6 +171,8 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             DELETE FROM document_collaborators;
             DELETE FROM document_groups;
             DELETE FROM bibliography_entries;
+            DELETE FROM block_group_memberships;
+            DELETE FROM block_groups;
             DELETE FROM blocks;
             DELETE FROM documents;
             DELETE FROM labels;

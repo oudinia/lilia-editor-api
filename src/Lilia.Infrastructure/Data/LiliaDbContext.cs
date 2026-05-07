@@ -16,6 +16,8 @@ public class LiliaDbContext : DbContext
     public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<Block> Blocks => Set<Block>();
+    public DbSet<BlockGroup> BlockGroups => Set<BlockGroup>();
+    public DbSet<BlockGroupMembership> BlockGroupMemberships => Set<BlockGroupMembership>();
     public DbSet<BibliographyEntry> BibliographyEntries => Set<BibliographyEntry>();
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<DocumentLabel> DocumentLabels => Set<DocumentLabel>();
@@ -258,6 +260,58 @@ public class LiliaDbContext : DbContext
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             e.HasIndex(x => x.GapKey).IsUnique().HasDatabaseName("ux_typst_gap_key");
             e.HasIndex(x => new { x.MitigationStatus, x.BlockingSeverity }).HasDatabaseName("ix_typst_gap_mitigation_severity");
+        });
+
+        // --- Block grouping primitive (LILIA-136) ---
+        // M:N between blocks and named groups, scoped to a document and a
+        // single "dimension". First dimension is "layout" (multi-column
+        // regions). Designed to host other dimensions later (review tags,
+        // counter scopes, style presets, source attribution) without
+        // schema churn — they all live in the same two tables.
+        modelBuilder.Entity<BlockGroup>(e =>
+        {
+            e.ToTable("block_groups");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.DocumentId).HasColumnName("document_id").IsRequired();
+            e.Property(x => x.Dimension).HasColumnName("dimension").HasMaxLength(40).IsRequired();
+            e.Property(x => x.Attributes).HasColumnName("attributes").HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(200);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+
+            e.HasOne(x => x.Document)
+                .WithMany()
+                .HasForeignKey(x => x.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => x.DocumentId).HasDatabaseName("ix_block_group_document");
+            e.HasIndex(x => new { x.DocumentId, x.Dimension })
+                .HasDatabaseName("ix_block_group_document_dimension");
+        });
+
+        modelBuilder.Entity<BlockGroupMembership>(e =>
+        {
+            e.ToTable("block_group_memberships");
+            // Composite key — a block can be in a given group at most once.
+            // The "one-group-per-dimension-per-block" rule is enforced at
+            // the service layer (cheaper than a trigger; race window is
+            // tolerable for a single-writer editor).
+            e.HasKey(x => new { x.BlockId, x.GroupId });
+            e.Property(x => x.BlockId).HasColumnName("block_id");
+            e.Property(x => x.GroupId).HasColumnName("group_id");
+
+            e.HasOne(x => x.Block)
+                .WithMany()
+                .HasForeignKey(x => x.BlockId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Group)
+                .WithMany(g => g.Memberships)
+                .HasForeignKey(x => x.GroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => x.BlockId).HasDatabaseName("ix_block_group_member_block");
+            e.HasIndex(x => x.GroupId).HasDatabaseName("ix_block_group_member_group");
         });
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(LiliaDbContext).Assembly);

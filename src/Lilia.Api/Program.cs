@@ -244,6 +244,7 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddSingleton<IBlockTypeService, BlockTypeService>();
 builder.Services.AddScoped<IDocumentClassResolver, DocumentClassResolver>();
 builder.Services.AddScoped<IBlockService, BlockService>();
+builder.Services.AddScoped<IBlockGroupService, BlockGroupService>();
 builder.Services.AddScoped<IBibliographyService, BibliographyService>();
 builder.Services.AddScoped<ILabelService, LabelService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
