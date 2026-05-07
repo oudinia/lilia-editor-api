@@ -74,7 +74,10 @@ public record DocumentDto(
     List<LabelDto> Labels,
     bool AiEnabled = false,
     string LatexEngine = "pdflatex",
-    bool ExperimentalLatexEdit = false
+    bool ExperimentalLatexEdit = false,
+    // Documentclass-first read-back (LILIA-131). The editor's stamp + popover
+    // need the category in addition to the LaTeX class string.
+    string? DocumentCategory = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -109,7 +112,16 @@ public record UpdateDocumentDto(
     string? PageNumbering,
     bool? AiEnabled,
     string? LatexEngine,
-    bool? ExperimentalLatexEdit
+    bool? ExperimentalLatexEdit,
+    // Documentclass-first popover fields (LILIA-131). Mirror CreateDocumentDto's
+    // flat shape so the editor's DocumentStamp popover can persist class +
+    // category + the three options that aren't structured columns (sides,
+    // titlePage, orientation — encoded into LatexDocumentClassOptions).
+    string? DocumentClass,
+    string? DocumentCategory,
+    string? Sides,
+    bool? TitlePage,
+    string? Orientation
 );
 
 public record TrashDocumentDto(
