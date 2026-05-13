@@ -503,6 +503,26 @@ public class TypstExportService : ITypstExportService
         //     Typst compile and forces a silent_fallback to pdflatex.
         s = Regex.Replace(s, @"\$([^$]+)\$", m => Ph($"${LatexMathToTypst(m.Groups[1].Value)}$"));
 
+        // 1c. Comment marker `[%…%]` — the editor's "comment out" toggle
+        //     serialises to this shape (paired with the LaTeX `\iffalse`
+        //     conversion in RenderService.ProcessLatexText). Typst hides
+        //     content from output via `#if false [ ... ]` — works inline
+        //     AND block, no package needed. Placeholder-protect so the
+        //     escape pass below doesn't backslash the brackets.
+        s = Regex.Replace(s, @"\[%([\s\S]+?)%\]",
+            m => Ph($"#if false [{EscapeTypstInline(m.Groups[1].Value)}]"));
+
+        // 1d. Smallcaps `^^…^^`, subscript `%%…%%`, superscript `^…^` —
+        //     match the LML markers the editor serialises. Smallcaps
+        //     MUST run before single-caret sup so `^^X^^` isn't grabbed
+        //     by the sup regex.
+        s = Regex.Replace(s, @"\^\^([^^]+)\^\^",
+            m => Ph($"#smallcaps[{EscapeTypstInline(m.Groups[1].Value)}]"));
+        s = Regex.Replace(s, @"%%([^%]+)%%",
+            m => Ph($"#sub[{EscapeTypstInline(m.Groups[1].Value)}]"));
+        s = Regex.Replace(s, @"(?<!\^)\^([^^\s][^^]*?)\^(?!\^)",
+            m => Ph($"#super[{EscapeTypstInline(m.Groups[1].Value)}]"));
+
         // 2. Inline code `text` — same backtick syntax in Typst.
         s = Regex.Replace(s, @"`([^`]+)`", m => Ph($"`{m.Groups[1].Value}`"));
 
