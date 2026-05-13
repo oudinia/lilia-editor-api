@@ -665,17 +665,20 @@ public partial class LmlConversionService : ILmlConversionService
         result = Regex.Replace(result, @"@color\(([^,]+),\s*([^)]+)\)", @"\textcolor{$2}{$1}");
         result = Regex.Replace(result, @"@img\(([^,)]+),\s*([^)]+)\)", @"\includegraphics[height=1em]{$1}");
         result = Regex.Replace(result, @"@img\(([^)]+)\)", @"\includegraphics[height=1em]{$1}");
-        // Markdown-style formatting. Underline must run BEFORE the
-        // asterisk pairs (regex order doesn't matter for these three
-        // since their delimiters don't overlap, but kept explicit so
-        // intent is obvious).
+        // Markdown-style formatting. Multi-char delimiters must run
+        // BEFORE shorter ones with overlapping chars (`^^` before `^`,
+        // `**` before `*`).
         //
         // User direction 2026-05-13: keep `\emph` banned (toggling
         // behavior surprises users); use `\textit` / `\textbf` /
         // `\underline` as the three distinct emphasis forms.
+        result = Regex.Replace(result, @"==(.+?)==", @"\hl{$1}");                // highlight (soul)
+        result = Regex.Replace(result, @"\^\^(.+?)\^\^", @"\textsc{$1}");        // smallcaps — must precede ^…^
+        result = Regex.Replace(result, @"%%(.+?)%%", @"\textsubscript{$1}");     // subscript
         result = Regex.Replace(result, @"__(.+?)__", @"\underline{$1}");
         result = Regex.Replace(result, @"\*\*(.+?)\*\*", @"\textbf{$1}");
         result = Regex.Replace(result, @"\*(.+?)\*", @"\textit{$1}");
+        result = Regex.Replace(result, @"\^(.+?)\^", @"\textsuperscript{$1}");   // superscript — runs after ^^ pairs
         result = Regex.Replace(result, @"`(.+?)`", @"\texttt{$1}");
         return result;
     }

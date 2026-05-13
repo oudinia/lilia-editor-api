@@ -34,7 +34,7 @@ public static class LaTeXPreamble
 \usepackage{float}
 \usepackage{caption}
 \usepackage{subcaption}
-\usepackage{xcolor}
+\usepackage[dvipsnames,svgnames,table]{xcolor}    % ~200+ named colors (red/blue/… + Apricot/ForestGreen/… + DarkOrchid/MidnightBlue/…)
 
 % Tables
 \usepackage{booktabs}
@@ -110,7 +110,7 @@ public static class LaTeXPreamble
 \usepackage{float}
 \usepackage{caption}
 \usepackage{subcaption}
-\usepackage{xcolor}
+\usepackage[dvipsnames,svgnames,table]{xcolor}    % ~200+ named colors (red/blue/… + Apricot/ForestGreen/… + DarkOrchid/MidnightBlue/…)
 
 % Tables
 \usepackage{booktabs}
