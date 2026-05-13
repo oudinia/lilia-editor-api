@@ -876,18 +876,35 @@ public partial class RenderService : IRenderService
             throw new ArgumentException("Document not found");
         }
 
+        // Pre-render blocks so the engine detector can scan their LaTeX
+        // before we build the preamble. Detector also looks at imported
+        // packages (\usepackage{fontspec} etc.) and the explicit
+        // Document.LatexEngine override. Result drives the engine-specific
+        // preamble addendum below (fontspec for lua/xelatex).
+        var renderedBlocks = doc.Blocks.Select(RenderBlockToLatex).ToList();
+        var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
+        var detectedEngine = EngineDetector.DetectDocument(renderedBlocks, importedPkgs);
+        var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
+        var engine = detectedEngine > explicitEngine ? detectedEngine : explicitEngine;
+
         var latex = new StringBuilder();
 
         // Preamble — honour imported class / options / packages so PDFs compile
         // against mnras/pnas/frontiers templates instead of bare article.
         latex.AppendLine(BuildDocumentClassDirectiveFromDoc(doc));
         // Imported packages first so journal-class dependencies load before our defaults.
-        var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
         if (!string.IsNullOrEmpty(importedPkgs))
         {
             latex.AppendLine(importedPkgs);
         }
         latex.AppendLine(LaTeXPreamble.Packages);
+        // Engine-specific addendum — fontspec for lua/xelatex. Pdflatex
+        // gets nothing extra (existing inputenc/fontenc/lmodern stack).
+        var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
+        if (!string.IsNullOrEmpty(engineAddendum))
+        {
+            latex.AppendLine(engineAddendum);
+        }
         // Journal-class shims — safe no-ops when commands already exist
         latex.AppendLine(LaTeXPreamble.JournalShims);
         latex.AppendLine(LaTeXPreamble.CvShims);
@@ -932,11 +949,13 @@ public partial class RenderService : IRenderService
             latex.AppendLine();
         }
 
-        // Blocks
-        foreach (var block in doc.Blocks)
+        // Blocks — reuse the pre-rendered LaTeX from above so we don't
+        // run the (potentially expensive) per-block rendering twice.
+        var blocksList = doc.Blocks.ToList();
+        for (int i = 0; i < blocksList.Count; i++)
         {
-            latex.AppendLine($"% block:{block.Id}");
-            latex.AppendLine(RenderBlockToLatex(block));
+            latex.AppendLine($"% block:{blocksList[i].Id}");
+            latex.AppendLine(renderedBlocks[i]);
         }
 
         // Close multi-column wrapper (paired with the opener above).

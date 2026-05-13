@@ -7,6 +7,25 @@ namespace Lilia.Api.Services;
 public static class LaTeXPreamble
 {
     /// <summary>
+    /// Engine-specific preamble addendum. Pdflatex gets nothing
+    /// (Packages already loads inputenc/fontenc/lmodern). Lualatex
+    /// and xelatex get `\usepackage{fontspec}` so blocks containing
+    /// `\setmainfont{...}` (the TUG font-catalogue hook) compile
+    /// instead of failing with "Undefined control sequence".
+    ///
+    /// fontspec automatically disables the Type-1 font setup that
+    /// inputenc/fontenc/lmodern pull in — both load orders are
+    /// safe with lua/xelatex (the package itself defends).
+    /// </summary>
+    public static string EngineAddendum(LatexEngine engine) => engine switch
+    {
+        LatexEngine.Lualatex or LatexEngine.Xelatex => @"% Engine: lua/xelatex — load fontspec so \setmainfont{…} works.
+\usepackage{fontspec}
+",
+        _ => "",
+    };
+
+    /// <summary>
     /// All packages needed by the Lilia block system.
     /// Order matters: encoding → math → typography → graphics → tables → lists → code → special → links.
     /// hyperref must come before cleveref.
@@ -322,11 +341,21 @@ public static class LaTeXPreamble
     /// <summary>
     /// Wraps a LaTeX fragment in a minimal document for per-block validation.
     /// </summary>
-    public static string WrapForValidation(string latexFragment)
+    public static string WrapForValidation(string latexFragment) =>
+        WrapForValidation(latexFragment, LatexEngine.Pdflatex);
+
+    /// <summary>
+    /// Engine-aware wrapper — adds fontspec when validating against a
+    /// block detected as lua/xelatex, so `\setmainfont{Charter}` in the
+    /// fragment compiles instead of erroring with "Undefined control
+    /// sequence". The wrapper preamble mirrors the production preamble
+    /// addendum from <see cref="EngineAddendum"/>.
+    /// </summary>
+    public static string WrapForValidation(string latexFragment, LatexEngine engine)
     {
         return $@"\documentclass{{article}}
 {ValidationPackages}
-{TheoremEnvironments}
+{EngineAddendum(engine)}{TheoremEnvironments}
 \begin{{document}}
 {latexFragment}
 \end{{document}}";

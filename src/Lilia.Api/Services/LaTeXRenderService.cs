@@ -14,6 +14,7 @@ public interface ILaTeXRenderService
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
     Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
     Task<LatexValidationResult> ValidateAsync(string latex);
+    Task<LatexValidationResult> ValidateAsync(string latex, string engine);
 }
 
 /// <summary>
@@ -222,13 +223,23 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
-    public async Task<LatexValidationResult> ValidateAsync(string latex)
+    public async Task<LatexValidationResult> ValidateAsync(string latex) =>
+        await ValidateAsync(latex, "pdflatex");
+
+    /// <summary>
+    /// Engine-aware validate. engine: "pdflatex" | "xelatex" | "lualatex".
+    /// Falls back to pdflatex for any unrecognised value. Cache key
+    /// includes the engine so a fontspec block doesn't get a stale
+    /// pdflatex "Undefined control sequence" cached against it.
+    /// </summary>
+    public async Task<LatexValidationResult> ValidateAsync(string latex, string engine)
     {
-        // Check cache first (no semaphore needed for read)
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(latex)));
+        var resolvedEngine = ResolveEngine(engine);
+        // Cache key includes engine so swapping engines invalidates cleanly.
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(latex + "|" + resolvedEngine)));
         if (_validationCache.TryGetValue(hash, out var cached))
         {
-            _logger.LogDebug("Validation cache hit for hash {Hash}", hash[..12]);
+            _logger.LogDebug("Validation cache hit for hash {Hash} ({Engine})", hash[..12], resolvedEngine);
             return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0);
         }
 
@@ -248,9 +259,15 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var logPath = Path.Combine(tmpDir, "document.log");
                 await File.WriteAllTextAsync(texPath, latex);
 
-                var args = BuildPdflatexArgs(texPath, tmpDir);
+                // BuildPdflatexArgs works for lualatex/xelatex too — same
+                // arg shape (`-interaction`, `-output-directory`, halt mode).
+                // Only the precompiled .fmt is pdflatex-specific; skip it
+                // when the engine differs so we don't hand pdflatex's fmt
+                // file to lualatex.
+                var usePrecompiled = resolvedEngine == "pdflatex";
+                var args = BuildPdflatexArgs(texPath, tmpDir, usePrecompiled: usePrecompiled);
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                var (exitCode, _, stderr) = await RunProcessAsync("pdflatex", args, tmpDir, 15);
+                var (exitCode, _, stderr) = await RunProcessAsync(resolvedEngine, args, tmpDir, 15);
                 sw.Stop();
                 var durationMs = (int)sw.ElapsedMilliseconds;
 

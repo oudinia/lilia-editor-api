@@ -13,7 +13,7 @@ public class BlockValidationConfiguration : IEntityTypeConfiguration<BlockValida
             t.HasCheckConstraint("ck_block_validation_status",
                 "status IN ('valid','error','warning')");
             t.HasCheckConstraint("ck_block_validation_validator",
-                "validator IN ('pdflatex','typst')");
+                "validator IN ('pdflatex','typst','lualatex','xelatex')");
         });
 
         builder.HasKey(v => v.Id);

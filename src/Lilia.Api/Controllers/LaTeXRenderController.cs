@@ -230,10 +230,16 @@ public class LaTeXRenderController : ControllerBase
         // Per-block validation is the hottest validation path (editor calls it
         // on every blur), so cache hits are the vast majority of traffic.
         var contentHash = _validationCache.ComputeHash(block);
-        // Look up the authoritative pdflatex result. Typst rows for the
-        // same hash live alongside but are surfaced via the rollup + the
-        // typst-specific frontend path (two-tier #63).
-        var cached = await _validationCache.GetAsync(blockId, contentHash, "pdflatex");
+        var latex = _renderService.RenderBlockToLatex(block);
+        // Auto-detect engine from rendered LaTeX. pdflatex is the floor;
+        // lualatex only when the block actually needs it (fontspec /
+        // \directlua / unicode-math). User doesn't pick — too easy to
+        // mis-pick, and a wrong choice produces false validation signals.
+        var engine = EngineDetector.Detect(latex).ToCli();
+        // Cache key includes engine — same content cached separately
+        // for pdflatex vs lualatex avoids stale "Undefined control
+        // sequence \setmainfont" results sneaking in after an engine flip.
+        var cached = await _validationCache.GetAsync(blockId, contentHash, engine);
         if (cached is not null)
         {
             return Ok(new
@@ -244,15 +250,15 @@ public class LaTeXRenderController : ControllerBase
                     ? Array.Empty<string>()
                     : System.Text.Json.JsonSerializer.Deserialize<string[]>(cached.Warnings.RootElement.GetRawText()) ?? Array.Empty<string>(),
                 blockId,
+                engine,
                 cached = true,
                 validatedAt = cached.ValidatedAt
             });
         }
 
-        var latex = _renderService.RenderBlockToLatex(block);
-        var fullLatex = LaTeXPreamble.WrapForValidation(latex);
+        var fullLatex = LaTeXPreamble.WrapForValidation(latex, engine.ParseEngine());
 
-        var result = await _latexService.ValidateAsync(fullLatex);
+        var result = await _latexService.ValidateAsync(fullLatex, engine);
         var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
 
         if (!valid)
@@ -286,7 +292,7 @@ public class LaTeXRenderController : ControllerBase
             Status = status,
             ErrorMessage = error,
             Warnings = warningsDoc,
-            Validator = "pdflatex",
+            Validator = engine,
             RuleVersion = ValidationCacheService.RuleVersion,
             ValidatedAt = DateTime.UtcNow,
         });
@@ -295,7 +301,7 @@ public class LaTeXRenderController : ControllerBase
         // Invalidate is a single DELETE, cost is negligible.
         await _validationCache.InvalidateOlderThanAsync(blockId, contentHash, ValidationCacheService.RuleVersion);
 
-        return Ok(new { valid, error, warnings, blockId, cached = false });
+        return Ok(new { valid, error, warnings, blockId, engine, cached = false });
     }
 
     /// <summary>

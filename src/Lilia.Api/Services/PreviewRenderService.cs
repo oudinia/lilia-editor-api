@@ -76,15 +76,23 @@ public class PreviewRenderService : IPreviewRenderService
         }
 
         var latex = await _renderService.RenderToLatexAsync(documentId);
-        var engine = await _db.Documents.AsNoTracking()
+        var explicitEngine = await _db.Documents.AsNoTracking()
             .Where(d => d.Id == documentId)
             .Select(d => d.LatexEngine)
             .FirstOrDefaultAsync(ct) ?? "pdflatex";
+        // Auto-detect from the rendered full LaTeX (preamble + body).
+        // User override can only force a HIGHER engine — forcing pdflatex
+        // on a doc that uses fontspec would silently fail at compile.
+        var detected = EngineDetector.Detect(latex);
+        var explicitParsed = explicitEngine.ParseEngine();
+        var chosen = detected > explicitParsed ? detected : explicitParsed;
+        var engine = chosen.ToCli();
         var pdflatexPdf = await _latexService.RenderToPdfAsync(latex, engine);
 
         sw.Stop();
-        _logger.LogInformation("[Preview] pdflatex path used for {DocId} in {Ms}ms", documentId, sw.ElapsedMilliseconds);
-        return new PreviewRenderResult(pdflatexPdf, "pdflatex", sw.ElapsedMilliseconds);
+        _logger.LogInformation("[Preview] {Engine} path used for {DocId} in {Ms}ms (detected={Detected}, explicit={Explicit})",
+            engine, documentId, sw.ElapsedMilliseconds, detected, explicitParsed);
+        return new PreviewRenderResult(pdflatexPdf, engine, sw.ElapsedMilliseconds);
     }
 
     public async Task<byte[]?> TryTypstPdfAsync(Guid documentId, CancellationToken ct = default)
