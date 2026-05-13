@@ -74,6 +74,10 @@ public static class LaTeXPreamble
 \usepackage{soul}
 \usepackage{ulem}
 \normalem
+% Comment package — enables \begin{comment}...\end{comment} for the
+% multi-line block-comment output from the editor's comment toggle.
+% Inline comments use the TeX primitive \iffalse...\fi (no package).
+\usepackage{comment}
 
 % Links & references (hyperref before cleveref).
 % PassOptionsToPackage + plain usepackage avoids option-clash when an imported
@@ -150,6 +154,10 @@ public static class LaTeXPreamble
 \usepackage{soul}
 \usepackage{ulem}
 \normalem
+% Comment package — enables \begin{comment}...\end{comment} for the
+% multi-line block-comment output from the editor's comment toggle.
+% Inline comments use the TeX primitive \iffalse...\fi (no package).
+\usepackage{comment}
 
 % Links & references
 \PassOptionsToPackage{colorlinks=true}{hyperref}

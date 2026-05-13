@@ -680,6 +680,21 @@ public partial class LmlConversionService : ILmlConversionService
         result = Regex.Replace(result, @"\*(.+?)\*", @"\textit{$1}");
         result = Regex.Replace(result, @"\^(.+?)\^", @"\textsuperscript{$1}");   // superscript — runs after ^^ pairs
         result = Regex.Replace(result, @"`(.+?)`", @"\texttt{$1}");
+        // Comment-out marker — `[%…%]` is what the editor's comment
+        // mark serialises to (ribbon Mod+/ toggle). `\iffalse … \fi`
+        // keeps the content in the LaTeX source but excludes it from
+        // the compiled PDF. Lazy capture so adjacent comments stay
+        // distinct.
+        result = Regex.Replace(result, @"\[%(.+?)%\]", @"\iffalse $1\fi");
+        // Smart quotes — runs LAST so it can't interfere with any
+        // marker that uses `"` in its content. Unicode curly quotes
+        // (from the TipTap Typography input rule) get the LaTeX
+        // forms first; then any leftover paired straight `"…"`
+        // (e.g. pasted from elsewhere) is converted as a safety net.
+        // Single quotes follow the same pattern.
+        result = result.Replace("“", "``").Replace("”", "''");
+        result = result.Replace("‘", "`").Replace("’", "'");
+        result = Regex.Replace(result, "\"([^\"\\n]+)\"", "``$1''");
         return result;
     }
 
@@ -700,6 +715,14 @@ public partial class LmlConversionService : ILmlConversionService
         result = Regex.Replace(result, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
         result = Regex.Replace(result, @"\*(.+?)\*", "<em>$1</em>");
         result = Regex.Replace(result, @"`(.+?)`", "<code>$1</code>");
+        // Comment marker — input has already passed through HtmlEncode
+        // above, but `[` and `]` are not encoded, so the literal
+        // `[%…%]` survives unchanged.
+        result = Regex.Replace(
+            result,
+            @"\[%(.+?)%\]",
+            "<span class=\"lml-comment\" style=\"color:#9ca3af;text-decoration:line-through;font-style:italic;opacity:0.75;\">$1</span>"
+        );
         return result;
     }
 

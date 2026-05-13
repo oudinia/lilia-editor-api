@@ -1845,6 +1845,41 @@ public partial class RenderService : IRenderService
                 return $"\x00CMD{commandRegions.Count - 1}\x00";
             });
 
+        // Step 1.5: Convert markers whose delimiters contain LaTeX-escapable
+        // chars (%, ^, ~). These MUST run before Step 2 escape, otherwise
+        // e.g. `%%sub%%` becomes `\%\%sub\%\%` and the regex no longer matches.
+        //
+        // Comment `[%…%]` — picks the right LaTeX idiom by shape:
+        //   • multi-line content → \begin{comment}…\end{comment}
+        //     (cleanest for "comment out this whole block" — needs the
+        //     `comment` package, which we load in the preamble).
+        //   • single-line content → \iffalse … \fi
+        //     (TeX primitive, works mid-paragraph where \begin{comment}
+        //     would break).
+        // A bare `%` line-comment isn't safe here: our marker is always
+        // inline, and `% foo` would eat the rest of the LaTeX source line.
+        result = Regex.Replace(result, @"\[%([\s\S]+?)%\]", m =>
+        {
+            var inner = m.Groups[1].Value;
+            return inner.Contains('\n')
+                ? $"\\begin{{comment}}\n{inner}\n\\end{{comment}}"
+                : $"\\iffalse {inner}\\fi{{}}";
+        });
+        // Smallcaps `^^…^^` — must precede `^…^` superscript below.
+        result = Regex.Replace(result, @"\^\^(.+?)\^\^", @"\textsc{$1}");
+        // Superscript `^…^` — single carets.
+        result = Regex.Replace(result, @"(?<!\^)\^([^^\s][^^]*?)\^(?!\^)", @"\textsuperscript{$1}");
+        // Subscript `%%…%%`.
+        result = Regex.Replace(result, @"%%(.+?)%%", @"\textsubscript{$1}");
+        // Strikethrough `~~…~~` — soul package's \st (was Step 3 but broken
+        // by the ~ escape below, moved here so the marker survives).
+        result = Regex.Replace(result, @"~~(.+?)~~", @"\st{$1}");
+        // Smart quotes — curly Unicode first (from the TipTap input rule),
+        // then any leftover straight pairs (e.g. pasted from elsewhere).
+        result = result.Replace("“", "``").Replace("”", "''");
+        result = result.Replace("‘", "`").Replace("’", "'");
+        result = Regex.Replace(result, "\"([^\"\\n]+)\"", "``$1''");
+
         // Step 2: Escape special LaTeX chars in the remaining text.
         // After Step 1 all math regions are replaced with placeholders so
         // the replacements below cannot accidentally touch math content.
@@ -1860,17 +1895,22 @@ public partial class RenderService : IRenderService
         // protection in Step 1 only replaced matched pairs.
         result = result.Replace("$", @"\$");
 
-        // Step 3: Convert inline formatting markers to LaTeX commands
+        // Step 3: Convert inline formatting markers whose delimiters are
+        // safe across the escape pass (`*`, `_`, `` ` ``, `=` are NOT in
+        // the escape set above so the markers survive intact).
         // Bold: **text** → \textbf{text}
         result = Regex.Replace(result, @"\*\*(.+?)\*\*", @"\textbf{$1}");
-        // Italic: *text* → \emph{text}
-        result = Regex.Replace(result, @"\*(.+?)\*", @"\emph{$1}");
+        // Italic: *text* → \textit{text}
+        // (Was \emph; user direction 2026-05-13 — keep \emph banned per
+        //  feedback_emph.md, use \textit/\textbf/\underline as the three
+        //  distinct emphasis forms.)
+        result = Regex.Replace(result, @"\*(.+?)\*", @"\textit{$1}");
         // Underline: __text__ → \underline{text}
         result = Regex.Replace(result, @"__(.+?)__", @"\underline{$1}");
-        // Strikethrough: ~~text~~ → \st{text} (soul package)
-        result = Regex.Replace(result, @"~~(.+?)~~", @"\st{$1}");
         // Inline code: `text` → \texttt{text}
         result = Regex.Replace(result, @"`(.+?)`", @"\texttt{$1}");
+        // Yellow highlight: ==text== → \hl{text} (soul package)
+        result = Regex.Replace(result, @"==(.+?)==", @"\hl{$1}");
 
         // Step 4: Convert newlines to paragraph breaks
         result = Regex.Replace(result, @"\r?\n", "\n\n");
