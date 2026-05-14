@@ -1151,8 +1151,18 @@ public partial class RenderService : IRenderService
         var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "note" : "note";
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
+        // PR 4 — free-form color override. When `color` is empty we
+        // emit the plain `\begin{tcolorbox}[title=...]` form so the
+        // theme defaults apply; when set we add colback/colframe so
+        // the box paints in the user's chosen color (xcolor name —
+        // red/blue/ForestGreen/etc. — pre-validated client-side).
+        var color = content.TryGetProperty("color", out var c) ? c.GetString() ?? "" : "";
         var displayTitle = !string.IsNullOrEmpty(title) ? title : char.ToUpper(variant[0]) + variant[1..];
-        return $@"\begin{{tcolorbox}}[title={{{EscapeLatex(displayTitle)}}}]
+        var titlePart = $"title={{{EscapeLatex(displayTitle)}}}";
+        var colorPart = !string.IsNullOrEmpty(color)
+            ? $", colback={color}!10!white, colframe={color}!75!black, coltitle=white"
+            : "";
+        return $@"\begin{{tcolorbox}}[{titlePart}{colorPart}]
 {ProcessLatexText(text)}
 \end{{tcolorbox}}";
     }

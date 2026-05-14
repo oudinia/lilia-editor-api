@@ -192,6 +192,7 @@ public class TypstExportService : ITypstExportService
                 "pageBreak" or "pagebreak" or "page_break" => "#pagebreak()",
                 "columnBreak" or "columnbreak" or "column_break" => "#colbreak()",
                 "embed" => RenderEmbed(content),
+                "callout" => RenderCallout(content),
                 "header" => RenderHeading(content),    // alias
                 "image" => RenderFigure(content),       // alias
                 "quote" => RenderBlockquote(content),   // alias
@@ -412,6 +413,35 @@ public class TypstExportService : ITypstExportService
         if (content.TryGetProperty("ordered", out var o) && o.ValueKind == JsonValueKind.True)
             return true;
         return false;
+    }
+
+    private static string RenderCallout(JsonElement content)
+    {
+        // Mirror of the LaTeX RenderCalloutToLatex tcolorbox output —
+        // Typst's #block(fill: ..., stroke: ...) is the closest visual
+        // equivalent. Free-form `color` attr overrides the variant
+        // default. We tint with `.lighten(85%)` for the background and
+        // use the raw color for the left stroke.
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "note" : "note";
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var text = GetText(content);
+        var rawColor = content.TryGetProperty("color", out var c) ? c.GetString() ?? "" : "";
+        // Color resolution: free-form name → Typst rgb hex; empty falls
+        // back to the variant's default (note=blue, tip=green, …).
+        var typstColor = !string.IsNullOrEmpty(rawColor)
+            ? MapColorToTypst(rawColor)
+            : variant switch
+            {
+                "tip" => "rgb(\"#16a34a\")",
+                "warning" => "rgb(\"#d97706\")",
+                "important" => "rgb(\"#dc2626\")",
+                "example" => "rgb(\"#9333ea\")",
+                _ => "rgb(\"#2563eb\")",
+            };
+        var displayTitle = !string.IsNullOrEmpty(title) ? title : char.ToUpper(variant[0]) + variant[1..];
+        var titleQ = QuoteTypst(displayTitle);
+        var body = FormatInline(text);
+        return $"#block(stroke: (left: 3pt + {typstColor}), inset: (left: 12pt, y: 8pt), spacing: 0.8em)[*{titleQ}* \\\n{body}]";
     }
 
     private static string RenderBlockquote(JsonElement content)

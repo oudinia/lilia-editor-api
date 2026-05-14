@@ -636,6 +636,7 @@ public class LaTeXExportService : ILaTeXExportService
                 "cvEntry" => RenderCvEntry(content),
                 "cvSection" => RenderCvSection(content),
                 "embed" => RenderEmbed(content),
+                "callout" => RenderCallout(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
                 _ => RenderUnknownBlock(block),
@@ -1049,6 +1050,25 @@ public class LaTeXExportService : ILaTeXExportService
             }
         }
         sb.AppendLine($@"{indent}\end{{{env}}}");
+    }
+
+    private string RenderCallout(JsonElement content)
+    {
+        // Mirror of RenderService.RenderCalloutToLatex — keep the two
+        // paths aligned so /preview/latex and /export/pdf emit the same
+        // tcolorbox for the same content. Free-form color override:
+        // when `color` is set, paint colback/colframe with that xcolor
+        // name; otherwise use the tcolorbox theme default.
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "note" : "note";
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var text = GetText(content);
+        var color = content.TryGetProperty("color", out var c) ? c.GetString() ?? "" : "";
+        var displayTitle = !string.IsNullOrEmpty(title) ? title : char.ToUpper(variant[0]) + variant[1..];
+        var titlePart = $"title={{{EscapeLatex(displayTitle)}}}";
+        var colorPart = !string.IsNullOrEmpty(color)
+            ? $", colback={color}!10!white, colframe={color}!75!black, coltitle=white"
+            : "";
+        return $@"\begin{{tcolorbox}}[{titlePart}{colorPart}]" + "\n" + FormatInlineContent(text) + "\n" + @"\end{tcolorbox}";
     }
 
     private string RenderBlockquote(JsonElement content)
