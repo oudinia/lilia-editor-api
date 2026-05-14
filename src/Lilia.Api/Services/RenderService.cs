@@ -1957,6 +1957,18 @@ public partial class RenderService : IRenderService
         // Sticking with the TeX primitive for safety.
         result = Regex.Replace(result, @"\[%([\s\S]+?)%\]",
             m => $"\\iffalse {m.Groups[1].Value}\\fi{{}}");
+        // Vertical-skip commands (\smallskip / \medskip / \bigskip / \vfill
+        // and \vspace{…}) — wrap with `\par` so the skip actually
+        // produces visible vertical space. Without this, a mid-paragraph
+        // skip is queued for the next paragraph break and may be
+        // absorbed silently by adjacent text on the same line (user
+        // report 2026-05-14: "vspace shows wrong"). The `{}` after the
+        // skip name terminates the command lookup if the serialiser
+        // didn't already add one.
+        result = Regex.Replace(result, @"\\(smallskip|medskip|bigskip|vfill)\b(?:\{\})?",
+            m => $"\\par\\{m.Groups[1].Value}\\par ");
+        result = Regex.Replace(result, @"\\vspace\*?\{([^}]+)\}",
+            m => $"\\par\\vspace{{{m.Groups[1].Value}}}\\par ");
         // Smallcaps `^^…^^` — must precede `^…^` superscript below.
         result = Regex.Replace(result, @"\^\^(.+?)\^\^", @"\textsc{$1}");
         // Superscript `^…^` — single carets.

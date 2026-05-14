@@ -1201,6 +1201,14 @@ public class LaTeXExportService : ILaTeXExportService
         result = Regex.Replace(result, @"\[%([\s\S]+?)%\]",
             m => Ph($"\\iffalse {m.Groups[1].Value}\\fi{{}}"));
 
+        // 1h. Vertical-skip commands need `\par` wrappers to actually
+        //     produce visible vertical space — mid-paragraph skips are
+        //     queued silently otherwise. Mirror of RenderService logic.
+        result = Regex.Replace(result, @"\\(smallskip|medskip|bigskip|vfill)\b(?:\{\})?",
+            m => Ph($"\\par\\{m.Groups[1].Value}\\par "));
+        result = Regex.Replace(result, @"\\vspace\*?\{([^}]+)\}",
+            m => Ph($"\\par\\vspace{{{m.Groups[1].Value}}}\\par "));
+
         // 1f. LML inline marks the editor serialises (smallcaps `^^…^^`,
         //     superscript `^…^`, subscript `%%…%%`, strikethrough
         //     `~~…~~`). Smallcaps before sup so `^^X^^` isn't grabbed by
