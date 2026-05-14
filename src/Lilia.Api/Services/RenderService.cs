@@ -1031,7 +1031,15 @@ public partial class RenderService : IRenderService
             _ => "section"
         };
 
-        return $@"\{command}{{{EscapeLatex(text)}}}";
+        // Headings go through ProcessLatexText (not the bare EscapeLatex)
+        // so inline markers — comment `[%…%]` → `\iffalse…\fi`, smart
+        // quotes, sup/sub/smallcaps, bold/italic — are translated before
+        // any % or [ escape pass would mangle them. EscapeLatex alone
+        // turned `[%foo%]` into `[\%foo\%]` and the user saw raw bracket
+        // text in the heading title (2026-05-14). TrimEnd strips the
+        // trailing whitespace ProcessLatexText adds via the paragraph-
+        // break pass — single-line headings don't need it.
+        return $@"\{command}{{{ProcessLatexText(text).TrimEnd()}}}";
     }
 
     private string RenderParagraphToLatex(JsonElement content)

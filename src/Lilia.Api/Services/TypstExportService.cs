@@ -523,6 +523,50 @@ public class TypstExportService : ITypstExportService
         s = Regex.Replace(s, @"(?<!\^)\^([^^\s][^^]*?)\^(?!\^)",
             m => Ph($"#super[{EscapeTypstInline(m.Groups[1].Value)}]"));
 
+        // 1e. LaTeX inline-styling commands the editor serialises directly
+        //     (font size group, color, highlight). These came from the
+        //     2026-05-13 ribbon work — TipTap marks for textColor /
+        //     fontSize / colored highlight serialise to LaTeX commands
+        //     (no markdown equivalent). The LaTeX preview already
+        //     understands them via ProcessLatexText; Typst needs its own
+        //     translation so the live PDF preview shows the same styling
+        //     as the source pane.
+        //
+        //     Color name maps below are the same 24-color palette the
+        //     ribbon picker exposes, mirrored to Typst's named colors
+        //     where they exist + RGB hex elsewhere. Unknown names pass
+        //     through to Typst as-is (most CSS color names work).
+        s = Regex.Replace(s, @"\\textcolor\{([^{}]+)\}\{([^{}]+)\}",
+            m =>
+            {
+                var color = MapColorToTypst(m.Groups[1].Value);
+                var content = EscapeTypstInline(m.Groups[2].Value);
+                return Ph($"#text(fill: {color})[{content}]");
+            });
+        // `\hl{text}` / `\hl[color]{text}` — soul package highlight on
+        // the LaTeX side, Typst's #highlight on this side. Default yellow
+        // when no color provided.
+        s = Regex.Replace(s, @"\\hl(?:\[([^\]]+)\])?\{([^{}]+)\}",
+            m =>
+            {
+                var raw = m.Groups[1].Success ? m.Groups[1].Value : "yellow";
+                var color = MapHighlightColorToTypst(raw);
+                var content = EscapeTypstInline(m.Groups[2].Value);
+                return Ph($"#highlight(fill: {color})[{content}]");
+            });
+        // `{\large text}` / `{\Large text}` group form — LaTeX size
+        // switches the local group's font size. Map the canonical 10
+        // size names to Typst em scales matching ProcessLatexText's
+        // SIZE_EM table in render-markers.ts.
+        s = Regex.Replace(s,
+            @"\{\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge)\s+([^{}]+)\}",
+            m =>
+            {
+                var em = MapLatexSizeToEm(m.Groups[1].Value);
+                var content = EscapeTypstInline(m.Groups[2].Value);
+                return Ph($"#text(size: {em}em)[{content}]");
+            });
+
         // 2. Inline code `text` — same backtick syntax in Typst.
         s = Regex.Replace(s, @"`([^`]+)`", m => Ph($"`{m.Groups[1].Value}`"));
 
@@ -556,8 +600,11 @@ public class TypstExportService : ITypstExportService
 
         // 7. URLs + links.
         s = Regex.Replace(s, @"\\url\{([^}]+)\}", m => Ph($"#link({QuoteTypst(m.Groups[1].Value)})"));
+        // Two-arg \href{url}{text} first, then single-arg \href{url} as a
+        // bare link (covers users who typed only the URL).
         s = Regex.Replace(s, @"\\href\{([^}]+)\}\{([^}]+)\}",
             m => Ph($"#link({QuoteTypst(m.Groups[1].Value)})[{EscapeTypstInline(m.Groups[2].Value)}]"));
+        s = Regex.Replace(s, @"\\href\{([^}]+)\}", m => Ph($"#link({QuoteTypst(m.Groups[1].Value)})"));
 
         // 7.5. \footnote{X} — Typst uses #footnote[X]
         s = Regex.Replace(s, @"\\footnote\{([^}]+)\}",
@@ -863,6 +910,93 @@ public class TypstExportService : ITypstExportService
     {
         // Typst string literal: "...". Escape backslash and double-quote.
         return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    }
+
+    /// <summary>
+    /// Map the editor's 24-color text palette (mirrored from
+    /// FormatRailPanel + render-markers.ts) to Typst color values.
+    /// Typst's stdlib has the named CSS colors; for the few that
+    /// differ we emit the hex form. Unknown names pass through as
+    /// a Typst identifier (most CSS color names work natively).
+    /// </summary>
+    private static string MapColorToTypst(string name)
+    {
+        return name switch
+        {
+            "red" => "rgb(\"#ef4444\")",
+            "orange" => "rgb(\"#f97316\")",
+            "amber" => "rgb(\"#f59e0b\")",
+            "yellow" => "rgb(\"#eab308\")",
+            "lime" => "rgb(\"#84cc16\")",
+            "green" => "rgb(\"#22c55e\")",
+            "emerald" => "rgb(\"#10b981\")",
+            "teal" => "rgb(\"#14b8a6\")",
+            "cyan" => "rgb(\"#06b6d4\")",
+            "sky" => "rgb(\"#0ea5e9\")",
+            "blue" => "rgb(\"#3b82f6\")",
+            "indigo" => "rgb(\"#6366f1\")",
+            "violet" => "rgb(\"#8b5cf6\")",
+            "purple" => "rgb(\"#a855f7\")",
+            "fuchsia" => "rgb(\"#d946ef\")",
+            "pink" => "rgb(\"#ec4899\")",
+            "rose" => "rgb(\"#f43f5e\")",
+            "black" => "black",
+            "gray" or "grey" => "gray",
+            "darkgray" => "rgb(\"#374151\")",
+            "lightgray" => "rgb(\"#9ca3af\")",
+            "brown" => "rgb(\"#92400e\")",
+            "olive" => "rgb(\"#65a30d\")",
+            "navy" => "rgb(\"#1e3a8a\")",
+            "white" => "white",
+            // Unknown — wrap as a string and let Typst's color parser try.
+            _ => $"rgb(\"#888888\")",
+        };
+    }
+
+    /// <summary>
+    /// Highlight palette — pastel tints of the text-color names. The
+    /// 11-color set matches the Highlight ribbon picker.
+    /// </summary>
+    private static string MapHighlightColorToTypst(string name)
+    {
+        return name switch
+        {
+            "yellow" => "rgb(\"#fef08a\")",
+            "orange" => "rgb(\"#fed7aa\")",
+            "lime" => "rgb(\"#d9f99d\")",
+            "green" => "rgb(\"#bbf7d0\")",
+            "cyan" => "rgb(\"#a5f3fc\")",
+            "sky" => "rgb(\"#bae6fd\")",
+            "blue" => "rgb(\"#bfdbfe\")",
+            "violet" => "rgb(\"#ddd6fe\")",
+            "pink" => "rgb(\"#fbcfe8\")",
+            "rose" => "rgb(\"#fecdd3\")",
+            "gray" or "grey" => "rgb(\"#e5e7eb\")",
+            _ => "rgb(\"#fef08a\")",
+        };
+    }
+
+    /// <summary>
+    /// Map LaTeX size keywords to em scales matching ProcessLatexText
+    /// + render-markers.ts SIZE_EM table — keeps preview, LaTeX, and
+    /// PDF visually aligned.
+    /// </summary>
+    private static string MapLatexSizeToEm(string size)
+    {
+        return size switch
+        {
+            "tiny" => "0.5",
+            "scriptsize" => "0.7",
+            "footnotesize" => "0.8",
+            "small" => "0.9",
+            "normalsize" => "1.0",
+            "large" => "1.2",
+            "Large" => "1.44",
+            "LARGE" => "1.728",
+            "huge" => "2.074",
+            "Huge" => "2.488",
+            _ => "1.0",
+        };
     }
 
     private static string StripHtmlTags(string html) =>
