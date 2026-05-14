@@ -1630,13 +1630,22 @@ public partial class RenderService : IRenderService
             isOrdered = ord.ValueKind == JsonValueKind.True;
         }
 
-        var env = isOrdered ? "enumerate" : "itemize";
+        // `kind` takes precedence over `ordered` when present. Legacy
+        // docs (pre-Phase-2) carry only `ordered`; new docs may carry
+        // `kind` ∈ {"bullet","numbered","description"}.
+        string? kind = null;
+        if (content.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String)
+        {
+            kind = kindProp.GetString();
+        }
+        var isDescription = kind == "description";
+        var env = isDescription ? "description" : (isOrdered ? "enumerate" : "itemize");
 
         var sb = new StringBuilder();
 
         // Build enumitem options for ordered lists
         var enumOptions = new List<string>();
-        if (isOrdered)
+        if (isOrdered && !isDescription)
         {
             // Label format support
             if (content.TryGetProperty("labelFormat", out var lfProp))
@@ -1674,7 +1683,7 @@ public partial class RenderService : IRenderService
         {
             foreach (var item in items.EnumerateArray())
             {
-                RenderListItemToLatex(item, isOrdered, sb);
+                RenderListItemToLatex(item, env, sb);
             }
         }
 
@@ -1682,8 +1691,10 @@ public partial class RenderService : IRenderService
         return sb.ToString();
     }
 
-    private void RenderListItemToLatex(JsonElement item, bool parentIsOrdered, StringBuilder sb)
+    private void RenderListItemToLatex(JsonElement item, string parentEnv, StringBuilder sb)
     {
+        var isDescription = parentEnv == "description";
+        var parentIsOrdered = parentEnv == "enumerate";
         // Support both string items and object items with text/richText/children properties
         string itemText;
         JsonElement? children = null;
@@ -1726,19 +1737,42 @@ public partial class RenderService : IRenderService
             itemText = "";
         }
 
-        sb.AppendLine($@"\item {ProcessLatexText(itemText)}");
+        if (isDescription)
+        {
+            // Description list: `\item[<term>] <description>`. The term
+            // goes inside square brackets; LaTeX renders it bold by
+            // default. ProcessLatexText is used for both so inline
+            // markdown ([%c%], **bold**, etc.) survives in both fields.
+            string descriptionText = "";
+            if (item.ValueKind == JsonValueKind.Object
+                && item.TryGetProperty("description", out var descProp)
+                && descProp.ValueKind == JsonValueKind.String)
+            {
+                descriptionText = descProp.GetString() ?? "";
+            }
+            sb.AppendLine($@"\item[{ProcessLatexText(itemText)}] {ProcessLatexText(descriptionText)}");
+        }
+        else
+        {
+            sb.AppendLine($@"\item {ProcessLatexText(itemText)}");
+        }
 
-        // Render nested list if children present
+        // Render nested list if children present. Nested lists inherit
+        // the parent's env (mirroring how the HTML renderer + editor
+        // model treat nesting — a description list cannot nest a
+        // bulleted list directly today; that would need explicit
+        // per-child kind, which the model doesn't carry yet).
         if (children.HasValue)
         {
-            var nestedEnv = parentIsOrdered ? "enumerate" : "itemize";
+            var nestedEnv = parentEnv;
             sb.AppendLine($@"\begin{{{nestedEnv}}}");
             foreach (var child in children.Value.EnumerateArray())
             {
-                RenderListItemToLatex(child, parentIsOrdered, sb);
+                RenderListItemToLatex(child, nestedEnv, sb);
             }
             sb.AppendLine($@"\end{{{nestedEnv}}}");
         }
+        _ = parentIsOrdered; // retained for future per-kind logic
     }
 
     private string RenderBlockquoteToLatex(JsonElement content)

@@ -136,6 +136,33 @@ public class LatexExportFixtureTests
             ExpectIn: new[] { @"\begin{itemize}" },
             ExpectNotIn: new[] { "label=", "start=" }),
 
+        // Phase 2 — description lists (`kind: "description"`).
+        // Emits \begin{description} \item[<term>] <desc> \end{description}.
+        // labelFormat + start are ignored when kind is description.
+        new Fx("list: description — basic term/desc",
+            "list", """{"kind":"description","items":[{"text":"paralist","description":"compact lists and inline lists"},{"text":"enumitem","description":"control labels and lengths"}]}""",
+            ExpectIn: new[] {
+                @"\begin{description}",
+                @"\item[paralist] compact lists and inline lists",
+                @"\item[enumitem] control labels and lengths",
+                @"\end{description}",
+            },
+            ExpectNotIn: new[] { @"\begin{itemize}", @"\begin{enumerate}", "label=", "start=" }),
+        new Fx("list: description preserves inline bold in desc",
+            "list", """{"kind":"description","items":[{"text":"important","description":"**very** important note"}]}""",
+            ExpectIn: new[] {
+                @"\item[important]",
+                @"\textbf{very}",
+            },
+            ExpectNotIn: new[] { "**very**" }),
+        new Fx("list: description with kind overrides ordered=true",
+            "list", """{"kind":"description","ordered":true,"items":[{"text":"a","description":"alpha"}]}""",
+            ExpectIn: new[] { @"\begin{description}", @"\item[a] alpha" },
+            ExpectNotIn: new[] { @"\begin{enumerate}" }),
+        new Fx("list: description missing description field renders empty body",
+            "list", """{"kind":"description","items":[{"text":"orphan"}]}""",
+            ExpectIn: new[] { @"\begin{description}", @"\item[orphan]" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

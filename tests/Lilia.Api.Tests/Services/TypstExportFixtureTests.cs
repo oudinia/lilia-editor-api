@@ -131,6 +131,23 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "- x" },
             ExpectNotIn: new[] { "#set enum", "#[" }),
 
+        // Phase 2 — description lists via Typst's `/ term: desc` syntax.
+        new Fx("list: description — basic term/desc",
+            "list", """{"kind":"description","items":[{"text":"paralist","description":"compact lists"},{"text":"enumitem","description":"control labels"}]}""",
+            ExpectIn: new[] {
+                "/ paralist: compact lists",
+                "/ enumitem: control labels",
+            },
+            ExpectNotIn: new[] { "- ", "+ ", "#set enum" }),
+        new Fx("list: description preserves bold in desc",
+            "list", """{"kind":"description","items":[{"text":"important","description":"**very** important"}]}""",
+            ExpectIn: new[] { "/ important:", "*very*" },
+            ExpectNotIn: new[] { "**very**" }),
+        new Fx("list: description with kind overrides ordered=true",
+            "list", """{"kind":"description","ordered":true,"items":[{"text":"a","description":"alpha"}]}""",
+            ExpectIn: new[] { "/ a: alpha" },
+            ExpectNotIn: new[] { "+ a", "- a" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

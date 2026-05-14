@@ -181,6 +181,43 @@ const RECIPES = [
     },
     pdf: { minBytes: 1000 },
   },
+
+  // ── Phase 2: description lists (kind: "description") ─────────────
+  {
+    name: "list: description — basic term/desc PDF compiles",
+    type: "list",
+    content: {
+      kind: "description",
+      items: [
+        { text: "paralist", description: "compact lists and inline lists" },
+        { text: "enumitem", description: "control labels and lengths in lists" },
+      ],
+    },
+    latex: {
+      contains: [
+        "\\begin{description}",
+        "\\item[paralist] compact lists and inline lists",
+        "\\item[enumitem] control labels and lengths in lists",
+        "\\end{description}",
+      ],
+      lacks: ["\\begin{itemize}", "\\begin{enumerate}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: description — kind overrides ordered=true",
+    type: "list",
+    content: {
+      kind: "description",
+      ordered: true,
+      items: [{ text: "alpha", description: "first" }],
+    },
+    latex: {
+      contains: ["\\begin{description}", "\\item[alpha] first"],
+      lacks: ["\\begin{enumerate}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
 ];
 
 // ─── HTTP helpers ────────────────────────────────────────────────────

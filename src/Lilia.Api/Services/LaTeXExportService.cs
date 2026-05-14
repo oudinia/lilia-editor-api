@@ -1010,12 +1010,18 @@ public class LaTeXExportService : ILaTeXExportService
         else if (content.TryGetProperty("ordered", out var ord))
             isOrdered = ord.ValueKind == JsonValueKind.True;
 
-        var env = isOrdered ? "enumerate" : "itemize";
+        // `kind` takes precedence over `ordered` when present (Phase 2).
+        string? kind = null;
+        if (content.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String)
+            kind = kindProp.GetString();
+        var isDescription = kind == "description";
+
+        var env = isDescription ? "description" : (isOrdered ? "enumerate" : "itemize");
 
         // enumitem options — only applied to the top-level ordered env, mirroring
         // RenderService.RenderListToLatex so /preview/latex and /export/pdf agree.
         var enumOptions = new List<string>();
-        if (isOrdered)
+        if (isOrdered && !isDescription)
         {
             if (content.TryGetProperty("labelFormat", out var lfProp))
             {
@@ -1071,10 +1077,27 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine($@"{indent}\begin{{{env}}}");
         }
+        var isDescription = env == "description";
         foreach (var item in items.EnumerateArray())
         {
             var itemText = ExtractItemText(item);
-            sb.AppendLine($@"{indent}\item {FormatInlineContent(itemText)}");
+            if (isDescription)
+            {
+                // Description list: emit `\item[<term>] <description>`.
+                // The term goes in square brackets (LaTeX renders bold).
+                string descriptionText = "";
+                if (item.ValueKind == JsonValueKind.Object
+                    && item.TryGetProperty("description", out var descProp)
+                    && descProp.ValueKind == JsonValueKind.String)
+                {
+                    descriptionText = descProp.GetString() ?? "";
+                }
+                sb.AppendLine($@"{indent}\item[{FormatInlineContent(itemText)}] {FormatInlineContent(descriptionText)}");
+            }
+            else
+            {
+                sb.AppendLine($@"{indent}\item {FormatInlineContent(itemText)}");
+            }
             if (item.ValueKind == JsonValueKind.Object &&
                 item.TryGetProperty("children", out var children) &&
                 children.ValueKind == JsonValueKind.Array &&

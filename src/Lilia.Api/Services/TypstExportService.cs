@@ -341,6 +341,17 @@ public class TypstExportService : ITypstExportService
     {
         if (!content.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             return "// [Empty list]";
+
+        // `kind` (Phase 2) takes precedence; description lists use
+        // Typst's native term-list syntax `/ term: description`.
+        var kind = ResolveKind(content);
+        if (kind == "description")
+        {
+            var dsb = new StringBuilder();
+            AppendDescriptionItems(items, depth: 0, dsb);
+            return dsb.ToString().TrimEnd();
+        }
+
         var ordered = ResolveOrdered(content);
         var sb = new StringBuilder();
 
@@ -368,6 +379,46 @@ public class TypstExportService : ITypstExportService
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    private static string? ResolveKind(JsonElement content)
+    {
+        if (content.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String)
+            return k.GetString();
+        return null;
+    }
+
+    /// <summary>
+    /// Description-list (term-list) emitter. Each item becomes a
+    /// `/ term: description` line, which is Typst's native syntax for
+    /// a definition list. Nested children inherit description kind.
+    /// </summary>
+    private static void AppendDescriptionItems(JsonElement items, int depth, StringBuilder sb)
+    {
+        if (items.ValueKind != JsonValueKind.Array) return;
+        var indent = new string(' ', depth * 2);
+        foreach (var item in items.EnumerateArray())
+        {
+            string term = "";
+            string description = "";
+            JsonElement? children = null;
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                term = item.GetString() ?? "";
+            }
+            else if (item.ValueKind == JsonValueKind.Object)
+            {
+                if (item.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                    term = t.GetString() ?? "";
+                if (item.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String)
+                    description = d.GetString() ?? "";
+                if (item.TryGetProperty("children", out var ch) && ch.ValueKind == JsonValueKind.Array && ch.GetArrayLength() > 0)
+                    children = ch;
+            }
+            sb.AppendLine($"{indent}/ {FormatInline(term)}: {FormatInline(description)}");
+            if (children.HasValue)
+                AppendDescriptionItems(children.Value, depth + 1, sb);
+        }
     }
 
     private static string? MapLabelFormatToTypstNumbering(JsonElement content)
