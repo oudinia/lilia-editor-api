@@ -1024,17 +1024,30 @@ public class TypstExportService : ITypstExportService
     /// </summary>
     private static string TranslateLatexLiterals(string s, Func<string, string> placeholder)
     {
-        // Layout primitives that produce no visible output in Typst.
+        // Layout primitives.
         s = Regex.Replace(s, @"\\noindent\b\s*", "");
         s = Regex.Replace(s, @"\\indent\b\s*", "");
         s = Regex.Replace(s, @"\\par\b\s*", "\n\n");
-        s = Regex.Replace(s, @"\\medskip\b\s*", "");
-        s = Regex.Replace(s, @"\\smallskip\b\s*", "");
-        s = Regex.Replace(s, @"\\bigskip\b\s*", "");
+        // Vertical skips — LaTeX `\smallskip` / `\medskip` / `\bigskip`
+        // emit a small / medium / large amount of vertical space.
+        // Map to Typst's `#v(...)` so the spacing actually shows up
+        // (was previously stripped to empty — the user-facing Spacing
+        // ribbon buttons rely on these being honoured, 2026-05-14).
+        // `(?:\{\})?` matches the optional `{}` terminator the
+        // editor's atom-node serialiser appends (see document-
+        // serializer.ts comment on the no-arg form).
+        s = Regex.Replace(s, @"\\smallskip\b(?:\{\})?\s*", _ => placeholder("#v(0.4em) "));
+        s = Regex.Replace(s, @"\\medskip\b(?:\{\})?\s*", _ => placeholder("#v(0.7em) "));
+        s = Regex.Replace(s, @"\\bigskip\b(?:\{\})?\s*", _ => placeholder("#v(1.2em) "));
+        // Sized vertical space — `\vspace{1em}` / `\vspace*{2ex}` →
+        // `#v(1em)` / `#v(2ex)`. Typst accepts the same unit suffixes.
+        s = Regex.Replace(s, @"\\vspace\*?\{([^}]+)\}", m => placeholder($"#v({m.Groups[1].Value}) "));
+        // Vertical fill (push content to page bottom).
+        s = Regex.Replace(s, @"\\vfill\b(?:\{\})?\s*", _ => placeholder("#v(1fr) "));
 
         // Horizontal fill — Typst uses #h(1fr) for "spring" spacing.
         // Wrap in a placeholder so escape pass doesn't break the #h() syntax.
-        s = Regex.Replace(s, @"\\hfill\b\s*", _ => placeholder("#h(1fr) "));
+        s = Regex.Replace(s, @"\\hfill\b(?:\{\})?\s*", _ => placeholder("#h(1fr) "));
         // Sized horizontal space — `\hspace{1em}` / `\hspace*{2cm}` →
         // `#h(1em)` / `#h(2cm)`. Typst accepts the same unit suffixes
         // as LaTeX (em, cm, pt, ex, mm, in). The `*`-variant doesn't
