@@ -12,15 +12,66 @@ public class TeamsController : ControllerBase
 {
     private readonly ITeamService _teamService;
     private readonly IAuditService _auditService;
+    private readonly ITeamCodenameGenerator _codenameGenerator;
+    private readonly IEmailService _email;
 
-    public TeamsController(ITeamService teamService, IAuditService auditService)
+    public TeamsController(
+        ITeamService teamService,
+        IAuditService auditService,
+        ITeamCodenameGenerator codenameGenerator,
+        IEmailService email)
     {
         _teamService = teamService;
         _auditService = auditService;
+        _codenameGenerator = codenameGenerator;
+        _email = email;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    /// <summary>
+    /// Generate research-lab-style codename suggestions. Used by the
+    /// editor's team-create form: user clicks "Generate" → picks one
+    /// or types their own. Defaults to 1 suggestion; pass ?count=5 to
+    /// get a small picker.
+    /// </summary>
+    [HttpGet("suggest-codename")]
+    [AllowAnonymous]
+    public ActionResult<object> SuggestCodename([FromQuery] int count = 1)
+    {
+        if (count <= 1)
+        {
+            return Ok(new { codename = _codenameGenerator.Generate() });
+        }
+        return Ok(new { codenames = _codenameGenerator.Suggest(count) });
+    }
+
+    /// <summary>
+    /// Ad-hoc test for the team-welcome email template. Sends a one-shot
+    /// email to the given address with a freshly-generated codename — no
+    /// team is created in the DB. Used to validate Resend config + the
+    /// template renders correctly. Authorize gate stays so randoms can't
+    /// spam from the open internet; in dev the middleware short-circuits
+    /// to the dev user automatically.
+    /// </summary>
+    [HttpPost("test-welcome-email")]
+    public async Task<ActionResult<object>> TestWelcomeEmail([FromBody] TestWelcomeEmailRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Email)) return BadRequest(new { error = "email required" });
+        var codename = req.Codename ?? _codenameGenerator.Generate();
+        try
+        {
+            await _email.SendTeamWelcomeAsync(req.Email, req.FirstName, codename);
+            return Ok(new { sent = true, to = req.Email, codename });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { sent = false, to = req.Email, codename, error = ex.Message });
+        }
+    }
+
+    public record TestWelcomeEmailRequest(string Email, string? FirstName, string? Codename);
 
     [HttpGet]
     public async Task<ActionResult<List<TeamDto>>> GetTeams()

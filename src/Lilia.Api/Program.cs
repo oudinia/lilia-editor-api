@@ -248,6 +248,10 @@ builder.Services.AddScoped<IBlockGroupService, BlockGroupService>();
 builder.Services.AddScoped<IBibliographyService, BibliographyService>();
 builder.Services.AddScoped<ILabelService, LabelService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
+// Codename generator (singleton — pure RNG, no state). Used by both the
+// "/api/teams/suggest-codename" picker endpoint and the user.created
+// webhook hook that mints a default team.
+builder.Services.AddSingleton<ITeamCodenameGenerator, TeamCodenameGenerator>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IVersionService, VersionService>();

@@ -38,6 +38,56 @@ public class EmailService : IEmailService
         await SendEmailAsync(toEmail, subject, html, text);
     }
 
+    public async Task SendTeamWelcomeAsync(string toEmail, string? firstName, string teamCodename)
+    {
+        // Sent on user.created right after the welcome — announces the
+        // auto-generated default team so the user knows they already
+        // have a workspace to play in. Code is a research-lab-style
+        // codename like "Cobalt Photon A7B" from TeamCodenameGenerator.
+        var greeting = string.IsNullOrWhiteSpace(firstName) ? "Hi there" : $"Hi {firstName}";
+        var subject = $"Your team is ready — {teamCodename}";
+        var html = $$"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                <tr><td style="padding:32px 32px 0;">
+                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
+                </td></tr>
+                <tr><td style="padding:24px 32px;">
+                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{greeting}},</p>
+                  <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#333;">
+                    Your default team is ready. Codename:
+                  </p>
+                  <p style="margin:0 0 20px;font-size:18px;font-weight:600;line-height:1.4;color:#1976d2;font-family:ui-monospace,SFMono-Regular,monospace;">
+                    {{teamCodename}}
+                  </p>
+                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
+                    Every document you create lives in this team by default. You can rename it,
+                    invite up to 2 collaborators on the free plan, or roll a fresh codename
+                    from your team settings.
+                  </p>
+                  <a href="{{_settings.BaseUrl}}/latex/docs"
+                     style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
+                    Open Lilia
+                  </a>
+                </td></tr>
+                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
+                  <p style="margin:0;font-size:12px;color:#999;">— The Lilia team</p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+        """;
+        var text = $"{greeting},\n\nYour default team is ready. Codename: {teamCodename}\n\nEvery document you create lives in this team by default. Open Lilia: {_settings.BaseUrl}/latex/docs\n\n— The Lilia team";
+        await SendEmailAsync(toEmail, subject, html, text);
+    }
+
     public async Task SendWelcomeAsync(string toEmail, string? firstName)
     {
         // Welcome email sent on Kinde user.created webhook (LILIA-95).
