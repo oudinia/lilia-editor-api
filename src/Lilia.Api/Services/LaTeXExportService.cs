@@ -1010,11 +1010,53 @@ public class LaTeXExportService : ILaTeXExportService
         else if (content.TryGetProperty("ordered", out var ord))
             isOrdered = ord.ValueKind == JsonValueKind.True;
 
-        var env = isOrdered ? "enumerate" : "itemize";
+        // `kind` takes precedence over `ordered` when present (Phase 2).
+        string? kind = null;
+        if (content.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String)
+            kind = kindProp.GetString();
+        var isDescription = kind == "description";
+
+        var env = isDescription ? "description" : (isOrdered ? "enumerate" : "itemize");
+
+        // enumitem options — mirror RenderService.RenderListToLatex so
+        // /preview/latex and /export/pdf agree. `spacing` applies to
+        // all three envs; labelFormat/start are ordered-only.
+        var enumOptions = new List<string>();
+        if (content.TryGetProperty("spacing", out var spProp) && spProp.ValueKind == JsonValueKind.String)
+        {
+            var spacingOption = spProp.GetString() switch
+            {
+                "tight" => "noitemsep",
+                "compact" => "nosep",
+                _ => null,
+            };
+            if (spacingOption != null) enumOptions.Add(spacingOption);
+        }
+        if (isOrdered && !isDescription)
+        {
+            if (content.TryGetProperty("labelFormat", out var lfProp))
+            {
+                var labelOption = lfProp.GetString() switch
+                {
+                    "alpha" => @"label=(\alph*)",
+                    "Alpha" => @"label=(\Alph*)",
+                    "roman" => @"label=(\roman*)",
+                    "Roman" => @"label=(\Roman*)",
+                    _ => null,
+                };
+                if (labelOption != null) enumOptions.Add(labelOption);
+            }
+            if (content.TryGetProperty("start", out var startProp)
+                && startProp.TryGetInt32(out var startNum) && startNum != 1)
+            {
+                enumOptions.Add($"start={startNum}");
+            }
+        }
+
         var sb = new StringBuilder();
         if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
-            AppendListItems(items, env, depth: 0, sb);
+            AppendListItems(items, env, depth: 0, sb, enumOptions);
         }
         else
         {
@@ -1032,15 +1074,41 @@ public class LaTeXExportService : ILaTeXExportService
     /// model doesn't currently let users author that, mirroring the
     /// HTML renderer's inheritance). Indentation is cosmetic.
     /// </summary>
-    private void AppendListItems(JsonElement items, string env, int depth, StringBuilder sb)
+    private void AppendListItems(JsonElement items, string env, int depth, StringBuilder sb, List<string>? enumOptions = null)
     {
         if (items.ValueKind != JsonValueKind.Array) return;
         var indent = new string(' ', depth * 2);
-        sb.AppendLine($@"{indent}\begin{{{env}}}");
+        // enumitem options apply only to the outermost env (depth 0). Nested
+        // children inherit defaults — same shape as RenderService.
+        if (depth == 0 && enumOptions != null && enumOptions.Count > 0)
+        {
+            sb.AppendLine($@"{indent}\begin{{{env}}}[{string.Join(", ", enumOptions)}]");
+        }
+        else
+        {
+            sb.AppendLine($@"{indent}\begin{{{env}}}");
+        }
+        var isDescription = env == "description";
         foreach (var item in items.EnumerateArray())
         {
             var itemText = ExtractItemText(item);
-            sb.AppendLine($@"{indent}\item {FormatInlineContent(itemText)}");
+            if (isDescription)
+            {
+                // Description list: emit `\item[<term>] <description>`.
+                // The term goes in square brackets (LaTeX renders bold).
+                string descriptionText = "";
+                if (item.ValueKind == JsonValueKind.Object
+                    && item.TryGetProperty("description", out var descProp)
+                    && descProp.ValueKind == JsonValueKind.String)
+                {
+                    descriptionText = descProp.GetString() ?? "";
+                }
+                sb.AppendLine($@"{indent}\item[{FormatInlineContent(itemText)}] {FormatInlineContent(descriptionText)}");
+            }
+            else
+            {
+                sb.AppendLine($@"{indent}\item {FormatInlineContent(itemText)}");
+            }
             if (item.ValueKind == JsonValueKind.Object &&
                 item.TryGetProperty("children", out var children) &&
                 children.ValueKind == JsonValueKind.Array &&

@@ -341,10 +341,133 @@ public class TypstExportService : ITypstExportService
     {
         if (!content.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             return "// [Empty list]";
+
+        // Spacing applies to every list kind. Typst's tight: true on
+        // list/enum/terms removes inter-item paragraph spacing — closest
+        // analog to enumitem's noitemsep/nosep.
+        var tight = ResolveTight(content);
+
+        // `kind` (Phase 2) takes precedence; description lists use
+        // Typst's native term-list syntax `/ term: description`.
+        var kind = ResolveKind(content);
+        if (kind == "description")
+        {
+            var dsb = new StringBuilder();
+            if (tight)
+            {
+                dsb.AppendLine("#[");
+                dsb.AppendLine("  #set terms(tight: true)");
+                AppendDescriptionItems(items, depth: 1, dsb);
+                dsb.AppendLine("]");
+            }
+            else
+            {
+                AppendDescriptionItems(items, depth: 0, dsb);
+            }
+            return dsb.ToString().TrimEnd();
+        }
+
         var ordered = ResolveOrdered(content);
         var sb = new StringBuilder();
-        AppendListItems(items, ordered, depth: 0, sb);
+
+        // labelFormat + start are ordered-only. Map to Typst's
+        // `#set enum(numbering: "...", start: N)`. We scope the rule
+        // inside a content block `#[ ... ]` so it only affects this
+        // list, mirroring how the LaTeX path scopes via enumitem options.
+        var numberingPattern = ordered ? MapLabelFormatToTypstNumbering(content) : null;
+        var startNum = ordered ? ResolveStart(content) : 1;
+        var needsWrap = numberingPattern != null || startNum != 1 || tight;
+
+        if (needsWrap)
+        {
+            sb.AppendLine("#[");
+            var setArgs = new List<string>();
+            if (numberingPattern != null) setArgs.Add($"numbering: \"{numberingPattern}\"");
+            if (startNum != 1) setArgs.Add($"start: {startNum}");
+            if (tight) setArgs.Add("tight: true");
+            // For unordered lists we configure `list`; for ordered we
+            // configure `enum`. Both rules are scoped inside the `#[ ]`.
+            var setTarget = ordered ? "enum" : "list";
+            sb.AppendLine($"  #set {setTarget}({string.Join(", ", setArgs)})");
+            AppendListItems(items, ordered, depth: 1, sb);
+            sb.AppendLine("]");
+        }
+        else
+        {
+            AppendListItems(items, ordered, depth: 0, sb);
+        }
+
         return sb.ToString().TrimEnd();
+    }
+
+    private static bool ResolveTight(JsonElement content)
+    {
+        if (!content.TryGetProperty("spacing", out var sp) || sp.ValueKind != JsonValueKind.String) return false;
+        var v = sp.GetString();
+        return v == "tight" || v == "compact";
+    }
+
+    private static string? ResolveKind(JsonElement content)
+    {
+        if (content.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String)
+            return k.GetString();
+        return null;
+    }
+
+    /// <summary>
+    /// Description-list (term-list) emitter. Each item becomes a
+    /// `/ term: description` line, which is Typst's native syntax for
+    /// a definition list. Nested children inherit description kind.
+    /// </summary>
+    private static void AppendDescriptionItems(JsonElement items, int depth, StringBuilder sb)
+    {
+        if (items.ValueKind != JsonValueKind.Array) return;
+        var indent = new string(' ', depth * 2);
+        foreach (var item in items.EnumerateArray())
+        {
+            string term = "";
+            string description = "";
+            JsonElement? children = null;
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                term = item.GetString() ?? "";
+            }
+            else if (item.ValueKind == JsonValueKind.Object)
+            {
+                if (item.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                    term = t.GetString() ?? "";
+                if (item.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String)
+                    description = d.GetString() ?? "";
+                if (item.TryGetProperty("children", out var ch) && ch.ValueKind == JsonValueKind.Array && ch.GetArrayLength() > 0)
+                    children = ch;
+            }
+            sb.AppendLine($"{indent}/ {FormatInline(term)}: {FormatInline(description)}");
+            if (children.HasValue)
+                AppendDescriptionItems(children.Value, depth + 1, sb);
+        }
+    }
+
+    private static string? MapLabelFormatToTypstNumbering(JsonElement content)
+    {
+        if (!content.TryGetProperty("labelFormat", out var lf) || lf.ValueKind != JsonValueKind.String)
+            return null;
+        // Match the LaTeX path's `(\alph*)` style so the same doc looks
+        // the same in PDF (LaTeX) and Typst.
+        return lf.GetString() switch
+        {
+            "alpha" => "(a)",
+            "Alpha" => "(A)",
+            "roman" => "(i)",
+            "Roman" => "(I)",
+            _ => null, // "number" → Typst default ("1.")
+        };
+    }
+
+    private static int ResolveStart(JsonElement content)
+    {
+        if (content.TryGetProperty("start", out var s) && s.TryGetInt32(out var n) && n >= 1)
+            return n;
+        return 1;
     }
 
     /// <summary>

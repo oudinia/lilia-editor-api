@@ -100,6 +100,73 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "*important*", "- " },
             ExpectNotIn: new[] { "**important**" }),
 
+        // labelFormat + start — Typst scopes the numbering via
+        // `#set enum(...)` inside a content block. Parity with the
+        // LaTeX export's enumitem options so the same content lays out
+        // the same in both engines.
+        new Fx("list: labelFormat alpha → (a) numbering",
+            "list", """{"ordered":true,"labelFormat":"alpha","items":["x","y"]}""",
+            ExpectIn: new[] { "#[", "#set enum(numbering: \"(a)\")", "+ x", "+ y", "]" }),
+        new Fx("list: labelFormat Alpha → (A) numbering",
+            "list", """{"ordered":true,"labelFormat":"Alpha","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(A)\")" }),
+        new Fx("list: labelFormat roman → (i) numbering",
+            "list", """{"ordered":true,"labelFormat":"roman","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(i)\")" }),
+        new Fx("list: labelFormat Roman → (I) numbering",
+            "list", """{"ordered":true,"labelFormat":"Roman","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(I)\")" }),
+        new Fx("list: start=3 emits start arg",
+            "list", """{"ordered":true,"start":3,"items":["x","y"]}""",
+            ExpectIn: new[] { "#set enum(start: 3)", "+ x", "+ y" }),
+        new Fx("list: labelFormat + start combined",
+            "list", """{"ordered":true,"labelFormat":"Alpha","start":3,"items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(A)\", start: 3)" }),
+        new Fx("list: labelFormat=number stays in plain + marker form",
+            "list", """{"ordered":true,"labelFormat":"number","items":["x"]}""",
+            ExpectIn: new[] { "+ x" },
+            ExpectNotIn: new[] { "#set enum", "#[" }),
+        new Fx("list: unordered ignores labelFormat/start",
+            "list", """{"ordered":false,"labelFormat":"Alpha","start":3,"items":["x"]}""",
+            ExpectIn: new[] { "- x" },
+            ExpectNotIn: new[] { "#set enum", "#[" }),
+
+        // Phase 2 — description lists via Typst's `/ term: desc` syntax.
+        new Fx("list: description — basic term/desc",
+            "list", """{"kind":"description","items":[{"text":"paralist","description":"compact lists"},{"text":"enumitem","description":"control labels"}]}""",
+            ExpectIn: new[] {
+                "/ paralist: compact lists",
+                "/ enumitem: control labels",
+            },
+            ExpectNotIn: new[] { "- ", "+ ", "#set enum" }),
+        new Fx("list: description preserves bold in desc",
+            "list", """{"kind":"description","items":[{"text":"important","description":"**very** important"}]}""",
+            ExpectIn: new[] { "/ important:", "*very*" },
+            ExpectNotIn: new[] { "**very**" }),
+        new Fx("list: description with kind overrides ordered=true",
+            "list", """{"kind":"description","ordered":true,"items":[{"text":"a","description":"alpha"}]}""",
+            ExpectIn: new[] { "/ a: alpha" },
+            ExpectNotIn: new[] { "+ a", "- a" }),
+
+        // Phase 3 — tight spacing via Typst's tight: true on the
+        // matching set rule (list / enum / terms).
+        new Fx("list: spacing=tight on bullet → #set list(tight: true)",
+            "list", """{"ordered":false,"spacing":"tight","items":["x","y"]}""",
+            ExpectIn: new[] { "#[", "#set list(tight: true)", "- x", "- y", "]" }),
+        new Fx("list: spacing=compact on enumerate → #set enum(tight: true)",
+            "list", """{"ordered":true,"spacing":"compact","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(tight: true)", "+ x" }),
+        new Fx("list: spacing=tight on description → #set terms(tight: true)",
+            "list", """{"kind":"description","spacing":"tight","items":[{"text":"a","description":"x"}]}""",
+            ExpectIn: new[] { "#[", "#set terms(tight: true)", "/ a: x", "]" }),
+        new Fx("list: spacing=tight + labelFormat=Alpha → both args in enum",
+            "list", """{"ordered":true,"spacing":"tight","labelFormat":"Alpha","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(A)\", tight: true)" }),
+        new Fx("list: spacing=default emits no wrapper",
+            "list", """{"ordered":false,"spacing":"default","items":["x"]}""",
+            ExpectIn: new[] { "- x" },
+            ExpectNotIn: new[] { "#set list", "#[" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

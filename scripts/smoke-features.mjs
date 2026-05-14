@@ -147,6 +147,114 @@ const RECIPES = [
     latex: { contains: ["\\subsection{\\iffalse hidden heading\\fi"], lacks: ["[\\%"] },
     pdf:   { minBytes: 1000 },
   },
+
+  // ── List labelFormat + start (Phase 1) ───────────────────────────
+  // Verifies that the enumitem options exposed in the modal survive
+  // serialization → /preview/latex → PDF export.
+  {
+    name: "list: ordered with labelFormat=Alpha and start=3",
+    type: "list",
+    content: { items: ["x", "y", "z"], ordered: true, labelFormat: "Alpha", start: 3 },
+    latex: {
+      contains: ["\\begin{enumerate}[label=(\\Alph*), start=3]", "\\item x", "\\item y"],
+      lacks: ["\\begin{itemize}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: ordered with labelFormat=roman (no start)",
+    type: "list",
+    content: { items: ["a", "b"], ordered: true, labelFormat: "roman" },
+    latex: {
+      contains: ["\\begin{enumerate}[label=(\\roman*)]", "\\item a", "\\item b"],
+      lacks: ["start="],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: unordered ignores labelFormat",
+    type: "list",
+    content: { items: ["alpha", "beta"], ordered: false, labelFormat: "Alpha", start: 5 },
+    latex: {
+      contains: ["\\begin{itemize}", "\\item alpha", "\\item beta"],
+      lacks: ["label=", "start=", "\\begin{enumerate}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+
+  // ── Phase 2: description lists (kind: "description") ─────────────
+  {
+    name: "list: description — basic term/desc PDF compiles",
+    type: "list",
+    content: {
+      kind: "description",
+      items: [
+        { text: "paralist", description: "compact lists and inline lists" },
+        { text: "enumitem", description: "control labels and lengths in lists" },
+      ],
+    },
+    latex: {
+      contains: [
+        "\\begin{description}",
+        "\\item[paralist] compact lists and inline lists",
+        "\\item[enumitem] control labels and lengths in lists",
+        "\\end{description}",
+      ],
+      lacks: ["\\begin{itemize}", "\\begin{enumerate}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: description — kind overrides ordered=true",
+    type: "list",
+    content: {
+      kind: "description",
+      ordered: true,
+      items: [{ text: "alpha", description: "first" }],
+    },
+    latex: {
+      contains: ["\\begin{description}", "\\item[alpha] first"],
+      lacks: ["\\begin{enumerate}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+
+  // ── Phase 3: spacing (tight / compact) ───────────────────────────
+  {
+    name: "list: spacing=tight on itemize PDF compiles",
+    type: "list",
+    content: { ordered: false, spacing: "tight", items: ["x", "y", "z"] },
+    latex: {
+      contains: ["\\begin{itemize}[noitemsep]", "\\item x", "\\item z"],
+      lacks: ["nosep"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: spacing=compact on enumerate PDF compiles",
+    type: "list",
+    content: { ordered: true, spacing: "compact", items: ["a", "b"] },
+    latex: {
+      contains: ["\\begin{enumerate}[nosep]", "\\item a"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: spacing=tight on description PDF compiles",
+    type: "list",
+    content: {
+      kind: "description",
+      spacing: "tight",
+      items: [
+        { text: "compactitem", description: "alternative to itemize" },
+        { text: "compactenum", description: "alternative to enumerate" },
+      ],
+    },
+    latex: {
+      contains: ["\\begin{description}[noitemsep]", "\\item[compactitem]"],
+    },
+    pdf: { minBytes: 1000 },
+  },
 ];
 
 // ─── HTTP helpers ────────────────────────────────────────────────────
@@ -217,9 +325,13 @@ async function restoreSandbox() {
 
 async function setBlock(recipe) {
   const type = recipe.type ?? "paragraph";
-  const content = type === "heading"
-    ? { text: recipe.text, level: recipe.level ?? 1 }
-    : { text: recipe.text };
+  // Recipes can either provide a shaped `content` object directly
+  // (e.g. list with items/ordered/labelFormat) or fall back to the
+  // legacy text-shape used by paragraph/heading recipes.
+  const content = recipe.content
+    ?? (type === "heading"
+      ? { text: recipe.text, level: recipe.level ?? 1 }
+      : { text: recipe.text });
   const res = await api(`/api/documents/${SANDBOX_DOC_ID}/blocks/${SANDBOX_BLOCK_ID}`, {
     method: "PUT",
     body: JSON.stringify({ type, content }),
