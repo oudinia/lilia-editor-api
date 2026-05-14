@@ -50,15 +50,26 @@ public class TeamsController : ControllerBase
     /// <summary>
     /// Ad-hoc test for the team-welcome email template. Sends a one-shot
     /// email to the given address with a freshly-generated codename — no
-    /// team is created in the DB. Used to validate Resend config + the
-    /// template renders correctly. Authorize gate stays so randoms can't
-    /// spam from the open internet; in dev the middleware short-circuits
-    /// to the dev user automatically.
+    /// team is created in the DB. Validates Resend config + template.
+    ///
+    /// Gated by the `Internal:TestEmailKey` config (env var
+    /// <c>Internal__TestEmailKey</c>). Header `X-Lilia-Test-Key` must
+    /// match. Cookie-auth is unreliable on cross-origin scripted calls,
+    /// so we use a shared secret for this internal-tooling endpoint.
     /// </summary>
     [HttpPost("test-welcome-email")]
-    public async Task<ActionResult<object>> TestWelcomeEmail([FromBody] TestWelcomeEmailRequest req)
+    [AllowAnonymous]
+    public async Task<ActionResult<object>> TestWelcomeEmail(
+        [FromBody] TestWelcomeEmailRequest req,
+        [FromServices] IConfiguration config)
     {
         if (string.IsNullOrWhiteSpace(req.Email)) return BadRequest(new { error = "email required" });
+        var expected = config["Internal:TestEmailKey"];
+        var provided = Request.Headers["X-Lilia-Test-Key"].ToString();
+        if (string.IsNullOrEmpty(expected) || provided != expected)
+        {
+            return Unauthorized(new { error = "missing or invalid X-Lilia-Test-Key" });
+        }
         var codename = req.Codename ?? _codenameGenerator.Generate();
         try
         {
