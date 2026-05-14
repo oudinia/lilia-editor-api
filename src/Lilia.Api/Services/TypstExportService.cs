@@ -343,8 +343,54 @@ public class TypstExportService : ITypstExportService
             return "// [Empty list]";
         var ordered = ResolveOrdered(content);
         var sb = new StringBuilder();
-        AppendListItems(items, ordered, depth: 0, sb);
+
+        // labelFormat + start are ordered-only. Map to Typst's
+        // `#set enum(numbering: "...", start: N)`. We scope the rule
+        // inside a content block `#[ ... ]` so it only affects this
+        // list, mirroring how the LaTeX path scopes via enumitem options.
+        var numberingPattern = ordered ? MapLabelFormatToTypstNumbering(content) : null;
+        var startNum = ordered ? ResolveStart(content) : 1;
+        var needsWrap = numberingPattern != null || startNum != 1;
+
+        if (needsWrap)
+        {
+            sb.AppendLine("#[");
+            var setArgs = new List<string>();
+            if (numberingPattern != null) setArgs.Add($"numbering: \"{numberingPattern}\"");
+            if (startNum != 1) setArgs.Add($"start: {startNum}");
+            sb.AppendLine($"  #set enum({string.Join(", ", setArgs)})");
+            AppendListItems(items, ordered, depth: 1, sb);
+            sb.AppendLine("]");
+        }
+        else
+        {
+            AppendListItems(items, ordered, depth: 0, sb);
+        }
+
         return sb.ToString().TrimEnd();
+    }
+
+    private static string? MapLabelFormatToTypstNumbering(JsonElement content)
+    {
+        if (!content.TryGetProperty("labelFormat", out var lf) || lf.ValueKind != JsonValueKind.String)
+            return null;
+        // Match the LaTeX path's `(\alph*)` style so the same doc looks
+        // the same in PDF (LaTeX) and Typst.
+        return lf.GetString() switch
+        {
+            "alpha" => "(a)",
+            "Alpha" => "(A)",
+            "roman" => "(i)",
+            "Roman" => "(I)",
+            _ => null, // "number" → Typst default ("1.")
+        };
+    }
+
+    private static int ResolveStart(JsonElement content)
+    {
+        if (content.TryGetProperty("start", out var s) && s.TryGetInt32(out var n) && n >= 1)
+            return n;
+        return 1;
     }
 
     /// <summary>

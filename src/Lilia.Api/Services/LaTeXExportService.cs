@@ -1011,10 +1011,35 @@ public class LaTeXExportService : ILaTeXExportService
             isOrdered = ord.ValueKind == JsonValueKind.True;
 
         var env = isOrdered ? "enumerate" : "itemize";
+
+        // enumitem options — only applied to the top-level ordered env, mirroring
+        // RenderService.RenderListToLatex so /preview/latex and /export/pdf agree.
+        var enumOptions = new List<string>();
+        if (isOrdered)
+        {
+            if (content.TryGetProperty("labelFormat", out var lfProp))
+            {
+                var labelOption = lfProp.GetString() switch
+                {
+                    "alpha" => @"label=(\alph*)",
+                    "Alpha" => @"label=(\Alph*)",
+                    "roman" => @"label=(\roman*)",
+                    "Roman" => @"label=(\Roman*)",
+                    _ => null,
+                };
+                if (labelOption != null) enumOptions.Add(labelOption);
+            }
+            if (content.TryGetProperty("start", out var startProp)
+                && startProp.TryGetInt32(out var startNum) && startNum != 1)
+            {
+                enumOptions.Add($"start={startNum}");
+            }
+        }
+
         var sb = new StringBuilder();
         if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
-            AppendListItems(items, env, depth: 0, sb);
+            AppendListItems(items, env, depth: 0, sb, enumOptions);
         }
         else
         {
@@ -1032,11 +1057,20 @@ public class LaTeXExportService : ILaTeXExportService
     /// model doesn't currently let users author that, mirroring the
     /// HTML renderer's inheritance). Indentation is cosmetic.
     /// </summary>
-    private void AppendListItems(JsonElement items, string env, int depth, StringBuilder sb)
+    private void AppendListItems(JsonElement items, string env, int depth, StringBuilder sb, List<string>? enumOptions = null)
     {
         if (items.ValueKind != JsonValueKind.Array) return;
         var indent = new string(' ', depth * 2);
-        sb.AppendLine($@"{indent}\begin{{{env}}}");
+        // enumitem options apply only to the outermost env (depth 0). Nested
+        // children inherit defaults — same shape as RenderService.
+        if (depth == 0 && enumOptions != null && enumOptions.Count > 0)
+        {
+            sb.AppendLine($@"{indent}\begin{{{env}}}[{string.Join(", ", enumOptions)}]");
+        }
+        else
+        {
+            sb.AppendLine($@"{indent}\begin{{{env}}}");
+        }
         foreach (var item in items.EnumerateArray())
         {
             var itemText = ExtractItemText(item);

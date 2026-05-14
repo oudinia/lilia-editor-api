@@ -100,6 +100,37 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "*important*", "- " },
             ExpectNotIn: new[] { "**important**" }),
 
+        // labelFormat + start — Typst scopes the numbering via
+        // `#set enum(...)` inside a content block. Parity with the
+        // LaTeX export's enumitem options so the same content lays out
+        // the same in both engines.
+        new Fx("list: labelFormat alpha → (a) numbering",
+            "list", """{"ordered":true,"labelFormat":"alpha","items":["x","y"]}""",
+            ExpectIn: new[] { "#[", "#set enum(numbering: \"(a)\")", "+ x", "+ y", "]" }),
+        new Fx("list: labelFormat Alpha → (A) numbering",
+            "list", """{"ordered":true,"labelFormat":"Alpha","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(A)\")" }),
+        new Fx("list: labelFormat roman → (i) numbering",
+            "list", """{"ordered":true,"labelFormat":"roman","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(i)\")" }),
+        new Fx("list: labelFormat Roman → (I) numbering",
+            "list", """{"ordered":true,"labelFormat":"Roman","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(I)\")" }),
+        new Fx("list: start=3 emits start arg",
+            "list", """{"ordered":true,"start":3,"items":["x","y"]}""",
+            ExpectIn: new[] { "#set enum(start: 3)", "+ x", "+ y" }),
+        new Fx("list: labelFormat + start combined",
+            "list", """{"ordered":true,"labelFormat":"Alpha","start":3,"items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(A)\", start: 3)" }),
+        new Fx("list: labelFormat=number stays in plain + marker form",
+            "list", """{"ordered":true,"labelFormat":"number","items":["x"]}""",
+            ExpectIn: new[] { "+ x" },
+            ExpectNotIn: new[] { "#set enum", "#[" }),
+        new Fx("list: unordered ignores labelFormat/start",
+            "list", """{"ordered":false,"labelFormat":"Alpha","start":3,"items":["x"]}""",
+            ExpectIn: new[] { "- x" },
+            ExpectNotIn: new[] { "#set enum", "#[" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

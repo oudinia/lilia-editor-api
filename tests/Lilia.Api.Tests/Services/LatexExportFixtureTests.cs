@@ -106,6 +106,36 @@ public class LatexExportFixtureTests
                 @"\item a.1.i",
             }),
 
+        // labelFormat + start — enumitem options. Parity with
+        // RenderService.RenderListToLatex so the PDF (export) and the
+        // /preview/latex panel agree on numbering style.
+        new Fx("list: labelFormat alpha → (a)",
+            "list", """{"ordered":true,"labelFormat":"alpha","items":["x","y"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[label=(\alph*)]", @"\item x", @"\item y" }),
+        new Fx("list: labelFormat Alpha → (A)",
+            "list", """{"ordered":true,"labelFormat":"Alpha","items":["x"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[label=(\Alph*)]" }),
+        new Fx("list: labelFormat roman → (i)",
+            "list", """{"ordered":true,"labelFormat":"roman","items":["x"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[label=(\roman*)]" }),
+        new Fx("list: labelFormat Roman → (I)",
+            "list", """{"ordered":true,"labelFormat":"Roman","items":["x"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[label=(\Roman*)]" }),
+        new Fx("list: start=3",
+            "list", """{"ordered":true,"start":3,"items":["x","y"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[start=3]" }),
+        new Fx("list: labelFormat + start combined",
+            "list", """{"ordered":true,"labelFormat":"Alpha","start":3,"items":["x"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[label=(\Alph*), start=3]" }),
+        new Fx("list: labelFormat=number emits no enumitem options",
+            "list", """{"ordered":true,"labelFormat":"number","items":["x"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}", @"\item x" },
+            ExpectNotIn: new[] { "label=", "start=" }),
+        new Fx("list: unordered ignores labelFormat",
+            "list", """{"ordered":false,"labelFormat":"Alpha","start":3,"items":["x"]}""",
+            ExpectIn: new[] { @"\begin{itemize}" },
+            ExpectNotIn: new[] { "label=", "start=" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

@@ -147,6 +147,40 @@ const RECIPES = [
     latex: { contains: ["\\subsection{\\iffalse hidden heading\\fi"], lacks: ["[\\%"] },
     pdf:   { minBytes: 1000 },
   },
+
+  // ── List labelFormat + start (Phase 1) ───────────────────────────
+  // Verifies that the enumitem options exposed in the modal survive
+  // serialization → /preview/latex → PDF export.
+  {
+    name: "list: ordered with labelFormat=Alpha and start=3",
+    type: "list",
+    content: { items: ["x", "y", "z"], ordered: true, labelFormat: "Alpha", start: 3 },
+    latex: {
+      contains: ["\\begin{enumerate}[label=(\\Alph*), start=3]", "\\item x", "\\item y"],
+      lacks: ["\\begin{itemize}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: ordered with labelFormat=roman (no start)",
+    type: "list",
+    content: { items: ["a", "b"], ordered: true, labelFormat: "roman" },
+    latex: {
+      contains: ["\\begin{enumerate}[label=(\\roman*)]", "\\item a", "\\item b"],
+      lacks: ["start="],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: unordered ignores labelFormat",
+    type: "list",
+    content: { items: ["alpha", "beta"], ordered: false, labelFormat: "Alpha", start: 5 },
+    latex: {
+      contains: ["\\begin{itemize}", "\\item alpha", "\\item beta"],
+      lacks: ["label=", "start=", "\\begin{enumerate}"],
+    },
+    pdf: { minBytes: 1000 },
+  },
 ];
 
 // ─── HTTP helpers ────────────────────────────────────────────────────
@@ -217,9 +251,13 @@ async function restoreSandbox() {
 
 async function setBlock(recipe) {
   const type = recipe.type ?? "paragraph";
-  const content = type === "heading"
-    ? { text: recipe.text, level: recipe.level ?? 1 }
-    : { text: recipe.text };
+  // Recipes can either provide a shaped `content` object directly
+  // (e.g. list with items/ordered/labelFormat) or fall back to the
+  // legacy text-shape used by paragraph/heading recipes.
+  const content = recipe.content
+    ?? (type === "heading"
+      ? { text: recipe.text, level: recipe.level ?? 1 }
+      : { text: recipe.text });
   const res = await api(`/api/documents/${SANDBOX_DOC_ID}/blocks/${SANDBOX_BLOCK_ID}`, {
     method: "PUT",
     body: JSON.stringify({ type, content }),
