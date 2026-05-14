@@ -1872,6 +1872,33 @@ public partial class RenderService : IRenderService
                 return $"\x00CMD{commandRegions.Count - 1}\x00";
             });
 
+        // Step 1.4: Extract inline code `…` BEFORE smart-quote / escape
+        // passes. Code content is verbatim from the user — smart quotes,
+        // markdown markers, and the % / & / # escape pass should NOT
+        // touch it. Convert directly to `\texttt{escaped}` and store as
+        // a command placeholder so later steps see only the placeholder.
+        // (User reported `\texttt{test''}` — smart-quote-in-code bug,
+        // 2026-05-14.)
+        result = Regex.Replace(result, @"`(.+?)`", m =>
+        {
+            // Escape LaTeX special chars inside the code content — texttt
+            // is not verbatim (unlike \verb), so `_`, `%`, etc. still
+            // need to be escaped to render correctly.
+            var inner = m.Groups[1].Value
+                .Replace("\\", "\\textbackslash{}")
+                .Replace("{", "\\{")
+                .Replace("}", "\\}")
+                .Replace("$", "\\$")
+                .Replace("&", "\\&")
+                .Replace("#", "\\#")
+                .Replace("^", "\\textasciicircum{}")
+                .Replace("_", "\\_")
+                .Replace("~", "\\textasciitilde{}")
+                .Replace("%", "\\%");
+            commandRegions.Add($"\\texttt{{{inner}}}");
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
+
         // Step 1.5: Convert markers whose delimiters contain LaTeX-escapable
         // chars (%, ^, ~). These MUST run before Step 2 escape, otherwise
         // e.g. `%%sub%%` becomes `\%\%sub\%\%` and the regex no longer matches.
@@ -1934,8 +1961,8 @@ public partial class RenderService : IRenderService
         result = Regex.Replace(result, @"\*(.+?)\*", @"\textit{$1}");
         // Underline: __text__ → \underline{text}
         result = Regex.Replace(result, @"__(.+?)__", @"\underline{$1}");
-        // Inline code: `text` → \texttt{text}
-        result = Regex.Replace(result, @"`(.+?)`", @"\texttt{$1}");
+        // Inline code already converted in Step 1.4 (before smart quotes
+        // + escape pass) so the content stays verbatim — see comment there.
         // Yellow highlight: ==text== → \hl{text} (soul package)
         result = Regex.Replace(result, @"==(.+?)==", @"\hl{$1}");
 

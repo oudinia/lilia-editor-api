@@ -1035,6 +1035,11 @@ public class TypstExportService : ITypstExportService
         // Horizontal fill — Typst uses #h(1fr) for "spring" spacing.
         // Wrap in a placeholder so escape pass doesn't break the #h() syntax.
         s = Regex.Replace(s, @"\\hfill\b\s*", _ => placeholder("#h(1fr) "));
+        // Sized horizontal space — `\hspace{1em}` / `\hspace*{2cm}` →
+        // `#h(1em)` / `#h(2cm)`. Typst accepts the same unit suffixes
+        // as LaTeX (em, cm, pt, ex, mm, in). The `*`-variant doesn't
+        // suppress at line breaks in Typst — close enough for preview.
+        s = Regex.Replace(s, @"\\hspace\*?\{([^}]+)\}", m => placeholder($"#h({m.Groups[1].Value}) "));
 
         // Explicit line break — LaTeX `\\` (or `\\\\` after JSON escape).
         // Both collapse to Typst's single-backslash line break in source.
