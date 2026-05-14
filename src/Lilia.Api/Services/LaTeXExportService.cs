@@ -1018,9 +1018,20 @@ public class LaTeXExportService : ILaTeXExportService
 
         var env = isDescription ? "description" : (isOrdered ? "enumerate" : "itemize");
 
-        // enumitem options — only applied to the top-level ordered env, mirroring
-        // RenderService.RenderListToLatex so /preview/latex and /export/pdf agree.
+        // enumitem options — mirror RenderService.RenderListToLatex so
+        // /preview/latex and /export/pdf agree. `spacing` applies to
+        // all three envs; labelFormat/start are ordered-only.
         var enumOptions = new List<string>();
+        if (content.TryGetProperty("spacing", out var spProp) && spProp.ValueKind == JsonValueKind.String)
+        {
+            var spacingOption = spProp.GetString() switch
+            {
+                "tight" => "noitemsep",
+                "compact" => "nosep",
+                _ => null,
+            };
+            if (spacingOption != null) enumOptions.Add(spacingOption);
+        }
         if (isOrdered && !isDescription)
         {
             if (content.TryGetProperty("labelFormat", out var lfProp))

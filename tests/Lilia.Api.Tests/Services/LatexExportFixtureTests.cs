@@ -163,6 +163,26 @@ public class LatexExportFixtureTests
             "list", """{"kind":"description","items":[{"text":"orphan"}]}""",
             ExpectIn: new[] { @"\begin{description}", @"\item[orphan]" }),
 
+        // Phase 3 — tight/compact spacing via enumitem.
+        new Fx("list: spacing=tight → enumitem noitemsep on itemize",
+            "list", """{"ordered":false,"spacing":"tight","items":["x","y"]}""",
+            ExpectIn: new[] { @"\begin{itemize}[noitemsep]", @"\item x", @"\item y" },
+            ExpectNotIn: new[] { "nosep" }),
+        new Fx("list: spacing=compact → enumitem nosep on enumerate",
+            "list", """{"ordered":true,"spacing":"compact","items":["x","y"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[nosep]" },
+            ExpectNotIn: new[] { "noitemsep" }),
+        new Fx("list: spacing=tight + labelFormat=Alpha → both options",
+            "list", """{"ordered":true,"spacing":"tight","labelFormat":"Alpha","items":["x"]}""",
+            ExpectIn: new[] { @"\begin{enumerate}[noitemsep, label=(\Alph*)]" }),
+        new Fx("list: spacing=compact applies to description env too",
+            "list", """{"kind":"description","spacing":"compact","items":[{"text":"a","description":"x"}]}""",
+            ExpectIn: new[] { @"\begin{description}[nosep]", @"\item[a] x" }),
+        new Fx("list: spacing=default emits no enumitem option",
+            "list", """{"ordered":false,"spacing":"default","items":["x"]}""",
+            ExpectIn: new[] { @"\begin{itemize}", @"\item x" },
+            ExpectNotIn: new[] { "noitemsep", "nosep" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

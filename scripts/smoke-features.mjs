@@ -218,6 +218,43 @@ const RECIPES = [
     },
     pdf: { minBytes: 1000 },
   },
+
+  // ── Phase 3: spacing (tight / compact) ───────────────────────────
+  {
+    name: "list: spacing=tight on itemize PDF compiles",
+    type: "list",
+    content: { ordered: false, spacing: "tight", items: ["x", "y", "z"] },
+    latex: {
+      contains: ["\\begin{itemize}[noitemsep]", "\\item x", "\\item z"],
+      lacks: ["nosep"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: spacing=compact on enumerate PDF compiles",
+    type: "list",
+    content: { ordered: true, spacing: "compact", items: ["a", "b"] },
+    latex: {
+      contains: ["\\begin{enumerate}[nosep]", "\\item a"],
+    },
+    pdf: { minBytes: 1000 },
+  },
+  {
+    name: "list: spacing=tight on description PDF compiles",
+    type: "list",
+    content: {
+      kind: "description",
+      spacing: "tight",
+      items: [
+        { text: "compactitem", description: "alternative to itemize" },
+        { text: "compactenum", description: "alternative to enumerate" },
+      ],
+    },
+    latex: {
+      contains: ["\\begin{description}[noitemsep]", "\\item[compactitem]"],
+    },
+    pdf: { minBytes: 1000 },
+  },
 ];
 
 // ─── HTTP helpers ────────────────────────────────────────────────────

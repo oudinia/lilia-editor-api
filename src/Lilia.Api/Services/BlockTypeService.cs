@@ -50,7 +50,7 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.Equation, "Equation", "LaTeX math equation", "calculator", CategoryDocument, new { latex = "", displayMode = true, equationMode = "display", numbered = true }),
             MakeBlockType(BlockTypes.Figure, "Figure", "Image with caption", "image", CategoryDocument, new { src = "", caption = "", alt = "", width = 0.8, position = "center", placement = "auto" }),
             MakeBlockType(BlockTypes.Code, "Code", "Code block with syntax highlighting", "code", CategoryDocument, new { code = "", language = "javascript" }),
-            MakeBlockType(BlockTypes.List, "List", "Numbered, bulleted, or description list", "listOrdered", CategoryDocument, new { items = Array.Empty<string>(), ordered = false, start = 1, labelFormat = "number", kind = "bullet" }),
+            MakeBlockType(BlockTypes.List, "List", "Numbered, bulleted, or description list", "listOrdered", CategoryDocument, new { items = Array.Empty<string>(), ordered = false, start = 1, labelFormat = "number", kind = "bullet", spacing = "default" }),
             MakeBlockType(BlockTypes.Blockquote, "Quote", "Block quotation", "rightDoubleQuotes", CategoryDocument, new { text = "" }),
             MakeBlockType(BlockTypes.Table, "Table", "Data table", "table", CategoryDocument, new { headers = new[] { "Column 1", "Column 2", "Column 3" }, rows = new[] { new[] { "", "", "" }, new[] { "", "", "" } }, columnAlign = Array.Empty<string>(), caption = "" }),
             MakeBlockType(BlockTypes.Theorem, "Theorem", "Theorem, definition, lemma, proof", "stickyNote", CategoryDocument, new { theoremType = "theorem", title = "", text = "", label = "" }),

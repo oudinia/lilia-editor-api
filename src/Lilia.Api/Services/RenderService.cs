@@ -1643,8 +1643,20 @@ public partial class RenderService : IRenderService
 
         var sb = new StringBuilder();
 
-        // Build enumitem options for ordered lists
+        // Build enumitem options. labelFormat + start are
+        // ordered-only; `spacing` applies to all three envs
+        // (itemize/enumerate/description) via enumitem.
         var enumOptions = new List<string>();
+        if (content.TryGetProperty("spacing", out var spProp) && spProp.ValueKind == JsonValueKind.String)
+        {
+            var spacingOption = spProp.GetString() switch
+            {
+                "tight" => "noitemsep",
+                "compact" => "nosep",
+                _ => null,
+            };
+            if (spacingOption != null) enumOptions.Add(spacingOption);
+        }
         if (isOrdered && !isDescription)
         {
             // Label format support

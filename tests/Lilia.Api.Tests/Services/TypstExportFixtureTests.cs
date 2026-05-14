@@ -148,6 +148,25 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "/ a: alpha" },
             ExpectNotIn: new[] { "+ a", "- a" }),
 
+        // Phase 3 — tight spacing via Typst's tight: true on the
+        // matching set rule (list / enum / terms).
+        new Fx("list: spacing=tight on bullet → #set list(tight: true)",
+            "list", """{"ordered":false,"spacing":"tight","items":["x","y"]}""",
+            ExpectIn: new[] { "#[", "#set list(tight: true)", "- x", "- y", "]" }),
+        new Fx("list: spacing=compact on enumerate → #set enum(tight: true)",
+            "list", """{"ordered":true,"spacing":"compact","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(tight: true)", "+ x" }),
+        new Fx("list: spacing=tight on description → #set terms(tight: true)",
+            "list", """{"kind":"description","spacing":"tight","items":[{"text":"a","description":"x"}]}""",
+            ExpectIn: new[] { "#[", "#set terms(tight: true)", "/ a: x", "]" }),
+        new Fx("list: spacing=tight + labelFormat=Alpha → both args in enum",
+            "list", """{"ordered":true,"spacing":"tight","labelFormat":"Alpha","items":["x"]}""",
+            ExpectIn: new[] { "#set enum(numbering: \"(A)\", tight: true)" }),
+        new Fx("list: spacing=default emits no wrapper",
+            "list", """{"ordered":false,"spacing":"default","items":["x"]}""",
+            ExpectIn: new[] { "- x" },
+            ExpectNotIn: new[] { "#set list", "#[" }),
+
         // blockquote
         new Fx("blockquote: text",
             "blockquote", """{"text":"to be or not to be"}""",

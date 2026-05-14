@@ -342,13 +342,28 @@ public class TypstExportService : ITypstExportService
         if (!content.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             return "// [Empty list]";
 
+        // Spacing applies to every list kind. Typst's tight: true on
+        // list/enum/terms removes inter-item paragraph spacing — closest
+        // analog to enumitem's noitemsep/nosep.
+        var tight = ResolveTight(content);
+
         // `kind` (Phase 2) takes precedence; description lists use
         // Typst's native term-list syntax `/ term: description`.
         var kind = ResolveKind(content);
         if (kind == "description")
         {
             var dsb = new StringBuilder();
-            AppendDescriptionItems(items, depth: 0, dsb);
+            if (tight)
+            {
+                dsb.AppendLine("#[");
+                dsb.AppendLine("  #set terms(tight: true)");
+                AppendDescriptionItems(items, depth: 1, dsb);
+                dsb.AppendLine("]");
+            }
+            else
+            {
+                AppendDescriptionItems(items, depth: 0, dsb);
+            }
             return dsb.ToString().TrimEnd();
         }
 
@@ -361,7 +376,7 @@ public class TypstExportService : ITypstExportService
         // list, mirroring how the LaTeX path scopes via enumitem options.
         var numberingPattern = ordered ? MapLabelFormatToTypstNumbering(content) : null;
         var startNum = ordered ? ResolveStart(content) : 1;
-        var needsWrap = numberingPattern != null || startNum != 1;
+        var needsWrap = numberingPattern != null || startNum != 1 || tight;
 
         if (needsWrap)
         {
@@ -369,7 +384,11 @@ public class TypstExportService : ITypstExportService
             var setArgs = new List<string>();
             if (numberingPattern != null) setArgs.Add($"numbering: \"{numberingPattern}\"");
             if (startNum != 1) setArgs.Add($"start: {startNum}");
-            sb.AppendLine($"  #set enum({string.Join(", ", setArgs)})");
+            if (tight) setArgs.Add("tight: true");
+            // For unordered lists we configure `list`; for ordered we
+            // configure `enum`. Both rules are scoped inside the `#[ ]`.
+            var setTarget = ordered ? "enum" : "list";
+            sb.AppendLine($"  #set {setTarget}({string.Join(", ", setArgs)})");
             AppendListItems(items, ordered, depth: 1, sb);
             sb.AppendLine("]");
         }
@@ -379,6 +398,13 @@ public class TypstExportService : ITypstExportService
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    private static bool ResolveTight(JsonElement content)
+    {
+        if (!content.TryGetProperty("spacing", out var sp) || sp.ValueKind != JsonValueKind.String) return false;
+        var v = sp.GetString();
+        return v == "tight" || v == "compact";
     }
 
     private static string? ResolveKind(JsonElement content)
