@@ -27,8 +27,16 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.OnboardingComplete).HasColumnName("onboarding_complete");
         builder.Property(u => u.PaymentsCustomerId).HasColumnName("payments_customer_id").HasMaxLength(255);
         builder.Property(u => u.Locale).HasColumnName("locale").HasMaxLength(10);
+        builder.Property(u => u.DefaultTeamId).HasColumnName("default_team_id");
 
         builder.HasIndex(u => u.Email).IsUnique();
         builder.HasIndex(u => u.Username).IsUnique();
+        // DefaultTeam relationship — nullable, no cascade (we don't
+        // want deleting a team to nuke the user; the webhook will
+        // re-mint a default if needed).
+        builder.HasOne(u => u.DefaultTeam)
+            .WithMany()
+            .HasForeignKey(u => u.DefaultTeamId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

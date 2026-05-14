@@ -18,8 +18,17 @@ public class User
     public bool? OnboardingComplete { get; set; }
     public string? PaymentsCustomerId { get; set; }
     public string? Locale { get; set; }
+    /// <summary>
+    /// User's primary sandbox team — auto-created on user.created with
+    /// a generated codename. New documents default into this team so
+    /// users can start working without having to create one. Nullable
+    /// only for existing rows pre-migration; new users always get one.
+    /// </summary>
+    public Guid? DefaultTeamId { get; set; }
 
     // Navigation properties
+    public virtual Team? DefaultTeam { get; set; }
+    public virtual ICollection<TeamMember> TeamMemberships { get; set; } = new List<TeamMember>();
     public virtual ICollection<Team> OwnedTeams { get; set; } = new List<Team>();
     public virtual ICollection<GroupMember> GroupMemberships { get; set; } = new List<GroupMember>();
     public virtual ICollection<Document> OwnedDocuments { get; set; } = new List<Document>();
