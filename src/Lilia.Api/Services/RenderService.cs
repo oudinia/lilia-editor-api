@@ -1949,13 +1949,14 @@ public partial class RenderService : IRenderService
         //     would break).
         // A bare `%` line-comment isn't safe here: our marker is always
         // inline, and `% foo` would eat the rest of the LaTeX source line.
-        result = Regex.Replace(result, @"\[%([\s\S]+?)%\]", m =>
-        {
-            var inner = m.Groups[1].Value;
-            return inner.Contains('\n')
-                ? $"\\begin{{comment}}\n{inner}\n\\end{{comment}}"
-                : $"\\iffalse {inner}\\fi{{}}";
-        });
+        // `\iffalse … \fi` works for both inline AND multi-line cases.
+        // Tried branching to `\begin{comment}` for multi-line but the
+        // `comment` package errors when `\begin{comment}` appears mid-
+        // paragraph (it expects start-of-line) — observed via the
+        // smoke-features.mjs "comment marker multi-line" recipe.
+        // Sticking with the TeX primitive for safety.
+        result = Regex.Replace(result, @"\[%([\s\S]+?)%\]",
+            m => $"\\iffalse {m.Groups[1].Value}\\fi{{}}");
         // Smallcaps `^^…^^` — must precede `^…^` superscript below.
         result = Regex.Replace(result, @"\^\^(.+?)\^\^", @"\textsc{$1}");
         // Superscript `^…^` — single carets.

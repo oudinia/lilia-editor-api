@@ -1196,13 +1196,10 @@ public class LaTeXExportService : ILaTeXExportService
         //     \begin{comment}…\end{comment} (requires the `comment`
         //     package, loaded by LaTeXPreamble.Packages); single-line
         //     uses the TeX primitive \iffalse…\fi.
-        result = Regex.Replace(result, @"\[%([\s\S]+?)%\]", m =>
-        {
-            var inner = m.Groups[1].Value;
-            return Ph(inner.Contains('\n')
-                ? $"\\begin{{comment}}\n{inner}\n\\end{{comment}}"
-                : $"\\iffalse {inner}\\fi{{}}");
-        });
+        // Always emit \iffalse…\fi — the comment-package env errors
+        // when used mid-paragraph (see RenderService comment).
+        result = Regex.Replace(result, @"\[%([\s\S]+?)%\]",
+            m => Ph($"\\iffalse {m.Groups[1].Value}\\fi{{}}"));
 
         // 1f. LML inline marks the editor serialises (smallcaps `^^…^^`,
         //     superscript `^…^`, subscript `%%…%%`, strikethrough
