@@ -1126,9 +1126,63 @@ public class LaTeXExportService : ILaTeXExportService
         result = Regex.Replace(result, @"\\eqref\{([^}]+)\}", m => Ph($@"\eqref{{{m.Groups[1].Value}}}"));
         result = Regex.Replace(result, @"\\ref\{([^}]+)\}", m => Ph($@"\ref{{{m.Groups[1].Value}}}"));
         result = Regex.Replace(result, @"\\url\{([^}]+)\}", m => Ph($@"\url{{{m.Groups[1].Value}}}"));
+        // \href two-arg form first, then single-arg fallback (treat as bare link).
         result = Regex.Replace(result, @"\\href\{([^}]+)\}\{([^}]+)\}", m => Ph($@"\href{{{m.Groups[1].Value}}}{{{m.Groups[2].Value}}}"));
+        result = Regex.Replace(result, @"\\href\{([^}]+)\}", m => Ph($@"\url{{{m.Groups[1].Value}}}"));
         result = Regex.Replace(result, @"\\label\{([^}]+)\}", m => Ph($@"\label{{{m.Groups[1].Value}}}"));
         result = Regex.Replace(result, @"\\footnote\{([^}]+)\}", m => Ph($@"\footnote{{{m.Groups[1].Value}}}"));
+
+        // 1d. FormatRail-serialised LaTeX commands — `\textcolor{...}{...}`,
+        //     `\hl[color]{...}` / `\hl{...}`, and the `{\large …}` size
+        //     group form. These are the commands the editor's color /
+        //     highlight / size pickers emit when serialising marks.
+        //     Without explicit pass-through they get backslash-escaped to
+        //     literal text in the export PDF (user reported 2026-05-14).
+        result = Regex.Replace(result, @"\\textcolor\{([^{}]+)\}\{([^{}]+)\}",
+            m => Ph($@"\textcolor{{{m.Groups[1].Value}}}{{{EscapeLatex(m.Groups[2].Value)}}}"));
+        result = Regex.Replace(result, @"\\hl(?:\[([^\]]+)\])?\{([^{}]+)\}",
+            m =>
+            {
+                var color = m.Groups[1].Success ? m.Groups[1].Value : null;
+                var inner = EscapeLatex(m.Groups[2].Value);
+                return Ph(color != null ? $@"\hl[{color}]{{{inner}}}" : $@"\hl{{{inner}}}");
+            });
+        result = Regex.Replace(result,
+            @"\{\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge)\s+([^{}]+)\}",
+            m => Ph($@"{{\{m.Groups[1].Value} {EscapeLatex(m.Groups[2].Value)}}}"));
+
+        // 1e. Comment marker `[%…%]` — pick form by content shape.
+        //     Same idiom as RenderService.ProcessLatexText so the export
+        //     PDF, the LaTeX preview, and the Typst PDF all render
+        //     comments identically (hidden from output). Multi-line uses
+        //     \begin{comment}…\end{comment} (requires the `comment`
+        //     package, loaded by LaTeXPreamble.Packages); single-line
+        //     uses the TeX primitive \iffalse…\fi.
+        result = Regex.Replace(result, @"\[%([\s\S]+?)%\]", m =>
+        {
+            var inner = m.Groups[1].Value;
+            return Ph(inner.Contains('\n')
+                ? $"\\begin{{comment}}\n{inner}\n\\end{{comment}}"
+                : $"\\iffalse {inner}\\fi{{}}");
+        });
+
+        // 1f. LML inline marks the editor serialises (smallcaps `^^…^^`,
+        //     superscript `^…^`, subscript `%%…%%`, strikethrough
+        //     `~~…~~`). Smallcaps before sup so `^^X^^` isn't grabbed by
+        //     the sup regex. Strikethrough before the `~` escape would
+        //     mangle it.
+        result = Regex.Replace(result, @"\^\^([^^]+)\^\^",
+            m => Ph($@"\textsc{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        result = Regex.Replace(result, @"%%([^%]+)%%",
+            m => Ph($@"\textsubscript{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        result = Regex.Replace(result, @"(?<!\^)\^([^^\s][^^]*?)\^(?!\^)",
+            m => Ph($@"\textsuperscript{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        result = Regex.Replace(result, @"~~([^~]+)~~",
+            m => Ph($@"\st{{{EscapeLatex(m.Groups[1].Value)}}}"));
+
+        // 1g. Yellow highlight markdown `==…==` → \hl{...}
+        result = Regex.Replace(result, @"==([^=]+)==",
+            m => Ph($@"\hl{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 2. Inline code: `text` → \texttt{text}
         result = Regex.Replace(result, @"`([^`]+)`", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
