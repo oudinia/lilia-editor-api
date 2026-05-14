@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Api.Features.Teams.Services;
 
 /// <summary>
 /// Generate research-lab-style team codenames — adjective + noun + suffix.

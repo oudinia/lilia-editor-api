@@ -17,8 +17,25 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.AI;
 using Serilog;
+using Wolverine;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ─── Wolverine in-process message bus ───────────────────────────────
+// Used for cross-feature event fan-out (e.g. user.created → Teams
+// slice creates default team, Email slice sends welcome). No external
+// transport configured = local dispatch only. Auto-discovers
+// IWolverineHandler / Handle / Consume methods in this assembly.
+//
+// Why Wolverine over MediatR: MIT licensed (MediatR moved commercial
+// late 2024), modern async-first design, and durability/transports
+// available without rewriting handler code if we ever need them.
+// Why over a 30-LOC custom bus: starting with a real library now
+// means no migration when our needs grow.
+builder.Host.UseWolverine(opts =>
+{
+    opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
+});
 
 // Configure Sentry
 var sentryDsn = builder.Configuration["Sentry:Dsn"];
@@ -251,7 +268,9 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 // Codename generator (singleton — pure RNG, no state). Used by both the
 // "/api/teams/suggest-codename" picker endpoint and the user.created
 // webhook hook that mints a default team.
-builder.Services.AddSingleton<ITeamCodenameGenerator, TeamCodenameGenerator>();
+builder.Services.AddSingleton<
+    Lilia.Api.Features.Teams.Services.ITeamCodenameGenerator,
+    Lilia.Api.Features.Teams.Services.TeamCodenameGenerator>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IVersionService, VersionService>();

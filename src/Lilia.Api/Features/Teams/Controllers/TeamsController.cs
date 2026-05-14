@@ -1,12 +1,14 @@
+using Lilia.Api.Features.Teams.Dtos;
+using Lilia.Api.Features.Teams.Services;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Lilia.Api.Controllers;
+namespace Lilia.Api.Features.Teams.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/teams")]
 [Authorize]
 public class TeamsController : ControllerBase
 {
@@ -81,8 +83,6 @@ public class TeamsController : ControllerBase
             return StatusCode(500, new { sent = false, to = req.Email, codename, error = ex.Message });
         }
     }
-
-    public record TestWelcomeEmailRequest(string Email, string? FirstName, string? Codename);
 
     [HttpGet]
     public async Task<ActionResult<List<TeamDto>>> GetTeams()

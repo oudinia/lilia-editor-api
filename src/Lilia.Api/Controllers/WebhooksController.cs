@@ -1,9 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Lilia.Api.Services;
+using Lilia.Api.Events.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Wolverine;
 
 namespace Lilia.Api.Controllers;
 
@@ -18,13 +19,16 @@ namespace Lilia.Api.Controllers;
 [AllowAnonymous]
 public class WebhooksController : ControllerBase
 {
-    private readonly IEmailService _email;
+    private readonly IMessageBus _bus;
     private readonly IConfiguration _config;
     private readonly ILogger<WebhooksController> _logger;
 
-    public WebhooksController(IEmailService email, IConfiguration config, ILogger<WebhooksController> logger)
+    public WebhooksController(
+        IMessageBus bus,
+        IConfiguration config,
+        ILogger<WebhooksController> logger)
     {
-        _email = email;
+        _bus = bus;
         _config = config;
         _logger = logger;
     }
@@ -75,36 +79,30 @@ public class WebhooksController : ControllerBase
             if (type == "user.created" || type == "user.authenticated")
             {
                 var data = root.TryGetProperty("data", out var d) ? d : root;
-                // Kinde shape: data.user.email, data.user.first_name
+                // Kinde shape: data.user.{ id, email, first_name }.
                 JsonElement user = data;
                 if (data.TryGetProperty("user", out var userEl)) user = userEl;
+                var userId = TryGetString(user, "id") ?? TryGetString(user, "sub");
                 var email = TryGetString(user, "email") ?? TryGetString(user, "preferred_email");
                 var firstName = TryGetString(user, "first_name") ?? TryGetString(user, "given_name");
 
-                if (!string.IsNullOrEmpty(email))
+                // Only fan-out on user.created — user.authenticated is a
+                // sign-in, not a registration. We accept that Kinde may
+                // replay user.created (handler is idempotent: gated on
+                // DefaultTeamId == null).
+                if (type == "user.created" && !string.IsNullOrEmpty(email) && !string.IsNullOrEmpty(userId))
                 {
-                    // Only fire welcome on user.created — user.authenticated is a
-                    // sign-in, not a registration. Defensive: some Kinde tenants
-                    // emit user.created multiple times if the signal is replayed,
-                    // but we accept that — better double-greet than miss the moment.
-                    if (type == "user.created")
-                    {
-                        try
-                        {
-                            await _email.SendWelcomeAsync(email, firstName);
-                            _logger.LogInformation("Welcome email dispatched to {Email}", email);
-                        }
-                        catch (Exception ex)
-                        {
-                            // Don't fail the webhook — Kinde retries on non-2xx,
-                            // but a flaky email shouldn't loop the whole flow.
-                            _logger.LogError(ex, "Welcome email failed for {Email}", email);
-                        }
-                    }
+                    // Publish on the bus — the Teams slice mints a
+                    // default team + sends the team-welcome email.
+                    // PublishAsync queues without awaiting handler
+                    // completion, so we keep the webhook fast and
+                    // Kinde sees a quick 200.
+                    await _bus.PublishAsync(new UserCreatedEvent(userId, email, firstName));
+                    _logger.LogInformation("UserCreatedEvent published for {UserId}", userId);
                 }
-                else
+                else if (type == "user.created")
                 {
-                    _logger.LogWarning("Kinde {Type} payload had no email — skipping welcome.", type);
+                    _logger.LogWarning("Kinde user.created payload missing id/email — skipping fan-out.");
                 }
             }
             return Ok(new { received = true });
