@@ -97,6 +97,10 @@ public static class LaTeXPreamble
 % multi-line block-comment output from the editor's comment toggle.
 % Inline comments use the TeX primitive \iffalse...\fi (no package).
 \usepackage{comment}
+% Epigraph package — enables \epigraph{text}{source} used by the
+% blockquote block's `epigraph` variant. Loaded always so existing
+% imports + the new picker both compile cleanly.
+\usepackage{epigraph}
 
 % Links & references (hyperref before cleveref).
 % PassOptionsToPackage + plain usepackage avoids option-clash when an imported
@@ -177,6 +181,10 @@ public static class LaTeXPreamble
 % multi-line block-comment output from the editor's comment toggle.
 % Inline comments use the TeX primitive \iffalse...\fi (no package).
 \usepackage{comment}
+% Epigraph package — enables \epigraph{text}{source} used by the
+% blockquote block's `epigraph` variant. Loaded always so existing
+% imports + the new picker both compile cleanly.
+\usepackage{epigraph}
 
 % Links & references
 \PassOptionsToPackage{colorlinks=true}{hyperref}

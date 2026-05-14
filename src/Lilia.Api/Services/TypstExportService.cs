@@ -417,7 +417,29 @@ public class TypstExportService : ITypstExportService
     private static string RenderBlockquote(JsonElement content)
     {
         var text = GetText(content);
-        return $"#quote(block: true)[{FormatInline(text)}]";
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "simple" : "simple";
+        var attribution = content.TryGetProperty("attribution", out var a) ? a.GetString() ?? "" : "";
+
+        // Typst's #quote() takes an optional `attribution` parameter that
+        // shows beneath the block — perfect mirror for the LaTeX
+        // `\epigraph{text}{source}` form. Verse keeps the line-break
+        // semantics via `#linebreak()` between lines.
+        switch (variant)
+        {
+            case "epigraph":
+            {
+                var escapedAttr = QuoteTypst(attribution);
+                return $"#quote(block: true, attribution: {escapedAttr})[{FormatInline(text)}]";
+            }
+            case "verse":
+            {
+                var lines = (text ?? "").Split('\n');
+                var body = string.Join(" #linebreak() ", lines.Select(FormatInline));
+                return $"#block(spacing: 0.6em)[{body}]";
+            }
+            default:
+                return $"#quote(block: true)[{FormatInline(text)}]";
+        }
     }
 
     private static string RenderTheorem(JsonElement content)

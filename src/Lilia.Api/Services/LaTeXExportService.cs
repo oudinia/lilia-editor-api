@@ -1054,7 +1054,25 @@ public class LaTeXExportService : ILaTeXExportService
     private string RenderBlockquote(JsonElement content)
     {
         var text = GetText(content);
-        return $@"\begin{{quote}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{quote}";
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "simple" : "simple";
+        var attribution = content.TryGetProperty("attribution", out var a) ? a.GetString() ?? "" : "";
+
+        // Mirror of RenderService.RenderBlockquoteToLatex variant routing
+        // — keep the two paths aligned so /preview/latex + /export/pdf
+        // emit identical LaTeX for the same content.
+        switch (variant)
+        {
+            case "epigraph":
+                return $@"\epigraph{{{FormatInlineContent(text)}}}{{{FormatInlineContent(attribution)}}}";
+            case "verse":
+            {
+                var lines = (text ?? "").Split('\n');
+                var body = string.Join(" \\\\\n", lines.Select(l => FormatInlineContent(l)));
+                return $@"\begin{{verse}}" + "\n" + body + "\n" + @"\end{verse}";
+            }
+            default:
+                return $@"\begin{{quote}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{quote}";
+        }
     }
 
     private string RenderTheorem(JsonElement content)

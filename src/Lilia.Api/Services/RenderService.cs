@@ -1734,9 +1734,36 @@ public partial class RenderService : IRenderService
     private string RenderBlockquoteToLatex(JsonElement content)
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
-        return $@"\begin{{quote}}
+        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "simple" : "simple";
+        var attribution = content.TryGetProperty("attribution", out var a) ? a.GetString() ?? "" : "";
+
+        // Variant routing (user direction 2026-05-14):
+        //   epigraph → \epigraph{text}{source} from the `epigraph` package
+        //              (loaded in LaTeXPreamble.Packages — kept always so
+        //               existing imports compile without preamble edits).
+        //   verse    → \begin{verse}…\end{verse} with `\\` between lines
+        //              so LaTeX preserves the line breaks the user typed.
+        //   simple   → \begin{quote}…\end{quote} (existing default).
+        switch (variant)
+        {
+            case "epigraph":
+                return $@"\epigraph{{{ProcessLatexText(text).TrimEnd()}}}{{{ProcessLatexText(attribution).TrimEnd()}}}";
+            case "verse":
+            {
+                // Preserve user line breaks by joining with `\\` so LaTeX's
+                // verse environment shows them as separate lines. Empty
+                // input still emits a valid (if empty) env.
+                var lines = text.Split('\n');
+                var body = string.Join(" \\\\\n", lines.Select(l => ProcessLatexText(l).TrimEnd()));
+                return $@"\begin{{verse}}
+{body}
+\end{{verse}}";
+            }
+            default:
+                return $@"\begin{{quote}}
 {ProcessLatexText(text)}
 \end{{quote}}";
+        }
     }
 
     private string RenderTheoremToLatex(JsonElement content)
