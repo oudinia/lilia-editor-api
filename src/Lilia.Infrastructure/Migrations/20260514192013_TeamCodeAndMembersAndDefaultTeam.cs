@@ -44,6 +44,16 @@ namespace Lilia.Infrastructure.Migrations
                 nullable: false,
                 defaultValue: "");
 
+            // Backfill team_code for any pre-existing rows. AddColumn
+            // gave them all the empty default, so the unique index
+            // below would fail (SqlState 23505) the moment prod has
+            // more than one team. Use the team id as a deterministic,
+            // unique seed — owners can rename via the codename
+            // generator UI later. Format: "Team-XXXXXXXX" picked from
+            // the first 8 hex chars of the uuid.
+            migrationBuilder.Sql(
+                "UPDATE teams SET team_code = 'Team-' || upper(substr(replace(id::text, '-', ''), 1, 8)) WHERE team_code = '';");
+
             migrationBuilder.CreateTable(
                 name: "team_members",
                 columns: table => new
