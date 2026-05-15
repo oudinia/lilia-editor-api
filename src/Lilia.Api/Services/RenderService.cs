@@ -202,6 +202,10 @@ public partial class RenderService : IRenderService
                 "algorithm" => RenderAlgorithmToHtml(content),
                 "callout" => RenderCalloutToHtml(content),
                 "footnote" => RenderFootnoteToHtml(content),
+                "personalinfo" => RenderPersonalInfoToHtml(content),
+                "photo" => RenderPhotoToHtml(content),
+                "cvsection" => RenderCvSectionToHtml(content),
+                "cventry" => RenderCvEntryToHtml(content),
                 _ => $"<div class=\"block block-{WebUtility.HtmlEncode(block.Type)}\"></div>"
             };
         }
@@ -636,6 +640,71 @@ public partial class RenderService : IRenderService
         return $"<span class=\"footnote\">{ProcessInlineContent(text)}</span>";
     }
 
+    // ── CV blocks (HTML preview) ─────────────────────────────────────
+
+    private string RenderPersonalInfoToHtml(JsonElement content)
+    {
+        var name = JsonStr(content, "name");
+        var headline = JsonStr(content, "headline");
+        var email = JsonStr(content, "email");
+        var homepage = JsonStr(content, "homepage");
+        var location = JsonStr(content, "location");
+        var sb = new StringBuilder("<div class=\"cv-personal-info\">");
+        if (!string.IsNullOrEmpty(name))
+            sb.Append($"<h1 class=\"cv-name\">{WebUtility.HtmlEncode(name)}</h1>");
+        if (!string.IsNullOrEmpty(headline))
+            sb.Append($"<p class=\"cv-headline\">{WebUtility.HtmlEncode(headline)}</p>");
+        var bits = new List<string>();
+        if (!string.IsNullOrEmpty(email)) bits.Add(WebUtility.HtmlEncode(email));
+        if (content.TryGetProperty("phones", out var phonesEl) && phonesEl.ValueKind == JsonValueKind.Array)
+            foreach (var p in phonesEl.EnumerateArray())
+            {
+                var num = p.TryGetProperty("number", out var n) ? n.GetString() : null;
+                if (!string.IsNullOrEmpty(num)) bits.Add(WebUtility.HtmlEncode(num));
+            }
+        if (!string.IsNullOrEmpty(location)) bits.Add(WebUtility.HtmlEncode(location));
+        if (!string.IsNullOrEmpty(homepage)) bits.Add($"<a href=\"{WebUtility.HtmlEncode(homepage)}\">{WebUtility.HtmlEncode(homepage)}</a>");
+        if (bits.Count > 0)
+            sb.Append($"<p class=\"cv-contact\">{string.Join(" · ", bits)}</p>");
+        sb.Append("</div>");
+        return sb.ToString();
+    }
+
+    private string RenderPhotoToHtml(JsonElement content)
+    {
+        var src = JsonStr(content, "src");
+        if (string.IsNullOrEmpty(src)) return "<div class=\"cv-photo cv-photo-placeholder\">[photo]</div>";
+        var size = content.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number ? sz.GetInt32() : 64;
+        var position = JsonStr(content, "position");
+        return $"<div class=\"cv-photo cv-photo-{WebUtility.HtmlEncode(position)}\"><img src=\"{WebUtility.HtmlEncode(src)}\" alt=\"\" style=\"height:{size}px;\" /></div>";
+    }
+
+    private string RenderCvSectionToHtml(JsonElement content)
+    {
+        var title = JsonStr(content, "title");
+        return $"<h2 class=\"cv-section-title\">{WebUtility.HtmlEncode(title)}</h2>";
+    }
+
+    private string RenderCvEntryToHtml(JsonElement content)
+    {
+        var period = JsonStr(content, "period");
+        var role = JsonStr(content, "role");
+        var org = JsonStr(content, "org");
+        var location = JsonStr(content, "location");
+        var description = JsonStr(content, "description");
+        var sb = new StringBuilder("<div class=\"cv-entry\">");
+        sb.Append("<div class=\"cv-entry-head\">");
+        sb.Append($"<span class=\"cv-entry-role\">{WebUtility.HtmlEncode(role)}</span>");
+        if (!string.IsNullOrEmpty(org)) sb.Append($"<span class=\"cv-entry-org\">, {WebUtility.HtmlEncode(org)}</span>");
+        if (!string.IsNullOrEmpty(location)) sb.Append($"<span class=\"cv-entry-location\"> — {WebUtility.HtmlEncode(location)}</span>");
+        if (!string.IsNullOrEmpty(period)) sb.Append($"<span class=\"cv-entry-period\">{WebUtility.HtmlEncode(period)}</span>");
+        sb.Append("</div>");
+        if (!string.IsNullOrEmpty(description))
+            sb.Append($"<p class=\"cv-entry-description\">{ProcessInlineContent(description)}</p>");
+        sb.Append("</div>");
+        return sb.ToString();
+    }
+
     private string RenderBibliographyEntriesHtml(IEnumerable<BibliographyEntry> entries)
     {
         var html = new StringBuilder();
@@ -1006,6 +1075,10 @@ public partial class RenderService : IRenderService
                 "callout" => RenderCalloutToLatex(content),
                 "footnote" => RenderFootnoteToLatex(content),
                 "slide" => RenderSlideToLatex(content),
+                "personalinfo" => RenderPersonalInfoToLatex(content),
+                "photo" => RenderPhotoToLatex(content),
+                "cvsection" => RenderCvSectionToLatex(content),
+                "cventry" => RenderCvEntryToLatex(content),
                 _ => $"% Unknown block type: {block.Type}"
             };
         }
@@ -1172,6 +1245,93 @@ public partial class RenderService : IRenderService
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         return $@"\footnote{{{ProcessLatexText(text)}}}";
     }
+
+    // ── CV blocks ────────────────────────────────────────────────────
+    // Class-agnostic rendering: textbf / hfill formatting works under
+    // article, report, book — no moderncv dependency, no preamble
+    // changes required. Mirrors LaTeXExportService.RenderPersonalInfo
+    // / RenderCvEntry / RenderCvSection / RenderPhoto so the live
+    // preview matches the exported PDF.
+
+    private string RenderPersonalInfoToLatex(JsonElement content)
+    {
+        var name = JsonStr(content, "name");
+        var headline = JsonStr(content, "headline");
+        var email = JsonStr(content, "email");
+        var homepage = JsonStr(content, "homepage");
+        var location = JsonStr(content, "location");
+        var extra = JsonStr(content, "extra");
+
+        var sb = new StringBuilder();
+        if (!string.IsNullOrEmpty(name))
+            sb.AppendLine(@$"\noindent\textbf{{\LARGE {EscapeLatex(name)}}}\par\smallskip");
+        if (!string.IsNullOrEmpty(headline))
+            sb.AppendLine($@"\textit{{{EscapeLatex(headline)}}}\par");
+        var line = new List<string>();
+        if (!string.IsNullOrEmpty(email)) line.Add(@$"\texttt{{{EscapeLatex(email)}}}");
+        if (content.TryGetProperty("phones", out var phonesEl) && phonesEl.ValueKind == JsonValueKind.Array)
+            foreach (var p in phonesEl.EnumerateArray())
+            {
+                var num = p.TryGetProperty("number", out var n) ? n.GetString() : null;
+                if (!string.IsNullOrEmpty(num)) line.Add(EscapeLatex(num));
+            }
+        if (!string.IsNullOrEmpty(location)) line.Add(EscapeLatex(location));
+        if (!string.IsNullOrEmpty(homepage)) line.Add($@"\url{{{homepage}}}");
+        if (line.Count > 0) sb.AppendLine(string.Join(@" \ $\cdot$\ ", line) + @"\par");
+        if (content.TryGetProperty("socials", out var socialsEl) && socialsEl.ValueKind == JsonValueKind.Array)
+            foreach (var s in socialsEl.EnumerateArray())
+            {
+                var network = s.TryGetProperty("network", out var nEl) ? nEl.GetString() : "";
+                var handle = s.TryGetProperty("handle", out var hEl) ? hEl.GetString() : "";
+                if (!string.IsNullOrEmpty(handle))
+                    sb.AppendLine(@$"\small\textbf{{{EscapeLatex(network ?? "")}:}} {EscapeLatex(handle)}\par");
+            }
+        if (!string.IsNullOrEmpty(extra))
+            sb.AppendLine($@"\smallskip\textit{{{EscapeLatex(extra)}}}\par");
+        return sb.ToString().TrimEnd();
+    }
+
+    private string RenderPhotoToLatex(JsonElement content)
+    {
+        var src = JsonStr(content, "src");
+        if (string.IsNullOrEmpty(src)) return "";
+        var size = content.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number ? sz.GetInt32() : 64;
+        var position = JsonStr(content, "position");
+        var align = position switch { "left" => "flushleft", "right" => "flushright", _ => "center" };
+        // Keep filename inline; preview path uses the same figures/ folder
+        // convention as the exporter.
+        var filename = src.Contains('/') ? src[(src.LastIndexOf('/') + 1)..] : src;
+        return $@"\begin{{{align}}}
+\IfFileExists{{figures/{filename}}}{{\includegraphics[height={size}pt]{{figures/{filename}}}}}{{\fbox{{\parbox{{{size}pt}}{{\centering\small [photo]}}}}}}
+\end{{{align}}}";
+    }
+
+    private string RenderCvSectionToLatex(JsonElement content)
+    {
+        var title = JsonStr(content, "title");
+        return @$"\par\medskip\noindent\textbf{{\Large {EscapeLatex(title)}}}\par\smallskip";
+    }
+
+    private string RenderCvEntryToLatex(JsonElement content)
+    {
+        var period = JsonStr(content, "period");
+        var role = JsonStr(content, "role");
+        var org = JsonStr(content, "org");
+        var location = JsonStr(content, "location");
+        var description = JsonStr(content, "description");
+        var sb = new StringBuilder();
+        sb.Append(@$"\noindent\textbf{{{EscapeLatex(role)}}}");
+        if (!string.IsNullOrEmpty(org)) sb.Append(@$", \textbf{{{EscapeLatex(org)}}}");
+        if (!string.IsNullOrEmpty(location)) sb.Append(@$" — {EscapeLatex(location)}");
+        if (!string.IsNullOrEmpty(period)) sb.Append(@$" \hfill {EscapeLatex(period)}");
+        sb.AppendLine(@"\par");
+        if (!string.IsNullOrEmpty(description))
+            sb.AppendLine(ProcessLatexText(description) + @"\par");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string JsonStr(JsonElement el, string prop) =>
+        el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
     private string RenderSlideToLatex(JsonElement content)
     {

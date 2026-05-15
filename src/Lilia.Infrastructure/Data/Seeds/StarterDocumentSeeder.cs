@@ -164,7 +164,7 @@ public static class StarterDocumentSeeder
         },
     };
 
-    /// <summary>CV / résumé — name + contact + experience / education / skills sections.</summary>
+    /// <summary>CV / résumé — uses the dedicated PersonalInfo / CvSection / CvEntry blocks.</summary>
     private static Document Cv() => new()
     {
         Id = Guid.NewGuid(),
@@ -175,28 +175,31 @@ public static class StarterDocumentSeeder
         FontFamily = "sans",
         FontSize = 11,
         Columns = 1,
-        // No specific 'cv' documentclass available here — article keeps
-        // it portable; users can swap to moderncv / awesome-cv later.
+        // Class-agnostic rendering — CV blocks use textbf/hfill, no
+        // moderncv/awesome-cv preamble required. Article works fine.
         LatexDocumentClass = "article",
         IsStarter = true,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,
         Blocks =
         {
-            Heading(0, 1, "Anonymous Author"),
-            Paragraph(1, "anonymous@example.com · +1 555 0100 · linkedin.com/in/anonymous"),
-            Heading(2, 2, "Profile"),
-            Paragraph(3, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. A two-line professional summary goes here — the elevator pitch a recruiter reads in five seconds before deciding whether to keep going."),
-            Heading(4, 2, "Experience"),
-            Paragraph(5, "*Senior Role* — Company Name (2023 – Present)"),
-            List(6, ordered: false, "Lorem ipsum dolor sit amet, consectetur adipiscing elit", "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua", "Ut enim ad minim veniam, quis nostrud exercitation ullamco"),
-            Paragraph(7, "*Mid Role* — Previous Company (2020 – 2023)"),
-            List(8, ordered: false, "Duis aute irure dolor in reprehenderit in voluptate velit", "Excepteur sint occaecat cupidatat non proident", "Sunt in culpa qui officia deserunt mollit anim id est laborum"),
-            Heading(9, 2, "Education"),
-            Paragraph(10, "*M.Sc. in Field* — University Name, 2020"),
-            Paragraph(11, "*B.Sc. in Field* — University Name, 2018"),
-            Heading(12, 2, "Skills"),
-            List(13, ordered: false, "Languages: lorem, ipsum, dolor", "Tools: sit, amet, consectetur", "Methods: adipiscing, elit"),
+            PersonalInfo(0, name: "Anonymous Author", headline: "Software Engineer · Lorem Ipsum Specialist",
+                email: "anonymous@example.com", phone: "+1 555 0100", location: "Earth",
+                homepage: "https://example.com"),
+            CvSection(1, "Profile"),
+            Paragraph(2, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. A two-line professional summary goes here — the elevator pitch a recruiter reads in five seconds before deciding whether to keep going."),
+            CvSection(3, "Experience"),
+            CvEntry(4, period: "2023 – Present", role: "Senior Role", org: "Company Name", location: "City",
+                description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."),
+            CvEntry(5, period: "2020 – 2023", role: "Mid Role", org: "Previous Company", location: "City",
+                description: "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."),
+            CvSection(6, "Education"),
+            CvEntry(7, period: "2018 – 2020", role: "M.Sc. in Field", org: "University Name", location: "City",
+                description: "Thesis: lorem ipsum dolor sit amet, consectetur adipiscing elit."),
+            CvEntry(8, period: "2014 – 2018", role: "B.Sc. in Field", org: "University Name", location: "City",
+                description: "Final project: ut enim ad minim veniam, quis nostrud exercitation."),
+            CvSection(9, "Skills"),
+            List(10, ordered: false, "Languages: lorem, ipsum, dolor", "Tools: sit, amet, consectetur", "Methods: adipiscing, elit"),
         },
     };
 
@@ -221,6 +224,36 @@ public static class StarterDocumentSeeder
         var encoded = string.Join(",", items.Select(JsonEncode));
         return MakeBlock("list", order, $$"""{"items":[{{encoded}}],"ordered":{{(ordered ? "true" : "false")}}}""");
     }
+
+    private static Block PersonalInfo(int order, string name, string headline, string email,
+        string phone, string location, string homepage) => MakeBlock(
+        "personalInfo", order, $$"""
+        {
+            "name": {{JsonEncode(name)}},
+            "headline": {{JsonEncode(headline)}},
+            "email": {{JsonEncode(email)}},
+            "phones": [{"number": {{JsonEncode(phone)}}}],
+            "location": {{JsonEncode(location)}},
+            "homepage": {{JsonEncode(homepage)}},
+            "socials": [],
+            "extra": ""
+        }
+        """);
+
+    private static Block CvSection(int order, string title) => MakeBlock(
+        "cvSection", order, $$"""{"title": {{JsonEncode(title)}}}""");
+
+    private static Block CvEntry(int order, string period, string role, string org, string location, string description) => MakeBlock(
+        "cvEntry", order, $$"""
+        {
+            "period": {{JsonEncode(period)}},
+            "role": {{JsonEncode(role)}},
+            "org": {{JsonEncode(org)}},
+            "location": {{JsonEncode(location)}},
+            "description": {{JsonEncode(description)}},
+            "tech": []
+        }
+        """);
 
     private static Block MakeBlock(string type, int order, string contentJson) => new()
     {
