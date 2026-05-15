@@ -56,6 +56,10 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.IsPublicTemplate).HasColumnName("is_public_template").HasDefaultValue(false);
         builder.Property(d => d.TemplateUsageCount).HasColumnName("template_usage_count").HasDefaultValue(0);
 
+        // Curated starter documents — only docs with this flag (and
+        // owned by the sample-content user) get cloned to new accounts.
+        builder.Property(d => d.IsStarter).HasColumnName("is_starter").HasDefaultValue(false);
+
         // Help content fields
         builder.Property(d => d.IsHelpContent).HasColumnName("is_help_content").HasDefaultValue(false);
         builder.Property(d => d.HelpCategory).HasColumnName("help_category").HasMaxLength(50);

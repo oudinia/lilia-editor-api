@@ -72,7 +72,28 @@ public class WebhooksController : ControllerBase
         }
         catch (SecurityTokenException ex)
         {
-            _logger.LogWarning(ex, "Kinde webhook signature validation failed");
+            // Surface the *actual* validation failure — the type and
+            // message tell us which check tripped (kid lookup, issuer
+            // mismatch, expired, wrong alg). Also log the JWT's own
+            // header + iss claim so we can compare against what we
+            // expect from JWKS without re-reading prod logs blind.
+            string? hdrJson = null, payloadIss = null, payloadAud = null, payloadType = null;
+            try
+            {
+                var parts = body.Split('.');
+                if (parts.Length == 3)
+                {
+                    hdrJson = DecodeBase64UrlAsString(parts[0]);
+                    using var pdoc = JsonDocument.Parse(DecodeBase64UrlAsString(parts[1]));
+                    payloadIss = TryGetString(pdoc.RootElement, "iss");
+                    payloadAud = TryGetString(pdoc.RootElement, "aud");
+                    payloadType = TryGetString(pdoc.RootElement, "type") ?? TryGetString(pdoc.RootElement, "event_type");
+                }
+            }
+            catch { /* diagnostics only */ }
+            _logger.LogWarning(
+                "Kinde webhook signature validation failed: {ExceptionType}: {ExceptionMessage}. JWT header={Header}, iss={Iss}, aud={Aud}, type={Type}",
+                ex.GetType().Name, ex.Message, hdrJson ?? "<unparseable>", payloadIss, payloadAud, payloadType);
             return Unauthorized(new { error = "invalid_signature" });
         }
         catch (Exception ex) when (!_config.GetValue<string>("ASPNETCORE_ENVIRONMENT")!.Equals("Production"))
@@ -158,6 +179,15 @@ public class WebhooksController : ControllerBase
         if (el.ValueKind != JsonValueKind.Object) return null;
         if (!el.TryGetProperty(property, out var v)) return null;
         return v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    }
+
+    private static string DecodeBase64UrlAsString(string segment)
+    {
+        // JWT segments are base64url-encoded (no padding). Pad to 4-byte
+        // boundary, swap url-safe chars, decode as UTF-8.
+        var s = segment.Replace('-', '+').Replace('_', '/');
+        switch (s.Length % 4) { case 2: s += "=="; break; case 3: s += "="; break; }
+        return Encoding.UTF8.GetString(Convert.FromBase64String(s));
     }
 }
 

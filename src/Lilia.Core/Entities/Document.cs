@@ -43,6 +43,14 @@ public class Document
     public bool IsPublicTemplate { get; set; }
     public int TemplateUsageCount { get; set; }
 
+    /// <summary>
+    /// Marks a sample-content document as one of the curated starter
+    /// docs auto-cloned to brand-new accounts on first sign-in. Only
+    /// docs with this flag (and owned by the sample-content user) get
+    /// cloned by <c>DocumentService.CloneStarterDocumentsAsync</c>.
+    /// </summary>
+    public bool IsStarter { get; set; }
+
     // Help content fields — help articles are documents with is_help_content = true
     public bool IsHelpContent { get; set; }
     public string? HelpCategory { get; set; }

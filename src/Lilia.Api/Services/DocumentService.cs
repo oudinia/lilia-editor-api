@@ -605,10 +605,15 @@ public class DocumentService : IDocumentService
     {
         const string sampleUserId = "sample-content";
 
+        // Only clone the curated starter set (CV, book, article, report)
+        // — IsStarter is set on a small handful of sample-content docs
+        // by StarterDocumentSeeder. Previously this cloned every doc
+        // sample-content owned, which was 30+ research-paper fixtures
+        // and made every new account look like a research lab.
         var sampleDocs = await _context.Documents
             .Include(d => d.Blocks)
             .Include(d => d.BibliographyEntries)
-            .Where(d => d.OwnerId == sampleUserId && d.DeletedAt == null)
+            .Where(d => d.OwnerId == sampleUserId && d.IsStarter && d.DeletedAt == null)
             .AsNoTracking()
             .ToListAsync();
 

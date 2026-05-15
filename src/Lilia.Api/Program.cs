@@ -729,6 +729,7 @@ using (var scope = app.Services.CreateScope())
     // await SystemTemplateSeeder.SeedAsync(dbContext);
     await SystemFormulaSeeder.SeedAsync(dbContext);
     await SystemSnippetSeeder.SeedAsync(dbContext);
+    await StarterDocumentSeeder.SeedAsync(dbContext);
 }
 
 // Startup validation: warn loudly if PDF provider is mis-configured
