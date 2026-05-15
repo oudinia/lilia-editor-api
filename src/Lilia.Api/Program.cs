@@ -271,6 +271,11 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddSingleton<
     Lilia.Api.Features.Teams.Services.ITeamCodenameGenerator,
     Lilia.Api.Features.Teams.Services.TeamCodenameGenerator>();
+// Caches Kinde's JWKS document so /api/webhooks/kinde can validate
+// inbound JWT-signed payloads without re-fetching keys per request.
+builder.Services.AddSingleton<
+    Lilia.Api.Controllers.IKindeJwksProvider,
+    Lilia.Api.Controllers.KindeJwksProvider>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IVersionService, VersionService>();

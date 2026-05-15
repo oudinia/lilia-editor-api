@@ -1,18 +1,29 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Lilia.Api.Events.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 using Wolverine;
 
 namespace Lilia.Api.Controllers;
 
 /// <summary>
-/// Inbound webhook receivers — currently Kinde only. Verified with HMAC
-/// over the raw request body using a shared secret in
-/// <c>Webhooks:Kinde:Secret</c>. Failure paths log + 401; success paths
-/// dispatch into our service layer.
+/// Inbound webhook receivers — currently Kinde only.
+///
+/// Kinde signs every webhook payload as a JWT (header.payload.signature)
+/// using the same JWKS keys it uses for auth tokens — there is no
+/// per-webhook shared secret. The request body IS the JWT (not JSON);
+/// we validate the signature against
+/// <c>{Auth:Authority}/.well-known/jwks</c>, then decode the payload
+/// and treat it as the original event JSON.
+///
+/// On <c>user.created</c> we publish a <see cref="UserCreatedEvent"/>
+/// onto Wolverine; the Teams slice picks it up and mints a default
+/// team + sends the welcome email.
 /// </summary>
 [ApiController]
 [Route("api/webhooks")]
@@ -21,57 +32,62 @@ public class WebhooksController : ControllerBase
 {
     private readonly IMessageBus _bus;
     private readonly IConfiguration _config;
+    private readonly IKindeJwksProvider _jwks;
     private readonly ILogger<WebhooksController> _logger;
 
     public WebhooksController(
         IMessageBus bus,
         IConfiguration config,
+        IKindeJwksProvider jwks,
         ILogger<WebhooksController> logger)
     {
         _bus = bus;
         _config = config;
+        _jwks = jwks;
         _logger = logger;
     }
 
-    /// <summary>
-    /// Kinde webhook receiver (LILIA-95). Configure in Kinde admin →
-    /// "Workflows" → "Webhooks" → New, point at
-    /// <c>https://editor.liliaeditor.com/api/webhooks/kinde</c>, subscribe
-    /// to <c>user.created</c>.
-    ///
-    /// Set the secret in DO env: <c>Webhooks__Kinde__Secret</c>. Until
-    /// then, the endpoint accepts unsigned requests in development only.
-    /// </summary>
     [HttpPost("kinde")]
-    public async Task<IActionResult> Kinde()
+    public async Task<IActionResult> Kinde(CancellationToken ct)
     {
-        // Read the raw body for HMAC verification + JSON parsing.
+        // The body is the JWT. Read raw text — no JSON parsing yet.
         Request.EnableBuffering();
         using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
-        var body = await reader.ReadToEndAsync();
+        var body = (await reader.ReadToEndAsync(ct)).Trim();
         Request.Body.Position = 0;
 
-        var secret = _config["Webhooks:Kinde:Secret"];
-        if (!string.IsNullOrEmpty(secret))
+        if (string.IsNullOrEmpty(body))
         {
-            var signature = Request.Headers["X-Kinde-Signature"].FirstOrDefault();
-            if (string.IsNullOrEmpty(signature) || !VerifyHmac(body, secret, signature))
-            {
-                _logger.LogWarning("Kinde webhook signature invalid or missing — rejecting.");
-                return Unauthorized(new { error = "invalid_signature" });
-            }
-        }
-        else if (_config.GetValue<string>("ASPNETCORE_ENVIRONMENT") == "Production")
-        {
-            _logger.LogError("Kinde webhook called in Production but Webhooks:Kinde:Secret not set — refusing.");
-            return Unauthorized(new { error = "secret_not_configured" });
+            _logger.LogWarning("Kinde webhook: empty body");
+            return BadRequest(new { error = "empty_body" });
         }
 
-        // Parse the event. Kinde wraps the payload as { type, data: { ... } }.
-        // Schema variants exist; we read defensively.
+        // Validate the JWT against Kinde's published keys. In Production
+        // this is mandatory; in Development we skip validation if the
+        // Kinde authority isn't reachable so local replay/curl still works.
+        string payloadJson;
         try
         {
-            using var doc = JsonDocument.Parse(body);
+            payloadJson = await ValidateAndExtractPayloadAsync(body, ct);
+        }
+        catch (SecurityTokenException ex)
+        {
+            _logger.LogWarning(ex, "Kinde webhook signature validation failed");
+            return Unauthorized(new { error = "invalid_signature" });
+        }
+        catch (Exception ex) when (!_config.GetValue<string>("ASPNETCORE_ENVIRONMENT")!.Equals("Production"))
+        {
+            // Non-prod fallback: assume the body might be raw JSON (e.g.
+            // local smoke probes via curl). Fail loud if it isn't.
+            _logger.LogWarning(ex, "Kinde JWT validation skipped in non-prod; treating body as raw JSON");
+            payloadJson = body;
+        }
+
+        // Parse the (now-trusted) payload exactly like the previous
+        // version did. Schema variants tolerated defensively.
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
             var root = doc.RootElement;
             var type = TryGetString(root, "type") ?? TryGetString(root, "event_type") ?? "";
             _logger.LogInformation("Kinde webhook received: {Type}", type);
@@ -79,24 +95,14 @@ public class WebhooksController : ControllerBase
             if (type == "user.created" || type == "user.authenticated")
             {
                 var data = root.TryGetProperty("data", out var d) ? d : root;
-                // Kinde shape: data.user.{ id, email, first_name }.
                 JsonElement user = data;
                 if (data.TryGetProperty("user", out var userEl)) user = userEl;
                 var userId = TryGetString(user, "id") ?? TryGetString(user, "sub");
                 var email = TryGetString(user, "email") ?? TryGetString(user, "preferred_email");
                 var firstName = TryGetString(user, "first_name") ?? TryGetString(user, "given_name");
 
-                // Only fan-out on user.created — user.authenticated is a
-                // sign-in, not a registration. We accept that Kinde may
-                // replay user.created (handler is idempotent: gated on
-                // DefaultTeamId == null).
                 if (type == "user.created" && !string.IsNullOrEmpty(email) && !string.IsNullOrEmpty(userId))
                 {
-                    // Publish on the bus — the Teams slice mints a
-                    // default team + sends the team-welcome email.
-                    // PublishAsync queues without awaiting handler
-                    // completion, so we keep the webhook fast and
-                    // Kinde sees a quick 200.
                     await _bus.PublishAsync(new UserCreatedEvent(userId, email, firstName));
                     _logger.LogInformation("UserCreatedEvent published for {UserId}", userId);
                 }
@@ -109,26 +115,42 @@ public class WebhooksController : ControllerBase
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Kinde webhook body was not valid JSON: {Body}",
-                body.Length > 500 ? body[..500] : body);
+            _logger.LogError(ex, "Kinde webhook payload was not valid JSON: {Body}",
+                payloadJson.Length > 500 ? payloadJson[..500] : payloadJson);
             return BadRequest(new { error = "invalid_json" });
         }
     }
 
-    private static bool VerifyHmac(string body, string secret, string headerValue)
+    /// <summary>
+    /// Validate <paramref name="jwt"/> against Kinde's signing keys and
+    /// return the decoded JSON payload. Throws
+    /// <see cref="SecurityTokenException"/> on any signature/format
+    /// failure.
+    /// </summary>
+    private async Task<string> ValidateAndExtractPayloadAsync(string jwt, CancellationToken ct)
     {
-        // Kinde signs with HMAC-SHA256 over the raw body, hex-encoded. The
-        // header may be prefixed (e.g. "sha256=...") — normalise both ways.
-        var sig = headerValue.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase)
-            ? headerValue[7..]
-            : headerValue;
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(body));
-        var hex = Convert.ToHexString(hash).ToLowerInvariant();
-        return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(hex),
-            Encoding.UTF8.GetBytes(sig.Trim().ToLowerInvariant())
-        );
+        var keys = await _jwks.GetSigningKeysAsync(ct);
+        var authority = _config["Auth:Authority"] ?? "";
+
+        var parameters = new TokenValidationParameters
+        {
+            ValidateIssuer = !string.IsNullOrEmpty(authority),
+            ValidIssuer = authority,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            // Kinde's webhook JWTs are short-lived; the small skew
+            // covers clock drift between their signers and our pod.
+            ClockSkew = TimeSpan.FromMinutes(2),
+            IssuerSigningKeys = keys,
+            ValidateIssuerSigningKey = true,
+        };
+
+        var handler = new JwtSecurityTokenHandler();
+        handler.ValidateToken(jwt, parameters, out var validated);
+        // The payload portion of the JWT is base64url-encoded JSON —
+        // pull it straight from the validated token rather than
+        // re-decoding by hand.
+        return ((JwtSecurityToken)validated).Payload.SerializeToJson();
     }
 
     private static string? TryGetString(JsonElement el, string property)
@@ -136,5 +158,36 @@ public class WebhooksController : ControllerBase
         if (el.ValueKind != JsonValueKind.Object) return null;
         if (!el.TryGetProperty(property, out var v)) return null;
         return v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    }
+}
+
+/// <summary>
+/// Caches Kinde's JWKS document via OIDC discovery so we don't hit
+/// the well-known endpoint on every webhook. Refreshed automatically
+/// by <see cref="ConfigurationManager{T}"/> (default 24h cache).
+/// </summary>
+public interface IKindeJwksProvider
+{
+    Task<IEnumerable<SecurityKey>> GetSigningKeysAsync(CancellationToken ct);
+}
+
+public class KindeJwksProvider : IKindeJwksProvider
+{
+    private readonly ConfigurationManager<OpenIdConnectConfiguration> _manager;
+
+    public KindeJwksProvider(IConfiguration config)
+    {
+        var authority = config["Auth:Authority"]
+            ?? throw new InvalidOperationException("Auth:Authority must be set to enable Kinde webhook verification");
+        _manager = new ConfigurationManager<OpenIdConnectConfiguration>(
+            $"{authority.TrimEnd('/')}/.well-known/openid-configuration",
+            new OpenIdConnectConfigurationRetriever(),
+            new HttpDocumentRetriever { RequireHttps = true });
+    }
+
+    public async Task<IEnumerable<SecurityKey>> GetSigningKeysAsync(CancellationToken ct)
+    {
+        var oidc = await _manager.GetConfigurationAsync(ct);
+        return oidc.SigningKeys;
     }
 }
