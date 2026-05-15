@@ -11,6 +11,17 @@ namespace Lilia.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Reconcile pre-EF drift: prod was bootstrapped from
+            // database/001_create_lilia_core.sql which defined a *view*
+            // named "team_members" (a flat projection over groups +
+            // group_members + roles). Our new entity needs a real TABLE
+            // at that name, and Postgres treats views and tables as the
+            // same kind of relation — so without this drop, EF's
+            // CreateTable fails with "relation team_members already
+            // exists" (SqlState 42P07) and the container crash-loops.
+            // Idempotent: no-op if the view never existed (fresh DBs).
+            migrationBuilder.Sql("DROP VIEW IF EXISTS team_members CASCADE;");
+
             migrationBuilder.AddColumn<Guid>(
                 name: "default_team_id",
                 table: "users",
