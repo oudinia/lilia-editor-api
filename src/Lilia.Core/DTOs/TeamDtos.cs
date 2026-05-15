@@ -9,7 +9,13 @@ public record TeamDto(
     string? OwnerName,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    int MemberCount
+    int MemberCount,
+    /// <summary>
+    /// True when this team is the caller's <c>User.DefaultTeamId</c>.
+    /// Frontend pins the default to the top of the list and badges it
+    /// so the listing matches the topbar chip.
+    /// </summary>
+    bool IsDefault
 );
 
 public record TeamDetailsDto(

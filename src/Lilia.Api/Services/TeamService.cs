@@ -20,6 +20,13 @@ public class TeamService : ITeamService
 
     public async Task<List<TeamDto>> GetTeamsAsync(string userId)
     {
+        // Pull the user's DefaultTeamId so the DTO can flag it. Single
+        // round-trip — no Include needed because we only need the scalar.
+        var defaultTeamId = await _context.Users
+            .Where(u => u.Id == userId)
+            .Select(u => u.DefaultTeamId)
+            .FirstOrDefaultAsync();
+
         var teams = await _context.Teams
             .Include(t => t.Owner)
             .Include(t => t.Groups)
@@ -36,7 +43,8 @@ public class TeamService : ITeamService
             t.Owner?.Name,
             t.CreatedAt,
             t.UpdatedAt,
-            t.Groups.SelectMany(g => g.Members).Select(m => m.UserId).Distinct().Count()
+            t.Groups.SelectMany(g => g.Members).Select(m => m.UserId).Distinct().Count(),
+            defaultTeamId.HasValue && t.Id == defaultTeamId.Value
         )).ToList();
     }
 
@@ -138,7 +146,11 @@ public class TeamService : ITeamService
             owner?.Name,
             team.CreatedAt,
             team.UpdatedAt,
-            1
+            1,
+            // Newly-created teams aren't the user's default by virtue of
+            // creation — the auto-mint path goes through the Wolverine
+            // handler, not this method.
+            false
         );
     }
 
@@ -163,6 +175,13 @@ public class TeamService : ITeamService
             .Distinct()
             .CountAsync();
 
+        // Re-check default flag — the team being updated may be the
+        // caller's default; preserves the badge after rename / image edit.
+        var defaultTeamId = await _context.Users
+            .Where(u => u.Id == userId)
+            .Select(u => u.DefaultTeamId)
+            .FirstOrDefaultAsync();
+
         return new TeamDto(
             team.Id,
             team.Name,
@@ -172,7 +191,8 @@ public class TeamService : ITeamService
             team.Owner?.Name,
             team.CreatedAt,
             team.UpdatedAt,
-            memberCount
+            memberCount,
+            defaultTeamId.HasValue && team.Id == defaultTeamId.Value
         );
     }
 
