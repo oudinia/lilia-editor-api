@@ -18,6 +18,21 @@ public static class RoleNames
     public const string Owner = "owner";
     public const string Editor = "editor";
     public const string Viewer = "viewer";
+
+    // Single normalization point. The Roles table stores lowercase
+    // canonical names; clients in the wild send "Editor", "Member",
+    // "Admin" — anything not matching exactly bombs the role lookup
+    // and the surrounding flow returns a generic "Failed to add"
+    // error with no clue what went wrong. Aliases "admin"/"member"
+    // come from the old team-roles dropdown and pre-launch share
+    // dialog. Apply on every Roles.FirstOrDefaultAsync(r => r.Name ==
+    // …) site (currently CollaboratorService + TeamService).
+    public static string Normalize(string? raw) =>
+        (raw ?? "").Trim().ToLowerInvariant() switch
+        {
+            "member" or "admin" or "" => Editor,
+            var x => x,
+        };
 }
 
 public static class Permissions
