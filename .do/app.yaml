@@ -13,11 +13,16 @@ databases:
 
 services:
   - name: api
-    dockerfile_path: Dockerfile
-    github:
-      repo: oudinia/lilia-editor-api
-      branch: main
-      deploy_on_push: true
+    # Pre-built in GHA (.github/workflows/api-build-deploy.yml), pushed
+    # to DOCR as :main on every push. The workflow then calls
+    # `doctl apps create-deployment` which makes DO pull this tag and
+    # roll. No `github:` block here — DO doesn't watch the source repo
+    # for this service anymore; the workflow is the single trigger so
+    # we don't race against DO's own kaniko build.
+    image:
+      registry_type: DOCR
+      repository: lilia-api
+      tag: main
     http_port: 8080
     instance_count: 1
     instance_size_slug: professional-s
@@ -56,12 +61,18 @@ services:
         value: "E2E Test Service"
       - key: R2__Endpoint
         value: "https://fra1.digitaloceanspaces.com"
+      # SECRET-typed env vars: never include `value:` here. DO preserves
+      # the existing stored value when the field is omitted; setting it
+      # to "REPLACE" (or any literal) overwrites the real secret on
+      # `doctl apps update --spec`. Burned us 2026-04-11 (Sentry DSN
+      # cleared) and 2026-05-16 (Sentry + R2 + AI keys all overwritten,
+      # see deploy 0a84953b ERROR). Set the real values via the DO
+      # dashboard or `doctl apps update --spec` with the value field
+      # included only when intentionally rotating.
       - key: R2__AccessKeyId
         type: SECRET
-        value: "REPLACE"
       - key: R2__SecretAccessKey
         type: SECRET
-        value: "REPLACE"
       - key: R2__BucketName
         value: "lilia-docs"
       - key: R2__PublicUrl
@@ -76,7 +87,6 @@ services:
         value: "https://www.liliaeditor.com"
       - key: BetterStack__SourceToken
         type: SECRET
-        value: "REPLACE"
       - key: MinerU__BaseUrl
         value: "http://mineru:8000"
       # LaTeX runs in-process, no separate URL needed
@@ -86,14 +96,12 @@ services:
         value: "50"
       - key: AI__Anthropic__ApiKey
         type: SECRET
-        value: "REPLACE"
       - key: AI__DefaultModel
         value: "claude-haiku-4-5-20251001"
       - key: AiSettings__RateLimitPerHour
         value: "100"
       - key: Sentry__Dsn
         type: SECRET
-        value: "REPLACE"
 
   # LaTeX rendering runs inside the API container (no separate service)
 
@@ -131,7 +139,6 @@ static_sites:
       - key: SENTRY_AUTH_TOKEN
         scope: BUILD_TIME
         type: SECRET
-        value: "REPLACE"
       - key: SENTRY_ORG
         scope: BUILD_TIME
         value: "lilia"
