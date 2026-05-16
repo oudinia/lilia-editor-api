@@ -26,4 +26,12 @@ public interface IEmailService
     /// </summary>
     Task SendTeamInviteAsync(string toEmail, string inviterName, string teamName,
         string role, string acceptUrl);
+
+    /// <summary>
+    /// Removal notice — "You've been removed from <team-codename>".
+    /// Fired from the Wolverine handler subscribing to
+    /// TeamMemberRemovedEvent. Mirror of SendTeamInviteAsync.
+    /// </summary>
+    Task SendTeamMemberRemovedAsync(string toEmail, string? recipientName,
+        string removerName, string teamName);
 }

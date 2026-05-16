@@ -453,6 +453,23 @@ public class TeamService : ITeamService
         _context.GroupMembers.RemoveRange(memberships);
         await _context.SaveChangesAsync();
 
+        // Publish for the Wolverine email handler. We need email + name
+        // BEFORE the row is gone, but the row IS already gone — so look
+        // up both users by id (still in users table).
+        if (_bus is not null)
+        {
+            var remover = await _context.Users.FindAsync(userId);
+            var removed = await _context.Users.FindAsync(targetUserId);
+            await _bus.PublishAsync(new Events.Common.TeamMemberRemovedEvent(
+                team.Id,
+                team.Name,
+                userId,
+                remover?.Name,
+                targetUserId,
+                removed?.Email,
+                removed?.Name));
+        }
+
         return true;
     }
 
