@@ -1,0 +1,95 @@
+name: API build + deploy
+
+# Pre-builds the API container in GitHub Actions instead of letting DO
+# App Platform rebuild from the Dockerfile on every push. DO's kaniko
+# build clusters spend ~5-7 min compiling .NET + installing the big
+# texlive packages on each deploy; this workflow caches both layers in
+# GHA, pushes the resulting image to DOCR, then asks DO to pull-and-roll.
+# End-to-end deploys drop from ~10 min to ~4-5 min on cache hits.
+#
+# Prereqs (one-time, manual):
+#   1. Create the DOCR registry:    doctl registry create lilia
+#   2. Create the repo:              (automatic on first push from this workflow)
+#   3. Add DIGITALOCEAN_ACCESS_TOKEN as a repo secret with apps:write + registry:write
+#   4. Flip .do/app.yaml to use { image: ... } instead of { dockerfile_path: ... }
+#      and remove deploy_on_push: true (this workflow is the trigger now).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Don't burn a deploy on doc-only changes.
+      - 'src/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'Lilia.Api.slnx'
+      - '.github/workflows/api-build-deploy.yml'
+  # Manual trigger for re-deploying the current SHA without a code push
+  # (useful when DO env vars change or to retry a failed deploy).
+  workflow_dispatch:
+
+# A second push supersedes any in-flight build for the same branch — no
+# point burning compute on an image nobody will roll out.
+concurrency:
+  group: api-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: registry.digitalocean.com
+  REGISTRY_NAME: lilia
+  IMAGE_NAME: lilia-api
+  DO_APP_ID: 5ace837e-39d3-4b70-a201-0020fcdb7b73
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:main
+          # GHA cache: persists the layer cache across runs in the
+          # actions cache. The texlive install layer is the big one —
+          # caching it cuts ~3 min off every rebuild.
+          cache-from: type=gha,scope=lilia-api
+          cache-to: type=gha,scope=lilia-api,mode=max
+
+      - name: Trigger DO deploy
+        run: |
+          # App spec keeps `tag: main`, we just rolled `:main` forward,
+          # so create-deployment pulls the new image and rolls it out.
+          doctl apps create-deployment "${{ env.DO_APP_ID }}" --wait=false
+
+      - name: Cleanup old image tags (keep latest 10 SHA tags)
+        # DOCR Basic is 5 GB; image is ~1.5-2 GB, so without GC we'd
+        # blow the quota in <10 deploys. Keep `:main` + the 10 most
+        # recent SHA tags; let DOCR's GC reclaim the rest on next sweep.
+        run: |
+          doctl registry repository list-tags "${{ env.IMAGE_NAME }}" --format Tag --no-header \
+            | grep -v '^main$' \
+            | tail -n +11 \
+            | xargs -r -n1 -I{} doctl registry repository delete-tag "${{ env.IMAGE_NAME }}" {} --force \
+            || true
+          doctl registry garbage-collection start --force --include-untagged-manifests || true
+        continue-on-error: true
