@@ -777,17 +777,32 @@ public class LaTeXExportService : ILaTeXExportService
         var command = commands[Math.Min(level - 1, 4)];
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{label}}}" : "";
+
+        // Starred form: `numbered: false` emits \section*{} which
+        // suppresses both the auto-number and the TOC entry. Matches
+        // LaTeX's behavior — see "Designing Pages" §sectioning.
+        var numbered = !content.TryGetProperty("numbered", out var nEl)
+            || nEl.ValueKind != JsonValueKind.False;
+        var star = numbered ? "" : "*";
+
+        // Optional short title for the TOC entry — \section[short]{full}.
+        // Only meaningful when numbered (TOC entry exists); silently
+        // drop the bracketed arg on starred headings.
+        var shortTitle = content.TryGetProperty("shortTitle", out var stEl) && stEl.ValueKind == JsonValueKind.String
+            ? stEl.GetString() ?? ""
+            : "";
+        var shortPart = numbered && !string.IsNullOrEmpty(shortTitle)
+            ? $"[{FormatInlineContent(shortTitle)}]"
+            : "";
+
         // Route through FormatInlineContent so `**Important**` becomes
         // `\textbf{Important}` (parity with paragraph + preview render).
-        // Pre-fix the heading hit EscapeLatex directly which kept the
-        // markdown asterisks literal.
         // Strip baked-in numbering prefix ("1. ", "1.1 ", "I. ", "A. ")
         // mirroring SectionKeywordRegistry.StripNumberingPrefix on the
         // import path. Without this, LaTeX auto-numbering shows the
-        // number twice ("2  1. Introduction") in the rendered PDF and
-        // the TOC, since legacy imports baked the prefix into text.
+        // number twice in the rendered PDF and the TOC.
         var stripped = StripBakedNumberingPrefixForHeading(text);
-        return $@"\{command}{{{FormatInlineContent(stripped)}}}{labelPart}";
+        return $@"\{command}{star}{shortPart}{{{FormatInlineContent(stripped)}}}{labelPart}";
     }
 
     /// <summary>

@@ -1104,15 +1104,29 @@ public partial class RenderService : IRenderService
             _ => "section"
         };
 
+        // numbered=false → starred form (\section*{}). Suppresses
+        // numbering AND the TOC entry. Default true preserves
+        // pre-attr behavior.
+        var numbered = !content.TryGetProperty("numbered", out var nEl)
+            || nEl.ValueKind != JsonValueKind.False;
+        var star = numbered ? "" : "*";
+
+        // shortTitle → \section[short]{long} for TOC. Skip on starred
+        // (no TOC entry exists for those).
+        var shortTitle = content.TryGetProperty("shortTitle", out var stEl) && stEl.ValueKind == JsonValueKind.String
+            ? stEl.GetString() ?? ""
+            : "";
+        var shortPart = numbered && !string.IsNullOrEmpty(shortTitle)
+            ? $"[{ProcessLatexText(shortTitle).TrimEnd()}]"
+            : "";
+
         // Headings go through ProcessLatexText (not the bare EscapeLatex)
         // so inline markers — comment `[%…%]` → `\iffalse…\fi`, smart
         // quotes, sup/sub/smallcaps, bold/italic — are translated before
-        // any % or [ escape pass would mangle them. EscapeLatex alone
-        // turned `[%foo%]` into `[\%foo\%]` and the user saw raw bracket
-        // text in the heading title (2026-05-14). TrimEnd strips the
+        // any % or [ escape pass would mangle them. TrimEnd strips the
         // trailing whitespace ProcessLatexText adds via the paragraph-
         // break pass — single-line headings don't need it.
-        return $@"\{command}{{{ProcessLatexText(text).TrimEnd()}}}";
+        return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}";
     }
 
     private string RenderParagraphToLatex(JsonElement content)

@@ -46,7 +46,7 @@ public class BlockTypeService : IBlockTypeService
         [
             // Document block types
             MakeBlockType(BlockTypes.Paragraph, "Paragraph", "Plain text paragraph", "paragraphMark", CategoryDocument, new { text = "" }),
-            MakeBlockType(BlockTypes.Heading, "Heading", "Section heading (H1-H4)", "fontFamily", CategoryDocument, new { text = "", level = 1 }),
+            MakeBlockType(BlockTypes.Heading, "Heading", "Section heading (H1-H4)", "fontFamily", CategoryDocument, new { text = "", level = 1, numbered = true, shortTitle = "" }),
             MakeBlockType(BlockTypes.Equation, "Equation", "LaTeX math equation", "calculator", CategoryDocument, new { latex = "", displayMode = true, equationMode = "display", numbered = true }),
             MakeBlockType(BlockTypes.Figure, "Figure", "Image with caption", "image", CategoryDocument, new { src = "", caption = "", alt = "", width = 0.8, position = "center", placement = "auto" }),
             MakeBlockType(BlockTypes.Code, "Code", "Code block with syntax highlighting", "code", CategoryDocument, new { code = "", language = "javascript" }),
