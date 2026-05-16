@@ -289,24 +289,40 @@ public static class LaTeXPreambleBuilder
         }
 
         // Header / footer via fancyhdr. We only load fancyhdr when at
-        // least one is set — loading it unconditionally would override
-        // the class default page style for every doc.
-        var hasHeader = !string.IsNullOrWhiteSpace(doc.HeaderText);
-        var hasFooter = !string.IsNullOrWhiteSpace(doc.FooterText);
-        if (hasHeader || hasFooter)
+        // least one slot is set — loading it unconditionally would
+        // override the class default page style for every doc.
+        //
+        // Resolution order per slot: explicit L/C/R wins; if none of
+        // the three header slots is set but the legacy HeaderText is,
+        // it lands in \lhead (preserves pre-2026-05 behavior). Same
+        // for footer with \rfoot.
+        var hL = NullIfBlank(doc.HeaderLeft);
+        var hC = NullIfBlank(doc.HeaderCenter);
+        var hR = NullIfBlank(doc.HeaderRight);
+        var fL = NullIfBlank(doc.FooterLeft);
+        var fC = NullIfBlank(doc.FooterCenter);
+        var fR = NullIfBlank(doc.FooterRight);
+        if (hL is null && hC is null && hR is null && !string.IsNullOrWhiteSpace(doc.HeaderText))
+        {
+            hL = doc.HeaderText;
+        }
+        if (fL is null && fC is null && fR is null && !string.IsNullOrWhiteSpace(doc.FooterText))
+        {
+            fR = doc.FooterText;
+        }
+        if (hL is not null || hC is not null || hR is not null
+         || fL is not null || fC is not null || fR is not null)
         {
             sb.AppendLine("% Header / footer");
             sb.AppendLine("\\usepackage{fancyhdr}");
             sb.AppendLine("\\pagestyle{fancy}");
             sb.AppendLine("\\fancyhf{}");
-            if (hasHeader)
-            {
-                sb.AppendLine($"\\lhead{{{EscapeUserText(doc.HeaderText!)}}}");
-            }
-            if (hasFooter)
-            {
-                sb.AppendLine($"\\rfoot{{{EscapeUserText(doc.FooterText!)}}}");
-            }
+            if (hL is not null) sb.AppendLine($"\\lhead{{{EscapeUserText(hL)}}}");
+            if (hC is not null) sb.AppendLine($"\\chead{{{EscapeUserText(hC)}}}");
+            if (hR is not null) sb.AppendLine($"\\rhead{{{EscapeUserText(hR)}}}");
+            if (fL is not null) sb.AppendLine($"\\lfoot{{{EscapeUserText(fL)}}}");
+            if (fC is not null) sb.AppendLine($"\\cfoot{{{EscapeUserText(fC)}}}");
+            if (fR is not null) sb.AppendLine($"\\rfoot{{{EscapeUserText(fR)}}}");
         }
 
         // Font family. Native pdflatex packages only — Georgia is
@@ -370,6 +386,9 @@ public static class LaTeXPreambleBuilder
     /// caret, ampersand, dollar, underscore. Mirrors the conservative
     /// escape used by EscapeLatex in LaTeXExportService for plain text.
     /// </summary>
+    private static string? NullIfBlank(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s;
+
     private static string EscapeUserText(string s)
     {
         if (string.IsNullOrEmpty(s)) return s;

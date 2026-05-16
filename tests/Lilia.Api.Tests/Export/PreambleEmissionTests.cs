@@ -227,6 +227,87 @@ public class PreambleEmissionTests
         preamble.Should().Contain("\\_");                // underscore escape
     }
 
+    // ── L/C/R header & footer slots ────────────────────────────────────
+
+    [Fact]
+    public void Header_LCR_slots_emit_each_corner()
+    {
+        var doc = NewDoc(d =>
+        {
+            d.HeaderLeft = "Author Name";
+            d.HeaderCenter = "Working Draft";
+            d.HeaderRight = "2026";
+        });
+        var preamble = BuildPreamble(doc);
+        preamble.Should().Contain("\\usepackage{fancyhdr}");
+        preamble.Should().Contain("\\pagestyle{fancy}");
+        preamble.Should().Contain("\\fancyhf{}");
+        preamble.Should().Contain("\\lhead{Author Name}");
+        preamble.Should().Contain("\\chead{Working Draft}");
+        preamble.Should().Contain("\\rhead{2026}");
+    }
+
+    [Fact]
+    public void Footer_LCR_slots_emit_each_corner()
+    {
+        var doc = NewDoc(d =>
+        {
+            d.FooterLeft = "v1.0";
+            d.FooterCenter = "Confidential";
+            d.FooterRight = "Page n";
+        });
+        var preamble = BuildPreamble(doc);
+        preamble.Should().Contain("\\lfoot{v1.0}");
+        preamble.Should().Contain("\\cfoot{Confidential}");
+        preamble.Should().Contain("\\rfoot{Page n}");
+    }
+
+    [Fact]
+    public void HeaderText_legacy_fallback_when_no_LCR_set()
+    {
+        // Pre-2026-05 contract: HeaderText alone landed in \lhead.
+        // That MUST keep working for existing docs.
+        var doc = NewDoc(d => d.HeaderText = "Legacy header");
+        var preamble = BuildPreamble(doc);
+        preamble.Should().Contain("\\lhead{Legacy header}");
+    }
+
+    [Fact]
+    public void HeaderText_ignored_when_any_LCR_slot_is_set()
+    {
+        // Once the user starts using the L/C/R slots, the legacy
+        // HeaderText must NOT bleed in — otherwise both \lhead lines
+        // would appear and the second one wins silently.
+        var doc = NewDoc(d =>
+        {
+            d.HeaderText = "Should be ignored";
+            d.HeaderRight = "Real content";
+        });
+        var preamble = BuildPreamble(doc);
+        preamble.Should().Contain("\\rhead{Real content}");
+        preamble.Should().NotContain("Should be ignored");
+    }
+
+    [Fact]
+    public void Partial_LCR_emits_only_set_slots()
+    {
+        // Only \chead emitted; \lhead and \rhead deliberately absent.
+        var doc = NewDoc(d => d.HeaderCenter = "Just the middle");
+        var preamble = BuildPreamble(doc);
+        preamble.Should().Contain("\\chead{Just the middle}");
+        preamble.Should().NotContain("\\lhead{");
+        preamble.Should().NotContain("\\rhead{");
+    }
+
+    [Fact]
+    public void No_header_or_footer_set_does_not_load_fancyhdr()
+    {
+        var doc = NewDoc();
+        var preamble = BuildPreamble(doc);
+        preamble.Should().NotContain("fancyhdr");
+        preamble.Should().NotContain("\\pagestyle{fancy}");
+    }
+
     // ── FontFamily ─────────────────────────────────────────────────────
 
     [Theory]

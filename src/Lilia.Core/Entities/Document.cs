@@ -39,6 +39,18 @@ public class Document
     public string? MarginRight { get; set; }
     public string? HeaderText { get; set; }
     public string? FooterText { get; set; }
+
+    // L/C/R header & footer slots. When ANY of the six is set, the LaTeX
+    // preamble emits \lhead/\chead/\rhead (and same for footer). The
+    // legacy HeaderText / FooterText above remain as fallbacks: if no
+    // L/C/R slot is set but HeaderText is, it's placed in \lhead — so
+    // existing docs keep their current rendering.
+    public string? HeaderLeft { get; set; }
+    public string? HeaderCenter { get; set; }
+    public string? HeaderRight { get; set; }
+    public string? FooterLeft { get; set; }
+    public string? FooterCenter { get; set; }
+    public string? FooterRight { get; set; }
     public double? LineSpacing { get; set; }
     public string? ParagraphIndent { get; set; }
     public string? PageNumbering { get; set; } // "arabic", "roman", "none"
