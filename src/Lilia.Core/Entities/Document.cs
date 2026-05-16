@@ -8,6 +8,15 @@ public class Document
     public string Title { get; set; } = "Untitled";
     public string Language { get; set; } = "en";
     public string PaperSize { get; set; } = "a4";
+
+    /// <summary>
+    /// Page orientation — "portrait" (default) or "landscape". When
+    /// landscape, BuildClassDirective injects the `landscape` document-
+    /// class option so the PDF page geometry rotates. Independent of
+    /// the paper size: an A4 landscape doc is still A4, just rotated.
+    /// </summary>
+    public string Orientation { get; set; } = "portrait";
+
     public string FontFamily { get; set; } = "serif";
     public int FontSize { get; set; } = 12;
     public int Columns { get; set; } = 1;

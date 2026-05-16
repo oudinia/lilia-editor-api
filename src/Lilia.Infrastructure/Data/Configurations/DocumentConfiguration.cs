@@ -21,6 +21,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.Title).HasColumnName("title").HasMaxLength(255).HasDefaultValue("Untitled");
         builder.Property(d => d.Language).HasColumnName("language").HasMaxLength(10).HasDefaultValue("en");
         builder.Property(d => d.PaperSize).HasColumnName("paper_size").HasMaxLength(50).HasDefaultValue("a4");
+        builder.Property(d => d.Orientation).HasColumnName("orientation").HasMaxLength(20).HasDefaultValue("portrait");
         builder.Property(d => d.FontFamily).HasColumnName("font_family").HasMaxLength(100).HasDefaultValue("serif");
         builder.Property(d => d.FontSize).HasColumnName("font_size").HasDefaultValue(12);
         builder.Property(d => d.Columns).HasColumnName("columns").HasDefaultValue(1);

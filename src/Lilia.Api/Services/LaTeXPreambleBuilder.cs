@@ -150,6 +150,15 @@ public static class LaTeXPreambleBuilder
             }
         }
 
+        // landscape class option — flips paper orientation. Independent
+        // of paper size: A4 landscape is still A4. The portrait default
+        // is implicit so we only emit when explicitly set.
+        if (string.Equals(doc.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
+            && !classOpts.Any(o => string.Equals(o, "landscape", StringComparison.OrdinalIgnoreCase)))
+        {
+            classOpts.Add("landscape");
+        }
+
         // twocolumn class option only when columns >= 2 AND balanced
         // columns is OFF — balanced columns uses the multicol package
         // (added below in BuildLayoutPreamble) which is incompatible
