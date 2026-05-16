@@ -241,6 +241,19 @@ public class TeamService : ITeamService
             .ToList();
     }
 
+    /// <summary>
+    /// Canonical role lookup — also accepts the colloquial aliases
+    /// "member" and "admin" by mapping them to "editor". Older editor
+    /// builds shipped a Role dropdown with those values; sending them
+    /// silently 404'd every invite POST (2026-05-16). Aliasing here
+    /// keeps those clients working until they all redeploy.
+    /// </summary>
+    private static string NormalizeRoleName(string? raw) => (raw ?? "").Trim().ToLowerInvariant() switch
+    {
+        "member" or "admin" or "" => "editor",
+        var x => x,
+    };
+
     public async Task<TeamMemberDto?> InviteMemberAsync(Guid teamId, string userId, InviteTeamMemberDto dto)
     {
         var team = await _context.Teams
@@ -277,7 +290,7 @@ public class TeamService : ITeamService
                 JoinedAt: DateTime.UtcNow);
         }
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == NormalizeRoleName(dto.Role));
         if (role == null) return null;
 
         var defaultGroup = team.Groups.FirstOrDefault(g => g.IsDefault);
@@ -349,7 +362,7 @@ public class TeamService : ITeamService
         var targetUser = await _context.Users.FindAsync(dto.UserId);
         if (targetUser == null) return null;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == NormalizeRoleName(dto.Role));
         if (role == null) return null;
 
         var defaultGroup = team.Groups.FirstOrDefault(g => g.IsDefault);
@@ -420,7 +433,7 @@ public class TeamService : ITeamService
 
         if (membership == null) return null;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == NormalizeRoleName(dto.Role));
         if (role == null) return null;
 
         membership.RoleId = role.Id;
