@@ -75,7 +75,7 @@ public class CollaboratorService : ICollaboratorService
         // Only owner can manage collaborators
         if (document.OwnerId != userId) return null;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
         var targetUser = await _context.Users.FindAsync(dto.UserId);
@@ -174,7 +174,7 @@ public class CollaboratorService : ICollaboratorService
 
         if (document.OwnerId != userId) return null;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
         var group = await _context.Groups
@@ -236,7 +236,7 @@ public class CollaboratorService : ICollaboratorService
 
         if (collaborator == null) return null;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
         collaborator.RoleId = role.Id;
@@ -266,7 +266,7 @@ public class CollaboratorService : ICollaboratorService
 
         if (documentGroup == null) return null;
 
-        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
+        var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
         documentGroup.RoleId = role.Id;
