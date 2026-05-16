@@ -250,7 +250,32 @@ public class TeamService : ITeamService
         if (team == null || team.OwnerId != userId) return null;
 
         var targetUser = await _userService.GetUserByEmailAsync(dto.Email);
-        if (targetUser == null) return null;
+        if (targetUser == null)
+        {
+            // The invitee doesn't have a Lilia account yet. Until the
+            // TeamPendingInvite entity ships (Phase 2), publish the
+            // invite event so they at least get an email with a
+            // sign-up link, and return a pending-shaped stub so the
+            // frontend can show a toast / pending-row.
+            if (_bus is not null)
+            {
+                var inviter = await _context.Users.FindAsync(userId);
+                await _bus.PublishAsync(new Events.Common.TeamInviteCreatedEvent(
+                    team.Id,
+                    team.Name,
+                    userId,
+                    inviter?.Name,
+                    dto.Email,
+                    dto.Role));
+            }
+            return new TeamMemberDto(
+                UserId: $"pending:{dto.Email}",   // sentinel — not a real user id
+                Name: null,
+                Email: dto.Email,
+                Image: null,
+                RoleName: dto.Role,
+                JoinedAt: DateTime.UtcNow);
+        }
 
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == dto.Role);
         if (role == null) return null;
