@@ -1602,7 +1602,9 @@ public partial class RenderService : IRenderService
                     ? rowList[0].GetArrayLength()
                     : 1;
 
-            // 1.3 — Column alignment from content JSON, default to 'l'
+            // 1.3 — Column alignment from content JSON, default to 'l'.
+            // Now also honors p/m/b paragraph specifiers when a parallel
+            // columnWidth array provides the cell width.
             var colAlignments = Enumerable.Repeat("l", colCount).ToArray();
             if (content.TryGetProperty("columnAlign", out var alignProp) && alignProp.ValueKind == JsonValueKind.Array)
             {
@@ -1610,11 +1612,35 @@ public partial class RenderService : IRenderService
                 for (var i = 0; i < Math.Min(alignList.Count, colCount); i++)
                 {
                     var val = alignList[i].GetString()?.ToLowerInvariant();
-                    if (val is "l" or "c" or "r")
+                    if (val is "l" or "c" or "r" or "p" or "m" or "b")
                         colAlignments[i] = val;
                 }
             }
-            var colSpec = string.Join("", colAlignments);
+            string[] colWidths = Array.Empty<string>();
+            if (content.TryGetProperty("columnWidth", out var widProp) && widProp.ValueKind == JsonValueKind.Array)
+            {
+                colWidths = widProp.EnumerateArray()
+                    .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : "")
+                    .ToArray();
+            }
+            // Compose the spec — paragraph cells need {width}; bare l/c/r
+            // pass through. Missing widths fall back to 'l' rather than
+            // emitting a malformed `p{}` that crashes pdflatex.
+            var colSpecBuilder = new StringBuilder();
+            for (var i = 0; i < colCount; i++)
+            {
+                var a = colAlignments[i];
+                if (a is "p" or "m" or "b")
+                {
+                    var w = i < colWidths.Length ? colWidths[i] : "";
+                    colSpecBuilder.Append(string.IsNullOrWhiteSpace(w) ? "l" : $"{a}{{{w}}}");
+                }
+                else
+                {
+                    colSpecBuilder.Append(a);
+                }
+            }
+            var colSpec = colSpecBuilder.ToString();
 
             // Build a rowspan tracker: coveredCells[row][col] = true if covered by a previous multirow
             var totalRows = (hasHeaders ? 1 : 0) + rowList.Count;
@@ -1625,7 +1651,15 @@ public partial class RenderService : IRenderService
             sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
             if (!string.IsNullOrEmpty(caption))
             {
-                sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+                // shortCaption → \caption[short]{long} so the List of
+                // Tables uses the compact form. Skip the bracketed arg
+                // when no short version was provided.
+                var shortCaption = content.TryGetProperty("shortCaption", out var sc) && sc.ValueKind == JsonValueKind.String
+                    ? sc.GetString() ?? ""
+                    : "";
+                sb.AppendLine(!string.IsNullOrEmpty(shortCaption)
+                    ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}"
+                    : $@"\caption{{{EscapeLatex(caption)}}}");
             }
             if (!string.IsNullOrEmpty(label))
             {

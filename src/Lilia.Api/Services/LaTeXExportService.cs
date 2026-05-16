@@ -871,6 +871,58 @@ public class LaTeXExportService : ILaTeXExportService
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Build the LaTeX column specifier from the table block's
+    /// columnAlign + columnWidth fields. Each entry in columnAlign
+    /// is one of "l" (left), "c" (center), "r" (right), or "p" (paragraph
+    /// — needs a matching width). columnWidth is parallel: same index
+    /// gives the cell width for "p"/"m"/"b" columns. Falls back to "l"
+    /// for any column not covered by either array, so partial schemas
+    /// degrade safely.
+    /// </summary>
+    private static string BuildColumnSpec(JsonElement content, int colCount)
+    {
+        string[] aligns = Array.Empty<string>();
+        if (content.TryGetProperty("columnAlign", out var alignEl) && alignEl.ValueKind == JsonValueKind.Array)
+        {
+            aligns = alignEl.EnumerateArray()
+                .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "l" : "l")
+                .ToArray();
+        }
+        string[] widths = Array.Empty<string>();
+        if (content.TryGetProperty("columnWidth", out var widEl) && widEl.ValueKind == JsonValueKind.Array)
+        {
+            widths = widEl.EnumerateArray()
+                .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : "")
+                .ToArray();
+        }
+
+        var sb = new StringBuilder();
+        for (int i = 0; i < colCount; i++)
+        {
+            var raw = (i < aligns.Length ? aligns[i] : "l").Trim().ToLowerInvariant();
+            // Normalise: anything other than the supported set falls back
+            // to 'l'. Prevents user-typed garbage breaking pdflatex.
+            switch (raw)
+            {
+                case "c":
+                case "r":
+                    sb.Append(raw);
+                    break;
+                case "p":
+                case "m":
+                case "b":
+                    var w = i < widths.Length ? widths[i] : "";
+                    sb.Append(string.IsNullOrWhiteSpace(w) ? "l" : $"{raw}{{{w}}}");
+                    break;
+                default:
+                    sb.Append('l');
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
+
     private string RenderTable(JsonElement content)
     {
         var hasHeaders = content.TryGetProperty("headers", out var headers)
@@ -886,9 +938,15 @@ public class LaTeXExportService : ILaTeXExportService
             : rowList.Count > 0 && rowList[0].ValueKind == JsonValueKind.Array
                 ? rowList[0].GetArrayLength()
                 : 1;
-        var colSpec = new string('l', colCount);
+        // Per-column alignment: read columnAlign + optional columnWidth
+        // from the block content. Pre-fix this rendered every column as
+        // 'l' regardless of what the schema said.
+        var colSpec = BuildColumnSpec(content, colCount);
 
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
+        var shortCaption = content.TryGetProperty("shortCaption", out var sc) && sc.ValueKind == JsonValueKind.String
+            ? sc.GetString() ?? ""
+            : "";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{tbl:{label}}}" : "";
         var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
@@ -898,7 +956,14 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine($@"\begin{{{env}}}[H]");
         sb.AppendLine(@"\centering");
         if (!string.IsNullOrEmpty(caption))
-            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
+        {
+            // shortCaption → \caption[short]{long} for the List of Tables;
+            // skip the bracketed arg when empty.
+            var captionPart = !string.IsNullOrEmpty(shortCaption)
+                ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}{labelPart}"
+                : $@"\caption{{{EscapeLatex(caption)}}}{labelPart}";
+            sb.AppendLine(captionPart);
+        }
         sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
         sb.AppendLine(@"\toprule");
 

@@ -52,7 +52,7 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.Code, "Code", "Code block with syntax highlighting", "code", CategoryDocument, new { code = "", language = "javascript" }),
             MakeBlockType(BlockTypes.List, "List", "Numbered, bulleted, or description list", "listOrdered", CategoryDocument, new { items = Array.Empty<string>(), ordered = false, start = 1, labelFormat = "number", kind = "bullet", spacing = "default" }),
             MakeBlockType(BlockTypes.Blockquote, "Quote", "Block quotation", "rightDoubleQuotes", CategoryDocument, new { text = "" }),
-            MakeBlockType(BlockTypes.Table, "Table", "Data table", "table", CategoryDocument, new { headers = new[] { "Column 1", "Column 2", "Column 3" }, rows = new[] { new[] { "", "", "" }, new[] { "", "", "" } }, columnAlign = Array.Empty<string>(), caption = "" }),
+            MakeBlockType(BlockTypes.Table, "Table", "Data table", "table", CategoryDocument, new { headers = new[] { "Column 1", "Column 2", "Column 3" }, rows = new[] { new[] { "", "", "" }, new[] { "", "", "" } }, columnAlign = Array.Empty<string>(), columnWidth = Array.Empty<string>(), caption = "", shortCaption = "" }),
             MakeBlockType(BlockTypes.Theorem, "Theorem", "Theorem, definition, lemma, proof", "stickyNote", CategoryDocument, new { theoremType = "theorem", title = "", text = "", label = "" }),
             MakeBlockType(BlockTypes.Abstract, "Abstract", "Document abstract section", "file", CategoryDocument, new { title = "Abstract", text = "" }),
             MakeBlockType(BlockTypes.Bibliography, "Bibliography", "Reference list", "book", CategoryDocument, new { title = "References", style = "apa", entries = Array.Empty<object>() }),

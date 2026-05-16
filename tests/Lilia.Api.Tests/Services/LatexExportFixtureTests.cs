@@ -70,6 +70,34 @@ public class LatexExportFixtureTests
             "table",
             """{"rows":[["A","B"],["1","2"]]}""",
             ExpectIn: new[] { @"\begin{tabular}", "A", "B", "1", "2", @"\end{tabular}" }),
+        // Phase 2a — column alignment honored in the export path
+        // (pre-fix this hardcoded `lll` regardless of columnAlign).
+        new Fx("table: per-column alignment lcr",
+            "table",
+            """{"headers":["A","B","C"],"rows":[["1","2","3"]],"columnAlign":["l","c","r"]}""",
+            ExpectIn: new[] { @"\begin{tabular}{lcr}" }),
+        // Paragraph cells with widths — `p{w}` columns wrap text. Widths
+        // beyond what the alignment array specifies are ignored; missing
+        // widths fall back to `l` so we never emit `p{}`.
+        new Fx("table: paragraph column with width",
+            "table",
+            """{"headers":["Note","Body"],"rows":[["1","..."]],"columnAlign":["l","p"],"columnWidth":["","8cm"]}""",
+            ExpectIn: new[] { @"\begin{tabular}{lp{8cm}}" }),
+        new Fx("table: paragraph column missing width falls back to l",
+            "table",
+            """{"headers":["A"],"rows":[["x"]],"columnAlign":["p"]}""",
+            ExpectIn: new[] { @"\begin{tabular}{l}" },
+            ExpectNotIn: new[] { "p{}" }),
+        // Short caption → \caption[short]{long} for the List of Tables.
+        new Fx("table: short caption emits bracketed arg",
+            "table",
+            """{"headers":["A"],"rows":[["x"]],"caption":"A long descriptive caption","shortCaption":"Short"}""",
+            ExpectIn: new[] { @"\caption[Short]{A long descriptive caption}" }),
+        new Fx("table: caption without shortCaption stays bare",
+            "table",
+            """{"headers":["A"],"rows":[["x"]],"caption":"Plain"}""",
+            ExpectIn: new[] { @"\caption{Plain}" },
+            ExpectNotIn: new[] { @"\caption[" }),
 
         // code
         new Fx("code: typescript body",
