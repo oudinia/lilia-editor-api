@@ -233,4 +233,100 @@ public class EmailService : IEmailService
         </html>
         """;
     }
+
+    public async Task SendDocumentSharedAsync(string toEmail, string? recipientName, string inviterName,
+        string documentTitle, string permission, string documentUrl)
+    {
+        // By-id share path — the recipient already has an account (we found
+        // them via user-search), so we link straight to the doc rather than
+        // to sign-up. No localization yet; mirrors SendTeamWelcomeAsync.
+        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "Hi" : $"Hi {recipientName}";
+        var subject = $"{inviterName} shared \"{documentTitle}\" with you";
+        var html = $$"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                <tr><td style="padding:32px 32px 0;">
+                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
+                </td></tr>
+                <tr><td style="padding:24px 32px;">
+                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{greeting}},</p>
+                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
+                    <strong>{{System.Net.WebUtility.HtmlEncode(inviterName)}}</strong> shared a document with you on Lilia:
+                  </p>
+                  <p style="margin:0 0 20px;font-size:17px;font-weight:600;line-height:1.4;color:#1a1a1a;">
+                    {{System.Net.WebUtility.HtmlEncode(documentTitle)}}
+                  </p>
+                  <p style="margin:0 0 20px;font-size:14px;color:#666;">
+                    Your access level: <strong>{{System.Net.WebUtility.HtmlEncode(permission)}}</strong>
+                  </p>
+                  <a href="{{System.Net.WebUtility.HtmlEncode(documentUrl)}}"
+                     style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
+                    Open document
+                  </a>
+                </td></tr>
+                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
+                  <p style="margin:0;font-size:12px;color:#999;">
+                    You're receiving this because someone shared a document with you on Lilia.
+                  </p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+        """;
+        var text = $"{greeting},\n\n{inviterName} shared a document with you on Lilia:\n\n{documentTitle}\n\nYour access level: {permission}\n\nOpen document: {documentUrl}";
+        await SendEmailAsync(toEmail, subject, html, text);
+    }
+
+    public async Task SendTeamInviteAsync(string toEmail, string inviterName, string teamName,
+        string role, string acceptUrl)
+    {
+        var subject = $"{inviterName} invited you to {teamName} on Lilia";
+        var html = $$"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                <tr><td style="padding:32px 32px 0;">
+                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
+                </td></tr>
+                <tr><td style="padding:24px 32px;">
+                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">Hi,</p>
+                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
+                    <strong>{{System.Net.WebUtility.HtmlEncode(inviterName)}}</strong> invited you to join their team on Lilia:
+                  </p>
+                  <p style="margin:0 0 16px;font-size:18px;font-weight:600;line-height:1.4;color:#1976d2;font-family:ui-monospace,SFMono-Regular,monospace;">
+                    {{System.Net.WebUtility.HtmlEncode(teamName)}}
+                  </p>
+                  <p style="margin:0 0 24px;font-size:14px;color:#666;">
+                    Your role: <strong>{{System.Net.WebUtility.HtmlEncode(role)}}</strong>
+                  </p>
+                  <a href="{{System.Net.WebUtility.HtmlEncode(acceptUrl)}}"
+                     style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
+                    Accept invite
+                  </a>
+                </td></tr>
+                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
+                  <p style="margin:0;font-size:12px;color:#999;">
+                    You're receiving this because someone invited you to a team on Lilia.
+                  </p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+        """;
+        var text = $"Hi,\n\n{inviterName} invited you to join their team on Lilia:\n\n{teamName}\n\nYour role: {role}\n\nAccept invite: {acceptUrl}";
+        await SendEmailAsync(toEmail, subject, html, text);
+    }
 }

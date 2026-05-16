@@ -11,4 +11,19 @@ public interface IEmailService
     /// the welcome (or as a standalone test from /api/teams/test-welcome).
     /// </summary>
     Task SendTeamWelcomeAsync(string toEmail, string? firstName, string teamCodename);
+
+    /// <summary>
+    /// Doc-share notification for the by-id path (someone added you to a
+    /// document via user-search). Different from <c>SendDocumentInviteAsync</c>
+    /// which fires from the email-invite path with a sign-up URL.
+    /// </summary>
+    Task SendDocumentSharedAsync(string toEmail, string? recipientName, string inviterName,
+        string documentTitle, string permission, string documentUrl);
+
+    /// <summary>
+    /// Team-invite email — "X invited you to <team-codename>". Fired from
+    /// the Wolverine handler that subscribes to TeamInviteCreatedEvent.
+    /// </summary>
+    Task SendTeamInviteAsync(string toEmail, string inviterName, string teamName,
+        string role, string acceptUrl);
 }

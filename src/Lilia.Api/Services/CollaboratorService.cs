@@ -17,8 +17,9 @@ public class CollaboratorService : ICollaboratorService
     private readonly INotificationService _notificationService;
     private readonly IStringLocalizer<SharedMessages> _localizer;
     private readonly ILogger<CollaboratorService> _logger;
+    private readonly Wolverine.IMessageBus? _bus;
 
-    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger)
+    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null)
     {
         _context = context;
         _emailService = emailService;
@@ -26,6 +27,7 @@ public class CollaboratorService : ICollaboratorService
         _notificationService = notificationService;
         _localizer = localizer;
         _logger = logger;
+        _bus = bus;
     }
 
     public async Task<CollaboratorListDto> GetCollaboratorsAsync(Guid documentId)
@@ -113,11 +115,12 @@ public class CollaboratorService : ICollaboratorService
         _context.DocumentCollaborators.Add(collaborator);
         await _context.SaveChangesAsync();
 
-        // Notify the added collaborator
+        // Notify the added collaborator (in-app)
+        string? inviterName = null;
         try
         {
             var inviterUser = await _context.Users.FindAsync(userId);
-            var inviterName = inviterUser?.Name ?? inviterUser?.Email ?? "Someone";
+            inviterName = inviterUser?.Name ?? inviterUser?.Email ?? "Someone";
             await _notificationService.CreateAsync(
                 dto.UserId,
                 "document_shared",
@@ -129,6 +132,27 @@ public class CollaboratorService : ICollaboratorService
         catch
         {
             // Notification failure should not block the operation
+        }
+
+        // Publish for the email handler in Features/Sharing/Handlers.
+        // Constructor-optional bus so legacy tests without DI still pass;
+        // prod always supplies one. Inviter name re-resolves inline if
+        // the in-app notification above failed to fetch it.
+        if (_bus is not null)
+        {
+            if (inviterName is null)
+            {
+                var inviter = await _context.Users.FindAsync(userId);
+                inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
+            }
+            await _bus.PublishAsync(new Events.Common.DocumentSharedEvent(
+                documentId,
+                document.Title,
+                userId,
+                inviterName,
+                dto.UserId,
+                targetUser.Email,
+                role.Name));
         }
 
         return new UserCollaboratorDto(

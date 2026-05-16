@@ -10,12 +10,14 @@ public class TeamService : ITeamService
     private readonly LiliaDbContext _context;
     private readonly IUserService _userService;
     private readonly INotificationService? _notificationService;
+    private readonly Wolverine.IMessageBus? _bus;
 
-    public TeamService(LiliaDbContext context, IUserService userService, INotificationService? notificationService = null)
+    public TeamService(LiliaDbContext context, IUserService userService, INotificationService? notificationService = null, Wolverine.IMessageBus? bus = null)
     {
         _context = context;
         _userService = userService;
         _notificationService = notificationService;
+        _bus = bus;
     }
 
     public async Task<List<TeamDto>> GetTeamsAsync(string userId)
@@ -278,6 +280,21 @@ public class TeamService : ITeamService
         }
 
         await _context.SaveChangesAsync();
+
+        // Publish for the Wolverine email handler. Constructor-optional
+        // so unit tests without a bus still pass; in prod DI always
+        // supplies one.
+        if (_bus is not null)
+        {
+            var inviter = await _context.Users.FindAsync(userId);
+            await _bus.PublishAsync(new Events.Common.TeamInviteCreatedEvent(
+                team.Id,
+                team.Name,
+                userId,
+                inviter?.Name,
+                targetUser.Email,
+                role.Name));
+        }
 
         return new TeamMemberDto(
             targetUser.Id,
