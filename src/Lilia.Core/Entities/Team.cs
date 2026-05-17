@@ -30,7 +30,9 @@ public class Team
 
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
-    public virtual ICollection<TeamMember> Members { get; set; } = new List<TeamMember>();
+    // Members nav removed when team_members table was retired
+    // (see RetireTeamMembersTable migration). Members are now
+    // reached via Groups → Group.Members (GroupMember).
     public virtual ICollection<Group> Groups { get; set; } = new List<Group>();
     public virtual ICollection<Document> Documents { get; set; } = new List<Document>();
 }

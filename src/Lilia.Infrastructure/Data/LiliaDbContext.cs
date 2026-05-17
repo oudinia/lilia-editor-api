@@ -11,7 +11,9 @@ public class LiliaDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Team> Teams => Set<Team>();
-    public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
+    // TeamMembers DbSet removed when team_members table was
+    // retired (RetireTeamMembersTable migration). GroupMembers
+    // is the single source of truth now.
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
