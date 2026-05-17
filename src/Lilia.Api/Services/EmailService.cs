@@ -372,4 +372,185 @@ public class EmailService : IEmailService
         var text = $"Hi,\n\n{inviterName} invited you to join their team on Lilia:\n\n{teamName}\n\nYour role: {role}\n\nAccept invite: {acceptUrl}";
         await SendEmailAsync(toEmail, subject, html, text);
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Stytch BYOM emails — fired from StytchWebhookController when
+    //  Stytch posts the email-payload webhook. Same look + sender as
+    //  every other transactional email; locale-aware via a small inline
+    //  copy table (resx wiring can come later if it grows).
+    // ─────────────────────────────────────────────────────────────────
+
+    public Task SendStytchVerificationAsync(string toEmail, string magicLinkUrl, string? locale)
+        => SendStytchAuthEmailAsync(StytchEmailKind.Verification, toEmail, magicLinkUrl, locale);
+
+    public Task SendStytchPasswordResetAsync(string toEmail, string resetUrl, string? locale)
+        => SendStytchAuthEmailAsync(StytchEmailKind.PasswordReset, toEmail, resetUrl, locale);
+
+    public Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale)
+        => SendStytchAuthEmailAsync(StytchEmailKind.MagicLinkLogin, toEmail, magicLinkUrl, locale);
+
+    private async Task SendStytchAuthEmailAsync(StytchEmailKind kind, string toEmail, string actionUrl, string? locale)
+    {
+        var copy = StytchEmailCopy.For(kind, locale);
+        var html = BuildStytchAuthHtml(copy, actionUrl);
+        var text = $"{copy.Heading}\n\n{copy.Body}\n\n{copy.Cta}: {actionUrl}\n\n{copy.Footer}";
+        await SendEmailAsync(toEmail, copy.Subject, html, text);
+    }
+
+    private static string BuildStytchAuthHtml(StytchEmailCopy.Resolved copy, string actionUrl)
+    {
+        var safeUrl = System.Net.WebUtility.HtmlEncode(actionUrl);
+        return $"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>{System.Net.WebUtility.HtmlEncode(copy.Subject)}</title>
+        </head>
+        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
+            <tr>
+              <td align="center">
+                <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                  <tr>
+                    <td style="padding:32px 32px 0;">
+                      <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:24px 32px;">
+                      <h2 style="margin:0 0 12px;font-size:18px;font-weight:600;color:#1a1a1a;">
+                        {System.Net.WebUtility.HtmlEncode(copy.Heading)}
+                      </h2>
+                      <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444;">
+                        {System.Net.WebUtility.HtmlEncode(copy.Body)}
+                      </p>
+                      <a href="{safeUrl}"
+                         style="display:inline-block;background-color:#4F46E5;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
+                        {System.Net.WebUtility.HtmlEncode(copy.Cta)}
+                      </a>
+                      <p style="margin:24px 0 0;font-size:13px;line-height:1.55;color:#888;">
+                        {System.Net.WebUtility.HtmlEncode(copy.LinkFallback)}<br>
+                        <span style="word-break:break-all;color:#666;">{safeUrl}</span>
+                      </p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:20px 32px;border-top:1px solid #eee;">
+                      <p style="margin:0;font-size:12px;color:#999;">
+                        {System.Net.WebUtility.HtmlEncode(copy.Footer)}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        """;
+    }
+}
+
+// =====================================================================
+//  Stytch email copy table — kept inline because there are only three
+//  templates × three locales. If this grows past ~10 strings per locale
+//  it should move to .resx alongside the rest of EmailService's
+//  localized strings.
+// =====================================================================
+
+internal enum StytchEmailKind { Verification, PasswordReset, MagicLinkLogin }
+
+internal static class StytchEmailCopy
+{
+    public sealed record Resolved(string Subject, string Heading, string Body, string Cta, string LinkFallback, string Footer);
+
+    public static Resolved For(StytchEmailKind kind, string? locale)
+    {
+        var lang = NormalizeLocale(locale);
+        return kind switch
+        {
+            StytchEmailKind.Verification => lang switch
+            {
+                "fr" => new Resolved(
+                    "Vérifiez votre adresse e-mail Lilia",
+                    "Bienvenue sur Lilia",
+                    "Cliquez sur le bouton ci-dessous pour vérifier votre adresse e-mail et finaliser la création de votre compte. Ce lien expire dans 30 minutes.",
+                    "Vérifier mon e-mail",
+                    "Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :",
+                    "Si vous n'avez pas créé de compte Lilia, vous pouvez ignorer cet e-mail."),
+                "es" => new Resolved(
+                    "Verifica tu correo de Lilia",
+                    "Bienvenido a Lilia",
+                    "Haz clic en el botón de abajo para verificar tu correo y terminar de crear tu cuenta. Este enlace expira en 30 minutos.",
+                    "Verificar mi correo",
+                    "¿El botón no funciona? Copia este enlace en tu navegador:",
+                    "Si no creaste una cuenta de Lilia, puedes ignorar este correo."),
+                _ => new Resolved(
+                    "Verify your Lilia email",
+                    "Welcome to Lilia",
+                    "Click the button below to verify your email and finish setting up your account. This link expires in 30 minutes.",
+                    "Verify my email",
+                    "Button not working? Copy this link into your browser:",
+                    "If you didn't create a Lilia account, you can safely ignore this email."),
+            },
+            StytchEmailKind.PasswordReset => lang switch
+            {
+                "fr" => new Resolved(
+                    "Réinitialisez votre mot de passe Lilia",
+                    "Demande de réinitialisation",
+                    "Vous avez demandé à réinitialiser votre mot de passe. Cliquez sur le bouton ci-dessous pour en choisir un nouveau. Ce lien expire dans 30 minutes.",
+                    "Réinitialiser le mot de passe",
+                    "Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :",
+                    "Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail — votre mot de passe ne change pas."),
+                "es" => new Resolved(
+                    "Restablece tu contraseña de Lilia",
+                    "Solicitud de restablecimiento",
+                    "Solicitaste restablecer tu contraseña. Haz clic en el botón de abajo para elegir una nueva. Este enlace expira en 30 minutos.",
+                    "Restablecer contraseña",
+                    "¿El botón no funciona? Copia este enlace en tu navegador:",
+                    "Si no solicitaste este restablecimiento, ignora este correo — tu contraseña no cambiará."),
+                _ => new Resolved(
+                    "Reset your Lilia password",
+                    "Reset request received",
+                    "You asked to reset your password. Click the button below to choose a new one. This link expires in 30 minutes.",
+                    "Reset password",
+                    "Button not working? Copy this link into your browser:",
+                    "If you didn't request this reset, ignore this email — your password won't change."),
+            },
+            StytchEmailKind.MagicLinkLogin => lang switch
+            {
+                "fr" => new Resolved(
+                    "Votre lien de connexion Lilia",
+                    "Connectez-vous à Lilia",
+                    "Cliquez sur le bouton ci-dessous pour vous connecter. Ce lien expire dans 30 minutes et ne peut être utilisé qu'une seule fois.",
+                    "Se connecter à Lilia",
+                    "Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :",
+                    "Si vous n'êtes pas à l'origine de cette demande de connexion, ignorez cet e-mail."),
+                "es" => new Resolved(
+                    "Tu enlace de inicio de sesión de Lilia",
+                    "Inicia sesión en Lilia",
+                    "Haz clic en el botón de abajo para iniciar sesión. Este enlace expira en 30 minutos y solo puede usarse una vez.",
+                    "Iniciar sesión en Lilia",
+                    "¿El botón no funciona? Copia este enlace en tu navegador:",
+                    "Si no solicitaste este inicio de sesión, ignora este correo."),
+                _ => new Resolved(
+                    "Your Lilia sign-in link",
+                    "Sign in to Lilia",
+                    "Click the button below to sign in. This link expires in 30 minutes and can only be used once.",
+                    "Sign in to Lilia",
+                    "Button not working? Copy this link into your browser:",
+                    "If you didn't request this sign-in, ignore this email."),
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+    }
+
+    private static string NormalizeLocale(string? locale)
+    {
+        if (string.IsNullOrWhiteSpace(locale)) return "en";
+        var two = locale.Trim().ToLowerInvariant().Split('-', '_')[0];
+        return two is "fr" or "es" ? two : "en";
+    }
 }

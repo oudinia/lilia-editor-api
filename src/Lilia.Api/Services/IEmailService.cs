@@ -34,4 +34,28 @@ public interface IEmailService
     /// </summary>
     Task SendTeamMemberRemovedAsync(string toEmail, string? recipientName,
         string removerName, string teamName);
+
+    /// <summary>
+    /// Stytch BYOM — email verification for first-time sign-up. Fired
+    /// from StytchWebhookController when Stytch posts a
+    /// <c>magic_links.email.send</c> or <c>magic_links.email.login_or_create</c>
+    /// event for an unverified address. The magic-link URL already has
+    /// the Stytch token embedded; clicking it lands on
+    /// <c>/auth/callback</c> which marks the email verified.
+    /// </summary>
+    Task SendStytchVerificationAsync(string toEmail, string magicLinkUrl, string? locale);
+
+    /// <summary>
+    /// Stytch BYOM — password reset. Fired when Stytch posts a
+    /// <c>passwords.email.reset.start</c> event. The reset URL has the
+    /// reset token embedded; clicking lands on <c>/reset-password</c>.
+    /// </summary>
+    Task SendStytchPasswordResetAsync(string toEmail, string resetUrl, string? locale);
+
+    /// <summary>
+    /// Stytch BYOM — magic-link sign-in (the "quiet third option" on
+    /// the sign-in form). Fired for returning users who chose magic
+    /// link over password. URL lands on <c>/auth/callback</c>.
+    /// </summary>
+    Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale);
 }

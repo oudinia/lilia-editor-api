@@ -365,6 +365,20 @@ if (string.IsNullOrEmpty(emailSettings.ResendApiKey))
 builder.Services.AddSingleton(emailSettings);
 builder.Services.AddSingleton<IEmailService, EmailService>();
 
+// Stytch BYOM webhook signing secret. Required in production (we reject
+// unsigned payloads). In dev, leaving it unset lets curl-replays through
+// for local testing — the controller logs a warning in that case.
+var stytchWebhookSettings = new Lilia.Api.Controllers.StytchWebhookSettings
+{
+    WebhookSecret = builder.Configuration["Stytch:WebhookSecret"] ?? "",
+    RequireSignature = !builder.Environment.IsDevelopment(),
+};
+if (stytchWebhookSettings.RequireSignature && string.IsNullOrEmpty(stytchWebhookSettings.WebhookSecret))
+{
+    Console.Error.WriteLine("[BOOT] Stytch__WebhookSecret is not configured — Stytch BYOM email webhook will reject every request.");
+}
+builder.Services.AddSingleton(stytchWebhookSettings);
+
 // Add distributed cache (in-memory for now, swap to Redis with 1 line when scaling)
 builder.Services.AddDistributedMemoryCache();
 
