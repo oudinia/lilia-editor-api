@@ -99,7 +99,13 @@ public class DocumentsController : ControllerBase
     /// sign-up. Authenticated visitors clone the shared doc into
     /// their own library and we return the new doc.
     /// </summary>
-    [HttpPost("shared/{*shareLink}/copy")]
+    // Note: NOT using {*shareLink} catch-all here — catch-all
+    // parameters must be the last segment of the route template,
+    // and we need /copy after. Share tokens don't contain slashes
+    // (base64url + optional slug-hyphens), so a plain parameter is
+    // both correct and necessary to keep the app from crash-looping
+    // at boot.
+    [HttpPost("shared/{shareLink}/copy")]
     public async Task<ActionResult<DocumentDto>> CopySharedDocument(string shareLink)
     {
         var userId = GetUserId();
