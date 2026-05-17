@@ -394,11 +394,20 @@ public class DocumentService : IDocumentService
         if (teamId.HasValue)
         {
             // Verify the requesting user actually has access to
-            // the target team (owner or member). Otherwise we'd
-            // grant random users implicit team access by attaching
-            // someone else's doc.
+            // the target team. Lilia has two parallel membership
+            // tables for historical reasons — TeamMembers (used by
+            // the auto-mint default-team handler) and GroupMembers
+            // (used by user-initiated team-create + invite). A
+            // membership in EITHER table grants access; we also
+            // honor Teams.OwnerId as a fallback for owners. Without
+            // checking GroupMembers, any team created by a user
+            // through POST /teams returns false here even though
+            // the user is the owner-per-the-default-Group — that
+            // was the 422 reported 2026-05-17.
             var hasTeamAccess = await _context.TeamMembers
                 .AnyAsync(m => m.TeamId == teamId.Value && m.UserId == userId)
+                || await _context.GroupMembers
+                    .AnyAsync(gm => gm.Group.TeamId == teamId.Value && gm.UserId == userId)
                 || await _context.Teams
                     .AnyAsync(t => t.Id == teamId.Value && t.OwnerId == userId);
             if (!hasTeamAccess)
