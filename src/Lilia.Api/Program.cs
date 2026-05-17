@@ -122,14 +122,94 @@ builder.Services.AddCors(options =>
 });
 
 // Configure Authentication
-// Auth: Kinde (or any OIDC provider)
-var authAuthority = builder.Configuration["Auth:Authority"];
+// Dual-issuer mode (Kinde + Stytch) during the auth migration window.
+// The "Bearer" policy scheme inspects each incoming token's `iss` claim
+// and forwards to the matching downstream scheme. Each downstream
+// scheme has its own OIDC authority, JWKS endpoint, audience config,
+// and SignalR token-extraction event handler.
+//
+// At cutover-complete (~30 days after we promote Stytch to prod), the
+// Kinde branch is removed and the policy scheme can collapse to a
+// single AddJwtBearer.
+var authAuthority = builder.Configuration["Auth:Authority"]; // Kinde
+var stytchAuthority = builder.Configuration["Stytch:Authority"];
+var stytchAudience = builder.Configuration["Stytch:ConnectedAppClientId"];
 
-if (!string.IsNullOrEmpty(authAuthority))
+// SignalR cannot send Authorization headers over WebSocket / SSE.
+// The client appends ?access_token=... to hub URLs instead. Same event
+// handler shared by both Kinde and Stytch schemes.
+var signalRTokenExtractor = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+{
+    OnMessageReceived = context =>
+    {
+        var accessToken = context.Request.Query["access_token"];
+        var path = context.HttpContext.Request.Path;
+        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+        {
+            context.Token = accessToken;
+        }
+        return Task.CompletedTask;
+    }
+};
+
+if (!string.IsNullOrEmpty(authAuthority) || !string.IsNullOrEmpty(stytchAuthority))
 {
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+        .AddPolicyScheme(JwtBearerDefaults.AuthenticationScheme, "MultiIssuerBearer", options =>
         {
+            options.ForwardDefaultSelector = context =>
+            {
+                // Resolve token from the same sources the downstream
+                // schemes check: Authorization header first, then the
+                // SignalR ?access_token= query param.
+                string? token = null;
+                var authHeader = context.Request.Headers.Authorization.ToString();
+                if (!string.IsNullOrEmpty(authHeader) &&
+                    authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = authHeader["Bearer ".Length..].Trim();
+                }
+                else if (context.Request.Path.StartsWithSegments("/hubs"))
+                {
+                    token = context.Request.Query["access_token"].ToString();
+                }
+
+                if (string.IsNullOrEmpty(token)) return "Kinde";
+
+                try
+                {
+                    var handler = new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler();
+                    var jwt = handler.ReadJsonWebToken(token);
+                    var iss = jwt.Issuer ?? string.Empty;
+                    if (iss.Contains("stytch", StringComparison.OrdinalIgnoreCase))
+                        return "Stytch";
+                    return "Kinde";
+                }
+                catch
+                {
+                    return "Kinde";
+                }
+            };
+        })
+        .AddJwtBearer("Kinde", options =>
+        {
+            // Kinde branch — unchanged from pre-migration behavior.
+            if (string.IsNullOrEmpty(authAuthority))
+            {
+                // Stytch-only deployment: keep Kinde scheme registered
+                // so the policy fallback doesn't NRE, but it'll reject
+                // any token because the authority is missing.
+                options.RequireHttpsMetadata = false;
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = false,
+                    ValidateIssuerSigningKey = false,
+                };
+                options.Events = signalRTokenExtractor;
+                return;
+            }
             options.Authority = authAuthority;
             options.TokenValidationParameters = new TokenValidationParameters
             {
@@ -142,23 +222,43 @@ if (!string.IsNullOrEmpty(authAuthority))
                 NameClaimType = "name",
                 RoleClaimType = "roles"
             };
-
-            // SignalR cannot send Authorization headers over WebSocket / SSE.
-            // The client appends ?access_token=... to hub URLs instead.
-            // Extract it here so the JWT middleware can validate it normally.
-            options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+            options.Events = signalRTokenExtractor;
+        })
+        .AddJwtBearer("Stytch", options =>
+        {
+            // Stytch branch — new in 2026-05-17. Authority is the
+            // tenant's Stytch domain (e.g. https://<sub>.customers.stytch.dev).
+            // ASP.NET auto-discovers /.well-known/openid-configuration
+            // and the JWKS URL beneath it.
+            if (string.IsNullOrEmpty(stytchAuthority))
             {
-                OnMessageReceived = context =>
+                options.RequireHttpsMetadata = false;
+                options.TokenValidationParameters = new TokenValidationParameters
                 {
-                    var accessToken = context.Request.Query["access_token"];
-                    var path = context.HttpContext.Request.Path;
-                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
-                    {
-                        context.Token = accessToken;
-                    }
-                    return Task.CompletedTask;
-                }
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = false,
+                    ValidateIssuerSigningKey = false,
+                };
+                options.Events = signalRTokenExtractor;
+                return;
+            }
+            options.Authority = stytchAuthority;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = stytchAuthority,
+                ValidateAudience = !string.IsNullOrEmpty(stytchAudience),
+                ValidAudience = stytchAudience,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromSeconds(30),
+                // Stytch puts user identity in `sub`; display name in
+                // `name` if the Connected App access-token template
+                // includes it.
+                NameClaimType = "name",
+                RoleClaimType = "roles"
             };
+            options.Events = signalRTokenExtractor;
         });
 }
 else
