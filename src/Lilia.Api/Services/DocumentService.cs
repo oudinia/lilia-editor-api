@@ -362,6 +362,34 @@ public class DocumentService : IDocumentService
         return await GetDocumentAsync(id, userId);
     }
 
+    public async Task<DocumentDto?> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId)
+    {
+        var document = await _context.Documents.FindAsync(id);
+        if (document == null) return null;
+        // Only the owner can attach to or detach from a team —
+        // collaborators shouldn't be able to move someone else's
+        // doc into their own team.
+        if (document.OwnerId != userId) return null;
+
+        if (teamId.HasValue)
+        {
+            // Verify the requesting user actually has access to
+            // the target team (owner or member). Otherwise we'd
+            // grant random users implicit team access by attaching
+            // someone else's doc.
+            var hasTeamAccess = await _context.TeamMembers
+                .AnyAsync(m => m.TeamId == teamId.Value && m.UserId == userId)
+                || await _context.Teams
+                    .AnyAsync(t => t.Id == teamId.Value && t.OwnerId == userId);
+            if (!hasTeamAccess) return null;
+        }
+
+        document.TeamId = teamId;
+        document.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return await GetDocumentAsync(id, userId);
+    }
+
     public async Task<bool> DeleteDocumentAsync(Guid id, string userId)
     {
         var document = await _context.Documents.FindAsync(id);
