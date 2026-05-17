@@ -30,6 +30,12 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.IsPublic).HasColumnName("is_public").HasDefaultValue(false);
         builder.Property(d => d.ShareLink).HasColumnName("share_link").HasMaxLength(100);
         builder.Property(d => d.ShareSlug).HasColumnName("share_slug").HasMaxLength(200);
+        // Iter 8 — public-link extensions.
+        builder.Property(d => d.LinkExpiresAt).HasColumnName("link_expires_at");
+        builder.Property(d => d.LinkPermission)
+            .HasColumnName("link_permission")
+            .HasMaxLength(20)
+            .HasDefaultValue("view");
         builder.Property(d => d.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(d => d.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(d => d.LastOpenedAt).HasColumnName("last_opened_at");

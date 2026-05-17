@@ -189,7 +189,7 @@ public class DocumentsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        var result = await _documentService.ShareDocumentAsync(id, userId, dto.IsPublic);
+        var result = await _documentService.ShareDocumentAsync(id, userId, dto);
         if (result == null) return NotFound();
         return Ok(result);
     }

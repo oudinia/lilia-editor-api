@@ -135,7 +135,15 @@ public record TrashDocumentDto(
 );
 
 public record ShareDocumentDto(
-    bool IsPublic
+    bool IsPublic,
+    // Iter 8 — both optional so existing callers keep working.
+    // Null Permission falls back to the doc's current value (or
+    // "view" on first enable). Null ExpiresAt means "no change" —
+    // omitting the field doesn't clear an existing expiry. Send
+    // ClearExpiry=true to revert to "never".
+    string? Permission = null,
+    DateTime? ExpiresAt = null,
+    bool ClearExpiry = false
 );
 
 // PUT /documents/{id}/team payload. Null TeamId means detach. The
@@ -150,5 +158,7 @@ public record SetDocumentTeamDto(
 public record DocumentShareResultDto(
     string ShareLink,
     string? ShareSlug,
-    bool IsPublic
+    bool IsPublic,
+    DateTime? LinkExpiresAt = null,
+    string LinkPermission = "view"
 );
