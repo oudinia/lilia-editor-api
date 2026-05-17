@@ -330,44 +330,58 @@ public class CollaboratorService : ICollaboratorService
 
         var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
 
+        // Prevent inviting yourself — guard runs before pending row
+        // creation so we don't accumulate noise.
+        if (targetUser != null && targetUser.Id == inviterUserId)
+            return new InviteResultDto(false, true, dto.Email, _localizer["CannotInviteSelf"].Value);
+
+        // Spec iter 7 — always create (or refresh) a pending invite
+        // row, even for already-registered users. The row's Id is
+        // the token the email CTA links to (/invites/{token}), so
+        // both flows (sign-up + already-signed-in) land on the same
+        // landing page. The pending row stays in "pending" status
+        // and is materialized to "accepted" by /invites/{token}/accept.
+        var canonicalRole = RoleNames.Normalize(dto.Role);
+        var existingInvite = await _context.DocumentPendingInvites
+            .FirstOrDefaultAsync(pi => pi.DocumentId == documentId && pi.Email == dto.Email && pi.Status == "pending");
+        Guid token;
+        if (existingInvite != null)
+        {
+            existingInvite.Role = canonicalRole;
+            existingInvite.ExpiresAt = DateTime.UtcNow.AddDays(30);
+            token = existingInvite.Id;
+        }
+        else
+        {
+            var pendingInvite = new DocumentPendingInvite
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = documentId,
+                Email = dto.Email,
+                Role = canonicalRole,
+                InvitedBy = inviterUserId,
+                Status = "pending",
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddDays(30)
+            };
+            _context.DocumentPendingInvites.Add(pendingInvite);
+            token = pendingInvite.Id;
+        }
+        await _context.SaveChangesAsync();
+
+        // /invites/{token} works for everyone — sign-up flow detects
+        // anonymity, redirects to sign-up with ?invite={token},
+        // returns here after auth.
+        var inviteUrl = $"{_emailSettings.BaseUrl}/invites/{token}";
+
         if (targetUser == null)
         {
-            // User not registered — store pending invite
-            var existingInvite = await _context.DocumentPendingInvites
-                .FirstOrDefaultAsync(pi => pi.DocumentId == documentId && pi.Email == dto.Email && pi.Status == "pending");
-
-            if (existingInvite != null)
-            {
-                existingInvite.Role = dto.Role;
-                existingInvite.ExpiresAt = DateTime.UtcNow.AddDays(30);
-                await _context.SaveChangesAsync();
-            }
-            else
-            {
-                var pendingInvite = new DocumentPendingInvite
-                {
-                    Id = Guid.NewGuid(),
-                    DocumentId = documentId,
-                    Email = dto.Email,
-                    Role = dto.Role,
-                    InvitedBy = inviterUserId,
-                    Status = "pending",
-                    CreatedAt = DateTime.UtcNow,
-                    ExpiresAt = DateTime.UtcNow.AddDays(30)
-                };
-                _context.DocumentPendingInvites.Add(pendingInvite);
-                await _context.SaveChangesAsync();
-            }
-
-            // Send invite email with sign-up link. Failures are logged but
-            // don't block the pending-invite row — the user can resend or
-            // share the URL manually. The boolean comes back in the DTO so
-            // the UI can surface "invite created but email failed".
-            var signUpUrl = $"{_emailSettings.BaseUrl}/sign-up?email={Uri.EscapeDataString(dto.Email)}";
+            // Unregistered recipient — only the pending row exists
+            // until they sign up + accept. Send the email.
             var pendingEmailSent = true;
             try
             {
-                await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, signUpUrl);
+                await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, inviteUrl);
             }
             catch (Exception ex)
             {
@@ -378,21 +392,19 @@ public class CollaboratorService : ICollaboratorService
             return new InviteResultDto(true, false, dto.Email, pendingEmailSent ? _localizer["InvitationSent"].Value : "Invitation created but email delivery failed. Check server logs — likely the Resend API key is not set.");
         }
 
-        // Prevent inviting yourself
-        if (targetUser.Id == inviterUserId)
-            return new InviteResultDto(false, true, dto.Email, _localizer["CannotInviteSelf"].Value);
-
-        var result = await AddUserCollaboratorAsync(documentId, inviterUserId, new AddUserCollaboratorDto(targetUser.Id, dto.Role));
+        // Registered recipient — add as collaborator now so the doc
+        // appears in their list immediately, AND email so they get
+        // the standard landing experience. Skipping the collaborator
+        // row would force them to click the email link before the
+        // doc shows up; that breaks the in-app notification flow.
+        var result = await AddUserCollaboratorAsync(documentId, inviterUserId, new AddUserCollaboratorDto(targetUser.Id, canonicalRole));
         if (result == null)
             return new InviteResultDto(false, true, dto.Email, _localizer["FailedToAddCollaborator"].Value);
 
-        // Send invite email — collaborator already added, so a send
-        // failure isn't a hard error, but the message on the result DTO
-        // tells the UI to surface "email didn't go out, share link manually".
         var emailSent = true;
         try
         {
-            await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, documentUrl);
+            await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, inviteUrl);
         }
         catch (Exception ex)
         {
