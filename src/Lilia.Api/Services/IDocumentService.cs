@@ -26,6 +26,12 @@ public interface IDocumentService
     Task<DocumentDto?> GetSharedDocumentAsync(string shareLink);
     Task<DocumentDto> CreateDocumentAsync(string userId, CreateDocumentDto dto);
     Task<DocumentDto?> UpdateDocumentAsync(Guid id, string userId, UpdateDocumentDto dto);
+    /// <summary>
+    /// Attach or detach a document to/from a team. Pass null to
+    /// detach. Owner-only. Returns null on auth failure or unknown
+    /// document/team. Companion endpoint: PUT /documents/{id}/team.
+    /// </summary>
+    Task<DocumentDto?> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId);
     Task<bool> DeleteDocumentAsync(Guid id, string userId);
     Task<DocumentDto?> DuplicateDocumentAsync(Guid id, string userId);
     Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, bool isPublic);

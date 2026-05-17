@@ -130,6 +130,29 @@ public class DocumentsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Attach or detach a document to/from a team. The plain
+    /// PUT /documents/{id} flow used to "support" teamId via the
+    /// UpdateDocumentDto body, but the DTO never carried the
+    /// field — so every previous attempt silently no-op'd. This
+    /// dedicated endpoint matches the spec vocabulary (Attach /
+    /// Detach) and gives us a single auditable verb. Pass
+    /// teamId=null to detach; owner-only.
+    /// </summary>
+    [HttpPut("{id:guid}/team")]
+    public async Task<ActionResult<DocumentDto>> SetDocumentTeam(Guid id, [FromBody] SetDocumentTeamDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var document = await _documentService.SetDocumentTeamAsync(id, userId, dto.TeamId);
+        if (document == null) return NotFound();
+        await _auditService.LogAsync(
+            dto.TeamId.HasValue ? "document.team.attach" : "document.team.detach",
+            "Document",
+            id.ToString());
+        return Ok(document);
+    }
+
     [HttpPost("{id:guid}/duplicate")]
     public async Task<ActionResult<DocumentDto>> DuplicateDocument(Guid id)
     {

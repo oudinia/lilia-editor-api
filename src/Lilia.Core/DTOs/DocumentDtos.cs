@@ -138,6 +138,15 @@ public record ShareDocumentDto(
     bool IsPublic
 );
 
+// PUT /documents/{id}/team payload. Null TeamId means detach. The
+// plain UpdateDocumentDto path can't carry team attachment because
+// it never had a TeamId field (and adding one re-introduces the
+// JSON "absent vs explicit null" problem). A dedicated DTO and
+// endpoint sidesteps that and matches the spec verbs Attach/Detach.
+public record SetDocumentTeamDto(
+    Guid? TeamId
+);
+
 public record DocumentShareResultDto(
     string ShareLink,
     string? ShareSlug,
