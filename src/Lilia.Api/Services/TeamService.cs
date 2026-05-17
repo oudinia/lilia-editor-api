@@ -452,9 +452,20 @@ public class TeamService : ITeamService
     public async Task<bool> RemoveMemberAsync(Guid teamId, string targetUserId, string userId)
     {
         var team = await _context.Teams.FindAsync(teamId);
-        if (team == null || team.OwnerId != userId) return false;
+        if (team == null) return false;
 
-        // Cannot remove the owner
+        // Two paths into this call: the team owner removes someone
+        // else (admin path), OR a member removes themselves (leave
+        // path). Without the self-leave allowance, members couldn't
+        // exit teams they no longer want to be in — that was the
+        // 404 reported 2026-05-17 when the user tried to leave a
+        // team where they were a member but not the OwnerId.
+        var isOwnerAction = team.OwnerId == userId;
+        var isSelfLeave = targetUserId == userId;
+        if (!isOwnerAction && !isSelfLeave) return false;
+
+        // Cannot remove the owner — even via self-leave. Owners
+        // must transfer ownership or delete the team instead.
         if (targetUserId == team.OwnerId) return false;
 
         var memberships = await _context.GroupMembers
