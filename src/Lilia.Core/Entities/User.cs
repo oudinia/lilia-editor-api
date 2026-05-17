@@ -28,7 +28,9 @@ public class User
 
     // Navigation properties
     public virtual Team? DefaultTeam { get; set; }
-    public virtual ICollection<TeamMember> TeamMemberships { get; set; } = new List<TeamMember>();
+    // TeamMemberships nav removed when team_members table was
+    // retired (see RetireTeamMembersTable migration). Team
+    // membership is now exclusively GroupMembership.
     public virtual ICollection<Team> OwnedTeams { get; set; } = new List<Team>();
     public virtual ICollection<GroupMember> GroupMemberships { get; set; } = new List<GroupMember>();
     public virtual ICollection<Document> OwnedDocuments { get; set; } = new List<Document>();

@@ -168,11 +168,17 @@ public class TeamMembershipFlowTests : IntegrationTestBase
 
         // The Wolverine event went out — the email handler will send
         // the "X invited you" mail in the real pipeline.
+        //
+        // The event carries the canonical role name, not the raw
+        // wire value. POST sent role="member"; TeamService's
+        // NormalizeRoleName aliases that to "editor" (the canonical
+        // Roles.Name), and the publish uses role.Name from the
+        // lookup — so the event sees "editor".
         bus.Verify(b => b.PublishAsync(
             It.Is<TeamInviteCreatedEvent>(e =>
                 e.TeamId == team.Id &&
                 e.InvitedEmail == ExistingMemberEmail &&
-                e.Role == "member"),
+                e.Role == "editor"),
             It.IsAny<DeliveryOptions>()),
             Times.Once);
     }

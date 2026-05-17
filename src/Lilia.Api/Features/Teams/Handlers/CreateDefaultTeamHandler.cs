@@ -73,7 +73,19 @@ public class CreateDefaultTeamHandler
             return;
         }
 
-        // 3) Create the team + owner membership in a single SaveChanges.
+        // 3) Create the team + default "Everyone" Group + owner
+        //    membership in a single SaveChanges.
+        //
+        //    Note: the original implementation wrote to TeamMembers
+        //    (a parallel membership table). That bypassed the Group
+        //    abstraction the rest of the codebase uses for member
+        //    reads — meaning auto-minted teams showed an empty
+        //    member list in the UI, and SetDocumentTeamAsync
+        //    refused attach-to-team for these teams. Mirroring the
+        //    user-create path (TeamService.CreateTeamAsync) makes
+        //    every team a Group-rooted structure with one source of
+        //    truth (group_members). The TeamMember table was
+        //    retired in the same PR.
         var team = new Team
         {
             Id = Guid.NewGuid(),
@@ -85,16 +97,29 @@ public class CreateDefaultTeamHandler
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
-        var membership = new TeamMember
+        var defaultGroup = new Group
         {
             Id = Guid.NewGuid(),
             TeamId = team.Id,
+            Name = "Everyone",
+            IsDefault = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+        var ownership = new GroupMember
+        {
+            Id = Guid.NewGuid(),
+            GroupId = defaultGroup.Id,
             UserId = evt.UserId,
-            Role = "owner",
-            JoinedAt = DateTime.UtcNow,
+            // Owner role's seed id from RoleConfiguration.HasData.
+            // Hard-coded here for the same reason CreateTeamAsync
+            // does its own ownerRole lookup — both work but the
+            // seed id is stable forever and avoids a DB roundtrip.
+            RoleId = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+            CreatedAt = DateTime.UtcNow,
         };
         db.Teams.Add(team);
-        db.Set<TeamMember>().Add(membership);
+        db.Set<Group>().Add(defaultGroup);
+        db.Set<GroupMember>().Add(ownership);
         user.DefaultTeamId = team.Id;
         user.UpdatedAt = DateTime.UtcNow;
 
