@@ -171,13 +171,32 @@ public class DocumentsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        var document = await _documentService.SetDocumentTeamAsync(id, userId, dto.TeamId);
-        if (document == null) return NotFound();
-        await _auditService.LogAsync(
-            dto.TeamId.HasValue ? "document.team.attach" : "document.team.detach",
-            "Document",
-            id.ToString());
-        return Ok(document);
+        var (document, status) = await _documentService.SetDocumentTeamAsync(id, userId, dto.TeamId);
+        switch (status)
+        {
+            case SetDocumentTeamStatus.Ok when document != null:
+                await _auditService.LogAsync(
+                    dto.TeamId.HasValue ? "document.team.attach" : "document.team.detach",
+                    "Document",
+                    id.ToString());
+                return Ok(document);
+            case SetDocumentTeamStatus.DocumentNotFound:
+                return NotFound(new { error = "document_not_found", message = "Document doesn't exist or has been deleted." });
+            case SetDocumentTeamStatus.NotOwner:
+                // 403 — the request was understood, the doc exists,
+                // the caller just doesn't have rights. The client
+                // should hide the team picker for non-owners, but
+                // we still gate server-side.
+                return StatusCode(403, new { error = "not_owner", message = "Only the document owner can change its team." });
+            case SetDocumentTeamStatus.TeamNotAccessible:
+                // 422 — the request was understood, but references
+                // a team the caller can't attach to. Different from
+                // "team doesn't exist" because we don't disclose
+                // existence to non-members.
+                return UnprocessableEntity(new { error = "team_not_accessible", message = "You don't have access to that team." });
+            default:
+                return StatusCode(500);
+        }
     }
 
     [HttpPost("{id:guid}/duplicate")]

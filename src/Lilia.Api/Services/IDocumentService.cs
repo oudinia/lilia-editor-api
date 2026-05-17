@@ -3,6 +3,14 @@ using Lilia.Core.DTOs;
 
 namespace Lilia.Api.Services;
 
+public enum SetDocumentTeamStatus
+{
+    Ok = 0,
+    DocumentNotFound = 1,
+    NotOwner = 2,
+    TeamNotAccessible = 3,
+}
+
 public interface IDocumentService
 {
     /// <summary>
@@ -28,10 +36,12 @@ public interface IDocumentService
     Task<DocumentDto?> UpdateDocumentAsync(Guid id, string userId, UpdateDocumentDto dto);
     /// <summary>
     /// Attach or detach a document to/from a team. Pass null to
-    /// detach. Owner-only. Returns null on auth failure or unknown
-    /// document/team. Companion endpoint: PUT /documents/{id}/team.
+    /// detach. Owner-only. The returned status distinguishes the
+    /// three failure modes (doc not found / not owner / no access
+    /// to the target team) so the controller can map them to the
+    /// right HTTP code instead of one bare 404.
     /// </summary>
-    Task<DocumentDto?> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId);
+    Task<(DocumentDto? Document, SetDocumentTeamStatus Status)> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId);
 
     /// <summary>
     /// Clone a publicly-shared document into the requester's
