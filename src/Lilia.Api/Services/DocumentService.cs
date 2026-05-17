@@ -186,6 +186,14 @@ public class DocumentService : IDocumentService
 
         if (document == null) return null;
 
+        // Iter 8 — link expiry gate. Treat an expired link as
+        // "no longer shared" rather than returning 410 or similar;
+        // a 404 from the public viewer says "this link doesn't work"
+        // and matches what a revoked link does today. Owner can
+        // re-enable from the drawer to rotate to a fresh slug.
+        if (document.LinkExpiresAt is { } expiry && expiry < DateTime.UtcNow)
+            return null;
+
         return MapToDto(document);
     }
 
@@ -492,7 +500,7 @@ public class DocumentService : IDocumentService
         return await GetDocumentAsync(newDoc.Id, userId);
     }
 
-    public async Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, bool isPublic)
+    public async Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, ShareDocumentDto dto)
     {
         var document = await _context.Documents.FindAsync(id);
         if (document == null) return null;
@@ -500,17 +508,42 @@ public class DocumentService : IDocumentService
         if (!await HasAccessAsync(id, userId, Permissions.Manage))
             return null;
 
-        document.IsPublic = isPublic;
-        if (isPublic && string.IsNullOrEmpty(document.ShareLink))
+        document.IsPublic = dto.IsPublic;
+        if (dto.IsPublic && string.IsNullOrEmpty(document.ShareLink))
         {
             document.ShareLink = GenerateShareLink();
             document.ShareSlug = GenerateSlug(document.Title);
         }
 
+        // Iter 8 — permission + expiry. Permission defaults to "view"
+        // (the spec rules out "Can edit" via link, and "comment" is
+        // reserved until the commenting layer ships). We accept the
+        // value but normalize to "view" if the caller sends anything
+        // outside the {view, comment} set so a typo doesn't disable
+        // the link silently.
+        if (!string.IsNullOrWhiteSpace(dto.Permission))
+        {
+            var p = dto.Permission.Trim().ToLowerInvariant();
+            document.LinkPermission = (p == "comment") ? "comment" : "view";
+        }
+        if (dto.ClearExpiry)
+        {
+            document.LinkExpiresAt = null;
+        }
+        else if (dto.ExpiresAt.HasValue)
+        {
+            document.LinkExpiresAt = DateTime.SpecifyKind(dto.ExpiresAt.Value, DateTimeKind.Utc);
+        }
+
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        return new DocumentShareResultDto(document.ShareLink ?? "", document.ShareSlug, document.IsPublic);
+        return new DocumentShareResultDto(
+            document.ShareLink ?? "",
+            document.ShareSlug,
+            document.IsPublic,
+            document.LinkExpiresAt,
+            document.LinkPermission);
     }
 
     public async Task<bool> RevokeShareAsync(Guid id, string userId)

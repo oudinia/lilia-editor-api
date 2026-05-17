@@ -44,7 +44,7 @@ public interface IDocumentService
     Task<DocumentDto?> CloneSharedDocumentAsync(string shareToken, string userId);
     Task<bool> DeleteDocumentAsync(Guid id, string userId);
     Task<DocumentDto?> DuplicateDocumentAsync(Guid id, string userId);
-    Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, bool isPublic);
+    Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, ShareDocumentDto dto);
     Task<bool> RevokeShareAsync(Guid id, string userId);
     Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission);
 

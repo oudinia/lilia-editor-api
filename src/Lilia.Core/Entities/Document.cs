@@ -25,6 +25,13 @@ public class Document
     public bool IsPublic { get; set; }
     public string? ShareLink { get; set; }
     public string? ShareSlug { get; set; }
+    // Spec iter 8 — public link extensions. Null expiry means
+    // "never". LinkPermission accepts canonical names; "view" is
+    // the default and the only one with read-side behavior today
+    // — "comment" is reserved for when the commenting layer lands.
+    // Constrained on the wire by ShareDocumentDto (iter 8 PR).
+    public DateTime? LinkExpiresAt { get; set; }
+    public string LinkPermission { get; set; } = "view";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastOpenedAt { get; set; }
