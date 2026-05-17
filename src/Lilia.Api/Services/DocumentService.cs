@@ -370,14 +370,26 @@ public class DocumentService : IDocumentService
         return await GetDocumentAsync(id, userId);
     }
 
-    public async Task<DocumentDto?> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId)
+    public async Task<(DocumentDto? Document, SetDocumentTeamStatus Status)> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId)
     {
         var document = await _context.Documents.FindAsync(id);
-        if (document == null) return null;
+        if (document == null)
+        {
+            _logger.LogWarning(
+                "SetDocumentTeam refused — document {DocumentId} not found (user {UserId})",
+                id, userId);
+            return (null, SetDocumentTeamStatus.DocumentNotFound);
+        }
         // Only the owner can attach to or detach from a team —
         // collaborators shouldn't be able to move someone else's
         // doc into their own team.
-        if (document.OwnerId != userId) return null;
+        if (document.OwnerId != userId)
+        {
+            _logger.LogWarning(
+                "SetDocumentTeam refused — user {UserId} is not owner of document {DocumentId} (owner={OwnerId})",
+                userId, id, document.OwnerId);
+            return (null, SetDocumentTeamStatus.NotOwner);
+        }
 
         if (teamId.HasValue)
         {
@@ -389,13 +401,20 @@ public class DocumentService : IDocumentService
                 .AnyAsync(m => m.TeamId == teamId.Value && m.UserId == userId)
                 || await _context.Teams
                     .AnyAsync(t => t.Id == teamId.Value && t.OwnerId == userId);
-            if (!hasTeamAccess) return null;
+            if (!hasTeamAccess)
+            {
+                _logger.LogWarning(
+                    "SetDocumentTeam refused — user {UserId} cannot access team {TeamId} for document {DocumentId}",
+                    userId, teamId.Value, id);
+                return (null, SetDocumentTeamStatus.TeamNotAccessible);
+            }
         }
 
         document.TeamId = teamId;
         document.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
-        return await GetDocumentAsync(id, userId);
+        var dto = await GetDocumentAsync(id, userId);
+        return (dto, SetDocumentTeamStatus.Ok);
     }
 
     public async Task<DocumentDto?> CloneSharedDocumentAsync(string shareToken, string userId)
