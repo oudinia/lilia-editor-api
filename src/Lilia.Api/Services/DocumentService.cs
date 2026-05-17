@@ -390,6 +390,30 @@ public class DocumentService : IDocumentService
         return await GetDocumentAsync(id, userId);
     }
 
+    public async Task<DocumentDto?> CloneSharedDocumentAsync(string shareToken, string userId)
+    {
+        // Public-link gate — clone is allowed only if the source
+        // actually has its public link on. Prevents an old
+        // revoked-link URL from cloning anything new.
+        var source = await _context.Documents.FirstOrDefaultAsync(d =>
+            d.ShareLink == shareToken && d.IsPublic);
+        if (source == null) return null;
+        // Reuse the existing clone machinery — DuplicateDocumentAsync
+        // would 403 here because the requester has no collaborator
+        // row, so we call it as the source's owner and then re-own
+        // the result to the visitor. Cheap and avoids duplicating
+        // block-copy logic.
+        var clone = await DuplicateDocumentAsync(source.Id, source.OwnerId);
+        if (clone == null) return null;
+        var freshlyCreated = await _context.Documents.FindAsync(clone.Id);
+        if (freshlyCreated == null) return null;
+        freshlyCreated.OwnerId = userId;
+        freshlyCreated.TeamId = null;
+        // Title gets a "(Copy)" suffix from Duplicate; leave alone.
+        await _context.SaveChangesAsync();
+        return await GetDocumentAsync(clone.Id, userId);
+    }
+
     public async Task<bool> DeleteDocumentAsync(Guid id, string userId)
     {
         var document = await _context.Documents.FindAsync(id);

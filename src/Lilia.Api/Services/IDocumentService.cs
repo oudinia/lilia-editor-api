@@ -32,6 +32,16 @@ public interface IDocumentService
     /// document/team. Companion endpoint: PUT /documents/{id}/team.
     /// </summary>
     Task<DocumentDto?> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId);
+
+    /// <summary>
+    /// Clone a publicly-shared document into the requester's
+    /// library. Backs the "Make a copy" CTA on the public viewer
+    /// chrome (spec §8). Differs from DuplicateDocumentAsync in
+    /// that it gates on `IsPublic` instead of collaborator
+    /// permissions — the doc being public IS the access. Returns
+    /// null if the source isn't public.
+    /// </summary>
+    Task<DocumentDto?> CloneSharedDocumentAsync(string shareToken, string userId);
     Task<bool> DeleteDocumentAsync(Guid id, string userId);
     Task<DocumentDto?> DuplicateDocumentAsync(Guid id, string userId);
     Task<DocumentShareResultDto?> ShareDocumentAsync(Guid id, string userId, bool isPublic);
