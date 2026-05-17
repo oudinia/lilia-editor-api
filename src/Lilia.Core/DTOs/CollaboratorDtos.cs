@@ -51,3 +51,22 @@ public record InviteResultDto(
     string Email,
     string? Message
 );
+
+// Spec iter 7 — landing page resolver. Anyone with the token can
+// see who/what/why (no PII other than what the invite already
+// disclosed in the email).
+public record InviteResolveDto(
+    Guid Token,
+    string Email,
+    Guid DocumentId,
+    string DocumentTitle,
+    string InviterName,
+    string Role,
+    string Status,
+    DateTime CreatedAt,
+    DateTime ExpiresAt
+);
+
+public record InviteAcceptResultDto(
+    Guid DocumentId
+);

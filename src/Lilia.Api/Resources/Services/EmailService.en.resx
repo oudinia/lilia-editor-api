@@ -19,7 +19,7 @@
     </xsd:element>
   </xsd:schema>
   <data name="InviteSubject" xml:space="preserve">
-    <value>{0} shared "{1}" with you on Lilia</value>
+    <value>{0} invited you to {1}</value>
   </data>
   <data name="InvitePlainText" xml:space="preserve">
     <value>{0} shared the document "{1}" with you as {2}. Open it at: {3}</value>
