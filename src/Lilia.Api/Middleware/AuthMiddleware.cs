@@ -106,7 +106,7 @@ public class UserSyncMiddleware
                     return;
                 }
 
-                // Try to get email/name from JWT claims (supports Kinde, Clerk, and standard OIDC)
+                // Try to get email/name from JWT claims (supports Stytch + standard OIDC)
                 var email = context.User.FindFirst("email")?.Value
                          ?? context.User.FindFirst(ClaimTypes.Email)?.Value
                          ?? context.User.FindFirst("preferred_username")?.Value;

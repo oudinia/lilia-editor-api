@@ -22,7 +22,7 @@ namespace Lilia.Api.Features.Teams.Handlers;
 /// Idempotency: this handler runs the full sequence on every delivery,
 /// but every step is a no-op if already done — user upsert is
 /// idempotent, team mint is gated on <c>User.DefaultTeamId is null</c>,
-/// and welcome-email send is fire-and-log. Duplicate Kinde deliveries
+/// and welcome-email send is fire-and-log. Duplicate event deliveries
 /// will at worst send two welcome emails (acceptable per the event
 /// contract).
 /// </summary>
