@@ -93,6 +93,27 @@ public class DocumentsController : ControllerBase
         return Ok(document);
     }
 
+    /// <summary>
+    /// Spec §8 — "Make a copy" CTA from the public viewer chrome.
+    /// Anonymous visitors get 401 so the SPA can redirect them to
+    /// sign-up. Authenticated visitors clone the shared doc into
+    /// their own library and we return the new doc.
+    /// </summary>
+    [HttpPost("shared/{*shareLink}/copy")]
+    public async Task<ActionResult<DocumentDto>> CopySharedDocument(string shareLink)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        // Same slug-or-token parse as the GET path so callers can
+        // pass either shape from the URL bar.
+        var token = shareLink.Length > 22 ? shareLink[^22..] : shareLink;
+        var copy = await _documentService.CloneSharedDocumentAsync(token, userId);
+        if (copy == null) return NotFound();
+        await _auditService.LogAsync("document.public.copy", "Document", copy.Id.ToString());
+        return Ok(copy);
+    }
+
     [HttpPost]
     public async Task<ActionResult<DocumentDto>> CreateDocument([FromBody] CreateDocumentDto dto)
     {
