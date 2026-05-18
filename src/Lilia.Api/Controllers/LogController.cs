@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -56,8 +57,14 @@ public class LogController : ControllerBase
                 _ => LogLevel.Debug
             };
 
-            _logger.Log(level, "CLIENT [{Source}] {Message} {@Data}",
-                entry.Source ?? "editor", entry.Message, entry.Data);
+            // entry.Data deserializes as JsonElement under the hood;
+            // Serilog's {@…} destructurer drops it to {"ValueKind":"…"}.
+            // Render as raw JSON so React stack traces survive intact.
+            var dataJson = entry.Data is null
+                ? null
+                : JsonSerializer.Serialize(entry.Data);
+            _logger.Log(level, "CLIENT [{Source}] {Message} {Data}",
+                entry.Source ?? "editor", entry.Message, dataJson);
         }
 
         return Ok();
