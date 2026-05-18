@@ -147,6 +147,10 @@ public class LiliaDbContext : DbContext
     public DbSet<E2EScenarioHealthState> E2EScenarioHealthStates => Set<E2EScenarioHealthState>();
     public DbSet<E2EScenarioInsight> E2EScenarioInsights => Set<E2EScenarioInsight>();
 
+    // Companion-app waitlist — collects emails from the mobile
+    // read-mode banner so we can email when the native app ships.
+    public DbSet<CompanionAppWaitlist> CompanionAppWaitlist => Set<CompanionAppWaitlist>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
