@@ -67,22 +67,32 @@ const BLOCK_TYPES = [
 //  Actions. surface is the e2e.surface slug that hosts the action.
 // =====================================================================
 
+// Each action carries a `group` so the preview can render scenarios
+// in semantic clusters per block type rather than a flat list.
+//
+//   Creation   — how a block enters the document
+//   Editing    — how a block's content/config is changed
+//   Lifecycle  — what happens after creation: convert / delete / move
+//   Output     — how a block is rendered + exported
 const ACTIONS = {
-  'create-via-plus':      { name: 'Create via + button',           surface: 'block-type-menu',     applies: 'all',     priority: 'p0' },
-  'create-via-slash':     { name: 'Create via slash command',      surface: 'slash-command-menu',  applies: 'all',     priority: 'p0' },
-  'create-via-drag-drop': { name: 'Create via drag and drop',      surface: 'block-canvas',        applies: 'drag-drop', priority: 'p1' },
-  'edit-inline':          { name: 'Edit inline',                   surface: 'block-card',          applies: 'inline',  priority: 'p0' },
-  'edit-via-drawer':      { name: 'Edit via settings drawer',      surface: 'block-settings-drawer', applies: 'drawer-edit', priority: 'p1' },
-  'edit-via-modal':       { name: 'Edit via formula editor',       surface: 'formula-editor',      applies: 'math',    priority: 'p0' },
-  'convert-via-slash':    { name: 'Convert via slash command',     surface: 'slash-command-menu',  applies: 'convertible', priority: 'p1' },
-  'convert-via-kebab':    { name: 'Convert via kebab menu',        surface: 'block-card',          applies: 'convertible', priority: 'p2' },
-  'delete-via-kebab':     { name: 'Delete via kebab menu',         surface: 'block-card',          applies: 'all',     priority: 'p1' },
-  'delete-via-keyboard':  { name: 'Delete via keyboard shortcut',  surface: 'block-card',          applies: 'inline',  priority: 'p2' },
-  'reorder-via-drag':     { name: 'Reorder via drag handle',       surface: 'block-card',          applies: 'all',     priority: 'p1' },
-  'render-preview':       { name: 'Render in preview pane',        surface: 'block-canvas',        applies: 'all',     priority: 'p0' },
-  'export-to-latex':      { name: 'Export to LaTeX',               surface: 'export-dialog',       applies: 'all',     priority: 'p0' },
-  'export-to-markdown':   { name: 'Export to Markdown',            surface: 'export-dialog',       applies: 'all',     priority: 'p1' },
+  'create-via-plus':      { name: 'Create via + button',           surface: 'block-type-menu',     applies: 'all',     priority: 'p0', group: 'Creation' },
+  'create-via-slash':     { name: 'Create via slash command',      surface: 'slash-command-menu',  applies: 'all',     priority: 'p0', group: 'Creation' },
+  'create-via-drag-drop': { name: 'Create via drag and drop',      surface: 'block-canvas',        applies: 'drag-drop', priority: 'p1', group: 'Creation' },
+  'edit-inline':          { name: 'Edit inline',                   surface: 'block-card',          applies: 'inline',  priority: 'p0', group: 'Editing' },
+  'edit-via-drawer':      { name: 'Edit via settings drawer',      surface: 'block-settings-drawer', applies: 'drawer-edit', priority: 'p1', group: 'Editing' },
+  'edit-via-modal':       { name: 'Edit via formula editor',       surface: 'formula-editor',      applies: 'math',    priority: 'p0', group: 'Editing' },
+  'convert-via-slash':    { name: 'Convert via slash command',     surface: 'slash-command-menu',  applies: 'convertible', priority: 'p1', group: 'Lifecycle' },
+  'convert-via-kebab':    { name: 'Convert via kebab menu',        surface: 'block-card',          applies: 'convertible', priority: 'p2', group: 'Lifecycle' },
+  'delete-via-kebab':     { name: 'Delete via kebab menu',         surface: 'block-card',          applies: 'all',     priority: 'p1', group: 'Lifecycle' },
+  'delete-via-keyboard':  { name: 'Delete via keyboard shortcut',  surface: 'block-card',          applies: 'inline',  priority: 'p2', group: 'Lifecycle' },
+  'reorder-via-drag':     { name: 'Reorder via drag handle',       surface: 'block-card',          applies: 'all',     priority: 'p1', group: 'Lifecycle' },
+  'render-preview':       { name: 'Render in preview pane',        surface: 'block-canvas',        applies: 'all',     priority: 'p0', group: 'Output' },
+  'export-to-latex':      { name: 'Export to LaTeX',               surface: 'export-dialog',       applies: 'all',     priority: 'p0', group: 'Output' },
+  'export-to-markdown':   { name: 'Export to Markdown',            surface: 'export-dialog',       applies: 'all',     priority: 'p1', group: 'Output' },
 };
+
+// Order in which feature groups are rendered per block type.
+const GROUP_ORDER = ['Creation', 'Editing', 'Lifecycle', 'Output'];
 
 // =====================================================================
 //  Applicability gate. Returns true iff this (block_type, action) is
@@ -147,6 +157,7 @@ function buildScenarios() {
         block_family: block.family,
         action_slug: actionSlug,
         action_name: action.name,
+        action_group: action.group,
         target_module_slug: targetModuleSlug,
         target_surface_slug: targetSurfaceSlug,
         criticality,
@@ -185,6 +196,12 @@ function renderMarkdown(rows) {
   md += 'applied. Approve here (edit / strike rows) → then run the SQL.\n\n';
   md += '## How to read this\n\n';
   md += '- One section per block type (paragraph, heading, …).\n';
+  md += '- Within each block, scenarios are grouped into four feature\n';
+  md += '  clusters so the shape per block is comparable at a glance:\n';
+  md += '    - **Creation** — how a block enters the document.\n';
+  md += '    - **Editing** — how a block\'s content / config changes.\n';
+  md += '    - **Lifecycle** — convert / delete / reorder.\n';
+  md += '    - **Output** — preview + export to LaTeX / Markdown.\n';
   md += '- Each row is one scenario stub at **L1 (intent only)**. Steps\n';
   md += '  + selectors come later when scenarios get promoted to L2/L3.\n';
   md += '- **automation_content** is the stable fingerprint that links\n';
@@ -203,17 +220,36 @@ function renderMarkdown(rows) {
   md += '| auto (bib, TOC) | — | — | — | — | — |\n';
   md += '| separator (pageBreak) | — | — | — | — | — |\n\n';
 
-  // Per-block tables.
+  // Per-block tables, grouped by feature cluster (Creation /
+  // Editing / Lifecycle / Output) within each block.
   for (const block of BLOCK_TYPES) {
     const blockRows = byBlock.get(block.slug) ?? [];
     md += `## ${block.name} (\`${block.slug}\`)\n\n`;
-    md += `*Family:* ${block.family}.  *Scenarios:* ${blockRows.length}.\n\n`;
-    md += '| Crit | Action | Title | Target surface | automation_content |\n';
-    md += '|---|---|---|---|---|\n';
+    md += `*Family:* ${block.family}.  *Total scenarios:* ${blockRows.length}.\n\n`;
+
+    // Per-block counts by group for an at-a-glance shape.
+    const byGroup = new Map();
     for (const r of blockRows) {
-      md += `| ${r.criticality.toUpperCase()} | \`${r.action_slug}\` | ${r.title} | \`${r.target_surface_slug}\` | \`${r.fingerprint}\` |\n`;
+      if (!byGroup.has(r.action_group)) byGroup.set(r.action_group, []);
+      byGroup.get(r.action_group).push(r);
     }
-    md += '\n';
+    const shape = GROUP_ORDER
+      .filter((g) => byGroup.has(g))
+      .map((g) => `${g} ${byGroup.get(g).length}`)
+      .join(' · ');
+    md += `*Shape:* ${shape}\n\n`;
+
+    for (const group of GROUP_ORDER) {
+      const gRows = byGroup.get(group);
+      if (!gRows || gRows.length === 0) continue;
+      md += `### ${group}\n\n`;
+      md += '| Crit | Action | Title | Target surface | automation_content |\n';
+      md += '|---|---|---|---|---|\n';
+      for (const r of gRows) {
+        md += `| ${r.criticality.toUpperCase()} | \`${r.action_slug}\` | ${r.title} | \`${r.target_surface_slug}\` | \`${r.fingerprint}\` |\n`;
+      }
+      md += '\n';
+    }
   }
 
   md += '## Next steps after approval\n\n';
