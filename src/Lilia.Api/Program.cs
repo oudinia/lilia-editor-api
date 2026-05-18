@@ -282,6 +282,7 @@ else
 
 // Register Application Services
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IE2EService, E2EService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddSingleton<IBlockTypeService, BlockTypeService>();
 builder.Services.AddScoped<IDocumentClassResolver, DocumentClassResolver>();
