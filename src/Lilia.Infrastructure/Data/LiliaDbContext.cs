@@ -1,4 +1,5 @@
 using Lilia.Core.Entities;
+using Lilia.Core.Entities.E2E;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Infrastructure.Data;
@@ -121,6 +122,30 @@ public class LiliaDbContext : DbContext
     // Joined to import_telemetry_events at report time for coverage.
     public DbSet<TypstTranslationHandler> TypstTranslationHandlers => Set<TypstTranslationHandler>();
     public DbSet<TypstTranslationGap> TypstTranslationGaps => Set<TypstTranslationGap>();
+
+    // E2E scenario database — see lilia-docs/launch-readiness/
+    // 2026-05-18-e2e-scenario-db.md for the design.
+    // Catalogue layer.
+    public DbSet<E2EModule> E2EModules => Set<E2EModule>();
+    public DbSet<E2ESurface> E2ESurfaces => Set<E2ESurface>();
+    public DbSet<E2EUIElement> E2EUIElements => Set<E2EUIElement>();
+    public DbSet<E2ESelectorCandidate> E2ESelectorCandidates => Set<E2ESelectorCandidate>();
+    public DbSet<E2EBlockType> E2EBlockTypes => Set<E2EBlockType>();
+    public DbSet<E2EBlockAction> E2EBlockActions => Set<E2EBlockAction>();
+    public DbSet<E2EEntryPoint> E2EEntryPoints => Set<E2EEntryPoint>();
+    // Scenario layer.
+    public DbSet<E2EScenario> E2EScenarios => Set<E2EScenario>();
+    public DbSet<E2EScenarioVersion> E2EScenarioVersions => Set<E2EScenarioVersion>();
+    public DbSet<E2EScenarioStep> E2EScenarioSteps => Set<E2EScenarioStep>();
+    public DbSet<E2ETag> E2ETags => Set<E2ETag>();
+    public DbSet<E2EScenarioTag> E2EScenarioTags => Set<E2EScenarioTag>();
+    public DbSet<E2EScenarioCoverageLink> E2EScenarioCoverageLinks => Set<E2EScenarioCoverageLink>();
+    // Run-time layer.
+    public DbSet<E2ETestRun> E2ETestRuns => Set<E2ETestRun>();
+    public DbSet<E2EScenarioResult> E2EScenarioResults => Set<E2EScenarioResult>();
+    public DbSet<E2EUIInteractionEvent> E2EUIInteractionEvents => Set<E2EUIInteractionEvent>();
+    public DbSet<E2EScenarioHealthState> E2EScenarioHealthStates => Set<E2EScenarioHealthState>();
+    public DbSet<E2EScenarioInsight> E2EScenarioInsights => Set<E2EScenarioInsight>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
