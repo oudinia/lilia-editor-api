@@ -199,7 +199,11 @@ public class AuthEmailController : ControllerBase
     private async Task<string?> MintMagicLinkTokenAsync(
         HttpClient http, string _apiBase, string userId, CancellationToken ct)
     {
-        var payload = new { user_id = userId, session_duration_minutes = 60 * 24 * 7 };
+        // /v1/magic_links rejects session_duration_minutes — that param
+        // belongs on the *authenticate* call once the user clicks the
+        // link. The mint endpoint only takes user_id (+ optional
+        // expiration_minutes to bound the click window).
+        var payload = new { user_id = userId, expiration_minutes = 60 };
         using var content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var res = await http.PostAsync("/v1/magic_links", content, ct);

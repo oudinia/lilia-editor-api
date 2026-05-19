@@ -188,9 +188,12 @@ public class StytchWebhookController : ControllerBase
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basicAuth);
 
         // POST /v1/magic_links creates an embedded magic-link token for
-        // the user — no email is sent (we send our own). 30-min expiry
-        // matches the LINK_EXPIRY_MINUTES on the editor side.
-        var payload = new { user_id = userId, session_duration_minutes = 60 * 24 * 7 };
+        // the user — no email is sent (we send our own). The endpoint
+        // rejects session_duration_minutes (that belongs on the
+        // authenticate call); use expiration_minutes for the click
+        // window instead. 60 minutes is the Stytch default and matches
+        // typical "verify your email within an hour" UX.
+        var payload = new { user_id = userId, expiration_minutes = 60 };
         var json = JsonSerializer.Serialize(payload);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         var res = await http.PostAsync("/v1/magic_links", content, ct);
