@@ -350,6 +350,7 @@ builder.Services.AddScoped<IRedactionService, RedactionService>();
 builder.Services.AddScoped<IAiOrchestrator, AiOrchestrator>();
 builder.Services.AddScoped<IAiHintAugmenter, AiHintAugmenter>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
+builder.Services.AddScoped<IBillingService, BillingService>();
 builder.Services.AddScoped<Lilia.Import.Services.ILatexProjectExtractor, Lilia.Import.Services.LatexProjectExtractor>();
 builder.Services.AddSingleton<IAssetOptimizer, AssetOptimizerService>();
 builder.Services.AddScoped<IDocumentSizeService, DocumentSizeService>();
@@ -432,6 +433,7 @@ builder.Services.AddHttpClient();
 
 // Configure AI services
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("AI"));
+builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection("Stripe"));
 
 var anthropicKey = builder.Configuration["AI:Anthropic:ApiKey"];
 if (!string.IsNullOrEmpty(anthropicKey))

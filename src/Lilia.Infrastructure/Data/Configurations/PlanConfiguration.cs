@@ -20,6 +20,9 @@ public class PlanConfiguration : IEntityTypeConfiguration<Plan>
         builder.Property(p => p.DisplayName).HasColumnName("display_name").HasMaxLength(80).IsRequired();
         builder.Property(p => p.MonthlyPrice).HasColumnName("monthly_price").HasColumnType("numeric(10,2)");
         builder.Property(p => p.YearlyPrice).HasColumnName("yearly_price").HasColumnType("numeric(10,2)");
+        builder.Property(p => p.StripeProductId).HasColumnName("stripe_product_id").HasMaxLength(64);
+        builder.Property(p => p.StripeMonthlyPriceId).HasColumnName("stripe_monthly_price_id").HasMaxLength(64);
+        builder.Property(p => p.StripeYearlyPriceId).HasColumnName("stripe_yearly_price_id").HasMaxLength(64);
         builder.Property(p => p.Caps).HasColumnName("caps").HasColumnType("jsonb").IsRequired();
         builder.Property(p => p.Features).HasColumnName("features").HasColumnType("jsonb").IsRequired();
         builder.Property(p => p.IsActive).HasColumnName("is_active").HasDefaultValue(true);
