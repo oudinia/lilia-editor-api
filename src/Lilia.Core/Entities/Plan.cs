@@ -24,6 +24,16 @@ public class Plan
     public decimal? YearlyPrice { get; set; }
 
     /// <summary>
+    /// Stripe linkage — set once the plan's Product/Prices exist in
+    /// Stripe. Null on free / not-yet-wired plans. The billing webhook
+    /// maps an incoming Stripe price id back to a Plan via the two
+    /// price-id columns.
+    /// </summary>
+    public string? StripeProductId { get; set; }
+    public string? StripeMonthlyPriceId { get; set; }
+    public string? StripeYearlyPriceId { get; set; }
+
+    /// <summary>
     /// Resource caps. Shape:
     ///   { "maxDocs": 3, "maxImportsPerMonth": 1, "aiCreditsPerMonth": 0,
     ///     "maxTeamSeats": 0, "maxAssetsPerDoc": 20 }
