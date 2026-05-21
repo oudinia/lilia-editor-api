@@ -974,7 +974,8 @@ public class DocumentService : IDocumentService
             AiEnabled: d.AiEnabled,
             LatexEngine: string.IsNullOrEmpty(d.LatexEngine) ? "pdflatex" : d.LatexEngine,
             ExperimentalLatexEdit: d.ExperimentalLatexEdit,
-            DocumentCategory: d.DocumentCategory
+            DocumentCategory: d.DocumentCategory,
+            Version: d.Version
         );
     }
 

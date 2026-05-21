@@ -101,5 +101,16 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasQueryFilter(d => d.DeletedAt == null);
+
+        // Optimistic concurrency for the Flow editor's continuous
+        // background sync. The block-sync write bumps Version and the
+        // UPDATE is keyed on it (concurrency token), so a stale
+        // cross-device write fails the conditional UPDATE and surfaces
+        // as 409 (DbUpdateConcurrencyException → the global exception
+        // filter). See architecture/2026-05-21-flow-editor-save-model.md.
+        builder.Property(d => d.Version)
+            .HasColumnName("version")
+            .HasDefaultValue(0)
+            .IsConcurrencyToken();
     }
 }

@@ -340,6 +340,14 @@ builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
 builder.Services.AddSingleton<IImportTelemetrySink, DbImportTelemetrySink>();
 builder.Services.AddHostedService<ImportTelemetryFlusher>();
 
+// Sync telemetry sink (flow-save-model) — observability for the Flow
+// editor's continuous background sync: conflicts, push failures, retry
+// exhaustion, offline spans. Same Channel-batched pattern as the import
+// sink so the editor's sync path never blocks on the DB connection
+// pool. See architecture/2026-05-21-flow-editor-save-model.md.
+builder.Services.AddSingleton<ISyncTelemetrySink, DbSyncTelemetrySink>();
+builder.Services.AddHostedService<SyncTelemetryFlusher>();
+
 // DB-first LaTeX import pipeline (see plan valiant-waddling-otter + guideline
 // lilia-docs/docs/guidelines/import-export-db-first.md)
 builder.Services.AddScoped<BulkInsertHelper>();

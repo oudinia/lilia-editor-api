@@ -96,6 +96,10 @@ public class LiliaDbContext : DbContext
     public DbSet<ImportStructuralFinding> ImportStructuralFindings => Set<ImportStructuralFinding>();
     public DbSet<ImportTelemetryEvent> ImportTelemetryEvents => Set<ImportTelemetryEvent>();
 
+    // Flow editor continuous-sync telemetry — conflicts, push failures,
+    // retry exhaustion, offline spans.
+    public DbSet<SyncTelemetryEvent> SyncTelemetryEvents => Set<SyncTelemetryEvent>();
+
     public DbSet<LatexInsertionEvent> LatexInsertionEvents => Set<LatexInsertionEvent>();
     public DbSet<BlockValidation> BlockValidations => Set<BlockValidation>();
     public DbSet<AiRequest> AiRequests => Set<AiRequest>();
