@@ -4,6 +4,7 @@ using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Controllers;
 
@@ -19,9 +20,10 @@ public class BlocksController : ControllerBase
     private readonly IVersionService _versionService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILatexFragmentParser _latexFragmentParser;
+    private readonly ISyncTelemetrySink _syncTelemetry;
     private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, IServiceScopeFactory scopeFactory, ILatexFragmentParser latexFragmentParser, ILogger<BlocksController> logger)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, IServiceScopeFactory scopeFactory, ILatexFragmentParser latexFragmentParser, ISyncTelemetrySink syncTelemetry, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
@@ -30,6 +32,7 @@ public class BlocksController : ControllerBase
         _versionService = versionService;
         _scopeFactory = scopeFactory;
         _latexFragmentParser = latexFragmentParser;
+        _syncTelemetry = syncTelemetry;
         _logger = logger;
     }
 
@@ -99,25 +102,47 @@ public class BlocksController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Whole-document block sync — the write target for the Flow editor's
+    /// continuous background sync. When <c>dto.ExpectedVersion</c> is set,
+    /// the write is conditional on the document's optimistic-concurrency
+    /// token; a concurrent edit elsewhere yields 409 so the client can
+    /// pull the latest and resolve. See
+    /// architecture/2026-05-21-flow-editor-save-model.md.
+    /// </summary>
     [HttpPost("batch")]
-    public async Task<ActionResult<List<BlockDto>>> BatchUpdateBlocks(Guid docId, [FromBody] BatchUpdateBlocksDto dto)
+    public async Task<ActionResult<BatchUpdateResultDto>> BatchUpdateBlocks(Guid docId, [FromBody] BatchUpdateBlocksDto dto)
     {
-        _logger.LogInformation("BatchUpdateBlocks called for doc {DocId} with {BlockCount} blocks", docId, dto.Blocks?.Count ?? 0);
-        if (dto.Blocks != null && dto.Blocks.Count > 0)
-        {
-            foreach (var block in dto.Blocks.Take(3))
-            {
-                _logger.LogDebug("Block {BlockId}: Type={Type}, HasContent={HasContent}",
-                    block.Id, block.Type, block.Content.HasValue);
-            }
-        }
-
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
             return Forbid();
 
-        var blocks = await _blockService.BatchUpdateBlocksAsync(docId, dto.Blocks);
+        BatchUpdateResultDto result;
+        try
+        {
+            result = await _blockService.BatchUpdateBlocksAsync(docId, dto.Blocks, dto.ExpectedVersion);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // A concurrent sync (another device or tab) advanced the
+            // document past the client's expected version. Surface a 409
+            // so the client pulls the latest and resolves the conflict.
+            _syncTelemetry.Record(new SyncTelemetryRecord
+            {
+                EventKind = "conflict",
+                Severity = "warn",
+                Source = "server",
+                DocumentId = docId,
+                UserId = userId,
+                Detail = $"Stale sync write — client expected version {dto.ExpectedVersion}.",
+            });
+            return Conflict(new
+            {
+                code = "VERSION_CONFLICT",
+                message = "This document changed elsewhere. Reload the latest version to continue.",
+            });
+        }
 
         // Auto-version (throttled, fire-and-forget). Must run in its OWN DI
         // scope — the request scope disposes its LiliaDbContext as soon as
@@ -133,7 +158,7 @@ public class BlocksController : ControllerBase
             catch (Exception ex) { logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
         });
 
-        return Ok(blocks);
+        return Ok(result);
     }
 
     [HttpPut("reorder")]

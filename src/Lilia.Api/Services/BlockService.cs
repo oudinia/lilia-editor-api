@@ -145,7 +145,7 @@ public class BlockService : IBlockService
         return true;
     }
 
-    public async Task<List<BlockDto>> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks)
+    public async Task<BatchUpdateResultDto> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks, int? expectedVersion = null)
     {
         _logger.LogInformation("BatchUpdateBlocksAsync: Starting for document {DocumentId} with {Count} blocks", documentId, blocks.Count);
 
@@ -215,9 +215,21 @@ public class BlockService : IBlockService
             _context.Blocks.RemoveRange(blocksToDelete);
         }
 
-        // Update document timestamp
+        // Update document timestamp + apply the optimistic-concurrency
+        // guard. Version is a concurrency token: bumping it makes the
+        // document UPDATE conditional, and overriding the original value
+        // with the client's expected version means a stale cross-device
+        // write throws DbUpdateConcurrencyException — the whole batch
+        // (blocks included) then rolls back.
         var document = await _context.Documents.FindAsync(documentId);
-        if (document != null) document.UpdatedAt = DateTime.UtcNow;
+        if (document != null)
+        {
+            document.UpdatedAt = DateTime.UtcNow;
+            document.LastAutoSavedAt = DateTime.UtcNow;
+            document.Version += 1;
+            if (expectedVersion.HasValue)
+                _context.Entry(document).Property(d => d.Version).OriginalValue = expectedVersion.Value;
+        }
 
         _logger.LogInformation("BatchUpdateBlocksAsync: About to SaveChanges - Created: {Created}, Updated: {Updated}, Deleted: {Deleted}",
             createdCount, updatedCount, blocksToDelete.Count);
@@ -229,7 +241,12 @@ public class BlockService : IBlockService
         // Invalidate preview cache
         await _previewCacheService.InvalidateCacheAsync(documentId);
 
-        return resultBlocks.OrderBy(b => b.SortOrder).Select(MapToDto).ToList();
+        // Hand back the bumped version so the client carries it into
+        // the next sync.
+        var newVersion = document?.Version ?? 0;
+        return new BatchUpdateResultDto(
+            resultBlocks.OrderBy(b => b.SortOrder).Select(MapToDto).ToList(),
+            newVersion);
     }
 
     public async Task<List<BlockDto>> ReorderBlocksAsync(Guid documentId, List<Guid> blockIds)

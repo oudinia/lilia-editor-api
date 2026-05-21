@@ -40,7 +40,21 @@ public record BatchUpdateBlockDto(
 );
 
 public record BatchUpdateBlocksDto(
-    List<BatchUpdateBlockDto> Blocks
+    List<BatchUpdateBlockDto> Blocks,
+    // Optimistic-concurrency version from the client's last sync. When
+    // set, the batch write is conditional and a stale value yields 409
+    // Conflict; null skips the check.
+    int? ExpectedVersion = null
+);
+
+/// <summary>
+/// Result of a batch block sync. <see cref="Version"/> is the document's
+/// new optimistic-concurrency version — the client carries it into the
+/// next sync. See 2026-05-21-flow-editor-save-model.md.
+/// </summary>
+public record BatchUpdateResultDto(
+    List<BlockDto> Blocks,
+    int Version
 );
 
 public record ReorderBlocksDto(

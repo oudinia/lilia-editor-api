@@ -9,7 +9,13 @@ public interface IBlockService
     Task<BlockDto> CreateBlockAsync(Guid documentId, CreateBlockDto dto);
     Task<BlockDto?> UpdateBlockAsync(Guid documentId, Guid blockId, UpdateBlockDto dto);
     Task<bool> DeleteBlockAsync(Guid documentId, Guid blockId);
-    Task<List<BlockDto>> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks);
+    /// <summary>
+    /// Whole-document block sync. When <paramref name="expectedVersion"/>
+    /// is supplied the write is conditional on the document's
+    /// optimistic-concurrency token — a stale value throws
+    /// <see cref="Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException"/>.
+    /// </summary>
+    Task<BatchUpdateResultDto> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks, int? expectedVersion = null);
     Task<List<BlockDto>> ReorderBlocksAsync(Guid documentId, List<Guid> blockIds);
     Task<BlockDto?> ConvertBlockAsync(Guid documentId, Guid blockId, string newType);
 

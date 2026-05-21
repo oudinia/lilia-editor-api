@@ -77,7 +77,11 @@ public record DocumentDto(
     bool ExperimentalLatexEdit = false,
     // Documentclass-first read-back (LILIA-131). The editor's stamp + popover
     // need the category in addition to the LaTeX class string.
-    string? DocumentCategory = null
+    string? DocumentCategory = null,
+    // Optimistic-concurrency version. The Flow editor carries this into
+    // every background sync; a stale value yields 409.
+    // See 2026-05-21-flow-editor-save-model.md.
+    int Version = 0
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as

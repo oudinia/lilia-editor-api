@@ -23,12 +23,17 @@ public class LogController : ControllerBase
     [HttpPost]
     public IActionResult IngestBatch([FromBody] ClientLogBatch batch)
     {
-        var userId = User.FindFirst("sub")?.Value
+        // Rate-limit key: the authenticated user when present, else the
+        // client IP. The unauthenticated client logger sends no bearer
+        // token, so keying on a literal "anonymous" collapsed every
+        // client in the world into one shared 30 req/min bucket — the
+        // endpoint started 429-ing within seconds under any real load.
+        var key = User.FindFirst("sub")?.Value
             ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-            ?? "anonymous";
+            ?? HttpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
 
         var now = DateTime.UtcNow;
-        var key = userId;
 
         var (count, window) = _rateLimits.GetOrAdd(key, _ => (0, now));
         if (now - window > TimeSpan.FromMinutes(1))

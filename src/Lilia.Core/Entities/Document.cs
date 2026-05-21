@@ -39,6 +39,14 @@ public class Document
     public string Status { get; set; } = "draft"; // draft, saved, published
     public DateTime? LastAutoSavedAt { get; set; }
 
+    /// <summary>
+    /// Optimistic-concurrency version for the Flow editor's continuous
+    /// background sync. Bumped on every block sync; a conditional UPDATE
+    /// keyed on it turns a silent cross-device clobber into a detected
+    /// 409. See architecture/2026-05-21-flow-editor-save-model.md.
+    /// </summary>
+    public int Version { get; set; }
+
     // Layout settings
     public string? MarginTop { get; set; }
     public string? MarginBottom { get; set; }
