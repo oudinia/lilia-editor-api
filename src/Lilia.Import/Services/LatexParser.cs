@@ -691,6 +691,33 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\bibliographystyle\{[^}]+\}", "");
         documentContent = Regex.Replace(documentContent, @"\\bibliography\{[^}]+\}", "");
 
+        // \newtheorem / \newcommand / \renewcommand / \newenvironment —
+        // preamble macros that don't translate to any block. Without
+        // these strips, the generic command-flattener downstream eats
+        // `\new` and leaks the rest as paragraph text — e.g.
+        // `\newtheorem{theorem}{Theorem}[section]` becomes a paragraph
+        // reading "theorem{Theorem}[section]".
+        documentContent = Regex.Replace(documentContent, @"\\newtheorem\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\]|\{[^}]*\})*", "");
+        documentContent = Regex.Replace(documentContent, @"\\(?:re)?newcommand\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\newenvironment\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
+
+        // When a user pastes a full document, \begin{document} /
+        // \end{document} are wrappers, not content. The generic
+        // flattener would turn them into a stray "document" paragraph.
+        documentContent = Regex.Replace(documentContent, @"\\begin\{document\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\end\{document\}", "");
+
+        // Inline math \(...\) — promote to TeX-style $...$ so the
+        // imported paragraph renders the math (the editor's inline-math
+        // input rule reads $...$, not \(...\)).
+        documentContent = Regex.Replace(documentContent, @"\\\(\s*(.+?)\s*\\\)", "$$$1$$", RegexOptions.Singleline);
+
+        // Cross-references — surface the label as plain text so the
+        // user sees the reference target without raw LaTeX syntax. A
+        // proper cross-ref node is a separate piece of work; readable
+        // text beats "\ref{pythagorean}" in the meantime.
+        documentContent = Regex.Replace(documentContent, @"\\(?:eqref|cref|Cref|autoref|pageref|nameref|ref)\{([^}]+)\}", "$1");
+
         // Remove document setup commands
         documentContent = Regex.Replace(documentContent, @"\\maketitle\b", "");
         documentContent = Regex.Replace(documentContent, @"\\tableofcontents\b", "");
