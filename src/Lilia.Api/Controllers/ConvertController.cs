@@ -1243,10 +1243,16 @@ public class ConvertController : ControllerBase
                         listBuffer.Add(li);
                         break;
                     case ImportTheorem th:
+                        // Field name is theoremType, NOT kind — the editor's
+                        // TheoremBlock reads block.content?.theoremType and
+                        // falls back to "theorem" otherwise, which is why
+                        // every imported corollary/lemma/proposition showed
+                        // as a plain Theorem badge before this fix. Keep this
+                        // in sync with LatexImportJobExecutor.cs:301.
                         blocks.Add(new LatexBlockDto("theorem", new
                         {
                             text = ConvertLatexFormattingToMarkdown(th.Text),
-                            kind = th.EnvironmentType.ToString().ToLowerInvariant(),
+                            theoremType = th.EnvironmentType.ToString().ToLowerInvariant(),
                             title = th.Title ?? "",
                             label = th.Label ?? "",
                         }));
