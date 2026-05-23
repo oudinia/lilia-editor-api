@@ -1302,6 +1302,19 @@ public class LaTeXExportService : ILaTeXExportService
         // 1b. Inline math: $x^2$ → pass through as-is
         result = Regex.Replace(result, @"\$([^$]+)\$", m => Ph($"${m.Groups[1].Value}$"));
 
+        // 1b'. LaTeX-native math delimiters: \[ ... \] (display) and \( ... \) (inline).
+        // Without this the EscapeLatex pass turns the backslashes into
+        // \textbackslash{} and the LML superscript regex below mangles
+        // every "^…^" pair inside the math — producing things like
+        //   \[ x\textsuperscript{2 + y}2 = z\textasciicircum{}2 \]
+        // from a paragraph that originally said "\[ x^2 + y^2 = z^2 \]".
+        // Treat the whole math span as opaque; if it really is a math
+        // expression the user wrote, the LaTeX compiler handles ^ and _
+        // correctly. If it isn't, FormatInlineContent isn't the place
+        // to disambiguate.
+        result = Regex.Replace(result, @"\\\[([\s\S]+?)\\\]", m => Ph($@"\[{m.Groups[1].Value}\]"), RegexOptions.Singleline);
+        result = Regex.Replace(result, @"\\\(([\s\S]+?)\\\)", m => Ph($@"\({m.Groups[1].Value}\)"), RegexOptions.Singleline);
+
         // 1c. Native LaTeX commands users type directly (\cite, \ref,
         //     \eqref, \url, \href, \label, \footnote). Without these,
         //     EscapeLatex turns "\cite{X}" into "\textbackslash{}cite\{X\}"
