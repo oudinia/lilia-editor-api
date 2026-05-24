@@ -295,6 +295,42 @@ public class E2EService : IE2EService
         };
 
         _db.E2EScenarioResults.Add(result);
+
+        // Auto-promote on green. A scenario's detail_level is the
+        // high-water mark: L1 (stub) → L2 (authored prose) → L3
+        // (executable test). When a Playwright test passes against the
+        // current version, that proves L3 — bump both scenario and the
+        // referenced version. We never *downgrade* on red; a flaky
+        // test failure must not blank out the L3 status that a previous
+        // green earned. The scenario already has a current version
+        // (checked above), so loading it is cheap.
+        if (string.Equals(req.DetailLevelRun, "l3", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(req.Outcome, "pass", StringComparison.OrdinalIgnoreCase))
+        {
+            var versionId = scenario.CurrentVersionId.Value;
+            var version = await _db.E2EScenarioVersions
+                .Where(v => v.Id == versionId)
+                .FirstOrDefaultAsync(ct);
+
+            if (version is not null && !string.Equals(version.DetailLevel, "l3", StringComparison.OrdinalIgnoreCase))
+            {
+                version.DetailLevel = "l3";
+            }
+
+            var scenarioRow = await _db.E2EScenarios
+                .Where(s => s.Id == scenario.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (scenarioRow is not null && !string.Equals(scenarioRow.DetailLevel, "l3", StringComparison.OrdinalIgnoreCase))
+            {
+                var previous = scenarioRow.DetailLevel;
+                scenarioRow.DetailLevel = "l3";
+                _logger.LogInformation(
+                    "E2E scenario {ScenarioId} promoted {Prev}→l3 on green result {ResultId}.",
+                    scenario.Id, previous, result.Id);
+            }
+        }
+
         await _db.SaveChangesAsync(ct);
         return result.Id;
     }
