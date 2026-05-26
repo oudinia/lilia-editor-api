@@ -36,6 +36,29 @@ services:
       - "host.docker.internal:host-gateway"
     profiles: ["gpu"]
 
+  # Mailpit — SMTP catcher with a web UI + HTTP API. Used in dev to
+  # inspect outbound mail without hitting Resend, and as the inbox
+  # endpoint for automated signup/login e2e tests.
+  #
+  #   SMTP:    localhost:1025  (no auth, no TLS — local only)
+  #   Web UI:  http://localhost:8025
+  #   API:     http://localhost:8025/api/v1/...
+  #
+  # Pair with `Email__Transport=smtp` and `Email__SmtpHost=localhost`
+  # in appsettings.Development.json (already wired).
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: lilia-mailpit
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # HTTP + Web UI
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    restart: unless-stopped
+    profiles: ["dev", "cpu", "mail"]
+
   # CPU-only MinerU (pipeline backend, no GPU required)
   mineru:
     build:

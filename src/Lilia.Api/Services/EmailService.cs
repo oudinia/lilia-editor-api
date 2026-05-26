@@ -1,16 +1,40 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.Extensions.Localization;
+using MimeKit;
 
 namespace Lilia.Api.Services;
 
 public class EmailSettings
 {
+    /// <summary>
+    /// Which transport to use when sending mail.
+    ///   <c>resend</c> — production Resend HTTP API (default)
+    ///   <c>smtp</c>   — local SMTP, intended for Mailpit in dev /
+    ///                   automated e2e tests (no auth, no TLS by default)
+    ///   <c>noop</c>   — log-only; emails are dropped. For unit tests.
+    /// Case-insensitive.
+    /// </summary>
+    public string Transport { get; set; } = "resend";
+
     public string ResendApiKey { get; set; } = "";
     public string FromAddress { get; set; } = "noreply@liliaeditor.com";
     public string FromName { get; set; } = "Lilia";
     public string BaseUrl { get; set; } = "https://editor.liliaeditor.com";
+
+    // ── SMTP transport (Mailpit / dev) ────────────────────────────────
+    public string SmtpHost { get; set; } = "localhost";
+    public int SmtpPort { get; set; } = 1025;
+    public string? SmtpUsername { get; set; }
+    public string? SmtpPassword { get; set; }
+    /// <summary>
+    /// `none` (Mailpit default), `starttls`, or `ssl`. Anything else falls
+    /// back to `none` — Mailpit accepts unencrypted SMTP by design.
+    /// </summary>
+    public string SmtpSecurity { get; set; } = "none";
 }
 
 public class EmailService : IEmailService
@@ -134,6 +158,26 @@ public class EmailService : IEmailService
 
     public async Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null)
     {
+        var transport = (_settings.Transport ?? "resend").Trim().ToLowerInvariant();
+        switch (transport)
+        {
+            case "smtp":
+                await SendViaSmtpAsync(to, subject, htmlBody, textBody);
+                return;
+            case "noop":
+                _logger.LogInformation(
+                    "[noop transport] would send email to {To}: {Subject} ({HtmlLen} chars HTML)",
+                    to, subject, htmlBody.Length);
+                return;
+            case "resend":
+            default:
+                await SendViaResendAsync(to, subject, htmlBody, textBody);
+                return;
+        }
+    }
+
+    private async Task SendViaResendAsync(string to, string subject, string htmlBody, string? textBody)
+    {
         if (string.IsNullOrEmpty(_settings.ResendApiKey))
         {
             // Raised from Warning to Error — every "invitation sent" UI
@@ -166,11 +210,57 @@ public class EmailService : IEmailService
                 throw new InvalidOperationException($"Failed to send email: {response.StatusCode}");
             }
 
-            _logger.LogInformation("Email sent to {To}: {Subject}", to, subject);
+            _logger.LogInformation("Email sent to {To}: {Subject} (via resend)", to, subject);
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
             _logger.LogError(ex, "Failed to send email to {To}: {Subject}", to, subject);
+            throw;
+        }
+    }
+
+    private async Task SendViaSmtpAsync(string to, string subject, string htmlBody, string? textBody)
+    {
+        // MailKit's SmtpClient is the standard MimeKit-backed SMTP path.
+        // For Mailpit (the intended dev target), there's no auth and no
+        // TLS — security defaults to None. STARTTLS / SSL are wired so
+        // the same transport works against real SMTP relays if a team
+        // wants that flow.
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_settings.FromName, _settings.FromAddress));
+        message.To.Add(MailboxAddress.Parse(to));
+        message.Subject = subject;
+        var bodyBuilder = new BodyBuilder { HtmlBody = htmlBody };
+        if (!string.IsNullOrEmpty(textBody)) bodyBuilder.TextBody = textBody;
+        message.Body = bodyBuilder.ToMessageBody();
+
+        var security = (_settings.SmtpSecurity ?? "none").Trim().ToLowerInvariant() switch
+        {
+            "starttls" => SecureSocketOptions.StartTls,
+            "ssl" => SecureSocketOptions.SslOnConnect,
+            _ => SecureSocketOptions.None,
+        };
+
+        try
+        {
+            using var client = new SmtpClient();
+            await client.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, security);
+            if (!string.IsNullOrEmpty(_settings.SmtpUsername))
+            {
+                await client.AuthenticateAsync(_settings.SmtpUsername, _settings.SmtpPassword ?? "");
+            }
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            _logger.LogInformation(
+                "Email sent to {To}: {Subject} (via smtp {Host}:{Port})",
+                to, subject, _settings.SmtpHost, _settings.SmtpPort);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "SMTP send failed for {To}: {Subject} ({Host}:{Port})",
+                to, subject, _settings.SmtpHost, _settings.SmtpPort);
             throw;
         }
     }
