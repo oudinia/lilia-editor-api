@@ -49,13 +49,15 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     container_name: lilia-mailpit
-    # Bind both ports to 127.0.0.1 only. SMTP accepts any auth (relay
-    # risk if exposed) and the HTTP UI shows every captured email, so
-    # neither belongs on a public interface. Reach the web UI via SSH
-    # port-forward: `ssh -L 8025:127.0.0.1:8025 <host>`.
+    # SMTP stays bound to 127.0.0.1 (MP_SMTP_AUTH_ACCEPT_ANY=1 makes
+    # any public bind an open relay). The web UI is publicly exposed
+    # per user direction 2026-05-26 — anyone with the URL reads every
+    # captured email, so only safe if the inbox is intentionally
+    # throwaway dev mail. Re-lock by switching back to
+    # `127.0.0.1:8025:8025` if that ever stops being true.
     ports:
-      - "127.0.0.1:1025:1025"   # SMTP
-      - "127.0.0.1:8025:8025"   # HTTP + Web UI
+      - "127.0.0.1:1025:1025"   # SMTP — local only
+      - "8025:8025"             # HTTP + Web UI — public
     environment:
       MP_MAX_MESSAGES: 5000
       MP_SMTP_AUTH_ACCEPT_ANY: 1
