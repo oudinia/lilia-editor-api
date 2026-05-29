@@ -35,6 +35,11 @@ public class LiliaDbContext : DbContext
     public DbSet<Formula> Formulas => Set<Formula>();
     public DbSet<Snippet> Snippets => Set<Snippet>();
     public DbSet<DraftBlock> DraftBlocks => Set<DraftBlock>();
+    /// <summary>
+    /// User-triggered diagnostic bundles from the math editor and
+    /// future client surfaces. See <see cref="DiagnosticCapture"/>.
+    /// </summary>
+    public DbSet<DiagnosticCapture> DiagnosticCaptures => Set<DiagnosticCapture>();
 
     // Auth tables (Better Auth)
     public DbSet<Session> Sessions => Set<Session>();
