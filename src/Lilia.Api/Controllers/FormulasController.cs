@@ -94,4 +94,19 @@ public class FormulasController : ControllerBase
         var categories = await _formulaService.GetCategoriesAsync();
         return Ok(categories);
     }
+
+    /// <summary>
+    /// Per-theme counts across the requesting user's visible
+    /// library (their own formulas + system seed). Drives the
+    /// theme-rail badges on the library page and the Load-from-library
+    /// modal in the math editor.
+    /// </summary>
+    [HttpGet("themes")]
+    public async Task<ActionResult<List<FormulaThemeCountDto>>> GetThemeCounts()
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var counts = await _formulaService.GetThemeCountsAsync(userId);
+        return Ok(counts);
+    }
 }

@@ -14,4 +14,5 @@ public interface IFormulaService
     Task<List<string>> GetCategoriesAsync();
     Task<List<string>> GetSubcategoriesAsync(string category);
     Task<List<string>> GetUserTagsAsync(string userId);
+    Task<List<FormulaThemeCountDto>> GetThemeCountsAsync(string userId);
 }

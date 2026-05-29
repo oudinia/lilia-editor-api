@@ -26,11 +26,25 @@ public class FormulaConfiguration : IEntityTypeConfiguration<Formula>
         builder.Property(f => f.Version).HasColumnName("version").HasDefaultValue(1);
         builder.Property(f => f.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(f => f.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+        // Lilia Math editor theme (one of FormulaThemes.All) — nullable
+        // so legacy formulas don't require backfill. The web editor
+        // filters by this when populating the theme-rail library view.
+        builder.Property(f => f.Theme).HasColumnName("theme").HasMaxLength(32);
+        // Stable identifier for system-seeded formulas. Idempotent
+        // upserts in the themed seeder key off this.
+        builder.Property(f => f.Slug).HasColumnName("slug").HasMaxLength(80);
+        // Lilia Math token list (JSON). Stored as jsonb so we can
+        // search/filter inside it later without a schema change.
+        builder.Property(f => f.TokensJson).HasColumnName("tokens_json").HasColumnType("jsonb");
 
         builder.HasIndex(f => f.UserId);
         builder.HasIndex(f => f.Category);
         builder.HasIndex(f => f.IsSystem);
         builder.HasIndex(f => new { f.UserId, f.Category });
+        builder.HasIndex(f => f.Theme);
+        // Slug must be unique among system formulas so the seeder is
+        // idempotent. User-created formulas keep slug NULL.
+        builder.HasIndex(f => f.Slug).IsUnique().HasFilter("\"slug\" IS NOT NULL");
 
         builder.HasOne(f => f.User)
             .WithMany(u => u.Formulas)

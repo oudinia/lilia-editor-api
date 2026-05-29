@@ -69,4 +69,82 @@ public class FormulasE2ETests : E2ETestBase
         var favResp = await client.PostAsync($"/api/formulas/{formulaId}/favorite", null);
         favResp.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
     }
+
+    [Fact]
+    public async Task GetThemeCounts_ReturnsAllEightThemes()
+    {
+        using var client = await CreateAuthenticatedClientAsync();
+        var resp = await client.GetAsync("/api/formulas/themes");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var counts = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        counts.GetArrayLength().Should().Be(8);
+        var ids = counts.EnumerateArray().Select(c => c.GetProperty("theme").GetString()).ToHashSet();
+        ids.Should().BeEquivalentTo(new[]
+        {
+            "general", "calculus", "linalg", "stats", "discrete", "sets", "physics", "cs",
+        });
+    }
+
+    [Fact]
+    public async Task SystemThemedSeed_ProducesReferenceFormulas()
+    {
+        // The themed seed pulls 64 formulas (8 per theme) from
+        // lilia-docs/reference/math/data/formulas.json — verify the
+        // catalog is visible to an authenticated user.
+        using var client = await CreateAuthenticatedClientAsync();
+        var resp = await client.GetAsync("/api/formulas?theme=calculus&pageSize=20");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var page = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var items = page.GetProperty("items");
+        items.GetArrayLength().Should().BeGreaterThan(0);
+        items[0].GetProperty("theme").GetString().Should().Be("calculus");
+    }
+
+    [Fact]
+    public async Task CreateFormula_WithThemeAndTokens_PersistsBothFields()
+    {
+        using var client = await CreateAuthenticatedClientAsync();
+        var tokensJson = "[{\"kind\":\"letter\",\"glyph\":\"a\"}]";
+        var resp = await client.PostAsJsonAsync("/api/formulas", new
+        {
+            name = "E2E Themed",
+            latexContent = "a + b = c",
+            category = "math",
+            theme = "general",
+            tokensJson,
+        });
+        resp.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
+        if (!resp.IsSuccessStatusCode) return;
+
+        var f = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var id = f.GetProperty("id").GetString()!;
+        TrackForCleanup("/api/formulas", id);
+
+        f.GetProperty("theme").GetString().Should().Be("general");
+        f.GetProperty("tokensJson").GetString().Should().Be(tokensJson);
+    }
+
+    [Fact]
+    public async Task CreateFormula_WithInvalidTheme_SilentlyDropsTheme()
+    {
+        using var client = await CreateAuthenticatedClientAsync();
+        var resp = await client.PostAsJsonAsync("/api/formulas", new
+        {
+            name = "E2E Invalid Theme",
+            latexContent = "a",
+            category = "math",
+            theme = "not-a-real-theme",
+        });
+        if (!resp.IsSuccessStatusCode) return;
+
+        var f = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var id = f.GetProperty("id").GetString()!;
+        TrackForCleanup("/api/formulas", id);
+
+        // FormulaThemes.IsValid rejected the value — Theme is null.
+        var themeProp = f.GetProperty("theme");
+        themeProp.ValueKind.Should().Be(JsonValueKind.Null);
+    }
 }

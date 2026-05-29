@@ -18,8 +18,55 @@ public class Formula
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// Lilia Math editor theme this formula belongs to — one of
+    /// general / calculus / linalg / stats / discrete / sets / physics / cs.
+    /// Null for legacy formulas not yet mapped to a theme.
+    /// </summary>
+    public string? Theme { get; set; }
+
+    /// <summary>
+    /// Stable kebab-case identifier matching the reference catalog in
+    /// lilia-docs/reference/math/data/formulas.json. Required for
+    /// system-seeded formulas so re-seeding is idempotent; null for
+    /// user-created formulas.
+    /// </summary>
+    public string? Slug { get; set; }
+
+    /// <summary>
+    /// JSON-serialised Lilia Math token list — what the editor's
+    /// 'Load from library' modal hands back. Optional; when null the
+    /// editor falls back to parsing LatexContent.
+    /// </summary>
+    public string? TokensJson { get; set; }
+
     // Navigation properties
     public virtual User? User { get; set; }
+}
+
+/// <summary>
+/// Lilia Math editor themes — the 8 STEM presets surfaced by the
+/// Common-panel theme rail. Mirrors `THEMES[].id` in
+/// `lilia-web-editor/src/components/math-editor/commonThemes.ts`.
+/// </summary>
+public static class FormulaThemes
+{
+    public const string General  = "general";
+    public const string Calculus = "calculus";
+    public const string LinAlg   = "linalg";
+    public const string Stats    = "stats";
+    public const string Discrete = "discrete";
+    public const string Sets     = "sets";
+    public const string Physics  = "physics";
+    public const string Cs       = "cs";
+
+    public static readonly IReadOnlyList<string> All = new[]
+    {
+        General, Calculus, LinAlg, Stats, Discrete, Sets, Physics, Cs,
+    };
+
+    public static bool IsValid(string? theme) =>
+        theme is not null && All.Contains(theme);
 }
 
 public static class FormulaCategories

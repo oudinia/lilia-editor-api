@@ -64,6 +64,15 @@ public partial class FormulaService : IFormulaService
             );
         }
 
+        // Theme filter — lets the web editor's Load-from-library
+        // modal show only formulas matching the active Common-panel
+        // theme. Validated against FormulaThemes.All to avoid SQL
+        // injection of an arbitrary value into an indexed column.
+        if (!string.IsNullOrEmpty(search.Theme) && FormulaThemes.IsValid(search.Theme))
+        {
+            query = query.Where(f => f.Theme == search.Theme);
+        }
+
         var totalCount = await query.CountAsync();
 
         var items = await query
@@ -107,7 +116,12 @@ public partial class FormulaService : IFormulaService
             IsSystem = false,
             UsageCount = 0,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            // User-saved formulas don't get a system slug (that's
+            // reserved for the seed catalog). They carry the Lilia
+            // Math theme + tokens so the editor can round-trip them.
+            Theme = FormulaThemes.IsValid(dto.Theme) ? dto.Theme : null,
+            TokensJson = dto.TokensJson,
         };
 
         _context.Formulas.Add(formula);
@@ -136,6 +150,14 @@ public partial class FormulaService : IFormulaService
         if (dto.Category != null && dto.Category != formula.Category) { formula.Category = dto.Category; contentChanged = true; }
         if (dto.Subcategory != null && dto.Subcategory != formula.Subcategory) { formula.Subcategory = dto.Subcategory; contentChanged = true; }
         if (dto.Tags != null) formula.Tags = dto.Tags;
+        if (dto.Theme != null && FormulaThemes.IsValid(dto.Theme) && dto.Theme != formula.Theme)
+        {
+            formula.Theme = dto.Theme; contentChanged = true;
+        }
+        if (dto.TokensJson != null && dto.TokensJson != formula.TokensJson)
+        {
+            formula.TokensJson = dto.TokensJson; contentChanged = true;
+        }
 
         if (contentChanged) formula.Version++;
         formula.UpdatedAt = DateTime.UtcNow;
@@ -221,6 +243,25 @@ public partial class FormulaService : IFormulaService
             .ToList();
     }
 
+    public async Task<List<FormulaThemeCountDto>> GetThemeCountsAsync(string userId)
+    {
+        // Count visible formulas (own + system) grouped by theme,
+        // skipping rows that haven't been assigned a theme yet. The
+        // result drives the theme-rail badges in the web library
+        // page so users see at a glance which themes have content.
+        var grouped = await _context.Formulas
+            .Where(f => (f.UserId == userId || (f.IsSystem && f.UserId == null)) && f.Theme != null)
+            .GroupBy(f => f.Theme!)
+            .Select(g => new FormulaThemeCountDto(g.Key, g.Count()))
+            .ToListAsync();
+
+        // Preserve the canonical theme order from FormulaThemes.All so
+        // the UI never has to re-sort.
+        return FormulaThemes.All
+            .Select(t => grouped.FirstOrDefault(g => g.Theme == t) ?? new FormulaThemeCountDto(t, 0))
+            .ToList();
+    }
+
     private static string GenerateLml(string latexContent, string label)
     {
         return $"\n@equation(label: eq:{label}, mode: display)\n{latexContent}\n";
@@ -250,7 +291,10 @@ public partial class FormulaService : IFormulaService
             f.UserId,
             f.CreatedAt,
             f.UpdatedAt,
-            f.Version
+            f.Version,
+            f.Theme,
+            f.Slug,
+            f.TokensJson
         );
     }
 

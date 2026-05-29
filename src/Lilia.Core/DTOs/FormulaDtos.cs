@@ -15,7 +15,10 @@ public record FormulaDto(
     string? UserId,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    int Version = 1
+    int Version = 1,
+    string? Theme = null,
+    string? Slug = null,
+    string? TokensJson = null
 );
 
 public record CreateFormulaDto(
@@ -24,7 +27,9 @@ public record CreateFormulaDto(
     string Category,
     string? Description = null,
     string? Subcategory = null,
-    List<string>? Tags = null
+    List<string>? Tags = null,
+    string? Theme = null,
+    string? TokensJson = null
 );
 
 public record UpdateFormulaDto(
@@ -33,7 +38,9 @@ public record UpdateFormulaDto(
     string? LatexContent = null,
     string? Category = null,
     string? Subcategory = null,
-    List<string>? Tags = null
+    List<string>? Tags = null,
+    string? Theme = null,
+    string? TokensJson = null
 );
 
 public record FormulaSearchDto(
@@ -43,7 +50,8 @@ public record FormulaSearchDto(
     bool? FavoritesOnly = null,
     bool IncludeSystem = true,
     int Page = 1,
-    int PageSize = 50
+    int PageSize = 50,
+    string? Theme = null
 );
 
 public record FormulaPageDto(
@@ -51,4 +59,9 @@ public record FormulaPageDto(
     int TotalCount,
     int Page,
     int PageSize
+);
+
+public record FormulaThemeCountDto(
+    string Theme,
+    int Count
 );

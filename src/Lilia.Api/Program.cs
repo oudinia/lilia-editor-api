@@ -773,6 +773,12 @@ using (var scope = app.Services.CreateScope())
     // Templates are now documents — no separate seeder needed
     // await SystemTemplateSeeder.SeedAsync(dbContext);
     await SystemFormulaSeeder.SeedAsync(dbContext);
+    // Lilia Math reference catalog — 64 formulas across 8 themes,
+    // sourced from lilia-docs/reference/math/data/formulas.json. Runs
+    // after the legacy seed so the two coexist; idempotent upsert by Slug.
+    await SystemFormulaThemedSeeder.SeedAsync(
+        dbContext,
+        scope.ServiceProvider.GetService<ILogger<Program>>());
     await SystemSnippetSeeder.SeedAsync(dbContext);
     await StarterDocumentSeeder.SeedAsync(dbContext);
 }
