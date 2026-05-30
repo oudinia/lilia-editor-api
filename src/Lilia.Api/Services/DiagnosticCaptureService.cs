@@ -31,6 +31,13 @@ public class DiagnosticCaptureService : IDiagnosticCaptureService
             refToken = GenerateRefToken();
         }
 
+        // Enrich the payload with recent sync_telemetry events for the
+        // same user (optionally scoped to the capture's document). The
+        // analyst gets a self-contained snapshot — no second query
+        // required — and the join survives the 30-day retention sweep
+        // because the linked rows live inside the capture's jsonb.
+        var enrichedPayload = await EnrichWithSyncEventsAsync(dto.Payload, userId);
+
         var capture = new DiagnosticCapture
         {
             Id = Guid.NewGuid(),
@@ -40,7 +47,7 @@ public class DiagnosticCaptureService : IDiagnosticCaptureService
             Note = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note!.Trim(),
             UserAgent = dto.UserAgent,
             Url = dto.Url,
-            Payload = dto.Payload.GetRawText(),
+            Payload = enrichedPayload,
             CreatedAt = DateTime.UtcNow,
         };
         _context.DiagnosticCaptures.Add(capture);
@@ -51,6 +58,89 @@ public class DiagnosticCaptureService : IDiagnosticCaptureService
 
         return new DiagnosticCaptureCreatedDto(capture.Id, capture.RefToken, capture.CreatedAt);
     }
+
+    /// <summary>
+    /// Look up sync_telemetry rows that probably correlate with this
+    /// capture and stitch them into the payload under
+    /// <c>payload.linkedSyncEvents</c>. The match window is
+    /// (user_id, optional document_id, last <see cref="SyncLookbackMinutes"/>
+    /// minutes). When the client's payload doesn't expose a docId we
+    /// fall back to user-only — broader but still bounded by the
+    /// time window.
+    /// </summary>
+    private async Task<string> EnrichWithSyncEventsAsync(JsonElement payload, string? userId)
+    {
+        if (string.IsNullOrEmpty(userId)) return payload.GetRawText();
+        try
+        {
+            // Pull docId out of the payload if the client included it.
+            Guid? docId = null;
+            if (payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("document", out var doc) &&
+                doc.ValueKind == JsonValueKind.Object &&
+                doc.TryGetProperty("docId", out var docIdProp) &&
+                docIdProp.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(docIdProp.GetString(), out var parsedDocId))
+            {
+                docId = parsedDocId;
+            }
+
+            var since = DateTime.UtcNow.AddMinutes(-SyncLookbackMinutes);
+            var query = _context.SyncTelemetryEvents
+                .AsNoTracking()
+                .Where(e => e.UserId == userId && e.CreatedAt >= since);
+            if (docId is Guid d) query = query.Where(e => e.DocumentId == d);
+
+            var matches = await query
+                .OrderByDescending(e => e.CreatedAt)
+                .Take(SyncLinkLimit)
+                .Select(e => new
+                {
+                    id = e.Id,
+                    eventKind = e.EventKind,
+                    severity = e.Severity,
+                    source = e.Source,
+                    createdAt = e.CreatedAt,
+                    detail = e.Detail,
+                    attemptCount = e.AttemptCount,
+                    durationMs = e.DurationMs,
+                })
+                .ToListAsync();
+
+            // Splice into the existing JSON. We rebuild the root
+            // object so a top-level reserved key doesn't accidentally
+            // get overwritten if the client also sent one.
+            using var input = JsonDocument.Parse(payload.GetRawText());
+            using var ms = new MemoryStream();
+            await using var writer = new Utf8JsonWriter(ms);
+            writer.WriteStartObject();
+            foreach (var prop in input.RootElement.EnumerateObject())
+            {
+                if (prop.NameEquals("linkedSyncEvents")) continue; // we own this key
+                prop.WriteTo(writer);
+            }
+            writer.WritePropertyName("linkedSyncEvents");
+            JsonSerializer.Serialize(writer, matches);
+            writer.WriteEndObject();
+            await writer.FlushAsync();
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Sync-event enrichment failed — storing payload as-is");
+            return payload.GetRawText();
+        }
+    }
+
+    /// <summary>
+    /// Window (minutes) to look back for sync events when enriching a
+    /// capture. 10 covers the typical 'I hit save 3 times in a minute'
+    /// → 409 → rebase → eventual recovery; a longer window starts
+    /// bringing in noise from prior debug sessions.
+    /// </summary>
+    private const int SyncLookbackMinutes = 10;
+    /// <summary>Hard cap on linked events to keep the payload small.</summary>
+    private const int SyncLinkLimit = 50;
 
     public async Task<DiagnosticCaptureDto?> GetByRefTokenAsync(string refToken, string? requesterUserId, bool isAdmin)
     {
