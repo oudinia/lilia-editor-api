@@ -333,6 +333,11 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
+// 30-day retention sweep for math-editor DevTools diagnostic captures.
+// Aligned with the import-review retention so we don't run two cron
+// schedules; tweak DiagnosticCapturePurgeBackgroundService.RetentionDays
+// to change.
+builder.Services.AddHostedService<DiagnosticCapturePurgeBackgroundService>();
 
 // Import telemetry sink (FT-TELEMETRY-001) — captures silent fallbacks
 // + coverage gaps from the import pipeline. DbImportTelemetrySink
