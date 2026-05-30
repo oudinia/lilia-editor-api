@@ -179,7 +179,16 @@ public partial class RenderService : IRenderService
     {
         try
         {
-            var content = block.Content.RootElement;
+            var raw = block.Content.RootElement;
+            // Per-type renderers all call `content.TryGetProperty(...)`
+            // which throws InvalidOperationException unless the root
+            // is an Object. Legacy auto-seeded paragraphs have content
+            // as a JSON string ("") — the underlying REGRESSION-001
+            // shape. Coerce to an empty object so the renderer can do
+            // its lookups and return clean empty markup.
+            var content = raw.ValueKind == System.Text.Json.JsonValueKind.Object
+                ? raw
+                : System.Text.Json.JsonDocument.Parse("{}").RootElement;
 
             return block.Type.ToLowerInvariant() switch
             {
