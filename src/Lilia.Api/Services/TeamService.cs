@@ -1,3 +1,4 @@
+using Lilia.Api.Features.Teams.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -11,13 +12,35 @@ public class TeamService : ITeamService
     private readonly IUserService _userService;
     private readonly INotificationService? _notificationService;
     private readonly Wolverine.IMessageBus? _bus;
+    private readonly ITeamCodenameGenerator? _codenames;
 
-    public TeamService(LiliaDbContext context, IUserService userService, INotificationService? notificationService = null, Wolverine.IMessageBus? bus = null)
+    public TeamService(LiliaDbContext context, IUserService userService, INotificationService? notificationService = null, Wolverine.IMessageBus? bus = null, ITeamCodenameGenerator? codenames = null)
     {
         _context = context;
         _userService = userService;
         _notificationService = notificationService;
         _bus = bus;
+        _codenames = codenames;
+    }
+
+    /// <summary>
+    /// Mint a unique TeamCode. teams.team_code is UNIQUE and the entity
+    /// defaults it to "" — so a team created without a code collides with
+    /// every other code-less team (the bug that blocked creating a second
+    /// team). Mirrors CreateDefaultTeamHandler's retry loop; falls back to
+    /// a GUID-based code if the generator isn't injected (e.g. unit tests).
+    /// </summary>
+    private async Task<string> MintTeamCodeAsync()
+    {
+        if (_codenames is not null)
+        {
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                var candidate = _codenames.Generate();
+                if (!await _context.Teams.AnyAsync(t => t.TeamCode == candidate)) return candidate;
+            }
+        }
+        return $"team-{Guid.NewGuid():N}".Substring(0, 16);
     }
 
     public async Task<List<TeamDto>> GetTeamsAsync(string userId)
@@ -104,6 +127,7 @@ public class TeamService : ITeamService
         {
             Id = Guid.NewGuid(),
             Name = dto.Name,
+            TeamCode = await MintTeamCodeAsync(),
             Slug = dto.Slug ?? GenerateSlug(dto.Name),
             Image = dto.Image,
             OwnerId = userId,
