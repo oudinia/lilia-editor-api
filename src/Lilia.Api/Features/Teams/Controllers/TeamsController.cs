@@ -113,6 +113,21 @@ public class TeamsController : ControllerBase
         return CreatedAtAction(nameof(GetTeam), new { id = team.Id }, team);
     }
 
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: create a real-but-throwaway playground team — backs
+    /// the authed teams playground. Excluded from lists/seat-quotas, loadable
+    /// by id so the real teams UI runs against it; reaped by idle-TTL.
+    /// </summary>
+    [HttpPost("playground")]
+    public async Task<ActionResult<TeamDto>> CreatePlaygroundTeam()
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var team = await _teamService.CreatePlaygroundTeamAsync(userId);
+        await _auditService.LogAsync("team.playground.create", "Team", team.Id.ToString());
+        return CreatedAtAction(nameof(GetTeam), new { id = team.Id }, team);
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<TeamDto>> UpdateTeam(Guid id, [FromBody] UpdateTeamDto dto)
     {

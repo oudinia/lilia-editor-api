@@ -56,7 +56,8 @@ public class TeamService : ITeamService
             .Include(t => t.Owner)
             .Include(t => t.Groups)
                 .ThenInclude(g => g.Members)
-            .Where(t => t.OwnerId == userId || t.Groups.Any(g => g.Members.Any(m => m.UserId == userId)))
+            // FT-SANDBOX-SCOPE: sandbox teams never appear in real team lists.
+            .Where(t => !t.IsPlayground && (t.OwnerId == userId || t.Groups.Any(g => g.Members.Any(m => m.UserId == userId))))
             .ToListAsync();
 
         return teams.Select(t => new TeamDto(
@@ -178,6 +179,77 @@ public class TeamService : ITeamService
             // handler, not this method.
             false
         );
+    }
+
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: create a real-but-throwaway playground team seeded
+    /// with the same structure as a real one (default "Everyone" group, owner
+    /// membership) plus a couple of sample invited members, so the real teams
+    /// UI has something to manage. IsPlayground=true keeps it out of team
+    /// lists + seat quotas, but loadable by id so the playground works.
+    /// Reaped (idle-TTL on UpdatedAt) by the FT-SANDBOX-SCOPE cleanup.
+    /// </summary>
+    public async Task<TeamDto> CreatePlaygroundTeamAsync(string userId)
+    {
+        var ownerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Owner);
+        if (ownerRole == null) throw new InvalidOperationException("Owner role not found");
+
+        var team = new Team
+        {
+            Id = Guid.NewGuid(),
+            Name = "Playground team",
+            TeamCode = await MintTeamCodeAsync(),
+            Slug = $"playground-{Guid.NewGuid():N}".Substring(0, 18),
+            OwnerId = userId,
+            IsPlayground = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        var defaultGroup = new Group
+        {
+            Id = Guid.NewGuid(),
+            TeamId = team.Id,
+            Name = "Everyone",
+            IsDefault = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+        defaultGroup.Members.Add(new GroupMember
+        {
+            Id = Guid.NewGuid(),
+            GroupId = defaultGroup.Id,
+            UserId = userId,
+            RoleId = ownerRole.Id,
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        team.Groups.Add(defaultGroup);
+        _context.Teams.Add(team);
+        await _context.SaveChangesAsync();
+
+        var owner = await _context.Users.FindAsync(userId);
+        return new TeamDto(
+            team.Id, team.Name, team.Slug, team.Image, team.OwnerId, owner?.Name,
+            team.CreatedAt, team.UpdatedAt, 1, false);
+    }
+
+    /// <summary>
+    /// FT-SANDBOX-SCOPE reaper: hard-delete playground teams idle past
+    /// <paramref name="ttlHours"/> (keyed on UpdatedAt — bumped on rename /
+    /// member changes — so an actively-used playground team is never reaped
+    /// mid-session). Groups + members cascade with the team. Idempotent +
+    /// multi-instance safe. No expires_at column needed.
+    /// </summary>
+    public async Task<int> PurgePlaygroundTeamsAsync(int ttlHours = 24)
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-ttlHours);
+        var stale = await _context.Teams
+            .Where(t => t.IsPlayground && t.UpdatedAt < cutoff)
+            .ToListAsync();
+        if (stale.Count == 0) return 0;
+        _context.Teams.RemoveRange(stale);
+        await _context.SaveChangesAsync();
+        return stale.Count;
     }
 
     public async Task<TeamDto?> UpdateTeamAsync(Guid teamId, string userId, UpdateTeamDto dto)

@@ -127,7 +127,8 @@ public class EntitlementService : IEntitlementService
 
     private Task<int> CountTeamSeatsAsync(string userId, CancellationToken ct) =>
         _context.Teams.AsNoTracking()
-            .Where(t => t.OwnerId == userId)
+            // FT-SANDBOX-SCOPE: sandbox teams' seats don't count against quota.
+            .Where(t => t.OwnerId == userId && !t.IsPlayground)
             .SelectMany(t => t.Groups.SelectMany(g => g.Members))
             .Select(m => m.UserId)
             .Distinct()

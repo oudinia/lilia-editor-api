@@ -23,6 +23,7 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
         builder.Property(t => t.Plan).HasColumnName("plan").HasMaxLength(20).HasDefaultValue("free").IsRequired();
         builder.Property(t => t.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(t => t.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+        builder.Property(t => t.IsPlayground).HasColumnName("is_playground").HasDefaultValue(false).IsRequired();
 
         builder.HasIndex(t => t.TeamCode).IsUnique();
         builder.HasIndex(t => t.Slug).IsUnique();

@@ -28,6 +28,16 @@ public class Team
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: true for a real-but-throwaway "playground" team —
+    /// backs the authed teams playground (the real teams UI runs against it)
+    /// without polluting real data. Excluded from team lists and seat quotas,
+    /// but stays loadable by id so the playground works. Reaped (idle-TTL on
+    /// <see cref="UpdatedAt"/>) by the FT-SANDBOX-SCOPE cleanup. NOT a global
+    /// query filter — that would hide it from its own management UI too.
+    /// </summary>
+    public bool IsPlayground { get; set; } = false;
+
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
     // Members nav removed when team_members table was retired

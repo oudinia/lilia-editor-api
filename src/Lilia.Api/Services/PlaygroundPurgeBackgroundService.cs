@@ -2,11 +2,11 @@ namespace Lilia.Api.Services;
 
 /// <summary>
 /// FT-SANDBOX-SCOPE reaper. Periodically hard-deletes sandbox
-/// (<c>is_playground = true</c>) documents that have been idle past the TTL,
-/// so abandoned playgrounds self-clean. Mirrors
-/// <see cref="TrashPurgeBackgroundService"/>. Documents has no inline
-/// <c>expires_at</c>, so the expiry path is an idle-TTL on <c>UpdatedAt</c>
-/// (bumped on every block/metadata write) — an actively-edited playground is
+/// (<c>is_playground = true</c>) documents AND teams that have been idle past
+/// the TTL, so abandoned playgrounds self-clean. Mirrors
+/// <see cref="TrashPurgeBackgroundService"/>. Neither documents nor teams has
+/// an inline <c>expires_at</c>, so the expiry path is an idle-TTL on
+/// <c>UpdatedAt</c> (bumped on every write) — an actively-used playground is
 /// never reaped mid-session.
 /// </summary>
 public class PlaygroundPurgeBackgroundService : BackgroundService
@@ -33,16 +33,18 @@ public class PlaygroundPurgeBackgroundService : BackgroundService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var documentService = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+                var teamService = scope.ServiceProvider.GetRequiredService<ITeamService>();
 
-                var purgedCount = await documentService.PurgePlaygroundDocumentsAsync(TtlHours);
+                var purgedDocs = await documentService.PurgePlaygroundDocumentsAsync(TtlHours);
+                var purgedTeams = await teamService.PurgePlaygroundTeamsAsync(TtlHours);
 
-                if (purgedCount > 0)
+                if (purgedDocs > 0 || purgedTeams > 0)
                 {
-                    _logger.LogInformation("[PlaygroundPurge] Purged {Count} idle playground documents", purgedCount);
+                    _logger.LogInformation("[PlaygroundPurge] Purged {Docs} idle playground documents, {Teams} idle playground teams", purgedDocs, purgedTeams);
                 }
                 else
                 {
-                    _logger.LogDebug("[PlaygroundPurge] No idle playground documents to purge");
+                    _logger.LogDebug("[PlaygroundPurge] No idle playground documents or teams to purge");
                 }
             }
             catch (Exception ex)
