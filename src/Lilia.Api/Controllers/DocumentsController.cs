@@ -136,6 +136,23 @@ public class DocumentsController : ControllerBase
         return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
     }
 
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: create a real-but-throwaway playground document seeded
+    /// with sample blocks — backs the authed editor playground. Excluded from
+    /// lists/quotas (see DocumentService / EntitlementService) but loadable +
+    /// editable so the real editor + autosave run against it.
+    /// </summary>
+    [HttpPost("playground")]
+    public async Task<ActionResult<DocumentDto>> CreatePlaygroundDocument()
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var document = await _documentService.CreatePlaygroundDocumentAsync(userId);
+        await _auditService.LogAsync("document.playground.create", "Document", document.Id.ToString());
+        return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<DocumentDto>> UpdateDocument(Guid id, [FromBody] UpdateDocumentDto dto)
     {

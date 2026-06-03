@@ -39,6 +39,7 @@ public class DocumentService : IDocumentService
                 .ThenInclude(dl => dl.Label)
             .Where(d => d.DeletedAt == null)
             .Where(d => !d.IsTemplate)
+            .Where(d => !d.IsPlayground) // FT-SANDBOX-SCOPE: sandbox docs never in real lists
             .Where(d => d.OwnerId == userId ||
                         d.Collaborators.Any(c => c.UserId == userId) ||
                         d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)));
@@ -304,6 +305,60 @@ public class DocumentService : IDocumentService
                 UpdatedAt = DateTime.UtcNow
             });
         }
+
+        _context.Documents.Add(document);
+        await _context.SaveChangesAsync();
+
+        return (await GetDocumentAsync(document.Id, userId))!;
+    }
+
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: create a real-but-throwaway "playground" document
+    /// seeded with sample blocks — the substrate for authed editor / sharing /
+    /// comments playgrounds. IsPlayground=true keeps it out of lists + quotas
+    /// but loadable + editable by id, so the real editor runs against it and
+    /// autosave actually persists. Reaped by the FT-SANDBOX-SCOPE cleanup.
+    /// </summary>
+    public async Task<DocumentDto> CreatePlaygroundDocumentAsync(string userId)
+    {
+        JsonDocument J(object o) => JsonDocument.Parse(JsonSerializer.Serialize(o));
+        var document = new Document
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = userId,
+            Title = "Editor playground",
+            Language = "en",
+            PaperSize = "a4",
+            FontFamily = "serif",
+            FontSize = 12,
+            Columns = 1,
+            LatexDocumentClass = "article",
+            IsPlayground = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        var i = 0;
+        void Add(string type, object content) => document.Blocks.Add(new Block
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            Type = type,
+            Content = J(content),
+            SortOrder = i++,
+            Status = "draft",
+            Metadata = JsonDocument.Parse("{}"),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+
+        Add("heading", new { text = "Editor playground", level = 1 });
+        Add("paragraph", new { text = "This is a real, throwaway document. Edit anything — it autosaves to the sandbox doc, but it never shows in your dashboard and doesn't count against your quota." });
+        Add("heading", new { text = "Try the blocks", level = 2 });
+        Add("paragraph", new { text = "Type and format, or insert blocks with + or the slash menu. Everything here is the real editor against a real document." });
+        Add("equation", new { latex = "e^{i\\pi} + 1 = 0", displayMode = true });
+        Add("code", new { code = "const playground = true;\nconsole.log('edit me');", language = "javascript" });
+        Add("list", new { items = new[] { "Edit me", "Delete me", "Reorder me" }, ordered = false });
+        Add("blockquote", new { text = "A sandbox is the best place to learn." });
 
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();

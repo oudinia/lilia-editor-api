@@ -115,7 +115,8 @@ public class EntitlementService : IEntitlementService
     // ── Helpers ──────────────────────────────────────────────────────
 
     private Task<int> CountDocsAsync(string userId, CancellationToken ct) =>
-        _context.Documents.AsNoTracking().CountAsync(d => d.OwnerId == userId, ct);
+        // FT-SANDBOX-SCOPE: throwaway playground docs don't count against quota.
+        _context.Documents.AsNoTracking().CountAsync(d => d.OwnerId == userId && !d.IsPlayground, ct);
 
     private Task<int> CountImportsThisMonthAsync(string userId, CancellationToken ct)
     {

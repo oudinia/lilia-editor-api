@@ -40,6 +40,16 @@ public class Document
     public DateTime? LastAutoSavedAt { get; set; }
 
     /// <summary>
+    /// FT-SANDBOX-SCOPE: true for a real-but-throwaway "playground" document —
+    /// it backs an authed playground (the real editor / sharing / comments run
+    /// against it) without polluting real data. Excluded from document lists
+    /// and plan quotas; stays loadable + editable by id so the playground
+    /// works. Reaped by the FT-SANDBOX-SCOPE cleanup. NOT a global query
+    /// filter on purpose — that would hide it from its own editor too.
+    /// </summary>
+    public bool IsPlayground { get; set; } = false;
+
+    /// <summary>
     /// Optimistic-concurrency version for the Flow editor's continuous
     /// background sync. Bumped on every block sync; a conditional UPDATE
     /// keyed on it turns a silent cross-device clobber into a detected

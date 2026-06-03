@@ -33,6 +33,11 @@ public interface IDocumentService
     Task<DocumentDto?> GetDocumentAsync(Guid id, string userId);
     Task<DocumentDto?> GetSharedDocumentAsync(string shareLink);
     Task<DocumentDto> CreateDocumentAsync(string userId, CreateDocumentDto dto);
+
+    /// <summary>FT-SANDBOX-SCOPE: create a real-but-throwaway playground document
+    /// seeded with sample blocks (excluded from lists/quotas, but loadable +
+    /// editable so the real editor runs against it).</summary>
+    Task<DocumentDto> CreatePlaygroundDocumentAsync(string userId);
     Task<DocumentDto?> UpdateDocumentAsync(Guid id, string userId, UpdateDocumentDto dto);
     /// <summary>
     /// Attach or detach a document to/from a team. Pass null to

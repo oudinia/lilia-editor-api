@@ -42,6 +42,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.DeletedAt).HasColumnName("deleted_at");
         builder.Property(d => d.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("draft");
         builder.Property(d => d.LastAutoSavedAt).HasColumnName("last_auto_saved_at");
+        builder.Property(d => d.IsPlayground).HasColumnName("is_playground").HasDefaultValue(false).IsRequired();
 
         // Layout fields
         builder.Property(d => d.MarginTop).HasColumnName("margin_top");
