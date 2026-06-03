@@ -5,7 +5,12 @@ namespace Lilia.Api.Services;
 public interface IImportReviewService
 {
     // Session management
-    Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto);
+    Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false);
+
+    /// <summary>FT-SANDBOX-SCOPE: create a real-but-throwaway playground review
+    /// session seeded with canned blocks (excluded from lists/quotas, can't be
+    /// finalized, auto-expires).</summary>
+    Task<CreateSessionResponseDto> CreatePlaygroundSessionAsync(string userId);
     Task<SessionDataDto?> GetSessionAsync(Guid sessionId, string userId);
 
     /// <summary>

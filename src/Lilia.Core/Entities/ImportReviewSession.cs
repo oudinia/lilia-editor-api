@@ -59,6 +59,15 @@ public class ImportReviewSession
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }
 
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: true for a real-but-throwaway "playground" session —
+    /// it exercises the real review pipeline without polluting real data.
+    /// Playground sessions are excluded from list/quota queries, can't be
+    /// finalized into a real document, and carry a short <see cref="ExpiresAt"/>
+    /// so the existing expiry path reaps them.
+    /// </summary>
+    public bool IsPlayground { get; set; } = false;
+
     // Navigation properties
     public virtual Job? Job { get; set; }
     public virtual User Owner { get; set; } = null!;

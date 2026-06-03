@@ -81,6 +81,30 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
+    /// FT-SANDBOX-SCOPE: create a real-but-throwaway "playground" review
+    /// session seeded with canned blocks — exercises the real review pipeline
+    /// without an upload or polluting real data. Excluded from lists/quotas,
+    /// can't be finalized, auto-expires.
+    /// </summary>
+    [HttpPost("playground")]
+    public async Task<ActionResult<CreateSessionResponseDto>> CreatePlaygroundSession()
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        try
+        {
+            var result = await _reviewService.CreatePlaygroundSessionAsync(userId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ImportReview] Failed to create playground session");
+            return StatusCode(500, new { message = "Failed to create playground session" });
+        }
+    }
+
+    /// <summary>
     /// Load a review session with all data
     /// </summary>
     [HttpGet("{id:guid}")]
@@ -129,6 +153,12 @@ public class ImportReviewController : ControllerBase
             await SessionGroup(id).SendAsync("SessionFinalized", new { documentId = result.Document.Id, userId });
 
             return Ok(result);
+        }
+        catch (Lilia.Core.Exceptions.LiliaException)
+        {
+            // Domain errors (e.g. FT-SANDBOX-SCOPE: playground can't finalize)
+            // carry their own status/message — let the global filter map them.
+            throw;
         }
         catch (Exception ex)
         {

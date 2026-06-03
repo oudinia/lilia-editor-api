@@ -32,6 +32,7 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
         builder.Property(s => s.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(s => s.ExpiresAt).HasColumnName("expires_at");
+        builder.Property(s => s.IsPlayground).HasColumnName("is_playground").HasDefaultValue(false).IsRequired();
 
         builder.HasIndex(s => s.OwnerId);
         builder.HasIndex(s => s.JobId);

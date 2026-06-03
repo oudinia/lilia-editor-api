@@ -40,7 +40,7 @@ public class ImportReviewService : IImportReviewService
 
     // --- Session Management ---
 
-    public async Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto)
+    public async Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false)
     {
         var session = new ImportReviewSession
         {
@@ -54,7 +54,10 @@ public class ImportReviewService : IImportReviewService
                 : null,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddDays(30)
+            // FT-SANDBOX-SCOPE: playground sessions are throwaway — short TTL
+            // so the existing expiry path reaps them within a day.
+            IsPlayground = isPlayground,
+            ExpiresAt = DateTime.UtcNow.AddDays(isPlayground ? 1 : 30)
         };
 
         _context.ImportReviewSessions.Add(session);
@@ -154,6 +157,40 @@ public class ImportReviewService : IImportReviewService
         var blockDtos = blockReviews.Select(br => MapBlockReviewToDto(br, 0, 0)).ToList();
 
         return new CreateSessionResponseDto(sessionDto, blockDtos);
+    }
+
+    /// <summary>
+    /// FT-SANDBOX-SCOPE: create a real (DB-backed) review session seeded with a
+    /// canned block set, flagged <c>IsPlayground</c> — a sandbox for exercising
+    /// the real review pipeline + desktop UI without an upload and without
+    /// polluting real data. Short-lived (reaped by the expiry path) and excluded
+    /// from list/quota queries.
+    /// </summary>
+    public Task<CreateSessionResponseDto> CreatePlaygroundSessionAsync(string userId)
+    {
+        JsonElement J(object o) => JsonSerializer.SerializeToElement(o);
+        var lowConf = J(new[] { new { id = "w-eq", type = "LowConfidenceOCR", message = "Equation was extracted from an image — verify before approving.", severity = "warning" } });
+        var imgErr = J(new[] { new { id = "w-fig", type = "ImageExtractionFailed", message = "Image failed to extract from source document.", severity = "error" } });
+
+        var blocks = new List<CreateReviewBlockDto>();
+        void Add(string type, object content, int conf, JsonElement? warn = null) =>
+            blocks.Add(new CreateReviewBlockDto($"pg-{blocks.Count}", type, J(content), conf, warn, blocks.Count, 0));
+
+        Add("heading", new { text = "Chapter 1: Introduction", level = 1 }, 98);
+        Add("paragraph", new { text = "Lilia is a collaborative academic writing platform designed for researchers, students, and technical teams who need structured LaTeX-compatible documents without the friction of raw LaTeX." }, 92);
+        Add("paragraph", new { text = "This document walks through the core concepts, the block model, and how templates and collaboration work together." }, 88);
+        Add("heading", new { text = "1.1 The Block Model", level = 2 }, 96);
+        Add("paragraph", new { text = "Every document is composed of typed blocks. A block knows its own type, content, and render rules — the editor layer dispatches to the right component automatically." }, 94);
+        Add("equation", new { latex = "\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}", display = true }, 62, lowConf);
+        Add("code", new { code = "function greet(name: string) {\n  return `Hello, ${name}!`;\n}", language = "typescript" }, 99);
+        Add("list", new { items = new[] { "First item", "Second item", "Third item", "Fourth item" }, ordered = false }, 90);
+        Add("figure", new { url = "", caption = "Figure 1: System architecture overview." }, 55, imgErr);
+        Add("table", new { rows = new[] { new[] { "Feature", "Supported", "Notes" }, new[] { "Math", "Yes", "KaTeX" }, new[] { "Code", "Yes", "Shiki" }, new[] { "Images", "Partial", "Manual upload" } } }, 85);
+        Add("blockquote", new { text = "Clarity of thought precedes clarity of writing." }, 78);
+        Add("paragraph", new { text = "Short conclusion paragraph to wrap up the introduction section." }, 91);
+
+        var dto = new CreateReviewSessionDto(null, "Introduction to Lilia (playground)", blocks, null);
+        return CreateSessionAsync(userId, dto, isPlayground: true);
     }
 
     public async Task<SessionDataDto?> GetSessionAsync(Guid sessionId, string userId)
@@ -274,6 +311,12 @@ public class ImportReviewService : IImportReviewService
             .FirstOrDefaultAsync(s => s.Id == sessionId);
         if (session == null) return null;
         if (GetUserRole(session, userId) != "owner") return null;
+
+        // FT-SANDBOX-SCOPE: a throwaway playground session must never escape
+        // into a real document.
+        if (session.IsPlayground)
+            throw new Lilia.Core.Exceptions.LiliaValidationException(
+                "This is a playground session — it can't be finalized into a real document.");
 
         // FT-IMP-001 stage 8 — idempotent checkout. If the instance already
         // produced a document (retry after network blip, refresh that sees
@@ -1896,7 +1939,8 @@ public class ImportReviewService : IImportReviewService
 
     public async Task<List<ReviewSessionSummaryDto>> ListSessionsAsync(string userId, string scope = "active", string? format = null, DateTime? from = null, DateTime? to = null, Guid? documentId = null, CancellationToken ct = default)
     {
-        var q = _context.ImportReviewSessions.Where(s => s.OwnerId == userId);
+        // FT-SANDBOX-SCOPE: real session lists never show throwaway playground sessions.
+        var q = _context.ImportReviewSessions.Where(s => s.OwnerId == userId && !s.IsPlayground);
 
         q = scope switch
         {
