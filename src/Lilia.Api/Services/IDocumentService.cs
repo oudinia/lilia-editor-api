@@ -89,6 +89,11 @@ public interface IDocumentService
     /// </summary>
     Task<int> PurgeExpiredDocumentsAsync(int retentionDays = 30);
 
+    /// <summary>FT-SANDBOX-SCOPE reaper: hard-delete playground documents idle
+    /// past <paramref name="ttlHours"/> (keyed on UpdatedAt, so active sessions
+    /// survive). See <see cref="PlaygroundPurgeBackgroundService"/>.</summary>
+    Task<int> PurgePlaygroundDocumentsAsync(int ttlHours = 24);
+
     /// <summary>
     /// Clone starter/sample documents to a new user for onboarding
     /// </summary>

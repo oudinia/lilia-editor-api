@@ -771,6 +771,31 @@ public class DocumentService : IDocumentService
         return expiredDocuments.Count;
     }
 
+    /// <summary>
+    /// FT-SANDBOX-SCOPE reaper: hard-delete playground (sandbox) documents
+    /// idle past <paramref name="ttlHours"/>. Keyed on UpdatedAt (bumped on
+    /// every block/metadata write) so an actively-edited playground is never
+    /// reaped mid-session — only abandoned ones. Idempotent + multi-instance
+    /// safe (a second replica's DELETE just matches the already-gone rows).
+    /// Blocks + related rows cascade with the document. No expires_at column
+    /// needed (documents has none); idle-TTL on UpdatedAt is the expiry path.
+    /// </summary>
+    public async Task<int> PurgePlaygroundDocumentsAsync(int ttlHours = 24)
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-ttlHours);
+
+        var staleDocuments = await _context.Documents.IgnoreQueryFilters()
+            .Where(d => d.IsPlayground && d.UpdatedAt < cutoff)
+            .ToListAsync();
+
+        if (staleDocuments.Count == 0) return 0;
+
+        _context.Documents.RemoveRange(staleDocuments);
+        await _context.SaveChangesAsync();
+
+        return staleDocuments.Count;
+    }
+
     public async Task<int> CloneStarterDocumentsAsync(string userId)
     {
         const string sampleUserId = "sample-content";

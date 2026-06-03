@@ -333,6 +333,8 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
+// FT-SANDBOX-SCOPE: reap idle sandbox (is_playground) documents.
+builder.Services.AddHostedService<PlaygroundPurgeBackgroundService>();
 // 30-day retention sweep for math-editor DevTools diagnostic captures.
 // Aligned with the import-review retention so we don't run two cron
 // schedules; tweak DiagnosticCapturePurgeBackgroundService.RetentionDays
