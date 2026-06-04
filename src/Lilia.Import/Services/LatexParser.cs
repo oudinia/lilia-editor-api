@@ -690,6 +690,12 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\usepackage(?:\[[^\]]*\])?\{[^}]+\}", "");
         documentContent = Regex.Replace(documentContent, @"\\bibliographystyle\{[^}]+\}", "");
         documentContent = Regex.Replace(documentContent, @"\\bibliography\{[^}]+\}", "");
+        // biblatex forms — \addbibresource{refs.bib} declares the database
+        // (the .bib itself is ingested by the project extractor's Bib pass)
+        // and \printbibliography[...] prints it. Strip both so neither leaks
+        // into the body as raw text.
+        documentContent = Regex.Replace(documentContent, @"\\addbibresource(?:\[[^\]]*\])?\{[^}]+\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\printbibliography(?:\[[^\]]*\])?", "");
 
         // \newtheorem / \newcommand / \renewcommand / \newenvironment —
         // preamble macros that don't translate to any block. Without

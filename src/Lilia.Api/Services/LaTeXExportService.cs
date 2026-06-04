@@ -110,11 +110,12 @@ public class LaTeXExportService : ILaTeXExportService
     {
         var files = new List<ProjectFile>();
         var sb = new StringBuilder();
+        var usesNatbib = DocumentUsesNatbib(blocks);
 
         // Preamble embedded in main.tex
         sb.AppendLine(BuildDocumentClassDirective(doc, options));
         sb.AppendLine();
-        sb.Append(GeneratePackageLines(doc, options));
+        sb.Append(GeneratePackageLines(doc, options, usesNatbib));
         sb.AppendLine();
 
         // Document info
@@ -169,7 +170,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine();
             sb.AppendLine("% Bibliography");
-            sb.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle)}}}");
+            sb.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             sb.AppendLine(@"\bibliography{references}");
         }
 
@@ -208,6 +209,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // main.tex
         var main = new StringBuilder();
+        var usesNatbib = DocumentUsesNatbib(blocks);
         main.AppendLine(BuildDocumentClassDirective(doc, options));
         main.AppendLine();
         main.AppendLine("% Include preamble");
@@ -254,7 +256,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
-            main.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle)}}}");
+            main.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
 
@@ -262,7 +264,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine(@"\end{document}");
 
         files.Add(new ProjectFile("main.tex", main.ToString()));
-        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options)));
+        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options, usesNatbib)));
 
         if (bibEntries.Count > 0)
             files.Add(new ProjectFile("references.bib", GenerateBibTeXFile(bibEntries)));
@@ -309,6 +311,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // main.tex
         var main = new StringBuilder();
+        var usesNatbib = DocumentUsesNatbib(blocks);
         main.AppendLine(BuildDocumentClassDirective(doc, options));
         main.AppendLine();
         main.AppendLine("% Include preamble");
@@ -347,7 +350,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
-            main.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle)}}}");
+            main.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
 
@@ -355,7 +358,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine(@"\end{document}");
 
         files.Add(new ProjectFile("main.tex", main.ToString()));
-        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options)));
+        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options, usesNatbib)));
 
         if (bibEntries.Count > 0)
             files.Add(new ProjectFile("references.bib", GenerateBibTeXFile(bibEntries)));
@@ -463,16 +466,16 @@ public class LaTeXExportService : ILaTeXExportService
         }
     }
 
-    private string GeneratePreambleFile(Document doc, LaTeXExportOptions options)
+    private string GeneratePreambleFile(Document doc, LaTeXExportOptions options, bool usesNatbib = false)
     {
         var sb = new StringBuilder();
         sb.AppendLine("% Preamble file - included by main.tex");
         sb.AppendLine();
-        sb.Append(GeneratePackageLines(doc, options));
+        sb.Append(GeneratePackageLines(doc, options, usesNatbib));
         return sb.ToString();
     }
 
-    private string GeneratePackageLines(Document doc, LaTeXExportOptions options)
+    private string GeneratePackageLines(Document doc, LaTeXExportOptions options, bool usesNatbib = false)
     {
         var sb = new StringBuilder();
 
@@ -481,6 +484,18 @@ public class LaTeXExportService : ILaTeXExportService
         if (!string.IsNullOrEmpty(importedPkgs))
         {
             sb.Append(importedPkgs);
+            sb.AppendLine();
+        }
+
+        // natbib — only when the document actually uses \citep/\citet/etc.
+        // (paired with the natbib-compatible \bibliographystyle in
+        // BibStyleName). Loaded BEFORE the shared packages so it precedes
+        // hyperref (the recommended order). Skipped for legacy \cite-only
+        // docs so their numeric \bibliographystyle{plain} output is unchanged.
+        if (usesNatbib)
+        {
+            sb.AppendLine("% natbib — author-year / textual citations (\\citet, \\citep, …)");
+            sb.AppendLine(@"\usepackage{natbib}");
             sb.AppendLine();
         }
 
@@ -1321,7 +1336,10 @@ public class LaTeXExportService : ILaTeXExportService
         //     which renders as literal text in the PDF instead of a
         //     resolved citation. The placeholder preserves the command
         //     verbatim through the escape pass.
-        result = Regex.Replace(result, @"\\cite\{([^}]+)\}", m => Ph($@"\cite{{{m.Groups[1].Value}}}"));
+        // Citation family — preserve the EXACT command (cite / citep / citet /
+        // citeauthor / citeyear) through the escape pass. Group 1 captures the
+        // command so natbib modes aren't flattened back to \cite.
+        result = Regex.Replace(result, @"\\(cite(?:p|t|author|year)?)\{([^}]+)\}", m => Ph($@"\{m.Groups[1].Value}{{{m.Groups[2].Value}}}"));
         result = Regex.Replace(result, @"\\eqref\{([^}]+)\}", m => Ph($@"\eqref{{{m.Groups[1].Value}}}"));
         result = Regex.Replace(result, @"\\ref\{([^}]+)\}", m => Ph($@"\ref{{{m.Groups[1].Value}}}"));
         result = Regex.Replace(result, @"\\url\{([^}]+)\}", m => Ph($@"\url{{{m.Groups[1].Value}}}"));
@@ -1657,8 +1675,37 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── BibTeX style mapping ───────────────────────────────────────────
 
-    private static string BibStyleName(string style)
+    // FT — natbib citation support. When the document uses any natbib
+    // command (\citep/\citet/\citeauthor/\citeyear), the bibliography style
+    // must be a natbib-compatible .bst or those commands won't compile;
+    // otherwise the plain BibTeX styles are kept so legacy \cite-only docs
+    // export exactly as before (no behaviour change).
+    private static readonly System.Text.RegularExpressions.Regex NatbibCommandRe =
+        new(@"\\cite(?:p|t|author|year)\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private bool DocumentUsesNatbib(List<Block> blocks) =>
+        blocks.Any(b =>
+        {
+            var t = GetContentText(b);
+            return !string.IsNullOrEmpty(t) && NatbibCommandRe.IsMatch(t);
+        });
+
+    private static string BibStyleName(string style, bool usesNatbib = false)
     {
+        if (usesNatbib)
+        {
+            // Map to the natbib-compatible variant so \citet/\citep render.
+            return style switch
+            {
+                "unsrt" => "unsrtnat",
+                "abbrv" => "abbrvnat",
+                "IEEEtran" => "IEEEtran",   // natbib-compatible as-is
+                "apalike" => "apalike",     // author-year, natbib-compatible
+                // "plain", "alpha"/"alphabetic", and the default fall back to
+                // plainnat — natbib's standard author-year style.
+                _ => "plainnat"
+            };
+        }
         return style switch
         {
             "alpha" or "alphabetic" => "alpha",
