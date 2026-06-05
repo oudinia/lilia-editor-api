@@ -359,6 +359,22 @@ public class DocumentService : IDocumentService
         Add("code", new { code = "const playground = true;\nconsole.log('edit me');", language = "javascript" });
         Add("list", new { items = new[] { "Edit me", "Delete me", "Reorder me" }, ordered = false });
         Add("blockquote", new { text = "A sandbox is the best place to learn." });
+        // Citations — seeded with a resolvable bib entry so the citation pill
+        // (and its mode switcher: parenthetical / textual / author / year)
+        // works out of the box. \citet renders textual, \citep parenthetical.
+        Add("heading", new { text = "Citations", level = 2 });
+        Add("paragraph", new { text = "As shown by \\citet{lila2026}, a sandbox speeds up learning \\citep{lila2026}. Click a citation to switch its style." });
+
+        document.BibliographyEntries.Add(new BibliographyEntry
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            CiteKey = "lila2026",
+            EntryType = "article",
+            Data = J(new { title = "Learning in a Sandbox", author = "Lila, A.", year = "2026", journal = "Journal of Practice" }),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
 
         _context.Documents.Add(document);
         await _context.SaveChangesAsync();
