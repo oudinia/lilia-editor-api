@@ -1,4 +1,9 @@
-# Build outputs
+# Build outputs. A bare `bin/` / `obj/` (no leading slash) matches a dir of
+# that name at ANY depth, so this also covers the recursive
+# bin/Debug/net10.0/bin/Debug/... junk that container builds (running as
+# root) sometimes leave in the source tree. `git clean -fdx` removes it;
+# delete root-owned copies with sudo. .gitignore can't stop it being
+# created — that's a build-output bug, not a tracking issue.
 bin/
 obj/
 
@@ -14,7 +19,6 @@ logs/
 
 # Local uploads
 uploads/
-src/Lilia.Api/bin\\Debug/
 scripts/backup-db.env
 
 # TUG font catalogue scraper local cache (not committed to repo)
