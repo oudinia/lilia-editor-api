@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Stops the runaway bin/Debug/net10.0/bin/Debug/net10.0/... nesting that
+    .NET 10.0.103 produces (MSB3021 path-too-long; breaks tree-walking tools
+    and bloats the working tree).
+
+    Root cause: the ASP.NET Web SDK's static-web-assets discovery globs the
+    project tree — including the output directory — at build time, so each
+    rebuild re-includes the previous build's output and copies it a level
+    deeper. Lilia.Api has no wwwroot / Razor / Blazor (it's a REST API; the
+    runtime UseStaticFiles that serves /app/uploads is a separate, unaffected
+    feature), so we turn the build-time static-web-assets pipeline off.
+
+    Note: the separate MSB3552 "**/*.resx cannot be found" SDK glob bug is
+    handled by the Dockerfile's `mkdir -p src/Lilia.Api/bin/Debug` and by the
+    output dir simply existing across local rebuilds — once static web assets
+    are off, the .resx glob has no build output to recurse into.
+
+    Applies to every project via inheritance; a no-op for the non-Web
+    (Core / Infrastructure / Import) projects.
+  -->
+  <PropertyGroup>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+    <!-- Defence-in-depth: re-assert literal bin/obj excludes on the default
+         item globs (the SDK bug lets the implicit Content `**/*` glob bypass
+         the built-in DefaultItemExcludes and traverse the output dir). Literal
+         patterns only — never `$(BaseOutputPath)/**`, which expands to a
+         drive-root `/**` (MSB5029) when the property is empty at eval time. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;**/bin/**;**/obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>

@@ -44,4 +44,20 @@
     <InternalsVisibleTo Include="Lilia.Api.Tests" />
   </ItemGroup>
 
+  <!--
+    .NET 10.0.103 SDK glob bug (dotnet/msbuild#12546): the implicit Content
+    items (appsettings*.json) get re-globbed from the OUTPUT directory on
+    incremental rebuilds, so each build copies them one level deeper and the
+    output nests as bin/Debug/net10.0/bin/Debug/net10.0/... until paths blow
+    past the OS limit (MSB3021). DefaultItemExcludes doesn't stop it — the
+    buggy glob bypasses it — so explicitly drop any Content picked up under the
+    output dirs. The real (project-root) appsettings.json isn't under bin/obj,
+    so it's unaffected. Paired with StaticWebAssetsEnabled=false in
+    Directory.Build.props (the other recursion source).
+  -->
+  <ItemGroup>
+    <Content Remove="bin/**" />
+    <Content Remove="obj/**" />
+  </ItemGroup>
+
 </Project>
