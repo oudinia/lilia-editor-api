@@ -906,6 +906,44 @@ public class LaTeXExportService : ILaTeXExportService
 
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{fig:{label}}}" : "";
 
+        // Subfigures — when the figure carries a `subfigures` array, emit a
+        // subcaption layout (subcaption is in the preamble). Each panel gets an
+        // equal share of \textwidth, mirroring the editor's own preview. The
+        // overall \caption + \label go after the panels.
+        if (content.TryGetProperty("subfigures", out var subs)
+            && subs.ValueKind == JsonValueKind.Array && subs.GetArrayLength() > 0)
+        {
+            var panels = subs.EnumerateArray().ToList();
+            var width = Math.Max(0.2, Math.Min(0.9, 0.9 / panels.Count)).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            var fsb = new StringBuilder();
+            fsb.AppendLine($@"\begin{{{env}}}[H]");
+            fsb.AppendLine(@"\centering");
+            for (int i = 0; i < panels.Count; i++)
+            {
+                var sfSrc = panels[i].TryGetProperty("src", out var ss) ? ss.GetString() ?? "" : "";
+                var sfCap = panels[i].TryGetProperty("caption", out var scp) ? scp.GetString() ?? "" : "";
+                var sfLabel = panels[i].TryGetProperty("label", out var sl) ? sl.GetString() ?? "" : "";
+                fsb.AppendLine($@"\begin{{subfigure}}{{{width}\textwidth}}");
+                fsb.AppendLine(@"\centering");
+                if (!string.IsNullOrEmpty(sfSrc))
+                {
+                    var fn = ExtractImageFilename(sfSrc);
+                    fsb.AppendLine($@"\IfFileExists{{figures/{fn}}}{{\includegraphics[width=\textwidth]{{figures/{fn}}}}}{{\fbox{{\small\textit{{[Missing: {EscapeLatex(fn)}]}}}}}}");
+                }
+                if (!string.IsNullOrEmpty(sfCap))
+                    fsb.AppendLine($@"\caption{{{EscapeLatex(sfCap)}}}" + (!string.IsNullOrEmpty(sfLabel) ? $@"\label{{fig:{sfLabel}}}" : ""));
+                fsb.AppendLine(@"\end{subfigure}");
+                // a little horizontal gap between panels (not after the last)
+                if (i < panels.Count - 1) fsb.AppendLine(@"\hfill");
+            }
+            if (!string.IsNullOrEmpty(caption))
+                fsb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
+            else if (!string.IsNullOrEmpty(labelPart))
+                fsb.AppendLine(labelPart);
+            fsb.Append($@"\end{{{env}}}");
+            return fsb.ToString();
+        }
+
         var sb = new StringBuilder();
         sb.AppendLine($@"\begin{{{env}}}[H]");
         sb.AppendLine(@"\centering");
@@ -1011,45 +1049,163 @@ public class LaTeXExportService : ILaTeXExportService
         var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
         var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "table*" : "table";
 
-        var sb = new StringBuilder();
-        sb.AppendLine($@"\begin{{{env}}}[H]");
-        sb.AppendLine(@"\centering");
-        if (!string.IsNullOrEmpty(caption))
-        {
-            // shortCaption → \caption[short]{long} for the List of Tables;
-            // skip the bracketed arg when empty.
-            var captionPart = !string.IsNullOrEmpty(shortCaption)
+        // longtable: page-breaking tables. When set, swap tabular for the
+        // longtable environment (already in the preamble) and repeat the
+        // header on each page. longtable IS its own float, so we do NOT wrap it
+        // in table/table* — its \caption goes inside the environment.
+        var longTable = (content.TryGetProperty("longTable", out var ltA) && ltA.ValueKind == JsonValueKind.True)
+            || (content.TryGetProperty("longtable", out var ltB) && ltB.ValueKind == JsonValueKind.True);
+
+        var captionLine = !string.IsNullOrEmpty(caption)
+            ? (!string.IsNullOrEmpty(shortCaption)
                 ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}{labelPart}"
-                : $@"\caption{{{EscapeLatex(caption)}}}{labelPart}";
-            sb.AppendLine(captionPart);
+                : $@"\caption{{{EscapeLatex(caption)}}}{labelPart}")
+            : "";
+
+        var sb = new StringBuilder();
+        if (!longTable)
+        {
+            sb.AppendLine($@"\begin{{{env}}}[H]");
+            sb.AppendLine(@"\centering");
+            if (!string.IsNullOrEmpty(captionLine)) sb.AppendLine(captionLine);
         }
-        sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
+
+        // Per-column alignment letters for \multicolumn (the leftmost column of
+        // a span drives its alignment).
+        var colAligns = ResolveColumnAligns(content, colCount);
+
+        // Build the coverage maps from span origins so the export can emit
+        // \multicolumn / \multirow and skip the cells a span absorbs. The
+        // editor keeps full-width rows (data index == grid column), so a span
+        // origin is an object {content,colspan,rowspan} and the cells it covers
+        // remain in the grid but are dropped here.
+        var origins = new Dictionary<(int, int), (int Cs, int Rs, string Text)>();
+        var contLeft = new Dictionary<(int, int), int>(); // rowspan continuation: (r,c0) -> colspan width
+        var covered = new HashSet<(int, int)>();
+        for (int r = 0; r < rowList.Count; r++)
+        {
+            if (rowList[r].ValueKind != JsonValueKind.Array) continue;
+            var cells = rowList[r].EnumerateArray().ToList();
+            for (int c = 0; c < cells.Count; c++)
+            {
+                var (cs, rs) = TableCellSpan(cells[c]);
+                if (cs <= 1 && rs <= 1) continue;
+                origins[(r, c)] = (cs, rs, TableCellText(cells[c]));
+                for (int rr = r; rr < r + rs; rr++)
+                    for (int cc = c; cc < c + cs; cc++)
+                    {
+                        if (rr == r && cc == c) continue;
+                        covered.Add((rr, cc));
+                        if (rr > r && cc == c) contLeft[(rr, cc)] = cs; // left edge of a continuation row
+                    }
+            }
+        }
+
+        // Emit a single body row (grid-aware).
+        string EmitRow(int r, List<JsonElement> cells)
+        {
+            var toks = new List<string>();
+            int c = 0;
+            while (c < colCount)
+            {
+                var align = c < colAligns.Length ? colAligns[c] : "l";
+                if (origins.TryGetValue((r, c), out var o))
+                {
+                    var inner = EscapeLatex(o.Text);
+                    if (o.Rs > 1) inner = $@"\multirow{{{o.Rs}}}{{*}}{{{inner}}}";
+                    toks.Add(o.Cs > 1 ? $@"\multicolumn{{{o.Cs}}}{{{align}}}{{{inner}}}" : inner);
+                    c += Math.Max(1, o.Cs);
+                }
+                else if (contLeft.TryGetValue((r, c), out var cw))
+                {
+                    // Continuation row of a rowspan: leave the slot blank but
+                    // keep the column count consistent.
+                    toks.Add(cw > 1 ? $@"\multicolumn{{{cw}}}{{{align}}}{{}}" : "");
+                    c += Math.Max(1, cw);
+                }
+                else if (covered.Contains((r, c)))
+                {
+                    c += 1; // absorbed by a span; nothing to emit
+                }
+                else
+                {
+                    var text = c < cells.Count ? TableCellText(cells[c]) : "";
+                    toks.Add(EscapeLatex(text));
+                    c += 1;
+                }
+            }
+            return string.Join(" & ", toks) + @" \\";
+        }
+
+        var tableEnv = longTable ? "longtable" : "tabular";
+        if (longTable)
+        {
+            sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
+            // longtable's \caption lives inside the env and ends the line.
+            if (!string.IsNullOrEmpty(captionLine)) sb.AppendLine(captionLine + @" \\");
+        }
+        else sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
         sb.AppendLine(@"\toprule");
 
         if (hasHeaders)
         {
             var headerCells = headers.EnumerateArray()
-                .Select(h => $@"\textbf{{{EscapeLatex(h.GetString() ?? "")}}}")
+                .Select(h => $@"\textbf{{{EscapeLatex(TableCellText(h))}}}")
                 .ToList();
             sb.AppendLine(string.Join(" & ", headerCells) + @" \\");
             sb.AppendLine(@"\midrule");
+            // longtable: repeat the header on every page, then mark the body.
+            if (longTable) { sb.AppendLine(@"\endfirsthead"); sb.AppendLine(string.Join(" & ", headerCells) + @" \\"); sb.AppendLine(@"\midrule"); sb.AppendLine(@"\endhead"); }
         }
 
-        foreach (var row in rowList)
-        {
-            if (row.ValueKind == JsonValueKind.Array)
-            {
-                var cells = row.EnumerateArray()
-                    .Select(c => EscapeLatex(c.GetString() ?? ""))
-                    .ToList();
-                sb.AppendLine(string.Join(" & ", cells) + @" \\");
-            }
-        }
+        for (int r = 0; r < rowList.Count; r++)
+            if (rowList[r].ValueKind == JsonValueKind.Array)
+                sb.AppendLine(EmitRow(r, rowList[r].EnumerateArray().ToList()));
 
         sb.AppendLine(@"\bottomrule");
-        sb.AppendLine(@"\end{tabular}");
+        sb.AppendLine($@"\end{{{tableEnv}}}");
+        if (longTable) return sb.ToString().TrimEnd();
         sb.Append($@"\end{{{env}}}");
         return sb.ToString();
+    }
+
+    // A table cell is either a plain string or an object {content|text, colspan, rowspan}.
+    private static string TableCellText(JsonElement cell)
+    {
+        if (cell.ValueKind == JsonValueKind.String) return cell.GetString() ?? "";
+        if (cell.ValueKind == JsonValueKind.Object)
+        {
+            if (cell.TryGetProperty("content", out var ct) && ct.ValueKind == JsonValueKind.String) return ct.GetString() ?? "";
+            if (cell.TryGetProperty("text", out var tx) && tx.ValueKind == JsonValueKind.String) return tx.GetString() ?? "";
+        }
+        return "";
+    }
+
+    private static (int Colspan, int Rowspan) TableCellSpan(JsonElement cell)
+    {
+        if (cell.ValueKind != JsonValueKind.Object) return (1, 1);
+        int cs = cell.TryGetProperty("colspan", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 1;
+        int rs = cell.TryGetProperty("rowspan", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt32() : 1;
+        return (Math.Max(1, cs), Math.Max(1, rs));
+    }
+
+    // Per-column alignment letters (c/l/r), reading either `alignments` (editor)
+    // or `columnAlign` (legacy). Used for \multicolumn; defaults to 'l'.
+    private static string[] ResolveColumnAligns(JsonElement content, int colCount)
+    {
+        JsonElement arr = default;
+        var has = (content.TryGetProperty("alignments", out arr) && arr.ValueKind == JsonValueKind.Array)
+            || (content.TryGetProperty("columnAlign", out arr) && arr.ValueKind == JsonValueKind.Array);
+        var result = new string[colCount];
+        for (int i = 0; i < colCount; i++)
+        {
+            var raw = has && i < arr.GetArrayLength()
+                ? (arr[i].ValueKind == JsonValueKind.String ? arr[i].GetString() ?? "l" : "l")
+                : "l";
+            raw = raw.Trim().ToLowerInvariant();
+            result[i] = raw switch { "center" or "c" => "c", "right" or "r" => "r", _ => "l" };
+        }
+        return result;
     }
 
     // Languages the `listings` package supports out of the box (canonical
