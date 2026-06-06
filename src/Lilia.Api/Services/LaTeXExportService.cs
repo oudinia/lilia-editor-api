@@ -603,6 +603,17 @@ public class LaTeXExportService : ILaTeXExportService
             sb.Append(layout);
         }
 
+        // User-authored custom preamble (macros / environments) — emitted last,
+        // after all packages + layout, so the author's \newcommand /
+        // \newenvironment / \DeclareMathOperator can build on everything loaded
+        // above and override defaults. Verbatim; the author owns its validity.
+        if (!string.IsNullOrWhiteSpace(doc.CustomPreamble))
+        {
+            sb.AppendLine();
+            sb.AppendLine("% Custom preamble (author-defined macros)");
+            sb.AppendLine(doc.CustomPreamble.Trim());
+        }
+
         return sb.ToString();
     }
 

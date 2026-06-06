@@ -81,7 +81,10 @@ public record DocumentDto(
     // Optimistic-concurrency version. The Flow editor carries this into
     // every background sync; a stale value yields 409.
     // See 2026-05-21-flow-editor-save-model.md.
-    int Version = 0
+    int Version = 0,
+    // User-authored custom preamble (macros / environments) emitted verbatim
+    // into the export preamble. See Document.CustomPreamble.
+    string? CustomPreamble = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -125,7 +128,10 @@ public record UpdateDocumentDto(
     string? DocumentCategory,
     string? Sides,
     bool? TitlePage,
-    string? Orientation
+    string? Orientation,
+    // User-authored custom preamble (macros / environments). See
+    // Document.CustomPreamble.
+    string? CustomPreamble = null
 );
 
 public record TrashDocumentDto(

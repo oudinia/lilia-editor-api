@@ -401,6 +401,7 @@ public class DocumentService : IDocumentService
         if (dto.LatexDocumentClass != null) document.LatexDocumentClass = dto.LatexDocumentClass;
         if (dto.LatexDocumentClassOptions != null) document.LatexDocumentClassOptions = dto.LatexDocumentClassOptions;
         if (dto.LatexPackages != null) document.LatexPackages = dto.LatexPackages;
+        if (dto.CustomPreamble != null) document.CustomPreamble = dto.CustomPreamble;
         if (dto.BalancedColumns.HasValue) document.BalancedColumns = dto.BalancedColumns.Value;
         if (dto.MarginTop != null) document.MarginTop = dto.MarginTop;
         if (dto.MarginBottom != null) document.MarginBottom = dto.MarginBottom;
@@ -1080,7 +1081,8 @@ public class DocumentService : IDocumentService
             LatexEngine: string.IsNullOrEmpty(d.LatexEngine) ? "pdflatex" : d.LatexEngine,
             ExperimentalLatexEdit: d.ExperimentalLatexEdit,
             DocumentCategory: d.DocumentCategory,
-            Version: d.Version
+            Version: d.Version,
+            CustomPreamble: d.CustomPreamble
         );
     }
 

@@ -116,6 +116,17 @@ public class Document
     public string? LatexDocumentClassOptions { get; set; }
     public string? LatexPackages { get; set; }
 
+    /// <summary>
+    /// User-authored LaTeX preamble — custom macros and environments
+    /// (\newcommand / \renewcommand / \newenvironment / \DeclareMathOperator)
+    /// the author defines once and uses throughout the document. Emitted
+    /// verbatim into the export preamble after the standard packages (so the
+    /// macros can build on them) and before \begin{document}. Free-form text;
+    /// the author owns its correctness (a malformed macro fails their compile,
+    /// not ours).
+    /// </summary>
+    public string? CustomPreamble { get; set; }
+
     /// Multi-column balancing — maps to multicol's auto-balance behaviour in
     /// LaTeX, w:cols w:equalWidth in DOCX, and column-fill:balance in HTML.
     public bool BalancedColumns { get; set; }
