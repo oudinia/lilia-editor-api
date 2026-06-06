@@ -1315,11 +1315,39 @@ public class LaTeXExportService : ILaTeXExportService
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{alg:{label}}}" : "";
 
-        var lines = new List<string>();
+        // Build the algorithmic body. The editor stores `lines` as structured
+        // objects { indent, keyword, text, comment }; legacy/imported data may
+        // store `lines` as plain strings or a freeform `body`/`code` string.
+        // Each line becomes a numbered \STATE that always compiles (keywords
+        // are bold text + indent via \hspace, rather than \IF/\ENDIF pairs the
+        // flat line model can't guarantee are balanced).
+        var rendered = new List<string>();
         if (content.TryGetProperty("lines", out var ln) && ln.ValueKind == JsonValueKind.Array)
-            lines.AddRange(ln.EnumerateArray()
-                .Where(e => e.ValueKind == JsonValueKind.String)
-                .Select(e => e.GetString() ?? ""));
+        {
+            foreach (var line in ln.EnumerateArray())
+            {
+                if (line.ValueKind == JsonValueKind.String)
+                {
+                    var t = (line.GetString() ?? "").Trim();
+                    if (t.Length > 0) rendered.Add($@"\STATE {FormatInlineContent(t)}");
+                }
+                else if (line.ValueKind == JsonValueKind.Object)
+                {
+                    var indent = line.TryGetProperty("indent", out var iv) && iv.ValueKind == JsonValueKind.Number ? iv.GetInt32() : 0;
+                    var keyword = line.TryGetProperty("keyword", out var kv) ? kv.GetString() ?? "" : "";
+                    var text = line.TryGetProperty("text", out var txv) ? txv.GetString() ?? "" : "";
+                    var comment = line.TryGetProperty("comment", out var cv) ? cv.GetString() ?? "" : "";
+                    if (string.IsNullOrWhiteSpace(keyword) && string.IsNullOrWhiteSpace(text) && string.IsNullOrWhiteSpace(comment))
+                        continue;
+                    var p = new StringBuilder(@"\STATE ");
+                    if (indent > 0) p.Append($@"\hspace{{{indent}em}}");
+                    if (!string.IsNullOrWhiteSpace(keyword)) p.Append($@"\textbf{{{EscapeLatex(keyword)}}} ");
+                    if (!string.IsNullOrWhiteSpace(text)) p.Append(FormatInlineContent(text));
+                    if (!string.IsNullOrWhiteSpace(comment)) p.Append($@" \COMMENT{{{EscapeLatex(comment)}}}");
+                    rendered.Add(p.ToString());
+                }
+            }
+        }
         else
         {
             var body =
@@ -1327,7 +1355,11 @@ public class LaTeXExportService : ILaTeXExportService
                 content.TryGetProperty("code", out var cd) && cd.ValueKind == JsonValueKind.String ? cd.GetString() :
                 GetText(content);
             if (!string.IsNullOrEmpty(body))
-                lines.AddRange(body.Replace("\r\n", "\n").Split('\n'));
+                foreach (var raw in body.Replace("\r\n", "\n").Split('\n'))
+                {
+                    var t = raw.Trim();
+                    if (t.Length > 0) rendered.Add($@"\STATE {FormatInlineContent(t)}");
+                }
         }
 
         var sb = new StringBuilder();
@@ -1337,12 +1369,7 @@ public class LaTeXExportService : ILaTeXExportService
         else if (!string.IsNullOrEmpty(labelPart))
             sb.AppendLine(labelPart);
         sb.AppendLine(@"\begin{algorithmic}[1]");
-        foreach (var line in lines)
-        {
-            var t = line.Trim();
-            if (t.Length == 0) continue;
-            sb.AppendLine($@"\STATE {FormatInlineContent(t)}");
-        }
+        foreach (var r in rendered) sb.AppendLine(r);
         sb.AppendLine(@"\end{algorithmic}");
         sb.Append(@"\end{algorithm}");
         return sb.ToString();

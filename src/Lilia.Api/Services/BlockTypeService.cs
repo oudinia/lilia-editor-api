@@ -61,7 +61,10 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.ColumnBreak, "Column Break", "Force content to next column", "layoutSideByLarge", CategoryDocument, new { }),
             MakeBlockType(BlockTypes.Embed, "Embed", "Raw LaTeX or Typst code block", "terminal2", CategoryDocument, new { engine = "latex", code = "", label = "", caption = "" }),
             MakeBlockType(BlockTypes.Footnote, "Footnote", "Footnote annotation at page bottom", "superscript", CategoryDocument, new { text = "" }),
-            MakeBlockType(BlockTypes.Algorithm, "Algorithm", "Pseudocode algorithm block", "cpu", CategoryDocument, new { title = "", language = "pseudocode", code = "", label = "", caption = "" }),
+            // Default content matches the editor's structured algorithm model
+            // (caption + label + lines[{indent,keyword,text,comment}]); the
+            // export renders that shape into \begin{algorithm}/algorithmic.
+            MakeBlockType(BlockTypes.Algorithm, "Algorithm", "Pseudocode algorithm block", "cpu", CategoryDocument, new { caption = "", label = "", lines = new[] { new { indent = 0, keyword = "", text = "", comment = "" } } }),
             MakeBlockType(BlockTypes.Callout, "Callout", "Admonition or callout box (note, tip, warning, important, example)", "alert", CategoryDocument, new { variant = "note", title = "", text = "" }),
 
             // Presentation
