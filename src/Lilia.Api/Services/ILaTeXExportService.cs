@@ -30,4 +30,12 @@ public class LaTeXExportOptions
     public string BibliographyStyle { get; set; } = "plain";
     public double LineSpacing { get; set; } = 1.0;
     public bool IncludeImages { get; set; } = true;
+
+    /// <summary>
+    /// arXiv-ready export: also compile the project (pdflatex + BibTeX) and
+    /// bundle the resulting <c>main.bbl</c> in the ZIP, so the submission
+    /// compiles with pdflatex alone (arXiv's safest path) without re-running
+    /// BibTeX. Bound from <c>?arxiv=true</c>. Zip mode only.
+    /// </summary>
+    public bool Arxiv { get; set; }
 }

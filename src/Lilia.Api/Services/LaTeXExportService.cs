@@ -16,18 +16,31 @@ public class LaTeXExportService : ILaTeXExportService
     private readonly IStorageService _storageService;
     private readonly ILogger<LaTeXExportService> _logger;
     private readonly Lilia.Import.Services.IImportTelemetrySink _telemetry;
+    private readonly ILaTeXRenderService? _renderService;
 
     public LaTeXExportService(
         LiliaDbContext context,
         IStorageService storageService,
         ILogger<LaTeXExportService> logger,
-        Lilia.Import.Services.IImportTelemetrySink? telemetry = null)
+        Lilia.Import.Services.IImportTelemetrySink? telemetry = null,
+        ILaTeXRenderService? renderService = null)
     {
         _context = context;
         _storageService = storageService;
         _logger = logger;
         _telemetry = telemetry ?? new Lilia.Import.Services.NoopImportTelemetrySink();
+        _renderService = renderService;
     }
+
+    private const string ArxivReadmeNote =
+        "\n\n--- arXiv submission ---\n" +
+        "This project is arXiv-ready: a precompiled main.bbl is included, so it\n" +
+        "compiles with pdflatex alone (no BibTeX run needed):\n\n" +
+        "  pdflatex main.tex\n" +
+        "  pdflatex main.tex\n\n" +
+        "references.bib is kept for reference. Builds on a recent TeX Live; all\n" +
+        "packages are standard CTAN. If you change the bibliography, re-run the\n" +
+        "full pdflatex -> bibtex -> pdflatex -> pdflatex cycle to refresh main.bbl.\n";
 
     /// <summary>
     /// Test-only entry point that bypasses the DB. Generates the
@@ -59,6 +72,33 @@ public class LaTeXExportService : ILaTeXExportService
         var bibEntries = doc.BibliographyEntries?.ToList() ?? new List<BibliographyEntry>();
 
         var projectFiles = GenerateProject(doc, blocks, bibEntries, options);
+
+        // arXiv-ready: compile the project (pdflatex pass 1 → BibTeX) and bundle
+        // the resulting main.bbl, so the submission compiles with pdflatex alone
+        // (arXiv's safest path) without re-running BibTeX. Falls back gracefully
+        // to references.bib-only if compilation is unavailable or fails.
+        if (options.Arxiv && bibEntries.Count > 0 && _renderService != null)
+        {
+            var texFiles = projectFiles
+                .Where(f => f.Path.EndsWith(".tex") || f.Path.EndsWith(".bib") || f.Path.EndsWith(".bst"))
+                .Select(f => (f.Path, f.Content))
+                .ToList();
+            var bbl = await _renderService.GenerateBblAsync(texFiles);
+            if (!string.IsNullOrWhiteSpace(bbl))
+            {
+                projectFiles.Add(new ProjectFile("main.bbl", bbl));
+                _logger.LogInformation("[Export] arXiv-ready: bundled main.bbl ({Len} chars) for document {DocId}", bbl.Length, documentId);
+            }
+            else
+            {
+                _logger.LogWarning("[Export] arXiv-ready requested but .bbl generation failed for document {DocId}; shipping references.bib only", documentId);
+            }
+
+            // Append an arXiv-readiness note to the README.
+            var ri = projectFiles.FindIndex(f => f.Path == "README.txt");
+            if (ri >= 0)
+                projectFiles[ri] = new ProjectFile("README.txt", projectFiles[ri].Content + ArxivReadmeNote);
+        }
 
         // Build ZIP
         var ms = new MemoryStream();

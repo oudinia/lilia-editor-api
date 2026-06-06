@@ -15,6 +15,18 @@ public interface ILaTeXRenderService
     Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
     Task<LatexValidationResult> ValidateAsync(string latex);
     Task<LatexValidationResult> ValidateAsync(string latex, string engine);
+
+    /// <summary>
+    /// Compile a multi-file LaTeX project (pdflatex pass 1 → BibTeX) just far
+    /// enough to produce the bibliography, and return the resulting
+    /// <c>{mainStem}.bbl</c> content (or null if BibTeX produced none). Used by
+    /// the arXiv-ready export to bundle a precompiled .bbl so the submission
+    /// compiles with pdflatex alone. <paramref name="files"/> are (relative
+    /// path, text content): main.tex, references.bib, preamble/chapters, etc.
+    /// </summary>
+    Task<string?> GenerateBblAsync(
+        IReadOnlyList<(string Path, string Content)> files,
+        string mainStem = "main", int timeoutSeconds = 60);
 }
 
 /// <summary>
@@ -359,6 +371,51 @@ public class LaTeXRenderService : ILaTeXRenderService
         "lualatex" => "lualatex",
         _          => "pdflatex",
     };
+
+    public async Task<string?> GenerateBblAsync(
+        IReadOnlyList<(string Path, string Content)> files,
+        string mainStem = "main", int timeoutSeconds = 60)
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-bbl-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            // Write the project out, creating subdirs (chapters/, etc.).
+            foreach (var (rel, content) in files)
+            {
+                var full = Path.Combine(tmpDir, rel);
+                var dir = Path.GetDirectoryName(full);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                await File.WriteAllTextAsync(full, content);
+            }
+
+            // Pass 1: pdflatex emits {mainStem}.aux with \citation/\bibdata/\bibstyle.
+            // nonstopmode (no -halt-on-error) so a missing \includegraphics asset
+            // doesn't abort before the .aux is written — BibTeX only needs the .aux.
+            await RunProcessAsync("pdflatex", $"-interaction=nonstopmode {mainStem}.tex", tmpDir, timeoutSeconds);
+
+            // BibTeX: {mainStem}.aux + references.bib -> {mainStem}.bbl.
+            var (bibExit, bibOut, _) = await RunProcessAsync("bibtex", mainStem, tmpDir, timeoutSeconds);
+
+            var bblPath = Path.Combine(tmpDir, $"{mainStem}.bbl");
+            if (File.Exists(bblPath))
+            {
+                var bbl = await File.ReadAllTextAsync(bblPath);
+                if (!string.IsNullOrWhiteSpace(bbl)) return bbl;
+            }
+            _logger.LogWarning("[bbl] BibTeX produced no .bbl (exit {Exit}): {Out}", bibExit, bibOut.Length > 400 ? bibOut[..400] : bibOut);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[bbl] .bbl generation failed");
+            return null;
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
 
     private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout, bool tolerant = false, string engine = "pdflatex")
     {
