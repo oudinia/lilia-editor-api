@@ -390,6 +390,36 @@ public class ImportReviewService : IImportReviewService
                 INSERT INTO documents (id, owner_id, title, created_at, updated_at)
                 VALUES ({documentId}, {ownerId}, {documentTitle}, {now}, {now})", ct);
 
+            // Preserve the imported LaTeX preamble — class / packages / macros.
+            // The body parser drops these; for a .tex import the raw source is
+            // on the session, so we extract once here and write it onto the new
+            // document (document class, \usepackage set, and custom macros).
+            // Without this, an imported paper loses its \newcommand definitions
+            // and re-exports under a generic article preamble.
+            var pre = await _context.ImportReviewSessions
+                .Where(s => s.Id == sessionId)
+                .Select(s => new { s.RawImportData, s.SourceFormat })
+                .FirstOrDefaultAsync(ct);
+            if (pre != null
+                && !string.IsNullOrWhiteSpace(pre.RawImportData)
+                && (pre.SourceFormat == "latex" || pre.SourceFormat == "tex"))
+            {
+                var ex = LatexPreambleExtractor.Extract(pre.RawImportData);
+                if (!string.IsNullOrWhiteSpace(ex.CustomPreamble)
+                    || !string.IsNullOrWhiteSpace(ex.PackagesJson)
+                    || !string.IsNullOrWhiteSpace(ex.DocumentClass))
+                {
+                    // Only set fields the extractor found; COALESCE keeps any
+                    // value the document already carries.
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        UPDATE documents SET
+                            custom_preamble = COALESCE({ex.CustomPreamble}, custom_preamble),
+                            ""LatexDocumentClass"" = COALESCE({ex.DocumentClass}, ""LatexDocumentClass""),
+                            ""LatexPackages"" = COALESCE({ex.PackagesJson}, ""LatexPackages"")
+                        WHERE id = {documentId}", ct);
+                }
+            }
+
             // The centrepiece: copy approved/edited staged rows into real blocks
             // without routing through the app layer. COALESCE picks edited
             // content over original when the reviewer made changes.
