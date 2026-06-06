@@ -38,4 +38,15 @@ public class LaTeXExportOptions
     /// BibTeX. Bound from <c>?arxiv=true</c>. Zip mode only.
     /// </summary>
     public bool Arxiv { get; set; }
+
+    /// <summary>
+    /// Citation backend: <c>natbib</c> (default — BibTeX, most journal-compatible,
+    /// arXiv-safe) or <c>biblatex</c> (modern, needs Biber). When
+    /// <c>biblatex</c>, the export loads <c>biblatex</c> + <c>\addbibresource</c>,
+    /// prints with <c>\printbibliography</c>, and maps the citation commands
+    /// (\citet→\textcite, \citep→\parencite, \cite→\autocite). The stored
+    /// citation <em>mode</em> is backend-agnostic, so this is a pure export-time
+    /// choice. Bound from <c>?citationBackend=biblatex</c>.
+    /// </summary>
+    public string CitationBackend { get; set; } = "natbib";
 }

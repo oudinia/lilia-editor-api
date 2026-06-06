@@ -34,6 +34,11 @@ public static class LaTeXPreambleBuilder
         "memoir",
         "scrartcl", "scrbook", "scrreprt",
         "beamer", "beamerposter",
+        // Journal classes that work with Lilia's standard \maketitle/\section
+        // structure (no special frontmatter macros required). elsarticle /
+        // llncs / acmart need per-class frontmatter templates — add them with
+        // that work, not here.
+        "IEEEtran",
     };
 
     /// <summary>

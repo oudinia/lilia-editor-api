@@ -54,7 +54,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
-        var files = GenerateSingleFile(doc, blocks, bibEntries, options);
+        var files = ApplyCitationBackend(GenerateSingleFile(doc, blocks, bibEntries, options), options);
         return files.First(f => f.Path == "main.tex").Content;
     }
 
@@ -77,7 +77,9 @@ public class LaTeXExportService : ILaTeXExportService
         // the resulting main.bbl, so the submission compiles with pdflatex alone
         // (arXiv's safest path) without re-running BibTeX. Falls back gracefully
         // to references.bib-only if compilation is unavailable or fails.
-        if (options.Arxiv && bibEntries.Count > 0 && _renderService != null)
+        // arXiv .bbl is BibTeX-based — only meaningful for the natbib backend.
+        // biblatex uses Biber (different .bbl + limited arXiv support), so skip.
+        if (options.Arxiv && !IsBiblatex(options) && bibEntries.Count > 0 && _renderService != null)
         {
             var texFiles = projectFiles
                 .Where(f => f.Path.EndsWith(".tex") || f.Path.EndsWith(".bib") || f.Path.EndsWith(".bst"))
@@ -129,7 +131,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
-        return options.Structure switch
+        var files = options.Structure switch
         {
             "multi" when options.MultiFileLayout == "overleaf" =>
                 GenerateMultiFileOverleaf(doc, blocks, bibEntries, options),
@@ -138,6 +140,7 @@ public class LaTeXExportService : ILaTeXExportService
             _ =>
                 GenerateSingleFile(doc, blocks, bibEntries, options)
         };
+        return ApplyCitationBackend(files, options);
     }
 
     // ── Single-file structure ──────────────────────────────────────────
@@ -680,6 +683,7 @@ public class LaTeXExportService : ILaTeXExportService
                 "list" => RenderList(content),
                 "blockquote" => RenderBlockquote(content),
                 "theorem" => RenderTheorem(content),
+                "algorithm" or "algorithm2e" => RenderAlgorithm(content),
                 // Match both canonical camelCase (BlockTypes constants)
                 // and the all-lowercase forms legacy / imported data uses.
                 "tableOfContents" or "tableofcontents" or "toc" => @"\tableofcontents" + "\n" + @"\newpage",
@@ -1298,6 +1302,52 @@ public class LaTeXExportService : ILaTeXExportService
         }
     }
 
+    /// <summary>
+    /// Algorithm block → an <c>algorithm</c> float wrapping <c>algorithmic</c>
+    /// pseudocode (both packages are in the shared preamble). Body is either a
+    /// <c>lines</c> array or a freeform <c>body</c>/<c>code</c> string (split on
+    /// newlines); each line becomes a numbered \STATE. Lines pass through
+    /// FormatInlineContent so inline math ($…$) and emphasis survive.
+    /// </summary>
+    private string RenderAlgorithm(JsonElement content)
+    {
+        var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
+        var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{alg:{label}}}" : "";
+
+        var lines = new List<string>();
+        if (content.TryGetProperty("lines", out var ln) && ln.ValueKind == JsonValueKind.Array)
+            lines.AddRange(ln.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString() ?? ""));
+        else
+        {
+            var body =
+                content.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() :
+                content.TryGetProperty("code", out var cd) && cd.ValueKind == JsonValueKind.String ? cd.GetString() :
+                GetText(content);
+            if (!string.IsNullOrEmpty(body))
+                lines.AddRange(body.Replace("\r\n", "\n").Split('\n'));
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine(@"\begin{algorithm}[H]");
+        if (!string.IsNullOrEmpty(caption))
+            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
+        else if (!string.IsNullOrEmpty(labelPart))
+            sb.AppendLine(labelPart);
+        sb.AppendLine(@"\begin{algorithmic}[1]");
+        foreach (var line in lines)
+        {
+            var t = line.Trim();
+            if (t.Length == 0) continue;
+            sb.AppendLine($@"\STATE {FormatInlineContent(t)}");
+        }
+        sb.AppendLine(@"\end{algorithmic}");
+        sb.Append(@"\end{algorithm}");
+        return sb.ToString();
+    }
+
     private string RenderTheorem(JsonElement content)
     {
         var theoremType = content.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
@@ -1791,6 +1841,61 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         return "";
+    }
+
+    // ── biblatex backend ────────────────────────────────────────────────
+    // The project is always generated in the natbib form; when the caller asks
+    // for the biblatex backend we transform the generated .tex in place. Mode is
+    // stored backend-agnostically (as the natbib command), so this is the only
+    // place the two backends diverge.
+
+    private static bool IsBiblatex(LaTeXExportOptions options) =>
+        string.Equals(options.CitationBackend, "biblatex", StringComparison.OrdinalIgnoreCase);
+
+    // natbib bibliographystyle → biblatex style. Defaults to author-year
+    // (citations are typically \citet/\citep, i.e. author-year intent).
+    private static string BiblatexStyle(string style) => style switch
+    {
+        "IEEEtran" => "ieee",
+        "alpha" or "alphabetic" => "alphabetic",
+        "unsrt" or "numeric" => "numeric",
+        // "plain"/"apalike"/default → author-year, mirroring natbib's
+        // plain→plainnat upgrade for the author-year citation commands.
+        _ => "authoryear",
+    };
+
+    /// <summary>Rewrite one generated .tex file from the natbib form to biblatex.</summary>
+    private static string ToBiblatex(string tex, string style)
+    {
+        // Citation commands. citet/citep first (so the bare-\cite pass doesn't
+        // touch them); \citeauthor/\citeyear are valid in biblatex, left as-is.
+        tex = Regex.Replace(tex, @"\\citet(\*?)\{", "\\textcite$1{");
+        tex = Regex.Replace(tex, @"\\citep(\*?)\{", "\\parencite$1{");
+        tex = Regex.Replace(tex, @"\\cite\{", "\\autocite{");
+
+        var pkg = $"\\usepackage[backend=biber,style={style}]{{biblatex}}\n\\addbibresource{{references.bib}}";
+        if (Regex.IsMatch(tex, @"\\usepackage\{natbib\}"))
+            // Replace natbib (and its preceding comment line) with biblatex.
+            tex = Regex.Replace(tex, @"(?:% natbib[^\n]*\n)?\\usepackage\{natbib\}", pkg);
+        else if (Regex.IsMatch(tex, @"\\bibliography\{references\}") && !tex.Contains("{biblatex}"))
+            // No natbib was loaded (e.g. bare \cite only) — inject biblatex after \documentclass.
+            tex = Regex.Replace(tex, @"(\\documentclass[^\n]*\n)", "$1" + pkg + "\n");
+
+        // Bibliography emission: drop \bibliographystyle, swap \bibliography{references}.
+        tex = Regex.Replace(tex, @"\\bibliographystyle\{[^}]*\}\s*\n?", "");
+        tex = Regex.Replace(tex, @"\\bibliography\{references\}", "\\printbibliography");
+        return tex;
+    }
+
+    /// <summary>Apply the biblatex transform to every .tex file in the project.</summary>
+    private static List<ProjectFile> ApplyCitationBackend(List<ProjectFile> files, LaTeXExportOptions options)
+    {
+        if (!IsBiblatex(options)) return files;
+        var style = BiblatexStyle(options.BibliographyStyle);
+        for (int i = 0; i < files.Count; i++)
+            if (files[i].Path.EndsWith(".tex"))
+                files[i] = files[i] with { Content = ToBiblatex(files[i].Content, style) };
+        return files;
     }
 
     private record ProjectFile(string Path, string Content);

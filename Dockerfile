@@ -24,6 +24,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-fonts-recommended \
     texlive-science \
     texlive-plain-generic \
+    # biblatex + Biber backend (GA: the biblatex citation export) and the
+    # publisher journal classes (IEEEtran, elsarticle, llncs, …) so
+    # ?citationBackend=biblatex and journal-class documents also compile
+    # in-app, not only when the user compiles elsewhere (Overleaf/arXiv).
+    texlive-bibtex-extra \
+    biber \
+    texlive-publishers \
     lmodern \
     cm-super \
     dvipng \
