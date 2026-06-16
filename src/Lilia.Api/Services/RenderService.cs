@@ -1053,7 +1053,24 @@ public partial class RenderService : IRenderService
         }
 
         latex.AppendLine(@"\end{document}");
-        return latex.ToString();
+        // Defensive: a stray \documentclass / \documentstyle in block content (a
+        // raw-LaTeX paste or an imported fragment) would join the preamble's own and
+        // fail the compile with "Two \documentclass commands". Keep the first
+        // (the assembled preamble's), comment out the rest.
+        return DedupeDocumentClass(latex.ToString());
+    }
+
+    private static readonly Regex DuplicateDocClassRe =
+        new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
+
+    private static string DedupeDocumentClass(string source)
+    {
+        var first = true;
+        return DuplicateDocClassRe.Replace(source, m =>
+        {
+            if (first) { first = false; return m.Value; }
+            return "% [lilia] removed duplicate \\documentclass";
+        });
     }
 
     public string RenderBlockToLatex(Block block)
