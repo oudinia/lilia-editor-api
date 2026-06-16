@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace Lilia.Api.Services;
@@ -71,8 +72,28 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
             maxConcurrent, queueCapacity);
     }
 
+    // Guard: a stray \documentclass / \documentstyle in block content (a raw-LaTeX
+    // paste or an imported fragment) joins the preamble's own and fails every compile
+    // with "! LaTeX Error: Two \documentclass or \documentstyle commands." This is the
+    // single chokepoint all compiles funnel through, so dedupe here: keep the first,
+    // comment out the rest.
+    private static readonly Regex DuplicateDocClassRe =
+        new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
+
+    private static string DedupeDocumentClass(string latex)
+    {
+        if (string.IsNullOrEmpty(latex)) return latex;
+        var first = true;
+        return DuplicateDocClassRe.Replace(latex, m =>
+        {
+            if (first) { first = false; return m.Value; }
+            return "% [lilia] removed duplicate \\documentclass";
+        });
+    }
+
     public async Task<CompilationResult> CompileLatexAsync(string latex, CompilationType type, int timeoutSeconds = 30)
     {
+        latex = DedupeDocumentClass(latex);
         Interlocked.Increment(ref _totalCompilations);
 
         // Check cache for validation requests
