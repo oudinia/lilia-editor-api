@@ -952,13 +952,15 @@ public partial class RenderService : IRenderService
     /// DRIFT RISK: this is composed from the SAME sub-builders as the preamble
     /// section of <see cref="RenderToLatexAsync"/> (BuildDocumentClassDirectiveFromDoc,
     /// BuildImportedPackageLinesFromDoc, LaTeXPreamble.Packages, EngineAddendum,
-    /// the *Shims, BuildLayoutPreamble, TheoremEnvironments) but is a SEPARATE
-    /// method, not a shared extraction — so the two can drift. It was NOT
-    /// extracted from RenderToLatexAsync because this validation preamble also
-    /// emits <c>CustomPreamble</c> (which RenderToLatexAsync currently does NOT),
-    /// so sharing one method would have changed the full-doc output. If you
-    /// change the preamble ordering/contents in RenderToLatexAsync, mirror it
-    /// here. The exporter's own preamble lives in LaTeXExportService.
+    /// the *Shims, BuildLayoutPreamble, TheoremEnvironments, CustomPreamble) but
+    /// is a SEPARATE method, not a shared extraction — so the two can drift.
+    /// Both now emit <c>CustomPreamble</c> in the same position (after theorem
+    /// envs, before \begin{document}); the only difference is that the full-doc
+    /// path then adds \title/\maketitle/body/bibliography while this one adds
+    /// counter-priming + the single fragment. If you change the preamble
+    /// ordering/contents in RenderToLatexAsync, mirror it here (a future cleanup
+    /// could extract the shared preamble now that they align). The exporter's
+    /// own preamble lives in LaTeXExportService.
     /// </summary>
     internal static string BuildPreambleForValidation(Document doc, LatexEngine engine)
     {
@@ -1074,6 +1076,16 @@ public partial class RenderService : IRenderService
 
         // Theorem environments
         latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
+
+        // User-authored macros/environments — emitted after the standard
+        // packages (so they can build on them) and before \begin{document},
+        // matching LaTeXExportService and BuildPreambleForValidation. Without
+        // this, a block using a custom macro passes per-block validation +
+        // export yet fails the full-doc preview compile.
+        if (!string.IsNullOrWhiteSpace(doc.CustomPreamble))
+        {
+            latex.AppendLine(doc.CustomPreamble.Trim());
+        }
 
         latex.AppendLine($@"\title{{{EscapeLatex(doc.Title)}}}");
         latex.AppendLine(@"\begin{document}");
