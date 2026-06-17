@@ -329,6 +329,16 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Where(w => !w.Contains("Font shape"))
                         .Where(w => !w.Contains("Size substitutions"))
                         .Where(w => !w.Contains("microtype"))
+                        // Benign single-pass rerun notices — our validation
+                        // compiles once, so hyperref/cross-ref/.out "rerun"
+                        // warnings always appear and are NOT actionable. Without
+                        // this, every block that compiles cleanly would still
+                        // surface a "warning" (and the per-block "✓ compiles"
+                        // indicator would never read green).
+                        .Where(w => !w.Contains("rerunfilecheck"))
+                        .Where(w => !w.Contains("Rerun to get"))
+                        .Where(w => !w.Contains("Rerun LaTeX"))
+                        .Where(w => !w.Contains("Label(s) may have changed"))
                         .Take(10)
                         .ToArray();
 

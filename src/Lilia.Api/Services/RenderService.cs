@@ -941,6 +941,73 @@ public partial class RenderService : IRenderService
         catch { return string.Empty; }
     }
 
+    /// <summary>
+    /// Builds the document's real preamble (everything that precedes
+    /// <c>\begin{document}</c> in <see cref="RenderToLatexAsync"/>, MINUS
+    /// <c>\title</c>/<c>\maketitle</c>/body/bibliography) for CONTEXTUAL
+    /// per-block validation: documentclass(+options) + imported packages +
+    /// standard packages + engine addendum + journal/CV/beamer/newspaper/
+    /// calendar shims + layout preamble + theorem envs + CustomPreamble.
+    ///
+    /// DRIFT RISK: this is composed from the SAME sub-builders as the preamble
+    /// section of <see cref="RenderToLatexAsync"/> (BuildDocumentClassDirectiveFromDoc,
+    /// BuildImportedPackageLinesFromDoc, LaTeXPreamble.Packages, EngineAddendum,
+    /// the *Shims, BuildLayoutPreamble, TheoremEnvironments) but is a SEPARATE
+    /// method, not a shared extraction — so the two can drift. It was NOT
+    /// extracted from RenderToLatexAsync because this validation preamble also
+    /// emits <c>CustomPreamble</c> (which RenderToLatexAsync currently does NOT),
+    /// so sharing one method would have changed the full-doc output. If you
+    /// change the preamble ordering/contents in RenderToLatexAsync, mirror it
+    /// here. The exporter's own preamble lives in LaTeXExportService.
+    /// </summary>
+    internal static string BuildPreambleForValidation(Document doc, LatexEngine engine)
+    {
+        var latex = new StringBuilder();
+
+        latex.AppendLine(BuildDocumentClassDirectiveFromDoc(doc));
+
+        var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
+        if (!string.IsNullOrEmpty(importedPkgs))
+        {
+            latex.AppendLine(importedPkgs);
+        }
+
+        latex.AppendLine(LaTeXPreamble.Packages);
+
+        var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
+        if (!string.IsNullOrEmpty(engineAddendum))
+        {
+            latex.AppendLine(engineAddendum);
+        }
+
+        latex.AppendLine(LaTeXPreamble.JournalShims);
+        latex.AppendLine(LaTeXPreamble.CvShims);
+        latex.AppendLine(LaTeXPreamble.BeamerShims);
+        latex.AppendLine(LaTeXPreamble.NewspaperShims);
+        latex.AppendLine(LaTeXPreamble.CalendarShims);
+
+        var layout = LaTeXPreambleBuilder.BuildLayoutPreamble(doc);
+        if (!string.IsNullOrWhiteSpace(layout))
+        {
+            latex.AppendLine(layout);
+        }
+
+        latex.AppendLine();
+
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
+
+        // User-authored macros/environments — emitted after the standard
+        // packages (so they can build on them) and before \begin{document},
+        // mirroring the exporter. RenderToLatexAsync omits this today; per-block
+        // validation needs it so blocks using custom macros don't false-error.
+        if (!string.IsNullOrWhiteSpace(doc.CustomPreamble))
+        {
+            latex.AppendLine(doc.CustomPreamble.Trim());
+        }
+
+        return latex.ToString();
+    }
+
     // LaTeX rendering
     public async Task<string> RenderToLatexAsync(Guid documentId)
     {
@@ -1063,7 +1130,7 @@ public partial class RenderService : IRenderService
     private static readonly Regex DuplicateDocClassRe =
         new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
 
-    private static string DedupeDocumentClass(string source)
+    internal static string DedupeDocumentClass(string source)
     {
         var first = true;
         return DuplicateDocClassRe.Replace(source, m =>

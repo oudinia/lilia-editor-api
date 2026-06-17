@@ -226,16 +226,68 @@ public class LaTeXRenderController : ControllerBase
         var block = await GetBlockAsync(blockId);
         if (block == null) return NotFound();
 
-        // Cache check: same content + same rule version → skip the compile.
+        var latex = _renderService.RenderBlockToLatex(block);
+
+        // ── Contextual validation (CONTEXTUAL-PER-BLOCK) ──────────────────────
+        // Compile the block inside the DOCUMENT's REAL preamble (class, packages,
+        // shims, layout, theorem envs, CustomPreamble) instead of a minimal
+        // standalone article. This kills false "undefined macro / wrong class"
+        // errors. Falls back to the minimal wrapper if the doc can't be loaded
+        // so validation never hard-fails.
+        var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+        var doc = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == block.DocumentId);
+
+        // Block content is the per-block hash component (unchanged semantics).
+        var blockContentHash = _validationCache.ComputeHash(block);
+
+        string fullLatex;
+        string contentHash;   // value persisted into the content_hash column
+        string engine;
+
+        if (doc is null)
+        {
+            // Defensive fallback — minimal standalone wrapper, original behaviour.
+            engine = EngineDetector.Detect(latex).ToCli();
+            fullLatex = LaTeXPreamble.WrapForValidation(latex, engine.ParseEngine());
+            contentHash = blockContentHash;
+        }
+        else
+        {
+            // Counter-priming: emit \setcounter for this block's position so the
+            // standalone display numbering matches the full document (N = count
+            // of PRECEDING blocks of the relevant kind, same doc).
+            var counterPriming = await BuildCounterPrimingAsync(db, block);
+
+            // Engine: honour the doc's explicit engine, but bump up if the
+            // assembled preamble+fragment needs lua/xelatex (e.g. fontspec).
+            var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
+            // Build the preamble first so the detector sees imported packages too.
+            var preamble = Lilia.Api.Services.RenderService.BuildPreambleForValidation(doc, explicitEngine);
+            var detected = EngineDetector.Detect(preamble + "\n" + latex);
+            var engineEnum = detected > explicitEngine ? detected : explicitEngine;
+            // Preamble may flip engine (fontspec addendum), so rebuild under the
+            // resolved engine before assembling the wrapper.
+            preamble = Lilia.Api.Services.RenderService.BuildPreambleForValidation(doc, engineEnum);
+            engine = engineEnum.ToCli();
+
+            var assembled = preamble + "\n\\begin{document}\n" + counterPriming + "\n" + latex + "\n\\end{document}";
+            // DedupeDocumentClass is the chokepoint: a stray \documentclass in the
+            // block fragment would collide with the preamble's own otherwise.
+            fullLatex = Lilia.Api.Services.RenderService.DedupeDocumentClass(assembled);
+
+            // Combined cache key: block content + a hash of the doc CONTEXT
+            // (preamble inputs + this block's counter position + rule version).
+            // Editing the preamble or moving the block changes docContextHash →
+            // every affected block's combined hash changes → re-validate; no
+            // stale green. Reuses the existing content_hash column (no schema
+            // change).
+            var docContextHash = ComputeDocContextHash(doc, counterPriming);
+            contentHash = CombineHashes(blockContentHash, docContextHash);
+        }
+
+        // Cache check: same combined hash + engine + rule version → skip compile.
         // Per-block validation is the hottest validation path (editor calls it
         // on every blur), so cache hits are the vast majority of traffic.
-        var contentHash = _validationCache.ComputeHash(block);
-        var latex = _renderService.RenderBlockToLatex(block);
-        // Auto-detect engine from rendered LaTeX. pdflatex is the floor;
-        // lualatex only when the block actually needs it (fontspec /
-        // \directlua / unicode-math). User doesn't pick — too easy to
-        // mis-pick, and a wrong choice produces false validation signals.
-        var engine = EngineDetector.Detect(latex).ToCli();
         // Cache key includes engine — same content cached separately
         // for pdflatex vs lualatex avoids stale "Undefined control
         // sequence \setmainfont" results sneaking in after an engine flip.
@@ -255,8 +307,6 @@ public class LaTeXRenderController : ControllerBase
                 validatedAt = cached.ValidatedAt
             });
         }
-
-        var fullLatex = LaTeXPreamble.WrapForValidation(latex, engine.ParseEngine());
 
         var result = await _latexService.ValidateAsync(fullLatex, engine);
         var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
@@ -490,6 +540,107 @@ public class LaTeXRenderController : ControllerBase
     {
         var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
         return await db.Blocks.FindAsync(blockId);
+    }
+
+    // ── Contextual per-block validation helpers ──────────────────────────────
+
+    /// <summary>
+    /// Builds the deterministic \setcounter prefix that primes the block's
+    /// display numbering to match its position in the full document. N = count
+    /// of PRECEDING blocks (SortOrder &lt; this block's, same DocumentId) of the
+    /// relevant kind. Kept to the common counters (equation/figure/table +
+    /// section/subsection for headings + the theorem-family counter). Exotic
+    /// counters are skipped on purpose. Returns "" when nothing to prime.
+    /// </summary>
+    private static async Task<string> BuildCounterPrimingAsync(
+        Lilia.Infrastructure.Data.LiliaDbContext db, Lilia.Core.Entities.Block block)
+    {
+        var type = block.Type.ToLowerInvariant();
+
+        // Map block type → the counter it advances. Only the common counters.
+        // heading is handled separately (depends on its level).
+        string? counter = type switch
+        {
+            "equation" => "equation",
+            "figure" or "image" => "figure",
+            "table" => "table",
+            "theorem" => null, // resolved below from theoremType
+            _ => null,
+        };
+
+        // Theorem-family: the counter name is the (unstarred) environment name,
+        // e.g. \begin{lemma} advances the `lemma` counter. Unnumbered theorems
+        // (numbered:false) don't advance a counter — skip priming for those.
+        if (type == "theorem")
+        {
+            var c = block.Content.RootElement;
+            var numbered = !c.TryGetProperty("numbered", out var np) || np.ValueKind != System.Text.Json.JsonValueKind.False;
+            if (numbered)
+                counter = c.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
+        }
+
+        // Heading: level 1 → section, level 2 → subsection. Deeper levels share
+        // the subsection look in practice; we only prime the two common ones.
+        if (type is "heading" or "header")
+        {
+            var c = block.Content.RootElement;
+            var level = c.TryGetProperty("level", out var l) && l.ValueKind == System.Text.Json.JsonValueKind.Number ? l.GetInt32() : 1;
+            counter = level switch { 1 => "section", 2 => "subsection", _ => null };
+        }
+
+        if (counter is null) return string.Empty;
+
+        // Count preceding blocks of the SAME kind in the same document. We count
+        // by the block Type set that maps to this counter so the priming matches
+        // how the body renders. figure/image both advance `figure`.
+        var kinds = counter switch
+        {
+            "figure" => new[] { "figure", "image" },
+            _ => new[] { type },
+        };
+
+        var preceding = await db.Blocks
+            .Where(b => b.DocumentId == block.DocumentId && b.SortOrder < block.SortOrder)
+            .Where(b => kinds.Contains(b.Type.ToLower()))
+            .CountAsync();
+
+        // \setcounter{X}{N} → the block then renders as number N+1, matching its
+        // position. For headings/theorems the same arithmetic holds.
+        return $"\\setcounter{{{counter}}}{{{preceding}}}";
+    }
+
+    /// <summary>
+    /// Hash of the document CONTEXT that affects how a block compiles +
+    /// displays: preamble inputs + this block's counter-priming string + the
+    /// rule version. Mixed into the per-block cache key so editing the preamble
+    /// (or moving the block) misses the cache and forces re-validation.
+    /// </summary>
+    private static string ComputeDocContextHash(Lilia.Core.Entities.Document doc, string counterPriming)
+    {
+        var input = string.Join("|", new[]
+        {
+            doc.LatexDocumentClass ?? "",
+            doc.LatexDocumentClassOptions ?? "",
+            doc.LatexPackages ?? "",
+            doc.CustomPreamble ?? "",
+            doc.LatexEngine ?? "",
+            counterPriming,
+            ValidationCacheService.RuleVersion,
+        });
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Combines the block-content hash with the doc-context hash into the single
+    /// value persisted in the existing <c>content_hash</c> column — no schema
+    /// change. Either component changing changes the combined key.
+    /// </summary>
+    private static string CombineHashes(string blockContentHash, string docContextHash)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(blockContentHash + ":" + docContextHash));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
     /// <summary>
