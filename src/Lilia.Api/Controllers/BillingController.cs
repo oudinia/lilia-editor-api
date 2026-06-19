@@ -1,7 +1,9 @@
 using System.Text;
 using Lilia.Api.Services;
+using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Controllers;
 
@@ -10,6 +12,7 @@ namespace Lilia.Api.Controllers;
 //  integration point — any storefront (lilia-cloud, editor, …) calls
 //  these instead of talking to Stripe itself.
 //
+//    GET  /api/billing/plans     — public catalog of plans (anon)
 //    POST /api/billing/checkout  — start a Checkout for a plan (auth)
 //    POST /api/billing/portal    — open the Stripe customer portal (auth)
 //    POST /api/billing/webhook   — Stripe subscription webhook (anon,
@@ -21,16 +24,49 @@ namespace Lilia.Api.Controllers;
 public class BillingController : ControllerBase
 {
     private readonly IBillingService _billing;
+    private readonly LiliaDbContext _db;
     private readonly ILogger<BillingController> _logger;
 
-    public BillingController(IBillingService billing, ILogger<BillingController> logger)
+    public BillingController(IBillingService billing, LiliaDbContext db, ILogger<BillingController> logger)
     {
         _billing = billing;
+        _db = db;
         _logger = logger;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    /// <summary>
+    /// Public catalog of active plans. Storefront pricing tables and
+    /// in-app upgrade prompts call this to render plan cards. Includes
+    /// caps + features so the same response drives the marketing page
+    /// and the entitlement-aware UI on the editor side. No PII; safe to
+    /// cache for ~5 min.
+    /// </summary>
+    [HttpGet("plans")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetPlans(CancellationToken ct)
+    {
+        var plans = await _db.Plans
+            .AsNoTracking()
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.MonthlyPrice ?? 0m)
+            .Select(p => new
+            {
+                id = p.Id,
+                slug = p.Slug,
+                displayName = p.DisplayName,
+                monthlyPrice = p.MonthlyPrice,
+                yearlyPrice = p.YearlyPrice,
+                caps = p.Caps,
+                features = p.Features,
+            })
+            .ToListAsync(ct);
+
+        Response.Headers.CacheControl = "public, max-age=300";
+        return Ok(new { plans });
+    }
 
     public record CheckoutRequest(string PlanSlug, string? Interval);
 

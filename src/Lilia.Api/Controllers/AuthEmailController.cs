@@ -78,6 +78,14 @@ public class AuthEmailController : ControllerBase
             return BadRequest(new { error = "invalid_email" });
         }
 
+        // Resolve the callback origin. Default = editor (back-compat).
+        // Callers may pass redirectTo (e.g. the storefront wants the
+        // magic link to land back on liliaeditor.com, not editor.*)
+        // — only honored if the origin is on the Auth:CallbackOrigins
+        // allowlist, otherwise we silently fall back to the editor
+        // default to prevent open-redirect / phishing.
+        var callbackOrigin = ResolveCallbackOrigin(req.RedirectTo);
+
         var http = BuildAdminClient(out var apiBase);
         if (http is null)
         {
@@ -103,7 +111,6 @@ public class AuthEmailController : ControllerBase
             return Ok(new { sent = false, reason = "mint_failed" });
         }
 
-        var editorOrigin = _config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com";
         var intent = kind switch
         {
             AuthEmailKind.PasswordReset => "&intent=password_reset",
@@ -111,7 +118,7 @@ public class AuthEmailController : ControllerBase
             AuthEmailKind.Verification  => "&intent=verify",
             _ => "",
         };
-        var url = $"{editorOrigin}/auth/callback?stytch_token_type=magic_links" +
+        var url = $"{callbackOrigin}/auth/callback?stytch_token_type=magic_links" +
                   $"&token={Uri.EscapeDataString(token)}{intent}";
 
         try
@@ -137,6 +144,37 @@ public class AuthEmailController : ControllerBase
         }
 
         return Ok(new { sent = true });
+    }
+
+    /// <summary>
+    /// Pick the callback origin for the magic-link URL. Caller may
+    /// request a different origin via <c>redirectTo</c> (e.g. the
+    /// storefront wants <c>https://liliaeditor.com</c>); we honor it
+    /// only if its scheme+host appears in <c>Auth:CallbackOrigins</c>.
+    /// The path/query of <c>redirectTo</c> is discarded — the actual
+    /// path is always <c>/auth/callback</c> on the chosen origin.
+    /// Unknown / malformed origins silently fall back to the editor
+    /// default to prevent open-redirect abuse.
+    /// </summary>
+    private string ResolveCallbackOrigin(string? redirectTo)
+    {
+        var fallback = _config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com";
+        if (string.IsNullOrWhiteSpace(redirectTo)) return fallback;
+
+        if (!Uri.TryCreate(redirectTo, UriKind.Absolute, out var uri))
+            return fallback;
+        var origin = $"{uri.Scheme}://{uri.Authority}";
+
+        var allowlist = (_config["Auth:CallbackOrigins"] ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var allowed in allowlist)
+        {
+            if (string.Equals(origin, allowed, StringComparison.OrdinalIgnoreCase))
+                return origin;
+        }
+        _logger.LogWarning(
+            "Rejected redirectTo origin {Origin} (not on Auth:CallbackOrigins) — using default", origin);
+        return fallback;
     }
 
     // ---- Stytch admin helpers ----
@@ -231,6 +269,13 @@ public class AuthEmailRequest
 {
     public string? Email { get; set; }
     public string? Locale { get; set; }
+
+    /// <summary>
+    /// Origin the magic-link should land on (e.g. <c>https://liliaeditor.com</c>).
+    /// Only honored if listed in <c>Auth:CallbackOrigins</c>; otherwise the
+    /// editor origin is used. The path is always <c>/auth/callback</c>.
+    /// </summary>
+    public string? RedirectTo { get; set; }
 }
 
 internal enum AuthEmailKind
