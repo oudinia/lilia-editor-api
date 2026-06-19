@@ -608,7 +608,9 @@ app.UseM2MAuth();
 app.UseAuthorization();
 
 // Sync user data on authenticated requests
-app.UseUserSync();
+// TEMP (mobile-test, 2026-04-27): disabled per user — no writes to prod DB.
+// Revert with `git checkout`.
+// app.UseUserSync();
 
 app.MapControllers();
 
@@ -640,7 +642,9 @@ if (!app.Environment.IsEnvironment("Testing"))
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
-    await dbContext.Database.MigrateAsync();
+    // TEMP (mobile-test, 2026-04-27): MigrateAsync skipped to avoid mutating
+    // prod schema (user explicitly asked). Revert with `git checkout`.
+    // await dbContext.Database.MigrateAsync();
 
     // Warm the LaTeX catalog cache post-migration so the first import
     // hits memory instead of paying the query cost mid-request.
@@ -663,14 +667,14 @@ if (!app.Environment.IsEnvironment("Testing"))
 }
 
 // Seed system templates
-using (var scope = app.Services.CreateScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
-    // Templates are now documents — no separate seeder needed
-    // await SystemTemplateSeeder.SeedAsync(dbContext);
-    await SystemFormulaSeeder.SeedAsync(dbContext);
-    await SystemSnippetSeeder.SeedAsync(dbContext);
-}
+// TEMP (mobile-test, 2026-04-27): seeders skipped — same reasoning as
+// MigrateAsync above. Revert with `git checkout`.
+// using (var scope = app.Services.CreateScope())
+// {
+//     var dbContext = scope.ServiceProvider.GetRequiredService<LiliaDbContext>();
+//     await SystemFormulaSeeder.SeedAsync(dbContext);
+//     await SystemSnippetSeeder.SeedAsync(dbContext);
+// }
 
 // Startup validation: warn loudly if PDF provider is mis-configured
 {
