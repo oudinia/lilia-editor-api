@@ -1845,6 +1845,11 @@ public partial class RenderService : IRenderService
                         var rendered = EscapeLatex(cellText);
 
                         rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
+                        // Guard: a cell starting with '[' immediately after a row break (\\)
+                        // or a booktabs rule (\midrule/\toprule) is misparsed as an optional
+                        // length argument (\\[..], \midrule[..]) → "Missing number". Lead with
+                        // an empty group so the bracket is plain text.
+                        if (rendered.StartsWith("[", StringComparison.Ordinal)) rendered = "{}" + rendered;
                         cells.Add(rendered);
                         colIdx += Math.Max(colspan, 1);
                     }
@@ -2164,8 +2169,12 @@ public partial class RenderService : IRenderService
         var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
         var label = content.TryGetProperty("label", out var labelProp) ? labelProp.GetString() ?? "" : "";
 
-        // Use starred variant for unnumbered theorems
-        var envName = numbered ? theoremType : $"{theoremType}*";
+        // `proof` is amsthm's built-in environment — always unnumbered, with NO
+        // starred form (`proof*` is undefined → compile error). Everything else
+        // uses the starred variant when unnumbered.
+        var envName = theoremType == "proof"
+            ? "proof"
+            : (numbered ? theoremType : $"{theoremType}*");
         var titleOption = !string.IsNullOrEmpty(title) ? $"[{EscapeLatex(title)}]" : "";
 
         var sb = new StringBuilder();
