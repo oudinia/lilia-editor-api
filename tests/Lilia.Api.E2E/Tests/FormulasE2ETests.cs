@@ -143,8 +143,10 @@ public class FormulasE2ETests : E2ETestBase
         var id = f.GetProperty("id").GetString()!;
         TrackForCleanup("/api/formulas", id);
 
-        // FormulaThemes.IsValid rejected the value — Theme is null.
-        var themeProp = f.GetProperty("theme");
-        themeProp.ValueKind.Should().Be(JsonValueKind.Null);
+        // FormulaThemes.IsValid rejected the value — Theme is null. The
+        // serializer omits null properties, so "theme" is either absent
+        // or explicitly null; both mean "no theme".
+        if (f.TryGetProperty("theme", out var themeProp))
+            themeProp.ValueKind.Should().Be(JsonValueKind.Null);
     }
 }
