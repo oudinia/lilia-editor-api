@@ -146,13 +146,22 @@ public class LatexCatalogServiceTests : IntegrationTestBase
         });
         await db.SaveChangesAsync();
 
-        var fullToken = catalog.LookupToken("section", "command")!.Id;
-        var partialToken = catalog.LookupToken("minipage", "environment")!.Id;
-        // \cvitem (moderncv) is shimmed at the seed layer — still shimmed
-        // after today's honesty passes. \frame used to be shimmed but
-        // was demoted to partial when we clarified that beamer imports
-        // flatten overlays rather than rewriting via a class shim.
-        var shimmedToken = catalog.LookupToken("cvitem", "command", "moderncv")!.Id;
+        // Pick a real token at each coverage level from the seeded catalog
+        // rather than hardcoding specific tokens (their levels drift across
+        // coverage-honesty migrations — e.g. minipage moved partial→full).
+        async Task<Guid> TokenAtLevel(string level)
+        {
+            var id = await db.LatexTokens.AsNoTracking()
+                .Where(t => t.CoverageLevel == level)
+                .Select(t => t.Id)
+                .FirstOrDefaultAsync();
+            id.Should().NotBe(Guid.Empty, $"the seeded catalog should contain at least one '{level}' token");
+            return id;
+        }
+
+        var fullToken = await TokenAtLevel("full");
+        var partialToken = await TokenAtLevel("partial");
+        var shimmedToken = await TokenAtLevel("shimmed");
 
         await catalog.RecordUsageAsync(sessionId, new[]
         {

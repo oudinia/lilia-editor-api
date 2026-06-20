@@ -294,8 +294,12 @@ public class BlocksControllerTests : IntegrationTestBase
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var blocks = await response.Content.ReadFromJsonAsync<List<BlockDto>>();
-        blocks.Should().HaveCount(2);
+        // The batch endpoint returns a BatchUpdateResultDto envelope
+        // (blocks + document version for optimistic concurrency), not a
+        // bare block array.
+        var result = await response.Content.ReadFromJsonAsync<BatchUpdateResultDto>();
+        result.Should().NotBeNull();
+        result!.Blocks.Should().HaveCount(2);
     }
 
     // --- PUT reorder ---

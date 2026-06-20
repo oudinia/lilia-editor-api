@@ -13,17 +13,61 @@ public class TemplatesControllerTests : IntegrationTestBase
 
     public TemplatesControllerTests(TestDatabaseFixture fixture) : base(fixture) { }
 
+    /// <summary>
+    /// Seeds a public system template (a Document owned by "system" with
+    /// IsTemplate=true). Production seeds these from database/003_seed_templates.sql
+    /// at deploy time; the migrate-only test DB has none, and the per-test
+    /// cleanup wipes documents — so tests that need a system template seed
+    /// their own here instead of relying on shared global state.
+    /// </summary>
+    private async Task<Lilia.Core.Entities.Document> SeedSystemTemplateAsync(
+        string? category = "academic", string? name = "System Article Template")
+    {
+        await using var db = CreateDbContext();
+        if (await db.Users.FindAsync("system") is null)
+        {
+            db.Users.Add(new Lilia.Core.Entities.User
+            {
+                Id = "system",
+                Email = "system@lilia.internal",
+                Name = "Lilia",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+        var doc = new Lilia.Core.Entities.Document
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = "system",
+            Title = name!,
+            IsTemplate = true,
+            IsPublicTemplate = true,
+            TemplateName = name,
+            TemplateCategory = category,
+            TemplateDescription = "Seeded system template for tests.",
+            Language = "en",
+            PaperSize = "a4",
+            FontFamily = "serif",
+            FontSize = 12,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Documents.Add(doc);
+        await db.SaveChangesAsync();
+        return doc;
+    }
+
     [Fact]
     public async Task GetTemplates_ReturnsSystemTemplates()
     {
         await SeedUserAsync(UserId);
+        await SeedSystemTemplateAsync();
 
         var response = await Client.GetAsync("/api/templates");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var templates = await response.Content.ReadFromJsonAsync<List<TemplateListDto>>();
         templates.Should().NotBeNull();
-        // System templates are seeded on app startup
         templates!.Should().Contain(t => t.IsSystem);
     }
 
@@ -51,6 +95,7 @@ public class TemplatesControllerTests : IntegrationTestBase
     public async Task GetTemplate_ById_ReturnsTemplate()
     {
         await SeedUserAsync(UserId);
+        await SeedSystemTemplateAsync();
 
         // Get list first to find a valid ID
         var listResponse = await Client.GetAsync("/api/templates");
