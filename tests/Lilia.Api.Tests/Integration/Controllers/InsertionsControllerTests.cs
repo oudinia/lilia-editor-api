@@ -27,6 +27,12 @@ public class InsertionsControllerTests : IntegrationTestBase
 {
     public InsertionsControllerTests(TestDatabaseFixture fixture) : base(fixture) { }
 
+    // Names of latex_tokens rows this test class seeded. latex_tokens is
+    // catalog data (NOT wiped by the base CleanupTestDataAsync), so we must
+    // remove our own fixtures — otherwise their null handler_kind leaks into
+    // CatalogIntegrityTests when both classes share the collection's DB.
+    private readonly List<string> _seededTokenNames = new();
+
     [Fact]
     public async Task GetInsertions_Anonymous_Returns401()
     {
@@ -240,5 +246,20 @@ public class InsertionsControllerTests : IntegrationTestBase
             UpdatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
+        _seededTokenNames.Add(name);
+    }
+
+    public override async Task DisposeAsync()
+    {
+        // Remove the token fixtures we added so they don't pollute other
+        // catalog tests sharing this collection's database.
+        if (_seededTokenNames.Count > 0)
+        {
+            await using var db = CreateDbContext();
+            var rows = db.LatexTokens.Where(t => _seededTokenNames.Contains(t.Name));
+            db.LatexTokens.RemoveRange(rows);
+            await db.SaveChangesAsync();
+        }
+        await base.DisposeAsync();
     }
 }

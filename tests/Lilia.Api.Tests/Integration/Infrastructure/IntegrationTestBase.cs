@@ -135,7 +135,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
 
     public virtual Task InitializeAsync() => Task.CompletedTask;
 
-    public async Task DisposeAsync()
+    public virtual async Task DisposeAsync()
     {
         TestAuthHandler.ClearClaims();
         await CleanupTestDataAsync();
