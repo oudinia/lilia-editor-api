@@ -470,6 +470,9 @@ builder.Services.AddScoped<IAiService, AiService>();
 // Register AI assistant service (math generation, writing improvement, block classification)
 builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 
+// Register AI Document-Architect service (conversational block-structure proposals)
+builder.Services.AddScoped<IAiArchitectService, AiArchitectService>();
+
 // Register Lilia.Import services for document conversion. DocxParser
 // gets the IImportTelemetrySink so DOCX warnings flow into the same
 // import_telemetry_events table as LaTeX warnings (FT-TELEMETRY-001
