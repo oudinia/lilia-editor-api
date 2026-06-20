@@ -94,6 +94,16 @@ public static class AiArchitectPrompts
         """;
 
     /// <summary>
+    /// Context used when the conversation starts from scratch — no document
+    /// exists yet (a from-scratch draft). The architect proposes a structure
+    /// from nothing; every operation is an "add".
+    /// </summary>
+    public const string NewDraftContext =
+        "This is a brand-new, empty document — there are no blocks yet. "
+        + "Propose a structure from scratch; every operation should be an \"add\". "
+        + "Do not reference existing block ids (there are none).";
+
+    /// <summary>
     /// Assemble the full system prompt: skill guidance + vocabulary + output
     /// contract + the live document context.
     /// </summary>

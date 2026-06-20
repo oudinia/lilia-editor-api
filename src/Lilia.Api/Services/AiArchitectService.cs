@@ -90,17 +90,24 @@ public class AiArchitectService : IAiArchitectService
             return AiArchitectOutcome.Lock("over-budget", "You've used all your AI credits for this period.");
         }
 
-        // Resolve & validate the document. No access → treat as not-entitled
-        // for *this* document (the editor surfaces it the same way).
-        if (!Guid.TryParse(request.DocumentId, out var documentId))
-            return AiArchitectOutcome.Lock("not-entitled", "Document not found.");
-
-        var document = await _documentService.GetDocumentAsync(documentId, userId);
-        if (document is null)
-            return AiArchitectOutcome.Lock("not-entitled", "Document not found or not accessible.");
+        // Resolve the document for context. A from-scratch draft (no id, the
+        // sentinel "new", or an unparseable id) is a valid first-run: the
+        // architect proposes a structure from nothing and the editor applies
+        // accepted ops to a freshly-minted doc. We never lock on a missing
+        // document — only key / entitlement / budget gate access.
+        Guid? documentId = null;
+        DocumentDto? document = null;
+        if (Guid.TryParse(request.DocumentId, out var parsedId))
+        {
+            document = await _documentService.GetDocumentAsync(parsedId, userId);
+            if (document is not null)
+                documentId = parsedId;
+        }
 
         // ── 2. CONTEXT ────────────────────────────────────────────────────
-        var context = BuildDocumentContext(document);
+        var context = document is not null
+            ? BuildDocumentContext(document)
+            : AiArchitectPrompts.NewDraftContext;
 
         // ── 3. MESSAGES ───────────────────────────────────────────────────
         var systemPrompt = AiArchitectPrompts.BuildSystemPrompt(context);
@@ -326,7 +333,7 @@ public class AiArchitectService : IAiArchitectService
     // ──────────────────────────────────────────────────────────────────────
 
     private async Task<Guid> PersistPendingAsync(
-        string userId, Guid documentId, string model, List<ChatMessage> messages, CancellationToken ct)
+        string userId, Guid? documentId, string model, List<ChatMessage> messages, CancellationToken ct)
     {
         var promptHash = HashPrompt(string.Join("\n", messages.Select(m => m.Text)));
         var row = new AiRequest
