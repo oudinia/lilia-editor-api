@@ -718,6 +718,12 @@ public class LatexParser : ILatexParser
         // input rule reads $...$, not \(...\)).
         documentContent = Regex.Replace(documentContent, @"\\\(\s*(.+?)\s*\\\)", "$$$1$$", RegexOptions.Singleline);
 
+        // Harvest cross-reference labels from the RAW content BEFORE the
+        // strip below rewrites \ref{label} → label. Once stripped, the
+        // commands are gone and ExtractInlineReferences (which scans the
+        // built element text) would find nothing.
+        var harvestedLabels = HarvestReferencedLabels(documentContent);
+
         // Cross-references — surface the label as plain text so the
         // user sees the reference target without raw LaTeX syntax. A
         // proper cross-ref node is a separate piece of work; readable
@@ -736,7 +742,8 @@ public class LatexParser : ILatexParser
         // Walk all text-bearing elements and harvest citation keys + reference labels.
         // The editor uses these to validate "you cited X but it's not in your bibliography"
         // and "you referenced label Y but it doesn't exist anywhere in the document".
-        ExtractInlineReferences(document);
+        // Pre-harvested labels (from before the \ref strip above) are merged in.
+        ExtractInlineReferences(document, harvestedLabels);
 
         return document;
     }
@@ -838,7 +845,7 @@ public class LatexParser : ILatexParser
     /// every \cite{}/\citep{}/\citet{}/\parencite{}/\textcite{} key and every
     /// \ref{}/\eqref{}/\cref{}/\Cref{}/\autoref{} label into <see cref="ImportMetadata"/>.
     /// </summary>
-    private static void ExtractInlineReferences(ImportDocument document)
+    private static void ExtractInlineReferences(ImportDocument document, IEnumerable<string>? preHarvestedLabels = null)
     {
         // Citation commands the natbib + biblatex ecosystems use. Captured key list is
         // comma-separated inside a single \cite{}: e.g. \cite{a,b,c}.
@@ -847,6 +854,12 @@ public class LatexParser : ILatexParser
 
         var citedKeys = new HashSet<string>(StringComparer.Ordinal);
         var referencedLabels = new HashSet<string>(StringComparer.Ordinal);
+
+        // Labels harvested from the raw content before cross-ref commands
+        // were rewritten to bare text upstream.
+        if (preHarvestedLabels != null)
+            foreach (var label in preHarvestedLabels)
+                if (!string.IsNullOrEmpty(label)) referencedLabels.Add(label);
 
         foreach (var element in document.Elements)
         {
@@ -880,6 +893,25 @@ public class LatexParser : ILatexParser
 
         document.Metadata.CitedKeys = citedKeys.OrderBy(k => k, StringComparer.Ordinal).ToList();
         document.Metadata.ReferencedLabels = referencedLabels.OrderBy(l => l, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Scans raw LaTeX for cross-reference commands
+    /// (\ref / \eqref / \cref / \Cref / \autoref / \pageref / \nameref) and
+    /// returns the referenced labels. Used before the parser rewrites these
+    /// commands to bare label text, which would otherwise erase them from the
+    /// per-element harvest in <see cref="ExtractInlineReferences"/>.
+    /// </summary>
+    private static List<string> HarvestReferencedLabels(string rawContent)
+    {
+        var refPattern = new Regex(@"\\(?:ref|eqref|cref|Cref|autoref|pageref|nameref)\{([^}]+)\}");
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match m in refPattern.Matches(rawContent))
+        {
+            var label = m.Groups[1].Value.Trim();
+            if (label.Length > 0) labels.Add(label);
+        }
+        return labels.ToList();
     }
 
     /// <summary>Remove every occurrence of <c>\name{...}</c> from <paramref name="text"/> using balanced braces.</summary>
@@ -916,7 +948,11 @@ public class LatexParser : ILatexParser
     private static readonly HashSet<string> PreservedInlineCommands = new(StringComparer.Ordinal)
     {
         "cite", "citep", "citet", "citeauthor", "citeyear", "nocite",
-        "ref", "pageref", "eqref", "autoref", "cref", "Cref",
+        // biblatex citation commands — must be preserved verbatim too, else
+        // NormaliseInlineCommands strips \parencite{k} down to bare "k" and
+        // the citation key is lost to ExtractInlineReferences.
+        "citealp", "citealt", "parencite", "textcite", "footcite", "autocite",
+        "ref", "pageref", "eqref", "autoref", "cref", "Cref", "nameref",
         "label", "href", "url", "hyperref",
         "footnote", "footnotemark", "footnotetext",
         "input", "include",

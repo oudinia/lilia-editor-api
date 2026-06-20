@@ -241,14 +241,38 @@ public partial class RenderService : IRenderService
         return $"<p class=\"paragraph\">{processed}</p>";
     }
 
+    /// <summary>
+    /// Determines whether an equation block renders in display mode.
+    ///
+    /// Two conventions coexist in stored block content:
+    ///   - newer: <c>"equationMode": "inline" | "display"</c> (authoritative when present)
+    ///   - legacy: <c>"displayMode": true | false</c> boolean
+    ///
+    /// Precedence: if <c>equationMode</c> is present it wins; otherwise fall
+    /// back to the legacy boolean; default to display when neither is set.
+    /// (Previously the legacy <c>displayMode:false</c> was silently ignored
+    /// whenever <c>equationMode</c> was absent, forcing inline math to render
+    /// as a numbered display equation.)
+    /// </summary>
+    private static bool ResolveDisplayMode(JsonElement content)
+    {
+        if (content.TryGetProperty("equationMode", out var em) && em.ValueKind == JsonValueKind.String)
+            return !string.Equals(em.GetString(), "inline", StringComparison.OrdinalIgnoreCase);
+
+        if (content.TryGetProperty("displayMode", out var d))
+        {
+            if (d.ValueKind == JsonValueKind.False) return false;
+            if (d.ValueKind == JsonValueKind.True) return true;
+        }
+
+        return true; // default: display
+    }
+
     private string RenderEquationToHtml(JsonElement content)
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
 
-        // Check both "equationMode" string and legacy "displayMode" boolean
-        var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
-        var displayMode = equationMode != "inline"
-            || (content.TryGetProperty("displayMode", out var d) && d.ValueKind == JsonValueKind.True);
+        var displayMode = ResolveDisplayMode(content);
 
         // Strip MathLive placeholder artifacts
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
@@ -1512,10 +1536,7 @@ public partial class RenderService : IRenderService
     {
         var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
 
-        // Check both "equationMode" string and legacy "displayMode" boolean
-        var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
-        var displayMode = equationMode != "inline"
-            || (content.TryGetProperty("displayMode", out var d) && d.ValueKind == JsonValueKind.True);
+        var displayMode = ResolveDisplayMode(content);
 
         var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
 
