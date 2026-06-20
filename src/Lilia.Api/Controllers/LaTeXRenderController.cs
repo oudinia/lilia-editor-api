@@ -552,6 +552,14 @@ public class LaTeXRenderController : ControllerBase
     /// section/subsection for headings + the theorem-family counter). Exotic
     /// counters are skipped on purpose. Returns "" when nothing to prime.
     /// </summary>
+    /// <summary>
+    /// Theorem-family environment names that are NOT backed by a numbered
+    /// \newtheorem counter and therefore must never be counter-primed.
+    /// `proof` is amsthm's built-in unnumbered environment.
+    /// </summary>
+    private static readonly HashSet<string> CounterlessTheoremTypes =
+        new(StringComparer.OrdinalIgnoreCase) { "proof" };
+
     private static async Task<string> BuildCounterPrimingAsync(
         Lilia.Infrastructure.Data.LiliaDbContext db, Lilia.Core.Entities.Block block)
     {
@@ -576,7 +584,14 @@ public class LaTeXRenderController : ControllerBase
             var c = block.Content.RootElement;
             var numbered = !c.TryGetProperty("numbered", out var np) || np.ValueKind != System.Text.Json.JsonValueKind.False;
             if (numbered)
-                counter = c.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
+            {
+                var theoremType = c.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
+                // `proof` is amsthm's built-in UNNUMBERED environment — it has no
+                // LaTeX counter, so \setcounter{proof}{N} would crash compilation
+                // with "No counter 'proof' defined". Skip priming for it (and any
+                // theorem type that isn't backed by a numbered \newtheorem).
+                counter = CounterlessTheoremTypes.Contains(theoremType) ? null : theoremType;
+            }
         }
 
         // Heading: level 1 → section, level 2 → subsection. Deeper levels share
