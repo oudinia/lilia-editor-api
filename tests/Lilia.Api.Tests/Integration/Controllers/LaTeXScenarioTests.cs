@@ -62,9 +62,11 @@ public class LaTeXScenarioTests : IntegrationTestBase
     public async Task ParagraphInlineFormatting_BoldItalicUnderlineCode()
     {
         var doc = await SeedDocWithUser();
-        // Export service format: *bold* → \textbf, _italic_ → \textit, `code` → \texttt
+        // Export inline markers (DocumentExportService.ParseInlineFormatting):
+        //   **bold** → \textbf, *italic* → \textit, __underline__ → \underline,
+        //   `code` → \texttt. Single * is italic; single _ is literal.
         await SeedBlockAsync(doc.Id, "paragraph",
-            """{"text":"This has *bold* and _italic_ and `code` formatting."}""", 0);
+            """{"text":"This has **bold** and *italic* and `code` formatting."}""", 0);
 
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
@@ -192,7 +194,9 @@ public class LaTeXScenarioTests : IntegrationTestBase
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
         latex.Should().Contain(@"\begin{lstlisting}");
-        latex.Should().Contain("language=python", "code block should specify the language");
+        // The export canonicalizes the language to the listings package's exact
+        // casing (listings requires "Python", not "python").
+        latex.Should().Contain("language=Python", "code block should specify the language");
         latex.Should().Contain("def fibonacci(n):");
         latex.Should().Contain(@"\end{lstlisting}");
     }

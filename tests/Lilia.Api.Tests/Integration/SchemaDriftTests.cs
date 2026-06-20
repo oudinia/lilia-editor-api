@@ -42,15 +42,21 @@ public class SchemaDriftTests : IntegrationTestBase
             var tableName = entityType.GetTableName();
             if (tableName == null) continue;
 
+            // Entities can map to a non-default Postgres schema (e.g. the
+            // E2E scenario-system tables live in schema "e2e"). Honor the
+            // entity's declared schema instead of assuming "public".
+            var schema = entityType.GetSchema() ?? "public";
+
             await using var cmd = new NpgsqlCommand(
-                "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = @name)",
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = @schema AND table_name = @name)",
                 conn);
+            cmd.Parameters.AddWithValue("schema", schema);
             cmd.Parameters.AddWithValue("name", tableName);
             var exists = (bool)(await cmd.ExecuteScalarAsync())!;
 
             if (!exists)
             {
-                missingTables.Add($"{tableName} (entity: {entityType.ClrType.Name})");
+                missingTables.Add($"{schema}.{tableName} (entity: {entityType.ClrType.Name})");
             }
         }
 
@@ -74,7 +80,8 @@ public class SchemaDriftTests : IntegrationTestBase
             var tableName = entityType.GetTableName();
             if (tableName == null) continue;
 
-            var dbColumns = await GetTableColumnsAsync(conn, tableName);
+            var schema = entityType.GetSchema() ?? "public";
+            var dbColumns = await GetTableColumnsAsync(conn, tableName, schema);
 
             foreach (var property in entityType.GetProperties())
             {
@@ -126,7 +133,7 @@ public class SchemaDriftTests : IntegrationTestBase
             var tableName = entityType.GetTableName();
             if (tableName == null) continue;
 
-            var dbColumnTypes = await GetTableColumnTypesAsync(conn, tableName);
+            var dbColumnTypes = await GetTableColumnTypesAsync(conn, tableName, entityType.GetSchema() ?? "public");
 
             foreach (var property in entityType.GetProperties())
             {
@@ -172,7 +179,7 @@ public class SchemaDriftTests : IntegrationTestBase
             var tableName = entityType.GetTableName();
             if (tableName == null) continue;
 
-            var dbNullability = await GetTableColumnNullabilityAsync(conn, tableName);
+            var dbNullability = await GetTableColumnNullabilityAsync(conn, tableName, entityType.GetSchema() ?? "public");
 
             foreach (var property in entityType.GetProperties())
             {
@@ -203,11 +210,12 @@ public class SchemaDriftTests : IntegrationTestBase
 
     #region Helper Methods
 
-    private static async Task<HashSet<string>> GetTableColumnsAsync(NpgsqlConnection conn, string tableName)
+    private static async Task<HashSet<string>> GetTableColumnsAsync(NpgsqlConnection conn, string tableName, string schema = "public")
     {
         await using var cmd = new NpgsqlCommand(
-            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = @name",
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = @schema AND table_name = @name",
             conn);
+        cmd.Parameters.AddWithValue("schema", schema);
         cmd.Parameters.AddWithValue("name", tableName);
 
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -219,11 +227,12 @@ public class SchemaDriftTests : IntegrationTestBase
         return columns;
     }
 
-    private static async Task<Dictionary<string, string>> GetTableColumnTypesAsync(NpgsqlConnection conn, string tableName)
+    private static async Task<Dictionary<string, string>> GetTableColumnTypesAsync(NpgsqlConnection conn, string tableName, string schema = "public")
     {
         await using var cmd = new NpgsqlCommand(
-            "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = @name",
+            "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = @schema AND table_name = @name",
             conn);
+        cmd.Parameters.AddWithValue("schema", schema);
         cmd.Parameters.AddWithValue("name", tableName);
 
         var types = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -235,11 +244,12 @@ public class SchemaDriftTests : IntegrationTestBase
         return types;
     }
 
-    private static async Task<Dictionary<string, bool>> GetTableColumnNullabilityAsync(NpgsqlConnection conn, string tableName)
+    private static async Task<Dictionary<string, bool>> GetTableColumnNullabilityAsync(NpgsqlConnection conn, string tableName, string schema = "public")
     {
         await using var cmd = new NpgsqlCommand(
-            "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = @name",
+            "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema = @schema AND table_name = @name",
             conn);
+        cmd.Parameters.AddWithValue("schema", schema);
         cmd.Parameters.AddWithValue("name", tableName);
 
         var nullability = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
