@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using FluentAssertions;
+using Lilia.Core.Exceptions;
 using Lilia.Import.Models;
 using Lilia.Import.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -98,8 +99,9 @@ public class MathpixClientTests
         try
         {
             var act = () => client.SubmitPdfAsync(tempFile);
-            await act.Should().ThrowAsync<InvalidOperationException>()
-                .WithMessage("*authentication failed*");
+            (await act.Should().ThrowAsync<LiliaExternalServiceException>()
+                .WithMessage("*unavailable*"))
+                .Which.ErrorCode.Should().Be(LiliaErrorCodes.MathpixAuthFailed);
         }
         finally
         {
@@ -120,8 +122,9 @@ public class MathpixClientTests
         try
         {
             var act = () => client.SubmitPdfAsync(tempFile);
-            await act.Should().ThrowAsync<InvalidOperationException>()
-                .WithMessage("*rate limit*");
+            (await act.Should().ThrowAsync<LiliaExternalServiceException>()
+                .WithMessage("*high demand*"))
+                .Which.ErrorCode.Should().Be(LiliaErrorCodes.MathpixRateLimited);
         }
         finally
         {
@@ -162,8 +165,9 @@ public class MathpixClientTests
         try
         {
             var act = () => client.SubmitPdfAsync(tempFile);
-            await act.Should().ThrowAsync<InvalidOperationException>()
-                .WithMessage("*exceeds maximum*");
+            (await act.Should().ThrowAsync<LiliaValidationException>()
+                .WithMessage("*exceeds the maximum*"))
+                .Which.ErrorCode.Should().Be(LiliaErrorCodes.ImportFileTooLarge);
         }
         finally
         {
@@ -243,8 +247,11 @@ public class MathpixClientTests
         var client = CreateClient(handler);
 
         var act = () => client.WaitForCompletionAsync("test-id");
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*Encrypted PDF*");
+        var ex = (await act.Should().ThrowAsync<LiliaExternalServiceException>()
+            .WithMessage("*PDF processing failed*")).Which;
+        ex.ErrorCode.Should().Be(LiliaErrorCodes.MathpixProcessingFailed);
+        // The raw Mathpix error ("Encrypted PDF") is logged, not shown to users.
+        ex.InternalDetails.Should().Contain("Encrypted PDF");
     }
 
     [Fact]
@@ -271,7 +278,9 @@ public class MathpixClientTests
         var client = new MathpixClient(httpClient, Options.Create(opts), NullLogger<MathpixClient>.Instance);
 
         var act = () => client.WaitForCompletionAsync("test-id");
-        await act.Should().ThrowAsync<TimeoutException>();
+        (await act.Should().ThrowAsync<LiliaExternalServiceException>()
+            .WithMessage("*taking longer than expected*"))
+            .Which.ErrorCode.Should().Be(LiliaErrorCodes.MathpixTimeout);
     }
 
     [Fact]

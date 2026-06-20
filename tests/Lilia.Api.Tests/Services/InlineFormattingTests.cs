@@ -36,11 +36,13 @@ public class InlineFormattingTests
     }
 
     [Fact]
-    public void Latex_Italic_ConvertsToEmph()
+    public void Latex_Italic_ConvertsToTextit()
     {
+        // \emph is banned (user direction 2026-05-13, feedback_emph.md);
+        // italic maps to \textit as one of the three distinct emphasis forms.
         var block = Paragraph("This is *italic* text.");
         var latex = _sut.RenderBlockToLatex(block);
-        latex.Should().Contain(@"\emph{italic}");
+        latex.Should().Contain(@"\textit{italic}");
     }
 
     [Fact]
@@ -73,7 +75,7 @@ public class InlineFormattingTests
         var block = Paragraph("This is **bold** and *italic*.");
         var latex = _sut.RenderBlockToLatex(block);
         latex.Should().Contain(@"\textbf{bold}");
-        latex.Should().Contain(@"\emph{italic}");
+        latex.Should().Contain(@"\textit{italic}");
     }
 
     #endregion
@@ -269,7 +271,7 @@ public class InlineFormattingTests
 
     [Theory]
     [InlineData("**bold**", "textbf", "strong")]
-    [InlineData("*italic*", "emph", "em")]
+    [InlineData("*italic*", "textit", "em")]
     [InlineData("__underline__", "underline", "<u>")]
     [InlineData("~~strike~~", "st{", "<del>")]
     [InlineData("`code`", "texttt", "<code>")]
