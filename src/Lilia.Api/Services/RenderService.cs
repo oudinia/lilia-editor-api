@@ -1876,6 +1876,16 @@ public partial class RenderService : IRenderService
     /// <summary>
     /// Extract text from a cell that may be a plain string or an object with a "text" property.
     /// </summary>
+    /// <summary>
+    /// A string starting with '[' placed right after a command/environment that
+    /// takes an optional argument (`\item`, `\begin{theorem}`, `\\`, booktabs
+    /// rules) is misread by LaTeX as that optional argument. The architect emits
+    /// bracketed placeholders ("[Introduce the problem…]"), so guard with a
+    /// leading empty group — invisible, but it terminates the optional-arg scan.
+    /// </summary>
+    private static string GuardLeadingBracket(string s)
+        => s.TrimStart().StartsWith("[", StringComparison.Ordinal) ? "{}" + s : s;
+
     private static string GetCellText(JsonElement cell)
     {
         if (cell.ValueKind == JsonValueKind.String)
@@ -2105,7 +2115,7 @@ public partial class RenderService : IRenderService
         }
         else
         {
-            sb.AppendLine($@"\item {ProcessLatexText(itemText)}");
+            sb.AppendLine($@"\item {GuardLeadingBracket(ProcessLatexText(itemText))}");
         }
 
         // Render nested list if children present. Nested lists inherit
@@ -2183,7 +2193,7 @@ public partial class RenderService : IRenderService
         {
             sb.AppendLine($@"\label{{{label}}}");
         }
-        sb.AppendLine(ProcessLatexText(text));
+        sb.AppendLine(GuardLeadingBracket(ProcessLatexText(text)));
         sb.Append($@"\end{{{envName}}}");
         return sb.ToString();
     }
