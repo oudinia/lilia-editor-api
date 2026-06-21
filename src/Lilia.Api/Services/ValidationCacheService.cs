@@ -48,7 +48,10 @@ public class ValidationCacheService : IValidationCacheService
     // v2: fixed the contextual per-block validation compiling a full document
     // against the standalone precompiled .fmt → bogus "Two \documentclass"
     // errors. Bump invalidates those cached errors so blocks re-validate clean.
-    public const string RuleVersion = "v2";
+    // v3: inject \newunicodechar shim so literal Unicode in prose (γ, ×, —)
+    // compiles instead of erroring. Bump re-validates blocks that previously
+    // failed on "Unicode character not set up for use with LaTeX".
+    public const string RuleVersion = "v3";
 
     private readonly LiliaDbContext _context;
     private readonly BulkInsertHelper _bulk;

@@ -20,6 +20,8 @@ public class LaTeXRenderController : ControllerBase
     private readonly IValidationCacheService _validationCache;
     private readonly ILogger<LaTeXRenderController> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IUnicodeShimService _unicodeShim;
+    private readonly Lilia.Import.Services.IImportTelemetrySink _telemetry;
 
     public LaTeXRenderController(
         ILaTeXRenderService latexService,
@@ -29,7 +31,9 @@ public class LaTeXRenderController : ControllerBase
         IAuditService audit,
         IValidationCacheService validationCache,
         ILogger<LaTeXRenderController> logger,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IUnicodeShimService unicodeShim,
+        Lilia.Import.Services.IImportTelemetrySink telemetry)
     {
         _latexService = latexService;
         _renderService = renderService;
@@ -39,6 +43,8 @@ public class LaTeXRenderController : ControllerBase
         _validationCache = validationCache;
         _logger = logger;
         _scopeFactory = scopeFactory;
+        _unicodeShim = unicodeShim;
+        _telemetry = telemetry;
     }
 
     /// <summary>
@@ -306,6 +312,32 @@ public class LaTeXRenderController : ControllerBase
                 cached = true,
                 validatedAt = cached.ValidatedAt
             });
+        }
+
+        // Unicode shim: literal Greek/symbols/typography in prose (γ, ×, —, …)
+        // abort pdflatex otherwise. Inject \newunicodechar mappings for the
+        // characters actually present; surface any unmapped char as telemetry
+        // so the catalog's coverage gaps stay visible.
+        var shimResult = _unicodeShim.BuildShim(fullLatex);
+        if (shimResult.HasShim)
+        {
+            fullLatex = _unicodeShim.Inject(fullLatex, shimResult.Shim);
+        }
+        if (shimResult.HasUnmapped)
+        {
+            foreach (var cp in shimResult.UnmappedCodepoints)
+            {
+                _telemetry.Record(new Lilia.Import.Services.ImportTelemetryRecord
+                {
+                    EventKind = "unmapped_unicode_char",
+                    Severity = "warn",
+                    SourceFormat = "latex",
+                    TokenOrEnv = $"U+{cp:X4}",
+                    SampleText = char.ConvertFromUtf32(cp),
+                    BlockKindEmitted = block.Type,
+                    SourceFileName = block.DocumentId.ToString(),
+                });
+            }
         }
 
         var result = await _latexService.ValidateAsync(fullLatex, engine);

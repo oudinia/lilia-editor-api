@@ -500,6 +500,7 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lili
 // boot. Preloaded just before the HTTP pipeline starts so the first
 // import doesn't pay the warmup cost.
 builder.Services.AddSingleton<ILatexCatalogService, LatexCatalogService>();
+builder.Services.AddSingleton<IUnicodeShimService, UnicodeShimService>();
 
 // ITokenRouter — catalog-backed dispatch decisions for LatexParser
 // (Stage 3 of the parser-reads-catalog plan). LatexParser holds a
@@ -764,6 +765,10 @@ if (!app.Environment.IsEnvironment("Testing"))
     {
         await concrete.PreloadAsync();
     }
+
+    // Warm the Unicode→LaTeX shim map so the first per-block validation
+    // doesn't pay the query cost (and so unmapped chars surface immediately).
+    await app.Services.GetRequiredService<IUnicodeShimService>().PreloadAsync();
 
     // Stage-3 boot-time audit — walk every hardcoded HashSet in
     // LatexParser and log any member without a matching catalog row.

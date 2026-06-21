@@ -20,7 +20,8 @@ public class ImportTelemetryEventConfiguration : IEntityTypeConfiguration<Import
                 "event_kind IN (" +
                 "'unknown_env','unhandled_token','silent_fallback'," +
                 "'cell_cleanup_applied','partial_parse','expected_leak_hit'," +
-                "'cmd_passthrough','unsupported_block_emitted','parser_warning')");
+                "'cmd_passthrough','unsupported_block_emitted','parser_warning'," +
+                "'unmapped_unicode_char')");
         });
 
         builder.HasKey(e => e.Id);

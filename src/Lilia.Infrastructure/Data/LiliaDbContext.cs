@@ -125,6 +125,7 @@ public class LiliaDbContext : DbContext
     public DbSet<LatexToken> LatexTokens => Set<LatexToken>();
     public DbSet<LatexDocumentClass> LatexDocumentClasses => Set<LatexDocumentClass>();
     public DbSet<LatexTokenUsage> LatexTokenUsages => Set<LatexTokenUsage>();
+    public DbSet<LatexUnicodeChar> LatexUnicodeChars => Set<LatexUnicodeChar>();
 
     // Typst translation catalog — parallel to the LaTeX side. Captures
     // the LaTeX → Typst translation rules we ship in TypstExportService
@@ -217,6 +218,29 @@ public class LiliaDbContext : DbContext
             e.HasIndex(x => x.Name).HasDatabaseName("ix_latex_token_name");
             e.HasIndex(x => x.CoverageLevel).HasDatabaseName("ix_latex_token_coverage");
             e.HasIndex(x => x.PackageSlug).HasDatabaseName("ix_latex_token_package").HasFilter("package_slug IS NOT NULL");
+        });
+
+        modelBuilder.Entity<LatexUnicodeChar>(e =>
+        {
+            e.ToTable("latex_unicode_map", t =>
+            {
+                t.HasCheckConstraint("ck_latex_unicode_mode", "mode IN ('math','text','either')");
+                t.HasCheckConstraint("ck_latex_unicode_coverage", "coverage_level IN ('full','shimmed','none')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.Codepoint).HasColumnName("codepoint").IsRequired();
+            e.Property(x => x.Character).HasColumnName("character").HasMaxLength(8).IsRequired();
+            e.Property(x => x.Replacement).HasColumnName("replacement").HasMaxLength(200).IsRequired();
+            e.Property(x => x.Mode).HasColumnName("mode").HasMaxLength(16).IsRequired().HasDefaultValue("math");
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(32).IsRequired().HasDefaultValue("other");
+            e.Property(x => x.PackageSlug).HasColumnName("package_slug").HasMaxLength(80);
+            e.Property(x => x.CoverageLevel).HasColumnName("coverage_level").HasMaxLength(16).IsRequired().HasDefaultValue("full");
+            e.Property(x => x.Notes).HasColumnName("notes");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => x.Codepoint).IsUnique().HasDatabaseName("ux_latex_unicode_codepoint");
+            e.HasIndex(x => x.Category).HasDatabaseName("ix_latex_unicode_category");
         });
 
         modelBuilder.Entity<LatexDocumentClass>(e =>
