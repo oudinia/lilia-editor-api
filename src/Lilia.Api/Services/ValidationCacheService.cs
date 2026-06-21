@@ -45,7 +45,10 @@ public record DocumentValidationRollup(
 
 public class ValidationCacheService : IValidationCacheService
 {
-    public const string RuleVersion = "v1";
+    // v2: fixed the contextual per-block validation compiling a full document
+    // against the standalone precompiled .fmt → bogus "Two \documentclass"
+    // errors. Bump invalidates those cached errors so blocks re-validate clean.
+    public const string RuleVersion = "v2";
 
     private readonly LiliaDbContext _context;
     private readonly BulkInsertHelper _bulk;

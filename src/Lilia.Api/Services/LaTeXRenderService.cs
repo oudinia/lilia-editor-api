@@ -276,7 +276,13 @@ public class LaTeXRenderService : ILaTeXRenderService
                 // Only the precompiled .fmt is pdflatex-specific; skip it
                 // when the engine differs so we don't hand pdflatex's fmt
                 // file to lualatex.
-                var usePrecompiled = resolvedEngine == "pdflatex";
+                // The precompiled .fmt bakes in \documentclass{standalone}, so it
+                // only works for FRAGMENTS. A self-contained document (its own
+                // \documentclass — e.g. contextual per-block validation) would
+                // collide → "Two \documentclass commands". Use the format only
+                // for pdflatex AND only when the input has no \documentclass.
+                var usePrecompiled = resolvedEngine == "pdflatex"
+                    && !latex.Contains(@"\documentclass", StringComparison.Ordinal);
                 var args = BuildPdflatexArgs(texPath, tmpDir, usePrecompiled: usePrecompiled);
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 var (exitCode, _, stderr) = await RunProcessAsync(resolvedEngine, args, tmpDir, 15);
