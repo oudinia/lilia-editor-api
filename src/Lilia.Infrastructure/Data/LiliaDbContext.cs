@@ -126,6 +126,7 @@ public class LiliaDbContext : DbContext
     public DbSet<LatexDocumentClass> LatexDocumentClasses => Set<LatexDocumentClass>();
     public DbSet<LatexTokenUsage> LatexTokenUsages => Set<LatexTokenUsage>();
     public DbSet<LatexUnicodeChar> LatexUnicodeChars => Set<LatexUnicodeChar>();
+    public DbSet<AiModel> AiModels => Set<AiModel>();
 
     // Typst translation catalog — parallel to the LaTeX side. Captures
     // the LaTeX → Typst translation rules we ship in TypstExportService
@@ -218,6 +219,36 @@ public class LiliaDbContext : DbContext
             e.HasIndex(x => x.Name).HasDatabaseName("ix_latex_token_name");
             e.HasIndex(x => x.CoverageLevel).HasDatabaseName("ix_latex_token_coverage");
             e.HasIndex(x => x.PackageSlug).HasDatabaseName("ix_latex_token_package").HasFilter("package_slug IS NOT NULL");
+        });
+
+        modelBuilder.Entity<AiModel>(e =>
+        {
+            e.ToTable("ai_models", t =>
+            {
+                t.HasCheckConstraint("ck_ai_model_provider", "provider IN ('anthropic','openai','google')");
+                t.HasCheckConstraint("ck_ai_model_membership", "min_membership IN ('free','pro','team')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasMaxLength(120);
+            e.Property(x => x.Provider).HasColumnName("provider").HasMaxLength(20).IsRequired();
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(120).IsRequired();
+            e.Property(x => x.TierLabel).HasColumnName("tier_label").HasMaxLength(20).IsRequired().HasDefaultValue("default");
+            e.Property(x => x.MinMembership).HasColumnName("min_membership").HasMaxLength(20).IsRequired().HasDefaultValue("pro");
+            e.Property(x => x.CreditInPerKTok).HasColumnName("credit_in_per_ktok").HasColumnType("numeric(10,4)").HasDefaultValue(0m);
+            e.Property(x => x.CreditOutPerKTok).HasColumnName("credit_out_per_ktok").HasColumnType("numeric(10,4)").HasDefaultValue(0m);
+            e.Property(x => x.ContextWindow).HasColumnName("context_window").HasDefaultValue(0);
+            e.Property(x => x.MaxOutput).HasColumnName("max_output").HasDefaultValue(0);
+            e.Property(x => x.SupportsAttachments).HasColumnName("supports_attachments").HasDefaultValue(false);
+            e.Property(x => x.SupportsVision).HasColumnName("supports_vision").HasDefaultValue(false);
+            e.Property(x => x.PromptCache).HasColumnName("prompt_cache").HasDefaultValue(false);
+            e.Property(x => x.IsDefault).HasColumnName("is_default").HasDefaultValue(false);
+            e.Property(x => x.Enabled).HasColumnName("enabled").HasDefaultValue(true);
+            e.Property(x => x.SortOrder).HasColumnName("sort_order").HasDefaultValue(0);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => x.Enabled).HasDatabaseName("ix_ai_model_enabled");
+            // At most one default model.
+            e.HasIndex(x => x.IsDefault).IsUnique().HasFilter("is_default").HasDatabaseName("ux_ai_model_default");
         });
 
         modelBuilder.Entity<LatexUnicodeChar>(e =>

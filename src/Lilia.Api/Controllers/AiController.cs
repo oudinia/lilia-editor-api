@@ -12,18 +12,63 @@ public class AiController : ControllerBase
 {
     private readonly IAiService _aiService;
     private readonly ILogger<AiController> _logger;
+    private readonly IAiCatalogService _catalog;
+    private readonly IEntitlementService _entitlements;
 
     private static readonly HashSet<string> ValidImproveActions = ["improve", "paraphrase", "expand", "shorten"];
 
-    public AiController(IAiService aiService, ILogger<AiController> logger)
+    public AiController(
+        IAiService aiService,
+        ILogger<AiController> logger,
+        IAiCatalogService catalog,
+        IEntitlementService entitlements)
     {
         _aiService = aiService;
         _logger = logger;
+        _catalog = catalog;
+        _entitlements = entitlements;
     }
 
     private string? GetUserId() =>
         User.FindFirst("sub")?.Value
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    /// <summary>
+    /// The selectable AI models for the editor's model picker. Returns every
+    /// enabled model with its tier/capability metadata and a <c>usable</c> flag
+    /// computed from the caller's membership, plus the default model id.
+    /// </summary>
+    [HttpGet("models")]
+    public async Task<IActionResult> GetModels(CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var membership = "free";
+        if (userId is not null)
+        {
+            var plan = await _entitlements.GetActivePlanAsync(userId, ct);
+            // Plan slugs (free/beta/conversion/pro/team) → coarse tier. Anything
+            // that isn't pro/team is treated as free for model gating.
+            var slug = plan?.Slug?.ToLowerInvariant();
+            membership = slug is "pro" or "team" ? slug : "free";
+        }
+
+        var models = _catalog.Enabled().Select(m => new
+        {
+            id = m.Id,
+            provider = m.Provider,
+            displayName = m.DisplayName,
+            tier = m.TierLabel,
+            minMembership = m.MinMembership,
+            contextWindow = m.ContextWindow,
+            maxOutput = m.MaxOutput,
+            supportsAttachments = m.SupportsAttachments,
+            supportsVision = m.SupportsVision,
+            isDefault = m.IsDefault,
+            usable = _catalog.IsAllowedFor(m.Id, membership),
+        });
+
+        return Ok(new { defaultModel = _catalog.DefaultModelId(), membership, models });
+    }
 
     // --- AI Features ---
 
