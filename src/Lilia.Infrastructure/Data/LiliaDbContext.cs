@@ -127,6 +127,8 @@ public class LiliaDbContext : DbContext
     public DbSet<LatexTokenUsage> LatexTokenUsages => Set<LatexTokenUsage>();
     public DbSet<LatexUnicodeChar> LatexUnicodeChars => Set<LatexUnicodeChar>();
     public DbSet<AiModel> AiModels => Set<AiModel>();
+    public DbSet<Tool> Tools => Set<Tool>();
+    public DbSet<ToolEvent> ToolEvents => Set<ToolEvent>();
 
     // Typst translation catalog — parallel to the LaTeX side. Captures
     // the LaTeX → Typst translation rules we ship in TypstExportService
@@ -219,6 +221,49 @@ public class LiliaDbContext : DbContext
             e.HasIndex(x => x.Name).HasDatabaseName("ix_latex_token_name");
             e.HasIndex(x => x.CoverageLevel).HasDatabaseName("ix_latex_token_coverage");
             e.HasIndex(x => x.PackageSlug).HasDatabaseName("ix_latex_token_package").HasFilter("package_slug IS NOT NULL");
+        });
+
+        modelBuilder.Entity<Tool>(e =>
+        {
+            e.ToTable("tools", t =>
+            {
+                t.HasCheckConstraint("ck_tool_input_kind", "input_kind IN ('text','grid','file')");
+                t.HasCheckConstraint("ck_tool_output_kind", "output_kind IN ('source','pdf','image')");
+            });
+            e.HasKey(x => x.Slug);
+            e.Property(x => x.Slug).HasColumnName("slug").HasMaxLength(80);
+            e.Property(x => x.Title).HasColumnName("title").HasMaxLength(160).IsRequired();
+            e.Property(x => x.Tagline).HasColumnName("tagline").HasMaxLength(400).IsRequired();
+            e.Property(x => x.SeoDescription).HasColumnName("seo_description").HasMaxLength(400).IsRequired();
+            e.Property(x => x.InputKind).HasColumnName("input_kind").HasMaxLength(16).IsRequired().HasDefaultValue("text");
+            e.Property(x => x.OutputKind).HasColumnName("output_kind").HasMaxLength(16).IsRequired().HasDefaultValue("source");
+            e.Property(x => x.Engine).HasColumnName("engine").HasMaxLength(40).IsRequired();
+            e.Property(x => x.FreeLimitPerDay).HasColumnName("free_limit_per_day").HasDefaultValue(0);
+            e.Property(x => x.FreeSizeCapBytes).HasColumnName("free_size_cap_bytes").HasDefaultValue(0);
+            e.Property(x => x.CrossSellLabel).HasColumnName("cross_sell_label").HasMaxLength(80);
+            e.Property(x => x.Enabled).HasColumnName("enabled").HasDefaultValue(true);
+            e.Property(x => x.SortOrder).HasColumnName("sort_order").HasDefaultValue(0);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => x.Enabled).HasDatabaseName("ix_tool_enabled");
+        });
+
+        modelBuilder.Entity<ToolEvent>(e =>
+        {
+            e.ToTable("tool_events", t =>
+            {
+                t.HasCheckConstraint("ck_tool_event", "event IN ('view','use','result','signup','pay')");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.ToolSlug).HasColumnName("tool_slug").HasMaxLength(80).IsRequired();
+            e.Property(x => x.UserId).HasColumnName("user_id").HasMaxLength(200);
+            e.Property(x => x.AnonId).HasColumnName("anon_id").HasMaxLength(120).IsRequired();
+            e.Property(x => x.Event).HasColumnName("event").HasMaxLength(16).IsRequired();
+            e.Property(x => x.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => new { x.ToolSlug, x.AnonId, x.Event, x.CreatedAt }).HasDatabaseName("ix_tool_event_quota");
+            e.HasIndex(x => new { x.ToolSlug, x.Event, x.CreatedAt }).HasDatabaseName("ix_tool_event_funnel");
         });
 
         modelBuilder.Entity<AiModel>(e =>

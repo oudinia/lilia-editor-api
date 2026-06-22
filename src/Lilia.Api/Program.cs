@@ -502,6 +502,8 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lili
 builder.Services.AddSingleton<ILatexCatalogService, LatexCatalogService>();
 builder.Services.AddSingleton<IUnicodeShimService, UnicodeShimService>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
+builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
+builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
 
 // ITokenRouter — catalog-backed dispatch decisions for LatexParser
 // (Stage 3 of the parser-reads-catalog plan). LatexParser holds a
@@ -773,6 +775,9 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     // Warm the AI model catalog so the model picker + resolution serve from memory.
     await app.Services.GetRequiredService<IAiCatalogService>().PreloadAsync();
+
+    // Warm the standalone-tools registry.
+    await app.Services.GetRequiredService<IToolCatalogService>().PreloadAsync();
 
     // Stage-3 boot-time audit — walk every hardcoded HashSet in
     // LatexParser and log any member without a matching catalog row.
