@@ -28,6 +28,7 @@ public class AiArchitectService : IAiArchitectService
     private readonly IChatClient _chatClient;
     private readonly IDocumentService _documentService;
     private readonly IEntitlementService _entitlement;
+    private readonly IAiCatalogService _catalog;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AiArchitectService> _logger;
@@ -50,6 +51,7 @@ public class AiArchitectService : IAiArchitectService
         IChatClient chatClient,
         IDocumentService documentService,
         IEntitlementService entitlement,
+        IAiCatalogService catalog,
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
@@ -58,6 +60,7 @@ public class AiArchitectService : IAiArchitectService
         _chatClient = chatClient;
         _documentService = documentService;
         _entitlement = entitlement;
+        _catalog = catalog;
         _context = context;
         _options = options.Value;
         _logger = logger;
@@ -120,9 +123,22 @@ public class AiArchitectService : IAiArchitectService
             messages.Add(new ChatMessage(role, m.Content ?? string.Empty));
         }
 
-        var model = _options.Models.TryGetValue("architect", out var configured)
-            ? configured
-            : _options.DefaultModel;
+        // Resolve the model: honour a valid, tier-allowed request override;
+        // otherwise the catalog default (Sonnet 4.6). Keeps free users off
+        // pro-gated models even if the client sends one.
+        var model = _catalog.DefaultModelId();
+        if (!string.IsNullOrWhiteSpace(request.Model))
+        {
+            var plan = await _entitlement.GetActivePlanAsync(userId, ct);
+            var slug = plan?.Slug?.ToLowerInvariant();
+            var tier = slug is "pro" or "team" ? slug : "free";
+            if (_catalog.IsAllowedFor(request.Model, tier))
+                model = request.Model;
+            else
+                _logger.LogInformation(
+                    "[AiArchitect] Model {Model} not allowed for tier {Tier}; using default {Default}",
+                    request.Model, tier, model);
+        }
 
         // ── 4-6. CALL + METER (audit row persisted before the network call) ─
         var aiRequestId = await PersistPendingAsync(userId, documentId, model, messages, ct);

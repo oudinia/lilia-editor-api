@@ -14,7 +14,8 @@ namespace Lilia.Api.Models.AiArchitect;
 /// </summary>
 public record AiArchitectRequest(
     string DocumentId,
-    List<AiArchitectMessage> Messages
+    List<AiArchitectMessage> Messages,
+    string? Model = null   // optional override, validated against the catalog + tier
 );
 
 /// <summary>A single turn in the architect conversation.</summary>
