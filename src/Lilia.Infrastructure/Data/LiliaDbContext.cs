@@ -129,6 +129,7 @@ public class LiliaDbContext : DbContext
     public DbSet<AiModel> AiModels => Set<AiModel>();
     public DbSet<Tool> Tools => Set<Tool>();
     public DbSet<ToolEvent> ToolEvents => Set<ToolEvent>();
+    public DbSet<ToolArtifact> ToolArtifacts => Set<ToolArtifact>();
 
     // Typst translation catalog — parallel to the LaTeX side. Captures
     // the LaTeX → Typst translation rules we ship in TypstExportService
@@ -246,6 +247,24 @@ public class LiliaDbContext : DbContext
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
             e.HasIndex(x => x.Enabled).HasDatabaseName("ix_tool_enabled");
+        });
+
+        modelBuilder.Entity<ToolArtifact>(e =>
+        {
+            e.ToTable("tool_artifacts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.ToolSlug).HasColumnName("tool_slug").HasMaxLength(80).IsRequired();
+            e.Property(x => x.UserId).HasColumnName("user_id").HasMaxLength(200);
+            e.Property(x => x.AnonId).HasColumnName("anon_id").HasMaxLength(120).IsRequired();
+            e.Property(x => x.Input).HasColumnName("input").HasColumnType("jsonb");
+            e.Property(x => x.Output).HasColumnName("output");
+            e.Property(x => x.OutputFormat).HasColumnName("output_format").HasMaxLength(20).IsRequired();
+            e.Property(x => x.OutputBytes).HasColumnName("output_bytes").HasDefaultValue(0);
+            e.Property(x => x.Truncated).HasColumnName("truncated").HasDefaultValue(false);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.HasIndex(x => new { x.ToolSlug, x.CreatedAt }).HasDatabaseName("ix_tool_artifact_slug_created");
+            e.HasIndex(x => x.CreatedAt).HasDatabaseName("ix_tool_artifact_created"); // TTL/prune
         });
 
         modelBuilder.Entity<ToolEvent>(e =>

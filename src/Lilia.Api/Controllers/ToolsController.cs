@@ -127,6 +127,7 @@ public class ToolsController : ControllerBase
 
         await RecordAsync(slug, userId, anonId, "use", ct);
         await RecordAsync(slug, userId, anonId, "result", ct);
+        await RecordArtifactAsync(slug, userId, anonId, input, file, result, ct);
 
         return Ok(new
         {
@@ -176,6 +177,48 @@ public class ToolsController : ControllerBase
             MaxAge = TimeSpan.FromDays(365),
         });
         return id;
+    }
+
+    private const int MaxArtifactBytes = 262_144; // 256 KB — cap stored output
+
+    // Persist the run (input + output) for behaviour/pattern analytics + the
+    // future library. Ephemeral for the user; prunable for us. Best-effort.
+    private async Task RecordArtifactAsync(
+        string slug, string? userId, string anonId,
+        JsonElement input, IFormFile? file, ToolRunResult result, CancellationToken ct)
+    {
+        try
+        {
+            JsonDocument? inputDoc = file is not null
+                ? JsonDocument.Parse(JsonSerializer.Serialize(new { filename = file.FileName, bytes = file.Length }))
+                : input.ValueKind is JsonValueKind.Object or JsonValueKind.Array
+                    ? JsonDocument.Parse(input.GetRawText())
+                    : null;
+
+            var output = result.Output ?? string.Empty;
+            var bytes = System.Text.Encoding.UTF8.GetByteCount(output);
+            var truncated = output.Length > MaxArtifactBytes;
+            if (truncated) output = output[..MaxArtifactBytes];
+
+            _context.ToolArtifacts.Add(new ToolArtifact
+            {
+                Id = Guid.NewGuid(),
+                ToolSlug = slug,
+                UserId = userId,
+                AnonId = anonId,
+                Input = inputDoc,
+                Output = output,
+                OutputFormat = result.Format,
+                OutputBytes = bytes,
+                Truncated = truncated,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Tools] failed to record artifact for {Slug}", slug);
+        }
     }
 
     private async Task RecordAsync(string slug, string? userId, string anonId, string ev, CancellationToken ct)
