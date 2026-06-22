@@ -18,11 +18,13 @@ public class EntitlementService : IEntitlementService
 {
     private readonly LiliaDbContext _context;
     private readonly ILogger<EntitlementService> _logger;
+    private readonly IAiCatalogService _aiCatalog;
 
-    public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger)
+    public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog)
     {
         _context = context;
         _logger = logger;
+        _aiCatalog = aiCatalog;
     }
 
     public async Task<ActivePlanDto?> GetActivePlanAsync(string userId, CancellationToken ct = default)
@@ -110,6 +112,33 @@ public class EntitlementService : IEntitlementService
             CreatedAt = DateTime.UtcNow,
         });
         await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default)
+    {
+        var credits = _aiCatalog.CreditsFor(modelId, inputTokens, outputTokens);
+        _context.AiCreditLedger.Add(new AiCreditLedger
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Delta = -credits,
+            Reason = "spend",
+            AiRequestId = aiRequestId,
+            Note = $"{modelId}: {inputTokens}+{outputTokens} tok",
+            CreatedAt = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync(ct);
+        return credits;
+    }
+
+    /// <summary>Total credits consumed (sum of spend magnitudes) for a user.</summary>
+    public async Task<int> GetAiCreditsConsumedAsync(string userId, CancellationToken ct = default)
+    {
+        var spent = await _context.AiCreditLedger
+            .AsNoTracking()
+            .Where(l => l.UserId == userId && l.Reason == "spend")
+            .SumAsync(l => (int?)l.Delta, ct);
+        return -(spent ?? 0);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

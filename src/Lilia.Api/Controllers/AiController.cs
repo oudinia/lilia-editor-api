@@ -67,7 +67,25 @@ public class AiController : ControllerBase
             usable = _catalog.IsAllowedFor(m.Id, membership),
         });
 
-        return Ok(new { defaultModel = _catalog.DefaultModelId(), membership, models });
+        var creditsUsed = userId is not null ? await _entitlements.GetAiCreditsConsumedAsync(userId, ct) : 0;
+        return Ok(new { defaultModel = _catalog.DefaultModelId(), membership, creditsUsed, models });
+    }
+
+    public record EstimateRequest(string? Model, int? InputTokens, int? InputChars, int? OutputTokens);
+
+    /// <summary>
+    /// Pre-flight credit estimate for a prospective call — lets the editor show
+    /// "≈ N credits" before sending. Input tokens ≈ chars/4; output defaults to
+    /// a typical reply when not given.
+    /// </summary>
+    [HttpPost("estimate")]
+    public IActionResult EstimateCredits([FromBody] EstimateRequest req)
+    {
+        var model = string.IsNullOrWhiteSpace(req.Model) ? _catalog.DefaultModelId() : req.Model!;
+        var inTok = req.InputTokens ?? (req.InputChars is { } c ? (c + 3) / 4 : 0);
+        var outTok = req.OutputTokens ?? 1000;   // typical reply when unknown
+        var credits = _catalog.CreditsFor(model, inTok, outTok);
+        return Ok(new { model, estimatedInputTokens = inTok, estimatedOutputTokens = outTok, credits });
     }
 
     // --- AI Features ---

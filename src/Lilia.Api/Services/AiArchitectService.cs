@@ -69,7 +69,12 @@ public class AiArchitectService : IAiArchitectService
                  && _options.Anthropic.ApiKey != "sk-placeholder";
 
         _enabled = configuration.GetValue("AI:Enabled", true);
+        // Observe-only by default: spend is recorded but never blocks. Flip
+        // AI:EnforceCredits=true once per-plan allowances are set.
+        _enforceCredits = configuration.GetValue("AI:EnforceCredits", false);
     }
+
+    private readonly bool _enforceCredits;
 
     public async Task<AiArchitectOutcome> ArchitectAsync(
         string userId, AiArchitectRequest request, CancellationToken ct = default)
@@ -90,7 +95,11 @@ public class AiArchitectService : IAiArchitectService
         }
         catch (QuotaExceededException)
         {
-            return AiArchitectOutcome.Lock("over-budget", "You've used all your AI credits for this period.");
+            // Observe-only: record-but-don't-block until allowances are set and
+            // AI:EnforceCredits is flipped on. Logged so over-budget is visible.
+            if (_enforceCredits)
+                return AiArchitectOutcome.Lock("over-budget", "You've used all your AI credits for this period.");
+            _logger.LogInformation("[AiArchitect] User {UserId} over budget, but credit enforcement is off (observe-only) — allowing", userId);
         }
 
         // Resolve the document for context. A from-scratch draft (no id, the
@@ -164,14 +173,17 @@ public class AiArchitectService : IAiArchitectService
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
 
-            // Debit the credit ledger. Best-effort: a metering failure must not
-            // lose the user's result, but it is logged (no silent failure).
+            // Debit the credit ledger (model-weighted). Best-effort: a metering
+            // failure must not lose the user's result, but it is logged.
             AiArchitectBalance? balance = null;
+            var credits = 0;
+            var creditsUsed = 0;
             try
             {
-                await _entitlement.RecordAiSpendAsync(userId, inputTokens + outputTokens, aiRequestId, ct);
+                credits = await _entitlement.RecordAiSpendAsync(userId, model, inputTokens, outputTokens, aiRequestId, ct);
                 var creditsLeft = await _entitlement.GetAiCreditBalanceAsync(userId, ct);
                 balance = new AiArchitectBalance(AiArchitectPricing.CreditsToUsd(creditsLeft));
+                creditsUsed = await _entitlement.GetAiCreditsConsumedAsync(userId, ct);
             }
             catch (Exception ex)
             {
@@ -181,8 +193,9 @@ public class AiArchitectService : IAiArchitectService
             var result = new AiArchitectResponse(
                 reply,
                 operations,
-                new AiArchitectUsage(inputTokens, outputTokens, costUsd),
-                balance);
+                new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits),
+                balance,
+                creditsUsed);
 
             return AiArchitectOutcome.Ok(result);
         }

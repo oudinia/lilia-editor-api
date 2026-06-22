@@ -37,14 +37,16 @@ public record AiArchitectResponse(
     string Reply,
     List<BlockOp> Operations,
     AiArchitectUsage Usage,
-    AiArchitectBalance? Balance
+    AiArchitectBalance? Balance,
+    int CreditsUsed = 0   // cumulative credits consumed by the user (UI readout)
 );
 
 /// <summary>Token + cost accounting for a single architect call.</summary>
 public record AiArchitectUsage(
     int InputTokens,
     int OutputTokens,
-    decimal CostUsd
+    decimal CostUsd,
+    int Credits = 0       // model-weighted credits for THIS call
 );
 
 /// <summary>Remaining AI budget after the call (best-effort; null if unknown).</summary>

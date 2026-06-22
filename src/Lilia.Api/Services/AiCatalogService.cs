@@ -20,6 +20,12 @@ public interface IAiCatalogService
 
     /// <summary>Whether a membership tier may select a model id.</summary>
     bool IsAllowedFor(string modelId, string membership);
+
+    /// <summary>
+    /// Model-weighted credit cost for a call. Uses the catalog's per-1k-token
+    /// rates; falls back to ~1 credit / 1k tokens for an unknown model. Min 1.
+    /// </summary>
+    int CreditsFor(string modelId, int inputTokens, int outputTokens);
 }
 
 /// <summary>
@@ -103,5 +109,22 @@ public class AiCatalogService : IAiCatalogService
         var need = Rank.GetValueOrDefault(m.MinMembership, 1);
         var have = Rank.GetValueOrDefault(membership, 0);
         return have >= need;
+    }
+
+    public int CreditsFor(string modelId, int inputTokens, int outputTokens)
+    {
+        var m = Get(modelId);
+        decimal credits;
+        if (m is not null && (m.CreditInPerKTok > 0 || m.CreditOutPerKTok > 0))
+        {
+            credits = (inputTokens / 1000m) * m.CreditInPerKTok
+                    + (outputTokens / 1000m) * m.CreditOutPerKTok;
+        }
+        else
+        {
+            // Unknown / unpriced model → model-agnostic fallback (~1 credit/1k).
+            credits = (inputTokens + outputTokens) / 1000m;
+        }
+        return Math.Max(1, (int)Math.Ceiling(credits));
     }
 }

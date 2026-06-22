@@ -36,6 +36,15 @@ public interface IEntitlementService
 
     /// <summary>Append a spend row to the credit ledger. Called on AiRequest completion.</summary>
     Task RecordAiSpendAsync(string userId, int tokensUsed, Guid aiRequestId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Append a model-weighted spend row (credits scaled by the model's catalog
+    /// rate — Opus costs ~5x Sonnet for the same tokens). Returns credits spent.
+    /// </summary>
+    Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default);
+
+    /// <summary>Total credits consumed (sum of spend) for a user — for the UI usage readout.</summary>
+    Task<int> GetAiCreditsConsumedAsync(string userId, CancellationToken ct = default);
 }
 
 public enum QuotaResource
