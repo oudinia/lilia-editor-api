@@ -504,6 +504,7 @@ builder.Services.AddSingleton<IUnicodeShimService, UnicodeShimService>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
 builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
 builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
+builder.Services.AddHostedService<ToolArtifactPruneService>();
 
 // ITokenRouter — catalog-backed dispatch decisions for LatexParser
 // (Stage 3 of the parser-reads-catalog plan). LatexParser holds a
