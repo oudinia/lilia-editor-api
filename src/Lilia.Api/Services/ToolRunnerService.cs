@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
@@ -58,20 +59,38 @@ public class ToolRunnerService : IToolRunnerService
         };
     }
 
-    // ── DOI → BibTeX (over BibliographyService.LookupDoiAsync) ───────────────
+    // ── DOI / ISBN / arXiv → BibTeX (routes to the right BibliographyService lookup) ──
     private async Task<ToolRunResult> RunDoiAsync(JsonElement input)
     {
-        var doi = TryGetString(input, "doi")?.Trim();
-        if (string.IsNullOrWhiteSpace(doi))
-            throw new ToolInputException("Provide a DOI (or DOI URL).");
-        // Accept a pasted DOI URL too.
-        doi = doi.Replace("https://doi.org/", "", StringComparison.OrdinalIgnoreCase)
-                 .Replace("http://doi.org/", "", StringComparison.OrdinalIgnoreCase)
-                 .Replace("doi.org/", "", StringComparison.OrdinalIgnoreCase).Trim();
+        var raw = (TryGetString(input, "doi") ?? TryGetString(input, "id"))?.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            throw new ToolInputException("Provide a DOI, ISBN, or arXiv id.");
 
-        var result = await _bibliography.LookupDoiAsync(doi);
+        var arxiv = Regex.Match(raw, @"(?:arxiv:)?\s*(\d{4}\.\d{4,5}(?:v\d+)?)$", RegexOptions.IgnoreCase);
+        var arxivOld = Regex.IsMatch(raw, @"^[a-z\-]+(?:\.[A-Z]{2})?/\d{7}$", RegexOptions.IgnoreCase);
+        var isbnDigits = new string(raw.Where(c => char.IsDigit(c) || c is 'X' or 'x').ToArray());
+
+        DoiLookupResultDto? result;
+        if (raw.StartsWith("arxiv", StringComparison.OrdinalIgnoreCase) || arxiv.Success || arxivOld)
+        {
+            var aid = arxiv.Success ? arxiv.Groups[1].Value
+                : raw.Replace("arXiv:", "", StringComparison.OrdinalIgnoreCase).Trim();
+            result = await _bibliography.LookupArxivAsync(aid);
+        }
+        else if (!raw.Contains('/') && (isbnDigits.Length == 10 || isbnDigits.Length == 13))
+        {
+            result = await _bibliography.LookupIsbnAsync(isbnDigits);
+        }
+        else
+        {
+            var doi = raw.Replace("https://doi.org/", "", StringComparison.OrdinalIgnoreCase)
+                         .Replace("http://doi.org/", "", StringComparison.OrdinalIgnoreCase)
+                         .Replace("doi.org/", "", StringComparison.OrdinalIgnoreCase).Trim();
+            result = await _bibliography.LookupDoiAsync(doi);
+        }
+
         if (result is null)
-            throw new ToolInputException("No record found for that DOI.");
+            throw new ToolInputException("No record found for that identifier.");
 
         var bibtex = FormatBibTex(result);
         var title = TryGetString(result.Data, "title");
