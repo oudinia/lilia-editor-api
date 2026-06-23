@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Lilia.Api.Models.Documents;
 using Lilia.Api.Services;
+using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -24,17 +26,23 @@ public class ToolsController : ControllerBase
     private readonly IToolCatalogService _catalog;
     private readonly IToolRunnerService _runner;
     private readonly LiliaDbContext _context;
+    private readonly IDocumentService _documents;
+    private readonly IBlockService _blocks;
     private readonly ILogger<ToolsController> _logger;
 
     public ToolsController(
         IToolCatalogService catalog,
         IToolRunnerService runner,
         LiliaDbContext context,
+        IDocumentService documents,
+        IBlockService blocks,
         ILogger<ToolsController> logger)
     {
         _catalog = catalog;
         _runner = runner;
         _context = context;
+        _documents = documents;
+        _blocks = blocks;
         _logger = logger;
     }
 
@@ -127,15 +135,55 @@ public class ToolsController : ControllerBase
 
         await RecordAsync(slug, userId, anonId, "use", ct);
         await RecordAsync(slug, userId, anonId, "result", ct);
-        await RecordArtifactAsync(slug, userId, anonId, input, file, result, ct);
+        var artifactId = await RecordArtifactAsync(slug, userId, anonId, input, file, result, ct);
 
         return Ok(new
         {
             output = result.Output,
             format = result.Format,
             title = result.Title,
+            artifactId,
             crossSell = new { label = tool.CrossSellLabel ?? "Open in Lilia editor", openInEditor = true },
         });
+    }
+
+    /// <summary>
+    /// The "Open in Lilia" cross-sell destination — create a real document (owned by
+    /// the signed-in user) from a tool artifact, and return its id. The editor route
+    /// calls this then redirects into the doc. Word→LaTeX is excluded here (it routes
+    /// into import-review, not a flat doc).
+    /// </summary>
+    [HttpPost("artifacts/{id:guid}/to-document")]
+    [Authorize]
+    public async Task<IActionResult> ToDocument(Guid id, CancellationToken ct)
+    {
+        var userId = User.FindFirst("sub")?.Value
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var art = await _context.ToolArtifacts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+        if (art is null) return NotFound();
+        if (art.ToolSlug == "word-to-latex")
+            return UnprocessableEntity(new { message = "Word documents open via import-review, not this endpoint." });
+
+        var title = art.ToolSlug switch { "latex-table" => "Table", "doi-to-bibtex" => "Reference", _ => "From tool" };
+        var doc = await _documents.CreateDocumentAsync(userId, new CreateDocumentDto { Title = title });
+
+        // One block from the artifact: a real editable table from the grid input; the
+        // BibTeX as a code block; otherwise the output as a paragraph.
+        var block = art.ToolSlug switch
+        {
+            "latex-table" when art.Input is not null =>
+                new CreateBlockDto("table", art.Input.RootElement, 0, null, null),
+            "doi-to-bibtex" =>
+                new CreateBlockDto("code", JsonSerializer.SerializeToElement(new { code = art.Output ?? "", language = "bibtex" }), 0, null, null),
+            _ =>
+                new CreateBlockDto("paragraph", JsonSerializer.SerializeToElement(new { text = art.Output ?? "" }), 0, null, null),
+        };
+        await _blocks.CreateBlockAsync(doc.Id, block);
+
+        await RecordAsync(art.ToolSlug, userId, GetOrSetAnonId(), "signup", ct); // funnel: crossed into the product
+        return Ok(new { documentId = doc.Id });
     }
 
     /// <summary>Funnel beacon — record view/signup/pay from the client.</summary>
@@ -183,7 +231,7 @@ public class ToolsController : ControllerBase
 
     // Persist the run (input + output) for behaviour/pattern analytics + the
     // future library. Ephemeral for the user; prunable for us. Best-effort.
-    private async Task RecordArtifactAsync(
+    private async Task<Guid?> RecordArtifactAsync(
         string slug, string? userId, string anonId,
         JsonElement input, IFormFile? file, ToolRunResult result, CancellationToken ct)
     {
@@ -200,9 +248,10 @@ public class ToolsController : ControllerBase
             var truncated = output.Length > MaxArtifactBytes;
             if (truncated) output = output[..MaxArtifactBytes];
 
+            var id = Guid.NewGuid();
             _context.ToolArtifacts.Add(new ToolArtifact
             {
-                Id = Guid.NewGuid(),
+                Id = id,
                 ToolSlug = slug,
                 UserId = userId,
                 AnonId = anonId,
@@ -214,10 +263,12 @@ public class ToolsController : ControllerBase
                 CreatedAt = DateTime.UtcNow,
             });
             await _context.SaveChangesAsync(ct);
+            return id;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Tools] failed to record artifact for {Slug}", slug);
+            return null;
         }
     }
 
