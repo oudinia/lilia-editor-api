@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -45,6 +46,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IEntitlementService _entitlement;
     private readonly IAiCatalogService _catalog;
     private readonly IAskLiliaRouter _router;
+    private readonly IKbService _kb;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
@@ -53,12 +55,24 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly bool _enforceCredits;
 
     private const int MaxOutputTokens = 4096;
+    // Bound the tool-use loop: each round is one model call; this caps cost and
+    // guarantees termination even if the model keeps requesting tools.
+    private const int MaxToolRounds = 4;
 
     private const string OutputNote = """
         OUTPUT — respond conversationally to the author. Put any LML, BibTeX, or LaTeX you produce
         in fenced code blocks they can copy into Lilia (or apply). Lead with the artifact; keep prose
         short. Follow the AUTHOR LEVEL guidance above. Never fabricate citations, numbers, datasets,
         or results — keep specifics the author must supply generic and flagged.
+
+        KNOWLEDGE BASE — you have two tools over Lilia's help catalog:
+        • search_kb(query): find the right help article by intent (returns slug, title, summary, href);
+        • get_kb(slug): read one article's full body.
+        Use them when the author asks how/where/what, or when you point them to a tool or feature —
+        ground your answer in what the tools return and cite the article by title and its href
+        (e.g. "see Data → LaTeX table — /help/latex-table"). Do NOT invent article slugs, hrefs, or
+        Lilia behaviour: if search_kb returns nothing, say so and answer from the skill guidance.
+        Skip the tools for pure generation (e.g. "write this equation") where no docs are needed.
         """;
 
     public AskLiliaService(
@@ -66,6 +80,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IEntitlementService entitlement,
         IAiCatalogService catalog,
         IAskLiliaRouter router,
+        IKbService kb,
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
@@ -75,6 +90,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _entitlement = entitlement;
         _catalog = catalog;
         _router = router;
+        _kb = kb;
         _context = context;
         _options = options.Value;
         _logger = logger;
@@ -140,23 +156,57 @@ public sealed class AskLiliaService : IAskLiliaService
             if (_catalog.IsAllowedFor(request.Model, tier)) model = request.Model;
         }
 
-        // ── audit → call → meter ──────────────────────────────────────────
+        // ── audit → tool-use loop → meter ─────────────────────────────────
         var aiRequestId = await PersistPendingAsync(userId, PurposeFor(skill.Id), model, messages, ct);
         var sw = Stopwatch.StartNew();
         try
         {
             _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model}", skill.Id, userId, model);
 
-            var response = await _chatClient.GetResponseAsync(messages, new ChatOptions
+            var tools = BuildKbTools(ct);
+            var options = new ChatOptions
             {
                 ModelId = model,
                 MaxOutputTokens = MaxOutputTokens,
                 Temperature = 0.4f,
-            }, ct);
+                Tools = tools,
+            };
+
+            // Manual tool-use loop: the model may call search_kb/get_kb to ground its
+            // answer. Each round is one model call; we execute any tool calls, feed the
+            // results back, and continue until the model returns a final text answer (or
+            // we hit the round cap). Token usage is summed across all rounds for metering.
+            ChatResponse response = null!;
+            var inputTokens = 0;
+            var outputTokens = 0;
+            var toolCalls = 0;
+            for (var round = 0; round < MaxToolRounds; round++)
+            {
+                response = await _chatClient.GetResponseAsync(messages, options, ct);
+                inputTokens += (int?)response.Usage?.InputTokenCount ?? 0;
+                outputTokens += (int?)response.Usage?.OutputTokenCount ?? 0;
+
+                // Carry the assistant turn (incl. any function-call content) into history.
+                messages.AddRange(response.Messages);
+
+                var calls = response.Messages
+                    .SelectMany(m => m.Contents)
+                    .OfType<FunctionCallContent>()
+                    .ToList();
+                if (calls.Count == 0) break; // final answer
+
+                foreach (var call in calls)
+                {
+                    toolCalls++;
+                    var toolResult = await InvokeKbToolAsync(tools, call, ct);
+                    messages.Add(new ChatMessage(ChatRole.Tool,
+                        [new FunctionResultContent(call.CallId, toolResult)]));
+                }
+            }
+            if (toolCalls > 0)
+                _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} KB tool call(s)", skill.Id, toolCalls);
 
             var reply = (response.Text ?? string.Empty).Trim();
-            var inputTokens = (int?)response.Usage?.InputTokenCount ?? 0;
-            var outputTokens = (int?)response.Usage?.OutputTokenCount ?? 0;
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens);
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
@@ -186,6 +236,59 @@ public sealed class AskLiliaService : IAskLiliaService
             _logger.LogError(ex, "[AskLilia] AI call failed for user {UserId} skill {Skill}", userId, skill.Id);
             await MarkAsync(aiRequestId, "error", Truncate(ex.Message, 500), 0, 0, (int)sw.ElapsedMilliseconds, ct);
             throw;
+        }
+    }
+
+    // ── KB tool-use ───────────────────────────────────────────────────────
+    // The two knowledge-base tools handed to the model. AIFunctionFactory builds
+    // each tool's JSON schema from the delegate signature + [Description]; the
+    // delegate body is the execution, so InvokeKbToolAsync dispatches by name.
+    private IList<AITool> BuildKbTools(CancellationToken ct) =>
+    [
+        AIFunctionFactory.Create(
+            ([Description("What the author wants to do or know, in their own words (e.g. 'make a table from csv', 'cite a doi').")] string query)
+                => SearchKbAsync(query, ct),
+            name: "search_kb",
+            description: "Search the Lilia knowledge base for help articles by intent. Returns up to a few matches as {slug, title, summary, toolSlug, skillId, href}. Use it to find the right doc to ground your answer and cite."),
+        AIFunctionFactory.Create(
+            ([Description("The article slug returned by search_kb, e.g. 'latex-table'.")] string slug)
+                => GetKbAsync(slug, ct),
+            name: "get_kb",
+            description: "Fetch one Lilia knowledge-base article's full body by slug. Use after search_kb when you need the step-by-step detail."),
+    ];
+
+    private async Task<object> SearchKbAsync(string query, CancellationToken ct)
+    {
+        var hits = await _kb.SearchAsync(query ?? string.Empty, 6, ct);
+        return new
+        {
+            results = hits.Select(a => new
+            {
+                a.Slug, a.Title, a.Summary, a.ToolSlug, a.SkillId,
+                href = $"/help/{a.Slug}",
+            }),
+        };
+    }
+
+    private async Task<object> GetKbAsync(string slug, CancellationToken ct)
+    {
+        var a = string.IsNullOrWhiteSpace(slug) ? null : await _kb.GetAsync(slug, ct);
+        return a is null
+            ? new { error = $"No article '{slug}'. Call search_kb first." }
+            : (object)new { a.Slug, a.Title, a.Body, a.ToolSlug, a.SkillId, href = $"/help/{a.Slug}" };
+    }
+
+    private static async Task<object?> InvokeKbToolAsync(IList<AITool> tools, FunctionCallContent call, CancellationToken ct)
+    {
+        if (tools.OfType<AIFunction>().FirstOrDefault(f => f.Name == call.Name) is not { } fn)
+            return new { error = $"Unknown tool '{call.Name}'." };
+        try
+        {
+            return await fn.InvokeAsync(new AIFunctionArguments(call.Arguments), ct);
+        }
+        catch (Exception ex)
+        {
+            return new { error = "tool failed: " + ex.Message };
         }
     }
 
