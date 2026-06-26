@@ -55,7 +55,10 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Log in to DOCR
-        run: doctl registry login --expiry-seconds 1200
+        # 1h window: the registry token is minted before build+push (one step),
+        # so a cold-cache build (texlive layer, busted caches) must still have a
+        # valid token at push time. 20 min was too short and 401'd on slow builds.
+        run: doctl registry login --expiry-seconds 3600
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
