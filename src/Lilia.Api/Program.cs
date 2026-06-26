@@ -473,6 +473,10 @@ builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 // Register AI Document-Architect service (conversational block-structure proposals)
 builder.Services.AddScoped<IAiArchitectService, AiArchitectService>();
 builder.Services.AddScoped<IAskLiliaService, AskLiliaService>();
+// Knowledge base — the screenshot-free, per-tool help catalog the AI points to and
+// the public site renders. Scoped (DbContext-backed); seeded from embedded Kb/*.md.
+builder.Services.AddScoped<IKbService, KbService>();
+builder.Services.AddScoped<IKbSeeder, KbSeeder>();
 
 // Register Lilia.Import services for document conversion. DocxParser
 // gets the IImportTelemetrySink so DOCX warnings flow into the same
@@ -781,6 +785,10 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     // Warm the standalone-tools registry.
     await app.Services.GetRequiredService<IToolCatalogService>().PreloadAsync();
+
+    // Seed the knowledge base from embedded Kb/*.md (idempotent upsert by slug).
+    // Scoped — resolve from the migration scope so it shares the post-migrate DbContext.
+    await scope.ServiceProvider.GetRequiredService<IKbSeeder>().PreloadAsync();
 
     // Stage-3 boot-time audit — walk every hardcoded HashSet in
     // LatexParser and log any member without a matching catalog row.

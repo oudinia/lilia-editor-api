@@ -64,5 +64,8 @@
     <EmbeddedResource Include="AiSkills\**\*.md">
       <LogicalName>AiSkills.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Kb\**\*.md">
+      <LogicalName>Kb.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>
