@@ -10,3 +10,11 @@
 **/*.md
 **/database
 **/.gitignore
+
+# ...but the AI skill guidance and the knowledge base are embedded resources
+# compiled into the API (AiSkillGuidance / KbSeeder) — they MUST be in the build
+# context. Re-include them after the blanket **/*.md exclusion above.
+!src/Lilia.Api/AiSkills/*.md
+!src/Lilia.Api/AiSkills/**/*.md
+!src/Lilia.Api/Kb/*.md
+!src/Lilia.Api/Kb/**/*.md
