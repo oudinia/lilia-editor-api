@@ -64,11 +64,15 @@ public sealed class KbService : IKbService
     public async Task<IReadOnlyList<KbArticleSummary>> SearchAsync(string query, int limit = 8, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];
-        // websearch_to_tsquery is forgiving with raw user/AI text; rank by relevance.
+        // websearch_to_tsquery safely lexes/stems raw user+AI text but ANDs the terms,
+        // which kills recall on natural phrasing ("make a table from csv" → make&tabl&csv,
+        // and no article contains "make"). Rewrite the parsed AND query to OR so ANY term
+        // can hit, then rank by ts_rank so the best-matching article still floats to the
+        // top. Recall-first is the right bias for "point the AI to the right doc".
         var sql = $@"
             SELECT {Cols}
             FROM kb_articles
-            WHERE enabled AND search_vector @@ websearch_to_tsquery('english', {{0}})
+            WHERE enabled AND search_vector @@ replace(websearch_to_tsquery('english', {{0}})::text, '&', '|')::tsquery
             ORDER BY ts_rank(search_vector, websearch_to_tsquery('english', {{0}})) DESC, sort_order
             LIMIT {{1}}";
         var rows = await _db.Database.SqlQueryRaw<Row>(sql, query, Clamp(limit, 25)).ToListAsync(ct);
