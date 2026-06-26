@@ -28,7 +28,7 @@ public interface IAskLiliaService
     Task<AskLiliaResult> AskAsync(string userId, AskLiliaRequest request, CancellationToken ct = default);
 }
 
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null);
 
 public sealed record AskLiliaResponse(
     string SkillId, string SkillName, string Reply,
@@ -47,6 +47,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IAiCatalogService _catalog;
     private readonly IAskLiliaRouter _router;
     private readonly IKbService _kb;
+    private readonly IDocumentService _documentService;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
@@ -81,6 +82,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IAiCatalogService catalog,
         IAskLiliaRouter router,
         IKbService kb,
+        IDocumentService documentService,
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
@@ -91,6 +93,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _catalog = catalog;
         _router = router;
         _kb = kb;
+        _documentService = documentService;
         _context = context;
         _options = options.Value;
         _logger = logger;
@@ -134,12 +137,34 @@ public sealed class AskLiliaService : IAskLiliaService
         var level = ProficiencyGuidance.Parse(request.Proficiency);
 
         var guidance = AiSkillGuidance.Get(skill.Id);
-        var system = new StringBuilder()
+        var systemSb = new StringBuilder()
             .AppendLine(ProficiencyGuidance.For(level)).AppendLine()
             .AppendLine(string.IsNullOrEmpty(guidance) ? $"You are the {skill.Name} skill for Lilia. {skill.WhenToUse}" : guidance)
-            .AppendLine().AppendLine(OutputNote)
-            .ToString();
+            .AppendLine().AppendLine(OutputNote);
 
+        // Document context — when Ask Lilia is open inside a document, ground the
+        // answer in that doc's current blocks (the author is editing it live).
+        Guid? documentId = null;
+        if (!string.IsNullOrWhiteSpace(request.DocumentId) && Guid.TryParse(request.DocumentId, out var docGuid))
+        {
+            documentId = docGuid;
+            try
+            {
+                var document = await _documentService.GetDocumentAsync(docGuid, userId);
+                if (document is not null)
+                {
+                    systemSb.AppendLine()
+                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. Use it as live context: reference its existing blocks, match its style and structure, and don't restate what's already there.")
+                        .AppendLine(AiArchitectService.BuildDocumentContext(document));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[AskLilia] document context load failed for {DocId}", request.DocumentId);
+            }
+        }
+
+        var system = systemSb.ToString();
         var messages = new List<ChatMessage>
         {
             new(ChatRole.System, system),
@@ -157,7 +182,7 @@ public sealed class AskLiliaService : IAskLiliaService
         }
 
         // ── audit → tool-use loop → meter ─────────────────────────────────
-        var aiRequestId = await PersistPendingAsync(userId, PurposeFor(skill.Id), model, messages, ct);
+        var aiRequestId = await PersistPendingAsync(userId, PurposeFor(skill.Id), model, messages, documentId, ct);
         var sw = Stopwatch.StartNew();
         try
         {
@@ -292,13 +317,13 @@ public sealed class AskLiliaService : IAskLiliaService
         }
     }
 
-    private async Task<Guid> PersistPendingAsync(string userId, string purpose, string model, List<ChatMessage> messages, CancellationToken ct)
+    private async Task<Guid> PersistPendingAsync(string userId, string purpose, string model, List<ChatMessage> messages, Guid? documentId, CancellationToken ct)
     {
         var row = new AiRequest
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            DocumentId = null,
+            DocumentId = documentId,
             BlockId = null,
             Purpose = purpose,
             Provider = "anthropic",
