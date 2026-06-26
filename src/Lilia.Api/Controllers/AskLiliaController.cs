@@ -21,13 +21,20 @@ namespace Lilia.Api.Controllers;
 public class AskLiliaController : ControllerBase
 {
     private readonly IAskLiliaRouter _router;
+    private readonly IAskLiliaService _ask;
+    private readonly ILogger<AskLiliaController> _logger;
 
-    public AskLiliaController(IAskLiliaRouter router) => _router = router;
+    public AskLiliaController(IAskLiliaRouter router, IAskLiliaService ask, ILogger<AskLiliaController> logger)
+    {
+        _router = router;
+        _ask = ask;
+        _logger = logger;
+    }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
         ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-    public record AskLiliaRequest(string Message, string? Proficiency = null);
+    public record AskRouteRequest(string Message, string? Proficiency = null);
     public record AskRouteResponse(
         string SkillId, string SkillName, double Confidence, string Reason,
         string Proficiency, string Preamble);
@@ -39,7 +46,7 @@ public class AskLiliaController : ControllerBase
     /// </summary>
     [HttpPost("ask/route")]
     [ProducesResponseType(typeof(AskRouteResponse), StatusCodes.Status200OK)]
-    public IActionResult Route([FromBody] AskLiliaRequest request)
+    public IActionResult Route([FromBody] AskRouteRequest request)
     {
         if (GetUserId() is null) return Unauthorized();
         if (request is null || string.IsNullOrWhiteSpace(request.Message))
@@ -53,6 +60,38 @@ public class AskLiliaController : ControllerBase
         return Ok(new AskRouteResponse(
             route.SkillId, route.SkillName, route.Confidence, route.Reason,
             level.ToString().ToLowerInvariant(), preamble));
+    }
+
+    /// <summary>
+    /// POST /api/ai/ask — the front door. Routes the message to a skill, runs it
+    /// through the governed AI path (key gate, budget, model catalog, audit,
+    /// metering), and returns { skillId, skillName, reply, usage, balance } — or 403
+    /// { locked, reason, message } when gated. Text mode: the artifact (LML/BibTeX/
+    /// LaTeX) is in the reply, in fenced blocks the editor can copy or apply.
+    /// </summary>
+    [HttpPost("ask")]
+    [ProducesResponseType(typeof(AskLiliaResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Ask([FromBody] AskLiliaRequest request, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        if (request is null || string.IsNullOrWhiteSpace(request.Message))
+            return BadRequest(new { message = "Message is required." });
+
+        try
+        {
+            var outcome = await _ask.AskAsync(userId, request, ct);
+            if (outcome.Locked)
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { locked = true, reason = outcome.Reason, message = outcome.Message });
+            return Ok(outcome.Response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] Ask failed for user {UserId}", userId);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Ask Lilia failed to respond. Please try again." });
+        }
     }
 
     /// <summary>GET /api/ai/skills — the skill catalog (for an "Ask Lilia" picker / suggestions).</summary>

@@ -472,6 +472,7 @@ builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 
 // Register AI Document-Architect service (conversational block-structure proposals)
 builder.Services.AddScoped<IAiArchitectService, AiArchitectService>();
+builder.Services.AddScoped<IAskLiliaService, AskLiliaService>();
 
 // Register Lilia.Import services for document conversion. DocxParser
 // gets the IImportTelemetrySink so DOCX warnings flow into the same
