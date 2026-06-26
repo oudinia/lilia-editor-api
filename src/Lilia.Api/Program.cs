@@ -502,6 +502,7 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lili
 builder.Services.AddSingleton<ILatexCatalogService, LatexCatalogService>();
 builder.Services.AddSingleton<IUnicodeShimService, UnicodeShimService>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
+builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
 builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
 builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
 builder.Services.AddHostedService<ToolArtifactPruneService>();
