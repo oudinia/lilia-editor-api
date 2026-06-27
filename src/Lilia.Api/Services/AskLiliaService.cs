@@ -145,16 +145,17 @@ public sealed class AskLiliaService : IAskLiliaService
         // Document context — when Ask Lilia is open inside a document, ground the
         // answer in that doc's current blocks (the author is editing it live).
         Guid? documentId = null;
+        Lilia.Core.DTOs.DocumentDto? document = null;
         if (!string.IsNullOrWhiteSpace(request.DocumentId) && Guid.TryParse(request.DocumentId, out var docGuid))
         {
             documentId = docGuid;
             try
             {
-                var document = await _documentService.GetDocumentAsync(docGuid, userId);
+                document = await _documentService.GetDocumentAsync(docGuid, userId);
                 if (document is not null)
                 {
                     systemSb.AppendLine()
-                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. Use it as live context: reference its existing blocks, match its style and structure, and don't restate what's already there.")
+                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
                         .AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
@@ -189,6 +190,8 @@ public sealed class AskLiliaService : IAskLiliaService
             _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model}", skill.Id, userId, model);
 
             var tools = BuildKbTools(ct);
+            if (document is not null)
+                tools = tools.Concat(BuildDocumentTools(document)).ToList();
             var options = new ChatOptions
             {
                 ModelId = model,
@@ -301,6 +304,85 @@ public sealed class AskLiliaService : IAskLiliaService
         return a is null
             ? new { error = $"No article '{slug}'. Call search_kb first." }
             : (object)new { a.Slug, a.Title, a.Body, a.ToolSlug, a.SkillId, href = $"/help/{a.Slug}" };
+    }
+
+    // ── Document read tools (Phase 1 of agentic Ask Lilia) ───────────────────
+    // Let the model READ the open document on demand instead of only the static
+    // dump: outline/structure, one block's full content, or a text search.
+    private static IList<AITool> BuildDocumentTools(Lilia.Core.DTOs.DocumentDto document) =>
+    [
+        AIFunctionFactory.Create(
+            () => DocOutline(document),
+            name: "get_outline",
+            description: "Get the open document's structure: every block in order with {id, type, snippet}, plus the heading outline {id, level, text}. Use it to understand the document before answering or editing."),
+        AIFunctionFactory.Create(
+            ([System.ComponentModel.Description("A block id from get_outline or search_document.")] string blockId)
+                => DocBlock(document, blockId),
+            name: "get_block",
+            description: "Read one block's full type + content by its id (from get_outline/search_document)."),
+        AIFunctionFactory.Create(
+            ([System.ComponentModel.Description("Text to find in the document.")] string query)
+                => DocSearch(document, query),
+            name: "search_document",
+            description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
+    ];
+
+    private static object DocOutline(Lilia.Core.DTOs.DocumentDto document)
+    {
+        var blocks = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).OrderBy(b => b.SortOrder).ToList();
+        return new
+        {
+            title = document.Title,
+            blockCount = blocks.Count,
+            outline = blocks
+                .Where(b => b.Type.Contains("heading", StringComparison.OrdinalIgnoreCase))
+                .Select(b => new { id = b.Id, level = HeadingLevel(b.Content), text = TextOf(b.Content) }),
+            blocks = blocks.Select(b => new { id = b.Id, type = b.Type, snippet = Snippet(b.Content, 120) }),
+        };
+    }
+
+    private static object DocBlock(Lilia.Core.DTOs.DocumentDto document, string blockId)
+    {
+        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        var b = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).FirstOrDefault(x => x.Id == id);
+        return b is null
+            ? new { error = "block not found" }
+            : (object)new { id = b.Id, type = b.Type, content = b.Content };
+    }
+
+    private static object DocSearch(Lilia.Core.DTOs.DocumentDto document, string query)
+    {
+        var q = (query ?? string.Empty).Trim();
+        if (q.Length == 0) return new { matches = Array.Empty<object>() };
+        var matches = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>())
+            .OrderBy(b => b.SortOrder)
+            .Where(b => Snippet(b.Content, 4000).Contains(q, StringComparison.OrdinalIgnoreCase))
+            .Select(b => new { id = b.Id, type = b.Type, snippet = Snippet(b.Content, 160) })
+            .Take(12);
+        return new { matches };
+    }
+
+    private static string TextOf(System.Text.Json.JsonElement c)
+    {
+        if (c.ValueKind != System.Text.Json.JsonValueKind.Object) return string.Empty;
+        foreach (var key in new[] { "text", "title", "latex", "code", "caption" })
+            if (c.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+                return v.GetString() ?? string.Empty;
+        return string.Empty;
+    }
+
+    private static int HeadingLevel(System.Text.Json.JsonElement c) =>
+        c.ValueKind == System.Text.Json.JsonValueKind.Object
+        && c.TryGetProperty("level", out var v)
+        && v.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? v.GetInt32() : 1;
+
+    private static string Snippet(System.Text.Json.JsonElement c, int max)
+    {
+        var t = TextOf(c);
+        if (string.IsNullOrEmpty(t)) t = c.GetRawText();
+        t = System.Text.RegularExpressions.Regex.Replace(t, "\\s+", " ").Trim();
+        return t.Length > max ? t[..max] + "…" : t;
     }
 
     private static async Task<object?> InvokeKbToolAsync(IList<AITool> tools, FunctionCallContent call, CancellationToken ct)
