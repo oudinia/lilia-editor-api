@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Cryptography;
 using System.Text;
 using Lilia.Api.Models.AiArchitect;
@@ -51,6 +52,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IDocumentService _documentService;
     private readonly IBlockService _blockService;
     private readonly IVersionService _versionService;
+    private readonly Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> _hub;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
@@ -88,6 +90,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IDocumentService documentService,
         IBlockService blockService,
         IVersionService versionService,
+        Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> hub,
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
@@ -101,6 +104,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _documentService = documentService;
         _blockService = blockService;
         _versionService = versionService;
+        _hub = hub;
         _context = context;
         _options = options.Value;
         _logger = logger;
@@ -395,6 +399,8 @@ public sealed class AskLiliaService : IAskLiliaService
             new Lilia.Core.DTOs.CreateBlockDto(type, ParseContent(contentJson), sortOrder, null, null));
         doc.Blocks?.Add(created);
         changed.Add(created.Id.ToString());
+        await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+            new { op = "add", id = created.Id, type = created.Type, content = created.Content, afterId, sortOrder = created.SortOrder });
         return new { ok = true, id = created.Id };
     }
 
@@ -407,6 +413,8 @@ public sealed class AskLiliaService : IAskLiliaService
         var i = doc.Blocks?.FindIndex(b => b.Id == id) ?? -1;
         if (i >= 0) doc.Blocks![i] = updated;
         changed.Add(id.ToString());
+        await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+            new { op = "edit", id, type = updated.Type, content = updated.Content });
         return new { ok = true, id };
     }
 
@@ -417,6 +425,7 @@ public sealed class AskLiliaService : IAskLiliaService
         if (!ok) return new { error = "block not found" };
         doc.Blocks?.RemoveAll(b => b.Id == id);
         changed.Add(id.ToString());
+        await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged", new { op = "remove", id });
         return new { ok = true };
     }
 
@@ -428,6 +437,8 @@ public sealed class AskLiliaService : IAskLiliaService
         if (ids.Count == 0) return new { error = "no valid block ids" };
         await _blockService.ReorderBlocksAsync(docId, ids);
         changed.AddRange(ids.Select(g => g.ToString()));
+        await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+            new { op = "reorder", ids = ids.Select(g => g.ToString()).ToList() });
         return new { ok = true };
     }
 
