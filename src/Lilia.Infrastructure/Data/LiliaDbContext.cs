@@ -107,6 +107,7 @@ public class LiliaDbContext : DbContext
 
     public DbSet<LatexInsertionEvent> LatexInsertionEvents => Set<LatexInsertionEvent>();
     public DbSet<BlockValidation> BlockValidations => Set<BlockValidation>();
+    public DbSet<ChangelogEntry> ChangelogEntries => Set<ChangelogEntry>();
     public DbSet<AiRequest> AiRequests => Set<AiRequest>();
 
     // Entitlement / #59 — entity shells registered here; middleware + quota

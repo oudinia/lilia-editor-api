@@ -7,6 +7,23 @@ watermark.
 
 ---
 
+## 2026-06-27 — tick (theorem env)
+
+**New errors:** 1.
+
+| n | class | kind | doc |
+|---|---|---|---|
+| 1 | `Environment Theorem undefined` | **pipeline bug** — theorem class, fix in-flight | `35e0cffd` ("fix-verify (delete me)") |
+
+Same theorem-casing root cause (#1/#2 in ACTION). This is the *intermediate*
+symptom: after the counter-priming fix (`\setcounter{theorem}` now OK) the
+failure moved to the body env `\begin{Theorem}`. The validation-path body
+renderer (`RenderService.RenderTheoremToLatex`) is fixed in commit `3b912f4`
+(normalizes via `LaTeXPreamble.NormalizeTheoremEnv`), deploying now. Row is from
+the throwaway verification doc, not a user. No new ACTION items.
+
+---
+
 ## 2026-06-27 — tick (since 2026-06-26 10:20)
 
 **New errors:** 2.
