@@ -7,8 +7,8 @@ AREA="${1:?area}"; KIND="${2:?fix|feature}"; TITLE="${3:?title}"; DETAIL="${4:?d
 VERIFIED="${5:-false}"; SHOT="${6:-}"; DT="${7:-$(date -u +%F)}"
 DBID=cdefbbfd-7d4e-4075-9b9e-2ba34cdb45cb
 URI=$(doctl databases connection "$DBID" --format URI --no-header 2>/dev/null)
-TITLE_J=$(python3 -c "import json,sys;print(json.dumps({'en':sys.argv[1]}))" "$TITLE")
-DETAIL_J=$(python3 -c "import json,sys;print(json.dumps({'en':sys.argv[1]}))" "$DETAIL")
+TITLE_J=$(python3 -c "import json,sys;print(json.dumps({'en':sys.argv[1]}).replace(chr(39),chr(39)*2))" "$TITLE")
+DETAIL_J=$(python3 -c "import json,sys;print(json.dumps({'en':sys.argv[1]}).replace(chr(39),chr(39)*2))" "$DETAIL")
 SHOT_SQL="NULL"; [ -n "$SHOT" ] && SHOT_SQL="'$SHOT'"
 psql "$URI" -v ON_ERROR_STOP=1 -c \
 "INSERT INTO changelog_entries (entry_date, area, kind, status, title, detail, verified, shot_url, sort)
