@@ -2176,7 +2176,10 @@ public partial class RenderService : IRenderService
 
     private string RenderTheoremToLatex(JsonElement content)
     {
-        var theoremType = content.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
+        // Normalize to a preamble-declared env ("Theorem" → "theorem"); raw
+        // capitalized types yield \begin{Theorem} → "Environment Theorem undefined".
+        var theoremType = LaTeXPreamble.NormalizeTheoremEnv(
+            content.TryGetProperty("theoremType", out var tt) ? tt.GetString() : null);
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
         var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
