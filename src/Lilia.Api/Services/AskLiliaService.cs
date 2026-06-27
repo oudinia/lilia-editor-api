@@ -28,11 +28,11 @@ public interface IAskLiliaService
     Task<AskLiliaResult> AskAsync(string userId, AskLiliaRequest request, CancellationToken ct = default);
 }
 
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false);
 
 public sealed record AskLiliaResponse(
     string SkillId, string SkillName, string Reply,
-    AiArchitectUsage Usage, AiArchitectBalance? Balance, int CreditsUsed);
+    AiArchitectUsage Usage, AiArchitectBalance? Balance, int CreditsUsed, bool DocumentChanged = false);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
 {
@@ -48,6 +48,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IAskLiliaRouter _router;
     private readonly IKbService _kb;
     private readonly IDocumentService _documentService;
+    private readonly IBlockService _blockService;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
@@ -83,6 +84,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IAskLiliaRouter router,
         IKbService kb,
         IDocumentService documentService,
+        IBlockService blockService,
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
@@ -94,6 +96,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _router = router;
         _kb = kb;
         _documentService = documentService;
+        _blockService = blockService;
         _context = context;
         _options = options.Value;
         _logger = logger;
@@ -155,8 +158,10 @@ public sealed class AskLiliaService : IAskLiliaService
                 if (document is not null)
                 {
                     systemSb.AppendLine()
-                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
-                        .AppendLine(AiArchitectService.BuildDocumentContext(document));
+                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.");
+                    if (request.EditMode)
+                        systemSb.AppendLine("EDIT MODE IS ON — you may also WRITE to the document with add_block, edit_block, remove_block, reorder_blocks. Make the changes the author asked for directly via these tools (read first to get the right block ids). Keep edits minimal and on-target; after editing, briefly summarize what you changed. `content` is a JSON object matching the block type, e.g. {\"text\":\"…\"} (paragraph), {\"text\":\"…\",\"level\":1} (heading), {\"latex\":\"…\"} (equation), {\"theoremType\":\"theorem\",\"text\":\"…\"} (theorem).");
+                    systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
             catch (Exception ex)
@@ -189,9 +194,10 @@ public sealed class AskLiliaService : IAskLiliaService
         {
             _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model}", skill.Id, userId, model);
 
+            var wrote = new bool[1]; // set true by any write tool that mutates the doc
             var tools = BuildKbTools(ct);
             if (document is not null)
-                tools = tools.Concat(BuildDocumentTools(document)).ToList();
+                tools = tools.Concat(BuildDocumentTools(document, documentId!.Value, request.EditMode, wrote, ct)).ToList();
             var options = new ChatOptions
             {
                 ModelId = model,
@@ -256,7 +262,8 @@ public sealed class AskLiliaService : IAskLiliaService
 
             var result = new AskLiliaResponse(
                 skill.Id, skill.Name, reply,
-                new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits), balance, creditsUsed);
+                new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits), balance, creditsUsed,
+                DocumentChanged: wrote[0]);
             return AskLiliaResult.Ok(result);
         }
         catch (Exception ex)
@@ -309,23 +316,112 @@ public sealed class AskLiliaService : IAskLiliaService
     // ── Document read tools (Phase 1 of agentic Ask Lilia) ───────────────────
     // Let the model READ the open document on demand instead of only the static
     // dump: outline/structure, one block's full content, or a text search.
-    private static IList<AITool> BuildDocumentTools(Lilia.Core.DTOs.DocumentDto document) =>
-    [
-        AIFunctionFactory.Create(
-            () => DocOutline(document),
-            name: "get_outline",
-            description: "Get the open document's structure: every block in order with {id, type, snippet}, plus the heading outline {id, level, text}. Use it to understand the document before answering or editing."),
-        AIFunctionFactory.Create(
-            ([System.ComponentModel.Description("A block id from get_outline or search_document.")] string blockId)
-                => DocBlock(document, blockId),
-            name: "get_block",
-            description: "Read one block's full type + content by its id (from get_outline/search_document)."),
-        AIFunctionFactory.Create(
-            ([System.ComponentModel.Description("Text to find in the document.")] string query)
-                => DocSearch(document, query),
-            name: "search_document",
-            description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
-    ];
+    private IList<AITool> BuildDocumentTools(Lilia.Core.DTOs.DocumentDto document, Guid docGuid, bool allowWrite, bool[] wrote, CancellationToken ct)
+    {
+        var tools = new List<AITool>
+        {
+            AIFunctionFactory.Create(
+                () => DocOutline(document),
+                name: "get_outline",
+                description: "Get the open document's structure: every block in order with {id, type, snippet}, plus the heading outline {id, level, text}. Use it to understand the document before answering or editing."),
+            AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("A block id from get_outline or search_document.")] string blockId)
+                    => DocBlock(document, blockId),
+                name: "get_block",
+                description: "Read one block's full type + content by its id (from get_outline/search_document)."),
+            AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("Text to find in the document.")] string query)
+                    => DocSearch(document, query),
+                name: "search_document",
+                description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
+        };
+
+        if (allowWrite)
+        {
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote.")] string type,
+                 [System.ComponentModel.Description("JSON content object matching the type, e.g. {\"text\":\"…\"} or {\"text\":\"…\",\"level\":1} or {\"latex\":\"…\"}.")] string content,
+                 [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId)
+                    => AddBlockAsync(document, docGuid, type, content, afterId, wrote),
+                name: "add_block",
+                description: "Add a new block to the open document. Returns the new block id."));
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("The block id to edit.")] string blockId,
+                 [System.ComponentModel.Description("New JSON content object for the block.")] string content,
+                 [System.ComponentModel.Description("Optional new block type.")] string? type)
+                    => EditBlockAsync(document, docGuid, blockId, content, type, wrote),
+                name: "edit_block",
+                description: "Replace a block's content (and optionally its type) by id."));
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("The block id to remove.")] string blockId)
+                    => RemoveBlockAsync(document, docGuid, blockId, wrote),
+                name: "remove_block",
+                description: "Delete a block by id."));
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("All block ids in the desired final order.")] string[] blockIds)
+                    => ReorderBlocksAsync(document, docGuid, blockIds, wrote),
+                name: "reorder_blocks",
+                description: "Reorder the document's blocks to this exact id order."));
+        }
+        return tools;
+    }
+
+    // ── Write tool implementations — go through the access-checked block
+    // service (same path the editor uses); mirror the change into the in-memory
+    // doc so later read tools stay consistent; flag that the doc changed.
+    private async Task<object> AddBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string type, string contentJson, string? afterId, bool[] wrote)
+    {
+        int? sortOrder = null;
+        if (!string.IsNullOrWhiteSpace(afterId) && Guid.TryParse(afterId, out var aid))
+        {
+            var anchor = doc.Blocks?.FirstOrDefault(b => b.Id == aid);
+            if (anchor is not null) sortOrder = anchor.SortOrder + 1;
+        }
+        var created = await _blockService.CreateBlockAsync(docId,
+            new Lilia.Core.DTOs.CreateBlockDto(type, ParseContent(contentJson), sortOrder, null, null));
+        doc.Blocks?.Add(created);
+        wrote[0] = true;
+        return new { ok = true, id = created.Id };
+    }
+
+    private async Task<object> EditBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, string contentJson, string? type, bool[] wrote)
+    {
+        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        var updated = await _blockService.UpdateBlockAsync(docId, id,
+            new Lilia.Core.DTOs.UpdateBlockDto(type, ParseContent(contentJson), null, null, null));
+        if (updated is null) return new { error = "block not found" };
+        var i = doc.Blocks?.FindIndex(b => b.Id == id) ?? -1;
+        if (i >= 0) doc.Blocks![i] = updated;
+        wrote[0] = true;
+        return new { ok = true, id };
+    }
+
+    private async Task<object> RemoveBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, bool[] wrote)
+    {
+        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        var ok = await _blockService.DeleteBlockAsync(docId, id);
+        if (!ok) return new { error = "block not found" };
+        doc.Blocks?.RemoveAll(b => b.Id == id);
+        wrote[0] = true;
+        return new { ok = true };
+    }
+
+    private async Task<object> ReorderBlocksAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string[] blockIds, bool[] wrote)
+    {
+        var ids = (blockIds ?? Array.Empty<string>())
+            .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty).ToList();
+        if (ids.Count == 0) return new { error = "no valid block ids" };
+        await _blockService.ReorderBlocksAsync(docId, ids);
+        wrote[0] = true;
+        return new { ok = true };
+    }
+
+    private static System.Text.Json.JsonElement ParseContent(string json)
+    {
+        try { return System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement.Clone(); }
+        catch { return System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone(); }
+    }
 
     private static object DocOutline(Lilia.Core.DTOs.DocumentDto document)
     {
