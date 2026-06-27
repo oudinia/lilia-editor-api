@@ -33,7 +33,7 @@ public sealed record AskLiliaRequest(string Message, string? Proficiency = null,
 public sealed record AskLiliaResponse(
     string SkillId, string SkillName, string Reply,
     AiArchitectUsage Usage, AiArchitectBalance? Balance, int CreditsUsed, bool DocumentChanged = false,
-    IReadOnlyList<string>? ChangedBlockIds = null);
+    IReadOnlyList<string>? ChangedBlockIds = null, string? UndoVersionId = null);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
 {
@@ -50,6 +50,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IKbService _kb;
     private readonly IDocumentService _documentService;
     private readonly IBlockService _blockService;
+    private readonly IVersionService _versionService;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
@@ -86,6 +87,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IKbService kb,
         IDocumentService documentService,
         IBlockService blockService,
+        IVersionService versionService,
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
@@ -98,6 +100,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _kb = kb;
         _documentService = documentService;
         _blockService = blockService;
+        _versionService = versionService;
         _context = context;
         _options = options.Value;
         _logger = logger;
@@ -196,6 +199,15 @@ public sealed class AskLiliaService : IAskLiliaService
             _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model}", skill.Id, userId, model);
 
             var changed = new List<string>(); // block ids the write tools touched
+            // Undo snapshot — in Edit mode, capture the doc state before the AI
+            // can write, so the client can offer "Undo AI changes". Surfaced
+            // only if a write actually happened.
+            Guid? undoVersionId = null;
+            if (request.EditMode && document is not null)
+            {
+                try { undoVersionId = (await _versionService.CreateVersionAsync(documentId!.Value, userId, new Lilia.Core.DTOs.CreateVersionDto("Before Ask Lilia edit"))).Id; }
+                catch (Exception ex) { _logger.LogWarning(ex, "[AskLilia] undo snapshot failed for {DocId}", documentId); }
+            }
             var tools = BuildKbTools(ct);
             if (document is not null)
                 tools = tools.Concat(BuildDocumentTools(document, documentId!.Value, request.EditMode, changed, ct)).ToList();
@@ -264,7 +276,8 @@ public sealed class AskLiliaService : IAskLiliaService
             var result = new AskLiliaResponse(
                 skill.Id, skill.Name, reply,
                 new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits), balance, creditsUsed,
-                DocumentChanged: changed.Count > 0, ChangedBlockIds: changed.Distinct().ToList());
+                DocumentChanged: changed.Count > 0, ChangedBlockIds: changed.Distinct().ToList(),
+                UndoVersionId: changed.Count > 0 ? undoVersionId?.ToString() : null);
             return AskLiliaResult.Ok(result);
         }
         catch (Exception ex)
