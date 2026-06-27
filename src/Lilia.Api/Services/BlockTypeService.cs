@@ -55,6 +55,7 @@ public class BlockTypeService : IBlockTypeService
             MakeBlockType(BlockTypes.Table, "Table", "Data table", "table", CategoryDocument, new { headers = new[] { "Column 1", "Column 2", "Column 3" }, rows = new[] { new[] { "", "", "" }, new[] { "", "", "" } }, columnAlign = Array.Empty<string>(), columnWidth = Array.Empty<string>(), caption = "", shortCaption = "" }),
             MakeBlockType(BlockTypes.Theorem, "Theorem", "Theorem, definition, lemma, proof", "stickyNote", CategoryDocument, new { theoremType = "theorem", title = "", text = "", label = "" }),
             MakeBlockType(BlockTypes.Abstract, "Abstract", "Document abstract section", "file", CategoryDocument, new { title = "Abstract", text = "" }),
+            MakeBlockType(BlockTypes.Title, "Title", "Document title, author, and date (\\maketitle)", "fileText", CategoryDocument, new { title = "", author = "", date = "" }),
             MakeBlockType(BlockTypes.Bibliography, "Bibliography", "Reference list", "book", CategoryDocument, new { title = "References", style = "apa", entries = Array.Empty<object>() }),
             MakeBlockType(BlockTypes.TableOfContents, "Table of Contents", "Auto-generated contents from headings", "listUnordered", CategoryDocument, new { title = "Table of Contents" }),
             MakeBlockType(BlockTypes.PageBreak, "Page Break", "Force content to start on new page", "horizontalRule", CategoryDocument, new { }),

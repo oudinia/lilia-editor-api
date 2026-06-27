@@ -202,6 +202,7 @@ public partial class RenderService : IRenderService
                 "blockquote" or "quote" => RenderBlockquoteToHtml(content),
                 "theorem" => RenderTheoremToHtml(content),
                 "abstract" => RenderAbstractToHtml(content),
+                "title" => RenderTitleToHtml(content),
                 "tableofcontents" => "<div class=\"table-of-contents\"><h3>Table of Contents</h3><p>Auto-generated from headings</p></div>",
                 "bibliography" => RenderBibliographyToHtml(content),
                 "columnbreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
@@ -572,6 +573,22 @@ public partial class RenderService : IRenderService
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         var processed = ProcessInlineContent(text);
         return $"<div class=\"abstract\"><h3>Abstract</h3><p>{processed}</p></div>";
+    }
+
+    private string RenderTitleToHtml(JsonElement content)
+    {
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var author = content.TryGetProperty("author", out var a) ? a.GetString() ?? "" : "";
+        var date = content.TryGetProperty("date", out var d) ? d.GetString() ?? "" : "";
+        var sb = new StringBuilder("<div class=\"title-block\" style=\"text-align:center\">");
+        if (!string.IsNullOrWhiteSpace(title))
+            sb.Append($"<h1 class=\"doc-title\">{ProcessInlineContent(title)}</h1>");
+        if (!string.IsNullOrWhiteSpace(author))
+            sb.Append($"<p class=\"doc-author\">{ProcessInlineContent(author)}</p>");
+        if (!string.IsNullOrWhiteSpace(date))
+            sb.Append($"<p class=\"doc-date\">{ProcessInlineContent(date)}</p>");
+        sb.Append("</div>");
+        return sb.ToString();
     }
 
     private string RenderBlockquoteToHtml(JsonElement content)
@@ -1111,7 +1128,14 @@ public partial class RenderService : IRenderService
             latex.AppendLine(doc.CustomPreamble.Trim());
         }
 
-        latex.AppendLine($@"\title{{{EscapeLatex(doc.Title)}}}");
+        // Title metadata — sourced from a Title block if the document has one
+        // (its title doubles as the document name), else the document title.
+        var (titleText, authorText, dateText) = ResolveTitleMeta(doc);
+        latex.AppendLine($@"\title{{{EscapeLatex(titleText)}}}");
+        if (!string.IsNullOrWhiteSpace(authorText))
+            latex.AppendLine($@"\author{{{EscapeLatex(authorText)}}}");
+        if (!string.IsNullOrWhiteSpace(dateText))
+            latex.AppendLine($@"\date{{{EscapeLatex(dateText)}}}");
         latex.AppendLine(@"\begin{document}");
         latex.AppendLine(@"\maketitle");
         latex.AppendLine();
@@ -1194,6 +1218,9 @@ public partial class RenderService : IRenderService
                 "blockquote" or "quote" => RenderBlockquoteToLatex(content),
                 "theorem" => RenderTheoremToLatex(content),
                 "abstract" => RenderAbstractToLatex(content),
+                // Title is preamble metadata (\title/\author/\date) consumed into
+                // the preamble + \maketitle; it renders nothing in the body.
+                "title" => "",
                 "tableofcontents" => @"\tableofcontents",
                 "columnbreak" => @"\columnbreak",
                 "columnlayout" => RenderColumnLayoutToLatex(content),
@@ -1270,6 +1297,31 @@ public partial class RenderService : IRenderService
         return $@"\begin{{abstract}}
 {ProcessLatexText(text)}
 \end{{abstract}}";
+    }
+
+    /// <summary>
+    /// Resolve \title/\author/\date from a Title block if present (its title is
+    /// the single source of truth = the document name), else fall back to the
+    /// document title. Author/date are null when absent so \author/\date are
+    /// omitted entirely (LaTeX then prints just the title).
+    /// </summary>
+    private static (string title, string? author, string? date) ResolveTitleMeta(Document doc)
+    {
+        var titleBlock = doc.Blocks?.FirstOrDefault(b => b.Type == BlockTypes.Title);
+        if (titleBlock?.Content != null)
+        {
+            var root = titleBlock.Content.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                var t = root.TryGetProperty("title", out var tp) ? tp.GetString() : null;
+                var a = root.TryGetProperty("author", out var ap) ? ap.GetString() : null;
+                var d = root.TryGetProperty("date", out var dp) ? dp.GetString() : null;
+                return (string.IsNullOrWhiteSpace(t) ? doc.Title : t!,
+                        string.IsNullOrWhiteSpace(a) ? null : a,
+                        string.IsNullOrWhiteSpace(d) ? null : d);
+            }
+        }
+        return (doc.Title, null, null);
     }
 
     private string RenderEmbedToLatex(JsonElement content)

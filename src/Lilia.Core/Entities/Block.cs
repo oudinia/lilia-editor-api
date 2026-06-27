@@ -38,6 +38,7 @@ public static class BlockTypes
     public const string Table = "table";
     public const string Theorem = "theorem";
     public const string Abstract = "abstract";
+    public const string Title = "title";
     public const string Bibliography = "bibliography";
     public const string TableOfContents = "tableOfContents";
     public const string PageBreak = "pageBreak";
@@ -81,7 +82,7 @@ public static class BlockTypes
     public static readonly string[] All =
     [
         Paragraph, Heading, Equation, Figure, Code, List,
-        Blockquote, Table, Theorem, Abstract, Bibliography,
+        Blockquote, Table, Theorem, Abstract, Title, Bibliography,
         TableOfContents, PageBreak, ColumnBreak, Embed, Footnote,
         Algorithm, Callout, ColumnLayout,
         PersonalInfo, Photo, CvEntry, CvSection,

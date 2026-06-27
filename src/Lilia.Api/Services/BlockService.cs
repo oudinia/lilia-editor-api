@@ -114,7 +114,23 @@ public class BlockService : IBlockService
 
         // Update document timestamp
         var document = await _context.Documents.FindAsync(documentId);
-        if (document != null) document.UpdatedAt = DateTime.UtcNow;
+        if (document != null)
+        {
+            document.UpdatedAt = DateTime.UtcNow;
+            // Single source of truth: a Title block's title doubles as the
+            // document name (and the LaTeX \title). Keep them in sync.
+            if (block.Type == BlockTypes.Title)
+            {
+                var root = block.Content.RootElement;
+                if (root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("title", out var tp) &&
+                    tp.ValueKind == JsonValueKind.String)
+                {
+                    var newTitle = tp.GetString();
+                    if (!string.IsNullOrWhiteSpace(newTitle)) document.Title = newTitle!.Trim();
+                }
+            }
+        }
 
         await _context.SaveChangesAsync();
 
