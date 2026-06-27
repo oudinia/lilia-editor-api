@@ -109,7 +109,7 @@ public static class LaTeXPreamble
 \usepackage{url}
 \usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
-";
+" + UnicodeShims;
 
     /// <summary>
     /// Packages for per-block validation — uses [demo] graphicx so missing images don't fail.
@@ -191,6 +191,109 @@ public static class LaTeXPreamble
 \usepackage{url}
 \usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
+" + UnicodeShims;
+
+    /// <summary>
+    /// Maps common literal Unicode that AI-drafted / pasted prose puts directly
+    /// in text (Greek letters, sub/superscripts, math operators) onto LaTeX so
+    /// pdflatex doesn't fail "Unicode character γ (U+03B3) not set up for use
+    /// with LaTeX". Appended to both <see cref="Packages"/> and
+    /// <see cref="ValidationPackages"/>; \newunicodechar overrides are safe even
+    /// where inputenc/textcomp already cover a glyph, and harmless under
+    /// lua/xelatex (which handle these natively).
+    /// </summary>
+    public const string UnicodeShims = @"
+% [lilia] Literal-Unicode → LaTeX shims (Greek, scripts, common operators)
+\usepackage{newunicodechar}
+% Greek lowercase
+\newunicodechar{α}{\ensuremath{\alpha}}
+\newunicodechar{β}{\ensuremath{\beta}}
+\newunicodechar{γ}{\ensuremath{\gamma}}
+\newunicodechar{δ}{\ensuremath{\delta}}
+\newunicodechar{ε}{\ensuremath{\epsilon}}
+\newunicodechar{ϵ}{\ensuremath{\epsilon}}
+\newunicodechar{ζ}{\ensuremath{\zeta}}
+\newunicodechar{η}{\ensuremath{\eta}}
+\newunicodechar{θ}{\ensuremath{\theta}}
+\newunicodechar{ϑ}{\ensuremath{\vartheta}}
+\newunicodechar{ι}{\ensuremath{\iota}}
+\newunicodechar{κ}{\ensuremath{\kappa}}
+\newunicodechar{λ}{\ensuremath{\lambda}}
+\newunicodechar{μ}{\ensuremath{\mu}}
+\newunicodechar{ν}{\ensuremath{\nu}}
+\newunicodechar{ξ}{\ensuremath{\xi}}
+\newunicodechar{π}{\ensuremath{\pi}}
+\newunicodechar{ϖ}{\ensuremath{\varpi}}
+\newunicodechar{ρ}{\ensuremath{\rho}}
+\newunicodechar{σ}{\ensuremath{\sigma}}
+\newunicodechar{ς}{\ensuremath{\varsigma}}
+\newunicodechar{τ}{\ensuremath{\tau}}
+\newunicodechar{υ}{\ensuremath{\upsilon}}
+\newunicodechar{φ}{\ensuremath{\phi}}
+\newunicodechar{ϕ}{\ensuremath{\varphi}}
+\newunicodechar{χ}{\ensuremath{\chi}}
+\newunicodechar{ψ}{\ensuremath{\psi}}
+\newunicodechar{ω}{\ensuremath{\omega}}
+% Greek uppercase (distinct LaTeX commands only)
+\newunicodechar{Γ}{\ensuremath{\Gamma}}
+\newunicodechar{Δ}{\ensuremath{\Delta}}
+\newunicodechar{Θ}{\ensuremath{\Theta}}
+\newunicodechar{Λ}{\ensuremath{\Lambda}}
+\newunicodechar{Ξ}{\ensuremath{\Xi}}
+\newunicodechar{Π}{\ensuremath{\Pi}}
+\newunicodechar{Σ}{\ensuremath{\Sigma}}
+\newunicodechar{Φ}{\ensuremath{\Phi}}
+\newunicodechar{Ψ}{\ensuremath{\Psi}}
+\newunicodechar{Ω}{\ensuremath{\Omega}}
+% Superscripts
+\newunicodechar{⁰}{\ensuremath{^0}}
+\newunicodechar{¹}{\ensuremath{^1}}
+\newunicodechar{²}{\ensuremath{^2}}
+\newunicodechar{³}{\ensuremath{^3}}
+\newunicodechar{⁴}{\ensuremath{^4}}
+\newunicodechar{ⁿ}{\ensuremath{^n}}
+\newunicodechar{⁺}{\ensuremath{^+}}
+\newunicodechar{⁻}{\ensuremath{^-}}
+% Subscripts
+\newunicodechar{₀}{\ensuremath{_0}}
+\newunicodechar{₁}{\ensuremath{_1}}
+\newunicodechar{₂}{\ensuremath{_2}}
+\newunicodechar{₃}{\ensuremath{_3}}
+\newunicodechar{₄}{\ensuremath{_4}}
+\newunicodechar{ₙ}{\ensuremath{_n}}
+% Common operators / relations
+\newunicodechar{×}{\ensuremath{\times}}
+\newunicodechar{÷}{\ensuremath{\div}}
+\newunicodechar{·}{\ensuremath{\cdot}}
+\newunicodechar{−}{\ensuremath{-}}
+\newunicodechar{±}{\ensuremath{\pm}}
+\newunicodechar{∓}{\ensuremath{\mp}}
+\newunicodechar{≤}{\ensuremath{\leq}}
+\newunicodechar{≥}{\ensuremath{\geq}}
+\newunicodechar{≠}{\ensuremath{\neq}}
+\newunicodechar{≈}{\ensuremath{\approx}}
+\newunicodechar{≡}{\ensuremath{\equiv}}
+\newunicodechar{∝}{\ensuremath{\propto}}
+\newunicodechar{∞}{\ensuremath{\infty}}
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{←}{\ensuremath{\leftarrow}}
+\newunicodechar{↔}{\ensuremath{\leftrightarrow}}
+\newunicodechar{⇒}{\ensuremath{\Rightarrow}}
+\newunicodechar{∂}{\ensuremath{\partial}}
+\newunicodechar{∇}{\ensuremath{\nabla}}
+\newunicodechar{∑}{\ensuremath{\sum}}
+\newunicodechar{∏}{\ensuremath{\prod}}
+\newunicodechar{∫}{\ensuremath{\int}}
+\newunicodechar{√}{\ensuremath{\sqrt{}}}
+\newunicodechar{∈}{\ensuremath{\in}}
+\newunicodechar{∉}{\ensuremath{\notin}}
+\newunicodechar{⊂}{\ensuremath{\subset}}
+\newunicodechar{⊆}{\ensuremath{\subseteq}}
+\newunicodechar{∪}{\ensuremath{\cup}}
+\newunicodechar{∩}{\ensuremath{\cap}}
+\newunicodechar{∀}{\ensuremath{\forall}}
+\newunicodechar{∃}{\ensuremath{\exists}}
+\newunicodechar{∅}{\ensuremath{\emptyset}}
 ";
 
     /// <summary>
@@ -222,6 +325,85 @@ public static class LaTeXPreamble
 \newtheorem*{conjecture*}{Conjecture}
 \newtheorem*{hypothesis*}{Hypothesis}
 ";
+
+    /// <summary>
+    /// The (lowercase, unstarred) theorem environments declared in
+    /// <see cref="TheoremEnvironments"/>. The canonical set a block's
+    /// theoremType may map onto.
+    /// </summary>
+    public static readonly HashSet<string> KnownTheoremEnvironments =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "theorem", "lemma", "proposition", "corollary", "definition",
+            "example", "remark", "claim", "assumption", "axiom",
+            "conjecture", "hypothesis",
+        };
+
+    /// <summary>
+    /// Normalize a block's <c>theoremType</c> to a LaTeX environment the
+    /// preamble actually defines. The editor stores capitalized labels
+    /// ("Theorem"), but <c>\newtheorem</c> declares lowercase envs — so
+    /// <c>\begin{Theorem}</c> / <c>\setcounter{Theorem}</c> fail compilation
+    /// with "No counter 'Theorem' defined". Lowercase, keep amsthm's built-in
+    /// unnumbered <c>proof</c> as-is, and fall back to the always-defined
+    /// <c>theorem</c> for anything unrecognized.
+    /// </summary>
+    public static string NormalizeTheoremEnv(string? theoremType)
+    {
+        var t = (theoremType ?? string.Empty).Trim().ToLowerInvariant();
+        if (t.Length == 0) return "theorem";
+        if (t == "proof") return "proof";
+        return KnownTheoremEnvironments.Contains(t) ? t : "theorem";
+    }
+
+    // Languages the bundled `listings` package ships with. A `language=` value
+    // outside this set (e.g. "text", "json", or an exotic DOCX-import name)
+    // causes pdflatex to fail "Package Listings Error: Couldn't load requested
+    // language." Unknown languages render as plain code (no `language` option).
+    private static readonly HashSet<string> ListingsLanguages = new(StringComparer.Ordinal)
+    {
+        "Ada", "Assembler", "Awk", "bash", "C", "C++", "Caml", "Clean", "Cobol",
+        "Csh", "CSS", "Delphi", "Eiffel", "Erlang", "Euphoria", "Fortran",
+        "GCL", "Gnuplot", "Haskell", "HTML", "IDL", "inform", "Java", "JVMIS",
+        "ksh", "Lisp", "Logo", "Lua", "make", "Mathematica", "Matlab",
+        "Mercury", "MetaPost", "Miranda", "Mizar", "ML", "Modula-2", "MuPAD",
+        "NASTRAN", "Oberon-2", "OCL", "Octave", "Oz", "Pascal", "Perl", "PHP",
+        "PL/I", "Plasm", "PostScript", "POV", "Prolog", "Promela", "PSTricks",
+        "Python", "R", "Reduce", "Rexx", "RSL", "Ruby", "S", "SAS", "Scilab",
+        "sh", "SHELXL", "Simula", "SQL", "tcl", "TeX", "VBScript", "Verilog",
+        "VHDL", "VRML", "XML", "XSLT",
+    };
+
+    // Close-enough substitutions for languages listings doesn't ship natively.
+    // Values must be a canonical listings name or "" (plain, no highlighting).
+    private static readonly Dictionary<string, string> ListingsAliasMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["js"] = "JavaScript", ["javascript"] = "JavaScript",
+        ["ts"] = "JavaScript", ["typescript"] = "JavaScript",
+        ["sh"] = "bash", ["shell"] = "bash", ["zsh"] = "bash",
+        ["py"] = "Python", ["cpp"] = "C++", ["c#"] = "Java", ["csharp"] = "Java",
+        ["latex"] = "TeX", ["tex"] = "TeX", ["kotlin"] = "Java",
+        ["json"] = "", ["yaml"] = "", ["yml"] = "", ["toml"] = "",
+        ["go"] = "", ["golang"] = "", ["rust"] = "", ["swift"] = "",
+        ["solidity"] = "", ["dart"] = "", ["zig"] = "", ["elixir"] = "",
+        ["markdown"] = "", ["md"] = "", ["text"] = "", ["plaintext"] = "",
+        ["plain"] = "", ["txt"] = "",
+    };
+
+    /// <summary>
+    /// Returns a listings-valid language name (canonical casing), or "" when the
+    /// input has no safe mapping (caller then omits the <c>language=</c> option).
+    /// Single source of truth shared by the export + per-block-validation paths.
+    /// </summary>
+    public static string NormalizeListingsLanguage(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        var trimmed = raw.Trim();
+        if (ListingsAliasMap.TryGetValue(trimmed, out var mapped)) return mapped;
+        foreach (var known in ListingsLanguages)
+            if (string.Equals(known, trimmed, StringComparison.OrdinalIgnoreCase)) return known;
+        return "";
+    }
 
     /// <summary>
     /// Shims for beamer presentations: \\usetheme, \\usecolortheme, \\usefonttheme

@@ -253,8 +253,12 @@ public class LaTeXRenderController : ControllerBase
         if (doc is null)
         {
             // Defensive fallback — minimal standalone wrapper, original behaviour.
+            // Still dedupe: a block fragment that already carries its own
+            // \documentclass (e.g. an import artifact) would otherwise collide
+            // with the wrapper's and fail "Two \documentclass commands".
             engine = EngineDetector.Detect(latex).ToCli();
-            fullLatex = LaTeXPreamble.WrapForValidation(latex, engine.ParseEngine());
+            fullLatex = Lilia.Api.Services.RenderService.DedupeDocumentClass(
+                LaTeXPreamble.WrapForValidation(latex, engine.ParseEngine()));
             contentHash = blockContentHash;
         }
         else
@@ -617,7 +621,12 @@ public class LaTeXRenderController : ControllerBase
             var numbered = !c.TryGetProperty("numbered", out var np) || np.ValueKind != System.Text.Json.JsonValueKind.False;
             if (numbered)
             {
-                var theoremType = c.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
+                // Normalize to the lowercase env the preamble declares (the body
+                // renders \begin{<normalized>}), so the primed counter name
+                // matches — otherwise \setcounter{Theorem} fails "No counter
+                // 'Theorem' defined".
+                var theoremType = LaTeXPreamble.NormalizeTheoremEnv(
+                    c.TryGetProperty("theoremType", out var tt) ? tt.GetString() : null);
                 // `proof` is amsthm's built-in UNNUMBERED environment — it has no
                 // LaTeX counter, so \setcounter{proof}{N} would crash compilation
                 // with "No counter 'proof' defined". Skip priming for it (and any

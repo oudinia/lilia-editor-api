@@ -1937,7 +1937,10 @@ public partial class RenderService : IRenderService
     private string RenderCodeToLatex(JsonElement content)
     {
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
-        var language = content.TryGetProperty("language", out var l) ? l.GetString() ?? "" : "";
+        // Normalize to a listings-supported language (or "" → plain) so an
+        // unknown `language=` can't fail "Couldn't load requested language".
+        var language = LaTeXPreamble.NormalizeListingsLanguage(
+            content.TryGetProperty("language", out var l) ? l.GetString() : null);
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
         var lineNumbers = content.TryGetProperty("lineNumbers", out var ln) && ln.ValueKind == JsonValueKind.True;
         var highlightLines = new List<int>();
