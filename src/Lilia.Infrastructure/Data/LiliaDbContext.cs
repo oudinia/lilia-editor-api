@@ -54,6 +54,8 @@ public class LiliaDbContext : DbContext
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<AiChat> AiChats => Set<AiChat>();
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
 
     // Document features
     public DbSet<Comment> Comments => Set<Comment>();
