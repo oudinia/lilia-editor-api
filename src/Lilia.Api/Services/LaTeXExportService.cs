@@ -163,9 +163,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // Document info
         sb.AppendLine("% Document info");
-        sb.AppendLine($@"\title{{{EscapeLatex(doc.Title)}}}");
-        sb.AppendLine(@"\author{}");
-        sb.AppendLine(@"\date{\today}");
+        AppendTitleMeta(sb, doc, blocks);
         sb.AppendLine();
 
         // Begin document
@@ -189,7 +187,7 @@ public class LaTeXExportService : ILaTeXExportService
         // imports often promote \title{X} into a top-level heading
         // block whose text matches doc.Title; combined with \maketitle
         // above, the user sees the title twice.
-        var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography").ToList();
+        var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography" && b.Type != "title").ToList();
         mainBlocks = StripDuplicateTitleHeading(doc.Title, mainBlocks);
 
         // Balanced-columns body wrapper (multicol). Empty for non-balanced
@@ -259,9 +257,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine(@"\input{preamble}");
         main.AppendLine();
         main.AppendLine("% Document info");
-        main.AppendLine($@"\title{{{EscapeLatex(doc.Title)}}}");
-        main.AppendLine(@"\author{}");
-        main.AppendLine(@"\date{\today}");
+        AppendTitleMeta(main, doc, blocks);
         main.AppendLine();
         main.AppendLine(@"\begin{document}");
         main.AppendLine();
@@ -361,9 +357,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine(@"\input{preamble}");
         main.AppendLine();
         main.AppendLine("% Document info");
-        main.AppendLine($@"\title{{{EscapeLatex(doc.Title)}}}");
-        main.AppendLine(@"\author{}");
-        main.AppendLine(@"\date{\today}");
+        AppendTitleMeta(main, doc, blocks);
         main.AppendLine();
         main.AppendLine(@"\begin{document}");
         main.AppendLine();
@@ -625,6 +619,31 @@ public class LaTeXExportService : ILaTeXExportService
     /// the unconditional \title{X}+\maketitle in the preamble — without
     /// this, LaTeX-imported docs render the title twice.
     /// </summary>
+    /// <summary>
+    /// Emit \title/\author/\date for the export preamble. Sources them from a
+    /// Title block if present (its title doubles as the document name), else
+    /// the document title with empty author and \today — matching the preview
+    /// render path (RenderService.ResolveTitleMeta).
+    /// </summary>
+    private static void AppendTitleMeta(StringBuilder sb, Document doc, List<Block> blocks)
+    {
+        string title = doc.Title ?? "", author = "", date = @"\today";
+        var titleBlock = blocks.FirstOrDefault(b => b.Type == BlockTypes.Title);
+        if (titleBlock?.Content != null && titleBlock.Content.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            var root = titleBlock.Content.RootElement;
+            var t = root.TryGetProperty("title", out var tp) ? tp.GetString() : null;
+            var a = root.TryGetProperty("author", out var ap) ? ap.GetString() : null;
+            var d = root.TryGetProperty("date", out var dp) ? dp.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(t)) title = t!;
+            if (!string.IsNullOrWhiteSpace(a)) author = a!;
+            if (!string.IsNullOrWhiteSpace(d)) date = EscapeLatex(d!);
+        }
+        sb.AppendLine($@"\title{{{EscapeLatex(title)}}}");
+        sb.AppendLine($@"\author{{{EscapeLatex(author)}}}");
+        sb.AppendLine($@"\date{{{date}}}");
+    }
+
     private static List<Block> StripDuplicateTitleHeading(string? title, List<Block> blocks)
     {
         if (string.IsNullOrWhiteSpace(title) || blocks.Count == 0) return blocks;
