@@ -89,6 +89,20 @@ public class BlockService : IBlockService
         // Update document timestamp
         document.UpdatedAt = DateTime.UtcNow;
 
+        // A Title block's title doubles as the document name + LaTeX \title —
+        // keep them in sync on create too (mirrors UpdateBlockAsync).
+        if (block.Type == BlockTypes.Title)
+        {
+            var root = block.Content.RootElement;
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("title", out var tp) &&
+                tp.ValueKind == JsonValueKind.String)
+            {
+                var newTitle = tp.GetString();
+                if (!string.IsNullOrWhiteSpace(newTitle)) document.Title = newTitle!.Trim();
+            }
+        }
+
         await _context.SaveChangesAsync();
 
         // Invalidate preview cache

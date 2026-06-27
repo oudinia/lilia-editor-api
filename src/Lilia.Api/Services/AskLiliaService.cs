@@ -168,7 +168,7 @@ public sealed class AskLiliaService : IAskLiliaService
                     systemSb.AppendLine()
                         .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.");
                     if (request.EditMode)
-                        systemSb.AppendLine("EDIT MODE IS ON — you may also WRITE to the document with add_block, edit_block, remove_block, reorder_blocks. Make the changes the author asked for directly via these tools (read first to get the right block ids). Keep edits minimal and on-target; after editing, briefly summarize what you changed. `content` is a JSON object matching the block type, e.g. {\"text\":\"…\"} (paragraph), {\"text\":\"…\",\"level\":1} (heading), {\"latex\":\"…\"} (equation), {\"theoremType\":\"theorem\",\"text\":\"…\"} (theorem).");
+                        systemSb.AppendLine("EDIT MODE IS ON — you may also WRITE to the document with add_block, edit_block, remove_block, reorder_blocks, set_title. Make the changes the author asked for directly via these tools (read first to get the right block ids). Keep edits minimal and on-target; after editing, briefly summarize what you changed. `content` is a JSON object matching the block type, e.g. {\"text\":\"…\"} (paragraph), {\"text\":\"…\",\"level\":1} (heading), {\"latex\":\"…\"} (equation), {\"theoremType\":\"theorem\",\"text\":\"…\"} (theorem). To change the document title (or author/date), use set_title — NOT a heading; the title is the document's \\title and its name.");
                     systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
@@ -357,7 +357,7 @@ public sealed class AskLiliaService : IAskLiliaService
         if (allowWrite)
         {
             tools.Add(AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote.")] string type,
+                ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote. (For the document title use set_title, not a heading.)")] string type,
                  [System.ComponentModel.Description("JSON content object matching the type, e.g. {\"text\":\"…\"} or {\"text\":\"…\",\"level\":1} or {\"latex\":\"…\"}.")] string content,
                  [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId)
                     => AddBlockAsync(document, docGuid, type, content, afterId, changed),
@@ -380,6 +380,13 @@ public sealed class AskLiliaService : IAskLiliaService
                     => ReorderBlocksAsync(document, docGuid, blockIds, changed),
                 name: "reorder_blocks",
                 description: "Reorder the document's blocks to this exact id order."));
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
+                 [System.ComponentModel.Description("Author name(s). Optional.")] string? author,
+                 [System.ComponentModel.Description("Date, e.g. 'June 2026'. Optional.")] string? date)
+                    => SetTitleAsync(document, docGuid, title, author, date, changed),
+                name: "set_title",
+                description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
         }
         return tools;
     }
@@ -440,6 +447,35 @@ public sealed class AskLiliaService : IAskLiliaService
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
             new { op = "reorder", ids = ids.Select(g => g.ToString()).ToList() });
         return new { ok = true };
+    }
+
+    // Set the document title via the Title block (upsert at the top), keeping
+    // the document name in sync (BlockService syncs documents.title on both
+    // create and update). Deterministic so "change the title" always lands.
+    private async Task<object> SetTitleAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string title, string? author, string? date, List<string> changed)
+    {
+        var content = System.Text.Json.JsonSerializer.SerializeToElement(
+            new { title = title ?? "", author = author ?? "", date = date ?? "" });
+        var existing = doc.Blocks?.FirstOrDefault(b => b.Type == Lilia.Core.Entities.BlockTypes.Title);
+        if (existing is not null)
+        {
+            var updated = await _blockService.UpdateBlockAsync(docId, existing.Id,
+                new Lilia.Core.DTOs.UpdateBlockDto(null, content, null, null, null));
+            if (updated is null) return new { error = "title block not found" };
+            var i = doc.Blocks!.FindIndex(b => b.Id == existing.Id);
+            if (i >= 0) doc.Blocks[i] = updated;
+            changed.Add(existing.Id.ToString());
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "edit", id = existing.Id, type = "title", content = updated.Content });
+            return new { ok = true, id = existing.Id, title };
+        }
+        var created = await _blockService.CreateBlockAsync(docId,
+            new Lilia.Core.DTOs.CreateBlockDto("title", content, 0, null, null));
+        doc.Blocks?.Insert(0, created);
+        changed.Add(created.Id.ToString());
+        await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+            new { op = "add", id = created.Id, type = "title", content = created.Content, afterId = (string?)null, sortOrder = 0 });
+        return new { ok = true, id = created.Id, title };
     }
 
     private static System.Text.Json.JsonElement ParseContent(string json)
