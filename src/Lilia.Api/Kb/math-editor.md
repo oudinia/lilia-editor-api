@@ -36,7 +36,7 @@ Type directly in the editor — these work anywhere in the equation:
 |---|---|
 | `^` | superscript / exponent on the previous atom (`a` `^` `2` → `a²`) |
 | `_` | subscript (`x` `_` `i` → `xᵢ`) |
-| `\` | open the **command palette** — search any symbol or structure by name, then Enter |
+| `\` | open the **command palette** — type a name to insert a symbol **or expand a structure** (`\frac` → fraction, `\sqrt`, `\int`, `\sum`, `\matrix`, `\binom`, `\cases`, `\vec`…), then Enter |
 | `=` `+` `-` `*` `<` `>` | insert the operator / relation (`*` → ×, `-` → −) |
 | letters / numbers | type straight into the equation |
 | `(` `)` `[` `]` `,` `.` etc. | typed literally as delimiters/punctuation |
