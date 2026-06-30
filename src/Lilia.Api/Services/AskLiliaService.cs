@@ -177,6 +177,40 @@ public sealed class AskLiliaService : IAskLiliaService
                 _logger.LogWarning(ex, "[AskLilia] document context load failed for {DocId}", request.DocumentId);
             }
         }
+        else
+        {
+            // Library scope — no open document. Ground the answer in the author's
+            // whole library (title · AI gist · readiness · size) so questions like
+            // "what's unfinished / which have issues / closest to submitting /
+            // which cite X" can be reasoned across documents.
+            try
+            {
+                var lib = await _documentService.GetDocumentsPaginatedAsync(userId, 1, 50, sortBy: "updatedAt", sortDir: "desc");
+                if (lib.Items.Count > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine()
+                      .AppendLine($"THE LIBRARY — the author's {lib.TotalCount} document(s), most-recent first. Reason ACROSS them. When you point to a specific document, write its EXACT title in double quotes so it can be linked. Don't invent documents not listed here.");
+                    foreach (var d in lib.Items)
+                    {
+                        var issues = d.ValidationErrorCount + d.ValidationWarningCount;
+                        var readiness = issues > 0 ? $"{issues} issue(s)"
+                            : d.BlockCount == 0 ? "empty"
+                            : d.ValidationCheckedAt == null ? "draft (unchecked)"
+                            : "clean";
+                        sb.Append("- \"").Append(d.Title).Append("\" — ")
+                          .Append(string.IsNullOrWhiteSpace(d.AiSummary) ? "(no summary yet)" : d.AiSummary)
+                          .Append(" · ").Append(d.BlockCount).Append(" blocks · ").Append(readiness)
+                          .AppendLine();
+                    }
+                    systemSb.AppendLine(sb.ToString());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[AskLilia] library context load failed");
+            }
+        }
 
         var system = systemSb.ToString();
         var messages = new List<ChatMessage>
