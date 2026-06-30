@@ -564,7 +564,24 @@ public class LaTeXRenderController : ControllerBase
                 await db.SaveChangesAsync();
             }
 
-            return Ok(new { valid, error, warnings = allWarnings });
+            // Compile metadata for the full-page validation view (§7). pdfTeX
+            // writes "Output written on … (N pages, …)" — scrape it for an
+            // accurate page count, falling back to the block-based heuristic.
+            int? pageCount = null;
+            var pageMatch = System.Text.RegularExpressions.Regex.Match(result.Log ?? "", @"Output written on .*?\((\d+) page");
+            if (pageMatch.Success && int.TryParse(pageMatch.Groups[1].Value, out var pc)) pageCount = pc;
+            else if (doc != null) { try { pageCount = await _renderService.GetPageCountAsync(documentId); } catch { /* heuristic only */ } }
+
+            return Ok(new
+            {
+                valid,
+                error,
+                warnings = allWarnings,
+                durationMs = result.DurationMs,
+                engine = string.IsNullOrEmpty(result.Engine) ? null : result.Engine,
+                pageCount,
+                log = result.Log
+            });
         }
         catch (Exception ex)
         {

@@ -37,7 +37,11 @@ public record LatexValidationResult(
     string? Error,
     string[] Warnings,
     LaTeXErrorParser.ParsedLatexError? ParsedError,
-    int DurationMs
+    int DurationMs,
+    // Compile metadata for the full-page validation view (§7). Captured during
+    // the validate compile and previously dropped before the response.
+    string Engine = "",
+    string Log = ""
 );
 
 public class LaTeXRenderService : ILaTeXRenderService
@@ -252,7 +256,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         if (_validationCache.TryGetValue(hash, out var cached))
         {
             _logger.LogDebug("Validation cache hit for hash {Hash} ({Engine})", hash[..12], resolvedEngine);
-            return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0);
+            return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0, resolvedEngine);
         }
 
         await _semaphore.WaitAsync();
@@ -260,7 +264,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
             if (_validationCache.TryGetValue(hash, out cached))
-                return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0);
+                return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0, resolvedEngine);
 
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
             Directory.CreateDirectory(tmpDir);
@@ -315,7 +319,9 @@ public class LaTeXRenderService : ILaTeXRenderService
                         $"LaTeX compilation failed:\n{errorMsg}",
                         [],
                         parsed,
-                        durationMs
+                        durationMs,
+                        resolvedEngine,
+                        logContent
                     );
                 }
                 else
@@ -348,7 +354,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Take(10)
                         .ToArray();
 
-                    result = new LatexValidationResult(true, null, actionableWarnings, null, durationMs);
+                    result = new LatexValidationResult(true, null, actionableWarnings, null, durationMs, resolvedEngine, logContent);
                 }
 
                 // Cache the result
