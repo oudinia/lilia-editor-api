@@ -59,6 +59,22 @@ public class DocumentsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Generate (or refresh) the document's one-sentence AI gist for the
+    /// My Documents cards. On-demand; owner-only. Returns { aiSummary }.
+    /// </summary>
+    [HttpPost("{id:guid}/summary")]
+    public async Task<IActionResult> GenerateSummary(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var summary = await _documentService.GenerateSummaryAsync(id, userId);
+        if (summary == null) return NotFound();
+
+        return Ok(new { aiSummary = summary });
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<DocumentDto>> GetDocument(Guid id)
     {

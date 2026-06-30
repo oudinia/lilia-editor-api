@@ -30,7 +30,8 @@ public record DocumentListDto(
     string? Role = null,
     int ValidationErrorCount = 0,
     int ValidationWarningCount = 0,
-    DateTime? ValidationCheckedAt = null
+    DateTime? ValidationCheckedAt = null,
+    string? AiSummary = null
 );
 
 public record OutlineItemDto(

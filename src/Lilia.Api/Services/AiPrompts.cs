@@ -61,6 +61,10 @@ public static class AiPrompts
         You are an academic abstract writer. Given a document's content, generate a concise, well-structured abstract (150-300 words). The abstract should summarize the key points, methodology, results, and conclusions. Use academic tone. Respond with ONLY the abstract text.
         """;
 
+    public const string GenerateOneLiner = """
+        You write a one-sentence gist of an academic or technical document — what it is about, in 18 words or fewer. Be plain and specific; name the actual topic. Do NOT start with "This document" or "A document"; just state the gist. If there is too little content to tell, reply exactly: Empty document — nothing written yet. Respond with ONLY the single sentence, no quotes, no preamble.
+        """;
+
     public static readonly Dictionary<string, string> ImproveActions = new()
     {
         ["improve"] = "Improve the following text for clarity, grammar, and academic tone:",
