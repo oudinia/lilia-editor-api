@@ -12,11 +12,95 @@ public class DocumentService : IDocumentService
 {
     private readonly LiliaDbContext _context;
     private readonly ILogger<DocumentService> _logger;
+    private readonly IAiService _aiService;
 
-    public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger)
+    public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService)
     {
         _context = context;
         _logger = logger;
+        _aiService = aiService;
+    }
+
+    /// <summary>
+    /// Generate (or regenerate) the document's one-sentence AI gist and persist it.
+    /// On-demand only — never on the autosave hot path. Owner-only, AI-gated.
+    /// Returns the new summary, or null if the doc isn't found / not owned.
+    /// </summary>
+    public async Task<string?> GenerateSummaryAsync(Guid id, string userId)
+    {
+        var doc = await _context.Documents
+            .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+            .FirstOrDefaultAsync(d => d.Id == id && d.OwnerId == userId && d.DeletedAt == null);
+        if (doc == null) return null;
+
+        // Pull a cheap text sample: title + plaintext of the first blocks (cap ~3k chars).
+        var sb = new System.Text.StringBuilder();
+        foreach (var block in doc.Blocks)
+        {
+            var text = BlockPlainText(block.Content);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                sb.Append(text).Append('\n');
+                if (sb.Length > 3000) break;
+            }
+        }
+        var content = sb.ToString().Trim();
+
+        string summary;
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            summary = "Empty document — nothing written yet.";
+        }
+        else
+        {
+            try
+            {
+                summary = await _aiService.GenerateOneLinerAsync(doc.Title, content);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "One-liner generation failed for document {DocumentId}", id);
+                return null;
+            }
+        }
+
+        doc.AiSummary = string.IsNullOrWhiteSpace(summary) ? null : summary;
+        doc.AiSummaryGeneratedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return doc.AiSummary;
+    }
+
+    /// <summary>Best-effort plaintext from a block's ProseMirror-ish content JSON.</summary>
+    private static string BlockPlainText(JsonDocument? content)
+    {
+        if (content == null) return string.Empty;
+        try
+        {
+            var root = content.RootElement;
+            if (root.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                return t.GetString() ?? string.Empty;
+            var parts = new List<string>();
+            void Walk(JsonElement el)
+            {
+                if (el.ValueKind == JsonValueKind.Object)
+                {
+                    if (el.TryGetProperty("text", out var tt) && tt.ValueKind == JsonValueKind.String)
+                        parts.Add(tt.GetString() ?? string.Empty);
+                    if (el.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.Array)
+                        foreach (var ch in c.EnumerateArray()) Walk(ch);
+                }
+                else if (el.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var ch in el.EnumerateArray()) Walk(ch);
+                }
+            }
+            Walk(root);
+            return string.Join(" ", parts).Trim();
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     public async Task<PaginatedResult<DocumentListDto>> GetDocumentsPaginatedAsync(
@@ -139,7 +223,8 @@ public class DocumentService : IDocumentService
                 role,
                 d.ValidationErrorCount,
                 d.ValidationWarningCount,
-                d.ValidationCheckedAt
+                d.ValidationCheckedAt,
+                d.AiSummary
             );
         }).ToList();
 

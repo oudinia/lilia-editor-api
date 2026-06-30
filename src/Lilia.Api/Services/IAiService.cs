@@ -12,6 +12,8 @@ public interface IAiService
     Task<GrammarCheckResponse> GrammarCheckAsync(string text);
     Task<CitationCheckResponse> CitationCheckAsync(string text);
     Task<GenerateAbstractResponse> GenerateAbstractAsync(string title, string content);
+    /// <summary>One-sentence gist of a document (for the My Documents cards).</summary>
+    Task<string> GenerateOneLinerAsync(string title, string content);
 
     // Chat CRUD
     Task<AiChatDto> CreateChatAsync(string userId, CreateAiChatRequest request);

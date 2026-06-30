@@ -168,6 +168,22 @@ public class AiService : IAiService
         return new GenerateAbstractResponse(response.Text.Trim());
     }
 
+    public async Task<string> GenerateOneLinerAsync(string title, string content)
+    {
+        var model = GetModelForFeature("oneliner");
+
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, AiPrompts.GenerateOneLiner),
+            new(ChatRole.User, $"Title: {title}\n\nContent:\n{content}"),
+        };
+
+        _logger.LogInformation("Generating one-liner with model {Model}", model);
+        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 128 });
+        // Collapse to a single tidy line.
+        return response.Text.Trim().Replace("\n", " ").Trim();
+    }
+
     // --- Chat CRUD ---
 
     public async Task<AiChatDto> CreateChatAsync(string userId, CreateAiChatRequest request)

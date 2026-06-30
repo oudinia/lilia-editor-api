@@ -109,6 +109,11 @@ public class Document
     public int ValidationWarningCount { get; set; }
     public DateTime? ValidationCheckedAt { get; set; }
 
+    // AI one-liner — a one-sentence gist of the document, generated on demand
+    // (POST api/documents/{id}/summary) and shown on the My Documents cards.
+    public string? AiSummary { get; set; }
+    public DateTime? AiSummaryGeneratedAt { get; set; }
+
     // LaTeX preamble preserved from import, used by the LaTeX exporter so the
     // round-trip produces a document that compiles under the original class.
     // LatexPackages is a JSON array of { name: string, options?: string }.

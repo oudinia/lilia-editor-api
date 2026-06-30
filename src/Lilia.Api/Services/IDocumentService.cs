@@ -14,6 +14,12 @@ public enum SetDocumentTeamStatus
 public interface IDocumentService
 {
     /// <summary>
+    /// Generate (and persist) the document's one-sentence AI gist. On-demand,
+    /// owner-only. Returns null if not found / not owned / generation failed.
+    /// </summary>
+    Task<string?> GenerateSummaryAsync(Guid id, string userId);
+
+    /// <summary>
     /// Get paginated list of documents for a user
     /// </summary>
     Task<PaginatedResult<DocumentListDto>> GetDocumentsPaginatedAsync(
