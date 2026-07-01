@@ -69,7 +69,7 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// In-memory cache for validation results, keyed by SHA-256 hash of the LaTeX content.
     /// Avoids re-running pdflatex when the same content is validated again.
     /// </summary>
-    private static readonly ConcurrentDictionary<string, (bool Valid, string? Error, string[] Warnings, DateTime CachedAt)> _validationCache = new();
+    private static readonly ConcurrentDictionary<string, (bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs, DateTime CachedAt)> _validationCache = new();
     private const int MaxValidationCacheEntries = 1000;
 
     public LaTeXRenderService(ILogger<LaTeXRenderService> logger)
@@ -256,7 +256,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         if (_validationCache.TryGetValue(hash, out var cached))
         {
             _logger.LogDebug("Validation cache hit for hash {Hash} ({Engine})", hash[..12], resolvedEngine);
-            return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0, resolvedEngine);
+            return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, cached.DurationMs, cached.Engine, cached.Log);
         }
 
         await _semaphore.WaitAsync();
@@ -264,7 +264,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
             if (_validationCache.TryGetValue(hash, out cached))
-                return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, 0, resolvedEngine);
+                return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, cached.DurationMs, cached.Engine, cached.Log);
 
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
             Directory.CreateDirectory(tmpDir);
@@ -357,8 +357,9 @@ public class LaTeXRenderService : ILaTeXRenderService
                     result = new LatexValidationResult(true, null, actionableWarnings, null, durationMs, resolvedEngine, logContent);
                 }
 
-                // Cache the result
-                CacheValidationResult(hash, (result.Valid, result.Error, result.Warnings));
+                // Cache the result (with compile metadata so cache hits still
+                // surface engine/log/timing for the validation page).
+                CacheValidationResult(hash, (result.Valid, result.Error, result.Warnings, result.Engine, result.Log, result.DurationMs));
 
                 return result;
             }
@@ -373,7 +374,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
-    private static void CacheValidationResult(string hash, (bool Valid, string? Error, string[] Warnings) result)
+    private static void CacheValidationResult(string hash, (bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs) result)
     {
         // Simple eviction: clear all when we exceed the limit.
         // This is acceptable because validation results are cheap to recompute
@@ -383,7 +384,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             _validationCache.Clear();
         }
 
-        _validationCache.TryAdd(hash, (result.Valid, result.Error, result.Warnings, DateTime.UtcNow));
+        _validationCache.TryAdd(hash, (result.Valid, result.Error, result.Warnings, result.Engine, result.Log, result.DurationMs, DateTime.UtcNow));
     }
 
     /// <summary>Normalise the engine name to one of the three supported binaries.</summary>
