@@ -298,6 +298,7 @@ builder.Services.AddSingleton<
     Lilia.Api.Features.Teams.Services.ITeamCodenameGenerator,
     Lilia.Api.Features.Teams.Services.TeamCodenameGenerator>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
+builder.Services.AddScoped<ISharingService, SharingService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IVersionService, VersionService>();
 builder.Services.AddScoped<IAiConversationService, AiConversationService>();
