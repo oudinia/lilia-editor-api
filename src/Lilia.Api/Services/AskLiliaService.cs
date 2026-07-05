@@ -38,7 +38,8 @@ public sealed record AskTurn(string Role, string Content);
 public sealed record AskLiliaResponse(
     string SkillId, string SkillName, string Reply,
     AiArchitectUsage Usage, AiArchitectBalance? Balance, int CreditsUsed, bool DocumentChanged = false,
-    IReadOnlyList<string>? ChangedBlockIds = null, string? UndoVersionId = null);
+    IReadOnlyList<string>? ChangedBlockIds = null, string? UndoVersionId = null,
+    IReadOnlyList<WebCitation>? Citations = null);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
 {
@@ -317,12 +318,18 @@ public sealed class AskLiliaService : IAskLiliaService
             var outputTokens = 0;
             var toolCalls = 0;
             var webSearches = 0;
+            // Structured citations from web search, accumulated + deduped across rounds.
+            var citations = new List<WebCitation>();
+            var citationUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var round = 0; round < MaxToolRounds; round++)
             {
                 response = await _chatClient.GetResponseAsync(messages, options, ct);
                 inputTokens += (int?)response.Usage?.InputTokenCount ?? 0;
                 outputTokens += (int?)response.Usage?.OutputTokenCount ?? 0;
                 webSearches += ExtractWebSearches(response);
+                if (webSearch)
+                    foreach (var c in WebCitationExtractor.Extract(response))
+                        if (citationUrls.Add(c.Url)) citations.Add(c);
 
                 // Carry the assistant turn (incl. any function-call content) into history.
                 messages.AddRange(response.Messages);
@@ -350,7 +357,7 @@ public sealed class AskLiliaService : IAskLiliaService
             var webSearchCostUsd = webSearches * _webSearchCostPerSearchUsd;
             var webSearchCredits = AiArchitectPricing.UsdToCredits(webSearchCostUsd);
             if (webSearches > 0)
-                _logger.LogInformation("[AskLilia] skill={Skill} web_search x{N} (+${Cost:F3}, {Credits} credits)", skill.Id, webSearches, webSearchCostUsd, webSearchCredits);
+                _logger.LogInformation("[AskLilia] skill={Skill} web_search x{N} (+${Cost:F3}, {Credits} credits), {Cites} citation(s)", skill.Id, webSearches, webSearchCostUsd, webSearchCredits, citations.Count);
 
             var reply = (response.Text ?? string.Empty).Trim();
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
@@ -381,7 +388,8 @@ public sealed class AskLiliaService : IAskLiliaService
                 skill.Id, skill.Name, reply,
                 new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits), balance, creditsUsed,
                 DocumentChanged: changed.Count > 0, ChangedBlockIds: changed.Distinct().ToList(),
-                UndoVersionId: changed.Count > 0 ? undoVersionId?.ToString() : null);
+                UndoVersionId: changed.Count > 0 ? undoVersionId?.ToString() : null,
+                Citations: citations.Count > 0 ? citations : null);
             return AskLiliaResult.Ok(result);
         }
         catch (Exception ex)
