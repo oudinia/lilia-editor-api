@@ -29,7 +29,12 @@ public interface IAskLiliaService
     Task<AskLiliaResult> AskAsync(string userId, AskLiliaRequest request, CancellationToken ct = default);
 }
 
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null);
+
+/// <summary>A file the author attached to the message. <see cref="DataBase64"/>
+/// is the raw file bytes, base64-encoded. Images/PDFs go to the model natively;
+/// docx/text are extracted/inlined server-side.</summary>
+public sealed record AskAttachment(string Name, string MediaType, string DataBase64);
 
 /// <summary>One prior conversation turn, sent by the client so Ask Lilia
 /// remembers the thread. Role is "user" or "assistant"/"lilia".</summary>
@@ -69,6 +74,13 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly bool _webSearchEnabled;
     private readonly IReadOnlyList<string> _webSearchSkills;
     private readonly decimal _webSearchCostPerSearchUsd;
+    // Attachments: images/PDFs go to the model natively; docx/text are extracted
+    // or inlined server-side. Per-type size ceilings (bytes) are configurable.
+    private readonly bool _attachEnabled;
+    private readonly int _attachMaxImageBytes;
+    private readonly int _attachMaxPdfBytes;
+    private readonly int _attachMaxFileBytes;
+    private readonly int _attachMaxTextChars;
 
     private const int MaxOutputTokens = 4096;
     // Bound the tool-use loop: each round is one model call; this caps cost and
@@ -134,6 +146,11 @@ public sealed class AskLiliaService : IAskLiliaService
         _webSearchEnabled = configuration.GetValue("AI:WebSearch:Enabled", false);
         _webSearchSkills = configuration.GetSection("AI:WebSearch:Skills").Get<string[]>() ?? new[] { "lilia-citations" };
         _webSearchCostPerSearchUsd = configuration.GetValue("AI:WebSearch:CostPerSearchUsd", 0.01m);
+        _attachEnabled = configuration.GetValue("AI:Attachments:Enabled", true);
+        _attachMaxImageBytes = configuration.GetValue("AI:Attachments:MaxImageBytes", 5 * 1024 * 1024);
+        _attachMaxPdfBytes = configuration.GetValue("AI:Attachments:MaxPdfBytes", 10 * 1024 * 1024);
+        _attachMaxFileBytes = configuration.GetValue("AI:Attachments:MaxFileBytes", 10 * 1024 * 1024);
+        _attachMaxTextChars = configuration.GetValue("AI:Attachments:MaxTextChars", 100_000);
     }
 
     // Whether the live-web-search tool is offered for a given routed skill. Off
@@ -264,7 +281,19 @@ public sealed class AskLiliaService : IAskLiliaService
             }
         }
 
-        messages.Add(new ChatMessage(ChatRole.User, request.Message));
+        // The user turn = the typed message + any attachment parts (images/PDFs
+        // as native content the model reads; docx/text extracted or inlined).
+        var attachmentParts = BuildAttachmentContents(request.Attachments);
+        if (attachmentParts.Count > 0)
+        {
+            var userContents = new List<AIContent> { new TextContent(request.Message) };
+            userContents.AddRange(attachmentParts);
+            messages.Add(new ChatMessage(ChatRole.User, userContents));
+        }
+        else
+        {
+            messages.Add(new ChatMessage(ChatRole.User, request.Message));
+        }
 
         // ── model resolution (catalog default; honour a tier-allowed override) ─
         var model = _catalog.DefaultModelId();
@@ -678,6 +707,14 @@ public sealed class AskLiliaService : IAskLiliaService
             return new { error = "tool failed: " + ex.Message };
         }
     }
+
+    // Turn the request's attachments into model content parts (images/PDFs go
+    // to the model natively; docx/text are extracted/inlined). Gated by config.
+    private IReadOnlyList<AIContent> BuildAttachmentContents(IReadOnlyList<AskAttachment>? attachments)
+        => !_attachEnabled
+            ? Array.Empty<AIContent>()
+            : AskAttachmentBuilder.Build(attachments,
+                new AttachmentLimits(_attachMaxImageBytes, _attachMaxPdfBytes, _attachMaxFileBytes, _attachMaxTextChars));
 
     private async Task<Guid> PersistPendingAsync(string userId, string purpose, string model, List<ChatMessage> messages, Guid? documentId, CancellationToken ct)
     {
