@@ -43,6 +43,14 @@ public interface IEntitlementService
     /// </summary>
     Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Append a flat, pre-computed credit surcharge for the same request — for
+    /// server-side tool use (e.g. web search) that bills outside the per-token
+    /// model. No-op when <paramref name="credits"/> &lt;= 0. Recorded as 'spend'
+    /// so it draws down the balance alongside the token spend.
+    /// </summary>
+    Task RecordAiSurchargeAsync(string userId, int credits, string note, Guid aiRequestId, CancellationToken ct = default);
+
     /// <summary>Total credits consumed (sum of spend) for a user — for the UI usage readout.</summary>
     Task<int> GetAiCreditsConsumedAsync(string userId, CancellationToken ct = default);
 }

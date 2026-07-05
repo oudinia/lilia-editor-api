@@ -32,6 +32,14 @@ public static class AiArchitectPricing
     public static decimal CreditsToUsd(int credits)
         => decimal.Round(Math.Max(0, credits) * UsdPerCredit, 4);
 
+    /// <summary>
+    /// Convert an estimated USD surcharge (e.g. server-side web-search fees that
+    /// bill outside the per-token model) into integer credits using the same peg
+    /// the budget bar uses. Ceils so any non-zero surcharge debits at least 1.
+    /// </summary>
+    public static int UsdToCredits(decimal usd)
+        => usd <= 0m ? 0 : (int)Math.Ceiling(usd / UsdPerCredit);
+
     private static (decimal Input, decimal Output) RatesFor(string model)
     {
         var m = model?.ToLowerInvariant() ?? string.Empty;
