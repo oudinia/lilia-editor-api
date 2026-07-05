@@ -29,7 +29,11 @@ public interface IAskLiliaService
     Task<AskLiliaResult> AskAsync(string userId, AskLiliaRequest request, CancellationToken ct = default);
 }
 
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null);
+
+/// <summary>One prior conversation turn, sent by the client so Ask Lilia
+/// remembers the thread. Role is "user" or "assistant"/"lilia".</summary>
+public sealed record AskTurn(string Role, string Content);
 
 public sealed record AskLiliaResponse(
     string SkillId, string SkillName, string Reply,
@@ -213,11 +217,27 @@ public sealed class AskLiliaService : IAskLiliaService
         }
 
         var system = systemSb.ToString();
-        var messages = new List<ChatMessage>
+        var messages = new List<ChatMessage> { new(ChatRole.System, system) };
+
+        // Conversation memory — prior turns the client sends so Ask Lilia
+        // remembers the thread (it was stateless before). Cap to the most recent
+        // turns to bound the context; empty/blank turns are skipped.
+        if (request.History is { Count: > 0 })
         {
-            new(ChatRole.System, system),
-            new(ChatRole.User, request.Message),
-        };
+            const int MaxHistoryTurns = 20;
+            var recent = request.History.Count > MaxHistoryTurns
+                ? request.History.Skip(request.History.Count - MaxHistoryTurns)
+                : request.History;
+            foreach (var turn in recent)
+            {
+                if (string.IsNullOrWhiteSpace(turn.Content)) continue;
+                var role = string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase)
+                    ? ChatRole.User : ChatRole.Assistant;
+                messages.Add(new ChatMessage(role, turn.Content));
+            }
+        }
+
+        messages.Add(new ChatMessage(ChatRole.User, request.Message));
 
         // ── model resolution (catalog default; honour a tier-allowed override) ─
         var model = _catalog.DefaultModelId();
