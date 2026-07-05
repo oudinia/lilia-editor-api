@@ -345,12 +345,12 @@ public sealed class AskLiliaService : IAskLiliaService
                 _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} KB tool call(s)", skill.Id, toolCalls);
 
             // Web search bills separately from tokens (~$0.01/search). Fold its cost
-            // into the reported USD so usage is honest. NOTE: credit *debit* for
-            // searches still needs an entitlement extension — tracked as follow-up;
-            // for now it shows in cost + logs but doesn't draw down credits.
+            // into the reported USD, and debit the equivalent credits below (a
+            // separate ledger surcharge row against this same request).
             var webSearchCostUsd = webSearches * _webSearchCostPerSearchUsd;
+            var webSearchCredits = AiArchitectPricing.UsdToCredits(webSearchCostUsd);
             if (webSearches > 0)
-                _logger.LogInformation("[AskLilia] skill={Skill} web_search x{N} (+${Cost:F3}); credit debit for searches is TODO", skill.Id, webSearches, webSearchCostUsd);
+                _logger.LogInformation("[AskLilia] skill={Skill} web_search x{N} (+${Cost:F3}, {Credits} credits)", skill.Id, webSearches, webSearchCostUsd, webSearchCredits);
 
             var reply = (response.Text ?? string.Empty).Trim();
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
@@ -363,6 +363,11 @@ public sealed class AskLiliaService : IAskLiliaService
             try
             {
                 credits = await _entitlement.RecordAiSpendAsync(userId, model, inputTokens, outputTokens, aiRequestId, ct);
+                if (webSearchCredits > 0)
+                {
+                    await _entitlement.RecordAiSurchargeAsync(userId, webSearchCredits, $"{webSearches} web search(es)", aiRequestId, ct);
+                    credits += webSearchCredits;
+                }
                 var creditsLeft = await _entitlement.GetAiCreditBalanceAsync(userId, ct);
                 balance = new AiArchitectBalance(AiArchitectPricing.CreditsToUsd(creditsLeft));
                 creditsUsed = await _entitlement.GetAiCreditsConsumedAsync(userId, ct);

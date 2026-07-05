@@ -131,6 +131,23 @@ public class EntitlementService : IEntitlementService
         return credits;
     }
 
+    public async Task RecordAiSurchargeAsync(string userId, int credits, string note, Guid aiRequestId, CancellationToken ct = default)
+    {
+        if (credits <= 0) return;
+        note ??= string.Empty;
+        _context.AiCreditLedger.Add(new AiCreditLedger
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Delta = -credits,
+            Reason = "spend",
+            AiRequestId = aiRequestId,
+            Note = note.Length > 500 ? note[..500] : note,
+            CreatedAt = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync(ct);
+    }
+
     /// <summary>Total credits consumed (sum of spend magnitudes) for a user.</summary>
     public async Task<int> GetAiCreditsConsumedAsync(string userId, CancellationToken ct = default)
     {
