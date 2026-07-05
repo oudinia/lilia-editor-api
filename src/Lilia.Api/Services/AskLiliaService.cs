@@ -63,6 +63,11 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly bool _useAi;
     private readonly bool _enabled;
     private readonly bool _enforceCredits;
+    // Web-search prototype (flagged off by default). Gated to a configurable set
+    // of skills so we can validate on the research/citation path before widening.
+    private readonly bool _webSearchEnabled;
+    private readonly IReadOnlyList<string> _webSearchSkills;
+    private readonly decimal _webSearchCostPerSearchUsd;
 
     private const int MaxOutputTokens = 4096;
     // Bound the tool-use loop: each round is one model call; this caps cost and
@@ -83,6 +88,16 @@ public sealed class AskLiliaService : IAskLiliaService
         (e.g. "see Data → LaTeX table — /help/latex-table"). Do NOT invent article slugs, hrefs, or
         Lilia behaviour: if search_kb returns nothing, say so and answer from the skill guidance.
         Skip the tools for pure generation (e.g. "write this equation") where no docs are needed.
+        """;
+
+    private const string WebSearchNote = """
+        WEB SEARCH — you can search the live web to ground factual claims, find current
+        data, and locate primary sources. Use it when the author asks for facts, figures,
+        recent events, or references you cannot answer reliably from memory. Prefer
+        authoritative / primary sources. You MUST cite every web-derived claim inline as a
+        markdown link to the source, and note that the data is current as of today. If
+        sources disagree, say so rather than presenting one as certain. Do NOT search for
+        things you already know, or for pure formatting / LML questions.
         """;
 
     public AskLiliaService(
@@ -115,7 +130,15 @@ public sealed class AskLiliaService : IAskLiliaService
         _useAi = !string.IsNullOrEmpty(_options.Anthropic.ApiKey) && _options.Anthropic.ApiKey != "sk-placeholder";
         _enabled = configuration.GetValue("AI:Enabled", true);
         _enforceCredits = configuration.GetValue("AI:EnforceCredits", false);
+        _webSearchEnabled = configuration.GetValue("AI:WebSearch:Enabled", false);
+        _webSearchSkills = configuration.GetSection("AI:WebSearch:Skills").Get<string[]>() ?? new[] { "lilia-citations" };
+        _webSearchCostPerSearchUsd = configuration.GetValue("AI:WebSearch:CostPerSearchUsd", 0.01m);
     }
+
+    // Whether the live-web-search tool is offered for a given routed skill. Off
+    // unless AI:WebSearch:Enabled is set AND the skill is in AI:WebSearch:Skills.
+    private bool WebSearchEnabledFor(string skillId)
+        => _webSearchEnabled && _webSearchSkills.Contains(skillId);
 
     // ai_requests.purpose is CHECK-constrained — map each skill to a member of the
     // closed vocabulary, defaulting to 'other'.
@@ -150,12 +173,15 @@ public sealed class AskLiliaService : IAskLiliaService
         var route = _router.Route(request.Message);
         var skill = _router.Get(route.SkillId);
         var level = ProficiencyGuidance.Parse(request.Proficiency);
+        var webSearch = WebSearchEnabledFor(skill.Id);
 
         var guidance = AiSkillGuidance.Get(skill.Id);
         var systemSb = new StringBuilder()
             .AppendLine(ProficiencyGuidance.For(level)).AppendLine()
             .AppendLine(string.IsNullOrEmpty(guidance) ? $"You are the {skill.Name} skill for Lilia. {skill.WhenToUse}" : guidance)
             .AppendLine().AppendLine(OutputNote);
+        if (webSearch)
+            systemSb.AppendLine().AppendLine(WebSearchNote);
 
         // Document context — when Ask Lilia is open inside a document, ground the
         // answer in that doc's current blocks (the author is editing it live).
@@ -269,6 +295,11 @@ public sealed class AskLiliaService : IAskLiliaService
             var tools = BuildKbTools(ct);
             if (document is not null)
                 tools = tools.Concat(BuildDocumentTools(document, documentId!.Value, request.EditMode, changed, ct)).ToList();
+            // Live web search (Anthropic server-side tool). It runs provider-side —
+            // results arrive within the same response, so the KB tool-use loop below
+            // doesn't need to dispatch it (it never surfaces as a FunctionCallContent).
+            if (webSearch)
+                tools = tools.Append((AITool)new HostedWebSearchTool()).ToList();
             var options = new ChatOptions
             {
                 ModelId = model,
@@ -285,11 +316,13 @@ public sealed class AskLiliaService : IAskLiliaService
             var inputTokens = 0;
             var outputTokens = 0;
             var toolCalls = 0;
+            var webSearches = 0;
             for (var round = 0; round < MaxToolRounds; round++)
             {
                 response = await _chatClient.GetResponseAsync(messages, options, ct);
                 inputTokens += (int?)response.Usage?.InputTokenCount ?? 0;
                 outputTokens += (int?)response.Usage?.OutputTokenCount ?? 0;
+                webSearches += ExtractWebSearches(response);
 
                 // Carry the assistant turn (incl. any function-call content) into history.
                 messages.AddRange(response.Messages);
@@ -311,8 +344,16 @@ public sealed class AskLiliaService : IAskLiliaService
             if (toolCalls > 0)
                 _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} KB tool call(s)", skill.Id, toolCalls);
 
+            // Web search bills separately from tokens (~$0.01/search). Fold its cost
+            // into the reported USD so usage is honest. NOTE: credit *debit* for
+            // searches still needs an entitlement extension — tracked as follow-up;
+            // for now it shows in cost + logs but doesn't draw down credits.
+            var webSearchCostUsd = webSearches * _webSearchCostPerSearchUsd;
+            if (webSearches > 0)
+                _logger.LogInformation("[AskLilia] skill={Skill} web_search x{N} (+${Cost:F3}); credit debit for searches is TODO", skill.Id, webSearches, webSearchCostUsd);
+
             var reply = (response.Text ?? string.Empty).Trim();
-            var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens);
+            var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
 
@@ -594,6 +635,21 @@ public sealed class AskLiliaService : IAskLiliaService
         if (string.IsNullOrEmpty(t)) t = c.GetRawText();
         t = System.Text.RegularExpressions.Regex.Replace(t, "\\s+", " ").Trim();
         return t.Length > max ? t[..max] + "…" : t;
+    }
+
+    // Pull the provider's web-search request count out of the usage details so we
+    // can account for its separate per-search cost. The exact counter key varies by
+    // provider/adapter, so match defensively on any "search" counter in the extra
+    // usage counts (Anthropic surfaces server_tool_use.web_search_requests).
+    private static int ExtractWebSearches(ChatResponse response)
+    {
+        var counts = response.Usage?.AdditionalCounts;
+        if (counts is null || counts.Count == 0) return 0;
+        long total = 0;
+        foreach (var kv in counts)
+            if (kv.Key.Contains("search", StringComparison.OrdinalIgnoreCase))
+                total += kv.Value;
+        return (int)total;
     }
 
     private static async Task<object?> InvokeKbToolAsync(IList<AITool> tools, FunctionCallContent call, CancellationToken ct)
