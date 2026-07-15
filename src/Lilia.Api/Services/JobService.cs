@@ -16,6 +16,7 @@ public class JobService : IJobService
     private readonly IDocxImportService _docxImportService;
     private readonly IPdfParser? _pdfParser;
     private readonly ILatexParser _latexParser;
+    private readonly ILmlTextParser _lmlTextParser;
     private readonly Lilia.Import.Services.ILatexProjectExtractor _latexProjectExtractor;
     private readonly IImportProgressService _progressService;
     private readonly IImportReviewService _reviewService;
@@ -29,6 +30,7 @@ public class JobService : IJobService
         IImportProgressService progressService,
         IImportReviewService reviewService,
         ILatexParser latexParser,
+        ILmlTextParser lmlTextParser,
         Lilia.Import.Services.ILatexProjectExtractor latexProjectExtractor,
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null)
@@ -40,6 +42,7 @@ public class JobService : IJobService
         _progressService = progressService;
         _reviewService = reviewService;
         _latexParser = latexParser;
+        _lmlTextParser = lmlTextParser;
         _latexProjectExtractor = latexProjectExtractor;
         _logger = logger;
         _pdfParser = pdfParser;
@@ -526,38 +529,115 @@ public class JobService : IJobService
 
                 if (request.Format.ToUpperInvariant() == "LML")
                 {
-                    // Parse LML/Lilia format (JSON)
-                    try
+                    // 1) JSON Lilia export: { document: { blocks: [...] } }
+                    // 2) Human-readable text LML: @heading / @paragraph / @theorem …
+                    // 3) Last resort: single paragraph with raw text
+                    var importedBlocks = false;
+
+                    var trimmedContent = request.Content?.TrimStart() ?? "";
+                    if (trimmedContent.StartsWith('{') || trimmedContent.StartsWith('['))
                     {
-                        var lmlDoc = JsonSerializer.Deserialize<JsonElement>(request.Content);
-                        if (lmlDoc.TryGetProperty("document", out var docElement) &&
-                            docElement.TryGetProperty("blocks", out var blocksElement))
+                        try
                         {
-                            var sortOrder = 0;
-                            foreach (var block in blocksElement.EnumerateArray())
+                            var lmlDoc = JsonSerializer.Deserialize<JsonElement>(request.Content!);
+                            if (lmlDoc.TryGetProperty("document", out var docElement) &&
+                                docElement.TryGetProperty("blocks", out var blocksElement) &&
+                                blocksElement.ValueKind == JsonValueKind.Array &&
+                                blocksElement.GetArrayLength() > 0)
                             {
-                                var blockEntity = new Lilia.Core.Entities.Block
+                                var sortOrder = 0;
+                                foreach (var block in blocksElement.EnumerateArray())
+                                {
+                                    var blockEntity = new Lilia.Core.Entities.Block
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        DocumentId = createdDocument.Id,
+                                        Type = block.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "paragraph" : "paragraph",
+                                        Content = block.TryGetProperty("content", out var contentEl)
+                                            ? JsonDocument.Parse(contentEl.GetRawText())
+                                            : JsonDocument.Parse("{}"),
+                                        SortOrder = sortOrder++,
+                                        Depth = block.TryGetProperty("depth", out var depthEl) ? depthEl.GetInt32() : 0,
+                                        CreatedAt = DateTime.UtcNow,
+                                        UpdatedAt = DateTime.UtcNow
+                                    };
+                                    _context.Blocks.Add(blockEntity);
+                                }
+                                await _context.SaveChangesAsync();
+                                importedBlocks = true;
+                            }
+                            // Also accept top-level { blocks: [...] }
+                            else if (lmlDoc.TryGetProperty("blocks", out var topBlocks) &&
+                                     topBlocks.ValueKind == JsonValueKind.Array &&
+                                     topBlocks.GetArrayLength() > 0)
+                            {
+                                var sortOrder = 0;
+                                foreach (var block in topBlocks.EnumerateArray())
+                                {
+                                    var blockEntity = new Lilia.Core.Entities.Block
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        DocumentId = createdDocument.Id,
+                                        Type = block.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "paragraph" : "paragraph",
+                                        Content = block.TryGetProperty("content", out var contentEl)
+                                            ? JsonDocument.Parse(contentEl.GetRawText())
+                                            : JsonDocument.Parse("{}"),
+                                        SortOrder = sortOrder++,
+                                        Depth = block.TryGetProperty("depth", out var depthEl) ? depthEl.GetInt32() : 0,
+                                        CreatedAt = DateTime.UtcNow,
+                                        UpdatedAt = DateTime.UtcNow
+                                    };
+                                    _context.Blocks.Add(blockEntity);
+                                }
+                                await _context.SaveChangesAsync();
+                                importedBlocks = true;
+                            }
+                        }
+                        catch (JsonException ex)
+                        {
+                            _logger.LogWarning(ex, "[Import] LML content looked like JSON but failed to parse; trying text LML");
+                        }
+                    }
+
+                    if (!importedBlocks && _lmlTextParser.LooksLikeTextLml(request.Content ?? ""))
+                    {
+                        var parsed = _lmlTextParser.Parse(request.Content ?? "");
+                        if (parsed.Blocks.Count > 0)
+                        {
+                            if (!string.IsNullOrWhiteSpace(parsed.Title) &&
+                                (string.IsNullOrWhiteSpace(request.Title) ||
+                                 string.Equals(createdDocument.Title, Path.GetFileNameWithoutExtension(request.Filename), StringComparison.Ordinal)))
+                            {
+                                createdDocument.Title = parsed.Title!;
+                            }
+
+                            var sortOrder = 0;
+                            foreach (var block in parsed.Blocks)
+                            {
+                                _context.Blocks.Add(new Lilia.Core.Entities.Block
                                 {
                                     Id = Guid.NewGuid(),
                                     DocumentId = createdDocument.Id,
-                                    Type = block.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "paragraph" : "paragraph",
-                                    Content = block.TryGetProperty("content", out var contentEl)
-                                        ? JsonDocument.Parse(contentEl.GetRawText())
-                                        : JsonDocument.Parse("{}"),
+                                    Type = block.Type,
+                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(block.Content)),
                                     SortOrder = sortOrder++,
-                                    Depth = block.TryGetProperty("depth", out var depthEl) ? depthEl.GetInt32() : 0,
+                                    Depth = block.Depth,
                                     CreatedAt = DateTime.UtcNow,
                                     UpdatedAt = DateTime.UtcNow
-                                };
-                                _context.Blocks.Add(blockEntity);
+                                });
                             }
                             await _context.SaveChangesAsync();
+                            importedBlocks = true;
+                            _logger.LogInformation(
+                                "[Import] Parsed text LML into {Count} blocks (warnings: {Warnings})",
+                                parsed.Blocks.Count,
+                                parsed.Warnings.Count);
                         }
                     }
-                    catch (JsonException ex)
+
+                    if (!importedBlocks)
                     {
-                        _logger.LogWarning(ex, "[Import] Failed to parse LML content, creating as single block");
-                        // Fall back to single paragraph block
+                        _logger.LogWarning("[Import] LML import fell back to single paragraph block");
                         _context.Blocks.Add(new Lilia.Core.Entities.Block
                         {
                             Id = Guid.NewGuid(),

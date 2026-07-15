@@ -502,6 +502,7 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.IDocxExportService>(sp =>
         sp.GetService<Lilia.Import.Services.IImportTelemetrySink>()));
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexParser, Lilia.Import.Services.LatexParser>();
 builder.Services.AddSingleton<Lilia.Import.Interfaces.ILatexFragmentParser, Lilia.Import.Services.LatexFragmentParser>();
+builder.Services.AddSingleton<Lilia.Import.Interfaces.ILmlTextParser, Lilia.Import.Services.LmlTextParser>();
 
 // LaTeX catalog (Phase 2) — singleton in-memory cache seeded from DB at
 // boot. Preloaded just before the HTTP pipeline starts so the first
