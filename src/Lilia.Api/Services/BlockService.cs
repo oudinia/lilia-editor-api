@@ -92,16 +92,7 @@ public class BlockService : IBlockService
         // A Title block's title doubles as the document name + LaTeX \title —
         // keep them in sync on create too (mirrors UpdateBlockAsync).
         if (block.Type == BlockTypes.Title)
-        {
-            var root = block.Content.RootElement;
-            if (root.ValueKind == JsonValueKind.Object &&
-                root.TryGetProperty("title", out var tp) &&
-                tp.ValueKind == JsonValueKind.String)
-            {
-                var newTitle = tp.GetString();
-                if (!string.IsNullOrWhiteSpace(newTitle)) document.Title = newTitle!.Trim();
-            }
-        }
+            SyncDocumentTitleFromTitleBlock(document, block);
 
         await _context.SaveChangesAsync();
 
@@ -134,16 +125,7 @@ public class BlockService : IBlockService
             // Single source of truth: a Title block's title doubles as the
             // document name (and the LaTeX \title). Keep them in sync.
             if (block.Type == BlockTypes.Title)
-            {
-                var root = block.Content.RootElement;
-                if (root.ValueKind == JsonValueKind.Object &&
-                    root.TryGetProperty("title", out var tp) &&
-                    tp.ValueKind == JsonValueKind.String)
-                {
-                    var newTitle = tp.GetString();
-                    if (!string.IsNullOrWhiteSpace(newTitle)) document.Title = newTitle!.Trim();
-                }
-            }
+                SyncDocumentTitleFromTitleBlock(document, block);
         }
 
         await _context.SaveChangesAsync();
@@ -259,6 +241,12 @@ public class BlockService : IBlockService
             document.Version += 1;
             if (expectedVersion.HasValue)
                 _context.Entry(document).Property(d => d.Version).OriginalValue = expectedVersion.Value;
+
+            // Title block is the single source of truth for the document name
+            // (and LaTeX/Typst \title). Continuous sync goes through this
+            // batch path — without this, top-bar title and Title-block title
+            // drift after in-canvas Title edits.
+            SyncDocumentTitleFromTitleBlock(document, resultBlocks);
         }
 
         _logger.LogInformation("BatchUpdateBlocksAsync: About to SaveChanges - Created: {Created}, Updated: {Updated}, Deleted: {Deleted}",
@@ -620,5 +608,48 @@ WHERE b.document_id = @doc AND b.id = ANY(@ids) AND b.type = 'heading';";
             b.CreatedAt,
             b.UpdatedAt
         );
+    }
+
+    /// <summary>
+    /// If <paramref name="block"/> is a Title block with a non-empty title,
+    /// copy it onto <paramref name="document"/>.Title.
+    /// </summary>
+    private static void SyncDocumentTitleFromTitleBlock(Document document, Block block)
+    {
+        if (!string.Equals(block.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase))
+            return;
+        TryReadTitleField(block, out var newTitle);
+        if (!string.IsNullOrWhiteSpace(newTitle))
+            document.Title = newTitle.Trim();
+    }
+
+    /// <summary>
+    /// Prefer the first Title block in <paramref name="blocks"/> as the
+    /// document name. Used by the continuous-sync batch path.
+    /// </summary>
+    private static void SyncDocumentTitleFromTitleBlock(Document document, IEnumerable<Block> blocks)
+    {
+        var titleBlock = blocks.FirstOrDefault(b =>
+            string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+        if (titleBlock is null) return;
+        SyncDocumentTitleFromTitleBlock(document, titleBlock);
+    }
+
+    private static bool TryReadTitleField(Block block, out string? title)
+    {
+        title = null;
+        try
+        {
+            var root = block.Content.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (!root.TryGetProperty("title", out var tp) || tp.ValueKind != JsonValueKind.String)
+                return false;
+            title = tp.GetString();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

@@ -66,11 +66,25 @@ public class TypstExportService : ITypstExportService
         options ??= new TypstExportOptions();
         var sb = new StringBuilder();
 
+        // Resolve title/author/date from a Title block when present —
+        // same single-source-of-truth as LaTeX (RenderService.ResolveTitleMeta /
+        // LaTeXExportService.AppendTitleMeta). Live preview is Typst-first, so
+        // without this author/date tokens never appear in the PDF.
+        var (titleText, authorText, dateText) = ResolveTitleMeta(doc, blocks);
+
         // Document preamble — Typst calls these "set" rules for global
         // styles. Body content follows directly; no \documentclass
         // ceremony like LaTeX needs.
-        sb.AppendLine($"// {EscapeTypstComment(doc.Title ?? "Untitled")}");
-        sb.AppendLine($"#set document(title: {QuoteTypst(doc.Title ?? "Untitled")})");
+        sb.AppendLine($"// {EscapeTypstComment(titleText)}");
+        if (!string.IsNullOrWhiteSpace(authorText))
+        {
+            sb.AppendLine(
+                $"#set document(title: {QuoteTypst(titleText)}, author: ({QuoteTypst(PlainTitleMetaForTypst(authorText))}))");
+        }
+        else
+        {
+            sb.AppendLine($"#set document(title: {QuoteTypst(titleText)})");
+        }
         sb.AppendLine($"#set page(paper: {QuoteTypst(MapPaper(doc.PaperSize))})");
         // Font fallback list — Typst tries each in order. "New Computer
         // Modern" ships bundled with the typst binary so compile never
@@ -80,18 +94,10 @@ public class TypstExportService : ITypstExportService
         sb.AppendLine($"#set par(justify: true)");
         sb.AppendLine();
 
-        // Title heading — emit `= Title` so Typst has a visible title.
-        // BUT: imported documents (LaTeX, DOCX) often promote \title{X}
-        // into a top-level heading block whose text matches the doc
-        // title. If we always emit our own `= Title` AND the matching
-        // heading block also renders, the user sees the title twice.
-        // Skip the duplicate block via FirstHeadingMatchesTitle below.
-        var titleDuplicateBlockId = FindTitleDuplicateBlockId(doc.Title, blocks);
-        if (!string.IsNullOrEmpty(doc.Title))
-        {
-            sb.AppendLine($"= {EscapeTypstInline(doc.Title)}");
-            sb.AppendLine();
-        }
+        // Visible title block (maketitle analogue). Imported docs often
+        // promote \title{X} into a top-level heading — skip that duplicate.
+        var titleDuplicateBlockId = FindTitleDuplicateBlockId(titleText, blocks);
+        AppendTypstTitleBlock(sb, titleText, authorText, dateText);
 
         var defaultCols = Math.Clamp(doc.Columns, 1, 3);
         var blockToCols = BuildBlockColumnMap(layoutGroups, defaultCols);
@@ -101,8 +107,12 @@ public class TypstExportService : ITypstExportService
         // opens a new one. Single-column runs are emitted inline (no
         // wrapper) since `#columns(1)[...]` is a no-op that just adds
         // visual noise to the source.
+        // Title blocks are preamble metadata (handled above) — skip body emit.
         var orderedBlocks = blocks
-            .Where(b => !titleDuplicateBlockId.HasValue || b.Id != titleDuplicateBlockId.Value)
+            .Where(b =>
+                (!titleDuplicateBlockId.HasValue || b.Id != titleDuplicateBlockId.Value) &&
+                !string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(b.Type, "title", StringComparison.OrdinalIgnoreCase))
             .OrderBy(b => b.SortOrder)
             .ToList();
 
@@ -197,6 +207,9 @@ public class TypstExportService : ITypstExportService
                 "image" => RenderFigure(content),       // alias
                 "quote" => RenderBlockquote(content),   // alias
                 "divider" => "#line(length: 100%)",     // alias
+                // Title is preamble metadata (BuildTypstDocument emits
+                // title/author/date at the top); body contributes nothing.
+                "title" => "",
                 _ => RenderUnknownBlock(block),
             };
         }
@@ -664,6 +677,21 @@ public class TypstExportService : ITypstExportService
 
         var s = text;
 
+        // 0. Bare LaTeX date/author tokens in body text (Sample Report:
+        //    "Date: \today"). Typst has no \today — expand to a calendar
+        //    date; body `\date{…}` (preamble cmd misused mid-paragraph)
+        //    rewritten the same way; \and → comma.
+        var todayStr = DateTime.UtcNow.ToString("MMMM d, yyyy",
+            System.Globalization.CultureInfo.InvariantCulture);
+        s = Regex.Replace(s, @"\\date\{\\today\}", _ => Ph(todayStr));
+        s = Regex.Replace(s, @"\\date\{([^}]*)\}", m =>
+        {
+            var inner = (m.Groups[1].Value ?? "").Trim();
+            return Ph(string.IsNullOrEmpty(inner) || inner == @"\today" ? todayStr : inner);
+        });
+        s = Regex.Replace(s, @"\\today\b", _ => Ph(todayStr));
+        s = Regex.Replace(s, @"\s*\\and\s*", _ => Ph(", "));
+
         // 1a. Display math $$x^2$$ — convert to Typst's `$ X $` form
         //     (Typst doesn't have a separate display-math syntax;
         //     spaces inside $...$ enable display layout). MUST run
@@ -932,6 +960,100 @@ public class TypstExportService : ITypstExportService
         s = Regex.Replace(s, @"_\{([^{}]+)\}", "_($1)");
         s = Regex.Replace(s, @"\^\{([^{}]+)\}", "^($1)");
 
+        return s;
+    }
+
+    /// <summary>
+    /// Resolve \title/\author/\date from a Title block if present, else
+    /// document title. Mirrors RenderService.ResolveTitleMeta so Typst
+    /// live-preview and LaTeX export agree.
+    /// </summary>
+    private static (string title, string? author, string? date) ResolveTitleMeta(
+        Document doc, List<Block> blocks)
+    {
+        var titleBlock = blocks.FirstOrDefault(b =>
+            string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+        if (titleBlock?.Content != null)
+        {
+            try
+            {
+                var root = titleBlock.Content.RootElement;
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    var t = root.TryGetProperty("title", out var tp) ? tp.GetString() : null;
+                    var a = root.TryGetProperty("author", out var ap) ? ap.GetString() : null;
+                    var d = root.TryGetProperty("date", out var dp) ? dp.GetString() : null;
+                    return (
+                        string.IsNullOrWhiteSpace(t) ? (doc.Title ?? "Untitled") : t!,
+                        string.IsNullOrWhiteSpace(a) ? null : a,
+                        string.IsNullOrWhiteSpace(d) ? null : d);
+                }
+            }
+            catch { /* malformed — fall through */ }
+        }
+        return (doc.Title ?? "Untitled", null, null);
+    }
+
+    /// <summary>
+    /// Emit a centered maketitle-style block: title + author + date.
+    /// Author/date convert common LaTeX tokens (\and, \today, \thanks)
+    /// into plain Typst-safe text.
+    /// </summary>
+    private static void AppendTypstTitleBlock(
+        StringBuilder sb, string title, string? author, string? date)
+    {
+        if (string.IsNullOrWhiteSpace(title) &&
+            string.IsNullOrWhiteSpace(author) &&
+            string.IsNullOrWhiteSpace(date))
+            return;
+
+        sb.AppendLine("#align(center)[");
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            sb.AppendLine($"  #text(size: 1.6em, weight: \"bold\")[{EscapeTypstInline(title)}]");
+        }
+        if (!string.IsNullOrWhiteSpace(author))
+        {
+            sb.AppendLine("  #v(0.6em)");
+            sb.AppendLine($"  {EscapeTypstInline(PlainTitleMetaForTypst(author))}");
+        }
+        // Show date when the Title block provided one, or when author is set
+        // (LaTeX \maketitle defaults missing date to \today). Pure title-only
+        // docs (no Title block author/date) stay title-only — no forced date.
+        if (!string.IsNullOrWhiteSpace(date) || !string.IsNullOrWhiteSpace(author))
+        {
+            var dateDisplay = !string.IsNullOrWhiteSpace(date)
+                ? PlainTitleMetaForTypst(date)
+                : DateTime.UtcNow.ToString("MMMM d, yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture);
+            sb.AppendLine("  #v(0.4em)");
+            sb.AppendLine($"  {EscapeTypstInline(dateDisplay)}");
+        }
+        sb.AppendLine("]");
+        sb.AppendLine("#v(1.2em)");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Convert common LaTeX title-meta tokens into plain text for Typst.
+    /// <c>\and</c> → comma, <c>\today</c> → formatted date, strip
+    /// <c>\thanks{…}</c>, collapse <c>\\</c> line breaks.
+    /// </summary>
+    internal static string PlainTitleMetaForTypst(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        var s = text;
+        s = Regex.Replace(s, @"\\thanks\{[^{}]*\}", "");
+        // Swallow surrounding whitespace so "Ada \and Bob" → "Ada, Bob".
+        s = Regex.Replace(s, @"\s*\\and\s*", ", ");
+        s = Regex.Replace(s, @"\\today\b",
+            DateTime.UtcNow.ToString("MMMM d, yyyy",
+                System.Globalization.CultureInfo.InvariantCulture));
+        s = Regex.Replace(s, @"\s*\\\\\s*", ", ");
+        // Drop residual simple LaTeX commands that would break Typst.
+        s = Regex.Replace(s, @"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{[^{}]*\})?", "");
+        s = Regex.Replace(s, @"\s*,\s*", ", ");
+        s = Regex.Replace(s, @"\s{2,}", " ").Trim(' ', ',', ';');
         return s;
     }
 

@@ -475,7 +475,14 @@ public class DocumentService : IDocumentService
         if (!await HasAccessAsync(id, userId, Permissions.Write))
             return null;
 
-        if (dto.Title != null) document.Title = dto.Title;
+        if (dto.Title != null)
+        {
+            document.Title = dto.Title;
+            // Bidirectional sync with the Title block: top-bar rename must
+            // update content.title so LaTeX/Typst preview (which prefer the
+            // Title block over documents.title) stays consistent.
+            await SyncTitleBlockFromDocumentTitleAsync(id, dto.Title);
+        }
         if (dto.Language != null) document.Language = dto.Language;
         if (dto.PaperSize != null) document.PaperSize = dto.PaperSize;
         if (dto.FontFamily != null) document.FontFamily = dto.FontFamily;
@@ -534,6 +541,44 @@ public class DocumentService : IDocumentService
         await _context.SaveChangesAsync();
 
         return await GetDocumentAsync(id, userId);
+    }
+
+    /// <summary>
+    /// When the document name is renamed (top bar), push the new title into
+    /// any Title block while preserving author/date fields.
+    /// </summary>
+    private async Task SyncTitleBlockFromDocumentTitleAsync(Guid documentId, string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+
+        var titleBlock = await _context.Blocks
+            .FirstOrDefaultAsync(b => b.DocumentId == documentId && b.Type == BlockTypes.Title);
+        if (titleBlock is null) return;
+
+        string author = "", date = "";
+        try
+        {
+            var root = titleBlock.Content.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                if (root.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.String)
+                    author = a.GetString() ?? "";
+                if (root.TryGetProperty("date", out var d) && d.ValueKind == JsonValueKind.String)
+                    date = d.GetString() ?? "";
+                // Skip rewrite when title already matches (avoids dirty churn).
+                if (root.TryGetProperty("title", out var t) &&
+                    string.Equals(t.GetString()?.Trim(), title.Trim(), StringComparison.Ordinal))
+                    return;
+            }
+        }
+        catch
+        {
+            // Malformed content — overwrite with a clean object.
+        }
+
+        titleBlock.Content = JsonDocument.Parse(
+            JsonSerializer.Serialize(new { title = title.Trim(), author, date }));
+        titleBlock.UpdatedAt = DateTime.UtcNow;
     }
 
     public async Task<(DocumentDto? Document, SetDocumentTeamStatus Status)> SetDocumentTeamAsync(Guid id, string userId, Guid? teamId)

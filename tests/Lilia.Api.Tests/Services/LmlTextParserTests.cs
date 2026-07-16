@@ -16,6 +16,31 @@ public class LmlTextParserTests
     }
 
     [Fact]
+    public void NormalizeProse_CollapsesSoftLineWraps()
+    {
+        var raw = "Einstein's theory of relativity, comprising Special Relativity (1905) and General\nRelativity (1915), fundamentally reshaped our understanding of space, time, and\ngravity.";
+        var got = LmlTextParser.NormalizeProse(raw);
+        Assert.DoesNotContain("\n", got);
+        Assert.Contains("General Relativity (1915)", got);
+        Assert.Contains("space, time, and gravity", got);
+    }
+
+    [Fact]
+    public void Parse_AbstractSoftWrapsBecomeSpaces()
+    {
+        var src = """
+            @abstract
+              Einstein's theory of relativity, comprising Special Relativity (1905) and General
+              Relativity (1915), fundamentally reshaped our understanding of space.
+            """;
+        var result = _parser.Parse(src);
+        Assert.Single(result.Blocks);
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Blocks[0].Content);
+        Assert.DoesNotContain("\\n", json);
+        Assert.Contains("General Relativity (1915)", json);
+    }
+
+    [Fact]
     public void Parse_SimpleHeadingAndParagraph()
     {
         var src = """

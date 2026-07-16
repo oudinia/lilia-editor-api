@@ -37,6 +37,7 @@ public class TypstHandlerCoverageTests
         BlockTypes.Bibliography,
         BlockTypes.TableOfContents,
         BlockTypes.PageBreak,
+        BlockTypes.Title,
     };
 
     private static readonly string TypstExportPath = ResolveSourcePath(

@@ -184,7 +184,8 @@ public sealed class LmlTextParser : ILmlTextParser
             blocks.Add(new LmlParsedBlock
             {
                 Type = "paragraph",
-                Content = new { text = string.Join("\n", paraLines) },
+                // Soft-wrap plain multi-line prose the same way as @paragraph bodies.
+                Content = new { text = NormalizeProse(string.Join("\n", paraLines)) },
             });
         }
 
@@ -298,10 +299,11 @@ public sealed class LmlTextParser : ILmlTextParser
                 var level = 1;
                 if (attrs.TryGetValue("level", out var lv) && int.TryParse(lv, out var parsed))
                     level = Math.Clamp(parsed, 1, 6);
-                var text = body.Trim();
+                // Soft-wrap newlines from LML indent bodies become spaces (not <br>).
+                var text = NormalizeProse(body);
                 // Support "@heading[level=1] Title" where title was inline only
                 if (string.IsNullOrEmpty(text) && attrs.TryGetValue("_positional0", out var pos))
-                    text = pos;
+                    text = NormalizeProse(pos);
                 blocks.Add(MakeHeading(text, level, attrs.GetValueOrDefault("id") ?? attrs.GetValueOrDefault("label")));
                 if (title is null && level == 1 && !string.IsNullOrWhiteSpace(text))
                     title = text;
@@ -312,7 +314,7 @@ public sealed class LmlTextParser : ILmlTextParser
                 blocks.Add(new LmlParsedBlock
                 {
                     Type = "paragraph",
-                    Content = new { text = body.Trim() },
+                    Content = new { text = NormalizeProse(body) },
                 });
                 return;
 
@@ -323,7 +325,7 @@ public sealed class LmlTextParser : ILmlTextParser
                     Type = "blockquote",
                     Content = new
                     {
-                        text = body.Trim(),
+                        text = NormalizeProse(body),
                         attribution = attrs.GetValueOrDefault("attribution") ?? "",
                     },
                 });
@@ -333,7 +335,7 @@ public sealed class LmlTextParser : ILmlTextParser
                 blocks.Add(new LmlParsedBlock
                 {
                     Type = "abstract",
-                    Content = new { text = body.Trim() },
+                    Content = new { text = NormalizeProse(body) },
                 });
                 return;
 
@@ -341,12 +343,13 @@ public sealed class LmlTextParser : ILmlTextParser
             {
                 var mode = attrs.GetValueOrDefault("mode") ?? "display";
                 var label = attrs.GetValueOrDefault("label") ?? "";
+                // Soft-wrap LML lines in equation bodies; keep intentional \\ line breaks.
                 blocks.Add(new LmlParsedBlock
                 {
                     Type = "equation",
                     Content = new
                     {
-                        latex = body.Trim(),
+                        latex = NormalizeProse(body),
                         equationMode = string.Equals(mode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : "display",
                         label,
                         numbered = !string.IsNullOrEmpty(label),
@@ -383,7 +386,7 @@ public sealed class LmlTextParser : ILmlTextParser
                     Type = "theorem",
                     Content = new
                     {
-                        text = body.Trim(),
+                        text = NormalizeProse(body),
                         theoremType,
                         title = attrs.GetValueOrDefault("title") ?? "",
                         label = attrs.GetValueOrDefault("label") ?? "",
@@ -507,6 +510,7 @@ public sealed class LmlTextParser : ILmlTextParser
     private static LmlParsedBlock MakeHeading(string text, int level, string? id = null)
     {
         level = Math.Clamp(level, 1, 6);
+        text = NormalizeProse(text);
         if (string.IsNullOrEmpty(id))
         {
             return new LmlParsedBlock
@@ -520,6 +524,25 @@ public sealed class LmlTextParser : ILmlTextParser
             Type = "heading",
             Content = new { text, level, label = id },
         };
+    }
+
+    /// <summary>
+    /// Collapse soft line wraps from LML indented bodies into spaces.
+    /// AI-generated LML is usually one phrase per line (~80 cols); those
+    /// newlines are NOT paragraph breaks. Double newlines become a single
+    /// space too for single-block prose (abstract/paragraph/theorem) — the
+    /// editor treats each block as one flow; hard multi-paragraph needs
+    /// separate blocks. Code/tables keep raw newlines elsewhere.
+    /// </summary>
+    public static string NormalizeProse(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return string.Empty;
+        var s = body.Replace("\r\n", "\n").Replace('\r', '\n');
+        // Soft wrap: any newline (with surrounding indent spaces) → single space
+        s = Regex.Replace(s, @"[ \t]*\n[ \t]*", " ");
+        // Collapse runs of spaces/tabs
+        s = Regex.Replace(s, @"[ \t]{2,}", " ");
+        return s.Trim();
     }
 
     /// <summary>

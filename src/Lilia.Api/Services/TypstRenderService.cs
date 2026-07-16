@@ -69,9 +69,39 @@ public class TypstRenderService : ITypstRenderService
 
         var sb = new StringBuilder();
 
+        // Prefer Title block (title/author/date) over documents.title so this
+        // path matches TypstExportService / LaTeX ResolveTitleMeta.
+        var titleText = doc.Title ?? "Untitled";
+        string? authorText = null;
+        string? dateText = null;
+        var titleBlock = blocks.FirstOrDefault(b =>
+            string.Equals(b.Type, "title", StringComparison.OrdinalIgnoreCase));
+        if (titleBlock?.Content != null)
+        {
+            try
+            {
+                var root = titleBlock.Content.RootElement;
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("title", out var t) &&
+                        !string.IsNullOrWhiteSpace(t.GetString()))
+                        titleText = t.GetString()!;
+                    if (root.TryGetProperty("author", out var a) &&
+                        !string.IsNullOrWhiteSpace(a.GetString()))
+                        authorText = a.GetString();
+                    if (root.TryGetProperty("date", out var d) &&
+                        !string.IsNullOrWhiteSpace(d.GetString()))
+                        dateText = d.GetString();
+                }
+            }
+            catch { /* fall through */ }
+        }
+
         // Document metadata
         sb.AppendLine("#set document(");
-        sb.AppendLine($"  title: \"{EscapeTypst(doc.Title ?? "Untitled")}\",");
+        sb.AppendLine($"  title: \"{EscapeTypst(titleText)}\",");
+        if (!string.IsNullOrWhiteSpace(authorText))
+            sb.AppendLine($"  author: (\"{EscapeTypst(TypstExportService.PlainTitleMetaForTypst(authorText))}\"),");
         sb.AppendLine(")");
         sb.AppendLine();
 
@@ -81,9 +111,32 @@ public class TypstRenderService : ITypstRenderService
         sb.AppendLine("#set par(justify: true)");
         sb.AppendLine();
 
-        // Render each block
+        // Visible title + author + date (maketitle analogue)
+        sb.AppendLine("#align(center)[");
+        sb.AppendLine($"  #text(size: 1.6em, weight: \"bold\")[{EscapeTypst(titleText)}]");
+        if (!string.IsNullOrWhiteSpace(authorText))
+        {
+            sb.AppendLine("  #v(0.6em)");
+            sb.AppendLine($"  {EscapeTypst(TypstExportService.PlainTitleMetaForTypst(authorText))}");
+        }
+        if (!string.IsNullOrWhiteSpace(dateText) || !string.IsNullOrWhiteSpace(authorText))
+        {
+            var dateDisplay = !string.IsNullOrWhiteSpace(dateText)
+                ? TypstExportService.PlainTitleMetaForTypst(dateText!)
+                : DateTime.UtcNow.ToString("MMMM d, yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture);
+            sb.AppendLine("  #v(0.4em)");
+            sb.AppendLine($"  {EscapeTypst(dateDisplay)}");
+        }
+        sb.AppendLine("]");
+        sb.AppendLine("#v(1.2em)");
+        sb.AppendLine();
+
+        // Render each block (Title is preamble-only)
         foreach (var block in blocks)
         {
+            if (string.Equals(block.Type, "title", StringComparison.OrdinalIgnoreCase))
+                continue;
             var typst = RenderBlockToTypst(block);
             if (!string.IsNullOrWhiteSpace(typst))
             {
@@ -122,6 +175,7 @@ public class TypstRenderService : ITypstRenderService
                 "callout" => RenderCalloutToTypst(content),
                 "footnote" => RenderFootnoteToTypst(content),
                 "slide" => RenderSlideToTypst(content),
+                "title" => "", // preamble metadata — handled in RenderToTypstAsync
                 _ => $"// Unknown block type: {block.Type}"
             };
         }
@@ -444,6 +498,9 @@ public class TypstRenderService : ITypstRenderService
         // `\section{X}` / `\rule[...]{...}{...}` / `%% comment` lines
         // leak into Typst as unbalanced delimiters and kill compilation.
         var result = StripLatexArtefacts(text);
+
+        // Expand bare date/author tokens (Sample Report: "Date: \today")
+        result = RenderService.ExpandBareLatexMetaTokensForDisplay(result);
 
         // Protect math regions first
         var mathRegions = new List<string>();

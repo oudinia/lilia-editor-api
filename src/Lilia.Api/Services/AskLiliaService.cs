@@ -1,11 +1,16 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using Microsoft.AspNetCore.SignalR;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Lilia.Api.Models.AiArchitect;
+using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
+using Lilia.Import.Interfaces;
 using Lilia.Infrastructure.Data;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -44,7 +49,12 @@ public sealed record AskLiliaResponse(
     string SkillId, string SkillName, string Reply,
     AiArchitectUsage Usage, AiArchitectBalance? Balance, int CreditsUsed, bool DocumentChanged = false,
     IReadOnlyList<string>? ChangedBlockIds = null, string? UndoVersionId = null,
-    IReadOnlyList<WebCitation>? Citations = null);
+    IReadOnlyList<WebCitation>? Citations = null,
+    /// <summary>True when the tool loop hit the round cap while still issuing tool
+    /// calls — the document may be only partially updated.</summary>
+    bool PartialApply = false,
+    /// <summary>Resolved model id used for this turn (e.g. claude-sonnet-4-6).</summary>
+    string? Model = null);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
 {
@@ -62,6 +72,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IDocumentService _documentService;
     private readonly IBlockService _blockService;
     private readonly IVersionService _versionService;
+    private readonly ILmlTextParser _lmlParser;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> _hub;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
@@ -82,10 +93,17 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly int _attachMaxFileBytes;
     private readonly int _attachMaxTextChars;
 
-    private const int MaxOutputTokens = 4096;
+    private const int MaxOutputTokens = 8192;
     // Bound the tool-use loop: each round is one model call; this caps cost and
     // guarantees termination even if the model keeps requesting tools.
-    private const int MaxToolRounds = 4;
+    // Full multi-block rewrites used to die at 4 rounds (partial docs + empty
+    // replies). Prefer apply_lml for whole-document replace; keep this high
+    // enough for smaller multi-step edits that still use per-block tools.
+    private const int MaxToolRounds = 16;
+
+    private const string PartialApplyNote =
+        "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
+        "Ask me to **continue**, or paste the full LML and I'll apply it in one step with `apply_lml`.";
 
     private const string OutputNote = """
         OUTPUT — respond conversationally to the author. Put any LML, BibTeX, or LaTeX you produce
@@ -122,6 +140,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IDocumentService documentService,
         IBlockService blockService,
         IVersionService versionService,
+        ILmlTextParser lmlParser,
         Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> hub,
         LiliaDbContext context,
         IOptions<AiOptions> options,
@@ -136,6 +155,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _documentService = documentService;
         _blockService = blockService;
         _versionService = versionService;
+        _lmlParser = lmlParser;
         _hub = hub;
         _context = context;
         _options = options.Value;
@@ -216,7 +236,13 @@ public sealed class AskLiliaService : IAskLiliaService
                     systemSb.AppendLine()
                         .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.");
                     if (request.EditMode)
-                        systemSb.AppendLine("EDIT MODE IS ON — you may also WRITE to the document with add_block, edit_block, remove_block, reorder_blocks, set_title. Make the changes the author asked for directly via these tools (read first to get the right block ids). Keep edits minimal and on-target; after editing, briefly summarize what you changed. `content` is a JSON object matching the block type, e.g. {\"text\":\"…\"} (paragraph), {\"text\":\"…\",\"level\":1} (heading), {\"latex\":\"…\"} (equation), {\"theoremType\":\"theorem\",\"text\":\"…\"} (theorem). To change the document title (or author/date), use set_title — NOT a heading; the title is the document's \\title and its name.");
+                        systemSb.AppendLine("""
+                            EDIT MODE IS ON — you may WRITE to the document with these tools:
+                            • apply_lml(lml, title?) — PREFERRED for full rewrites / "apply this LML" / replacing most of the document. Parses LML and replaces ALL body blocks in ONE call (atomic). Use the full LML you proposed (with @abstract, @heading, @paragraph, @equation, @theorem, …). Do NOT rewrite a whole article with many add_block/edit_block/remove_block calls.
+                            • add_block / edit_block / remove_block / reorder_blocks — for small, targeted edits only (one or a few blocks).
+                            • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title.
+                            Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem).
+                            """);
                     systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
@@ -347,6 +373,7 @@ public sealed class AskLiliaService : IAskLiliaService
             var outputTokens = 0;
             var toolCalls = 0;
             var webSearches = 0;
+            var partialApply = false;
             // Structured citations from web search, accumulated + deduped across rounds.
             var citations = new List<WebCitation>();
             var citationUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -369,6 +396,16 @@ public sealed class AskLiliaService : IAskLiliaService
                     .ToList();
                 if (calls.Count == 0) break; // final answer
 
+                // Last allowed round still wants tools → execute them, but we cannot
+                // get a follow-up summary round. Flag partial so the client warns.
+                if (round == MaxToolRounds - 1)
+                {
+                    partialApply = true;
+                    _logger.LogWarning(
+                        "[AskLilia] tool-round cap ({Max}) hit for skill={Skill} doc={DocId} with {Calls} pending tool call(s)",
+                        MaxToolRounds, skill.Id, documentId, calls.Count);
+                }
+
                 foreach (var call in calls)
                 {
                     toolCalls++;
@@ -378,7 +415,7 @@ public sealed class AskLiliaService : IAskLiliaService
                 }
             }
             if (toolCalls > 0)
-                _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} KB tool call(s)", skill.Id, toolCalls);
+                _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} tool call(s) partial={Partial}", skill.Id, toolCalls, partialApply);
 
             // Web search bills separately from tokens (~$0.01/search). Fold its cost
             // into the reported USD, and debit the equivalent credits below (a
@@ -389,6 +426,19 @@ public sealed class AskLiliaService : IAskLiliaService
                 _logger.LogInformation("[AskLilia] skill={Skill} web_search x{N} (+${Cost:F3}, {Credits} credits), {Cites} citation(s)", skill.Id, webSearches, webSearchCostUsd, webSearchCredits, citations.Count);
 
             var reply = (response.Text ?? string.Empty).Trim();
+            // When the last assistant turn was tool-calls only, response.Text is
+            // often empty — same empty-reply UX the author hit on "apply now".
+            if (partialApply)
+            {
+                reply = string.IsNullOrWhiteSpace(reply)
+                    ? PartialApplyNote
+                    : reply + "\n\n" + PartialApplyNote;
+            }
+            else if (string.IsNullOrWhiteSpace(reply) && changed.Count > 0)
+            {
+                reply = $"Done — updated {changed.Distinct().Count()} block(s).";
+            }
+
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
@@ -418,7 +468,9 @@ public sealed class AskLiliaService : IAskLiliaService
                 new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits), balance, creditsUsed,
                 DocumentChanged: changed.Count > 0, ChangedBlockIds: changed.Distinct().ToList(),
                 UndoVersionId: changed.Count > 0 ? undoVersionId?.ToString() : null,
-                Citations: citations.Count > 0 ? citations : null);
+                Citations: citations.Count > 0 ? citations : null,
+                PartialApply: partialApply,
+                Model: model);
             return AskLiliaResult.Ok(result);
         }
         catch (Exception ex)
@@ -493,20 +545,27 @@ public sealed class AskLiliaService : IAskLiliaService
 
         if (allowWrite)
         {
+            // Atomic full-document replace — preferred for "apply this LML" / rewrites.
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("Full LML source for the document body. May include a ```lml fenced block. Use @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography, etc. with indented bodies.")] string lml,
+                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, or keeps the existing title.")] string? title)
+                    => ApplyLmlAsync(document, docGuid, lml, title, changed),
+                name: "apply_lml",
+                description: "PREFERRED for full rewrites: parse LML and replace the entire document body in ONE atomic batch (deletes old body blocks, inserts the parsed ones, keeps/updates the Title block). Use when the author says apply/replace the document or you already proposed full LML. Do not rebuild a whole article with many add_block/edit_block calls."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote. (For the document title use set_title, not a heading.)")] string type,
                  [System.ComponentModel.Description("JSON content object matching the type, e.g. {\"text\":\"…\"} or {\"text\":\"…\",\"level\":1} or {\"latex\":\"…\"}.")] string content,
                  [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId)
                     => AddBlockAsync(document, docGuid, type, content, afterId, changed),
                 name: "add_block",
-                description: "Add a new block to the open document. Returns the new block id."));
+                description: "Add a new block to the open document (small targeted inserts only). Returns the new block id."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to edit.")] string blockId,
                  [System.ComponentModel.Description("New JSON content object for the block.")] string content,
                  [System.ComponentModel.Description("Optional new block type.")] string? type)
                     => EditBlockAsync(document, docGuid, blockId, content, type, changed),
                 name: "edit_block",
-                description: "Replace a block's content (and optionally its type) by id."));
+                description: "Replace a block's content (and optionally its type) by id. Small targeted edits only."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to remove.")] string blockId)
                     => RemoveBlockAsync(document, docGuid, blockId, changed),
@@ -520,12 +579,138 @@ public sealed class AskLiliaService : IAskLiliaService
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
                  [System.ComponentModel.Description("Author name(s). Optional.")] string? author,
-                 [System.ComponentModel.Description("Date, e.g. 'June 2026'. Optional.")] string? date)
+                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date)
                     => SetTitleAsync(document, docGuid, title, author, date, changed),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
         }
         return tools;
+    }
+
+    /// <summary>
+    /// Atomic LML → full document body replace. Prefer this over multi-step
+    /// add/edit/remove so full rewrites cannot leave hybrid half-applied docs.
+    /// </summary>
+    private async Task<object> ApplyLmlAsync(
+        DocumentDto doc, Guid docId, string lmlSource, string? titleOverride, List<string> changed)
+    {
+        try
+        {
+            var lml = StripLmlFences(lmlSource ?? "");
+            if (string.IsNullOrWhiteSpace(lml))
+                return new { error = "empty LML" };
+            if (!_lmlParser.LooksLikeTextLml(lml))
+                return new { error = "input does not look like LML (expected @block markers)" };
+
+            var parsed = _lmlParser.Parse(lml);
+            if (parsed.Blocks.Count == 0)
+                return new { error = "LML parsed to zero blocks", warnings = parsed.Warnings };
+
+            var existingTitle = doc.Blocks?.FirstOrDefault(b =>
+                string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+
+            // Preserve author/date from the existing Title block when only title text changes.
+            string author = "", date = "", dateMode = "";
+            if (existingTitle is not null && existingTitle.Content.ValueKind == JsonValueKind.Object)
+            {
+                if (existingTitle.Content.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.String)
+                    author = a.GetString() ?? "";
+                if (existingTitle.Content.TryGetProperty("date", out var d) && d.ValueKind == JsonValueKind.String)
+                    date = d.GetString() ?? "";
+                if (existingTitle.Content.TryGetProperty("dateMode", out var dm) && dm.ValueKind == JsonValueKind.String)
+                    dateMode = dm.GetString() ?? "";
+            }
+
+            var resolvedTitle = !string.IsNullOrWhiteSpace(titleOverride)
+                ? titleOverride.Trim()
+                : !string.IsNullOrWhiteSpace(parsed.Title)
+                    ? parsed.Title!.Trim()
+                    : !string.IsNullOrWhiteSpace(doc.Title)
+                        ? doc.Title
+                        : "Untitled";
+
+            // If date still empty, default to today mode for new full rewrites.
+            if (string.IsNullOrWhiteSpace(date) && string.IsNullOrWhiteSpace(dateMode))
+            {
+                date = "\\today";
+                dateMode = "today";
+            }
+
+            var batch = new List<BatchUpdateBlockDto>();
+            var sort = 0;
+            var titleId = existingTitle?.Id ?? Guid.NewGuid();
+            var titleContent = JsonSerializer.SerializeToElement(new
+            {
+                title = resolvedTitle,
+                author,
+                date,
+                dateMode,
+            });
+            batch.Add(new BatchUpdateBlockDto(titleId, BlockTypes.Title, titleContent, sort++, null, 0));
+
+            foreach (var b in parsed.Blocks)
+            {
+                // Skip any accidental title-type from LML; Title is handled above.
+                if (string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var contentEl = JsonSerializer.SerializeToElement(b.Content);
+                var id = Guid.NewGuid();
+                batch.Add(new BatchUpdateBlockDto(id, b.Type, contentEl, sort++, null, b.Depth));
+            }
+
+            var result = await _blockService.BatchUpdateBlocksAsync(docId, batch);
+            // Mirror into the in-memory doc so later read tools see the new state.
+            // DocumentDto.Blocks is init-only on the record but the List is mutable.
+            if (doc.Blocks is not null)
+            {
+                doc.Blocks.Clear();
+                doc.Blocks.AddRange(result.Blocks);
+            }
+
+            foreach (var b in result.Blocks)
+                changed.Add(b.Id.ToString());
+
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "replace", count = result.Blocks.Count, title = resolvedTitle });
+
+            _logger.LogInformation(
+                "[AskLilia] apply_lml doc={DocId} blocks={Count} warnings={WarnCount}",
+                docId, result.Blocks.Count, parsed.Warnings.Count);
+
+            return new
+            {
+                ok = true,
+                blockCount = result.Blocks.Count,
+                title = resolvedTitle,
+                warnings = parsed.Warnings,
+                types = result.Blocks.Select(b => b.Type).ToList(),
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] apply_lml failed for {DocId}", docId);
+            return new { error = "apply_lml failed: " + ex.Message };
+        }
+    }
+
+    /// <summary>Strip optional markdown fences around LML (```lml … ```).</summary>
+    internal static string StripLmlFences(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return string.Empty;
+        var s = source.Trim();
+        // Fenced block anywhere in the message (model often wraps LML)
+        var m = Regex.Match(s, @"```(?:lml|LML)?\s*\r?\n([\s\S]*?)```", RegexOptions.Multiline);
+        if (m.Success) return m.Groups[1].Value.Trim();
+        // Opening fence without closing
+        if (s.StartsWith("```", StringComparison.Ordinal))
+        {
+            var nl = s.IndexOf('\n');
+            if (nl > 0) s = s[(nl + 1)..];
+            if (s.EndsWith("```", StringComparison.Ordinal))
+                s = s[..^3];
+            return s.Trim();
+        }
+        return s;
     }
 
     // ── Write tool implementations — go through the access-checked block
@@ -617,8 +802,30 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private static System.Text.Json.JsonElement ParseContent(string json)
     {
-        try { return System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement.Clone(); }
+        try
+        {
+            var el = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement.Clone();
+            // Soft-wrap AI tool JSON the same way as LML: single newlines in
+            // prose fields become spaces so Flow doesn't render mid-phrase breaks.
+            return NormalizeProseContentFields(el);
+        }
         catch { return System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone(); }
+    }
+
+    /// <summary>
+    /// Normalize <c>text</c> / <c>title</c> / <c>latex</c> string fields on a
+    /// block content object (soft newlines → spaces). Non-object payloads pass through.
+    /// </summary>
+    private static JsonElement NormalizeProseContentFields(JsonElement el)
+    {
+        if (el.ValueKind != JsonValueKind.Object) return el;
+        if (JsonNode.Parse(el.GetRawText()) is not JsonObject node) return el;
+        foreach (var key in new[] { "text", "title", "latex", "caption" })
+        {
+            if (node[key] is JsonValue jv && jv.GetValueKind() == JsonValueKind.String)
+                node[key] = Lilia.Import.Services.LmlTextParser.NormalizeProse(jv.GetValue<string>());
+        }
+        return JsonSerializer.SerializeToElement(node);
     }
 
     private static object DocOutline(Lilia.Core.DTOs.DocumentDto document)

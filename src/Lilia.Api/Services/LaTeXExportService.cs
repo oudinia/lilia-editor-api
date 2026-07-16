@@ -628,7 +628,8 @@ public class LaTeXExportService : ILaTeXExportService
     private static void AppendTitleMeta(StringBuilder sb, Document doc, List<Block> blocks)
     {
         string title = doc.Title ?? "", author = "", date = @"\today";
-        var titleBlock = blocks.FirstOrDefault(b => b.Type == BlockTypes.Title);
+        var titleBlock = blocks.FirstOrDefault(b =>
+            string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
         if (titleBlock?.Content != null && titleBlock.Content.RootElement.ValueKind == JsonValueKind.Object)
         {
             var root = titleBlock.Content.RootElement;
@@ -637,11 +638,42 @@ public class LaTeXExportService : ILaTeXExportService
             var d = root.TryGetProperty("date", out var dp) ? dp.GetString() : null;
             if (!string.IsNullOrWhiteSpace(t)) title = t!;
             if (!string.IsNullOrWhiteSpace(a)) author = a!;
-            if (!string.IsNullOrWhiteSpace(d)) date = EscapeLatex(d!);
+            // Keep \today / free text / LaTeX tokens via FormatTitleMetaLatex
+            // (bare EscapeLatex turns \and / \today into \textbackslash{}).
+            if (!string.IsNullOrWhiteSpace(d)) date = FormatTitleMetaLatex(d!);
         }
-        sb.AppendLine($@"\title{{{EscapeLatex(title)}}}");
-        sb.AppendLine($@"\author{{{EscapeLatex(author)}}}");
+        sb.AppendLine($@"\title{{{FormatTitleMetaLatex(title)}}}");
+        sb.AppendLine($@"\author{{{FormatTitleMetaLatex(author)}}}");
         sb.AppendLine($@"\date{{{date}}}");
+    }
+
+    /// <summary>
+    /// Escape free text in \title/\author/\date while preserving common
+    /// LaTeX title-meta tokens (<c>\and</c>, <c>\\</c>, <c>\today</c>,
+    /// <c>\thanks{…}</c>). Shared semantics with RenderService.
+    /// </summary>
+    internal static string FormatTitleMetaLatex(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+
+        var placeholders = new List<string>();
+        string Ph(string s)
+        {
+            placeholders.Add(s);
+            return $"\x00TM{placeholders.Count - 1}\x00";
+        }
+
+        var result = text;
+        result = Regex.Replace(result, @"\\thanks\{([^{}]*)\}",
+            m => Ph($@"\thanks{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
+        result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
+        result = Regex.Replace(result, @"\\\\", _ => Ph(@"\\"));
+
+        result = EscapeLatex(result);
+        result = Regex.Replace(result, @"\x00TM(\d+)\x00",
+            m => placeholders[int.Parse(m.Groups[1].Value)]);
+        return result;
     }
 
     private static List<Block> StripDuplicateTitleHeading(string? title, List<Block> blocks)
@@ -1558,6 +1590,19 @@ public class LaTeXExportService : ILaTeXExportService
         // to disambiguate.
         result = Regex.Replace(result, @"\\\[([\s\S]+?)\\\]", m => Ph($@"\[{m.Groups[1].Value}\]"), RegexOptions.Singleline);
         result = Regex.Replace(result, @"\\\(([\s\S]+?)\\\)", m => Ph($@"\({m.Groups[1].Value}\)"), RegexOptions.Singleline);
+
+        // 1b''. Body date tokens. Preamble `\date{…}` mid-paragraph is a
+        // no-op — rewrite to printable `\today` / free text. Bare `\today`
+        // / `\and` must also survive EscapeLatex.
+        result = Regex.Replace(result, @"\\date\{\\today\}", _ => Ph(@"\today"));
+        result = Regex.Replace(result, @"\\date\{([^}]*)\}", m =>
+        {
+            var inner = (m.Groups[1].Value ?? "").Trim();
+            if (string.IsNullOrEmpty(inner) || inner == @"\today") return Ph(@"\today");
+            return inner; // free text → escape pass below
+        });
+        result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
+        result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
 
         // 1c. Native LaTeX commands users type directly (\cite, \ref,
         //     \eqref, \url, \href, \label, \footnote). Without these,

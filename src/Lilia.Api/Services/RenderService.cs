@@ -861,6 +861,11 @@ public partial class RenderService : IRenderService
     {
         if (string.IsNullOrEmpty(text)) return "";
 
+        // Expand brace-less LaTeX date/author tokens BEFORE HtmlEncode —
+        // HTML preview has no TeX engine, so \today must become a real date
+        // (Sample Report: "Date: \today").
+        text = ExpandBareLatexMetaTokensForDisplay(text);
+
         // First escape HTML
         var result = WebUtility.HtmlEncode(text);
 
@@ -1130,12 +1135,18 @@ public partial class RenderService : IRenderService
 
         // Title metadata — sourced from a Title block if the document has one
         // (its title doubles as the document name), else the document title.
+        // FormatTitleMetaLatex preserves \and / \thanks{…} / \today tokens
+        // that bare EscapeLatex would mangle into \textbackslash{}.
         var (titleText, authorText, dateText) = ResolveTitleMeta(doc);
-        latex.AppendLine($@"\title{{{EscapeLatex(titleText)}}}");
+        latex.AppendLine($@"\title{{{FormatTitleMetaLatex(titleText)}}}");
         if (!string.IsNullOrWhiteSpace(authorText))
-            latex.AppendLine($@"\author{{{EscapeLatex(authorText)}}}");
+            latex.AppendLine($@"\author{{{FormatTitleMetaLatex(authorText)}}}");
+        // Empty date → LaTeX default (\today). Explicit value is formatted
+        // so a user-typed \today still works.
         if (!string.IsNullOrWhiteSpace(dateText))
-            latex.AppendLine($@"\date{{{EscapeLatex(dateText)}}}");
+            latex.AppendLine($@"\date{{{FormatTitleMetaLatex(dateText)}}}");
+        else
+            latex.AppendLine(@"\date{\today}");
         latex.AppendLine(@"\begin{document}");
         latex.AppendLine(@"\maketitle");
         latex.AppendLine();
@@ -1302,12 +1313,12 @@ public partial class RenderService : IRenderService
     /// <summary>
     /// Resolve \title/\author/\date from a Title block if present (its title is
     /// the single source of truth = the document name), else fall back to the
-    /// document title. Author/date are null when absent so \author/\date are
-    /// omitted entirely (LaTeX then prints just the title).
+    /// document title. Author/date are null when absent.
     /// </summary>
     private static (string title, string? author, string? date) ResolveTitleMeta(Document doc)
     {
-        var titleBlock = doc.Blocks?.FirstOrDefault(b => b.Type == BlockTypes.Title);
+        var titleBlock = doc.Blocks?.FirstOrDefault(b =>
+            string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
         if (titleBlock?.Content != null)
         {
             var root = titleBlock.Content.RootElement;
@@ -1316,12 +1327,60 @@ public partial class RenderService : IRenderService
                 var t = root.TryGetProperty("title", out var tp) ? tp.GetString() : null;
                 var a = root.TryGetProperty("author", out var ap) ? ap.GetString() : null;
                 var d = root.TryGetProperty("date", out var dp) ? dp.GetString() : null;
-                return (string.IsNullOrWhiteSpace(t) ? doc.Title : t!,
+                return (string.IsNullOrWhiteSpace(t) ? (doc.Title ?? "") : t!,
                         string.IsNullOrWhiteSpace(a) ? null : a,
                         string.IsNullOrWhiteSpace(d) ? null : d);
             }
         }
-        return (doc.Title, null, null);
+        return (doc.Title ?? "", null, null);
+    }
+
+    /// <summary>
+    /// Escape free text in \title/\author/\date while preserving common
+    /// LaTeX title-meta tokens: <c>\and</c>, <c>\\</c>, <c>\today</c>,
+    /// <c>\thanks{…}</c>. Bare <see cref="EscapeLatex"/> turns those into
+    /// visible backslash text in the PDF.
+    /// </summary>
+    internal static string FormatTitleMetaLatex(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+
+        var placeholders = new List<string>();
+        string Ph(string s)
+        {
+            placeholders.Add(s);
+            return $"\x00TM{placeholders.Count - 1}\x00";
+        }
+
+        var result = text;
+        // Protect multi-author / affiliation tokens before the escape pass.
+        result = Regex.Replace(result, @"\\thanks\{([^{}]*)\}",
+            m => Ph($@"\thanks{{{EscapeLatexStatic(m.Groups[1].Value)}}}"));
+        result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
+        result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
+        // Author line breaks: \\ (not a single backslash).
+        result = Regex.Replace(result, @"\\\\", _ => Ph(@"\\"));
+
+        result = EscapeLatexStatic(result);
+        result = Regex.Replace(result, @"\x00TM(\d+)\x00",
+            m => placeholders[int.Parse(m.Groups[1].Value)]);
+        return result;
+    }
+
+    private static string EscapeLatexStatic(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text
+            .Replace("\\", "\\textbackslash{}")
+            .Replace("{", "\\{")
+            .Replace("}", "\\}")
+            .Replace("$", "\\$")
+            .Replace("&", "\\&")
+            .Replace("#", "\\#")
+            .Replace("^", "\\textasciicircum{}")
+            .Replace("_", "\\_")
+            .Replace("~", "\\textasciitilde{}")
+            .Replace("%", "\\%");
     }
 
     private string RenderEmbedToLatex(JsonElement content)
@@ -2313,6 +2372,29 @@ public partial class RenderService : IRenderService
             .Replace("%", "\\%");
     }
 
+    /// <summary>
+    /// Expand bare LaTeX meta tokens for non-TeX surfaces (HTML preview, Typst).
+    /// Body <c>\date{…}</c> (preamble cmd misused mid-paragraph) and
+    /// <c>\today</c> → calendar date; <c>\and</c> → comma separator.
+    /// </summary>
+    internal static string ExpandBareLatexMetaTokensForDisplay(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var today = DateTime.UtcNow.ToString("MMMM d, yyyy",
+            System.Globalization.CultureInfo.InvariantCulture);
+        // \date{\today} / \date{X} first — body misuse of the preamble command.
+        var result = Regex.Replace(text, @"\\date\{\\today\}", today);
+        result = Regex.Replace(result, @"\\date\{([^}]*)\}", m =>
+        {
+            var inner = (m.Groups[1].Value ?? "").Trim();
+            if (string.IsNullOrEmpty(inner) || inner == @"\today") return today;
+            return inner;
+        });
+        result = Regex.Replace(result, @"\\today\b", today);
+        result = Regex.Replace(result, @"\s*\\and\s*", ", ");
+        return result;
+    }
+
     private string ProcessLatexText(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -2365,6 +2447,39 @@ public partial class RenderService : IRenderService
                 commandRegions.Add(m.Value);
                 return $"\x00CMD{commandRegions.Count - 1}\x00";
             });
+
+        // Body date tokens. `\date{…}` is a preamble-only command; mid-body
+        // it is a no-op (and often AI-generated). Rewrite to printable form:
+        // \date{\today} → \today, \date{X} → X (escaped later if plain text).
+        result = Regex.Replace(result, @"\\date\{\\today\}", m =>
+        {
+            commandRegions.Add(@"\today");
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
+        result = Regex.Replace(result, @"\\date\{([^}]*)\}", m =>
+        {
+            var inner = (m.Groups[1].Value ?? "").Trim();
+            if (string.IsNullOrEmpty(inner) || inner == @"\today")
+            {
+                commandRegions.Add(@"\today");
+                return $"\x00CMD{commandRegions.Count - 1}\x00";
+            }
+            // Leave plain text for the escape pass below (prints the date).
+            return inner;
+        });
+        // Bare (brace-less) date/author tokens — Sample Report stores
+        // "Date: \today" as paragraph text. Without this, EscapeLatex turns
+        // it into \textbackslash{}today and the PDF shows the literal token.
+        result = Regex.Replace(result, @"\\today\b", m =>
+        {
+            commandRegions.Add(m.Value);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
+        result = Regex.Replace(result, @"\\and\b", m =>
+        {
+            commandRegions.Add(m.Value);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
 
         // Step 1.4: Extract inline code `…` BEFORE smart-quote / escape
         // passes. Code content is verbatim from the user — smart quotes,

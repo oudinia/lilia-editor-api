@@ -205,15 +205,36 @@ public class TypstCompileService : ITypstCompileService
         var env = Environment.GetEnvironmentVariable(TypstBinaryEnvVar);
         if (!string.IsNullOrEmpty(env) && File.Exists(env)) return env;
 
-        var home = Environment.GetEnvironmentVariable("HOME");
-        if (!string.IsNullOrEmpty(home))
+        // Candidate basenames: Windows installs are typst.exe; Linux/mac
+        // containers (Dockerfile) ship bare `typst`.
+        var names = OperatingSystem.IsWindows()
+            ? new[] { "typst.exe", "typst" }
+            : new[] { "typst" };
+
+        static string? FirstExisting(params string[] paths)
         {
-            var local = Path.Combine(home, ".local", "bin", "typst");
-            if (File.Exists(local)) return local;
+            foreach (var p in paths)
+            {
+                if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p;
+            }
+            return null;
         }
 
-        if (File.Exists("/usr/local/bin/typst")) return "/usr/local/bin/typst";
-        if (File.Exists("/usr/bin/typst")) return "/usr/bin/typst";
+        // Common install locations (dev + container).
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        foreach (var name in names)
+        {
+            var hit = FirstExisting(
+                Path.Combine(home, ".local", "bin", name),
+                Path.Combine(home, ".cargo", "bin", name),
+                // WinGet shim directory (winget install Typst.Typst)
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microsoft", "WinGet", "Links", name),
+                Path.Combine("/usr/local/bin", name),
+                Path.Combine("/usr/bin", name));
+            if (hit is not null) return hit;
+        }
 
         // PATH lookup as last resort.
         var pathEnv = Environment.GetEnvironmentVariable("PATH");
@@ -221,8 +242,12 @@ public class TypstCompileService : ITypstCompileService
         {
             foreach (var dir in pathEnv.Split(Path.PathSeparator))
             {
-                var candidate = Path.Combine(dir, "typst");
-                if (File.Exists(candidate)) return candidate;
+                if (string.IsNullOrWhiteSpace(dir)) continue;
+                foreach (var name in names)
+                {
+                    var candidate = Path.Combine(dir.Trim(), name);
+                    if (File.Exists(candidate)) return candidate;
+                }
             }
         }
 
