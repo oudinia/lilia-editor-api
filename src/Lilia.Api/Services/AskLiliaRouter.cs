@@ -121,8 +121,15 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
             new[] { "how do i", "how to", "what is", "where do i", "explain", "help me understand", "what's the", "how can i" },
             "fast", 3),
         new("lilia-document-architect", "Document Architect",
-            "Design a paper/thesis/report/talk as typed blocks — a real first draft.",
-            new[] { "draft", "write a paper", "outline", "structure", "thesis", "report", "slides", "problem set", "scaffold", "new paper", "start a" },
+            "Design a paper/thesis/report/talk/CV as typed blocks — a real first draft.",
+            new[]
+            {
+                "draft", "write a paper", "outline", "structure", "thesis", "report", "slides",
+                "problem set", "scaffold", "new paper", "start a",
+                // CV / résumé — must route to architect so CV block grammar applies
+                "cv", "curriculum vitae", "resume", "résumé", "curriculum", "moderncv",
+                "write a cv", "write a resume", "write my cv", "write my resume",
+            },
             "default", 4),
     };
 

@@ -13,7 +13,8 @@ namespace Lilia.Import.Services;
 ///   indented body lines
 /// </code>
 /// Supports headings, paragraphs, equations, theorems, abstracts, tables,
-/// code, lists, bibliography, and page breaks.
+/// code, lists, bibliography, page breaks, and CV blocks
+/// (<c>personalInfo</c> / <c>cvSection</c> / <c>cvEntry</c>).
 /// </summary>
 public sealed class LmlTextParser : ILmlTextParser
 {
@@ -33,6 +34,11 @@ public sealed class LmlTextParser : ILmlTextParser
         // theorem environment aliases written as top-level markers
         "definition", "lemma", "proposition", "corollary", "remark",
         "example", "proof",
+        // CV / résumé
+        "personalInfo", "personalinfo", "personal-info", "personal_info",
+        "cvSection", "cvsection", "cv-section", "cv_section",
+        "cvEntry", "cventry", "cv-entry", "cv_entry",
+        "photo",
     };
 
     public bool LooksLikeTextLml(string source)
@@ -492,6 +498,120 @@ public sealed class LmlTextParser : ILmlTextParser
             case "columnbreak":
                 blocks.Add(new LmlParsedBlock { Type = "columnBreak", Content = new { } });
                 return;
+
+            // ── CV / résumé ─────────────────────────────────────────────
+            // Normalize aliases (personal-info, personal_info, personalinfo → personalInfo).
+            case "personalinfo":
+            case "personal-info":
+            case "personal_info":
+            {
+                var name = attrs.GetValueOrDefault("name") ?? attrs.GetValueOrDefault("_positional0") ?? "";
+                var email = attrs.GetValueOrDefault("email") ?? "";
+                var phone = attrs.GetValueOrDefault("phone")
+                    ?? attrs.GetValueOrDefault("phones")
+                    ?? "";
+                var location = attrs.GetValueOrDefault("location") ?? "";
+                var homepage = attrs.GetValueOrDefault("homepage")
+                    ?? attrs.GetValueOrDefault("url")
+                    ?? attrs.GetValueOrDefault("website")
+                    ?? "";
+                // Body = professional headline (one line); optional headline= attr wins.
+                var headline = attrs.GetValueOrDefault("headline")
+                    ?? (string.IsNullOrWhiteSpace(body) ? "" : NormalizeProse(body));
+                var extra = attrs.GetValueOrDefault("extra") ?? "";
+                object[] phones = string.IsNullOrWhiteSpace(phone)
+                    ? Array.Empty<object>()
+                    : new object[] { new { number = phone.Trim() } };
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "personalInfo",
+                    Content = new
+                    {
+                        name,
+                        headline,
+                        email,
+                        phones,
+                        homepage,
+                        location,
+                        socials = Array.Empty<object>(),
+                        extra,
+                    },
+                });
+                if (title is null && !string.IsNullOrWhiteSpace(name))
+                    title = name.Trim();
+                return;
+            }
+
+            case "cvsection":
+            case "cv-section":
+            case "cv_section":
+            {
+                var sectionTitle = attrs.GetValueOrDefault("title")
+                    ?? attrs.GetValueOrDefault("_positional0")
+                    ?? NormalizeProse(body);
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "cvSection",
+                    Content = new { title = sectionTitle },
+                });
+                return;
+            }
+
+            case "cventry":
+            case "cv-entry":
+            case "cv_entry":
+            {
+                var period = attrs.GetValueOrDefault("period")
+                    ?? attrs.GetValueOrDefault("date")
+                    ?? attrs.GetValueOrDefault("dates")
+                    ?? "";
+                var role = attrs.GetValueOrDefault("role")
+                    ?? attrs.GetValueOrDefault("title")
+                    ?? attrs.GetValueOrDefault("position")
+                    ?? attrs.GetValueOrDefault("_positional0")
+                    ?? "";
+                var org = attrs.GetValueOrDefault("org")
+                    ?? attrs.GetValueOrDefault("organization")
+                    ?? attrs.GetValueOrDefault("company")
+                    ?? attrs.GetValueOrDefault("institution")
+                    ?? "";
+                var location = attrs.GetValueOrDefault("location") ?? "";
+                var highlight = attrs.GetValueOrDefault("highlight") ?? "";
+                var description = string.IsNullOrWhiteSpace(body) ? "" : NormalizeProse(body);
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "cvEntry",
+                    Content = new
+                    {
+                        period,
+                        role,
+                        org,
+                        location,
+                        highlight,
+                        description,
+                        tech = Array.Empty<string>(),
+                    },
+                });
+                return;
+            }
+
+            case "photo":
+            {
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "photo",
+                    Content = new
+                    {
+                        src = attrs.GetValueOrDefault("src") ?? "",
+                        alt = attrs.GetValueOrDefault("alt") ?? "",
+                        shape = attrs.GetValueOrDefault("shape") ?? "square",
+                        size = attrs.TryGetValue("size", out var sz) && int.TryParse(sz, out var sizeN) ? sizeN : 64,
+                        position = attrs.GetValueOrDefault("position") ?? "right",
+                        border = attrs.TryGetValue("border", out var br) && int.TryParse(br, out var borderN) ? borderN : 0,
+                    },
+                });
+                return;
+            }
 
             default:
                 warnings.Add($"Unknown block type @{rawType}; imported as paragraph.");

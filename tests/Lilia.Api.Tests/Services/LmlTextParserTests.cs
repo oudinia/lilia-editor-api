@@ -184,4 +184,83 @@ public class LmlTextParserTests
         Assert.Equal("Pythagorean Theorem", attrs["title"]);
         Assert.Equal("thm:pythagoras", attrs["label"]);
     }
+
+    [Fact]
+    public void Parse_CvBlocks_PersonalInfoSectionEntry()
+    {
+        var src = """
+            @personalInfo[name="Ada Lovelace", email="ada@example.com", location="London", homepage="https://example.com"]
+              Mathematician · Analyst of the Analytical Engine
+
+            @cvSection[title="Experience"]
+
+            @cvEntry[period="1842 – 1843", role="Collaborator", org="Charles Babbage", location="London"]
+              Extended notes on the Analytical Engine.
+
+            @cvSection[title="Skills"]
+
+            @list
+              - Mathematics
+              - Scientific writing
+            """;
+
+        var result = _parser.Parse(src);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(5, result.Blocks.Count);
+        Assert.Equal("personalInfo", result.Blocks[0].Type);
+        Assert.Equal("cvSection", result.Blocks[1].Type);
+        Assert.Equal("cvEntry", result.Blocks[2].Type);
+        Assert.Equal("cvSection", result.Blocks[3].Type);
+        Assert.Equal("list", result.Blocks[4].Type);
+        Assert.Equal("Ada Lovelace", result.Title);
+
+        var info = System.Text.Json.JsonSerializer.Serialize(result.Blocks[0].Content);
+        Assert.Contains("Ada Lovelace", info);
+        Assert.Contains("ada@example.com", info);
+        Assert.Contains("Mathematician", info);
+        Assert.Contains("London", info);
+
+        var section = System.Text.Json.JsonSerializer.Serialize(result.Blocks[1].Content);
+        Assert.Contains("Experience", section);
+
+        var entry = System.Text.Json.JsonSerializer.Serialize(result.Blocks[2].Content);
+        Assert.Contains("Collaborator", entry);
+        Assert.Contains("Charles Babbage", entry);
+        Assert.Contains("1842", entry);
+        Assert.Contains("Analytical Engine", entry);
+    }
+
+    [Fact]
+    public void Parse_CvAliases_NormalizedToCanonicalTypes()
+    {
+        var src = """
+            @personal-info[name="Test User", email="t@e.com"]
+              Headline here
+
+            @cv_section[title="Education"]
+
+            @cv-entry[period="2020", role="B.Sc.", org="Uni"]
+              Thesis work.
+            """;
+
+        var result = _parser.Parse(src);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(3, result.Blocks.Count);
+        Assert.Equal("personalInfo", result.Blocks[0].Type);
+        Assert.Equal("cvSection", result.Blocks[1].Type);
+        Assert.Equal("cvEntry", result.Blocks[2].Type);
+    }
+
+    [Fact]
+    public void Parse_UnknownType_StillFallsBackToParagraph()
+    {
+        var src = """
+            @notARealBlock
+              body text
+            """;
+        var result = _parser.Parse(src);
+        Assert.Single(result.Blocks);
+        Assert.Equal("paragraph", result.Blocks[0].Type);
+        Assert.NotEmpty(result.Warnings);
+    }
 }

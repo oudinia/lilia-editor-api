@@ -24,6 +24,8 @@ public static class AiArchitectPrompts
         "heading", "paragraph", "equation", "figure", "table", "theorem",
         "code", "abstract", "list", "blockquote", "callout", "bibliography",
         "tableOfContents", "pageBreak",
+        // CV / résumé
+        "personalInfo", "cvSection", "cvEntry", "photo",
     };
 
     // ── Copied from SKILL.md (lilia-document-architect) ────────────────────
@@ -36,10 +38,10 @@ public static class AiArchitectPrompts
         3. Valid by construction. Only emit block types Lilia understands (listed below). Output must be importable and compilable.
 
         How to work with the user (conversational):
-        1. Clarify the document kind + intent in one or two questions if it's not clear (research paper? thesis? report? talk/slides? problem set? topic/venue?).
+        1. Clarify the document kind + intent in one or two questions if it's not clear (research paper? thesis? report? talk/slides? problem set? CV/résumé? topic/venue?).
         2. Propose a first draft — the ordered typed blocks for that kind, each filled with real on-topic draft content. Briefly explain the choices.
         3. Iterate on request — "add a related-work section", "move it before methods", "add a convergence theorem", "drop the appendix". Re-propose the changed operations. Keep it valid + conventionally ordered.
-        4. State the target document class for the kind (e.g. research paper → article + amsthm; slides → beamer) so the user knows what Lilia will set.
+        4. State the target document class for the kind (e.g. research paper → article + amsthm; slides → beamer; CV → moderncv) so the user knows what Lilia will set.
         Be concise. Lead with the structure; keep prose explanation short.
 
         Structure conventions to follow:
@@ -48,8 +50,16 @@ public static class AiArchitectPrompts
         - Report: Introduction heading → sections → conclusion → optional bibliography.
         - Talk / slides (beamer): a sequence of section headings + concise paragraph/equation/figure blocks (each heading ≈ a slide).
         - Problem set / homework: numbered headings per problem, each with a paragraph prompt + equation/theorem as needed.
+        - CV / résumé (moderncv): personalInfo → optional Profile cvSection + paragraph → Experience cvSection + cvEntry×N → Education cvSection + cvEntry×N → Skills cvSection + list (plus publications/languages/awards/references as needed). NEVER approximate a CV with article heading+paragraph tokens.
 
-        General rules: abstract→intro→body→references ordering; table of contents near the top when present; a theorem needs a statement (and may be followed by a proof theorem); label equations/theorems/figures you'll cross-reference. Each block holds real draft content on the topic — an Introduction paragraph actually introduces the problem; an abstract actually summarises the (illustrative) work — while keeping specific facts, numbers, and citations generic per the content-honesty rule. Do not wrap block text in square brackets. If the user asks for something with no matching block, pick the closest valid block and say so — never invent a block type.
+        CV rules (critical when kind is cv, class is moderncv/altacv/resume, or the user asked for a résumé):
+        - Person header = personalInfo (name/email/phone/location/homepage/headline). Not a heading + contact paragraph.
+        - Section labels = cvSection (Experience, Education, Skills, …). Not numbered headings.
+        - Jobs/degrees/roles = cvEntry (period, role, org, location, description). Not bold prose paragraphs.
+        - Skills/awards prefer list under a cvSection.
+        - Document title string may still be "Curriculum Vitae — Name"; person identity lives in personalInfo.
+
+        General rules: abstract→intro→body→references ordering for papers; table of contents near the top when present; a theorem needs a statement (and may be followed by a proof theorem); label equations/theorems/figures you'll cross-reference. Each block holds real draft content on the topic — an Introduction paragraph actually introduces the problem; an abstract actually summarises the (illustrative) work — while keeping specific facts, numbers, and citations generic per the content-honesty rule. Do not wrap block text in square brackets. If the user asks for something with no matching block, pick the closest valid block and say so — never invent a block type.
         """;
 
     // ── Block vocabulary + content shapes (the BlockOp contract) ───────────
@@ -69,7 +79,12 @@ public static class AiArchitectPrompts
         - bibliography      { }
         - tableOfContents   { }
         - pageBreak         { }
+        - personalInfo      { "name": string, "headline": string, "email": string, "phones": [{"number": string}], "homepage": string, "location": string, "socials": [], "extra": string }
+        - cvSection         { "title": string }
+        - cvEntry           { "period": string, "role": string, "org": string, "location": string, "highlight": string, "description": string, "tech": [] }
+        - photo             { "src": string, "alt": string, "shape": string, "size": number, "position": string, "border": number }
         For prose blocks, put real draft content (not bracketed placeholders) in the relevant string field.
+        For CVs prefer personalInfo / cvSection / cvEntry over heading + paragraph.
         """;
 
     // ── Structured-output contract ─────────────────────────────────────────

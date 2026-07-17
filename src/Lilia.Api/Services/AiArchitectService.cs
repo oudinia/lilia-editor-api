@@ -253,7 +253,8 @@ public class AiArchitectService : IAiArchitectService
             return string.Empty;
 
         // Prefer a human-readable field if present, else compact the JSON.
-        foreach (var field in new[] { "text", "caption", "title", "latex", "code" })
+        // name/role/org cover personalInfo + cvEntry summaries for Ask Lilia.
+        foreach (var field in new[] { "text", "caption", "title", "name", "role", "org", "latex", "code", "headline" })
         {
             if (content.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String)
             {

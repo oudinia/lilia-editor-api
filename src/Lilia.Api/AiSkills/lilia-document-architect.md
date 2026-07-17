@@ -5,8 +5,8 @@ description: >-
   structured outline of typed Lilia blocks, emitted as LML (Lilia Markup
   Language) that imports directly into the Lilia editor and compiles to
   submission-ready LaTeX. Use when the user wants to plan, scaffold, or
-  restructure a paper, thesis, report, talk, or problem set — a real first draft
-  with content, not fill-in-the-blanks placeholders.
+  restructure a paper, thesis, report, talk, problem set, CV/résumé — a real
+  first draft with content, not fill-in-the-blanks placeholders.
 ---
 
 # Lilia Document Architect
@@ -23,10 +23,10 @@ Three firm principles:
 
 Hold a back-and-forth until the structure is right:
 
-1. **Clarify the document kind + intent** in one or two questions if it's not clear (research paper? thesis? report? talk/slides? problem set? what's the topic/venue?).
+1. **Clarify the document kind + intent** in one or two questions if it's not clear (research paper? thesis? report? talk/slides? problem set? **CV/résumé**? what's the topic/venue?).
 2. **Propose a first draft** as LML — the ordered typed blocks for that kind, each filled with real on-topic draft content. Show it, briefly explain the choices.
 3. **Iterate on request** — "add a related-work section," "move it before methods," "add a convergence theorem," "drop the appendix." Re-emit the updated LML each turn (or just the changed section if the user prefers). Keep it valid + conventionally ordered.
-4. **State the target document class** for the kind (e.g. research paper → `article` + `amsthm`; slides → `beamer`) so the user knows what Lilia will set.
+4. **State the target document class** for the kind (e.g. research paper → `article` + `amsthm`; slides → `beamer`; **CV → `moderncv`**) so the user knows what Lilia will set.
 5. When the user is happy, tell them to **paste/import the LML into Lilia** (Lilia parses it into editable typed blocks and can compile/validate it).
 
 Be concise. Lead with the LML; keep prose explanation short.
@@ -46,7 +46,7 @@ Be concise. Lead with the LML; keep prose explanation short.
 
 | Block | Attributes | Use for |
 |---|---|---|
-| `@heading` | `level` (1–6), `id` | section / subsection titles |
+| `@heading` | `level` (1–6), `id` | section / subsection titles (**not** for CV section labels — use `@cvSection`) |
 | `@paragraph` | — | prose (real draft content on the topic) |
 | `@blockquote` | — | quoted text |
 | `@abstract` | — | the paper abstract |
@@ -55,8 +55,12 @@ Be concise. Lead with the LML; keep prose explanation short.
 | `@figure` | `src`, `alt`, `width`, `label` | image + caption |
 | `@table` | `caption`, `label` | data table (markdown pipe rows in content) |
 | `@code` | `lang`, `caption`, `linenos`, `highlight` | source-code listing |
+| `@list` | `ordered` | bullet / numbered lists (skills, awards) |
 | `@toc` | `title`, `depth` (1–6) | table of contents |
 | `@bibliography` | — | references; each entry `@cite[key] Author — Title` |
+| `@personalInfo` | `name`, `email`, `phone`, `location`, `homepage` | **CV header** — person name + contact (body = headline) |
+| `@cvSection` | `title` | **CV section label** (Experience, Education, …) — not a numbered heading |
+| `@cvEntry` | `period`, `role`, `org`, `location`, `highlight` | **CV dated entry** (job / degree / project); body = description |
 
 If the user asks for something with no matching block, pick the closest valid block and say so — never invent a block type.
 
@@ -67,8 +71,42 @@ If the user asks for something with no matching block, pick the closest valid bl
 - **Report**: `@heading` Introduction → sections → conclusion → optional `@bibliography`.
 - **Talk / slides** (`beamer`): a sequence of section `@heading`s + concise `@paragraph`/`@equation`/`@figure` blocks (each heading ≈ a slide).
 - **Problem set / homework**: numbered `@heading`s per problem, each with a `@paragraph` prompt + `@equation`/`@theorem` as needed.
+- **CV / résumé** (`moderncv`): `@personalInfo` → optional Profile `@cvSection` + `@paragraph` → Experience `@cvSection` + `@cvEntry`×N → Education `@cvSection` + `@cvEntry`×N → Skills `@cvSection` + `@list` (or more sections: publications, languages, awards, references). **Never** approximate a CV with article tokens.
 
-General rules: abstract→intro→body→references ordering; `@toc` near the top when present; a `@theorem` needs a statement (and may be followed by a `@theorem[proof]`); label equations/theorems/figures you’ll cross-reference (`label="eq:…"`, `thm:…`, `fig:…`).
+### CV / résumé rules (critical)
+
+When the user asks for a CV/résumé **or** document context says `Document kind: cv` / a CV LaTeX class (`moderncv`, `altacv`, `resume`, …):
+
+1. **Use CV blocks** — `@personalInfo`, `@cvSection`, `@cvEntry` — not `@heading` for section titles and not a name-as-heading + contact paragraph.
+2. **Person header = `@personalInfo`** — put name, email, phone, location, homepage in attributes; put the one-line professional headline in the body. Do **not** use a Title/`set_title` author line as the person header (document title may still be e.g. "Curriculum Vitae — Ada Lovelace").
+3. **Jobs / degrees / roles = `@cvEntry`** — structured `period` / `role` / `org` / `location` + description body. Do **not** pack them into bold prose paragraphs (`**Role** — Org · 2020–2023`).
+4. **Section labels = `@cvSection`** — Experience, Education, Skills, Languages, Publications, Awards, References, etc. Do **not** use numbered `@heading[level=1]`.
+5. **Skills / awards lists** — prefer `@list` under a `@cvSection`, not a single paragraph of fake markdown bullets.
+6. **Document class** — state `moderncv` (or keep the class already on the open document).
+
+**Anti-patterns (do not emit for CVs):**
+
+- `@heading` named Experience / Education / Skills / Languages / …
+- Name as `@heading` + contact details in the next `@paragraph`
+- Article `@abstract` / numbered body sections for a résumé
+- Full rewrite that only uses `@heading` + `@paragraph` when CV blocks apply
+
+## Hosted write tools (Ask Lilia edit mode)
+
+When tools are available inside an open document:
+
+- **`set_document_kind(category?, documentClass?)`** → set document kind (`article` | `book` | `report` | `cv`) and/or LaTeX class. Defaults: article→`article`, book→`book`, report→`report`, cv→`moderncv`. Call **before** a rewrite when converting kind (e.g. article → CV).
+- **Full CV rewrite** → `apply_lml` with the CV LML grammar above (preferred; atomic).
+- **Small inserts** → `add_block` with types `personalInfo` / `cvSection` / `cvEntry` and JSON content matching the shapes below.
+- **`set_title`** → only for the document title string, never as a substitute for `@personalInfo`.
+
+JSON content shapes for `add_block` / architect ops:
+
+- `personalInfo` → `{ "name", "headline", "email", "phones":[{"number"}], "homepage", "location", "socials":[], "extra" }`
+- `cvSection` → `{ "title" }`
+- `cvEntry` → `{ "period", "role", "org", "location", "highlight", "description", "tech":[] }`
+
+General rules (non-CV): abstract→intro→body→references ordering; `@toc` near the top when present; a `@theorem` needs a statement (and may be followed by a `@theorem[proof]`); label equations/theorems/figures you’ll cross-reference (`label="eq:…"`, `thm:…`, `fig:…`).
 
 ## Output format
 
@@ -130,3 +168,40 @@ General rules: abstract→intro→body→references ordering; `@toc` near the to
   @cite[key1] Author, A. — Title of the cited work. (Replace with real references.)
 ```
 *Document class: `article` + `amsthm`. The above is an editable first draft — swap the illustrative claims, the figure, and the references for your real work.*
+
+## Example (CV / résumé first draft)
+
+```lml
+@personalInfo[name="Ada Lovelace", email="ada@example.com", location="London", homepage="https://example.com"]
+  Mathematician · Analyst of the Analytical Engine
+
+@cvSection[title="Profile"]
+
+@paragraph
+  Illustrative professional summary: combines mathematical insight with early
+  work on programmable machinery. Replace with the author's real profile.
+
+@cvSection[title="Experience"]
+
+@cvEntry[period="1842 – 1843", role="Collaborator", org="Charles Babbage", location="London"]
+  Extended notes on the Analytical Engine; documented algorithms for the
+  machine. Replace with real roles and dates.
+
+@cvSection[title="Education"]
+
+@cvEntry[period="—", role="Private study in mathematics", org="—", location="London"]
+  Tutored study under leading mathematicians of the period.
+
+@cvSection[title="Skills"]
+
+@list
+  - Mathematics
+  - Scientific writing
+  - Algorithm design
+
+@cvSection[title="Languages"]
+
+@paragraph
+  English (native) · French (fluent) · Italian (conversational)
+```
+*Document class: `moderncv`. Person header is `@personalInfo`; sections are `@cvSection`; jobs/degrees are `@cvEntry` — not article headings and paragraphs.*

@@ -236,13 +236,29 @@ public sealed class AskLiliaService : IAskLiliaService
                     systemSb.AppendLine()
                         .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.");
                     if (request.EditMode)
-                        systemSb.AppendLine("""
+                    {
+                        systemSb.AppendLine(IsCvDocument(document)
+                            ? """
+                            EDIT MODE IS ON — this is a CV/résumé document. You may WRITE with these tools:
+                            • apply_lml(lml, title?) — PREFERRED for full rewrites. Use CV LML: @personalInfo, @cvSection, @cvEntry, @paragraph, @list, @equation. Do NOT rebuild a CV with @heading + @paragraph only. Do NOT use many add_block calls for a whole rewrite.
+                            • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class. Defaults: article→article, book→book, report→report, cv→moderncv. Call before a rewrite if the kind/class is wrong.
+                            • add_block / edit_block / remove_block / reorder_blocks — small targeted edits only.
+                            • set_title(title, author?, date?) — document title string only (e.g. "Curriculum Vitae — Name"). Person name + contact go in personalInfo, never as a heading or set_title substitute.
+                            CV content JSON shapes:
+                              personalInfo { "name","headline","email","phones":[{"number"}],"homepage","location","socials":[],"extra" }
+                              cvSection { "title" }
+                              cvEntry { "period","role","org","location","highlight","description","tech":[] }
+                            After writing, briefly summarize what changed. Prefer get_outline first for small edits.
+                            """
+                            : """
                             EDIT MODE IS ON — you may WRITE to the document with these tools:
-                            • apply_lml(lml, title?) — PREFERRED for full rewrites / "apply this LML" / replacing most of the document. Parses LML and replaces ALL body blocks in ONE call (atomic). Use the full LML you proposed (with @abstract, @heading, @paragraph, @equation, @theorem, …). Do NOT rewrite a whole article with many add_block/edit_block/remove_block calls.
+                            • apply_lml(lml, title?) — PREFERRED for full rewrites / "apply this LML" / replacing most of the document. Parses LML and replaces ALL body blocks in ONE call (atomic). Use the full LML you proposed (with @abstract, @heading, @paragraph, @equation, @theorem, …; for CVs use @personalInfo / @cvSection / @cvEntry). Do NOT rewrite a whole article with many add_block/edit_block/remove_block calls.
+                            • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class (e.g. article, book, report, moderncv). Defaults: article→article, book→book, report→report, cv→moderncv. Use when converting kind (e.g. article→cv) before rewriting structure.
                             • add_block / edit_block / remove_block / reorder_blocks — for small, targeted edits only (one or a few blocks).
-                            • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title.
-                            Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem).
+                            • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title. On CVs, person identity is personalInfo, not set_title.
+                            Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem), {"name","headline","email",…} (personalInfo), {"title"} (cvSection), {"period","role","org","description"} (cvEntry).
                             """);
+                    }
                     systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
@@ -339,6 +355,7 @@ public sealed class AskLiliaService : IAskLiliaService
             _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model}", skill.Id, userId, model);
 
             var changed = new List<string>(); // block ids the write tools touched
+            var metaChanged = false; // category/class (or other doc-level meta) writes
             // Undo snapshot — in Edit mode, capture the doc state before the AI
             // can write, so the client can offer "Undo AI changes". Surfaced
             // only if a write actually happened.
@@ -350,7 +367,11 @@ public sealed class AskLiliaService : IAskLiliaService
             }
             var tools = BuildKbTools(ct);
             if (document is not null)
-                tools = tools.Concat(BuildDocumentTools(document, documentId!.Value, request.EditMode, changed, ct)).ToList();
+            {
+                var liveDoc = new LiveDocument(document);
+                tools = tools.Concat(BuildDocumentTools(
+                    liveDoc, documentId!.Value, userId, request.EditMode, changed, () => metaChanged = true, ct)).ToList();
+            }
             // Live web search (Anthropic server-side tool). It runs provider-side —
             // results arrive within the same response, so the KB tool-use loop below
             // doesn't need to dispatch it (it never surfaces as a FunctionCallContent).
@@ -434,9 +455,11 @@ public sealed class AskLiliaService : IAskLiliaService
                     ? PartialApplyNote
                     : reply + "\n\n" + PartialApplyNote;
             }
-            else if (string.IsNullOrWhiteSpace(reply) && changed.Count > 0)
+            else if (string.IsNullOrWhiteSpace(reply) && (changed.Count > 0 || metaChanged))
             {
-                reply = $"Done — updated {changed.Distinct().Count()} block(s).";
+                reply = metaChanged && changed.Count == 0
+                    ? "Done — updated the document kind/class."
+                    : $"Done — updated {changed.Distinct().Count()} block(s).";
             }
 
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
@@ -463,11 +486,12 @@ public sealed class AskLiliaService : IAskLiliaService
                 _logger.LogWarning(ex, "[AskLilia] Credit debit failed for user {UserId}", userId);
             }
 
+            var anyWrite = changed.Count > 0 || metaChanged;
             var result = new AskLiliaResponse(
                 skill.Id, skill.Name, reply,
                 new AiArchitectUsage(inputTokens, outputTokens, costUsd, credits), balance, creditsUsed,
-                DocumentChanged: changed.Count > 0, ChangedBlockIds: changed.Distinct().ToList(),
-                UndoVersionId: changed.Count > 0 ? undoVersionId?.ToString() : null,
+                DocumentChanged: anyWrite, ChangedBlockIds: changed.Distinct().ToList(),
+                UndoVersionId: anyWrite ? undoVersionId?.ToString() : null,
                 Citations: citations.Count > 0 ? citations : null,
                 PartialApply: partialApply,
                 Model: model);
@@ -520,25 +544,42 @@ public sealed class AskLiliaService : IAskLiliaService
             : (object)new { a.Slug, a.Title, a.Body, a.ToolSlug, a.SkillId, href = $"/help/{a.Slug}" };
     }
 
+    /// <summary>
+    /// Mutable handle so write tools can refresh category/class (and reloaded
+    /// blocks) mid tool-loop without rebuilding the tool list.
+    /// </summary>
+    private sealed class LiveDocument
+    {
+        public DocumentDto Dto;
+        public LiveDocument(DocumentDto dto) => Dto = dto;
+    }
+
     // ── Document read tools (Phase 1 of agentic Ask Lilia) ───────────────────
     // Let the model READ the open document on demand instead of only the static
     // dump: outline/structure, one block's full content, or a text search.
-    private IList<AITool> BuildDocumentTools(Lilia.Core.DTOs.DocumentDto document, Guid docGuid, bool allowWrite, List<string> changed, CancellationToken ct)
+    private IList<AITool> BuildDocumentTools(
+        LiveDocument live,
+        Guid docGuid,
+        string userId,
+        bool allowWrite,
+        List<string> changed,
+        Action markMetaChanged,
+        CancellationToken ct)
     {
         var tools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                () => DocOutline(document),
+                () => DocOutline(live.Dto),
                 name: "get_outline",
                 description: "Get the open document's structure: every block in order with {id, type, snippet}, plus the heading outline {id, level, text}. Use it to understand the document before answering or editing."),
             AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("A block id from get_outline or search_document.")] string blockId)
-                    => DocBlock(document, blockId),
+                    => DocBlock(live.Dto, blockId),
                 name: "get_block",
                 description: "Read one block's full type + content by its id (from get_outline/search_document)."),
             AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Text to find in the document.")] string query)
-                    => DocSearch(document, query),
+                    => DocSearch(live.Dto, query),
                 name: "search_document",
                 description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
         };
@@ -547,44 +588,188 @@ public sealed class AskLiliaService : IAskLiliaService
         {
             // Atomic full-document replace — preferred for "apply this LML" / rewrites.
             tools.Add(AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Full LML source for the document body. May include a ```lml fenced block. Use @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography, etc. with indented bodies.")] string lml,
-                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, or keeps the existing title.")] string? title)
-                    => ApplyLmlAsync(document, docGuid, lml, title, changed),
+                ([System.ComponentModel.Description("Full LML source for the document body. May include a ```lml fenced block. Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography. CV/résumé: @personalInfo[name=…, email=…, location=…], @cvSection[title=…], @cvEntry[period=…, role=…, org=…, location=…], @list, @paragraph. Bodies indented 2 spaces.")] string lml,
+                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, personalInfo name, or keeps the existing title.")] string? title)
+                    => ApplyLmlAsync(live.Dto, docGuid, lml, title, changed),
                 name: "apply_lml",
-                description: "PREFERRED for full rewrites: parse LML and replace the entire document body in ONE atomic batch (deletes old body blocks, inserts the parsed ones, keeps/updates the Title block). Use when the author says apply/replace the document or you already proposed full LML. Do not rebuild a whole article with many add_block/edit_block calls."));
+                description: "PREFERRED for full rewrites: parse LML and replace the entire document body in ONE atomic batch (deletes old body blocks, inserts the parsed ones, keeps/updates the Title block). For CVs use @personalInfo/@cvSection/@cvEntry — not article headings. Do not rebuild a whole document with many add_block/edit_block calls."));
             tools.Add(AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote. (For the document title use set_title, not a heading.)")] string type,
-                 [System.ComponentModel.Description("JSON content object matching the type, e.g. {\"text\":\"…\"} or {\"text\":\"…\",\"level\":1} or {\"latex\":\"…\"}.")] string content,
+                ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote, personalInfo, cvSection, cvEntry, photo. (Document title → set_title. CV person header → personalInfo, not heading.)")] string type,
+                 [System.ComponentModel.Description("JSON content matching the type. Examples: {\"text\":\"…\"}; {\"text\":\"…\",\"level\":1}; {\"latex\":\"…\"}; personalInfo {\"name\",\"headline\",\"email\",\"phones\":[{\"number\"}],\"homepage\",\"location\",\"socials\":[],\"extra\"}; cvSection {\"title\"}; cvEntry {\"period\",\"role\",\"org\",\"location\",\"description\",\"tech\":[]}.")] string content,
                  [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId)
-                    => AddBlockAsync(document, docGuid, type, content, afterId, changed),
+                    => AddBlockAsync(live.Dto, docGuid, type, content, afterId, changed),
                 name: "add_block",
-                description: "Add a new block to the open document (small targeted inserts only). Returns the new block id."));
+                description: "Add a new block to the open document (small targeted inserts only). Returns the new block id. On CVs prefer personalInfo/cvSection/cvEntry."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to edit.")] string blockId,
                  [System.ComponentModel.Description("New JSON content object for the block.")] string content,
                  [System.ComponentModel.Description("Optional new block type.")] string? type)
-                    => EditBlockAsync(document, docGuid, blockId, content, type, changed),
+                    => EditBlockAsync(live.Dto, docGuid, blockId, content, type, changed),
                 name: "edit_block",
                 description: "Replace a block's content (and optionally its type) by id. Small targeted edits only."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to remove.")] string blockId)
-                    => RemoveBlockAsync(document, docGuid, blockId, changed),
+                    => RemoveBlockAsync(live.Dto, docGuid, blockId, changed),
                 name: "remove_block",
                 description: "Delete a block by id."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("All block ids in the desired final order.")] string[] blockIds)
-                    => ReorderBlocksAsync(document, docGuid, blockIds, changed),
+                    => ReorderBlocksAsync(live.Dto, docGuid, blockIds, changed),
                 name: "reorder_blocks",
                 description: "Reorder the document's blocks to this exact id order."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
                  [System.ComponentModel.Description("Author name(s). Optional.")] string? author,
                  [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date)
-                    => SetTitleAsync(document, docGuid, title, author, date, changed),
+                    => SetTitleAsync(live.Dto, docGuid, title, author, date, changed),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
+            tools.Add(AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("Document kind: article | book | report | cv. Aliases: paper→article, thesis→book, resume/résumé→cv. Omit to keep current or derive from documentClass.")] string? category,
+                 [System.ComponentModel.Description("LaTeX \\documentclass slug, e.g. article, book, report, moderncv, altacv, memoir. Omit to use the default for the category (article→article, book→book, report→report, cv→moderncv).")] string? documentClass)
+                    => SetDocumentKindAsync(live, docGuid, userId, category, documentClass, markMetaChanged),
+                name: "set_document_kind",
+                description: "Set the open document's category (article|book|report|cv) and/or LaTeX document class. Call when converting kind (e.g. article→CV) or fixing a wrong class before apply_lml. Does not rewrite body blocks."));
         }
         return tools;
+    }
+
+    /// <summary>
+    /// Canonical categories shipped in documentclass-first: article, book, report, cv.
+    /// </summary>
+    private static readonly HashSet<string> AllowedCategories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "article", "book", "report", "cv",
+    };
+
+    private static readonly Dictionary<string, string> DefaultClassForCategory = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["article"] = "article",
+        ["book"] = "book",
+        ["report"] = "report",
+        ["cv"] = "moderncv",
+    };
+
+    /// <summary>Normalize free-form category labels from the model.</summary>
+    internal static string? NormalizeCategory(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.Trim().ToLowerInvariant();
+        return s switch
+        {
+            "article" or "paper" or "research" or "amsart" => "article",
+            "book" or "thesis" or "dissertation" or "memoir" => "book",
+            "report" or "technical report" or "techreport" => "report",
+            "cv" or "resume" or "résumé" or "curriculum" or "curriculum vitae"
+                or "moderncv" or "altacv" => "cv",
+            _ when AllowedCategories.Contains(s) => s,
+            _ => null,
+        };
+    }
+
+    /// <summary>Infer category from a LaTeX class slug when the model only sets class.</summary>
+    internal static string? CategoryFromClass(string? documentClass)
+    {
+        if (string.IsNullOrWhiteSpace(documentClass)) return null;
+        var c = documentClass.Trim().ToLowerInvariant();
+        if (c is "book" or "tufte-book" or "memoir") return "book";
+        if (c is "report") return "report";
+        if (c.Contains("moderncv") || c.Contains("altacv") || c is "resume" or "curriculum"
+            || c.Contains("twentyseconds") || c.Contains("hipster"))
+            return "cv";
+        if (c is "article" or "amsart" or "ieeetran" or "acmart" or "exam") return "article";
+        return null;
+    }
+
+    private async Task<object> SetDocumentKindAsync(
+        LiveDocument live,
+        Guid docId,
+        string userId,
+        string? categoryRaw,
+        string? documentClassRaw,
+        Action markMetaChanged)
+    {
+        try
+        {
+            var previousCategory = live.Dto.DocumentCategory;
+            var previousClass = live.Dto.LatexDocumentClass;
+
+            var category = NormalizeCategory(categoryRaw);
+            var documentClass = string.IsNullOrWhiteSpace(documentClassRaw)
+                ? null
+                : documentClassRaw.Trim();
+
+            if (category is null && documentClass is null)
+                return new { error = "Provide category (article|book|report|cv) and/or documentClass." };
+
+            if (categoryRaw is not null && category is null)
+                return new
+                {
+                    error = $"Unknown category '{categoryRaw}'. Use article, book, report, or cv.",
+                };
+
+            // Derive missing side from the other.
+            if (category is null)
+                category = CategoryFromClass(documentClass)
+                    ?? NormalizeCategory(live.Dto.DocumentCategory)
+                    ?? "article";
+
+            if (documentClass is null)
+            {
+                // Keep current class if it already fits the target category; else default.
+                var current = live.Dto.LatexDocumentClass;
+                var currentCat = CategoryFromClass(current);
+                documentClass = string.Equals(currentCat, category, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(current)
+                    ? current
+                    : DefaultClassForCategory.GetValueOrDefault(category, "article");
+            }
+
+            if (!AllowedCategories.Contains(category))
+                return new { error = $"Unknown category '{category}'." };
+
+            var updated = await _documentService.UpdateDocumentAsync(docId, userId, new UpdateDocumentDto(
+                Title: null, Language: null, PaperSize: null, FontFamily: null,
+                FontSize: null, Columns: null, ColumnSeparator: null, ColumnGap: null,
+                LatexDocumentClass: null, LatexDocumentClassOptions: null, LatexPackages: null,
+                BalancedColumns: null, MarginTop: null, MarginBottom: null, MarginLeft: null,
+                MarginRight: null, HeaderText: null, FooterText: null, LineSpacing: null,
+                ParagraphIndent: null, PageNumbering: null, AiEnabled: null, LatexEngine: null,
+                ExperimentalLatexEdit: null,
+                DocumentClass: documentClass,
+                DocumentCategory: category,
+                Sides: null, TitlePage: null, Orientation: null));
+            if (updated is null)
+                return new { error = "document not found or no write access" };
+
+            // Refresh live handle so get_outline sees new kind; keep in-memory
+            // blocks if the update DTO omitted them.
+            live.Dto = updated.Blocks is { Count: > 0 }
+                ? updated
+                : updated with { Blocks = live.Dto.Blocks };
+
+            markMetaChanged();
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "document_kind", category, documentClass });
+
+            _logger.LogInformation(
+                "[AskLilia] set_document_kind doc={DocId} category={Cat} class={Class}",
+                docId, category, documentClass);
+
+            return new
+            {
+                ok = true,
+                category,
+                documentClass,
+                previousCategory,
+                previousClass,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] set_document_kind failed for {DocId}", docId);
+            return new { error = "set_document_kind failed: " + ex.Message };
+        }
     }
 
     /// <summary>
@@ -828,18 +1013,65 @@ public sealed class AskLiliaService : IAskLiliaService
         return JsonSerializer.SerializeToElement(node);
     }
 
+    /// <summary>True when the open document is a CV/résumé (category or class).</summary>
+    internal static bool IsCvDocument(Lilia.Core.DTOs.DocumentDto document)
+    {
+        if (string.Equals(document.DocumentCategory, "cv", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(document.DocumentCategory, "resume", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var cls = document.LatexDocumentClass ?? "";
+        if (cls.Length == 0) return false;
+        // Common CV classes in the latex catalog / wild imports
+        return cls.Contains("moderncv", StringComparison.OrdinalIgnoreCase)
+            || cls.Contains("altacv", StringComparison.OrdinalIgnoreCase)
+            || cls.Contains("twentyseconds", StringComparison.OrdinalIgnoreCase)
+            || cls.Contains("hipster", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(cls, "resume", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(cls, "curriculum", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static object DocOutline(Lilia.Core.DTOs.DocumentDto document)
     {
         var blocks = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).OrderBy(b => b.SortOrder).ToList();
         return new
         {
             title = document.Title,
+            documentKind = document.DocumentCategory,
+            latexClass = document.LatexDocumentClass,
             blockCount = blocks.Count,
             outline = blocks
-                .Where(b => b.Type.Contains("heading", StringComparison.OrdinalIgnoreCase))
-                .Select(b => new { id = b.Id, level = HeadingLevel(b.Content), text = TextOf(b.Content) }),
+                .Where(b =>
+                    b.Type.Contains("heading", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(b.Type, "cvSection", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(b.Type, "personalInfo", StringComparison.OrdinalIgnoreCase))
+                .Select(b => new
+                {
+                    id = b.Id,
+                    type = b.Type,
+                    level = string.Equals(b.Type, "cvSection", StringComparison.OrdinalIgnoreCase) ? 1
+                        : string.Equals(b.Type, "personalInfo", StringComparison.OrdinalIgnoreCase) ? 0
+                        : HeadingLevel(b.Content),
+                    text = string.Equals(b.Type, "personalInfo", StringComparison.OrdinalIgnoreCase)
+                        ? PersonalInfoLabel(b.Content)
+                        : TextOf(b.Content),
+                }),
             blocks = blocks.Select(b => new { id = b.Id, type = b.Type, snippet = Snippet(b.Content, 120) }),
         };
+    }
+
+    private static string PersonalInfoLabel(System.Text.Json.JsonElement content)
+    {
+        if (content.ValueKind != System.Text.Json.JsonValueKind.Object) return "(personalInfo)";
+        var name = content.TryGetProperty("name", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String
+            ? n.GetString() : null;
+        var headline = content.TryGetProperty("headline", out var h) && h.ValueKind == System.Text.Json.JsonValueKind.String
+            ? h.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(headline))
+            return $"{name} — {headline}";
+        if (!string.IsNullOrWhiteSpace(name)) return name!;
+        if (!string.IsNullOrWhiteSpace(headline)) return headline!;
+        return "(personalInfo)";
     }
 
     private static object DocBlock(Lilia.Core.DTOs.DocumentDto document, string blockId)
@@ -866,7 +1098,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private static string TextOf(System.Text.Json.JsonElement c)
     {
         if (c.ValueKind != System.Text.Json.JsonValueKind.Object) return string.Empty;
-        foreach (var key in new[] { "text", "title", "latex", "code", "caption" })
+        foreach (var key in new[] { "text", "title", "name", "role", "headline", "latex", "code", "caption", "description" })
             if (c.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
                 return v.GetString() ?? string.Empty;
         return string.Empty;
