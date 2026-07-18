@@ -21,6 +21,10 @@ logs/
 uploads/
 scripts/backup-db.env
 
+# TEMPORARY exception (remove after Sunday 2026-07-20 rotation):
+# local-dev.secrets.json is intentionally tracked for second-machine bootstrap.
+# After rotation: delete the file, drop Program.cs AddJsonFile line, remove this note.
+
 # TUG font catalogue scraper local cache (not committed to repo)
 data/.tug-cache/
 data/.tug-scrape-warnings.log

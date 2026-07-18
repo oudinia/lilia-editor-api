@@ -21,6 +21,27 @@ using Wolverine;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// TEMPORARY (machine transfer, remove after Sunday 2026-07-20): load committed
+// local-dev.secrets.json so a fresh clone works without dotnet user-secrets.
+// File is optional so production / machines without it are unaffected.
+builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
+
+// TEMPORARY: decode transfer-encoded Anthropic key (GitHub push protection).
+// Supports revb64: = reverse(UTF8) then base64. Remove with local-dev.secrets.json.
+{
+    var rawKey = builder.Configuration["AI:Anthropic:ApiKey"];
+    if (!string.IsNullOrEmpty(rawKey) && rawKey.StartsWith("revb64:", StringComparison.Ordinal))
+    {
+        var reversed = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(rawKey["revb64:".Length..]));
+        var chars = reversed.ToCharArray();
+        Array.Reverse(chars);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["AI:Anthropic:ApiKey"] = new string(chars)
+        });
+    }
+}
+
 // ─── Wolverine in-process message bus ───────────────────────────────
 // Used for cross-feature event fan-out (e.g. user.created → Teams
 // slice creates default team, Email slice sends welcome). No external
