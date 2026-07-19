@@ -305,22 +305,79 @@ public class StudioService : IStudioService
     public async Task<Dictionary<string, string>> GetBlockPreviewsForDocumentAsync(
         Guid documentId, string format)
     {
-        // Join blocks → block_previews so we get one query scoped by
-        // document without pulling every preview across every doc.
-        // AsNoTracking — we're returning content, not mutating.
-        var rows = await _db.BlockPreviews
-            .AsNoTracking()
-            .Where(bp => bp.Format == format
-                      && _db.Blocks.Any(b => b.Id == bp.BlockId && b.DocumentId == documentId))
-            .Select(bp => new { bp.BlockId, bp.Data })
+        // Every block in the doc, and whatever's already cached for this
+        // format. Two cheap queries regardless of doc size.
+        var blocks = await _db.Blocks
+            .Where(b => b.DocumentId == documentId)
             .ToListAsync();
 
-        var result = new Dictionary<string, string>(rows.Count);
-        foreach (var r in rows)
+        var existingPreviews = await _db.BlockPreviews
+            .Where(bp => bp.Format == format && blocks.Select(b => b.Id).Contains(bp.BlockId))
+            .ToDictionaryAsync(bp => bp.BlockId);
+
+        var result = new Dictionary<string, string>(blocks.Count);
+        var missing = new List<Block>();
+        foreach (var block in blocks)
         {
-            if (r.Data == null) continue;
-            result[r.BlockId.ToString()] = System.Text.Encoding.UTF8.GetString(r.Data);
+            if (existingPreviews.TryGetValue(block.Id, out var bp) && bp.Data != null)
+                result[block.Id.ToString()] = System.Text.Encoding.UTF8.GetString(bp.Data);
+            else
+                missing.Add(block);
         }
+
+        // Render-on-miss, in this same request. This is the load-bearing
+        // invariant for Block mode: one round trip per format, always
+        // complete. Without this, StudioCardFlow's client-side fallback
+        // fires one individual /block/{id}/preview request per gap — fine
+        // for 1-2 misses, a thundering herd for a freshly-imported or
+        // bulk-created document (every block uncached at once). Rendering
+        // here is cheap in-memory templating (no external process), so
+        // doing it inline beats N separate HTTP round trips even for a
+        // few hundred blocks.
+        if (missing.Count > 0)
+        {
+            foreach (var block in missing)
+            {
+                byte[] rendered;
+                try
+                {
+                    rendered = format switch
+                    {
+                        "html" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToHtml(block)),
+                        "latex" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToLatex(block)),
+                        _ => throw new ArgumentException($"Unsupported format: {format}")
+                    };
+                }
+                catch (Exception ex)
+                {
+                    // One malformed block shouldn't fail the whole batch —
+                    // skip it; the client's per-block fallback (which logs
+                    // its own error) is still there as a last resort.
+                    _logger.LogWarning(ex, "Batch preview render failed for block {BlockId} ({Format})", block.Id, format);
+                    continue;
+                }
+
+                if (existingPreviews.TryGetValue(block.Id, out var existing))
+                {
+                    existing.Data = rendered;
+                    existing.RenderedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    _db.BlockPreviews.Add(new BlockPreview
+                    {
+                        Id = Guid.NewGuid(),
+                        BlockId = block.Id,
+                        Format = format,
+                        Data = rendered,
+                        RenderedAt = DateTime.UtcNow,
+                    });
+                }
+                result[block.Id.ToString()] = System.Text.Encoding.UTF8.GetString(rendered);
+            }
+            await _db.SaveChangesAsync();
+        }
+
         return result;
     }
 
