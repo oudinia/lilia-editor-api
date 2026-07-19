@@ -344,7 +344,7 @@ public class StudioService : IStudioService
                     rendered = format switch
                     {
                         "html" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToHtml(block)),
-                        "latex" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToLatex(block)),
+                        "latex" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToLatex(block, forPreview: true)),
                         _ => throw new ArgumentException($"Unsupported format: {format}")
                     };
                 }
@@ -392,7 +392,7 @@ public class StudioService : IStudioService
         byte[]? rendered = format switch
         {
             "html" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToHtml(block)),
-            "latex" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToLatex(block)),
+            "latex" => System.Text.Encoding.UTF8.GetBytes(_renderService.RenderBlockToLatex(block, forPreview: true)),
             _ => throw new ArgumentException($"Unsupported format: {format}")
         };
 
