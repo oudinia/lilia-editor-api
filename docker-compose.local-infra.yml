@@ -1,0 +1,44 @@
+# Local data plane only (no API image).
+# Postgres may already run as a standalone `lilia-pg` container — this file
+# is the reproducible definition for Redis (+ optional pg if you prefer compose).
+#
+#   docker compose -f docker-compose.local-infra.yml up -d
+#   docker exec lilia-redis redis-cli ping
+#
+# Performance plan: lilia-docs/performance/2026-07-19-pre-perf-baseline-and-plan/
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: lilia-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - lilia-redis-data:/data
+    command: redis-server --appendonly yes --save 60 1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Optional: only if you are not already using the standalone lilia-pg container.
+  # profiles: ["with-pg"] so default `up` does not conflict with an existing lilia-pg.
+  postgres:
+    image: postgres:16
+    container_name: lilia-pg
+    profiles: ["with-pg"]
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: lilia
+      POSTGRES_PASSWORD: lilia
+      POSTGRES_DB: lilia
+    volumes:
+      - lilia-pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  lilia-redis-data:
+  lilia-pg-data:
