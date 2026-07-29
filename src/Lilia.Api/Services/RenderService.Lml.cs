@@ -65,6 +65,7 @@ public partial class RenderService
             var label = ReadLmlLabel(content);
             return block.Type.ToLowerInvariant() switch
             {
+                "title" => RenderTitleToLml(content),
                 "heading" or "header" => RenderHeadingToLml(content, label),
                 "paragraph" => RenderParagraphToLml(content),
                 "equation" => RenderEquationToLml(content, label),
@@ -84,7 +85,12 @@ public partial class RenderService
                 "algorithm" => RenderAlgorithmToLml(content, label),
                 "callout" => RenderCalloutToLml(content, label),
                 "footnote" => RenderFootnoteToLml(content, label),
-                _ => $"@{block.Type.ToLowerInvariant()}"
+                // A bare "@type" line is valid LML and carries none of the
+                // block's content, so an unsupported type used to export as
+                // something that looked correct and had silently lost
+                // everything. Name the gap instead — Markdown already does.
+                _ => $"% [{block.Type.ToLowerInvariant()}] not supported in LML — "
+                   + "content preserved in the document but omitted here"
             };
         }
         catch (Exception ex)
@@ -116,6 +122,27 @@ public partial class RenderService
         var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
         var attrs = BuildAttrs(("label", label), ("mode", string.Equals(equationMode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : null));
         return $"@equation{attrs}\n{latex}";
+    }
+
+    /// <summary>
+    /// The document title block — title, author, date.
+    ///
+    /// Previously absent from this switch, so it fell to the default and
+    /// exported as a bare "@title": every document lost its title, author and
+    /// date on LML export, and the output still looked like valid LML.
+    /// </summary>
+    private static string RenderTitleToLml(JsonElement content)
+    {
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var author = content.TryGetProperty("author", out var a) ? a.GetString() ?? "" : "";
+        var date = content.TryGetProperty("date", out var d) ? d.GetString() ?? "" : "";
+
+        var attrs = BuildAttrs(
+            ("title", string.IsNullOrWhiteSpace(title) ? null : title),
+            ("author", string.IsNullOrWhiteSpace(author) ? null : author),
+            ("date", string.IsNullOrWhiteSpace(date) ? null : date));
+
+        return $"@title{attrs}";
     }
 
     private static string RenderFigureToLml(JsonElement content, string? label)
