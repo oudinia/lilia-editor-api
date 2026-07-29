@@ -336,7 +336,13 @@ public class LaTeXRenderService : ILaTeXRenderService
                     var actionableWarnings = allWarnings
                         .Where(w => !w.Contains("Overfull \\hbox"))
                         .Where(w => !w.Contains("Underfull \\hbox"))
-                        .Where(w => !w.Contains("Overfull \\vbox"))
+                        // NOTE: "Overfull \vbox" is deliberately NOT filtered.
+                        // The \hbox variants are cosmetic — a line a few points
+                        // too wide. "Overfull \vbox" means content is too TALL
+                        // for the page, i.e. material is running off the bottom.
+                        // It is how a table that does not fit reports itself,
+                        // and it was being discarded because the name looks
+                        // like its cosmetic siblings.
                         .Where(w => !w.Contains("Underfull \\vbox"))
                         .Where(w => !w.Contains("Font shape"))
                         .Where(w => !w.Contains("Size substitutions"))
@@ -353,6 +359,22 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Where(w => !w.Contains("Label(s) may have changed"))
                         .Take(10)
                         .ToArray();
+
+                    // Silently dropped glyphs. These do NOT reach the filter
+                    // above: a "Missing character:" line contains none of the
+                    // words "Warning", "Underfull" or "Overfull", so it never
+                    // matched and the text loss was invisible.
+                    //
+                    // Scanned separately (and from the WHOLE log) rather than
+                    // widened into that filter, because TeX emits one line per
+                    // occurrence — a Chinese paragraph produces hundreds, and
+                    // Take(10) would fill entirely with them, pushing out every
+                    // other warning. What a human needs is the distinct count.
+                    var dropped = LaTeXGlyphScanner.Scan(logContent);
+                    if (LaTeXGlyphScanner.Describe(dropped) is { } glyphWarning)
+                    {
+                        actionableWarnings = [glyphWarning, .. actionableWarnings];
+                    }
 
                     result = new LatexValidationResult(true, null, actionableWarnings, null, durationMs, resolvedEngine, logContent);
                 }
