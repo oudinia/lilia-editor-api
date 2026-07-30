@@ -85,7 +85,10 @@ public record DocumentDto(
     int Version = 0,
     // User-authored custom preamble (macros / environments) emitted verbatim
     // into the export preamble. See Document.CustomPreamble.
-    string? CustomPreamble = null
+    string? CustomPreamble = null,
+    // Page-bottom fill: "ragged" | "flush" | null (keep the class default).
+    // See Document.PaginationPolicy.
+    string? PaginationPolicy = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -132,7 +135,12 @@ public record UpdateDocumentDto(
     string? Orientation,
     // User-authored custom preamble (macros / environments). See
     // Document.CustomPreamble.
-    string? CustomPreamble = null
+    string? CustomPreamble = null,
+    // Page-bottom fill: "ragged" | "flush". Null leaves the current value
+    // alone (consistent with every other field on this DTO), which means the
+    // policy cannot be cleared back to "class default" through this route —
+    // add an explicit sentinel if that turns out to be wanted.
+    string? PaginationPolicy = null
 );
 
 public record TrashDocumentDto(
