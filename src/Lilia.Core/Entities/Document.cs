@@ -80,6 +80,38 @@ public class Document
     public string? ParagraphIndent { get; set; }
     public string? PageNumbering { get; set; } // "arabic", "roman", "none"
 
+    /// <summary>
+    /// How the bottom of a page is filled — the one knob of the pagination
+    /// policy an author can sensibly hold an opinion about.
+    ///
+    /// <list type="bullet">
+    /// <item><c>null</c> — leave the document class's own default in place.
+    /// This is deliberately NOT "ragged": forcing a policy on every document
+    /// would silently re-typeset existing ones.</item>
+    /// <item><c>"ragged"</c> — <c>\raggedbottom</c>. Pages may run short rather
+    /// than stretching, which removes the mysterious vertical gaps.</item>
+    /// <item><c>"flush"</c> — <c>\flushbottom</c>. Every page is filled to the
+    /// same height; required by many journal classes.</item>
+    /// </list>
+    ///
+    /// Measured, not assumed (pdflatex, MiKTeX, 2026-07-30) — <c>\@textbottom</c>
+    /// after each class loads:
+    ///
+    /// <list type="bullet">
+    /// <item><c>article</c>, <c>report</c> one-column one-side — already
+    /// <c>\raggedbottom</c>. Setting "ragged" is a no-op for them.</item>
+    /// <item><c>book</c> (two-side by default), any <c>twoside</c>, any
+    /// <c>twocolumn</c> — <c>\flushbottom</c>. These are the documents where
+    /// the setting actually changes the output, and <c>book</c> is in scope.</item>
+    /// </list>
+    ///
+    /// The widow/club penalties emitted alongside follow from this value rather
+    /// than being separately configurable: forbidding widows outright
+    /// (penalty 10000) is only safe when the bottom may run short, otherwise
+    /// LaTeX has to stretch the page instead and the gaps come back.
+    /// </summary>
+    public string? PaginationPolicy { get; set; }
+
     // Template fields — templates are documents with is_template = true
     public bool IsTemplate { get; set; }
     public string? TemplateName { get; set; }
