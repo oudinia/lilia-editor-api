@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Lilia.Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -134,7 +135,7 @@ public partial class RenderService
 
     private static string RenderEquationToMarkdown(JsonElement content, string? label)
     {
-        var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        var latex = EquationContent.ReadSource(content);
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
 
         var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";

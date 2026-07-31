@@ -4,6 +4,7 @@ using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -75,7 +76,7 @@ public class BlockService : IBlockService
             DocumentId = documentId,
             Type = dto.Type,
             Content = dto.Content.HasValue
-                ? JsonDocument.Parse(dto.Content.Value.GetRawText())
+                ? BlockContentNormaliser.Normalise(dto.Type, dto.Content.Value)
                 : JsonDocument.Parse("{}"),
             SortOrder = resolvedSortOrder,
             ParentId = dto.ParentId,
@@ -110,7 +111,9 @@ public class BlockService : IBlockService
         if (block == null) return null;
 
         if (dto.Type != null) block.Type = dto.Type;
-        if (dto.Content.HasValue) block.Content = JsonDocument.Parse(dto.Content.Value.GetRawText());
+        // block.Type is already the new type on the line above, so a block being
+        // converted INTO an equation is normalised as one.
+        if (dto.Content.HasValue) block.Content = BlockContentNormaliser.Normalise(block.Type, dto.Content.Value);
         if (dto.SortOrder.HasValue) block.SortOrder = dto.SortOrder.Value;
         if (dto.ParentId.HasValue) block.ParentId = dto.ParentId.Value;
         if (dto.Depth.HasValue) block.Depth = dto.Depth.Value;
@@ -184,7 +187,7 @@ public class BlockService : IBlockService
                 // Update existing block
                 _logger.LogDebug("BatchUpdateBlocksAsync: Updating existing block {BlockId}", update.Id);
                 if (update.Type != null) block.Type = update.Type;
-                if (update.Content.HasValue) block.Content = JsonDocument.Parse(update.Content.Value.GetRawText());
+                if (update.Content.HasValue) block.Content = BlockContentNormaliser.Normalise(block.Type, update.Content.Value);
                 if (update.SortOrder.HasValue) block.SortOrder = update.SortOrder.Value;
                 if (update.ParentId.HasValue) block.ParentId = update.ParentId.Value;
                 if (update.Depth.HasValue) block.Depth = update.Depth.Value;
@@ -202,7 +205,7 @@ public class BlockService : IBlockService
                     DocumentId = documentId,
                     Type = update.Type ?? "paragraph",
                     Content = update.Content.HasValue
-                        ? JsonDocument.Parse(update.Content.Value.GetRawText())
+                        ? BlockContentNormaliser.Normalise(update.Type ?? "paragraph", update.Content.Value)
                         : JsonDocument.Parse("{}"),
                     SortOrder = update.SortOrder ?? 0,
                     ParentId = update.ParentId ?? null,

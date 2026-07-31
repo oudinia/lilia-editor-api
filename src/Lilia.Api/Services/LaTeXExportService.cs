@@ -7,6 +7,7 @@ using Lilia.Core.Interfaces;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -939,7 +940,7 @@ public class LaTeXExportService : ILaTeXExportService
 
     private string RenderEquation(JsonElement content)
     {
-        var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        var latex = EquationContent.ReadSource(content);
         var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "display" : "display";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var numbered = !content.TryGetProperty("numbered", out var n) || n.ValueKind != JsonValueKind.False;

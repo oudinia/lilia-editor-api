@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -260,7 +261,7 @@ public class TypstRenderService : ITypstRenderService
 
     private static string RenderEquationToTypst(JsonElement content)
     {
-        var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        var latex = EquationContent.ReadSource(content);
         var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
 
         // Strip MathLive placeholder artifacts
