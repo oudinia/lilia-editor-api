@@ -71,6 +71,19 @@ builder.Host.UseWolverine(opts =>
         .ToLocalQueue("compilation-telemetry")
         .Sequential();
 
+    // Import parsing (P2.4 stage 1). Its own queue so a long parse cannot block
+    // telemetry, and vice versa. Bounded concurrency because parsing is CPU- and
+    // DB-heavy: the previous `_ = Task.Run(...)` had NO bound at all, so N
+    // simultaneous uploads meant N simultaneous parses.
+    //
+    // Durable, unlike telemetry, because the opposite trade-off applies. A lost
+    // telemetry row is a rounding error; a lost import is a document the author
+    // believes they uploaded, and the Job row has always promised RetryCount /
+    // MaxRetries that nothing delivered.
+    opts.PublishMessage<Lilia.Api.Events.Common.RunImportJobEvent>()
+        .ToLocalQueue("imports")
+        .MaximumParallelMessages(2);
+
     // Durable local queues (P1.3b). The queue above survives a restart because
     // its messages are written to Postgres before the handler runs, rather than
     // living only in memory — which is the whole point: the Job entity has

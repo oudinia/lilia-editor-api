@@ -54,8 +54,51 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         _logger = logger;
     }
 
+    /// <summary>
+    /// Job states that mean "this work is already accounted for". Re-running
+    /// from one of these would parse the source a second time and bulk-insert a
+    /// second set of blocks — the document would silently double.
+    ///
+    /// <para>PROCESSING is deliberately NOT here. It is indistinguishable from
+    /// a run that died mid-flight, and re-running a crashed import is the entire
+    /// point of putting it on a durable queue. Duplicate work is the lesser risk
+    /// than work that never completes and never reports why.</para>
+    /// </summary>
+    private static readonly string[] TerminalStatuses =
+        [JobStatus.Completed, JobStatus.Cancelled];
+
+    /// <summary>
+    /// Whether a job in this status should refuse a fresh run.
+    ///
+    /// <para>Exposed and pure so the decision can be tested without a database —
+    /// the EF in-memory provider cannot map <c>LiliaDbContext</c> at all
+    /// (<c>AiChat.Messages</c> is a <c>JsonDocument</c>), so anything touching a
+    /// DbSet needs Docker. The rule is worth pinning on its own regardless: it
+    /// is what stands between a retried message and a duplicated document.</para>
+    /// </summary>
+    public static bool IsAlreadyDone(string? status) =>
+        status is not null && TerminalStatuses.Contains(status);
+
     public async Task RunAsync(Guid jobId, Guid sessionId, CancellationToken ct = default)
     {
+        // Idempotency guard. Under the old `_ = Task.Run(...)` call site this was
+        // unnecessary: in-process fire-and-forget delivers exactly once. On a
+        // durable queue a message can be delivered again — after a restart, or on
+        // retry — so the guard is what makes queueing this safe rather than a
+        // source of duplicated documents.
+        var status = await _context.Jobs
+            .Where(j => j.Id == jobId)
+            .Select(j => j.Status)
+            .FirstOrDefaultAsync(ct);
+
+        if (IsAlreadyDone(status))
+        {
+            _logger.LogInformation(
+                "Import job {JobId} is already {Status} — skipping duplicate delivery.",
+                jobId, status);
+            return;
+        }
+
         var tracker = _progressService.CreateTracker(jobId.ToString());
 
         try
