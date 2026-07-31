@@ -343,7 +343,9 @@ public class LatexBlockCompilationTests
         var block = CreateBlock("code", """{"code":"print('hello')","language":"python"}""");
         var latex = _sut.RenderBlockToLatex(block);
         latex.Should().Contain("\\begin{lstlisting}");
-        latex.Should().Contain("language=python");
+        // Canonical listings casing — see NormalizeListingsLanguage. Both cases
+        // compile, so this pins the normalisation rather than a LaTeX rule.
+        latex.Should().Contain("language=Python");
         latex.Should().Contain("print('hello')");
     }
 

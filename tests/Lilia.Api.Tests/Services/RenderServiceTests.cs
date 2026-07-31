@@ -467,7 +467,11 @@ public class RenderServiceTests
         var result = sut.RenderBlockToLatex(block);
 
         // Assert
-        result.Should().Contain("\\begin{lstlisting}[language=python]");
+        // Canonical listings casing, via LaTeXPreamble.NormalizeListingsLanguage.
+        // listings itself is case-insensitive here — `language=python` and
+        // `language=Python` both compile clean (verified with pdflatex) — so
+        // this asserts a deliberate normalisation, not a LaTeX requirement.
+        result.Should().Contain("\\begin{lstlisting}[language=Python]");
         result.Should().Contain("print(hello)");
         result.Should().Contain("\\end{lstlisting}");
     }

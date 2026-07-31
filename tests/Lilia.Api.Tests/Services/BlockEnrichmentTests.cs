@@ -456,7 +456,8 @@ public class BlockEnrichmentTests
         var block = CreateBlock("code", """{"code":"x","language":"java","caption":"Test","lineNumbers":true,"highlightLines":[2]}""");
         var result = _sut.RenderBlockToLatex(block);
 
-        result.Should().Contain("language=java");
+        // Canonical listings casing — see NormalizeListingsLanguage.
+        result.Should().Contain("language=Java");
         result.Should().Contain("caption={Test}");
         result.Should().Contain("numbers=left");
         result.Should().Contain("emphstyle=");
