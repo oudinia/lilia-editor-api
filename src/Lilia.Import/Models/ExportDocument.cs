@@ -101,9 +101,23 @@ public class ExportBlockContent
     public int? Level { get; set; }
 
     /// <summary>
-    /// LaTeX content for equations.
+    /// LaTeX content for equations. Legacy name — see <see cref="Source"/>.
     /// </summary>
     public string? Latex { get; set; }
+
+    /// <summary>
+    /// Equation source, verbatim, in whatever notation <see cref="Notation"/>
+    /// names. Replaces <see cref="Latex"/>, which stays readable so documents
+    /// stored before the rename still export. Prefer this; fall back to Latex.
+    /// Mirrors Lilia.Core.Blocks.EquationContent on the JSON side.
+    /// </summary>
+    public string? Source { get; set; }
+
+    /// <summary>
+    /// Notation <see cref="Source"/> is written in. Null means latex — every
+    /// row predating the field is LaTeX, and so is everything written today.
+    /// </summary>
+    public string? Notation { get; set; }
 
     /// <summary>
     /// Whether equation is display mode (true) or inline (false).

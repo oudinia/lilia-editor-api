@@ -7,6 +7,7 @@ using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -271,7 +272,7 @@ public partial class RenderService : IRenderService
 
     private string RenderEquationToHtml(JsonElement content)
     {
-        var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        var latex = EquationContent.ReadSource(content);
 
         var displayMode = ResolveDisplayMode(content);
 
@@ -1645,7 +1646,7 @@ public partial class RenderService : IRenderService
 
     private string RenderEquationToLatex(JsonElement content)
     {
-        var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        var latex = EquationContent.ReadSource(content);
 
         var displayMode = ResolveDisplayMode(content);
 

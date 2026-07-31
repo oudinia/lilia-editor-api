@@ -309,10 +309,22 @@ public class DocxExportService : IDocxExportService
     private const string MathNs = "http://schemas.openxmlformats.org/officeDocument/2006/math";
     private const string WordNs = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
+    /// <summary>
+    /// First value that is neither null nor empty, or "". Plain `??` would stop
+    /// at an empty string, so a half-migrated block carrying `source: ""`
+    /// alongside a real `latex` would export as a blank equation.
+    /// </summary>
+    private static string Coalesce(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+
     private async Task<IEnumerable<OpenXmlElement>> ConvertEquation(ExportBlock block, MainDocumentPart mainPart)
     {
         var content = block.Content;
-        var latex = content.Latex ?? content.Text ?? "";
+        // `source` is the current name, `latex` the legacy one; both are read so
+        // documents stored either side of the rename export identically. Mirrors
+        // Lilia.Core.Blocks.EquationContent, which does the same for the JSON
+        // renderers — this path deserialises into a typed DTO instead.
+        var latex = Coalesce(content.Source, content.Latex, content.Text);
         var displayMode = content.DisplayMode ?? true;
 
         // Path 1: OMML (native Word math — editable, accessible)
