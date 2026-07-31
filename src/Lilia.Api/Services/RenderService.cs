@@ -1172,6 +1172,20 @@ public partial class RenderService : IRenderService
         for (int i = 0; i < blocksList.Count; i++)
         {
             latex.AppendLine($"% block:{blocksList[i].Id}");
+
+            // Per-block \label so LaTeX records which page the block landed on.
+            // It writes one \newlabel line per label into the .aux on every run,
+            // which AuxPageMap reads back — the page map costs one parse of a
+            // file we already produce, with no PDF inspection and no heuristics.
+            //
+            // Placed BEFORE the content, so the recorded page is where the block
+            // starts. The honest caveat: a block that itself forces a page break
+            // (a pagebreak block, or a chapter heading under a class that opens
+            // one) records the page *preceding* the break, because the label
+            // ships out before the break does. That is why the map is advisory —
+            // good enough to draw markers and spot bad breaks, not a layout
+            // oracle.
+            latex.AppendLine($"\\label{{{AuxPageMap.LabelFor(blocksList[i].Id)}}}");
             latex.AppendLine(renderedBlocks[i]);
         }
 
