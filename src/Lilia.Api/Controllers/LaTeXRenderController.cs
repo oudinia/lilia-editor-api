@@ -90,6 +90,43 @@ public class LaTeXRenderController : ControllerBase
     }
 
     /// <summary>
+    /// Which page each block landed on.
+    ///
+    /// <para>Read from the <c>.aux</c> LaTeX already writes, so it costs one
+    /// compile and no PDF inspection. Three things want it: page markers in the
+    /// block editor, bad-break detection (a heading stranded at the foot of a
+    /// page, a figure pages away from its reference), and staleness detection on
+    /// manual <c>@pagebreak</c> blocks — a manual break is positional, so it
+    /// decays silently the moment anything above it changes, and this is what
+    /// makes that visible instead.</para>
+    ///
+    /// <para>Advisory, not a layout oracle. A block that itself forces a page
+    /// break reports the page before it, and a block LaTeX never shipped (an
+    /// empty one, or content inside a discarded float) has no entry at all. An
+    /// absent block is "unknown", never "page 0".</para>
+    /// </summary>
+    [HttpGet("{documentId:guid}/page-map")]
+    public async Task<IActionResult> GetPageMap(Guid documentId)
+    {
+        try
+        {
+            var latex = await _renderService.RenderToLatexAsync(documentId);
+            var (_, pageMap) = await _latexService.RenderToPdfWithPageMapAsync(latex);
+
+            return Ok(new
+            {
+                pages = pageMap.Count == 0 ? 0 : pageMap.Values.Max(),
+                blocks = pageMap.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to build page map for document {DocumentId}", documentId);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Render a full document's LaTeX to PNG preview.
     /// </summary>
     [HttpPost("{documentId:guid}/png")]

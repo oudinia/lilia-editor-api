@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -10,6 +11,15 @@ public interface ILaTeXRenderService
     Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30);
     Task<byte[]> RenderToPdfAsync(string latex, string engine, int timeout = 30);
     Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60);
+
+    /// <summary>
+    /// Compile and return the PDF alongside the block → page map read from the
+    /// .aux. One compile, two outputs — the map is a by-product of a render that
+    /// had to happen anyway.
+    /// </summary>
+    Task<(byte[] Pdf, IReadOnlyDictionary<Guid, int> PageMap)> RenderToPdfWithPageMapAsync(
+        string latex, string engine = "pdflatex", int timeout = 60);
+
     Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30);
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
     Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
@@ -119,7 +129,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _) = await CompileLatexAsync(latex, timeout, engine: ResolveEngine(engine));
+            var (pdf, _, _) = await CompileLatexAsync(latex, timeout, engine: ResolveEngine(engine));
             return pdf;
         }
         finally
@@ -137,8 +147,37 @@ public class LaTeXRenderService : ILaTeXRenderService
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _) = await CompileLatexAsync(latex, timeout, tolerant: true);
+            var (pdf, _, _) = await CompileLatexAsync(latex, timeout, tolerant: true);
             return pdf;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Compile and return both the PDF and the block → page map read from the
+    /// .aux.
+    ///
+    /// <para>One compile, two outputs, on purpose. The map is a by-product of a
+    /// render that had to happen anyway — asking for it separately would mean
+    /// compiling the document twice to learn something the first compile
+    /// already wrote down.</para>
+    ///
+    /// <para>An empty map is a normal result, not a failure: a document whose
+    /// blocks carry no labels (anything rendered before this shipped) simply has
+    /// nothing to report.</para>
+    /// </summary>
+    public async Task<(byte[] Pdf, IReadOnlyDictionary<Guid, int> PageMap)> RenderToPdfWithPageMapAsync(
+        string latex, string engine = "pdflatex", int timeout = 60)
+    {
+        await _semaphore.WaitAsync();
+        try
+        {
+            var (pdf, _, aux) = await CompileLatexAsync(
+                latex, timeout, tolerant: true, engine: ResolveEngine(engine));
+            return (pdf, AuxPageMap.Parse(aux));
         }
         finally
         {
@@ -151,7 +190,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _) = await CompileLatexAsync(latex, timeout);
+            var (pdf, _, _) = await CompileLatexAsync(latex, timeout);
             return await PdfToPngAsync(pdf, dpi);
         }
         finally
@@ -530,7 +569,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
-    private async Task<(byte[] Pdf, string Log)> CompileLatexAsync(string latex, int timeout, bool tolerant = false, string engine = "pdflatex")
+    private async Task<(byte[] Pdf, string Log, string Aux)> CompileLatexAsync(string latex, int timeout, bool tolerant = false, string engine = "pdflatex")
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -589,7 +628,15 @@ public class LaTeXRenderService : ILaTeXRenderService
             var pdf = await File.ReadAllBytesAsync(pdfPath);
             var log = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
 
-            return (pdf, log);
+            // Read the .aux before the finally block deletes the directory. It
+            // carries one \newlabel per block label, which is where the page map
+            // comes from — see AuxPageMap. Accurate only because the loop above
+            // runs the engine twice: pass one writes the labels, pass two settles
+            // the page numbers.
+            var auxPath = Path.Combine(tmpDir, "document.aux");
+            var aux = File.Exists(auxPath) ? await File.ReadAllTextAsync(auxPath) : "";
+
+            return (pdf, log, aux);
         }
         finally
         {
