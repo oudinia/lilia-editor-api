@@ -1186,7 +1186,15 @@ public partial class RenderService : IRenderService
             // good enough to draw markers and spot bad breaks, not a layout
             // oracle.
             latex.AppendLine($"\\label{{{AuxPageMap.LabelFor(blocksList[i].Id)}}}");
+
+            // Break intent, expressed as attributes rather than as a positional
+            // @pagebreak block. Applied here — around the whole block — because
+            // that is the unit the intent is about: "keep THIS heading with what
+            // follows", "do not split THIS table".
+            var breaks = BlockBreakAttributes.For(blocksList[i].Content.RootElement);
+            if (breaks.Before.Length > 0) latex.AppendLine(breaks.Before);
             latex.AppendLine(renderedBlocks[i]);
+            if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
         }
 
         // Close multi-column wrapper (paired with the opener above).
@@ -1713,17 +1721,9 @@ public partial class RenderService : IRenderService
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
         var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
         var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
-        var placement = content.TryGetProperty("placement", out var pl) ? pl.GetString() ?? "auto" : "auto";
-
-        // Map placement to LaTeX float specifier
-        var floatSpec = placement switch
-        {
-            "here" => "[H]",
-            "top" => "[t]",
-            "bottom" => "[b]",
-            "page" => "[p]",
-            _ => "[htbp]" // "auto" or unrecognized
-        };
+        // Shared with the table path so the two mappings cannot drift — tables
+        // used to ignore `placement` altogether. See BlockBreakAttributes.
+        var floatSpec = BlockBreakAttributes.FloatSpecifier(content);
 
         // Use a clean filename instead of the full URL for readability
         var displayPath = ExtractCleanImagePath(src);
@@ -1898,7 +1898,11 @@ public partial class RenderService : IRenderService
             var totalRows = (hasHeaders ? 1 : 0) + rowList.Count;
             var coveredCells = new bool[totalRows, colCount];
 
-            sb.AppendLine(@"\begin{table}[htbp]");
+            // Tables hard-coded [htbp] and ignored `placement` entirely, so
+            // setting "here" on a table did nothing and reported nothing —
+            // while the same attribute worked on figures. Shared with the figure
+            // path via BlockBreakAttributes so the two cannot drift again.
+            sb.AppendLine($"\\begin{{table}}{BlockBreakAttributes.FloatSpecifier(content)}");
             sb.AppendLine(@"\centering");
             sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
             if (!string.IsNullOrEmpty(caption))

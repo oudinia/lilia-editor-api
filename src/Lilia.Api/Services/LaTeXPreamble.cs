@@ -65,6 +65,11 @@ public static class LaTeXPreamble
 % Lists
 \usepackage{enumitem}
 
+% Page-break intent (P2.2). needspace provides \Needspace, used by the
+% keepWithNext block attribute to reserve room after a heading so LaTeX breaks
+% BEFORE it rather than stranding it at the foot of a page.
+\usepackage{needspace}
+
 % Code
 \usepackage{listings}
 
@@ -148,6 +153,11 @@ public static class LaTeXPreamble
 
 % Lists
 \usepackage{enumitem}
+
+% Page-break intent (P2.2). needspace provides \Needspace, used by the
+% keepWithNext block attribute to reserve room after a heading so LaTeX breaks
+% BEFORE it rather than stranding it at the foot of a page.
+\usepackage{needspace}
 
 % Code
 \usepackage{listings}
