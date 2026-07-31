@@ -18,6 +18,7 @@ using System.Threading.RateLimiting;
 using Microsoft.Extensions.AI;
 using Serilog;
 using Wolverine;
+using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -69,21 +70,41 @@ builder.Host.UseWolverine(opts =>
     opts.PublishMessage<Lilia.Api.Events.Common.CompilationRecordedEvent>()
         .ToLocalQueue("compilation-telemetry")
         .Sequential();
-});
 
-// NOTE — this is NOT yet the "durable local queues" of P1.3.
-//
-// Durability needs a message store, which means the WolverineFx.Postgresql
-// package plus `opts.PersistMessagesWithPostgresql(...)`; only core WolverineFx
-// is referenced today. Without it, `UseDurableLocalQueues()` has nothing to
-// persist to and a restart still drops in-flight messages.
-//
-// Deliberately left for its own change, because it is not a code-only step: the
-// store auto-provisions its own tables in the application database, which is now
-// a shared Neon instance, and that wants verifying against a real database
-// rather than being bundled into a refactor that can be reviewed by reading.
-// What this change does deliver is the seam — the moment persistence is
-// configured, this queue becomes durable with no handler edits.
+    // Durable local queues (P1.3b). The queue above survives a restart because
+    // its messages are written to Postgres before the handler runs, rather than
+    // living only in memory — which is the whole point: the Job entity has
+    // always DECLARED durability (Status PENDING/PROCESSING, RetryCount,
+    // MaxRetries) that nothing implemented, so a restart stranded work as
+    // PROCESSING forever.
+    //
+    // No broker. Wolverine's durable local queues get restart-survival from the
+    // database alone, which is the valid stopping point the plan names — RabbitMQ
+    // buys cross-process distribution we do not need yet and costs a container
+    // that has to be up for local dev to work at all.
+    //
+    // Its tables live in their own `wolverine` schema rather than `public`:
+    // the application database is shared and now holds real authored content, so
+    // machinery that auto-provisions its own tables should not be interleaved
+    // with the domain ones. It also keeps `dotnet ef migrations` output honest —
+    // EF does not own these tables and should not see them.
+    var messageStore = builder.Configuration.GetConnectionString("LiliaCore");
+    if (!string.IsNullOrWhiteSpace(messageStore))
+    {
+        opts.PersistMessagesWithPostgresql(messageStore, schemaName: "wolverine");
+        opts.Policies.UseDurableLocalQueues();
+    }
+    else
+    {
+        // No connection string is a legitimate state — design-time tooling
+        // (`dotnet ef`) builds the host without one. Fall back to in-memory
+        // rather than failing to start, but say so, because silently losing
+        // durability is exactly the class of failure this plan exists to remove.
+        Console.WriteLine(
+            "[BOOT] No LiliaCore connection string — Wolverine queues are IN-MEMORY. "
+            + "In-flight messages will not survive a restart.");
+    }
+});
 
 // Configure Sentry
 var sentryDsn = builder.Configuration["Sentry:Dsn"];
