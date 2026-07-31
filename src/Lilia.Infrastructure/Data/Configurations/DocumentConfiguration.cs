@@ -12,6 +12,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         {
             t.HasCheckConstraint("ck_document_latex_engine",
                 "latex_engine IN ('pdflatex','xelatex','lualatex')");
+            t.HasCheckConstraint("ck_document_pagination_policy",
+                "pagination_policy IS NULL OR pagination_policy IN ('ragged','flush')");
         });
 
         builder.HasKey(d => d.Id);
@@ -61,6 +63,11 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.LineSpacing).HasColumnName("line_spacing");
         builder.Property(d => d.ParagraphIndent).HasColumnName("paragraph_indent");
         builder.Property(d => d.PageNumbering).HasColumnName("page_numbering").HasMaxLength(20);
+
+        // Bottom-fill policy. NULL means "leave the class default alone" and is
+        // the default for every existing row — so the migration cannot change
+        // how any current document paginates.
+        builder.Property(d => d.PaginationPolicy).HasColumnName("pagination_policy").HasMaxLength(20);
 
         // Template fields
         builder.Property(d => d.IsTemplate).HasColumnName("is_template").HasDefaultValue(false);

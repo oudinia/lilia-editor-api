@@ -42,6 +42,29 @@ public static class LaTeXPreambleBuilder
     };
 
     /// <summary>
+    /// Classes the pagination policy is NOT emitted for. beamer frames are not
+    /// pages in the LaTeX sense — they never run short, floats do not migrate
+    /// between them, and \raggedbottom / \flushbottom are meaningless there.
+    /// Presentations are also out of scope (articles, reports, books), so this
+    /// is a guard against breaking documents we no longer target rather than a
+    /// feature gap.
+    /// </summary>
+    private static readonly HashSet<string> NoPaginationPolicyClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "beamer", "beamerposter",
+    };
+
+    /// <summary>
+    /// Classes that load two-sided by default, and therefore start out under
+    /// \flushbottom. Measured per class rather than assumed — see
+    /// <see cref="Document.PaginationPolicy"/> for the probe and its results.
+    /// </summary>
+    private static readonly HashSet<string> TwoSideByDefaultClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "book", "amsbook", "scrbook", "memoir",
+    };
+
+    /// <summary>
     /// When falling back to article, only forward options that article
     /// actually understands; drop class-specific garbage silently.
     /// </summary>
@@ -93,6 +116,48 @@ public static class LaTeXPreambleBuilder
     }
 
     /// <summary>
+    /// The class actually emitted for this document: the stored one when we ship
+    /// its .cls, otherwise the fallback. Shared by the class directive and the
+    /// pagination policy, which have to agree about which class is in play.
+    /// </summary>
+    public static string ResolveClassName(Document doc, string fallbackClass = "article")
+    {
+        var stored = doc.LatexDocumentClass?.Trim();
+        return !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored)
+            ? stored!
+            : fallbackClass;
+    }
+
+    /// <summary>
+    /// Whether this document's class starts out under <c>\flushbottom</c>. Used
+    /// only to pick a safe widow/club penalty when the author has expressed no
+    /// preference — never to force a bottom-fill policy of our own.
+    ///
+    /// Two-side and two-column each switch the standard classes to
+    /// <c>\flushbottom</c> independently, which is why <c>twocolumn</c> is
+    /// checked before <c>oneside</c>: a one-sided two-column article is still
+    /// flush-bottomed.
+    /// </summary>
+    private static bool StartsFlushBottom(Document doc, string className)
+    {
+        var options = (doc.LatexDocumentClassOptions ?? string.Empty)
+            .Split(',')
+            .Select(CleanClassOption)
+            .Where(t => t is not null)
+            .ToArray();
+
+        bool HasOption(string name) =>
+            options.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase));
+
+        // BuildClassDirective adds `twocolumn` for Columns >= 2 unless multicol
+        // owns the flow, so mirror that here rather than reading the option only.
+        if (HasOption("twocolumn") || (doc.Columns >= 2 && !doc.BalancedColumns)) return true;
+        if (HasOption("twoside")) return true;
+        if (HasOption("oneside")) return false;
+        return TwoSideByDefaultClasses.Contains(className);
+    }
+
+    /// <summary>
     /// Result of preamble assembly. Callers stitch it into their full
     /// output: <see cref="ClassDirective"/> at the top, then
     /// <see cref="LayoutPreamble"/> after their package list, and
@@ -132,7 +197,7 @@ public static class LaTeXPreambleBuilder
     {
         var stored = doc.LatexDocumentClass?.Trim();
         var usingStored = !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored);
-        var className = usingStored ? stored! : fallbackClass;
+        var className = ResolveClassName(doc, fallbackClass);
 
         var classOpts = new List<string>();
         var fontSize = fontSizeOverride ?? $"{doc.FontSize}pt";
@@ -214,6 +279,57 @@ public static class LaTeXPreambleBuilder
         {
             sb.AppendLine("% Page margins");
             sb.AppendLine($"\\usepackage[{string.Join(",", marginParts)}]{{geometry}}");
+        }
+
+        // Pagination policy. The standard method's Tier 1: global, set once, and
+        // Lilia owns the preamble — so it costs the author nothing. Tier 2
+        // (\needspace, [H], \clearpage) is targeted and belongs at the end of
+        // writing, which needs page-map feedback to aim.
+        var policyClass = ResolveClassName(doc);
+        if (!NoPaginationPolicyClasses.Contains(policyClass))
+        {
+            sb.AppendLine("% Pagination policy");
+
+            // placeins[section] redefines \section to insert a \FloatBarrier, so
+            // a figure cannot drift past the section it belongs to. Floats are
+            // 290 questions in the corpus against page-breaking's 141 — twice
+            // the pain, one package option.
+            //
+            // PassOptionsToPackage + a plain \usepackage is the same idiom used
+            // for hyperref in LaTeXPreamble.Packages: it avoids an option clash
+            // when an imported preamble already pulled placeins in. Verified to
+            // compile clean on article, report, book, amsart, memoir, scrartcl,
+            // scrbook, scrreprt and IEEEtran (pdflatex, 2026-07-30) — memoir and
+            // the KOMA classes carry their own float machinery, so that was
+            // worth checking rather than assuming.
+            sb.AppendLine("\\PassOptionsToPackage{section}{placeins}");
+            sb.AppendLine("\\usepackage{placeins}");
+
+            // Bottom fill. Emitted ONLY when the author has chosen one: a
+            // document with no preference keeps its class default, so adding
+            // this feature cannot re-typeset anything that already exists.
+            var policy = doc.PaginationPolicy?.Trim().ToLowerInvariant();
+            if (policy == "ragged") sb.AppendLine("\\raggedbottom");
+            else if (policy == "flush") sb.AppendLine("\\flushbottom");
+
+            // Widows and orphans. Only two values are meaningful: finite
+            // (discourage) or 10000 (forbid outright). Forbidding is safe only
+            // when the page bottom is allowed to run short — under \flushbottom
+            // LaTeX has to stretch the page instead, which puts back exactly the
+            // gaps \raggedbottom removes. So the penalty follows the bottom
+            // policy rather than being a second setting the author can get
+            // wrong. displaywidowpenalty is included because Lilia documents are
+            // equation-heavy and it governs widows after display math.
+            var raggedInEffect = policy switch
+            {
+                "ragged" => true,
+                "flush" => false,
+                _ => !StartsFlushBottom(doc, policyClass),
+            };
+            var penalty = raggedInEffect ? 10000 : 300;
+            sb.AppendLine($"\\widowpenalty={penalty}");
+            sb.AppendLine($"\\clubpenalty={penalty}");
+            sb.AppendLine($"\\displaywidowpenalty={penalty}");
         }
 
         // Line spacing (setspace already in default preamble — emitted

@@ -504,6 +504,14 @@ public class DocumentService : IDocumentService
         if (dto.LineSpacing.HasValue) document.LineSpacing = dto.LineSpacing.Value;
         if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
+        if (!string.IsNullOrWhiteSpace(dto.PaginationPolicy))
+        {
+            // Same shape as LatexEngine below: the DB CHECK would reject a bad
+            // value, but rejecting up-front keeps it a 400 rather than a 500.
+            var policy = dto.PaginationPolicy.Trim().ToLowerInvariant();
+            if (policy is "ragged" or "flush")
+                document.PaginationPolicy = policy;
+        }
         if (dto.AiEnabled.HasValue) document.AiEnabled = dto.AiEnabled.Value;
         if (dto.ExperimentalLatexEdit.HasValue) document.ExperimentalLatexEdit = dto.ExperimentalLatexEdit.Value;
         if (!string.IsNullOrWhiteSpace(dto.LatexEngine))
@@ -984,6 +992,7 @@ public class DocumentService : IDocumentService
                 HeaderText = original.HeaderText,
                 FooterText = original.FooterText,
                 PageNumbering = original.PageNumbering,
+                PaginationPolicy = original.PaginationPolicy,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -1212,7 +1221,8 @@ public class DocumentService : IDocumentService
             ExperimentalLatexEdit: d.ExperimentalLatexEdit,
             DocumentCategory: d.DocumentCategory,
             Version: d.Version,
-            CustomPreamble: d.CustomPreamble
+            CustomPreamble: d.CustomPreamble,
+            PaginationPolicy: d.PaginationPolicy
         );
     }
 
