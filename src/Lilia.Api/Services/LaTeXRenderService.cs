@@ -239,6 +239,51 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
+    /// <summary>
+    /// One line describing content too tall for the page, or null.
+    ///
+    /// LaTeX has TWO ways of saying this and which one appears depends on
+    /// whether the content floats:
+    ///
+    /// <list type="bullet">
+    /// <item><c>Overfull \vbox (525.0pt too high)</c> — un-floated content, e.g.
+    /// a bare <c>tabular</c> in the text flow.</item>
+    /// <item><c>LaTeX Warning: Float too large for page by 1161.16pt</c> — the
+    /// case Lilia actually produces, because table blocks are emitted inside a
+    /// <c>table</c> float.</item>
+    /// </list>
+    ///
+    /// Neither is cosmetic: a <c>tabular</c> cannot break across pages, so past
+    /// the text height the remainder falls off the bottom — and the compile
+    /// still exits 0. Summarised rather than passed through, because a document
+    /// can emit one per page and the largest overflow is the actionable number.
+    /// </summary>
+    private static string? SummarisePageOverflow(string[] allWarnings)
+    {
+        var tooTall = allWarnings
+            .Where(w => w.Contains("Overfull \\vbox") || w.Contains("Float too large for page"))
+            .ToArray();
+        if (tooTall.Length == 0) return null;
+
+        // "(525.0pt too high)" for vbox, "by 1161.16606pt" for floats.
+        var worst = tooTall
+            .Select(w => System.Text.RegularExpressions.Regex.Match(
+                w, @"(?:\(|by )([\d.]+)pt"))
+            .Where(m => m.Success)
+            .Select(m => double.TryParse(m.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var pt) ? pt : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var where = tooTall.Length == 1 ? "in one place" : $"in {tooTall.Length} places";
+        var byHowMuch = worst > 0 ? $", by up to {worst:0}pt" : "";
+
+        return $"Content is too tall for the page {where}{byHowMuch}. Anything past the bottom "
+             + "margin is cut off in the PDF — a table this tall has to be able to break "
+             + "across pages.";
+    }
+
     public async Task<LatexValidationResult> ValidateAsync(string latex) =>
         await ValidateAsync(latex, "pdflatex");
 
@@ -336,7 +381,12 @@ public class LaTeXRenderService : ILaTeXRenderService
                     var actionableWarnings = allWarnings
                         .Where(w => !w.Contains("Overfull \\hbox"))
                         .Where(w => !w.Contains("Underfull \\hbox"))
-                        .Where(w => !w.Contains("Overfull \\vbox"))
+                        // The \hbox variants above are genuinely cosmetic — a
+                        // line a few points too wide. The \vbox ones are not
+                        // symmetrical with them: "Overfull \vbox" means content
+                        // is too TALL for the page, i.e. material running off
+                        // the bottom, and it had been discarded here because the
+                        // name looks like its cosmetic siblings.
                         .Where(w => !w.Contains("Underfull \\vbox"))
                         .Where(w => !w.Contains("Font shape"))
                         .Where(w => !w.Contains("Size substitutions"))
@@ -351,8 +401,48 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Where(w => !w.Contains("Rerun to get"))
                         .Where(w => !w.Contains("Rerun LaTeX"))
                         .Where(w => !w.Contains("Label(s) may have changed"))
+                        // Self-inflicted: UnicodeShimService injects
+                        // \newunicodechar for every mapped codepoint present,
+                        // and the class or another package may already define
+                        // some. The author neither caused it nor can act on it,
+                        // and a document with a few Greek letters emits ten of
+                        // these — enough on its own to exhaust the cap below
+                        // and hide the warnings that matter.
+                        .Where(w => !w.Contains("newunicodechar"))
+                        // The two page-overflow signals are excluded here and
+                        // hoisted ahead of the cap instead — see below. Note
+                        // "\\v": in C# a single backslash-v is a vertical tab,
+                        // which compiles happily and matches nothing.
+                        .Where(w => !w.Contains("Overfull \\vbox"))
+                        .Where(w => !w.Contains("Float too large for page"))
                         .Take(10)
                         .ToArray();
+
+                    // Two warnings that mean content is MISSING from the PDF are
+                    // hoisted ahead of the capped list above. Both would
+                    // otherwise be crowded out by ordinary noise — which is
+                    // exactly what was happening — and both describe text the
+                    // reader will not see, so they outrank anything cosmetic.
+
+                    // Content ran off the bottom of a page. "Overfull \vbox" is
+                    // how a tabular too tall to fit reports itself; it had been
+                    // filtered alongside the \hbox variants, which really are
+                    // cosmetic.
+                    var overflow = SummarisePageOverflow(allWarnings);
+
+                    // Silently dropped glyphs. These never reach the filter
+                    // above at all: a "Missing character:" line contains none of
+                    // the words "Warning", "Underfull" or "Overfull". Scanned
+                    // from the WHOLE log, and reported as DISTINCT code points —
+                    // TeX emits one line per occurrence, so a paragraph of CJK
+                    // produces hundreds.
+                    var glyphs = LaTeXGlyphScanner.Describe(LaTeXGlyphScanner.Scan(logContent));
+
+                    actionableWarnings =
+                    [
+                        .. new[] { glyphs, overflow }.Where(w => w is not null).Select(w => w!),
+                        .. actionableWarnings,
+                    ];
 
                     result = new LatexValidationResult(true, null, actionableWarnings, null, durationMs, resolvedEngine, logContent);
                 }

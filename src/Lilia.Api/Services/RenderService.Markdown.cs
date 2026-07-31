@@ -64,6 +64,7 @@ public partial class RenderService
             var content = block.Content.RootElement;
             return block.Type.ToLowerInvariant() switch
             {
+                "title" => RenderTitleToMarkdown(content),
                 "heading" or "header" => RenderHeadingToMarkdown(content, ReadLabel(content)),
                 "paragraph" => RenderParagraphToMarkdown(content),
                 "equation" => RenderEquationToMarkdown(content, ReadLabel(content)),
@@ -90,6 +91,29 @@ public partial class RenderService
             _logger.LogWarning(ex, "Failed to render block {BlockId} to Markdown", block.Id);
             return $"<!-- Error rendering block {block.Id} -->";
         }
+    }
+
+    /// <summary>
+    /// The document title block — title, author, date. Was missing from the
+    /// dispatch, so it fell to the default and exported as an HTML comment,
+    /// losing all three. Emitted as an H1 plus an emphasised byline, which is
+    /// how the same information reads in ordinary markdown.
+    /// </summary>
+    private static string RenderTitleToMarkdown(JsonElement content)
+    {
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var author = content.TryGetProperty("author", out var a) ? a.GetString() ?? "" : "";
+        var date = content.TryGetProperty("date", out var d) ? d.GetString() ?? "" : "";
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(title)) parts.Add($"# {ProcessMarkdownInline(title)}");
+
+        var byline = string.Join(" · ", new[] { author, date }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(ProcessMarkdownInline));
+        if (byline.Length > 0) parts.Add($"*{byline}*");
+
+        return string.Join("\n\n", parts);
     }
 
     private static string RenderHeadingToMarkdown(JsonElement content, string? label)
