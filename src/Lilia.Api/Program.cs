@@ -56,7 +56,34 @@ builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, relo
 builder.Host.UseWolverine(opts =>
 {
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
+
+    // Compilation telemetry runs on its own buffered local queue so a slow or
+    // failing write can never back up onto a request thread. It replaces a
+    // `_ = Task.Run(...)` in LaTeXRenderController that opened a hand-rolled DI
+    // scope to dodge a DbContext race with the request's own SaveChangesAsync;
+    // Wolverine gives each message its own scope, so the race cannot recur.
+    //
+    // Telemetry is worth dropping, never worth retrying forever: a compile
+    // outcome that fails to record is a lost row, while a poisoned message
+    // retried indefinitely would be a lost queue.
+    opts.PublishMessage<Lilia.Api.Events.Common.CompilationRecordedEvent>()
+        .ToLocalQueue("compilation-telemetry")
+        .Sequential();
 });
+
+// NOTE — this is NOT yet the "durable local queues" of P1.3.
+//
+// Durability needs a message store, which means the WolverineFx.Postgresql
+// package plus `opts.PersistMessagesWithPostgresql(...)`; only core WolverineFx
+// is referenced today. Without it, `UseDurableLocalQueues()` has nothing to
+// persist to and a restart still drops in-flight messages.
+//
+// Deliberately left for its own change, because it is not a code-only step: the
+// store auto-provisions its own tables in the application database, which is now
+// a shared Neon instance, and that wants verifying against a real database
+// rather than being bundled into a refactor that can be reviewed by reading.
+// What this change does deliver is the seam — the moment persistence is
+// configured, this queue becomes durable with no handler edits.
 
 // Configure Sentry
 var sentryDsn = builder.Configuration["Sentry:Dsn"];

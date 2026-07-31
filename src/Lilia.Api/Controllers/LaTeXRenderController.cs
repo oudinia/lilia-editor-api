@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -19,9 +20,9 @@ public class LaTeXRenderController : ControllerBase
     private readonly IAuditService _audit;
     private readonly IValidationCacheService _validationCache;
     private readonly ILogger<LaTeXRenderController> _logger;
-    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUnicodeShimService _unicodeShim;
     private readonly Lilia.Import.Services.IImportTelemetrySink _telemetry;
+    private readonly Wolverine.IMessageBus _bus;
 
     public LaTeXRenderController(
         ILaTeXRenderService latexService,
@@ -31,9 +32,9 @@ public class LaTeXRenderController : ControllerBase
         IAuditService audit,
         IValidationCacheService validationCache,
         ILogger<LaTeXRenderController> logger,
-        IServiceScopeFactory scopeFactory,
         IUnicodeShimService unicodeShim,
-        Lilia.Import.Services.IImportTelemetrySink telemetry)
+        Lilia.Import.Services.IImportTelemetrySink telemetry,
+        Wolverine.IMessageBus bus)
     {
         _latexService = latexService;
         _renderService = renderService;
@@ -42,9 +43,9 @@ public class LaTeXRenderController : ControllerBase
         _audit = audit;
         _validationCache = validationCache;
         _logger = logger;
-        _scopeFactory = scopeFactory;
         _unicodeShim = unicodeShim;
         _telemetry = telemetry;
+        _bus = bus;
     }
 
     /// <summary>
@@ -219,7 +220,7 @@ public class LaTeXRenderController : ControllerBase
             });
         }
 
-        PersistCompilationEvent(result, "validate");
+        await PersistCompilationEvent(result, "validate");
         return Ok(new { valid, error, warnings });
     }
 
@@ -361,7 +362,7 @@ public class LaTeXRenderController : ControllerBase
             });
         }
 
-        PersistCompilationEvent(result, "validate_block",
+        await PersistCompilationEvent(result, "validate_block",
             documentId: block.DocumentId, blockId: blockId, blockType: block.Type);
 
         // Persist the freshly-computed result + invalidate older hashes for
@@ -553,7 +554,7 @@ public class LaTeXRenderController : ControllerBase
                 });
             }
 
-            PersistCompilationEvent(result, "validate_document", documentId: documentId);
+            await PersistCompilationEvent(result, "validate_document", documentId: documentId);
 
             // Persist validation summary to document so it appears in the list view badge
             if (doc != null)
@@ -720,55 +721,49 @@ public class LaTeXRenderController : ControllerBase
     /// Persists a LaTeXCompilationEvent row for telemetry / error frequency analysis.
     /// Fire-and-forget — never throws.
     /// </summary>
-    private void PersistCompilationEvent(
+    /// <summary>
+    /// Hands the compile outcome to <see cref="PersistCompilationEventHandler"/>
+    /// via Wolverine instead of writing it here.
+    ///
+    /// <para>What this used to be: <c>_ = Task.Run(async () => …)</c> opening a
+    /// hand-rolled DI scope, because the request-scoped DbContext raced with the
+    /// request's own SaveChangesAsync — "A second operation was started on this
+    /// context instance". The scope isolation is now a property of message
+    /// dispatch rather than something each call site has to remember, so that
+    /// race cannot come back.</para>
+    ///
+    /// <para>The user id is still read here, before publishing, for the same
+    /// reason it was read before Task.Run: <c>HttpContext</c> is not safe to
+    /// touch once the request has ended.</para>
+    ///
+    /// <para>Not awaited on the request's critical path by design — the author
+    /// has their compile result already, and telemetry must not add latency to
+    /// it. Wolverine's local queue is buffered, so <c>PublishAsync</c> returns
+    /// as soon as the message is queued.</para>
+    /// </summary>
+    private Task PersistCompilationEvent(
         LatexValidationResult result,
         string eventType,
         Guid? documentId = null,
         Guid? blockId = null,
         string? blockType = null)
     {
-        // Capture values from request context before Task.Run — HttpContext
-        // is NOT safe to access from a background thread after the request ends.
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                   ?? User.FindFirst("sub")?.Value;
 
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                // Open a dedicated scope so we get a fresh DbContext that is
-                // not shared with the request scope. Using the request-scoped
-                // context here caused "A second operation was started on this
-                // context instance before a previous operation completed" because
-                // the fire-and-forget SaveChangesAsync raced with the main
-                // request's SaveChangesAsync in ValidateDocument.
-                using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
-
-                var evt = new LaTeXCompilationEvent
-                {
-                    DocumentId = documentId,
-                    BlockId = blockId,
-                    BlockType = blockType,
-                    EventType = eventType,
-                    Success = result.Valid,
-                    ErrorRaw = result.ParsedError?.ErrorRaw,
-                    ErrorCategory = result.ParsedError?.Category,
-                    ErrorToken = result.ParsedError?.Token,
-                    ErrorLine = result.ParsedError?.LineNumber,
-                    WarningCount = result.Warnings.Length,
-                    DurationMs = result.DurationMs,
-                    UserId = userId,
-                };
-
-                db.LaTeXCompilationEvents.Add(evt);
-                await db.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to persist LaTeXCompilationEvent (non-critical)");
-            }
-        });
+        return _bus.PublishAsync(new CompilationRecordedEvent(
+            EventType: eventType,
+            Success: result.Valid,
+            WarningCount: result.Warnings.Length,
+            DurationMs: result.DurationMs,
+            DocumentId: documentId,
+            BlockId: blockId,
+            BlockType: blockType,
+            ErrorRaw: result.ParsedError?.ErrorRaw,
+            ErrorCategory: result.ParsedError?.Category,
+            ErrorToken: result.ParsedError?.Token,
+            ErrorLine: result.ParsedError?.LineNumber,
+            UserId: userId)).AsTask();
     }
 }
 
