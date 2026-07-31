@@ -176,7 +176,7 @@ public class TypstRenderService : ITypstRenderService
                 "footnote" => RenderFootnoteToTypst(content),
                 "slide" => RenderSlideToTypst(content),
                 "title" => "", // preamble metadata — handled in RenderToTypstAsync
-                _ => $"// Unknown block type: {block.Type}"
+                _ => UnknownBlockType(block),
             };
         }
         catch (Exception ex)
@@ -184,6 +184,27 @@ public class TypstRenderService : ITypstRenderService
             _logger.LogWarning(ex, "Failed to render block {BlockId} to Typst", block.Id);
             return $"// Error rendering block: {block.Id}";
         }
+    }
+
+    /// <summary>
+    /// A block type this renderer has no arm for. The Typst comment it returns
+    /// is invisible in the PDF, so without the log line this drops the block's
+    /// content with nothing recorded anywhere — and Typst is the DEFAULT PDF
+    /// engine (pdfEngine = "auto"), so it is the path most documents take.
+    ///
+    /// Known live instance: <c>columnLayout</c>. LaTeX, HTML, Markdown and LML
+    /// all emit it; this renderer does not, so a multi-column block exported on
+    /// default settings simply does not have columns. See
+    /// <c>EmitterCoverageMatrixTests.KnownGaps</c>, which is what surfaced it.
+    /// </summary>
+    private string UnknownBlockType(Block block)
+    {
+        _logger.LogWarning(
+            "No Typst arm for block type {BlockType} (block {BlockId}) — its content "
+            + "is omitted from the Typst output. LaTeX/HTML/Markdown/LML may still "
+            + "render it, so this is a Typst coverage gap rather than a bad block.",
+            block.Type, block.Id);
+        return $"// Unknown block type: {block.Type}";
     }
 
     public async Task<byte[]> CompileTypstToPdfAsync(string typstSource, int timeoutSeconds = 10)
