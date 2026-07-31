@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 
-namespace Lilia.Api.Tests.Services;
+namespace Lilia.Api.Tests.Integration.Services;
 
 /// <summary>
 /// Round-trip + volume coverage for
