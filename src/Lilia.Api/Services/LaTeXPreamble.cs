@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 namespace Lilia.Api.Services;
 
 /// <summary>
@@ -25,8 +26,94 @@ namespace Lilia.Api.Services;
 /// <para>The measured basis is <c>latex_facts.command_support</c>; the write-up
 /// is <c>lilia-docs/plan/command-support-dataset.md</c>.</para>
 /// </summary>
-public static class LaTeXPreamble
+public static partial class LaTeXPreamble
 {
+    /// <summary>
+    /// Every package name the preamble actually loads, read out of the preamble
+    /// itself.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Derived rather than maintained.</b> Adding a package used to
+    /// mean editing three places by hand — <see cref="Packages"/>,
+    /// <see cref="ValidationPackages"/>, and the skip-list in
+    /// <c>LaTeXExportService</c> that stops an imported document loading the
+    /// same package twice. Nothing enforced agreement between them, and the two
+    /// ways of getting it wrong both hide:</para>
+    ///
+    /// <list type="bullet">
+    /// <item>miss validation, and a block validates differently from how it
+    /// exports — worst when it validates as broken and exports fine, which
+    /// tells an author their document is wrong when it is not;</item>
+    /// <item>miss the skip-list, and any document importing that package aborts
+    /// with "Option clash for package" — a failure that only appears on
+    /// documents which happen to import it, so it survives local testing
+    /// entirely.</item>
+    /// </list>
+    ///
+    /// <para>Reading the list out of the preamble makes the first impossible and
+    /// removes the hand-maintained half of the second.</para>
+    ///
+    /// <para><b>What this deliberately does not cover.</b> The skip-list also
+    /// contains packages we do <i>not</i> load and must still refuse — typeface
+    /// swappers that redefine commands amsmath owns, engine-only font loaders,
+    /// and packages we shim. Those cannot be derived from a preamble that never
+    /// mentions them, so they stay written down where the reason can be
+    /// written down with them.</para>
+    /// </remarks>
+    public static IReadOnlySet<string> LoadedPackageNames => LazyLoadedPackages.Value;
+
+    private static readonly Lazy<IReadOnlySet<string>> LazyLoadedPackages = new(() =>
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Both variants, because a package loaded for validation but not export
+        // (or the reverse) is exactly the drift this is meant to prevent.
+        foreach (var source in new[] { Packages, ValidationPackages })
+        {
+            CollectPackageNames(source, names);
+        }
+
+        // fontspec arrives only for the Unicode engines, so it is not in either
+        // constant above — but an imported \usepackage{fontspec} must still be
+        // skipped when we are the ones loading it.
+        foreach (var engine in new[] { LatexEngine.Xelatex, LatexEngine.Lualatex })
+        {
+            CollectPackageNames(EngineAddendum(engine), names);
+        }
+
+        return names;
+    });
+
+    private static void CollectPackageNames(string preamble, HashSet<string> into)
+    {
+        foreach (var line in preamble.Split('\n'))
+        {
+            // A commented-out \usepackage is not loaded, and treating it as
+            // loaded would silently drop it from an imported document.
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith('%')) continue;
+
+            foreach (Match match in UsePackageLine().Matches(trimmed))
+            {
+                // One \usepackage can name several: amsmath,amssymb,amsfonts.
+                foreach (var name in match.Groups["names"].Value.Split(','))
+                {
+                    var cleaned = name.Trim();
+                    if (cleaned.Length > 0) into.Add(cleaned);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// <c>\usepackage</c> with optional bracketed options. The options group is
+    /// non-greedy and excludes <c>]</c>, so
+    /// <c>\usepackage[dvipsnames,svgnames,table]{xcolor}</c> yields
+    /// <c>xcolor</c> rather than swallowing the options as a name.
+    /// </summary>
+    [GeneratedRegex(@"\\usepackage\s*(?:\[[^\]]*\])?\s*\{(?<names>[^}]*)\}")]
+    private static partial Regex UsePackageLine();
+
     /// <summary>
     /// Engine-specific preamble addendum. Pdflatex gets nothing
     /// (Packages already loads inputenc/fontenc/lmodern). Lualatex
