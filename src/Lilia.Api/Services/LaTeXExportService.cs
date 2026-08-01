@@ -427,18 +427,39 @@ public class LaTeXExportService : ILaTeXExportService
     internal static bool IsDefaultPreamblePackageForTest(string package) =>
         DefaultPreamblePackages.Contains(package);
 
-    private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
+    // Lazy, not a plain field initialiser. Static fields initialise in
+    // declaration order, so building this eagerly read RefusedForOtherReasons
+    // below while it was still null. Deferring it removes the ordering
+    // dependency entirely rather than relying on nobody moving a declaration.
+    private static readonly Lazy<HashSet<string>> LazyDefaultPreamblePackages =
+        new(BuildDefaultPreamblePackages);
+
+    private static HashSet<string> DefaultPreamblePackages => LazyDefaultPreamblePackages.Value;
+
+    /// <summary>
+    /// The packages an imported document must not be allowed to load again.
+    /// </summary>
+    /// <remarks>
+    /// Two different reasons, only one of which can be derived. What we already
+    /// load is read straight out of the preamble, so adding a package there is
+    /// now a single edit and this set cannot fall behind it. What we refuse for
+    /// other reasons has to stay written down, because a preamble that never
+    /// mentions those packages cannot tell you about them.
+    /// </remarks>
+    private static HashSet<string> BuildDefaultPreamblePackages()
     {
-        // Loaded by our default preamble
-        "inputenc", "fontenc", "textcomp", "lmodern",
-        "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx", "bm",
-        "microtype", "setspace", "parskip",
-        "graphicx", "float", "caption", "subcaption", "xcolor",
-        "booktabs", "multirow", "tabularx", "longtable", "array",
-        "enumitem", "listings",
-        "algorithm", "algorithmic",
-        "tcolorbox", "hyperref", "cleveref", "csquotes",
-        "geometry", "babel",
+        var packages = new HashSet<string>(LaTeXPreamble.LoadedPackageNames, StringComparer.OrdinalIgnoreCase);
+        packages.UnionWith(RefusedForOtherReasons);
+        return packages;
+    }
+
+    private static readonly string[] RefusedForOtherReasons =
+    [
+        // Emitted conditionally by LaTeXPreambleBuilder when the document sets
+        // margins, so it appears in no preamble constant and cannot be derived.
+        // A document that sets margins AND imports geometry would otherwise get
+        // it twice and abort on an option clash.
+        "geometry",
         // Typeface / math-font / symbol packages that redefine commands
         // owned by amsmath (\iint, \iiint, etc.). Letting any of these load
         // alongside our defaults triggers "already defined" aborts.
@@ -453,7 +474,7 @@ public class LaTeXExportService : ILaTeXExportService
         // which isn't on the default texlive install. We skip the package and
         // provide no-op shims for its macros in LaTeXPreamble.NewspaperShims.
         "newspaper", "yfonts"
-    };
+    ];
 
     /// <summary>
     /// Build the `\documentclass[...]{...}` directive. Thin wrapper over
