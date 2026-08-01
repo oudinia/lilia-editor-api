@@ -140,10 +140,22 @@ public class OverleafImportTests : IntegrationTestBase
         sessionId.Should().NotBe(Guid.Empty);
         jobId.Should().NotBe(Guid.Empty);
 
-        // The controller persists the zip for finalize-time staging.
-        var zipPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-            "uploads", "imports", $"{jobId}.zip");
-        File.Exists(zipPath).Should().BeTrue("controller saves the zip next to the job");
+        // The controller persists the zip for finalize-time staging — now via
+        // IStorageService, so it lands in R2 in the cloud and on disk locally.
+        //
+        // Asserted through the same abstraction that finalize reads it back
+        // with, rather than against a path. Pinning the path is what made this
+        // test fail on a change that was correct: the zip really was stored,
+        // just not under AppDomain.CurrentDomain.BaseDirectory. Nothing in the
+        // system opens that location by hand any more, so nothing should
+        // require it to be that location.
+        var storageKey = $"imports/{jobId}.zip";
+        var storage = Fixture.Factory.Services.GetRequiredService<Lilia.Core.Interfaces.IStorageService>();
+
+        await using (var stored = await storage.DownloadAsync(storageKey))
+        {
+            stored.Length.Should().BeGreaterThan(0, "the controller stores the zip for finalize to re-read");
+        }
 
         // Session row exists with the flattened source.
         await using var db = Fixture.Factory.Services.CreateScope()
@@ -154,7 +166,7 @@ public class OverleafImportTests : IntegrationTestBase
         session.RawImportData.Should().NotContain("PK\x03\x04");
 
         // Cleanup
-        try { File.Delete(zipPath); } catch { /* best-effort */ }
+        try { await storage.DeleteAsync(storageKey); } catch { /* best-effort */ }
     }
 
     [Fact]

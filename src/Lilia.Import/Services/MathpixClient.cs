@@ -21,7 +21,14 @@ public class MathpixClient : IMathpixClient
         _logger = logger;
 
         _httpClient.BaseAddress = new Uri(_options.BaseUrl);
-        _httpClient.DefaultRequestHeaders.Add("app_id", _options.AppId);
+
+        // app_key alone is a complete credential. app_id is the older paired
+        // form; keys issued from the Mathpix console today come on their own,
+        // and sending an empty app_id header alongside a valid key is worse
+        // than sending none — it is a header Mathpix may reject outright.
+        if (!string.IsNullOrWhiteSpace(_options.AppId))
+            _httpClient.DefaultRequestHeaders.Add("app_id", _options.AppId);
+
         _httpClient.DefaultRequestHeaders.Add("app_key", _options.AppKey);
     }
 
@@ -157,22 +164,40 @@ public class MathpixClient : IMathpixClient
 
     public async Task<bool> IsAvailableAsync(CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.AppId) || string.IsNullOrWhiteSpace(_options.AppKey))
+        // Only the key is required. Demanding app_id as well rejected a
+        // perfectly valid credential before a single request was made.
+        if (string.IsNullOrWhiteSpace(_options.AppKey))
         {
             _logger.LogCritical(
-                "[Mathpix] PDF parser is set to 'mathpix' but MATHPIX__APPID or MATHPIX__APPKEY are not configured. " +
-                "Set these as environment variables in the deployment.");
+                "[Mathpix] PDF parser is set to 'mathpix' but MATHPIX__APPKEY is not configured. " +
+                "Set it as an environment variable in the deployment.");
             return false;
         }
 
         try
         {
-            var response = await _httpClient.GetAsync("/v3/pdf", ct);
+            // /v3/pdf-results, not /v3/pdf. The latter accepts POST only, so a
+            // GET returned 404 whatever the credentials were — including none
+            // at all. This check therefore reported "available" for a key that
+            // Mathpix would reject on the very next call, which is the failure
+            // it exists to catch. /v3/pdf-results answers 200 for a good key
+            // and 401 for a bad one, so the two are now distinguishable.
+            var response = await _httpClient.GetAsync("/v3/pdf-results", ct);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 _logger.LogCritical(
                     "[Mathpix] Credentials rejected by Mathpix API (401). " +
-                    "Verify MATHPIX__APPID and MATHPIX__APPKEY are correct.");
+                    "Verify MATHPIX__APPKEY is correct.");
+                return false;
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                // Not proof the credentials are bad, but not proof they are
+                // good either. Say so rather than nodding it through.
+                _logger.LogWarning(
+                    "[Mathpix] Availability check returned {Status}; treating Mathpix as unavailable " +
+                    "rather than assuming the credentials are valid.",
+                    (int)response.StatusCode);
                 return false;
             }
             return true;

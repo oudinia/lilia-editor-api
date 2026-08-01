@@ -948,14 +948,15 @@ using (var scope = app.Services.CreateScope())
     var cfgPdfProvider = app.Configuration["PdfParser:Provider"] ?? "mineru";
     if (cfgPdfProvider == "mathpix")
     {
-        var appId  = app.Configuration["Mathpix:AppId"];
+        // app_key is the whole credential; app_id is the legacy paired form and
+        // stays optional so a console-issued key works on its own.
         var appKey = app.Configuration["Mathpix:AppKey"];
-        if (string.IsNullOrWhiteSpace(appId) || string.IsNullOrWhiteSpace(appKey))
+        if (string.IsNullOrWhiteSpace(appKey))
         {
             startupLogger.LogCritical(
-                "CONFIGURATION ERROR: PdfParser:Provider is 'mathpix' but Mathpix:AppId or Mathpix:AppKey " +
-                "are not set. PDF import will fail at runtime. " +
-                "Set MATHPIX__APPID and MATHPIX__APPKEY environment variables.");
+                "CONFIGURATION ERROR: PdfParser:Provider is 'mathpix' but Mathpix:AppKey " +
+                "is not set. PDF import will fail at runtime. " +
+                "Set the MATHPIX__APPKEY environment variable.");
         }
         else
         {
