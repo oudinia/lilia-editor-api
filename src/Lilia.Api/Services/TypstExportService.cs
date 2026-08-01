@@ -86,10 +86,13 @@ public class TypstExportService : ITypstExportService
             sb.AppendLine($"#set document(title: {QuoteTypst(titleText)})");
         }
         sb.AppendLine($"#set page(paper: {QuoteTypst(MapPaper(doc.PaperSize))})");
-        // Font fallback list — Typst tries each in order. "New Computer
-        // Modern" ships bundled with the typst binary so compile never
-        // fails on a missing system font; production servers also have
-        // Linux Libertine installed via the Dockerfile.
+        // Font fallback list — Typst tries each in order, and the list always
+        // ends at a family bundled with the typst binary so it resolves without
+        // consulting the host.
+        //
+        // The previous comment here claimed production had "Linux Libertine
+        // installed via the Dockerfile". It does not: the Dockerfile installs
+        // fonts-liberation, an unrelated family. See MapFontList.
         sb.AppendLine($"#set text(font: ({MapFontList(doc.FontFamily)}), size: 11pt)");
         sb.AppendLine($"#set par(justify: true)");
         sb.AppendLine();
@@ -1559,26 +1562,71 @@ public class TypstExportService : ITypstExportService
         return s;
     }
 
+    /// <summary>
+    /// The four families the typst binary carries inside itself. Measured with
+    /// <c>typst fonts --ignore-system-fonts</c> on 0.15.0 — this is the entire
+    /// list, and the only thing guaranteed to resolve in a container.
+    /// </summary>
+    /// <remarks>
+    /// Easy to get wrong on a developer machine, which is what happened here:
+    /// this box reports 202 families to Typst, so a request for a font that
+    /// production does not have still renders locally and looks fine.
+    /// </remarks>
+    private static readonly string[] TypstBundledFonts =
+    [
+        "Libertinus Serif", "New Computer Modern", "New Computer Modern Math", "DejaVu Sans Mono",
+    ];
+
     private static string MapFont(string? family) => family?.ToLowerInvariant() switch
     {
-        "sans" or "sans-serif" => "Linux Libertine",
+        // Was "Linux Libertine" — a serif, returned for a request for sans.
+        "sans" or "sans-serif" => "DejaVu Sans",
         "mono" or "monospace" => "DejaVu Sans Mono",
-        _ => "Linux Libertine",
+        _ => "Libertinus Serif",
     };
 
     /// <summary>
     /// Comma-separated quoted font list for Typst's <c>font: (..., ...)</c>
-    /// syntax. Always ends with "New Computer Modern" — bundled with the
-    /// typst binary so compile never fails on missing system fonts.
+    /// syntax. Always ends with a family the typst binary bundles, so the list
+    /// resolves without consulting the host at all.
     /// </summary>
+    /// <remarks>
+    /// <para>Every entry used to end at "New Computer Modern", which is bundled
+    /// and did resolve — but the entry before it was <c>Linux Libertine</c>,
+    /// which Typst does not bundle and the Dockerfile does not install. It
+    /// installs <c>fonts-liberation</c>: Liberation, a metric clone of Arial and
+    /// Times, an unrelated family whose name differs by three letters. So every
+    /// document was typeset in New Computer Modern while the code believed it
+    /// was Libertine, and the comment credited a Dockerfile line that was never
+    /// there.</para>
+    ///
+    /// <para>Typst reports this as <c>warning: unknown font family</c> and exits
+    /// 0. The PDF is produced, in a font nobody chose, and nothing tells the
+    /// user — the failure shape this whole plan is about.</para>
+    ///
+    /// <para>The successor to Linux Libertine is <b>Libertinus Serif</b>, which
+    /// Typst does bundle, so the intended typeface is now actually what gets
+    /// used. Sans and mono name families the Dockerfile really installs
+    /// (<c>fonts-dejavu-core</c>, <c>fonts-noto-core</c>) before falling back to
+    /// something bundled.</para>
+    /// </remarks>
     private static string MapFontList(string? family)
     {
         var primary = MapFont(family);
-        // "New Computer Modern" is the typst-bundled fallback that always
-        // resolves. For monospace contexts the secondary fallback differs.
-        var fallbacks = family?.ToLowerInvariant() is "mono" or "monospace"
-            ? new[] { "DejaVu Sans Mono", "New Computer Modern Mono", "New Computer Modern" }
-            : new[] { primary, "New Computer Modern" };
+        var kind = family?.ToLowerInvariant();
+
+        // Only families that actually exist somewhere: bundled with typst, or
+        // installed by the Dockerfile. Naming anything else buys a warning and
+        // a silent substitution.
+        string[] fallbacks = kind switch
+        {
+            "mono" or "monospace" =>
+                ["DejaVu Sans Mono", "New Computer Modern"],
+            "sans" or "sans-serif" =>
+                ["DejaVu Sans", "Noto Sans", "Liberation Sans", "Libertinus Serif"],
+            _ =>
+                [primary, "Libertinus Serif", "New Computer Modern"],
+        };
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unique = new List<string>();
@@ -1586,8 +1634,20 @@ public class TypstExportService : ITypstExportService
         {
             if (seen.Add(f)) unique.Add(f);
         }
+
         return string.Join(", ", unique.Select(QuoteTypst));
     }
+
+    /// <summary>
+    /// Whether a font list ends somewhere the typst binary can always reach.
+    /// Exposed for tests: a list that ends at a host font is one bad container
+    /// image away from rendering in whatever Typst picks instead.
+    /// </summary>
+    internal static bool EndsInABundledFont(string fontList) =>
+        TypstBundledFonts.Any(b => fontList.TrimEnd().EndsWith($"\"{b}\"", StringComparison.Ordinal));
+
+    /// <summary>Test seam over the private font-list builder.</summary>
+    internal static string FontListForTest(string? family) => MapFontList(family);
 }
 
 public interface ITypstExportService
