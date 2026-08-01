@@ -56,9 +56,13 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "*Important*" }),
 
         // equation
+        // `m c`, not `mc`. Typst reads `mc` as one identifier and refuses to
+        // compile — this fixture previously asserted the exact string the
+        // compiler rejects, because it checked the shape of the output and
+        // never that Typst would accept it. See TypstImplicitProductTests.
         new Fx("equation: display mode",
             "equation", """{"latex":"E = mc^2","mode":"display"}""",
-            ExpectIn: new[] { "$ E = mc^2 $" }),
+            ExpectIn: new[] { "$ E = m c^2 $" }),
         new Fx("equation: inline mode",
             "equation", """{"latex":"x = 1","mode":"inline"}""",
             ExpectIn: new[] { "$x = 1$" }),
