@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -12,24 +13,21 @@ public class StudioController : ControllerBase
 {
     private readonly IStudioService _studioService;
     private readonly IDocumentService _documentService;
-    private readonly IVersionService _versionService;
     private readonly IPresenceService _presenceService;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly Wolverine.IMessageBus _bus;
     private readonly ILogger<StudioController> _logger;
 
     public StudioController(
         IStudioService studioService,
         IDocumentService documentService,
-        IVersionService versionService,
         IPresenceService presenceService,
-        IServiceScopeFactory scopeFactory,
+        Wolverine.IMessageBus bus,
         ILogger<StudioController> logger)
     {
         _studioService = studioService;
         _documentService = documentService;
-        _versionService = versionService;
         _presenceService = presenceService;
-        _scopeFactory = scopeFactory;
+        _bus = bus;
         _logger = logger;
     }
 
@@ -85,19 +83,13 @@ public class StudioController : ControllerBase
         var result = await _studioService.UpdateBlockContentAsync(docId, blockId, dto);
         if (result == null) return NotFound();
 
-        // Auto-version (throttled — max 1 per 5 min per document). Must run
-        // in its own DI scope — see BlocksController for the why.
+        // Same event as BlocksController — one handler, not two copies of the
+        // same fire-and-forget block. Redelivery is safe: the throttle inside
+        // CreateAutoVersionAsync makes a repeat within five minutes a no-op.
         var userId = GetUserId();
         if (userId != null)
         {
-            var logger = _logger;
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var versionService = scope.ServiceProvider.GetRequiredService<IVersionService>();
-                try { await versionService.CreateAutoVersionAsync(docId, userId); }
-                catch (Exception ex) { logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
-            });
+            await _bus.PublishAsync(new DocumentEditedEvent(docId, userId));
         }
 
         return Ok(result);

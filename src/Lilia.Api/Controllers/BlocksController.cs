@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
@@ -17,20 +18,18 @@ public class BlocksController : ControllerBase
     private readonly IDocumentService _documentService;
     private readonly IBlockTypeService _blockTypeService;
     private readonly IRenderService _renderService;
-    private readonly IVersionService _versionService;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly Wolverine.IMessageBus _bus;
     private readonly ILatexFragmentParser _latexFragmentParser;
     private readonly ISyncTelemetrySink _syncTelemetry;
     private readonly ILogger<BlocksController> _logger;
 
-    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, IVersionService versionService, IServiceScopeFactory scopeFactory, ILatexFragmentParser latexFragmentParser, ISyncTelemetrySink syncTelemetry, ILogger<BlocksController> logger)
+    public BlocksController(IBlockService blockService, IDocumentService documentService, IBlockTypeService blockTypeService, IRenderService renderService, Wolverine.IMessageBus bus, ILatexFragmentParser latexFragmentParser, ISyncTelemetrySink syncTelemetry, ILogger<BlocksController> logger)
     {
         _blockService = blockService;
         _documentService = documentService;
         _blockTypeService = blockTypeService;
         _renderService = renderService;
-        _versionService = versionService;
-        _scopeFactory = scopeFactory;
+        _bus = bus;
         _latexFragmentParser = latexFragmentParser;
         _syncTelemetry = syncTelemetry;
         _logger = logger;
@@ -144,19 +143,16 @@ public class BlocksController : ControllerBase
             });
         }
 
-        // Auto-version (throttled, fire-and-forget). Must run in its OWN DI
-        // scope — the request scope disposes its LiliaDbContext as soon as
-        // this method returns, so capturing _versionService here would hit
-        // 'Npgsql: A command is already in progress' when the background
-        // task runs after the connection was reset.
-        var logger = _logger;
-        _ = Task.Run(async () =>
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var versionService = scope.ServiceProvider.GetRequiredService<IVersionService>();
-            try { await versionService.CreateAutoVersionAsync(docId, userId); }
-            catch (Exception ex) { logger.LogWarning(ex, "Auto-version failed for doc {DocId}", docId); }
-        });
+        // Auto-version, on a queue. This replaces `_ = Task.Run(...)` with a
+        // hand-rolled DI scope, which existed because the request scope disposes
+        // its LiliaDbContext as soon as this method returns — capturing the
+        // service would hit "Npgsql: A command is already in progress". The
+        // handler gets its own scope from the framework, so the reason for the
+        // workaround is gone rather than repeated.
+        //
+        // Safe to redeliver: CreateAutoVersionAsync throttles to one per
+        // document per five minutes, checked rather than assumed.
+        await _bus.PublishAsync(new DocumentEditedEvent(docId, userId));
 
         return Ok(result);
     }
