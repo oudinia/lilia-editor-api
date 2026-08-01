@@ -2394,18 +2394,34 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
             .FirstOrDefaultAsync(ct);
         if (jobId == null || jobId == Guid.Empty) return;
 
-        var zipPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-            "uploads", "imports", $"{jobId}.zip");
-        if (!File.Exists(zipPath)) return;
+        // Read from object storage, matching the key the upload wrote. This
+        // used to read the container filesystem, which is the half of the bug
+        // that actually bit: on a containerised host the writer and the reader
+        // are frequently different containers, and always different ones after
+        // a redeploy — so the zip was simply absent and finalize skipped images
+        // and the .bib without saying anything.
+        var zipKey = $"imports/{jobId}.zip";
+        if (_storageService is null)
+        {
+            _logger.LogWarning(
+                "[ImportReview] No storage service configured — cannot stage assets for job {JobId}", jobId);
+            return;
+        }
 
         byte[] zipBytes;
         try
         {
-            zipBytes = await File.ReadAllBytesAsync(zipPath, ct);
+            await using var stored = await _storageService.DownloadAsync(zipKey);
+            using var buffer = new MemoryStream();
+            await stored.CopyToAsync(buffer, ct);
+            zipBytes = buffer.ToArray();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[ImportReview] Could not read zip at {Path}", zipPath);
+            // Absent is a normal outcome — a .tex upload never had a zip. Logged
+            // rather than thrown, but logged, because "no images were staged" is
+            // otherwise indistinguishable from "the document had none".
+            _logger.LogWarning(ex, "[ImportReview] Could not read preserved zip {Key}", zipKey);
             return;
         }
 

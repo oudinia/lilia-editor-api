@@ -22,6 +22,7 @@ public class JobService : IJobService
     private readonly IImportProgressService _progressService;
     private readonly IImportReviewService _reviewService;
     private readonly Wolverine.IMessageBus _bus;
+    private readonly Lilia.Core.Interfaces.IStorageService _storage;
     private readonly ILogger<JobService> _logger;
 
     public JobService(
@@ -35,6 +36,7 @@ public class JobService : IJobService
         ILmlTextParser lmlTextParser,
         Lilia.Import.Services.ILatexProjectExtractor latexProjectExtractor,
         Wolverine.IMessageBus bus,
+        Lilia.Core.Interfaces.IStorageService storage,
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null)
     {
@@ -48,6 +50,7 @@ public class JobService : IJobService
         _lmlTextParser = lmlTextParser;
         _latexProjectExtractor = latexProjectExtractor;
         _bus = bus;
+        _storage = storage;
         _logger = logger;
         _pdfParser = pdfParser;
     }
@@ -392,10 +395,18 @@ public class JobService : IJobService
                     string? persistentPath = null;
                     try
                     {
-                        var importsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uploads", "imports");
-                        Directory.CreateDirectory(importsDir);
-                        persistentPath = Path.Combine(importsDir, $"{job.Id}.docx");
-                        File.Copy(tempPath, persistentPath, overwrite: true);
+                        // Object storage, not the container filesystem — the
+                        // latter is ephemeral on a containerised host, so
+                        // "persistent storage for re-testing" was anything but.
+                        // SourceFilePath holds the key now; nothing reads it back
+                        // to open a file, so it stays what it always was: an
+                        // opaque locator for the original upload.
+                        persistentPath = $"imports/{job.Id}.docx";
+                        await using (var docx = File.OpenRead(tempPath))
+                        {
+                            await _storage.UploadAsync(persistentPath, docx,
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -507,10 +518,14 @@ public class JobService : IJobService
                     string? persistentPath = null;
                     try
                     {
-                        var importsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uploads", "imports");
-                        Directory.CreateDirectory(importsDir);
-                        persistentPath = Path.Combine(importsDir, $"{job.Id}.pdf");
-                        File.Copy(tempPath, persistentPath, overwrite: true);
+                        // Same as the DOCX path above — a key in object storage,
+                        // not a path on a filesystem that does not survive a
+                        // redeploy.
+                        persistentPath = $"imports/{job.Id}.pdf";
+                        await using (var pdf = File.OpenRead(tempPath))
+                        {
+                            await _storage.UploadAsync(persistentPath, pdf, "application/pdf");
+                        }
                     }
                     catch (Exception ex)
                     {

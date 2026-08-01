@@ -24,6 +24,7 @@ public class ImportsController : ControllerBase
     private readonly LiliaDbContext _context;
     private readonly ILatexProjectExtractor _projectExtractor;
     private readonly Wolverine.IMessageBus _bus;
+    private readonly Lilia.Core.Interfaces.IStorageService _storage;
     private readonly ILogger<ImportsController> _logger;
 
     // Cap the direct upload at 15 MB — raised from 5 MB to fit typical
@@ -35,11 +36,13 @@ public class ImportsController : ControllerBase
         LiliaDbContext context,
         ILatexProjectExtractor projectExtractor,
         Wolverine.IMessageBus bus,
+        Lilia.Core.Interfaces.IStorageService storage,
         ILogger<ImportsController> logger)
     {
         _context = context;
         _projectExtractor = projectExtractor;
         _bus = bus;
+        _storage = storage;
         _logger = logger;
     }
 
@@ -90,7 +93,7 @@ public class ImportsController : ControllerBase
                     fileBytes[2] == 0x03 && fileBytes[3] == 0x04;
 
         string source;
-        string? preservedZipPath = null;
+        string? preservedZipKey = null;
         var initialNotices = new List<string>();
 
         if (isZip)
@@ -103,10 +106,22 @@ public class ImportsController : ControllerBase
 
                 // Persist the zip so the finalize step can re-extract images
                 // and the .bib without a second network round-trip.
-                var importsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uploads", "imports");
-                Directory.CreateDirectory(importsDir);
-                preservedZipPath = Path.Combine(importsDir, $"{jobId}.zip");
-                await System.IO.File.WriteAllBytesAsync(preservedZipPath, fileBytes, ct);
+                //
+                // Object storage, not the container filesystem. This used to
+                // write under AppDomain.CurrentDomain.BaseDirectory, which on a
+                // containerised host is ephemeral: the zip disappears on every
+                // redeploy, and with more than one instance the container that
+                // finalizes is very likely not the one that stored it. Finalize
+                // would then silently skip images and the .bib, with nothing in
+                // the logs explaining why.
+                //
+                // The key is the same shape as the old path, so LocalStorageService
+                // in dev writes it to exactly where it used to live.
+                preservedZipKey = $"imports/{jobId}.zip";
+                using (var zipStream = new MemoryStream(fileBytes))
+                {
+                    await _storage.UploadAsync(preservedZipKey, zipStream, "application/zip");
+                }
 
                 _logger.LogInformation(
                     "[ImportsController] Zip project {Filename} flattened → main {Main}, {ImgCount} images, {BibCount} .bib, {NoticeCount} notices",
