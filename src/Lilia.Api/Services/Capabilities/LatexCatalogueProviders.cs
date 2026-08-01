@@ -164,6 +164,21 @@ public sealed class LatexDocumentClassProvider(LiliaDbContext context) : ICapabi
 /// </remarks>
 public sealed class LatexUnicodeProvider(LiliaDbContext context) : ICapabilityProvider
 {
+    /// <summary>
+    /// First code point plain pdflatex cannot render unaided — the end of
+    /// Latin Extended-A.
+    /// </summary>
+    /// <remarks>
+    /// Established by compiling, not by reasoning about font encodings:
+    /// Latin-1 Supplement and Latin Extended-A both produce a PDF with an empty
+    /// preamble, while Greek (U+0395), Cyrillic (U+041F), Han (U+4E2D) and
+    /// Arabic (U+0627) each fail with "LaTeX Error: Unicode character".
+    /// Latin Extended-B and beyond were not probed, so they fall on the
+    /// pessimistic side of this line, which is the safe direction for a
+    /// boundary nobody has measured.
+    /// </remarks>
+    private const int PdflatexNativeLimit = 0x180;
+
     public string Name => "latex_unicode_map";
     public bool IsAvailable => true;
 
@@ -201,15 +216,26 @@ public sealed class LatexUnicodeProvider(LiliaDbContext context) : ICapabilityPr
                 return new CapabilityVerdict(cp, CatalogueCoverage.FromLevel(row.CoverageLevel), Name, detail);
             }
 
-            // Below U+0080 pdflatex needs no help at all — ASCII is native, and
-            // saying Unknown about it would fill a report with noise that
-            // trains the reader to skim past the real entries.
-            if (cp.Codepoint < 0x80)
-                return new CapabilityVerdict(cp, Support.Full, Name, "ASCII");
+            // Characters pdflatex renders on its own, with no macro and no
+            // package. The boundary is measured, not reasoned about — plain
+            // pdflatex, empty preamble:
+            //
+            //   café señor über   RENDERS      Ελληνικά  FAILS (U+0395)
+            //   łódź Erdős        RENDERS      Привет    FAILS (U+041F)
+            //                                  中文       FAILS (U+4E2D)
+            //                                  العربية    FAILS (U+0627)
+            //
+            // Reporting these as a problem would have been the report's first
+            // and worst mistake: eight of the twelve non-ASCII characters in
+            // the real corpus are accented Latin, so a European document would
+            // have opened with eight false alarms and taught its reader to
+            // skim past the entry that mattered.
+            if (cp.Codepoint < PdflatexNativeLimit)
+                return new CapabilityVerdict(cp, Support.Full, Name, "rendered natively by pdflatex");
 
-            // Anything else has no macro. Under pdflatex, which cannot take the
-            // character directly either, that is terminal rather than merely
-            // missing — no package makes pdflatex render CJK.
+            // Beyond Latin Extended-A there is no macro and pdflatex cannot
+            // take the character directly, which is terminal rather than merely
+            // missing: no package makes pdflatex render CJK.
             return new CapabilityVerdict(
                 cp, Support.Impossible, Name,
                 "no replacement macro, and pdflatex cannot take the character directly",
