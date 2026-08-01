@@ -60,7 +60,7 @@ public class CapabilitiesController(
 
         var document = await context.Documents
             .Where(d => d.Id == docId && d.OwnerId == userId)
-            .Select(d => new { d.Id, d.FontFamily, d.LatexDocumentClass })
+            .Select(d => new { d.Id, d.FontFamily, d.LatexDocumentClass, d.CustomPreamble })
             .FirstOrDefaultAsync(ct);
         if (document is null) return NotFound();
 
@@ -75,7 +75,42 @@ public class CapabilitiesController(
             document.FontFamily,
             document.LatexDocumentClass);
 
-        var report = await resolver.ResolveAsync(requirements, target, ct);
+        // What the document defines for itself, before anything is asked of a
+        // catalogue.
+        //
+        // 26.2% of real documents containing maths define a macro, and no
+        // catalogue can ever hold them: \R means \mathbb{R} in one document,
+        // \mathbbm{R} in another and the number 8 in a third. Asking a
+        // catalogue about \x produces "unknown" at best, and the report would
+        // then flag a command the document defines perfectly well — the kind of
+        // false alarm that teaches people to skim past the entries that matter.
+        var macros = PreambleMacroCollector.Collect(document.CustomPreamble);
+
+        var (defined, toResolve) = requirements
+            .Aggregate((defined: new List<Requirement>(), rest: new List<Requirement>()),
+                (acc, r) =>
+                {
+                    if (r is CommandRequirement command
+                        && PreambleMacroCollector.Defines(macros, command.Normalised))
+                    {
+                        acc.defined.Add(r);
+                    }
+                    else
+                    {
+                        acc.rest.Add(r);
+                    }
+                    return acc;
+                });
+
+        var report = await resolver.ResolveAsync(toResolve, target, ct);
+
+        if (defined.Count > 0)
+        {
+            logger.LogInformation(
+                "[Capabilities] {DocId} defines {MacroCount} macro(s); {ResolvedCount} requirement(s) answered " +
+                "by the document itself rather than by a catalogue",
+                docId, macros.Count, defined.Count);
+        }
 
         logger.LogInformation(
             "[Capabilities] {DocId} against {Target}: {Summary}; {ProblemCount} to report, " +
@@ -88,6 +123,7 @@ public class CapabilitiesController(
             report.IsFullySatisfied,
             RequirementExtractor.Summarise(requirements),
             requirements.Count,
+            macros.Count,
             report.UnavailableProviders,
             [.. report.Problems.Select(p => new CapabilityProblemDto(
                 p.Requirement.Key,
@@ -106,6 +142,11 @@ public class CapabilitiesController(
 /// </param>
 /// <param name="Summary">One line describing what the document needs.</param>
 /// <param name="RequirementCount">How many distinct requirements were checked.</param>
+/// <param name="DocumentMacroCount">
+/// Macros the document defines for itself. Reported because it explains why
+/// commands that appear in no catalogue are nonetheless absent from
+/// <c>Problems</c> — the document answered for them.
+/// </param>
 /// <param name="UnavailableProviders">
 /// Catalogues that could not be reached. Present in the payload rather than
 /// only in a log, because the caller is the only one who can tell a clean
@@ -117,6 +158,7 @@ public sealed record CapabilityReportDto(
     bool FullySatisfied,
     string Summary,
     int RequirementCount,
+    int DocumentMacroCount,
     IReadOnlyList<string> UnavailableProviders,
     IReadOnlyList<CapabilityProblemDto> Problems);
 
