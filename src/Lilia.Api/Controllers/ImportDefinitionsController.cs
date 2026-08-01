@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -23,16 +24,16 @@ namespace Lilia.Api.Controllers;
 public class ImportDefinitionsController : ControllerBase
 {
     private readonly LiliaDbContext _context;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly Wolverine.IMessageBus _bus;
     private readonly ILogger<ImportDefinitionsController> _logger;
 
     public ImportDefinitionsController(
         LiliaDbContext context,
-        IServiceScopeFactory scopeFactory,
+        Wolverine.IMessageBus bus,
         ILogger<ImportDefinitionsController> logger)
     {
         _context = context;
-        _scopeFactory = scopeFactory;
+        _bus = bus;
         _logger = logger;
     }
 
@@ -110,21 +111,13 @@ public class ImportDefinitionsController : ControllerBase
             "[ImportRerun] definition={DefId} supersededCount={N} newSession={SessionId}",
             id, affected, sessionId);
 
-        // Fire-and-forget the parse job for the new instance. Same pattern
-        // as the original upload path.
-        _ = Task.Run(async () =>
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var jobExec = scope.ServiceProvider.GetRequiredService<ILatexImportJobExecutor>();
-            try
-            {
-                await jobExec.RunAsync(jobId, sessionId, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[ImportRerun] Background parse failed for rerun job {JobId}", jobId);
-            }
-        });
+        // Same message as the original upload path — a rerun is an import, and
+        // this is the third call site that was running the executor by hand.
+        //
+        // Redelivery is safe because the guard lives in the executor rather than
+        // at the call site: LatexImportJobExecutor refuses to start from a
+        // terminal job status, so every publisher of this message inherits it.
+        await _bus.PublishAsync(new RunImportJobEvent(jobId, sessionId));
 
         return Ok(new RerunResponse(sessionId, jobId, affected));
     }
