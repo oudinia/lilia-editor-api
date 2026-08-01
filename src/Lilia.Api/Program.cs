@@ -84,6 +84,23 @@ builder.Host.UseWolverine(opts =>
         .ToLocalQueue("imports")
         .MaximumParallelMessages(2);
 
+    // Auto-versioning — deliberately NOT durable, unlike the queue above.
+    //
+    // UseDurableLocalQueues() below makes every local queue durable by default,
+    // and that is the wrong trade here: this fires on every block update, which
+    // in the Flow editor's continuous background sync is very frequent. Making
+    // it durable would add a database write per edit to protect a snapshot that
+    // VersionService throttles to one per document per five minutes anyway — so
+    // the overwhelming majority of those writes would guarantee delivery of a
+    // message whose handler immediately returns.
+    //
+    // Losing one to a restart costs nothing: the next edit produces another
+    // within minutes. Cheap and lossy is correct for a convenience; expensive
+    // and durable is correct for an import.
+    opts.PublishMessage<Lilia.Api.Events.Common.DocumentEditedEvent>()
+        .ToLocalQueue("auto-version")
+        .BufferedInMemory();
+
     // Durable local queues (P1.3b). The queue above survives a restart because
     // its messages are written to Postgres before the handler runs, rather than
     // living only in memory — which is the whole point: the Job entity has
