@@ -640,6 +640,10 @@ builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Ap
 builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.LatexUnicodeProvider>();
 builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.FontCoverageProvider>();
 builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.TypstGapProvider>();
+// Measured facts, alongside the hand-authored token catalogue rather than
+// instead of it: the two describe disjoint vocabularies (imports vs maths), so
+// the resolver merges whatever each can answer.
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.CommandSupportProvider>();
 builder.Services.AddScoped<Lilia.Api.Services.Capabilities.CapabilityResolver>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
 builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
