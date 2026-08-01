@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -548,7 +549,7 @@ public class ImportReviewController : ControllerBase
     /// new session id so the client can navigate to it.
     /// </summary>
     [HttpPost("{id:guid}/rerun")]
-    public async Task<ActionResult<object>> Rerun(Guid id, [FromServices] LiliaDbContext db, [FromServices] IServiceScopeFactory scopeFactory, CancellationToken ct)
+    public async Task<ActionResult<object>> Rerun(Guid id, [FromServices] LiliaDbContext db, [FromServices] Wolverine.IMessageBus bus, CancellationToken ct)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -610,20 +611,9 @@ public class ImportReviewController : ControllerBase
         });
         await db.SaveChangesAsync(ct);
 
-        // Fire the parse job in a background scope.
-        _ = Task.Run(async () =>
-        {
-            using var scope = scopeFactory.CreateScope();
-            var jobExec = scope.ServiceProvider.GetRequiredService<ILatexImportJobExecutor>();
-            try
-            {
-                await jobExec.RunAsync(newJobId, newSessionId, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[ImportRerun] Background parse failed for rerun job {JobId}", newJobId);
-            }
-        });
+        // Same message as the upload and definition-rerun paths. The executor
+        // holds the idempotency guard, so every publisher inherits it.
+        await bus.PublishAsync(new RunImportJobEvent(newJobId, newSessionId));
 
         return Ok(new { sessionId = newSessionId, jobId = newJobId, supersededCount });
     }
