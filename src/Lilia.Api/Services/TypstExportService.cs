@@ -960,8 +960,176 @@ public class TypstExportService : ITypstExportService
         s = Regex.Replace(s, @"_\{([^{}]+)\}", "_($1)");
         s = Regex.Replace(s, @"\^\{([^{}]+)\}", "^($1)");
 
+        // Implicit multiplication. Runs last, once every command above has
+        // produced the identifiers it is allowed to produce — anything still
+        // spelled as a bare letter run at this point is user variables.
+        s = SplitImplicitProducts(s);
+
         return s;
     }
+
+    /// <summary>
+    /// Separate adjacent single-letter variables so Typst reads them as a
+    /// product rather than as one identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>LaTeX and Typst disagree about what <c>mc</c> means. In LaTeX it is
+    /// m times c; in Typst it is an identifier named "mc", and since no such
+    /// variable exists the compile fails with <c>unknown variable: mc</c>.</para>
+    ///
+    /// <para>This was not a theoretical gap. Of the 34 <c>typst-compile-failed</c>
+    /// fallbacks in the telemetry, <b>26 were this one error</b>, essentially all
+    /// of them <c>E = mc^2</c> — the most famous equation there is, in the demo
+    /// documents. The remaining 8 were "Typst binary not found", which is not a
+    /// translation problem at all. Nothing in the corpus was Typst failing to
+    /// express something; the catalogue nonetheless rated
+    /// <c>math.two-letter-identifier</c> as severity <c>info</c>.</para>
+    ///
+    /// <para>Splitting is what LaTeX actually means. A multi-letter name there
+    /// has to be written <c>\mathit{name}</c> or <c>\text{name}</c>, and both
+    /// arrive here already wrapped, so they are skipped.</para>
+    /// </remarks>
+    internal static string SplitImplicitProducts(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+
+        var result = new System.Text.StringBuilder(s.Length + 8);
+        var i = 0;
+
+        while (i < s.Length)
+        {
+            var c = s[i];
+
+            // A quoted literal is text, not variables — \text{kg} became "kg"
+            // above, and splitting it would render "k g".
+            if (c == '"')
+            {
+                var close = s.IndexOf('"', i + 1);
+                if (close < 0) { result.Append(s, i, s.Length - i); break; }
+                result.Append(s, i, close - i + 1);
+                i = close + 1;
+                continue;
+            }
+
+            // An unrecognised LaTeX command keeps its backslash and its name.
+            // Mangling it into spaced letters would bury the evidence that the
+            // command is unsupported — the failure should stay legible.
+            if (c == '\\')
+            {
+                result.Append(c);
+                i++;
+                while (i < s.Length && char.IsAsciiLetter(s[i])) result.Append(s[i++]);
+                continue;
+            }
+
+            if (!char.IsAsciiLetter(c))
+            {
+                result.Append(c);
+                i++;
+                continue;
+            }
+
+            var start = i;
+            while (i < s.Length && char.IsAsciiLetter(s[i])) i++;
+            var run = s[start..i];
+
+            if (KeepAsIdentifier(s, start, i, run))
+            {
+                // A font-family or text wrapper takes the whole group verbatim:
+                // upright(Hello) must not become upright(H e l l o).
+                if (i < s.Length && s[i] == '(' && VerbatimArgumentFunctions.Contains(run))
+                {
+                    var close = MatchingParen(s, i);
+                    if (close > 0)
+                    {
+                        result.Append(s, start, close - start + 1);
+                        i = close + 1;
+                        continue;
+                    }
+                }
+
+                result.Append(run);
+                continue;
+            }
+
+            // The split itself. `mc` → `m c`, which Typst reads as a product.
+            for (var k = 0; k < run.Length; k++)
+            {
+                if (k > 0) result.Append(' ');
+                result.Append(run[k]);
+            }
+        }
+
+        return result.ToString();
+    }
+
+    private static bool KeepAsIdentifier(string s, int start, int end, string run)
+    {
+        // A lone letter is already a variable; there is nothing to separate.
+        if (run.Length == 1) return true;
+
+        // Anything this translator emits deliberately.
+        if (TypstMathIdentifiers.Contains(run)) return true;
+
+        // A call — mat(...), root(...), and any Typst function added later,
+        // without needing to be listed here.
+        if (end < s.Length && s[end] == '(') return true;
+
+        // A named argument: mat(delim: "[", ...).
+        if (end < s.Length && s[end] == ':') return true;
+
+        // Part of a dotted path — integral.double, limits.lim.sup, product.co.
+        if (end < s.Length && s[end] == '.') return true;
+        if (start > 0 && s[start - 1] == '.') return true;
+
+        return false;
+    }
+
+    private static int MatchingParen(string s, int open)
+    {
+        var depth = 0;
+        for (var i = open; i < s.Length; i++)
+        {
+            if (s[i] == '(') depth++;
+            else if (s[i] == ')' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>Wrappers whose argument is styled text rather than variables.</summary>
+    private static readonly HashSet<string> VerbatimArgumentFunctions = new(StringComparer.Ordinal)
+    {
+        "bb", "cal", "bold", "italic", "upright", "sans", "mono", "frak",
+    };
+
+    /// <summary>
+    /// Every identifier the translation above can emit. A run that is not in
+    /// here, and is not a call, is user variables.
+    /// </summary>
+    private static readonly HashSet<string> TypstMathIdentifiers = new(StringComparer.Ordinal)
+    {
+        // Font families and structural functions.
+        "bb", "cal", "bold", "italic", "upright", "sans", "mono", "frak",
+        "frac", "sqrt", "root", "mat", "vec", "cases", "delim",
+        // Spacing.
+        "quad", "wide", "thin", "med",
+        // Big operators, including the renamed forms and their dotted tails.
+        "integral", "product", "limits", "lim", "sum", "double", "triple",
+        "cont", "co", "sup", "inf",
+        // Functions Typst accepts bare.
+        "min", "max", "sin", "cos", "tan", "cot", "sec", "csc",
+        "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
+        "log", "ln", "exp", "det", "dim", "ker", "deg",
+        "gcd", "hom", "arg", "Pr", "mod",
+        // Greek.
+        "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon",
+        "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda",
+        "mu", "nu", "xi", "pi", "varpi", "rho", "varrho", "sigma",
+        "varsigma", "tau", "upsilon", "phi", "varphi", "chi", "psi",
+        "omega",
+        "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma",
+        "Upsilon", "Phi", "Psi", "Omega",
+    };
 
     /// <summary>
     /// Resolve \title/\author/\date from a Title block if present, else
