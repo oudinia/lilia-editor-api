@@ -44,6 +44,11 @@
     <None Update="Fixtures\real-macro-definitions.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- The 180 equations the editor's own documents contain, so the parser is
+         measured against real maths rather than a chosen sample. -->
+    <None Update="Fixtures\real-equations.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- HandcraftedDocxGenerator is its own console project; exclude
          its sources from the test assembly compilation. -->
     <Compile Remove="Fixtures\docx-corpus\scripts\**" />

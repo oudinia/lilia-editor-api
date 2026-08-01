@@ -1,0 +1,180 @@
+a = m^2 - n^2, \\quad b = 2mn, \\quad c = m^2 + n^2,
+E_{10} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+ds^2 = -c^2\\,dt^2 + a(t)^2\\!\\left[\\frac{dr^2}{1-kr^2} + r^2\\,d\\Omega^2\\right],
+G_{\\mu\\nu} = R_{\\mu\\nu} - \\frac{1}{2}\\,g_{\\mu\\nu}\\,R,
+p_\\mu p^\\mu = -\\frac{E^2}{c^2} + |\\mathbf{p}|^2 = -m^2 c^2.
+5^2 + 12^2 = 25 + 144 = 169 = 13^2. \\checkmark
+E_{16} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{18} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{31} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{86} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{89} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{75} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{67} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{9} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{66} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{49} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{61} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{23} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{72} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{28} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{62} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{12} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{48} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{51} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{29} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{5} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{11} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{78} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{88} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{87} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{41} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{56} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{14} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{1} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{46} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{73} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{45} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{54} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{22} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{7} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{55} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{69} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{26} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{40} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{82} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{20} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{68} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{19} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{85} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{6} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{6} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{34} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{57} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{53} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{44} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{70} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{91} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{27} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E = mc^2
+E = mc^2
+E = mc^2
+E = mc^2
+a^2 + b^2 = c^2
+\\|\\mathbf{v}\\|^2 = v_1^2 + v_2^2 + \\cdots + v_n^2.
+t' &= \\gamma\\!\\left(t - \\frac{v x}{c^2}\\right), \\\\ x' &= \\gamma(x - v t), \\\\ y' &= y, \\quad z' = z,
+E = mc^2
+E = mc^2
+\\|\\mathbf{v}\\|^2 = v_1^2 + v_2^2 + \\cdots + v_n^2 = \\sum_{i=1}^{n} v_i^2.
+a = m^2 - n^2, \\quad b = 2mn, \\quad c = m^2 + n^2,
+\\|\\mathbf{v}\\|^2 = v_1^2 + v_2^2 + \\cdots + v_n^2 = \\sum_{i=1}^{n} v_i^2.
+ds^2 = -\\!\\left(1 - \\frac{r_s}{r}\\right)c^2\\,dt^2 + \\left(1 - \\frac{r_s}{r}\\right)^{\\!-1}dr^2 + r^2\\,d\\Omega^2,
+E = mc^2
+\\|\\mathbf{v}\\|^2 = v_1^2 + v_2^2 + \\cdots + v_n^2 = \\sum_{i=1}^{n} v_i^2.
+a = m^2 - n^2, \\quad b = 2mn, \\quad c = m^2 + n^2,
+E = \\gamma m c^2,
+E_{71} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{38} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{77} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+ds^2 = -c^2\\,dt^2 + dx^2 + dy^2 + dz^2 = \\eta_{\\mu\\nu}\\,dx^\\mu dx^\\nu,
+p^\\mu = m\\,u^\\mu = m\\gamma(c,\\, \\mathbf{v}),
+R^\\rho{}_{\\sigma\\mu\\nu} = \\partial_\\mu\\Gamma^\\rho_{\\nu\\sigma} - \\partial_\\nu\\Gamma^\\rho_{\\mu\\sigma} + \\Gamma^\\rho_{\\mu\\lambda}\\Gamma^\\lambda_{\\nu\\sigma} - \\Gamma^\\rho_{\\nu\\lambda}\\Gamma^\\lambda_{\\mu\\sigma}.
+\\left(\\frac{\\dot{a}}{a}\\right)^2 &= \\frac{8\\pi G}{3}\\rho - \\frac{kc^2}{a^2} + \\frac{\\Lambda c^2}{3}, \\\\ \\frac{\\ddot{a}}{a} &= -\\frac{4\\pi G}{3}\\!\\left(\\rho + \\frac{3p}{c^2}\\right) + \\frac{\\Lambda c^2}{3}.
+G_{\\mu\\nu} + \\Lambda\\,g_{\\mu\\nu} = \\frac{8\\pi G}{c^4}\\,T_{\\mu\\nu},
+\\Gamma^\\lambda_{\\mu\\nu} = \\frac{1}{2}\\,g^{\\lambda\\sigma} \\!\\left(\\partial_\\mu g_{\\nu\\sigma} + \\partial_\\nu g_{\\mu\\sigma} - \\partial_\\sigma g_{\\mu\\nu}\\right).
+h_{\\mu\\nu}^{\\mathrm{TT}} = \\begin{pmatrix} 0 & 0 & 0 & 0 \\\\ 0 & h_+ & h_\\times & 0 \\\\ 0 & h_\\times & -h_+ & 0 \\\\ 0 & 0 & 0 & 0 \\end{pmatrix} e^{i(kz - \\omega t)},
+P = -\\frac{G}{5c^5}\\left\\langle \\dddot{Q}_{\\mu\\nu}\\dddot{Q}^{\\mu\\nu} \\right\\rangle,
+(a + b)^2 = 4 \\cdot \\tfrac{1}{2}ab + c^2.
+3^2 + 4^2 = 9 + 16 = 25 = 5^2. \\checkmark
+a^2 + 2ab + b^2 &= 2ab + c^2 \\\\ a^2 + b^2 &= c^2. \\qquad \\square
+\\frac{d^2 x^\\mu}{d\\tau^2} + \\Gamma^\\mu_{\\alpha\\beta}\\frac{dx^\\alpha}{d\\tau}\\frac{dx^\\beta}{d\\tau} = 0.
+a^2 + b^2 = c^2
+E_{14} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{22} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{42} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{41} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{15} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{8} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{34} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{30} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{24} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{17} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{58} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{80} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{84} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{39} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{83} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{33} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{28} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{20} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{35} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{43} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{31} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{16} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{59} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{8} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{2} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{90} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{13} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{42} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{79} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{60} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{4} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{50} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{36} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{25} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{64} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{52} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{11} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{3} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{15} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{65} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{76} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{47} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{37} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{74} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{43} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{33} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{18} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{46} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{3} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{2} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{5} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{1} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{4} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{12} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{29} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{36} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{45} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{6} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{1} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{5} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{38} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{13} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{25} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{27} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{7} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{10} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{4} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{23} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{3} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{39} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{32} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{19} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{2} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{37} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{21} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{44} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{9} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{40} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{26} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+G_{\\mu\\nu} + \\Lambda g_{\\mu\\nu} = \\frac{8\\pi G}{c^4} T_{\\mu\\nu}
+E = mc^2
+E_{32} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{24} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{30} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{81} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{63} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{21} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{35} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
+E_{17} = mc^2 + \\sum_{i=1}^{n} \\frac{x_i^2}{2}
