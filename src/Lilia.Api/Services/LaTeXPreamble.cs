@@ -3,6 +3,27 @@ namespace Lilia.Api.Services;
 /// <summary>
 /// Single source of truth for the LaTeX preamble used across
 /// full document export, per-block validation, and rendering.
+///
+/// <para><b>How <c>bm</c> got here, and why <c>physics</c> did not.</b> Six
+/// candidate packages were ranked by what they actually recover: each was added
+/// to the preamble and the 65 commands nothing could compile were re-probed,
+/// scored by how many TeX.SE posts use them. Then — the part that decided it —
+/// each candidate was checked for what it <i>breaks</i>, by recompiling all 374
+/// corpus samples and diffing the pass set against baseline.</para>
+///
+/// <code>
+///            recovers   reach    newly broken
+/// bm             1      30 posts       0
+/// physics        3      23 posts       2   ← \qty, \meter
+/// </code>
+///
+/// <para><c>physics</c> loads perfectly well, which is why "does it load" is
+/// too weak a question to decide on. It redefines <c>\qty</c>, colliding with
+/// <c>siunitx</c> above, so it trades two recovered samples for two broken ones
+/// and damages unit-heavy documents to do it.</para>
+///
+/// <para>The measured basis is <c>latex_facts.command_support</c>; the write-up
+/// is <c>lilia-docs/plan/command-support-dataset.md</c>.</para>
 /// </summary>
 public static class LaTeXPreamble
 {
@@ -42,6 +63,9 @@ public static class LaTeXPreamble
 \usepackage{mathrsfs}
 \usepackage{cancel}
 \usepackage{siunitx}
+% bm: \bm{v} for bold maths. Added on measurement, not taste — see the note on
+% LaTeXPreamble for what was measured and what was rejected.
+\usepackage{bm}
 
 % Typography
 \usepackage{microtype}
@@ -131,6 +155,9 @@ public static class LaTeXPreamble
 \usepackage{mathrsfs}
 \usepackage{cancel}
 \usepackage{siunitx}
+% bm: \bm{v} for bold maths. Added on measurement, not taste — see the note on
+% LaTeXPreamble for what was measured and what was rejected.
+\usepackage{bm}
 
 % Typography
 \usepackage{microtype}
