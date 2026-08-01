@@ -101,6 +101,20 @@ builder.Host.UseWolverine(opts =>
         .ToLocalQueue("auto-version")
         .BufferedInMemory();
 
+    // Document export (P2.4 stage 2). Durable for the same reason as imports:
+    // the author asked for it and is waiting on the result, so losing one to a
+    // restart is a broken promise rather than a rounding error.
+    //
+    // Concurrency 2, deliberately BELOW LaTeXRenderService's semaphore of 3.
+    // That semaphore stays — see the note on it. It is the real bound on
+    // concurrent pdflatex processes and it covers paths this queue does not, so
+    // the two must not be set to add up: if this queue admitted 3 while the
+    // synchronous validation path took more, the box would run more compiles
+    // than the semaphore was ever sized for.
+    opts.PublishMessage<Lilia.Api.Events.Common.RunExportJobEvent>()
+        .ToLocalQueue("exports")
+        .MaximumParallelMessages(2);
+
     // Durable local queues (P1.3b). The queue above survives a restart because
     // its messages are written to Postgres before the handler runs, rather than
     // living only in memory — which is the whole point: the Job entity has

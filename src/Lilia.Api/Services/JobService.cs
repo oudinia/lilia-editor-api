@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using System.Text.Json;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
@@ -20,6 +21,7 @@ public class JobService : IJobService
     private readonly Lilia.Import.Services.ILatexProjectExtractor _latexProjectExtractor;
     private readonly IImportProgressService _progressService;
     private readonly IImportReviewService _reviewService;
+    private readonly Wolverine.IMessageBus _bus;
     private readonly ILogger<JobService> _logger;
 
     public JobService(
@@ -32,6 +34,7 @@ public class JobService : IJobService
         ILatexParser latexParser,
         ILmlTextParser lmlTextParser,
         Lilia.Import.Services.ILatexProjectExtractor latexProjectExtractor,
+        Wolverine.IMessageBus bus,
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null)
     {
@@ -44,6 +47,7 @@ public class JobService : IJobService
         _latexParser = latexParser;
         _lmlTextParser = lmlTextParser;
         _latexProjectExtractor = latexProjectExtractor;
+        _bus = bus;
         _logger = logger;
         _pdfParser = pdfParser;
     }
@@ -126,7 +130,10 @@ public class JobService : IJobService
             UserId = userId,
             DocumentId = dto.DocumentId,
             JobType = JobTypes.Export,
-            Status = JobStatus.Processing,
+            // PENDING, not PROCESSING. The export no longer runs on this thread,
+            // so claiming it is in progress before anything has picked it up
+            // would be the same lie the Job table has always told.
+            Status = JobStatus.Pending,
             Progress = 0,
             SourceFormat = "lilia",
             TargetFormat = dto.Format.ToLowerInvariant(),
@@ -137,6 +144,58 @@ public class JobService : IJobService
 
         _context.Jobs.Add(job);
         await _context.SaveChangesAsync();
+
+        // Hand off and return. The endpoint already returns job info for
+        // tracking and GET jobs/{id}/result already polls, so no API contract
+        // changes — the request simply stops blocking for the whole export.
+        await _bus.PublishAsync(new RunExportJobEvent(job.Id));
+
+        return MapToDto(job);
+    }
+
+    /// <summary>
+    /// Actually perform an export job. Was the body of
+    /// <see cref="CreateExportJobAsync"/>, running inline on the request thread.
+    ///
+    /// <para>That had three consequences the <c>Job</c> row already claimed
+    /// otherwise: the caller blocked for the whole export, nothing ever retried
+    /// despite <c>RetryCount</c>/<c>MaxRetries</c>, and a restart mid-export left
+    /// the row PROCESSING forever with no worker attached.</para>
+    ///
+    /// <para>Idempotent: refuses to start from a terminal status, so a redelivery
+    /// after a restart or retry cannot double-write the result. Same rule as the
+    /// import executor, and PROCESSING is likewise not terminal — it is
+    /// indistinguishable from a run that died, and resuming those is the point.</para>
+    /// </summary>
+    public async Task RunExportJobAsync(Guid jobId, CancellationToken ct = default)
+    {
+        var job = await _context.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job is null)
+        {
+            _logger.LogWarning("[Export] Job {JobId} not found — nothing to run", jobId);
+            return;
+        }
+
+        if (job.Status is JobStatus.Completed or JobStatus.Cancelled)
+        {
+            _logger.LogInformation(
+                "[Export] Job {JobId} is already {Status} — skipping duplicate delivery", jobId, job.Status);
+            return;
+        }
+
+        var documentId = job.DocumentId
+            ?? throw new InvalidOperationException($"Export job {jobId} has no document");
+
+        var document = await _documentService.GetDocumentAsync(documentId, job.UserId)
+            ?? throw new InvalidOperationException($"Document {documentId} not found for export job {jobId}");
+
+        job.Status = JobStatus.Processing;
+        job.StartedAt ??= DateTime.UtcNow;
+        job.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(ct);
+
+        var dto = new CreateExportJobDto(documentId, job.TargetFormat ?? "");
+        var userId = job.UserId;
 
         try
         {
@@ -193,9 +252,12 @@ public class JobService : IJobService
             await _context.SaveChangesAsync();
 
             _logger.LogError(ex, "[Export] Job {JobId} failed for document {DocumentId}", job.Id, dto.DocumentId);
-        }
 
-        return MapToDto(job);
+            // Rethrow so the queue sees the failure and its retry policy engages.
+            // Swallowing here is what made RetryCount and MaxRetries decorative:
+            // the row said FAILED and nothing ever looked at it again.
+            throw;
+        }
     }
 
     public async Task<JobDto> CreateImportJobAsync(string userId, CreateImportJobDto dto, Stream fileStream)
