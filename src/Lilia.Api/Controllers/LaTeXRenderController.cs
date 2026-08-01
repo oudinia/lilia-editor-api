@@ -1,3 +1,4 @@
+using Lilia.Core.Blocks;
 using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
@@ -610,11 +611,28 @@ public class LaTeXRenderController : ControllerBase
             if (pageMatch.Success && int.TryParse(pageMatch.Groups[1].Value, out var pc)) pageCount = pc;
             else if (doc != null) { try { pageCount = await _renderService.GetPageCountAsync(documentId); } catch { /* heuristic only */ } }
 
+            // Which block each positioned warning belongs to.
+            //
+            // P0.2 made overflow visible, but what it surfaces is "on input line
+            // 391" — a line in a generated file the author has never seen and
+            // cannot act on. The `% block:<id>` markers already in the assembled
+            // document turn that back into a block, so the editor can point at
+            // the table that is actually too tall.
+            //
+            // Warnings carrying no line number name nobody: several LaTeX
+            // warnings genuinely have no position, and blaming whichever block
+            // came last would point the author at innocent content.
+            var blocksWithWarnings = LatexLineMap.Parse(latex)
+                .BlocksNamedBy(allWarnings)
+                .Select(id => id.ToString())
+                .ToArray();
+
             return Ok(new
             {
                 valid,
                 error,
                 warnings = allWarnings,
+                blocksWithWarnings,
                 durationMs = result.DurationMs,
                 engine = string.IsNullOrEmpty(result.Engine) ? null : result.Engine,
                 pageCount,
