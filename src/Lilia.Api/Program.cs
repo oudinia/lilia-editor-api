@@ -629,6 +629,18 @@ builder.Services.AddSingleton<IUnicodeShimService, UnicodeShimService>();
 // on purpose: latex_facts is measured and owned by lilia-latex-service, and the
 // editor only reads it.
 builder.Services.AddSingleton<IFontCoverageService, FontCoverageService>();
+
+// P3.3 — capability providers. Each existing catalogue registered as one
+// ICapabilityProvider, so the resolver picks them all up by injection and a
+// sixth catalogue is a registration rather than a new system. Scoped, because
+// four of the six read the request-scoped LiliaDbContext.
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.LatexTokenProvider>();
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.LatexPackageProvider>();
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.LatexDocumentClassProvider>();
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.LatexUnicodeProvider>();
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.FontCoverageProvider>();
+builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.TypstGapProvider>();
+builder.Services.AddScoped<Lilia.Api.Services.Capabilities.CapabilityResolver>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
 builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
 builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
