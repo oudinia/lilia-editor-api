@@ -419,11 +419,19 @@ public class LaTeXExportService : ILaTeXExportService
     // with it (typeface-swappers redefining math commands that amsmath owns).
     // We must skip imported packages with these names to avoid LaTeX's
     // "Option clash for package X" or "Command \iint already defined" errors.
+    /// <summary>
+    /// Test seam. Adding a package to the preamble without adding it here is a
+    /// failure that only shows up on documents importing the same package, so
+    /// it is worth being able to assert the pair stays in step.
+    /// </summary>
+    internal static bool IsDefaultPreamblePackageForTest(string package) =>
+        DefaultPreamblePackages.Contains(package);
+
     private static readonly HashSet<string> DefaultPreamblePackages = new(StringComparer.OrdinalIgnoreCase)
     {
         // Loaded by our default preamble
         "inputenc", "fontenc", "textcomp", "lmodern",
-        "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx",
+        "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx", "bm",
         "microtype", "setspace", "parskip",
         "graphicx", "float", "caption", "subcaption", "xcolor",
         "booktabs", "multirow", "tabularx", "longtable", "array",
