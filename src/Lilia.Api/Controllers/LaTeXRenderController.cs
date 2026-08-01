@@ -128,6 +128,109 @@ public class LaTeXRenderController : ControllerBase
     }
 
     /// <summary>
+    /// Render the document, and if a table ran off the page, re-emit that table
+    /// as a <c>longtable</c> and render again.
+    ///
+    /// <para><b>Compile and find out, rather than predict.</b> Whether a table
+    /// fits cannot be computed up front — it depends on the font, the column
+    /// widths, how cell content wraps, and what else is already on the page. Row
+    /// count is a weak proxy that is wrong in both directions. So the first
+    /// compile is the measurement.</para>
+    ///
+    /// <para>Only the tables that actually overflowed are converted. Converting
+    /// the rest would restyle tables whose layout was already fine and discard
+    /// their float placement for nothing.</para>
+    ///
+    /// <para><b>Two-column documents are left alone entirely.</b> longtable
+    /// fails there with a hard error, not a warning, so "fixing" an overflowing
+    /// table would turn a document that merely looks wrong into one that does
+    /// not compile. The response says so rather than silently doing nothing.</para>
+    /// </summary>
+    [HttpPost("{documentId:guid}/pdf/auto-fit")]
+    public async Task<IActionResult> RenderDocumentPdfAutoFit(Guid documentId)
+    {
+        try
+        {
+            var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+            var doc = await db.Documents
+                .Include(d => d.Blocks)
+                .FirstOrDefaultAsync(d => d.Id == documentId);
+            if (doc == null) return NotFound();
+
+            // Pass 1 — measure.
+            var latex = await _renderService.RenderToLatexAsync(documentId);
+            var firstPass = await _latexService.ValidateAsync(latex);
+
+            // The overflow warnings carry "on input line N", but P0.2's
+            // user-facing summary deliberately aggregates them and drops the
+            // position. So attribution reads the raw log, not the summarised
+            // warning list.
+            var overflowLines = (firstPass.Log ?? "")
+                .Split('\n')
+                .Where(l => l.Contains(@"Overfull \vbox", StringComparison.Ordinal)
+                         || l.Contains("Float too large for page", StringComparison.Ordinal))
+                .ToArray();
+
+            var offending = LatexLineMap.Parse(latex).BlocksNamedBy(overflowLines);
+
+            // Only tables can become longtables. An overflowing figure or code
+            // block is a real problem, but not this one's to solve.
+            var tableIds = doc.Blocks
+                .Where(b => offending.Contains(b.Id)
+                         && string.Equals(b.Type, "table", StringComparison.OrdinalIgnoreCase))
+                .Select(b => b.Id)
+                .ToHashSet();
+
+            if (tableIds.Count == 0)
+            {
+                var pdfAsIs = await _latexService.RenderToPdfTolerantAsync(latex);
+                return File(pdfAsIs, "application/pdf", $"document-{documentId}.pdf");
+            }
+
+            if (!RenderService.SupportsLongtable(doc))
+            {
+                _logger.LogInformation(
+                    "Document {DocumentId} has {Count} overflowing table(s) but is multi-column — "
+                    + "longtable cannot be used there, so the tables are left as-is.",
+                    documentId, tableIds.Count);
+
+                var pdfMultiCol = await _latexService.RenderToPdfTolerantAsync(latex);
+                Response.Headers["X-Autofit-Skipped"] = "multi-column";
+                return File(pdfMultiCol, "application/pdf", $"document-{documentId}.pdf");
+            }
+
+            // Pass 2 — re-emit just those tables, and verify the fix took.
+            var fixedLatex = await _renderService.RenderToLatexAsync(documentId, tableIds);
+            var secondPass = await _latexService.ValidateAsync(fixedLatex);
+
+            var stillOverflowing = (secondPass.Log ?? "").Contains("Float too large for page", StringComparison.Ordinal)
+                || (secondPass.Log ?? "").Contains(@"Overfull \vbox", StringComparison.Ordinal);
+
+            if (stillOverflowing)
+            {
+                // Report it rather than quietly shipping a PDF that is still
+                // wrong. A remedy that did not work is worth knowing about — it
+                // usually means the table is too WIDE, which longtable does not
+                // address.
+                _logger.LogWarning(
+                    "Auto-fit converted {Count} table(s) in document {DocumentId} to longtable, "
+                    + "but overflow persists — likely too wide rather than too tall.",
+                    tableIds.Count, documentId);
+            }
+
+            var pdf = await _latexService.RenderToPdfTolerantAsync(fixedLatex);
+            Response.Headers["X-Autofit-Tables"] = tableIds.Count.ToString();
+            Response.Headers["X-Autofit-Resolved"] = stillOverflowing ? "false" : "true";
+            return File(pdf, "application/pdf", $"document-{documentId}.pdf");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Auto-fit render failed for document {DocumentId}", documentId);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Render a full document's LaTeX to PNG preview.
     /// </summary>
     [HttpPost("{documentId:guid}/png")]

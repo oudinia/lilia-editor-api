@@ -1058,7 +1058,33 @@ public partial class RenderService : IRenderService
     }
 
     // LaTeX rendering
-    public async Task<string> RenderToLatexAsync(Guid documentId)
+    /// <summary>
+    /// Whether <c>longtable</c> can be used in this document at all.
+    ///
+    /// <para>It cannot in multi-column layouts, and the failure is a <b>hard
+    /// error</b> rather than a warning — <c>"Package longtable Error: longtable
+    /// not in 1-column mode"</c>, verified with pdflatex. So converting an
+    /// overflowing table in a two-column document would turn a table that
+    /// merely ran off the page into a document that does not compile at all:
+    /// strictly worse than the problem being fixed.</para>
+    ///
+    /// <para>Covers both routes to multi-column — the <c>twocolumn</c> class
+    /// option that <see cref="LaTeXPreambleBuilder"/> derives from
+    /// <c>Columns</c>, and the <c>multicol</c> wrapper used for balanced
+    /// columns.</para>
+    /// </summary>
+    public static bool SupportsLongtable(Document doc) =>
+        doc.Columns < 2 && !doc.BalancedColumns;
+
+    public async Task<string> RenderToLatexAsync(Guid documentId) =>
+        await RenderToLatexAsync(documentId, longtableBlocks: null);
+
+    /// <summary>
+    /// <paramref name="longtableBlocks"/> names the table blocks to emit as
+    /// <c>longtable</c> — the second pass of the generate-and-test loop, after
+    /// a first compile reported which ones overflowed.
+    /// </summary>
+    public async Task<string> RenderToLatexAsync(Guid documentId, IReadOnlySet<Guid>? longtableBlocks)
     {
         var doc = await _context.Documents
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
@@ -1075,7 +1101,12 @@ public partial class RenderService : IRenderService
         // packages (\usepackage{fontspec} etc.) and the explicit
         // Document.LatexEngine override. Result drives the engine-specific
         // preamble addendum below (fontspec for lua/xelatex).
-        var renderedBlocks = doc.Blocks.Select(RenderBlockToLatex).ToList();
+        // Only tables named by the caller become longtables, and only when the
+        // document's column layout permits it at all — see SupportsLongtable.
+        var canUseLongtable = longtableBlocks is { Count: > 0 } && SupportsLongtable(doc);
+        var renderedBlocks = doc.Blocks
+            .Select(b => RenderBlockToLatex(b, canUseLongtable && longtableBlocks!.Contains(b.Id)))
+            .ToList();
         var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
         var detectedEngine = EngineDetector.DetectDocument(renderedBlocks, importedPkgs);
         var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
@@ -1234,7 +1265,19 @@ public partial class RenderService : IRenderService
         });
     }
 
-    public string RenderBlockToLatex(Block block)
+    public string RenderBlockToLatex(Block block) => RenderBlockToLatex(block, useLongtable: false);
+
+    /// <summary>
+    /// <paramref name="useLongtable"/> applies only to table blocks, and only
+    /// when the caller has established the document is single-column — see
+    /// <see cref="SupportsLongtable"/>.
+    ///
+    /// <para>Threaded per block rather than set document-wide because the
+    /// generate-and-test loop converts <b>only</b> the tables that actually
+    /// overflowed. Converting the rest would restyle tables whose layout was
+    /// already correct, and lose their float placement for nothing.</para>
+    /// </summary>
+    public string RenderBlockToLatex(Block block, bool useLongtable)
     {
         try
         {
@@ -1246,7 +1289,7 @@ public partial class RenderService : IRenderService
                 "paragraph" => RenderParagraphToLatex(content),
                 "equation" => RenderEquationToLatex(content),
                 "figure" or "image" => RenderFigureToLatex(content),
-                "table" => RenderTableToLatex(content),
+                "table" => RenderTableToLatex(content, useLongtable),
                 "code" => RenderCodeToLatex(content),
                 "list" => RenderListToLatex(content),
                 "blockquote" or "quote" => RenderBlockquoteToLatex(content),
@@ -1837,7 +1880,23 @@ public partial class RenderService : IRenderService
         return src.Length > 60 ? $"figures/{Path.GetFileName(src)}" : src;
     }
 
-    private string RenderTableToLatex(JsonElement content)
+    /// <summary>
+    /// A table, as a float-wrapped <c>tabular</c> or — when
+    /// <paramref name="useLongtable"/> — as a page-breaking <c>longtable</c>.
+    ///
+    /// <para>The two are not variants of one environment. <c>longtable</c> is
+    /// <b>not a float</b>, which is exactly why it can break across pages, so
+    /// the whole <c>\begin{table}</c> wrapper goes away rather than gaining an
+    /// option — and <c>\centering</c>, <c>placement</c> and <c>\FloatBarrier</c>
+    /// have nothing to apply to.</para>
+    ///
+    /// <para>Callers must not request it in two-column documents: longtable
+    /// fails there with a hard error, not a warning
+    /// (<c>"Package longtable Error: longtable not in 1-column mode"</c> —
+    /// verified with pdflatex). <see cref="RenderService.SupportsLongtable"/>
+    /// is the guard.</para>
+    /// </summary>
+    private string RenderTableToLatex(JsonElement content, bool useLongtable = false)
     {
         var sb = new StringBuilder();
 
@@ -1898,31 +1957,57 @@ public partial class RenderService : IRenderService
             var totalRows = (hasHeaders ? 1 : 0) + rowList.Count;
             var coveredCells = new bool[totalRows, colCount];
 
-            // Tables hard-coded [htbp] and ignored `placement` entirely, so
-            // setting "here" on a table did nothing and reported nothing —
-            // while the same attribute worked on figures. Shared with the figure
-            // path via BlockBreakAttributes so the two cannot drift again.
-            sb.AppendLine($"\\begin{{table}}{BlockBreakAttributes.FloatSpecifier(content)}");
-            sb.AppendLine(@"\centering");
-            sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
-            if (!string.IsNullOrEmpty(caption))
+            // shortCaption → \caption[short]{long} so the List of Tables uses
+            // the compact form. Skip the bracketed arg when none was provided.
+            var shortCaption = content.TryGetProperty("shortCaption", out var sc) && sc.ValueKind == JsonValueKind.String
+                ? sc.GetString() ?? ""
+                : "";
+            var captionCommand = !string.IsNullOrEmpty(shortCaption)
+                ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}"
+                : $@"\caption{{{EscapeLatex(caption)}}}";
+
+            if (useLongtable)
             {
-                // shortCaption → \caption[short]{long} so the List of
-                // Tables uses the compact form. Skip the bracketed arg
-                // when no short version was provided.
-                var shortCaption = content.TryGetProperty("shortCaption", out var sc) && sc.ValueKind == JsonValueKind.String
-                    ? sc.GetString() ?? ""
-                    : "";
-                sb.AppendLine(!string.IsNullOrEmpty(shortCaption)
-                    ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}"
-                    : $@"\caption{{{EscapeLatex(caption)}}}");
+                // longtable is NOT a float — it cannot live inside \begin{table},
+                // which is the whole reason it can break across pages. So this
+                // replaces the float wrapper rather than adding an option to it,
+                // and \centering / placement have nothing to apply to.
+                //
+                // Caption and label go INSIDE the environment, terminated by \\,
+                // because there is no float to attach them to.
+                // \arraystretch goes OUTSIDE: inside longtable it would sit in
+                // the alignment body, where a declaration is not a row.
+                sb.AppendLine(@"{\renewcommand{\arraystretch}{1.3}");
+                sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
+
+                // Caption and label must share ONE row, terminated by a single
+                // \\. Emitting \label on its own line starts a second row, and
+                // the \toprule that follows is a \noalign — which lands inside
+                // that row and fails with "Misplaced \noalign". Found by
+                // compiling the emitter's real output; every unit test passed
+                // while the document did not build.
+                if (!string.IsNullOrEmpty(caption) || !string.IsNullOrEmpty(label))
+                {
+                    var captionRow = (string.IsNullOrEmpty(caption) ? "" : captionCommand)
+                                   + (string.IsNullOrEmpty(label) ? "" : $@"\label{{{label}}}");
+                    sb.AppendLine(captionRow + @"\\");
+                }
+                sb.AppendLine(@"\toprule");
             }
-            if (!string.IsNullOrEmpty(label))
+            else
             {
-                sb.AppendLine($@"\label{{{label}}}");
+                // Tables hard-coded [htbp] and ignored `placement` entirely, so
+                // setting "here" on a table did nothing and reported nothing —
+                // while the same attribute worked on figures. Shared with the figure
+                // path via BlockBreakAttributes so the two cannot drift again.
+                sb.AppendLine($"\\begin{{table}}{BlockBreakAttributes.FloatSpecifier(content)}");
+                sb.AppendLine(@"\centering");
+                sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
+                if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
+                if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
+                sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
+                sb.AppendLine(@"\toprule");
             }
-            sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
-            sb.AppendLine(@"\toprule");
 
             var currentRowIndex = 0;
 
@@ -1996,8 +2081,15 @@ public partial class RenderService : IRenderService
             }
 
             sb.AppendLine(@"\bottomrule");
-            sb.AppendLine(@"\end{tabular}");
-            sb.AppendLine(@"\end{table}");
+            if (useLongtable)
+            {
+                sb.AppendLine(@"\end{longtable}}"); // closes the \arraystretch group
+            }
+            else
+            {
+                sb.AppendLine(@"\end{tabular}");
+                sb.AppendLine(@"\end{table}");
+            }
         }
 
         return sb.ToString();
