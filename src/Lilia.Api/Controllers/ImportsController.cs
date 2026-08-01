@@ -1,3 +1,4 @@
+using Lilia.Api.Events.Common;
 using System.Text;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
@@ -21,9 +22,8 @@ namespace Lilia.Api.Controllers;
 public class ImportsController : ControllerBase
 {
     private readonly LiliaDbContext _context;
-    private readonly ILatexImportJobExecutor _executor;
     private readonly ILatexProjectExtractor _projectExtractor;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly Wolverine.IMessageBus _bus;
     private readonly ILogger<ImportsController> _logger;
 
     // Cap the direct upload at 15 MB — raised from 5 MB to fit typical
@@ -33,15 +33,13 @@ public class ImportsController : ControllerBase
 
     public ImportsController(
         LiliaDbContext context,
-        ILatexImportJobExecutor executor,
         ILatexProjectExtractor projectExtractor,
-        IServiceScopeFactory scopeFactory,
+        Wolverine.IMessageBus bus,
         ILogger<ImportsController> logger)
     {
         _context = context;
-        _executor = executor;
         _projectExtractor = projectExtractor;
-        _scopeFactory = scopeFactory;
+        _bus = bus;
         _logger = logger;
     }
 
@@ -184,22 +182,19 @@ public class ImportsController : ControllerBase
         });
         await _context.SaveChangesAsync(ct);
 
-        // Fire-and-forget the parse job. Uses its own DI scope so the captured
-        // DbContext lives only as long as the job. Same pattern as the Task.Run
-        // fix in BlocksController (Npgsql concurrency, see project memory).
-        _ = Task.Run(async () =>
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var jobExec = scope.ServiceProvider.GetRequiredService<ILatexImportJobExecutor>();
-            try
-            {
-                await jobExec.RunAsync(jobId, sessionId, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[ImportsController] Background LaTeX import failed for job {JobId}", jobId);
-            }
-        });
+        // Hand the parse to the durable queue. Both rows above are committed
+        // first, so the handler re-reads them in its own scope.
+        //
+        // This replaces `_ = Task.Run(...)` with a hand-rolled DI scope. The Job
+        // row has always declared Status/RetryCount/MaxRetries that the Task.Run
+        // could not honour — nothing retried, and a restart stranded the job as
+        // PROCESSING forever. The message is persisted before the handler runs,
+        // so a restart resumes it instead.
+        //
+        // Publishing is deliberately not awaited on the critical path any longer
+        // than it takes to enqueue: the caller gets its session id back
+        // immediately, exactly as before.
+        await _bus.PublishAsync(new RunImportJobEvent(jobId, sessionId));
 
         return Ok(new LatexImportUploadResponseDto(sessionId, jobId));
     }
