@@ -946,6 +946,27 @@ public class LaTeXExportService : ILaTeXExportService
         var numbered = !content.TryGetProperty("numbered", out var n) || n.ValueKind != JsonValueKind.False;
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{eq:{label}}}" : "";
 
+        // An alignment body with no mode to match it.
+        //
+        // Four blocks in the corpus store `a &= b \\ c &= d` with mode unset,
+        // which reads as "display" above and lands in \begin{equation} — where
+        // an alignment tab is fatal: "Misplaced alignment tab character &",
+        // no PDF produced. The whole export fails, not just this equation.
+        //
+        // Promoting to align is what the content already is. It is done only
+        // for a top-level tab, so a pmatrix keeps its own & untouched, and it
+        // is logged rather than done quietly: the document renders differently
+        // from what its mode claims, and that is worth being able to find out.
+        if (mode is not ("align" or "gather") && EquationContent.HasTopLevelAlignment(latex))
+        {
+            _logger.LogWarning(
+                "[LaTeX] Equation declares mode '{Mode}' but its source is an alignment body; " +
+                "emitting align instead. In {Mode} it would fail to compile with " +
+                "'Misplaced alignment tab character &'.",
+                mode, mode);
+            mode = "align";
+        }
+
         if (mode == "inline")
             return $"${latex}$";
         if (mode == "align")
