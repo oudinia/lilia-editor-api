@@ -5,6 +5,7 @@ using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace Lilia.Api.Controllers;
 
@@ -18,6 +19,7 @@ public class PreviewController : ControllerBase
     private readonly IDocumentService _documentService;
     private readonly ITypstExportService _typstExporter;
     private readonly ITypstCompileService _typstCompiler;
+    private readonly IDistributedCache _outputCache;
     private readonly LiliaDbContext _context;
     private readonly ILogger<PreviewController> _logger;
 
@@ -27,6 +29,7 @@ public class PreviewController : ControllerBase
         IDocumentService documentService,
         ITypstExportService typstExporter,
         ITypstCompileService typstCompiler,
+        IDistributedCache outputCache,
         LiliaDbContext context,
         ILogger<PreviewController> logger)
     {
@@ -35,6 +38,7 @@ public class PreviewController : ControllerBase
         _documentService = documentService;
         _typstExporter = typstExporter;
         _typstCompiler = typstCompiler;
+        _outputCache = outputCache;
         _context = context;
         _logger = logger;
     }
@@ -369,6 +373,42 @@ public class PreviewController : ControllerBase
             _ => TypstOutputFormat.Svg,
         };
 
+        // Keyed on the hash of the generated source, not on the document id.
+        //
+        // That choice is what makes this correct without any invalidation
+        // logic: an edit changes the source, which changes the hash, which is
+        // a different key. There is no cache to invalidate and therefore no
+        // way to serve a stale preview — the failure mode a docId-keyed cache
+        // has to be constantly defended against.
+        //
+        // Building the source is in-memory string work; the compile is a
+        // process spawn. Hashing the cheap half to decide whether to do the
+        // expensive half is the whole trick, and it is what turns this from
+        // click-to-compile into something that can be driven by typing.
+        var etag = ComputeEtag(typstSource, outputFormat);
+        var cacheKey = $"typst-preview:{etag}";
+
+        // The browser already has these exact bytes. Nothing to compile, and
+        // nothing to send.
+        if (Request.Headers.IfNoneMatch.Any(v => v == etag))
+        {
+            Response.Headers.ETag = etag;
+            Response.Headers["X-Typst-Cache"] = "not-modified";
+            _logger.LogDebug("[Preview/typst] {DocId} not modified ({TotalMs}ms)", docId, sw.ElapsedMilliseconds);
+            return StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        var cachedOutput = await _outputCache.GetAsync(cacheKey);
+        if (cachedOutput is { Length: > 0 })
+        {
+            _logger.LogInformation(
+                "[Preview/typst] {DocId} served from cache in {TotalMs}ms (format={Format}, no compile)",
+                docId, sw.ElapsedMilliseconds, outputFormat);
+            Response.Headers.ETag = etag;
+            Response.Headers["X-Typst-Cache"] = "hit";
+            return File(cachedOutput, ContentTypeFor(outputFormat));
+        }
+
         var result = await _typstCompiler.CompileAsync(typstSource, outputFormat);
 
         if (!result.Success)
@@ -388,13 +428,42 @@ public class PreviewController : ControllerBase
             "[Preview/typst] {DocId} compiled in {ElapsedMs}ms (format={Format}, totalReq={TotalMs}ms)",
             docId, result.Elapsed.TotalMilliseconds, outputFormat, sw.ElapsedMilliseconds);
 
-        var contentType = outputFormat switch
+        // Short-lived on purpose. The key already guarantees freshness, so the
+        // expiry is only about how much memory a burst of editing is allowed
+        // to leave behind — every keystroke that changes the document mints a
+        // new key, and the old ones become garbage immediately.
+        await _outputCache.SetAsync(cacheKey, result.Output!, new DistributedCacheEntryOptions
         {
-            TypstOutputFormat.Pdf => "application/pdf",
-            TypstOutputFormat.Png => "image/png",
-            _ => "image/svg+xml",
-        };
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+        });
+
+        Response.Headers.ETag = etag;
+        Response.Headers["X-Typst-Cache"] = "miss";
         Response.Headers["X-Typst-Compile-Ms"] = result.Elapsed.TotalMilliseconds.ToString("F0");
-        return File(result.Output!, contentType);
+        return File(result.Output!, ContentTypeFor(outputFormat));
+    }
+
+    private static string ContentTypeFor(TypstOutputFormat format) => format switch
+    {
+        TypstOutputFormat.Pdf => "application/pdf",
+        TypstOutputFormat.Png => "image/png",
+        _ => "image/svg+xml",
+    };
+
+    /// <summary>
+    /// A strong ETag over the generated Typst source and the requested output
+    /// format.
+    /// </summary>
+    /// <remarks>
+    /// The format has to be in the hash. Without it, asking for SVG and then
+    /// PDF of an unedited document would produce the same tag, and the second
+    /// request would be answered with the first one's bytes under the wrong
+    /// content type.
+    /// </remarks>
+    internal static string ComputeEtag(string typstSource, TypstOutputFormat format)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes($"{format}\n{typstSource}");
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return $"\"{Convert.ToHexString(hash)[..32].ToLowerInvariant()}\"";
     }
 }
