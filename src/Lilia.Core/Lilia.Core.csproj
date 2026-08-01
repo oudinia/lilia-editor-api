@@ -10,4 +10,10 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Matches Lilia.Api, so internal helpers can be asserted directly rather
+         than only through whatever public surface happens to reach them. -->
+    <InternalsVisibleTo Include="Lilia.Api.Tests" />
+  </ItemGroup>
+
 </Project>
