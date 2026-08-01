@@ -39,6 +39,11 @@
     <None Update="Fixtures\docx-corpus\**\*.docx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- 120 macro definitions taken verbatim from TeX.SE, so the collector is
+         tested against what people actually write rather than what we imagined. -->
+    <None Update="Fixtures\real-macro-definitions.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- HandcraftedDocxGenerator is its own console project; exclude
          its sources from the test assembly compilation. -->
     <Compile Remove="Fixtures\docx-corpus\scripts\**" />

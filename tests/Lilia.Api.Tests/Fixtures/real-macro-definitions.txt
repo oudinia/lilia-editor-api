@@ -1,0 +1,120 @@
+\DeclareMathOperator{\Tet}{Tet}
+\DeclareMathOperator{\Maps}{Maps}
+\DeclareMathOperator{\Diff}{Diff}
+\newcommand{\set}[1]{\left\lbrace #1\right\rbrace}
+\def\@currentlabel{#2}%
+\newcommand{\foobar}{FooBar}
+\newcommand{\bmmax}{0}
+\newcommand{\hmmax}{0}
+\newcommand{\foo*}{blahblah}
+\newcommand{\bc}{\cellcolor{lightgray}}
+\newcommand{\bg}[1]{\textcolor{red}{#1}}
+\def\rot{\rotatebox}
+\renewcommand{\thesection}{\thechapter.\number\numexpr\value{section}\relax}
+\renewcommand{\thesubsection}{\thesection.\number\numexpr\value{subsection}\relax}
+\renewcommand{\thesubsubsection}{\thesubsection.\number\numexpr\value{subsubsection}\relax}
+\newcommand{\td}[1]{\todo[inline]{#1}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand*\backmatter{\setcounter{chapter}{0}}
+\renewcommand{\theNo}{\stepcounter{No}\arabic{No}}
+\newcommand{\Comment}[1]{&amp; &amp; &amp; #1\\\hline}
+\def\a{\z er}
+\def\c{\Z hr}
+\newcommand{\dom}{\text{dom}\ }
+\newcommand{\ran}{\text{ran}\ }
+\newcommand{\fld}{\text{fld}\ }
+\newcommand{\op}[2]{\langle #1,#2\rangle}
+\newcommand{\ot}[3]{\langle #1,#2,#3\rangle}
+\newcommand{\ms}[1]{\mathscr{#1}}
+\def\firstcircle{(90:1.75cm) circle (2.5cm)}
+\def\secondcircle{(210:1.75cm) circle (2.5cm)}
+\def\thirdcircle{(330:1.75cm) circle (2.5cm)}
+\newcommand{\mymacro}{1.0/2.0, 3.0/4.0}
+\newcommand{\altura}{.45cm}
+\def\mywidth{85mm}
+\def\myheight{112mm}
+\newcommand{\@babel@loaded}{0}
+\newcommand{\scenarioautorefname}{scenario}
+\newcommand*{\ListWithLabels}{-2/a, -1/b, 1/c, 2/d}
+\newcommand*{\ListWithoutLabels}{-2, -1, 1, 2}
+\def\WORD{\MakeUppercase{\word}}
+\def\emailA{\url{abcdefghi.jklmn.opqrs.tuvwxyz@tuvwxyz.com}\ }
+\def\emailB{\url{jklmn.opqrs.tuvwxyz.abcdefghi@tuvwxyz.com}\ }
+\newcommand{\folder}{/path/to/folder}
+\def\cls{\!\ensuremath{\subseteq\!\!\!\!\!\raisebox{1pt}{$\bullet$}}\,}
+\def\opnn{\ensuremath{\mathrel{\subsetneq\!\!\!\!\!\raisebox{1.63pt}{$\scriptstyle\circ$}}}}    %prava odprta podmnozica
+\def\cls{ \ensuremath{\mathrel{\subseteq \!\!\!\!\!\raisebox{1.63pt}{$\scriptstyle\bullet$}}}}  %zaprta podmnozica
+\def\clsn{\ensuremath{\mathrel{\subsetneq\!\!\!\!\!\raisebox{1.63pt}{$\scriptstyle\bullet$}}}}  %prava zaprta podmnozica
+\newcommand{thecurrentmonth}{\arabic{currentmonth}}
+\newcommand{thecurrentday}{\arabic{currentday}}
+\renewcommand{\chapnamefont}{    \fontsize{10mm}{15mm}\selectfont \bfseries}        %%
+\renewcommand{\chapnumfont}{     \fontsize{10mm}{15mm}\selectfont \bfseries}        %%
+\renewcommand{\chaptitlefont}{   \fontsize{10mm}{15mm}\selectfont \bfseries}        %%
+\renewcommand{\printchaptername}{\fontsize{10mm}{15mm}\selectfont \bfseries Chapter}%%
+\renewcommand{\chapternamenum}{ }                                                   %%
+\renewcommand{\printchapternum}{\chapnumfont \thechapter}                           %%
+\renewcommand{\afterchapternum}{. \\}                                               %%
+\renewcommand{\afterchaptertitle}{\par\nobreak\medskip\hrule\vskip \afterchapskip}  %%
+\def\thechapter{\arabic{chapter}}  %stevilcenje chapterjev z arabskimi stevilkami                                   %%
+\def\secondcircle{(55:2.67cm) circle (2cm)}
+\def\thirdcircle{(0:3cm) circle (2cm)}
+\newcommand\test{\texttt{test}.bye}
+\newcommand{\blue#1}{#2}
+\newcommand{\red#1}{#3}
+\newcommand{\justsometext}{Just enough text to make the line break so we get to see a second line.}
+\newcommand{dice}[1]{\ensuremath{#1}}
+\def\sqrt{\mathpalette\DHLhksqrt}
+\newcommand{\bigO}[1]{\ensuremath{\mathop{}\mathopen{}\mathcal{O}\mathopen{}\left(#1\right)}}
+\renewcommand{\arraystretch}{1.2}%
+\newcommand{\cudaString}{CUDA}
+\newcommand{\cuda}{\textsc{\MakeTextLowercase{\cudaString}}}
+\newcommand{\abs}[1]{\lvert#1\rvert}
+\newcommand{\Abs}[1]{\left\lvert#1\right\rvert}
+\newcommand{\highlight}[1]{\boxed{#1}}
+\def\bordercolor{red}
+\def\backgroundcolor{white}
+\def\vfrac#1#2{\mathpalette\vfr@c{#1}{#2}}
+\def\vfr@c#1#2{\raise.5ex\hbox{$#1$}/\lower.25ex\hbox{$#2$}}
+\newcommand{\FunctionF}{\ensuremath{x^2}}%
+\newcommand{\decel}[4]{\langle#1, #2, #3, #4 \rangle}
+\newcommand{\tod}{\rightarrow}
+\newcommand{\llor}{\vee}
+\newcommand\Universidad{\uppercase{\universidad}}
+\newcommand{\someSpecialText}{A text that can be changed locally...}
+\newcommand{\testIt}{The value of someSpecialText is : ''\someSpecialText''.}
+\newcommand{foo}{...}
+\def\par{\typeout{Macro!}\@@par}
+\renewcommand{\putansline}[2]{[#2]}
+\def\startstreamx{1}
+\def\startstreamy{1}
+\def\initialwidth{6}
+\def\initialheight{4}
+\def\choiceA{.9}
+\def\my@macro#1{-#1-}% This is magic
+\def\shadowradius{3pt}
+\newcommand{\trimmed}{foo}
+\newcommand{\bgcolor}{foo}
+\newcommand{\hmValue}{0}
+\newcommand{\transparency}{0}
+\newcommand{\hmColor}{}
+\renewcommand{\trimmed}{-200}
+\renewcommand{\trimmed}{200}
+\renewcommand{\trimmed}{#1}
+\def\exampletext{\lipsum}
+\def\addgraphic{\includegraphics[width=3cm]{./graphics/amato}}
+\def\tabline{Test &amp; \the\value{entryno} &amp; Description\addtocounter{entryno}{1}\\}
+\def\tablines{\tabline\tabline\tabline\tabline\tabline}
+\def\mybreak{\hrule width \columnwidth height 0pt \columnbreak}
+\def\R{4} % sphere radius
+\def\angEl{25} % elevation angle
+\def\angAz{-100} % azimuth angle
+\def\angPhiOne{-110} % longitude of point P
+\def\angPhiTwo{-45} % longitude of point Q
+\def\angBeta{30} % latitude of point P and Q
+\newcommand{\setfont}[2]{{\fontfamily{#1}\selectfont #2}}
+\newcommand{\anotherAuthor}[1]{\textcolor{darkgreen}{[#1]}}
+\newcommand{\bh}[0]{\stepcounter{highlight}\tikzhighlightanchor{begin}}
+\newcommand{\eh}[0]{\tikzhighlightanchor{end}}
+\def\lst@boxpos{b}%
+\newcommandx\@verbItInColor[2][%
+\def\theenumi{\alph{enumi}}
