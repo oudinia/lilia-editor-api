@@ -622,6 +622,13 @@ builder.Services.AddSingleton<Lilia.Import.Interfaces.ILmlTextParser, Lilia.Impo
 // import doesn't pay the warmup cost.
 builder.Services.AddSingleton<ILatexCatalogService, LatexCatalogService>();
 builder.Services.AddSingleton<IUnicodeShimService, UnicodeShimService>();
+
+// Font coverage (P2.5). Singleton because it holds only a connection string —
+// it opens and disposes its own connection per query, against the SHARED TOOLING
+// database rather than the application one. That is a second connection string
+// on purpose: latex_facts is measured and owned by lilia-latex-service, and the
+// editor only reads it.
+builder.Services.AddSingleton<IFontCoverageService, FontCoverageService>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
 builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
 builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
