@@ -34,6 +34,9 @@ public class PreviewControllerTests
             _documentServiceMock.Object,
             new Lilia.Api.Services.TypstExportService(),
             new Lilia.Api.Services.TypstCompileService(),
+            new Microsoft.Extensions.Caching.Distributed.MemoryDistributedCache(
+                Microsoft.Extensions.Options.Options.Create(
+                    new Microsoft.Extensions.Caching.Memory.MemoryDistributedCacheOptions())),
             null!,
             _loggerMock.Object);
 
