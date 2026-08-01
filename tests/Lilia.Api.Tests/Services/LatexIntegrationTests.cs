@@ -22,6 +22,43 @@ public class LatexIntegrationTests : IAsyncLifetime
     private static bool _dockerAvailable;
     private static readonly string TmpBase = Path.Combine(Path.GetTempPath(), "lilia-latex-tests");
 
+    /// <summary>
+    /// The TeX image these tests compile against.
+    /// </summary>
+    /// <remarks>
+    /// <para>It has to be a <b>full</b> TeX Live. The preamble these tests
+    /// compile loads siunitx, mathtools, tcolorbox, cleveref and more, and
+    /// production installs them via <c>texlive-science</c>,
+    /// <c>texlive-latex-extra</c> and friends.</para>
+    ///
+    /// <para><c>lilia-texlive:bookworm</c> and <c>:trixie</c> look like the
+    /// obvious choice — the project pins them and measures its font facts
+    /// against them — but <b>neither contains siunitx</b>, so every one of these
+    /// tests fails on <c>File 'siunitx.sty' not found</c>. They are the
+    /// latex-service's measurement toolchain, not this API's runtime.</para>
+    ///
+    /// <para>Override with <c>LILIA_TEX_IMAGE</c>. The most faithful target
+    /// would be an image built from this repository's own Dockerfile, since
+    /// that is what production actually has; <c>texlive/texlive:latest</c> is a
+    /// superset of it and is what CI has always used.</para>
+    /// </remarks>
+    /// <summary>
+    /// Images to try, in order, when <c>LILIA_TEX_IMAGE</c> is not set.
+    /// </summary>
+    /// <remarks>
+    /// The small derived image first because it is closer to production and
+    /// builds in a minute; the full TeX Live second because that is what CI has
+    /// always used and is present there. Whichever is found is reported, so a
+    /// result is never attributed to the wrong toolchain.
+    /// </remarks>
+    private static readonly string[] CandidateImages =
+    [
+        "lilia-texlive:test",
+        "texlive/texlive:latest",
+    ];
+
+    private static string TexImage = "";
+
     public LatexIntegrationTests()
     {
         var logger = new Mock<ILogger<RenderService>>();
@@ -30,13 +67,32 @@ public class LatexIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Check if docker is available
+        // Docker AND an image. Checking only the daemon meant a machine with
+        // docker but without the image failed 55 tests with a pdflatex error,
+        // rather than reporting the one thing actually missing.
         try
         {
-            var psi = new ProcessStartInfo("docker", "version") { RedirectStandardOutput = true, UseShellExecute = false };
-            var proc = Process.Start(psi);
-            await proc!.WaitForExitAsync();
-            _dockerAvailable = proc.ExitCode == 0;
+            var candidates = Environment.GetEnvironmentVariable("LILIA_TEX_IMAGE") is { Length: > 0 } configured
+                ? [configured]
+                : CandidateImages;
+
+            foreach (var image in candidates)
+            {
+                var psi = new ProcessStartInfo("docker") { RedirectStandardOutput = true, UseShellExecute = false };
+                psi.ArgumentList.Add("image");
+                psi.ArgumentList.Add("inspect");
+                psi.ArgumentList.Add(image);
+
+                var probe = Process.Start(psi);
+                await probe!.WaitForExitAsync();
+
+                if (probe.ExitCode == 0)
+                {
+                    TexImage = image;
+                    _dockerAvailable = true;
+                    break;
+                }
+            }
         }
         catch
         {
@@ -48,14 +104,30 @@ public class LatexIntegrationTests : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        // Clean up with docker to handle root-owned files
         try
         {
-            Process.Start(new ProcessStartInfo("/bin/bash", $"-c \"docker run --rm -v {TmpBase}:/cleanup alpine rm -rf /cleanup/*\"")
-            { UseShellExecute = false })?.WaitForExit(5000);
+            // On Linux the container may have written root-owned files that the
+            // test user cannot remove, so a throwaway container does the
+            // deleting. On Windows a bind mount leaves ordinary files and
+            // pulling an extra image to delete them would be absurd.
+            if (!OperatingSystem.IsWindows())
+            {
+                var psi = new ProcessStartInfo("docker") { UseShellExecute = false };
+                foreach (var argument in new[]
+                         {
+                             "run", "--rm", "-v", $"{TmpBase}:/cleanup",
+                             "alpine", "rm", "-rf", "/cleanup/.",
+                         })
+                {
+                    psi.ArgumentList.Add(argument);
+                }
+
+                Process.Start(psi)?.WaitForExit(5000);
+            }
+
             Directory.Delete(TmpBase, true);
         }
-        catch { }
+        catch { /* best-effort cleanup of a temp directory */ }
         return Task.CompletedTask;
     }
 
@@ -65,7 +137,24 @@ public class LatexIntegrationTests : IAsyncLifetime
     private async Task<(bool Valid, string? Error)> ValidateWithDocker(string latex)
     {
         if (!_dockerAvailable)
-            throw new SkipException("Docker not available — skipping LaTeX integration test");
+        {
+            // This does NOT skip, and used to claim it did.
+            //
+            // SkipException is a plain exception defined at the bottom of this
+            // file with no xUnit integration — xUnit 2.9 has no runtime skip —
+            // so throwing it fails the test with the word "skipping" in the
+            // message. A test that says it was skipped while being counted as a
+            // failure is the same shape as everything else this suite exists to
+            // catch: plausible output, something wrong, nobody told.
+            //
+            // Named for what it is until the project takes a real skip
+            // mechanism (Xunit.SkippableFact, or xUnit v3's Assert.Skip).
+            throw new TestEnvironmentUnavailableException(
+                "FAILED, not skipped: no TeX image available, so this test could not run. Tried " +
+                string.Join(" and ", CandidateImages) + ". Build the small one with " +
+                "`docker build -f tests/Lilia.Api.Tests/Fixtures/texlive-test.Dockerfile -t lilia-texlive:test .`, " +
+                "or set LILIA_TEX_IMAGE to an image you have.");
+        }
 
         var testDir = Path.Combine(TmpBase, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(testDir);
@@ -73,16 +162,55 @@ public class LatexIntegrationTests : IAsyncLifetime
         var texPath = Path.Combine(testDir, "test.tex");
         await File.WriteAllTextAsync(texPath, latex);
 
-        // Run as current user to avoid root-owned files in temp dir
-        var uid = Environment.GetEnvironmentVariable("UID") ?? "1000";
+        // docker is invoked directly rather than through `/bin/bash -c`.
+        //
+        // These 55 tests are the only thing that compiles every block type with
+        // a real TeX engine, and on Windows they did not run at all: /bin/bash
+        // does not resolve, so every one failed with "cannot find the file
+        // specified" — a message about a shell, for a test about LaTeX. They
+        // reported as ordinary failures alongside genuine ones, which made the
+        // whole suite easy to wave through.
+        //
+        // ArgumentList also removes the quoting entirely. The old form nested a
+        // quoted command inside a quoted argument, which breaks on any path
+        // containing a space — and the default Windows temp path contains one.
         var psi = new ProcessStartInfo
         {
-            FileName = "/bin/bash",
-            Arguments = $"-c \"docker run --rm --user {uid} -v {testDir}:/work -w /work texlive/texlive:latest pdflatex -interaction=nonstopmode -halt-on-error --no-shell-escape test.tex\"",
+            FileName = "docker",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+
+        psi.ArgumentList.Add("run");
+        psi.ArgumentList.Add("--rm");
+
+        // Only where it means something. On Linux this stops the container
+        // leaving root-owned files in the temp directory; on Windows bind
+        // mounts have no such problem, and forcing a uid the image does not
+        // know about only breaks it.
+        if (!OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("UID") is { Length: > 0 } uid)
+        {
+            psi.ArgumentList.Add("--user");
+            psi.ArgumentList.Add(uid);
+        }
+
+        // The pinned images declare an entrypoint of their own, so the engine
+        // has to be named explicitly rather than passed as an argument to
+        // whatever the image already runs.
+        psi.ArgumentList.Add("--entrypoint");
+        psi.ArgumentList.Add("pdflatex");
+
+        psi.ArgumentList.Add("-v");
+        psi.ArgumentList.Add($"{testDir}:/work");
+        psi.ArgumentList.Add("-w");
+        psi.ArgumentList.Add("/work");
+        psi.ArgumentList.Add(TexImage);
+
+        psi.ArgumentList.Add("-interaction=nonstopmode");
+        psi.ArgumentList.Add("-halt-on-error");
+        psi.ArgumentList.Add("--no-shell-escape");
+        psi.ArgumentList.Add("test.tex");
 
         var proc = Process.Start(psi)!;
         var stdout = await proc.StandardOutput.ReadToEndAsync();
@@ -211,7 +339,17 @@ public class LatexIntegrationTests : IAsyncLifetime
 }
 
 // xUnit skip helper
-public class SkipException : Exception
-{
-    public SkipException(string message) : base(message) { }
-}
+/// <summary>
+/// Thrown when a test cannot run because its environment is missing.
+/// </summary>
+/// <remarks>
+/// <para>Was <c>SkipException</c>, which was a lie: it has no xUnit
+/// integration, so throwing it fails the test — with a message saying the test
+/// was skipped. On any machine without the image that produced 55 failures
+/// describing themselves as skips.</para>
+/// <para>Renamed rather than made to work, because a real runtime skip needs
+/// either <c>Xunit.SkippableFact</c> or xUnit v3, and adding a dependency is a
+/// decision worth taking on its own rather than smuggling into a fix. Until
+/// then the name and the message say what actually happens.</para>
+/// </remarks>
+public class TestEnvironmentUnavailableException(string message) : Exception(message);
