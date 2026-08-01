@@ -57,6 +57,27 @@ public record LatexValidationResult(
 public class LaTeXRenderService : ILaTeXRenderService
 {
     private readonly ILogger<LaTeXRenderService> _logger;
+    /// <summary>
+    /// Process-wide bound on concurrent LaTeX compiles.
+    ///
+    /// <para><b>This is NOT replaced by queue concurrency, despite what P2.4
+    /// stage 2 originally proposed.</b> The plan reads "replace
+    /// <c>LaTeXRenderService._semaphore</c> with queue concurrency: the semaphore
+    /// bounds one process, a prefetch count bounds the cluster." That only holds
+    /// if <i>every</i> compile goes through the queue — and stage 3 deliberately
+    /// keeps per-block validation synchronous, because the author is waiting and
+    /// the problem there is latency, not reliability.</para>
+    ///
+    /// <para>So the paths this guards are not all queueable. Removing it would
+    /// leave validation — the hottest path in the system, called on every block
+    /// blur — with no bound at all, while the queue bounded only exports. The
+    /// two are complementary, not alternatives: the queue bounds how much work
+    /// is <i>admitted</i>, this bounds how many <c>pdflatex</c> processes exist
+    /// at once, which is the actual scarce resource.</para>
+    ///
+    /// <para>Queue concurrency is therefore set BELOW this number, so the two
+    /// cannot add up to more compiles than the box was sized for.</para>
+    /// </summary>
     private static readonly SemaphoreSlim _semaphore = new(3, 3); // Max 3 concurrent compilations
 
     private const string PrecompiledFormatPath = "/tmp/lilia-latex-preamble/lilia-preamble";
