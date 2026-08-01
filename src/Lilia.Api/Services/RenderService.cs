@@ -599,6 +599,30 @@ public partial class RenderService : IRenderService
         return $"<blockquote class=\"blockquote\">{processed}</blockquote>";
     }
 
+    /// <summary>
+    /// PREVIEW-ONLY LaTeX for a title block: the \title/\author/\date/\maketitle
+    /// snippet it contributes to the document preamble. Kept byte-for-byte in
+    /// step with the preamble assembly in RenderDocumentToLatex (empty date →
+    /// \date{\today}; FormatTitleMetaLatex preserves \today/\and/\thanks{…}).
+    /// NOT emitted in the document body — see RenderBlockToLatex's forPreview.
+    /// </summary>
+    private string RenderTitleToLatex(JsonElement content)
+    {
+        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var author = content.TryGetProperty("author", out var a) ? a.GetString() ?? "" : "";
+        var date = content.TryGetProperty("date", out var d) ? d.GetString() ?? "" : "";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($@"\title{{{FormatTitleMetaLatex(title)}}}");
+        if (!string.IsNullOrWhiteSpace(author))
+            sb.AppendLine($@"\author{{{FormatTitleMetaLatex(author)}}}");
+        sb.AppendLine(!string.IsNullOrWhiteSpace(date)
+            ? $@"\date{{{FormatTitleMetaLatex(date)}}}"
+            : @"\date{\today}");
+        sb.Append(@"\maketitle");
+        return sb.ToString();
+    }
+
     private string RenderTheoremToHtml(JsonElement content)
     {
         var theoremType = content.TryGetProperty("theoremType", out var tt) ? tt.GetString() ?? "theorem" : "theorem";
@@ -1075,7 +1099,10 @@ public partial class RenderService : IRenderService
         // packages (\usepackage{fontspec} etc.) and the explicit
         // Document.LatexEngine override. Result drives the engine-specific
         // preamble addendum below (fontspec for lua/xelatex).
-        var renderedBlocks = doc.Blocks.Select(RenderBlockToLatex).ToList();
+        // Body assembly: forPreview defaults to false, so the title block stays
+        // empty here (its \maketitle lives in the preamble above). Explicit
+        // lambda — the method group is now ambiguous with the optional param.
+        var renderedBlocks = doc.Blocks.Select(b => RenderBlockToLatex(b)).ToList();
         var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
         var detectedEngine = EngineDetector.DetectDocument(renderedBlocks, importedPkgs);
         var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
@@ -1234,7 +1261,16 @@ public partial class RenderService : IRenderService
         });
     }
 
-    public string RenderBlockToLatex(Block block)
+    /// <param name="forPreview">
+    /// When true, the per-block LaTeX PREVIEW is being rendered (a single card's
+    /// "LaTeX" tab), not the document body. Only the title block differs: in the
+    /// body it must stay empty (its \title/\author/\date/\maketitle live in the
+    /// preamble — see RenderDocumentToLatex — so emitting them inline too would
+    /// duplicate \maketitle and break the compile), but a preview should SHOW
+    /// that preamble snippet so the card isn't blank. Every other block renders
+    /// identically either way.
+    /// </param>
+    public string RenderBlockToLatex(Block block, bool forPreview = false)
     {
         try
         {
@@ -1253,8 +1289,9 @@ public partial class RenderService : IRenderService
                 "theorem" => RenderTheoremToLatex(content),
                 "abstract" => RenderAbstractToLatex(content),
                 // Title is preamble metadata (\title/\author/\date) consumed into
-                // the preamble + \maketitle; it renders nothing in the body.
-                "title" => "",
+                // the preamble + \maketitle; it renders nothing in the body, but
+                // its preview shows the preamble snippet it contributes.
+                "title" => forPreview ? RenderTitleToLatex(content) : "",
                 "tableofcontents" => @"\tableofcontents",
                 "columnbreak" => @"\columnbreak",
                 "columnlayout" => RenderColumnLayoutToLatex(content),

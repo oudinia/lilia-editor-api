@@ -13,7 +13,7 @@ public interface IRenderService
     Task<string> RenderToMarkdownAsync(Guid documentId);
     Task<string> RenderToLmlAsync(Guid documentId);
     string RenderBlockToHtml(Block block);
-    string RenderBlockToLatex(Block block);
+    string RenderBlockToLatex(Block block, bool forPreview = false);
     string RenderBlockToMarkdown(Block block);
     string RenderBlockToLml(Block block);
 }
