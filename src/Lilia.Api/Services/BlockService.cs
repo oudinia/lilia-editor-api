@@ -23,6 +23,33 @@ public class BlockService : IBlockService
         _blockTypeService = blockTypeService;
     }
 
+    /// <summary>
+    /// The macros a document defines for itself, needed to build an equation's
+    /// AST — the parser cannot know that <c>\R</c> means <c>\mathbb{R}</c> here.
+    /// </summary>
+    /// <remarks>
+    /// Only fetched when an equation is involved. Every other block type would
+    /// pay a query for something it cannot use, and a batch update of two
+    /// hundred paragraphs is the common case.
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<string, Lilia.Core.Capabilities.MacroDefinition>?>
+        GetDocumentMacrosAsync(Guid documentId, bool needed)
+    {
+        if (!needed) return null;
+
+        var preamble = await _context.Documents
+            .Where(d => d.Id == documentId)
+            .Select(d => d.CustomPreamble)
+            .FirstOrDefaultAsync();
+
+        return string.IsNullOrWhiteSpace(preamble)
+            ? null
+            : Lilia.Core.Capabilities.PreambleMacroCollector.Collect(preamble);
+    }
+
+    private static bool IsEquationType(string? type) =>
+        string.Equals(type, "equation", StringComparison.OrdinalIgnoreCase);
+
     public async Task<List<BlockDto>> GetBlocksAsync(Guid documentId)
     {
         var blocks = await _context.Blocks
@@ -76,7 +103,9 @@ public class BlockService : IBlockService
             DocumentId = documentId,
             Type = dto.Type,
             Content = dto.Content.HasValue
-                ? BlockContentNormaliser.Normalise(dto.Type, dto.Content.Value)
+                ? BlockContentNormaliser.Normalise(
+                    dto.Type, dto.Content.Value,
+                    await GetDocumentMacrosAsync(documentId, IsEquationType(dto.Type)))
                 : JsonDocument.Parse("{}"),
             SortOrder = resolvedSortOrder,
             ParentId = dto.ParentId,
@@ -113,7 +142,12 @@ public class BlockService : IBlockService
         if (dto.Type != null) block.Type = dto.Type;
         // block.Type is already the new type on the line above, so a block being
         // converted INTO an equation is normalised as one.
-        if (dto.Content.HasValue) block.Content = BlockContentNormaliser.Normalise(block.Type, dto.Content.Value);
+        if (dto.Content.HasValue)
+        {
+            block.Content = BlockContentNormaliser.Normalise(
+                block.Type, dto.Content.Value,
+                await GetDocumentMacrosAsync(block.DocumentId, IsEquationType(block.Type)));
+        }
         if (dto.SortOrder.HasValue) block.SortOrder = dto.SortOrder.Value;
         if (dto.ParentId.HasValue) block.ParentId = dto.ParentId.Value;
         if (dto.Depth.HasValue) block.Depth = dto.Depth.Value;
@@ -180,6 +214,15 @@ public class BlockService : IBlockService
         var createdCount = 0;
         var updatedCount = 0;
 
+        // Once for the whole batch, not once per block. A document's macros do
+        // not change while its blocks are being written, and the common batch
+        // is a couple of hundred paragraphs that would each pay for a query
+        // returning the same string.
+        var batchTouchesEquations = blocks.Any(b =>
+            IsEquationType(b.Type) ||
+            (existingDict.TryGetValue(b.Id, out var existing) && IsEquationType(existing.Type)));
+        var macros = await GetDocumentMacrosAsync(documentId, batchTouchesEquations);
+
         foreach (var update in blocks)
         {
             if (existingDict.TryGetValue(update.Id, out var block))
@@ -187,7 +230,7 @@ public class BlockService : IBlockService
                 // Update existing block
                 _logger.LogDebug("BatchUpdateBlocksAsync: Updating existing block {BlockId}", update.Id);
                 if (update.Type != null) block.Type = update.Type;
-                if (update.Content.HasValue) block.Content = BlockContentNormaliser.Normalise(block.Type, update.Content.Value);
+                if (update.Content.HasValue) block.Content = BlockContentNormaliser.Normalise(block.Type, update.Content.Value, macros);
                 if (update.SortOrder.HasValue) block.SortOrder = update.SortOrder.Value;
                 if (update.ParentId.HasValue) block.ParentId = update.ParentId.Value;
                 if (update.Depth.HasValue) block.Depth = update.Depth.Value;
@@ -205,7 +248,7 @@ public class BlockService : IBlockService
                     DocumentId = documentId,
                     Type = update.Type ?? "paragraph",
                     Content = update.Content.HasValue
-                        ? BlockContentNormaliser.Normalise(update.Type ?? "paragraph", update.Content.Value)
+                        ? BlockContentNormaliser.Normalise(update.Type ?? "paragraph", update.Content.Value, macros)
                         : JsonDocument.Parse("{}"),
                     SortOrder = update.SortOrder ?? 0,
                     ParentId = update.ParentId ?? null,
