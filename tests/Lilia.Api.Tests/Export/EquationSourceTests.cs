@@ -171,12 +171,20 @@ public class EquationSourceTests
     }
 
     [Fact]
-    public void Normalising_never_writes_an_ast()
+    public void Normalising_writes_a_real_ast_never_a_null_one()
     {
+        // Supersedes an earlier rule that nothing was written at all. That was
+        // about writing `ast: null` to reserve the field, which bought nothing:
+        // absent and null are indistinguishable in schemaless JSON. Writing a
+        // real tree is a different proposition, and the half of the old rule
+        // that still holds is the half asserted here — the value is either a
+        // usable tree or the key is not present.
         using var result = BlockContentNormaliser.Normalise("equation", Json("""{"latex":"x"}"""));
-        result.RootElement.TryGetProperty("ast", out _).Should().BeFalse(
-            "absent and null are indistinguishable in schemaless JSON, so writing "
-            + "ast:null reserves nothing that adding the field later would not");
+
+        result.RootElement.TryGetProperty("ast", out var ast).Should().BeTrue();
+        ast.ValueKind.Should().Be(JsonValueKind.Object,
+            "a null or empty ast would be worse than none — a reader cannot tell it "
+            + "from an equation that genuinely parsed to nothing");
     }
 
     [Fact]
