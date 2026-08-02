@@ -1,3 +1,4 @@
+using Lilia.Engines;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -1083,17 +1084,7 @@ public class ConvertController : ControllerBase
     {
         if (string.IsNullOrEmpty(text)) return "";
 
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     #endregion

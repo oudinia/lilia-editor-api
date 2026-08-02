@@ -283,11 +283,7 @@ public class ToolRunnerService : IToolRunnerService
         return sb.ToString().TrimEnd();
     }
 
-    private static string LatexEscape(string s) => s
-        .Replace("\\", "\\textbackslash{}")
-        .Replace("&", "\\&").Replace("%", "\\%").Replace("$", "\\$").Replace("#", "\\#")
-        .Replace("_", "\\_").Replace("{", "\\{").Replace("}", "\\}")
-        .Replace("~", "\\textasciitilde{}").Replace("^", "\\textasciicircum{}");
+    private static string LatexEscape(string s) => LatexText.Escape(s);
 
     private static string? TryGetString(JsonElement el, string prop) =>
         el.ValueKind == JsonValueKind.Object && el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String

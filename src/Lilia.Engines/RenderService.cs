@@ -1437,17 +1437,7 @@ public partial class RenderService : IRenderService
     private static string EscapeLatexStatic(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     private string RenderEmbedToLatex(JsonElement content)
@@ -2025,7 +2015,7 @@ public partial class RenderService : IRenderService
                     var cellText = GetCellText(h);
                     var colspan = GetCellIntProp(h, "colspan", 1);
                     var rowspan = GetCellIntProp(h, "rowspan", 1);
-                    var rendered = $@"\textbf{{{EscapeLatex(cellText)}}}";
+                    var rendered = $@"\textbf{{{LatexText.EscapeCell(cellText)}}}";
 
                     rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                     headerCells.Add(rendered);
@@ -2058,7 +2048,7 @@ public partial class RenderService : IRenderService
                         var cellText = GetCellText(cell);
                         var colspan = GetCellIntProp(cell, "colspan", 1);
                         var rowspan = GetCellIntProp(cell, "rowspan", 1);
-                        var rendered = EscapeLatex(cellText);
+                        var rendered = LatexText.EscapeCell(cellText);
 
                         rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                         // Guard: a cell starting with '[' immediately after a row break (\\)
@@ -2471,17 +2461,7 @@ public partial class RenderService : IRenderService
         if (string.IsNullOrEmpty(text)) return "";
 
         // Escape special LaTeX characters
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     /// <summary>
@@ -2605,17 +2585,7 @@ public partial class RenderService : IRenderService
             // Escape LaTeX special chars inside the code content — texttt
             // is not verbatim (unlike \verb), so `_`, `%`, etc. still
             // need to be escaped to render correctly.
-            var inner = m.Groups[1].Value
-                .Replace("\\", "\\textbackslash{}")
-                .Replace("{", "\\{")
-                .Replace("}", "\\}")
-                .Replace("$", "\\$")
-                .Replace("&", "\\&")
-                .Replace("#", "\\#")
-                .Replace("^", "\\textasciicircum{}")
-                .Replace("_", "\\_")
-                .Replace("~", "\\textasciitilde{}")
-                .Replace("%", "\\%");
+            var inner = LatexText.Escape(m.Groups[1].Value);
             commandRegions.Add($"\\texttt{{{inner}}}");
             return $"\x00CMD{commandRegions.Count - 1}\x00";
         });
