@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Lilia.Api.Services;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Services;
 

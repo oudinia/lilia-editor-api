@@ -1,10 +1,12 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public interface ICompilationQueueService
 {

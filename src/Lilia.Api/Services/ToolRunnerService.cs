@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
+using Lilia.Engines;
 
 namespace Lilia.Api.Services;
 

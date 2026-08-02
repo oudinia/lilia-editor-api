@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Core.Blocks;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public partial class RenderService : IRenderService
 {
@@ -1009,7 +1010,7 @@ public partial class RenderService : IRenderService
     /// could extract the shared preamble now that they align). The exporter's
     /// own preamble lives in LaTeXExportService.
     /// </summary>
-    internal static string BuildPreambleForValidation(Document doc, LatexEngine engine)
+    public static string BuildPreambleForValidation(Document doc, LatexEngine engine)
     {
         var latex = new StringBuilder();
 
@@ -1255,7 +1256,7 @@ public partial class RenderService : IRenderService
     private static readonly Regex DuplicateDocClassRe =
         new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
 
-    internal static string DedupeDocumentClass(string source)
+    public static string DedupeDocumentClass(string source)
     {
         var first = true;
         return DuplicateDocClassRe.Replace(source, m =>
@@ -2488,7 +2489,7 @@ public partial class RenderService : IRenderService
     /// Body <c>\date{…}</c> (preamble cmd misused mid-paragraph) and
     /// <c>\today</c> → calendar date; <c>\and</c> → comma separator.
     /// </summary>
-    internal static string ExpandBareLatexMetaTokensForDisplay(string text)
+    public static string ExpandBareLatexMetaTokensForDisplay(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
         var today = DateTime.UtcNow.ToString("MMMM d, yyyy",

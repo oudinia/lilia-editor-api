@@ -5,6 +5,7 @@ using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Services;
 

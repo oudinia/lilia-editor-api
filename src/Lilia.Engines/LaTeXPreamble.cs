@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 /// <summary>
 /// Single source of truth for the LaTeX preamble used across

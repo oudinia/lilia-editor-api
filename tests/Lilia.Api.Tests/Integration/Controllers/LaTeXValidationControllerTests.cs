@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using Lilia.Api.Tests.Integration.Infrastructure;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 

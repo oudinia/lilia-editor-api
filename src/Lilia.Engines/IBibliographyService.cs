@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Lilia.Core.DTOs;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public interface IBibliographyService
 {

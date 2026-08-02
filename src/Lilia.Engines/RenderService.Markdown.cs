@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -5,7 +7,7 @@ using Lilia.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Lilia.Core.Blocks;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public partial class RenderService
 {

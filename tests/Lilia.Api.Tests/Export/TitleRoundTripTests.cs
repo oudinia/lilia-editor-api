@@ -5,6 +5,7 @@ using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Export;
 

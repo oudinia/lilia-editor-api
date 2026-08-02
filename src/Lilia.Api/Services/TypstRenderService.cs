@@ -6,6 +6,7 @@ using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Lilia.Core.Blocks;
+using Lilia.Engines;
 
 namespace Lilia.Api.Services;
 
