@@ -14,7 +14,18 @@ namespace Lilia.Tools.Api.Services;
 /// <c>verified</c> (compiled clean), <c>failed</c> (compiled with errors — the
 /// findings say which), or <c>unchecked</c> (no compiler reachable; claim nothing).
 /// </summary>
-public record ToolVerdict(string Status, string[] Findings, int DurationMs)
+/// <param name="Engine">
+/// The TeX binary the verdict is about — <c>pdflatex</c>, <c>xelatex</c> or
+/// <c>lualatex</c>. "Compiles" is not a claim on its own: the same source can
+/// pass under one engine and fail under another, so the verdict is incomplete
+/// without saying which one produced it. Null when nothing was compiled.
+/// </param>
+/// <param name="EngineAuto">
+/// Whether that engine was inferred from the content rather than asked for. The
+/// UI distinguishes the two: a detected engine is a guess the author may want to
+/// override, a chosen one is a requirement they stated.
+/// </param>
+public record ToolVerdict(string Status, string[] Findings, int DurationMs, string? Engine = null, bool EngineAuto = false)
 {
     public static readonly ToolVerdict Unchecked = new("unchecked", [], 0);
 }
@@ -153,7 +164,14 @@ public class ToolRunnerService : IToolRunnerService
         });
         var block = new Block { Type = "table", Content = JsonDocument.Parse(content) };
         var latex = _render.RenderBlockToLatex(block);
-        return new ToolRunResult(latex, "latex", "Table", await VerifyAsync(latex));
+        // An empty or absent "engine" means infer it; anything else is a stated
+        // requirement. ParseEngine alone can't express that difference — it maps
+        // every unknown value to pdflatex — so presence is checked first.
+        var requestedEngine = TryGetString(input, "engine") is { Length: > 0 } chosen
+            ? chosen.ParseEngine()
+            : (LatexEngine?)null;
+
+        return new ToolRunResult(latex, "latex", "Table", await VerifyAsync(latex, requestedEngine));
     }
 
     /// <summary>
@@ -162,24 +180,32 @@ public class ToolRunnerService : IToolRunnerService
     /// verdict is <c>unchecked</c>, because claiming a table compiles when nothing
     /// compiled it is the exact failure this tool exists to prevent.
     /// </summary>
-    private async Task<ToolVerdict> VerifyAsync(string latexFragment)
+    /// <param name="requested">
+    /// The engine the author asked for, or null to infer it. An explicit choice is
+    /// honoured even when detection disagrees: someone whose journal mandates
+    /// pdflatex needs to know whether it compiles *there*, and a verdict from an
+    /// engine they will never run is not an answer to their question.
+    /// </param>
+    private async Task<ToolVerdict> VerifyAsync(string latexFragment, LatexEngine? requested)
     {
+        var auto = requested is null;
+        // Detection is the default because most authors neither know nor should
+        // have to care; a fragment using \setmainfont fails under pdflatex for
+        // reasons that say nothing about the table.
+        var engine = requested ?? EngineDetector.Detect(latexFragment);
+        var name = engine.ToCli();
+
         try
         {
-            // Judge the table under the engine it actually asks for. A fragment
-            // using \setmainfont or unicode-math fails under pdflatex for reasons
-            // that say nothing about the table, so both the preamble and the binary
-            // follow what the content declares.
-            var engine = EngineDetector.Detect(latexFragment);
             var document = LaTeXPreamble.WrapForValidation(latexFragment, engine);
             var result = await _compiler.CompileLatexAsync(
                 document, CompilationType.Validate, VerifyTimeoutSeconds, engine);
             var ms = (int)result.Duration.TotalMilliseconds;
 
             if (result.Success)
-                return new ToolVerdict("verified", [], ms);
+                return new ToolVerdict("verified", [], ms, name, auto);
 
-            return new ToolVerdict("failed", ExtractFindings(result), ms);
+            return new ToolVerdict("failed", ExtractFindings(result), ms, name, auto);
         }
         catch (Exception ex)
         {

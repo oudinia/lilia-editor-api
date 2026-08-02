@@ -189,6 +189,8 @@ public class ToolsController : ControllerBase
                 status = result.Verdict.Status,
                 findings = result.Verdict.Findings,
                 durationMs = result.Verdict.DurationMs,
+                engine = result.Verdict.Engine,
+                engineAuto = result.Verdict.EngineAuto,
             },
             crossSell = new { label = tool.CrossSellLabel ?? "Open in Lilia editor", openInEditor = true },
         });

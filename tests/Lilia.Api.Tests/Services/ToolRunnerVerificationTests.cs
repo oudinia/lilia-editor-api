@@ -164,6 +164,35 @@ public class ToolRunnerVerificationTests
     }
 
     [Fact]
+    public async Task An_explicit_engine_overrides_detection()
+    {
+        // Someone whose journal mandates pdflatex, or whose template runs xelatex,
+        // needs the verdict to be about the engine they will actually run. Our
+        // guess is not an answer to that question.
+        var compiler = CompilerReturning(new CompilationResult(true, null, null, [], TimeSpan.Zero));
+        var input = JsonSerializer.Deserialize<JsonElement>(
+            """{"headers":["A"],"rows":[["1"]],"caption":"c","engine":"lualatex"}""");
+
+        var result = await BuildRunner(compiler).RunAsync(TableTool, input, null, default);
+
+        result.Verdict!.Engine.Should().Be("lualatex");
+        result.Verdict.EngineAuto.Should().BeFalse();
+        compiler.Verify(c => c.CompileLatexAsync(
+            It.IsAny<string>(), CompilationType.Validate, It.IsAny<int>(), LatexEngine.Lualatex));
+    }
+
+    [Fact]
+    public async Task An_absent_engine_is_inferred_and_says_so()
+    {
+        var compiler = CompilerReturning(new CompilationResult(true, null, null, [], TimeSpan.Zero));
+
+        var result = await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
+
+        result.Verdict!.Engine.Should().Be("pdflatex");
+        result.Verdict.EngineAuto.Should().BeTrue("an empty engine means infer, not 'pdflatex'");
+    }
+
+    [Fact]
     public async Task Plain_content_still_goes_to_pdflatex()
     {
         var compiler = CompilerReturning(new CompilationResult(true, null, null, [], TimeSpan.Zero));
