@@ -25,7 +25,17 @@ var builder = WebApplication.CreateBuilder(args);
 // TEMPORARY (machine transfer, remove after Sunday 2026-07-20): load committed
 // local-dev.secrets.json so a fresh clone works without dotnet user-secrets.
 // File is optional so production / machines without it are unaffected.
-builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
+//
+// Skipped under Testing. This file is added after CreateBuilder, so it wins
+// over everything — including the settings an integration test injects on the
+// test host. That silently pointed the Stytch webhook test at the real
+// https://test.stytch.com instead of its local stub (and the same precedence
+// trap already cost us ConnectionStrings; see _comment_connectionstring in
+// the file). Tests supply their own values and must be able to.
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
+}
 
 // TEMPORARY: decode transfer-encoded Anthropic key (GitHub push protection).
 // Supports revb64: = reverse(UTF8) then base64. Remove with local-dev.secrets.json.

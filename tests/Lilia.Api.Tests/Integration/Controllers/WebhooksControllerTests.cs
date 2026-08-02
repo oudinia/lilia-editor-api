@@ -71,6 +71,7 @@ public class WebhooksControllerTests : IntegrationTestBase
         var response = await SignedPost(client, body);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+        stytch.Hits.Should().Be(1, "the controller must mint the link against the stub, not the real Stytch API");
         emailMock.Verify(
             e => e.SendStytchVerificationAsync(
                 "newuser@example.com",
@@ -226,6 +227,14 @@ public class WebhooksControllerTests : IntegrationTestBase
         private readonly HttpListener _listener = new();
         public Uri BaseAddress { get; }
 
+        /// <summary>
+        /// Requests served. Asserted on, because a zero here is the
+        /// signature of the controller reaching the real Stytch API
+        /// instead of this stub — which is exactly what a config source
+        /// overriding Stytch:ApiBase used to cause, invisibly.
+        /// </summary>
+        public int Hits;
+
         public StytchAdminStub(string token)
         {
             var port = GetFreePort();
@@ -240,6 +249,7 @@ public class WebhooksControllerTests : IntegrationTestBase
                     HttpListenerContext ctx;
                     try { ctx = await _listener.GetContextAsync(); }
                     catch { break; }
+                    Interlocked.Increment(ref Hits);
                     var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { token }));
                     ctx.Response.StatusCode = 200;
                     ctx.Response.ContentType = "application/json";
