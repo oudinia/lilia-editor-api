@@ -166,20 +166,14 @@ public class ToolRunnerService : IToolRunnerService
     {
         try
         {
-            // CompilationQueueService only ever runs pdflatex. A fragment that asks
-            // for lua/xelatex — \setmainfont, unicode-math — cannot be compiled by
-            // it, and reporting that as "doesn't compile" would be a lie about the
-            // table rather than a fact about our compiler. Say what is true: we
-            // didn't check it.
+            // Judge the table under the engine it actually asks for. A fragment
+            // using \setmainfont or unicode-math fails under pdflatex for reasons
+            // that say nothing about the table, so both the preamble and the binary
+            // follow what the content declares.
             var engine = EngineDetector.Detect(latexFragment);
-            if (engine != LatexEngine.Pdflatex)
-            {
-                return new ToolVerdict("unchecked",
-                    [$"This table needs {engine.ToCli()}, which the checker doesn't run yet."], 0);
-            }
-
             var document = LaTeXPreamble.WrapForValidation(latexFragment, engine);
-            var result = await _compiler.CompileLatexAsync(document, CompilationType.Validate, VerifyTimeoutSeconds);
+            var result = await _compiler.CompileLatexAsync(
+                document, CompilationType.Validate, VerifyTimeoutSeconds, engine);
             var ms = (int)result.Duration.TotalMilliseconds;
 
             if (result.Success)

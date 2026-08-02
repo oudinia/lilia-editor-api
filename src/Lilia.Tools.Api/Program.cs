@@ -34,8 +34,10 @@ public class Program
             builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
         }
 
-        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
+        // Same key the editor uses — one database, two hosts. Naming it anything
+        // else here would mean maintaining two connection strings for one server.
+        var connectionString = builder.Configuration.GetConnectionString("LiliaCore")
+            ?? throw new InvalidOperationException("ConnectionStrings:LiliaCore is not configured.");
 
         // Read-mostly against the shared database: the registry is cached at boot
         // and the write path is a handful of small event/artifact rows.

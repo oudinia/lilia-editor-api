@@ -51,7 +51,7 @@ public class ToolRunnerVerificationTests
     {
         var compiler = new Mock<ICompilationQueueService>();
         compiler
-            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>()))
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), It.IsAny<LatexEngine>()))
             .ReturnsAsync(result);
         return compiler;
     }
@@ -129,7 +129,7 @@ public class ToolRunnerVerificationTests
     {
         var compiler = new Mock<ICompilationQueueService>();
         compiler
-            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>()))
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), It.IsAny<LatexEngine>()))
             .ThrowsAsync(new InvalidOperationException("pdflatex not found"));
 
         var result = await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
@@ -139,28 +139,39 @@ public class ToolRunnerVerificationTests
     }
 
     [Fact]
-    public async Task A_table_needing_another_engine_is_unchecked_not_failed()
+    public async Task A_table_is_judged_under_the_engine_it_asks_for()
     {
-        // The queue only runs pdflatex. Calling a fontspec table "doesn't compile"
-        // would be a claim about the table; the truth is about our compiler.
+        // \setmainfont is a fontspec command: it fails under pdflatex for reasons
+        // that say nothing about the table. Validating it as pdflatex would report
+        // a perfectly good table as broken.
         var render = new Mock<IRenderService>();
         render.Setup(r => r.RenderBlockToLatex(It.IsAny<Block>()))
               .Returns("\\setmainfont{Charter}\\begin{tabular}{l}A\\end{tabular}");
 
-        var compiler = CompilerReturning(new CompilationResult(false, null, "! Undefined control sequence.", [], TimeSpan.Zero));
+        var compiler = CompilerReturning(new CompilationResult(true, null, null, [], TimeSpan.Zero));
         var runner = new ToolRunnerService(
             new Mock<IBibliographyService>().Object, render.Object,
             new Mock<IDocxImportService>().Object, compiler.Object,
             NullLogger<ToolRunnerService>.Instance);
 
-        var result = await runner.RunAsync(TableTool, TableInput(), null, default);
+        await runner.RunAsync(TableTool, TableInput(), null, default);
 
-        result.Verdict!.Status.Should().Be("unchecked");
-        result.Verdict.Findings.Should().ContainSingle().Which.Should().Contain("doesn't run yet");
-        compiler.Verify(
-            c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>()),
-            Times.Never,
-            "there is no point compiling with an engine that cannot read it");
+        compiler.Verify(c => c.CompileLatexAsync(
+            It.IsAny<string>(),
+            CompilationType.Validate,
+            It.IsAny<int>(),
+            It.Is<LatexEngine>(e => e != LatexEngine.Pdflatex)));
+    }
+
+    [Fact]
+    public async Task Plain_content_still_goes_to_pdflatex()
+    {
+        var compiler = CompilerReturning(new CompilationResult(true, null, null, [], TimeSpan.Zero));
+
+        await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
+
+        compiler.Verify(c => c.CompileLatexAsync(
+            It.IsAny<string>(), CompilationType.Validate, It.IsAny<int>(), LatexEngine.Pdflatex));
     }
 
     [Fact]
@@ -169,7 +180,7 @@ public class ToolRunnerVerificationTests
         // Losing the compiler must not cost the user their table.
         var compiler = new Mock<ICompilationQueueService>();
         compiler
-            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>()))
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), It.IsAny<LatexEngine>()))
             .ThrowsAsync(new TimeoutException());
 
         var result = await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
