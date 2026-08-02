@@ -139,6 +139,31 @@ public class ToolRunnerVerificationTests
     }
 
     [Fact]
+    public async Task A_table_needing_another_engine_is_unchecked_not_failed()
+    {
+        // The queue only runs pdflatex. Calling a fontspec table "doesn't compile"
+        // would be a claim about the table; the truth is about our compiler.
+        var render = new Mock<IRenderService>();
+        render.Setup(r => r.RenderBlockToLatex(It.IsAny<Block>()))
+              .Returns("\\setmainfont{Charter}\\begin{tabular}{l}A\\end{tabular}");
+
+        var compiler = CompilerReturning(new CompilationResult(false, null, "! Undefined control sequence.", [], TimeSpan.Zero));
+        var runner = new ToolRunnerService(
+            new Mock<IBibliographyService>().Object, render.Object,
+            new Mock<IDocxImportService>().Object, compiler.Object,
+            NullLogger<ToolRunnerService>.Instance);
+
+        var result = await runner.RunAsync(TableTool, TableInput(), null, default);
+
+        result.Verdict!.Status.Should().Be("unchecked");
+        result.Verdict.Findings.Should().ContainSingle().Which.Should().Contain("doesn't run yet");
+        compiler.Verify(
+            c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>()),
+            Times.Never,
+            "there is no point compiling with an engine that cannot read it");
+    }
+
+    [Fact]
     public async Task The_table_output_is_still_returned_when_verification_is_unavailable()
     {
         // Losing the compiler must not cost the user their table.

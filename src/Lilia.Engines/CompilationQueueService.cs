@@ -93,6 +93,20 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         });
     }
 
+    /// <summary>
+    /// Content hash of the document being validated.
+    ///
+    /// <para>This was <c>latex.GetHashCode()</c> — 32 bits. Only *successful*
+    /// validations are cached, so a collision could only ever return a false
+    /// pass: a document that was never compiled being told it compiles. That is
+    /// the exact failure this validation exists to catch, and the one direction
+    /// it must never be wrong in. SHA-256 removes the possibility rather than
+    /// making it unlikely.</para>
+    /// </summary>
+    private static string ValidateCacheKey(string latex) =>
+        "validate:" + Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(latex)));
+
     public async Task<CompilationResult> CompileLatexAsync(string latex, CompilationType type, int timeoutSeconds = 30)
     {
         latex = DedupeDocumentClass(latex);
@@ -101,7 +115,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         // Check cache for validation requests
         if (type == CompilationType.Validate)
         {
-            var cacheKey = $"validate:{latex.GetHashCode()}";
+            var cacheKey = ValidateCacheKey(latex);
             if (_cache.TryGetValue(cacheKey, out var cached))
             {
                 Interlocked.Increment(ref _cacheHits);
@@ -145,7 +159,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
                 // Cache validation results
                 if (request.Type == CompilationType.Validate && finalResult.Success)
                 {
-                    var cacheKey = $"validate:{request.Latex.GetHashCode()}";
+                    var cacheKey = ValidateCacheKey(request.Latex);
                     if (_cache.Count >= MaxCacheSize)
                     {
                         // Simple eviction: clear half the cache
