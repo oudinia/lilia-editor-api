@@ -34,10 +34,12 @@ public class Program
             builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
         }
 
-        // Same key the editor uses — one database, two hosts. Naming it anything
-        // else here would mean maintaining two connection strings for one server.
-        var connectionString = builder.Configuration.GetConnectionString("LiliaCore")
-            ?? throw new InvalidOperationException("ConnectionStrings:LiliaCore is not configured.");
+        // Same resolution as the editor, so the two hosts cannot end up on
+        // different databases without someone having said so. Local by default;
+        // Database__Target=neon switches, which is all a container or a systemd
+        // unit needs to set.
+        var database = DatabaseTarget.Resolve(builder.Configuration);
+        var connectionString = database.ConnectionString;
 
         // Read-mostly against the shared database: the registry is cached at boot
         // and the write path is a handful of small event/artifact rows.
@@ -69,6 +71,12 @@ public class Program
         builder.Services.AddHealthChecks();
 
         var app = builder.Build();
+
+        // Say which database this process opened. Not knowing is how the editor
+        // spent a while on Neon while this host was on localhost.
+        app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Startup")
+            .LogInformation("[Tools] database target: {Target}", database);
 
         app.UseRouting();
         app.MapControllers();

@@ -143,7 +143,7 @@ builder.Host.UseWolverine(opts =>
     // machinery that auto-provisions its own tables should not be interleaved
     // with the domain ones. It also keeps `dotnet ef migrations` output honest —
     // EF does not own these tables and should not see them.
-    var messageStore = builder.Configuration.GetConnectionString("LiliaCore");
+    var messageStore = DatabaseTarget.Resolve(builder.Configuration).ConnectionString;
     if (!string.IsNullOrWhiteSpace(messageStore))
     {
         opts.PersistMessagesWithPostgresql(messageStore, schemaName: "wolverine");
@@ -361,9 +361,16 @@ else
 
 builder.Services.AddAuthorization();
 
-// Configure Database
-var connectionString = builder.Configuration.GetConnectionString("LiliaCore")
-    ?? "Host=localhost;Database=lilia_core;Username=postgres;Password=postgres";
+// Configure Database — an explicit target, not whichever config source happened
+// to win. See DatabaseTarget: user secrets used to capture ConnectionStrings:
+// LiliaCore and silently point this host at Neon while the tools host stayed on
+// localhost. Local is the default; Database:Target=neon opts in.
+var database = DatabaseTarget.Resolve(builder.Configuration);
+var connectionString = database.ConnectionString;
+
+// Say it out loud. Not knowing is how this host spent a while pointed at Neon
+// on a developer machine while the tools host ran against localhost.
+Console.WriteLine($"[BOOT] database target: {database}");
 
 // Cap the Npgsql pool to fit inside the DO managed Postgres plan's
 // max_connections (db-s-1vcpu-1gb → 25, ~20 after superuser reserves).
