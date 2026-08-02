@@ -205,6 +205,33 @@ public class ToolRunnerService : IToolRunnerService
             if (result.Success)
                 return new ToolVerdict("verified", [], ms, name, auto);
 
+            // Detection is a guess, and a guess that predicts the wrong engine
+            // reports a fine document as broken. TeX itself knows the answer and
+            // says so plainly, so when the engine we *chose for them* turns out
+            // to be wrong, believe the compiler and run it again properly.
+            //
+            // Only for an inferred engine. If the author asked for pdflatex —
+            // because their journal demands it — then "it does not compile under
+            // pdflatex" is the answer to their question, not an error to route
+            // around.
+            if (auto && engine != LatexEngine.Lualatex && IndicatesWrongEngine(result))
+            {
+                var retryEngine = LatexEngine.Lualatex;
+                var retryDoc = LaTeXPreamble.WrapForValidation(latexFragment, retryEngine);
+                var retry = await _compiler.CompileLatexAsync(
+                    retryDoc, CompilationType.Validate, VerifyTimeoutSeconds, retryEngine);
+                var retryMs = ms + (int)retry.Duration.TotalMilliseconds;
+                var retryName = retryEngine.ToCli();
+
+                _logger.LogInformation(
+                    "[Tools] {First} rejected the document as engine-mismatched; {Second} {Outcome}",
+                    name, retryName, retry.Success ? "accepted it" : "did not");
+
+                return retry.Success
+                    ? new ToolVerdict("verified", [], retryMs, retryName, auto)
+                    : new ToolVerdict("failed", ExtractFindings(retry), retryMs, retryName, auto);
+            }
+
             return new ToolVerdict("failed", ExtractFindings(result), ms, name, auto);
         }
         catch (Exception ex)
@@ -212,6 +239,28 @@ public class ToolRunnerService : IToolRunnerService
             _logger.LogWarning(ex, "[Tools] verification unavailable — reporting unchecked");
             return ToolVerdict.Unchecked;
         }
+    }
+
+    /// <summary>
+    /// Whether a failure says "you ran the wrong engine" rather than "your document
+    /// is wrong".
+    ///
+    /// <para>These are the phrases the packages themselves emit, verified against a
+    /// real run: fontspec aborts with <c>Fatal Package fontspec Error: The fontspec
+    /// package requires either XeTeX or LuaTeX</c>. Matching on the stated
+    /// requirement rather than on a package name keeps it working for packages we
+    /// have never heard of, which is the point — the compiler knows things our
+    /// detector does not.</para>
+    /// </summary>
+    private static bool IndicatesWrongEngine(CompilationResult result)
+    {
+        var log = result.Error ?? string.Empty;
+        return log.Contains("requires either XeTeX or LuaTeX", StringComparison.OrdinalIgnoreCase)
+            || log.Contains("requires XeTeX or LuaTeX", StringComparison.OrdinalIgnoreCase)
+            || log.Contains("only be used with", StringComparison.OrdinalIgnoreCase)
+               && log.Contains("LuaTeX", StringComparison.OrdinalIgnoreCase)
+            || log.Contains("requires LuaTeX", StringComparison.OrdinalIgnoreCase)
+            || log.Contains("requires XeTeX", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

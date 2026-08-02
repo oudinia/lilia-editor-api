@@ -48,6 +48,38 @@ public class EngineDetectorTests
         EngineDetector.Detect(snippet).Should().Be(LatexEngine.Lualatex);
     }
 
+    /// <summary>
+    /// The pattern used to require the brace to open immediately after
+    /// \usepackage and hold nothing but the package name, so these ordinary
+    /// forms were read as pdflatex — a false negative, which is the harmful
+    /// direction: the document is handed to an engine that cannot read it and
+    /// the author is told their content is broken.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\usepackage[no-math]{fontspec}")]
+    [InlineData(@"\usepackage[math-style=ISO]{unicode-math}")]
+    [InlineData(@"\usepackage{amsmath,fontspec}")]
+    [InlineData(@"\usepackage{fontspec,amsmath}")]
+    [InlineData(@"\usepackage [quiet] {unicode-math}")]
+    public void Options_and_package_lists_do_not_hide_the_requirement(string snippet)
+    {
+        EngineDetector.Detect(snippet).Should().Be(LatexEngine.Lualatex);
+    }
+
+    /// <summary>
+    /// Widening the pattern must not make it greedy: a different package whose
+    /// name merely contains "fontspec" does not imply the engine.
+    /// </summary>
+    [Theory]
+    [InlineData(@"\usepackage{myfontspec}")]
+    [InlineData(@"\usepackage{fontspec-luatex-extra}")]
+    [InlineData(@"\usepackage{amsmath}")]
+    [InlineData(@"\usepackage{graphicx,booktabs}")]
+    public void A_similarly_named_package_is_not_an_engine_signal(string snippet)
+    {
+        EngineDetector.Detect(snippet).Should().Be(LatexEngine.Pdflatex);
+    }
+
     [Theory]
     [InlineData(@"\directlua{tex.print('hi')}")]
     [InlineData(@"\luaexec{print(1+1)}")]

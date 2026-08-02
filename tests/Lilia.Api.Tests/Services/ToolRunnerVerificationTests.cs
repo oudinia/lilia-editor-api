@@ -203,6 +203,91 @@ public class ToolRunnerVerificationTests
             It.IsAny<string>(), CompilationType.Validate, It.IsAny<int>(), LatexEngine.Pdflatex));
     }
 
+    // ── the compiler overrules the guess ─────────────────────────────────────
+
+    private const string WrongEngineLog =
+        "! Fatal Package fontspec Error: The fontspec package requires either XeTeX or LuaTeX.";
+
+    /// <summary>Fails the first engine with a mismatch signature, succeeds on the second.</summary>
+    private static Mock<ICompilationQueueService> CompilerRejectingEngine(LatexEngine rejects)
+    {
+        var compiler = new Mock<ICompilationQueueService>();
+        compiler
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), rejects))
+            .ReturnsAsync(new CompilationResult(false, null, WrongEngineLog, [], TimeSpan.FromMilliseconds(500)));
+        compiler
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(),
+                It.Is<LatexEngine>(e => e != rejects)))
+            .ReturnsAsync(new CompilationResult(true, null, null, [], TimeSpan.FromMilliseconds(1500)));
+        return compiler;
+    }
+
+    [Fact]
+    public async Task A_mis_detected_engine_is_retried_and_the_document_passes()
+    {
+        // Detection said pdflatex; TeX said it needs lua/xetex. Believing the
+        // compiler turns a false "doesn't compile" into the truth.
+        var compiler = CompilerRejectingEngine(LatexEngine.Pdflatex);
+
+        var result = await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
+
+        result.Verdict!.Status.Should().Be("verified");
+        result.Verdict.Engine.Should().Be("lualatex", "the verdict names the engine that actually worked");
+        result.Verdict.DurationMs.Should().Be(2000, "both attempts are what the author waited for");
+    }
+
+    [Fact]
+    public async Task A_chosen_engine_is_never_retried_behind_the_authors_back()
+    {
+        // Someone who selected pdflatex is asking whether it compiles *there*.
+        // Silently answering about lualatex would answer a different question.
+        var compiler = CompilerRejectingEngine(LatexEngine.Pdflatex);
+        var input = JsonSerializer.Deserialize<JsonElement>(
+            """{"headers":["A"],"rows":[["1"]],"caption":"c","engine":"pdflatex"}""");
+
+        var result = await BuildRunner(compiler).RunAsync(TableTool, input, null, default);
+
+        result.Verdict!.Status.Should().Be("failed");
+        result.Verdict.Engine.Should().Be("pdflatex");
+        compiler.Verify(
+            c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), LatexEngine.Lualatex),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task An_ordinary_failure_is_not_retried()
+    {
+        // A genuine LaTeX error must cost one compile, not two. Retrying every
+        // failure would double the work for the common case to rescue a rare one.
+        var compiler = CompilerReturning(
+            new CompilationResult(false, null, "! Undefined control sequence.", [], TimeSpan.Zero));
+
+        var result = await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
+
+        result.Verdict!.Status.Should().Be("failed");
+        compiler.Verify(
+            c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), It.IsAny<LatexEngine>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_retry_that_also_fails_reports_the_second_engines_reasons()
+    {
+        var compiler = new Mock<ICompilationQueueService>();
+        compiler
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), LatexEngine.Pdflatex))
+            .ReturnsAsync(new CompilationResult(false, null, WrongEngineLog, [], TimeSpan.Zero));
+        compiler
+            .Setup(c => c.CompileLatexAsync(It.IsAny<string>(), It.IsAny<CompilationType>(), It.IsAny<int>(), LatexEngine.Lualatex))
+            .ReturnsAsync(new CompilationResult(false, null, "! Missing $ inserted.", [], TimeSpan.Zero));
+
+        var result = await BuildRunner(compiler).RunAsync(TableTool, TableInput(), null, default);
+
+        result.Verdict!.Status.Should().Be("failed");
+        result.Verdict.Engine.Should().Be("lualatex");
+        result.Verdict.Findings.Should().ContainSingle().Which.Should().Contain("Missing $");
+    }
+
     [Fact]
     public async Task The_table_output_is_still_returned_when_verification_is_unavailable()
     {

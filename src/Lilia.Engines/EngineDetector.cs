@@ -64,8 +64,20 @@ public static class EngineDetector
 
     // Package-level signal — if a block (or preamble) loads fontspec or
     // unicode-math, the doc is locked into lua/xelatex.
+    //
+    // The earlier pattern required the brace to open immediately after
+    // \usepackage and hold nothing but the package name, so two entirely
+    // ordinary forms slipped through and were judged as pdflatex:
+    //
+    //     \usepackage[no-math]{fontspec}     — options bracket
+    //     \usepackage{amsmath,fontspec}      — package list
+    //
+    // Both are false negatives, which is the direction that hurts: the document
+    // gets compiled by an engine that cannot read it and the author is told
+    // their content is broken. Options are now skipped and the package name is
+    // matched as one entry in a comma list.
     private static readonly Regex FontPackages = new(
-        @"\\usepackage\{(?:fontspec|unicode-math|polyglossia)\}",
+        @"\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*(?<![A-Za-z-])(?:fontspec|unicode-math|polyglossia)(?![A-Za-z-])[^}]*\}",
         RegexOptions.Compiled);
 
     /// <summary>
