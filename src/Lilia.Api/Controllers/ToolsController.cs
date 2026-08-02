@@ -143,6 +143,14 @@ public class ToolsController : ControllerBase
             format = result.Format,
             title = result.Title,
             artifactId,
+            // Absent for engines that don't compile anything; the client must treat a
+            // missing verdict as "unchecked" rather than as a pass.
+            verdict = result.Verdict is null ? null : new
+            {
+                status = result.Verdict.Status,
+                findings = result.Verdict.Findings,
+                durationMs = result.Verdict.DurationMs,
+            },
             crossSell = new { label = tool.CrossSellLabel ?? "Open in Lilia editor", openInEditor = true },
         });
     }

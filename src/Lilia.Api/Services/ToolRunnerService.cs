@@ -7,7 +7,18 @@ using Lilia.Import.Interfaces;
 
 namespace Lilia.Api.Services;
 
-public record ToolRunResult(string Output, string Format, string? Title);
+/// <summary>
+/// The outcome of actually compiling a tool's output, so the UI can state what
+/// is known rather than assert what is hoped. <c>Status</c> is one of:
+/// <c>verified</c> (compiled clean), <c>failed</c> (compiled with errors — the
+/// findings say which), or <c>unchecked</c> (no compiler reachable; claim nothing).
+/// </summary>
+public record ToolVerdict(string Status, string[] Findings, int DurationMs)
+{
+    public static readonly ToolVerdict Unchecked = new("unchecked", [], 0);
+}
+
+public record ToolRunResult(string Output, string Format, string? Title, ToolVerdict? Verdict = null);
 
 public interface IToolRunnerService
 {
@@ -31,20 +42,30 @@ public sealed class ToolInputException : Exception
 /// </summary>
 public class ToolRunnerService : IToolRunnerService
 {
+    /// <summary>
+    /// Verification has to finish inside a web request, so it gets a much shorter
+    /// leash than the 30s default. A table that can't compile in this long is
+    /// reported as unchecked rather than made to wait.
+    /// </summary>
+    private const int VerifyTimeoutSeconds = 15;
+
     private readonly IBibliographyService _bibliography;
     private readonly IRenderService _render;
     private readonly IDocxImportService _docx;
+    private readonly ICompilationQueueService _compiler;
     private readonly ILogger<ToolRunnerService> _logger;
 
     public ToolRunnerService(
         IBibliographyService bibliography,
         IRenderService render,
         IDocxImportService docx,
+        ICompilationQueueService compiler,
         ILogger<ToolRunnerService> logger)
     {
         _bibliography = bibliography;
         _render = render;
         _docx = docx;
+        _compiler = compiler;
         _logger = logger;
     }
 
@@ -53,7 +74,7 @@ public class ToolRunnerService : IToolRunnerService
         return tool.Engine switch
         {
             "doi" => await RunDoiAsync(input),
-            "table" => RunTable(input),
+            "table" => await RunTableAsync(input),
             "word" => await RunWordAsync(file, ct),
             _ => throw new ToolInputException($"Unknown tool engine '{tool.Engine}'."),
         };
@@ -116,7 +137,7 @@ public class ToolRunnerService : IToolRunnerService
     }
 
     // ── Table grid → booktabs LaTeX (over RenderService.RenderBlockToLatex) ──
-    private ToolRunResult RunTable(JsonElement input)
+    private async Task<ToolRunResult> RunTableAsync(JsonElement input)
     {
         if (!input.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() == 0)
             throw new ToolInputException("Provide at least one row.");
@@ -131,7 +152,55 @@ public class ToolRunnerService : IToolRunnerService
         });
         var block = new Block { Type = "table", Content = JsonDocument.Parse(content) };
         var latex = _render.RenderBlockToLatex(block);
-        return new ToolRunResult(latex, "latex", "Table");
+        return new ToolRunResult(latex, "latex", "Table", await VerifyAsync(latex));
+    }
+
+    /// <summary>
+    /// Compile the fragment and report what actually happened. Never throws: if the
+    /// compiler is unreachable (no TeX on a dev box, queue saturated, timeout) the
+    /// verdict is <c>unchecked</c>, because claiming a table compiles when nothing
+    /// compiled it is the exact failure this tool exists to prevent.
+    /// </summary>
+    private async Task<ToolVerdict> VerifyAsync(string latexFragment)
+    {
+        try
+        {
+            var document = LaTeXPreamble.WrapForValidation(latexFragment);
+            var result = await _compiler.CompileLatexAsync(document, CompilationType.Validate, VerifyTimeoutSeconds);
+            var ms = (int)result.Duration.TotalMilliseconds;
+
+            if (result.Success)
+                return new ToolVerdict("verified", [], ms);
+
+            return new ToolVerdict("failed", ExtractFindings(result), ms);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Tools] verification unavailable — reporting unchecked");
+            return ToolVerdict.Unchecked;
+        }
+    }
+
+    /// <summary>
+    /// Pull the human-readable causes out of a failed compile. LaTeX errors are the
+    /// lines starting with `!`; warnings are the fallback when the log has no error
+    /// line (an overfull box fails validation without an `!`).
+    /// </summary>
+    private static string[] ExtractFindings(CompilationResult result)
+    {
+        var errors = (result.Error ?? string.Empty)
+            .Split('\n')
+            .Select(l => l.TrimEnd('\r'))
+            .Where(l => l.StartsWith('!'))
+            .Select(l => l.TrimStart('!').Trim())
+            .Where(l => l.Length > 0)
+            .Take(3)
+            .ToArray();
+
+        if (errors.Length > 0) return errors;
+
+        var warnings = result.Warnings.Where(w => !string.IsNullOrWhiteSpace(w)).Take(3).ToArray();
+        return warnings.Length > 0 ? warnings : ["The table did not compile, and LaTeX gave no reason."];
     }
 
     // ── .docx → LaTeX (over DocxImportService → blocks → RenderBlockToLatex) ─
