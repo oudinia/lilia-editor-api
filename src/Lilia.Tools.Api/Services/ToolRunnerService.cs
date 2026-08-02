@@ -6,7 +6,7 @@ using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
 using Lilia.Engines;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Tools.Api.Services;
 
 /// <summary>
 /// The outcome of actually compiling a tool's output, so the UI can state what

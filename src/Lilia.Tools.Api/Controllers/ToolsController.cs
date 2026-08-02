@@ -1,6 +1,6 @@
 using System.Text.Json;
-using Lilia.Api.Models.Documents;
-using Lilia.Api.Services;
+using Lilia.Engines;
+using Lilia.Tools.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace Lilia.Api.Controllers;
+namespace Lilia.Tools.Api.Controllers;
 
 /// <summary>
 /// Public, anonymous-friendly endpoints for the standalone tool suite. The
@@ -25,25 +25,38 @@ public class ToolsController : ControllerBase
 
     private readonly IToolCatalogService _catalog;
     private readonly IToolRunnerService _runner;
+    private readonly IEntitlementService _entitlements;
     private readonly LiliaDbContext _context;
-    private readonly IDocumentService _documents;
-    private readonly IBlockService _blocks;
     private readonly ILogger<ToolsController> _logger;
 
     public ToolsController(
         IToolCatalogService catalog,
         IToolRunnerService runner,
+        IEntitlementService entitlements,
         LiliaDbContext context,
-        IDocumentService documents,
-        IBlockService blocks,
         ILogger<ToolsController> logger)
     {
         _catalog = catalog;
         _runner = runner;
+        _entitlements = entitlements;
         _context = context;
-        _documents = documents;
-        _blocks = blocks;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// What this caller may do. The client renders its paywall from this; the server
+    /// still checks every paid action independently, so a modified client gains nothing.
+    /// </summary>
+    [HttpGet("entitlement")]
+    public IActionResult GetEntitlement()
+    {
+        var e = _entitlements.Resolve(User.FindFirst("sub")?.Value);
+        return Ok(new
+        {
+            tier = e.Tier.ToString(),
+            canUseExportPresets = e.CanUseExportPresets,
+            canSaveStyles = e.CanSaveStyles,
+        });
     }
 
     /// <summary>The enabled tool registry (drives the lilia-cloud landers).</summary>
@@ -117,6 +130,32 @@ public class ToolsController : ControllerBase
             }
         }
 
+        // ── paid capabilities ───────────────────────────────────────────────
+        // Export presets are the paid unlock; the LaTeX source is always free and
+        // never watermarked. Checked here rather than trusted from the client, so
+        // the paywall holds against a hand-rolled request. No payment provider is
+        // wired yet — see EntitlementService — but the gate is real from day one.
+        var exportPreset = input.ValueKind == JsonValueKind.Object
+            && input.TryGetProperty("exportPreset", out var presetProp)
+            && presetProp.ValueKind == JsonValueKind.String
+                ? presetProp.GetString()
+                : null;
+
+        if (!string.IsNullOrWhiteSpace(exportPreset))
+        {
+            var entitlement = _entitlements.Resolve(userId);
+            if (!entitlement.CanUseExportPresets)
+            {
+                return StatusCode(StatusCodes.Status402PaymentRequired, new
+                {
+                    upgrade = true,
+                    tier = entitlement.Tier.ToString(),
+                    requires = nameof(ToolTier.DocumentPass),
+                    message = "Export presets need a document pass. Copying the LaTeX source is always free.",
+                });
+            }
+        }
+
         // ── run (errors don't spend a use) ──────────────────────────────────
         ToolRunResult result;
         try
@@ -155,44 +194,12 @@ public class ToolsController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// The "Open in Lilia" cross-sell destination — create a real document (owned by
-    /// the signed-in user) from a tool artifact, and return its id. The editor route
-    /// calls this then redirects into the doc. Word→LaTeX is excluded here (it routes
-    /// into import-review, not a flat doc).
-    /// </summary>
-    [HttpPost("artifacts/{id:guid}/to-document")]
-    [Authorize]
-    public async Task<IActionResult> ToDocument(Guid id, CancellationToken ct)
-    {
-        var userId = User.FindFirst("sub")?.Value
-            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-        var art = await _context.ToolArtifacts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
-        if (art is null) return NotFound();
-        if (art.ToolSlug == "word-to-latex")
-            return UnprocessableEntity(new { message = "Word documents open via import-review, not this endpoint." });
-
-        var title = art.ToolSlug switch { "latex-table" => "Table", "doi-to-bibtex" => "Reference", _ => "From tool" };
-        var doc = await _documents.CreateDocumentAsync(userId, new CreateDocumentDto { Title = title });
-
-        // One block from the artifact: a real editable table from the grid input; the
-        // BibTeX as a code block; otherwise the output as a paragraph.
-        var block = art.ToolSlug switch
-        {
-            "latex-table" when art.Input is not null =>
-                new CreateBlockDto("table", art.Input.RootElement, 0, null, null),
-            "doi-to-bibtex" =>
-                new CreateBlockDto("code", JsonSerializer.SerializeToElement(new { code = art.Output ?? "", language = "bibtex" }), 0, null, null),
-            _ =>
-                new CreateBlockDto("paragraph", JsonSerializer.SerializeToElement(new { text = art.Output ?? "" }), 0, null, null),
-        };
-        await _blocks.CreateBlockAsync(doc.Id, block);
-
-        await RecordAsync(art.ToolSlug, userId, GetOrSetAnonId(), "signup", ct); // funnel: crossed into the product
-        return Ok(new { documentId = doc.Id });
-    }
+    // "Open in Lilia" used to live here, creating a document through the editor's
+    // IDocumentService/IBlockService. That pointed the dependency the wrong way:
+    // the public tools host reaching into the editor's internals. It now lives in
+    // Lilia.Api (FromToolController) and reads the artifact this host wrote. The
+    // editor pulls; tools never call the editor. See the artifact model note in
+    // lilia-docs/features/2026-06-22-standalone-tools-strategy.md §9.
 
     /// <summary>Funnel beacon — record view/signup/pay from the client.</summary>
     [HttpPost("{slug}/event")]

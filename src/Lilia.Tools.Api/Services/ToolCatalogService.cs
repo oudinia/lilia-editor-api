@@ -3,7 +3,7 @@ using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Tools.Api.Services;
 
 public interface IToolCatalogService
 {

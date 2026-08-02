@@ -658,8 +658,6 @@ builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Ap
 builder.Services.AddScoped<Lilia.Api.Services.Capabilities.CapabilityResolver>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
 builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
-builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
-builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
 builder.Services.AddHostedService<ToolArtifactPruneService>();
 
 // ITokenRouter — catalog-backed dispatch decisions for LatexParser
@@ -932,9 +930,6 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     // Warm the AI model catalog so the model picker + resolution serve from memory.
     await app.Services.GetRequiredService<IAiCatalogService>().PreloadAsync();
-
-    // Warm the standalone-tools registry.
-    await app.Services.GetRequiredService<IToolCatalogService>().PreloadAsync();
 
     // Seed the knowledge base from embedded Kb/*.md (idempotent upsert by slug).
     // Scoped — resolve from the migration scope so it shares the post-migrate DbContext.
