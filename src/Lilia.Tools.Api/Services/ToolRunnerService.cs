@@ -65,6 +65,7 @@ public class ToolRunnerService : IToolRunnerService
     private readonly IRenderService _render;
     private readonly IDocxImportService _docx;
     private readonly ICompilationQueueService _compiler;
+    private readonly IEngineResolver _engines;
     private readonly ILogger<ToolRunnerService> _logger;
 
     public ToolRunnerService(
@@ -72,12 +73,14 @@ public class ToolRunnerService : IToolRunnerService
         IRenderService render,
         IDocxImportService docx,
         ICompilationQueueService compiler,
+        IEngineResolver engines,
         ILogger<ToolRunnerService> logger)
     {
         _bibliography = bibliography;
         _render = render;
         _docx = docx;
         _compiler = compiler;
+        _engines = engines;
         _logger = logger;
     }
 
@@ -192,7 +195,7 @@ public class ToolRunnerService : IToolRunnerService
         // Detection is the default because most authors neither know nor should
         // have to care; a fragment using \setmainfont fails under pdflatex for
         // reasons that say nothing about the table.
-        var engine = requested ?? EngineDetector.Detect(latexFragment);
+        var engine = requested ?? _engines.Resolve(latexFragment);
         var name = engine.ToCli();
 
         try

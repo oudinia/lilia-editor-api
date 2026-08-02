@@ -56,6 +56,9 @@ public class Program
 
         // ── the tools surface ─────────────────────────────────────────────────
         builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
+        builder.Services.AddSingleton<PackageEngineRequirements>();
+        builder.Services.AddSingleton<IEngineRequirementSource>(sp => sp.GetRequiredService<PackageEngineRequirements>());
+        builder.Services.AddSingleton<IEngineResolver, EngineResolver>();
         builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
         builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 
@@ -80,6 +83,7 @@ public class Program
             try
             {
                 await catalog.PreloadAsync();
+                await app.Services.GetRequiredService<PackageEngineRequirements>().PreloadAsync();
             }
             catch (Exception ex)
             {

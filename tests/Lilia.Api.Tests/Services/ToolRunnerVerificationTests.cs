@@ -44,6 +44,7 @@ public class ToolRunnerVerificationTests
             render.Object,
             new Mock<IDocxImportService>().Object,
             compiler.Object,
+            new EngineResolver(new RegexOnlyEngineRequirements()),
             NullLogger<ToolRunnerService>.Instance);
     }
 
@@ -152,6 +153,7 @@ public class ToolRunnerVerificationTests
         var runner = new ToolRunnerService(
             new Mock<IBibliographyService>().Object, render.Object,
             new Mock<IDocxImportService>().Object, compiler.Object,
+            new EngineResolver(new RegexOnlyEngineRequirements()),
             NullLogger<ToolRunnerService>.Instance);
 
         await runner.RunAsync(TableTool, TableInput(), null, default);

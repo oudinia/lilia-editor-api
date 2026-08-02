@@ -31,6 +31,20 @@ public class LatexPackage
     /// </summary>
     public string CoverageLevel { get; set; } = "none";
 
+    /// <summary>
+    /// The minimum engine this package needs — <c>lualatex</c> / <c>xelatex</c>,
+    /// or null when it runs anywhere. Mirrors
+    /// <see cref="LatexDocumentClass.DefaultEngine"/>.
+    ///
+    /// <para>Engine detection was a hand-maintained regex holding eleven command
+    /// names, so a package it had never heard of was compiled by an engine that
+    /// could not read it and the author was told their document was broken.
+    /// Recording the requirement here makes adding a package a row rather than a
+    /// code change, and lets the compiler be aimed correctly the first time
+    /// instead of after a wasted run.</para>
+    /// </summary>
+    public string? RequiresEngine { get; set; }
+
     public string? CoverageNotes { get; set; }
 
     public string? CtanUrl { get; set; }
