@@ -61,6 +61,11 @@ public class Program
         builder.Services.AddSingleton<PackageEngineRequirements>();
         builder.Services.AddSingleton<IEngineRequirementSource>(sp => sp.GetRequiredService<PackageEngineRequirements>());
         builder.Services.AddSingleton<IEngineResolver, EngineResolver>();
+        // Compile-and-report lives in Lilia.Engines so the editor's AI path can make
+        // the same "we checked" claim from the same code. This host wires it with the
+        // measured package catalog behind the resolver; a host without one can use
+        // RegexOnlyEngineRequirements.
+        builder.Services.AddSingleton<ILatexVerifier, LatexVerifier>();
         builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
         builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 

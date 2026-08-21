@@ -33,8 +33,8 @@ public interface IEngineRequirementSource
 /// deploy.</para>
 ///
 /// <para>It stays a <em>fast path</em>, not an authority. Being wrong here costs a
-/// compile that the retry in the tools runner then corrects; the value of getting
-/// it right is not correctness but not spending the compile at all.</para>
+/// compile that <see cref="LatexVerifier"/>'s retry then corrects; the value of
+/// getting it right is not correctness but not spending the compile at all.</para>
 /// </summary>
 public interface IEngineResolver
 {

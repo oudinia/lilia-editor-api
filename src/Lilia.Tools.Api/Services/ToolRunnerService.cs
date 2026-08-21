@@ -9,28 +9,12 @@ using Lilia.Engines;
 namespace Lilia.Tools.Api.Services;
 
 /// <summary>
-/// The outcome of actually compiling a tool's output, so the UI can state what
-/// is known rather than assert what is hoped. <c>Status</c> is one of:
-/// <c>verified</c> (compiled clean), <c>failed</c> (compiled with errors — the
-/// findings say which), or <c>unchecked</c> (no compiler reachable; claim nothing).
+/// A tool's output, plus what compiling it actually proved. The verdict is
+/// <see cref="LatexVerdict"/> from Lilia.Engines — the same type the editor's AI
+/// path uses, so "we checked" means one thing across every surface. Null for
+/// engines that don't produce LaTeX.
 /// </summary>
-/// <param name="Engine">
-/// The TeX binary the verdict is about — <c>pdflatex</c>, <c>xelatex</c> or
-/// <c>lualatex</c>. "Compiles" is not a claim on its own: the same source can
-/// pass under one engine and fail under another, so the verdict is incomplete
-/// without saying which one produced it. Null when nothing was compiled.
-/// </param>
-/// <param name="EngineAuto">
-/// Whether that engine was inferred from the content rather than asked for. The
-/// UI distinguishes the two: a detected engine is a guess the author may want to
-/// override, a chosen one is a requirement they stated.
-/// </param>
-public record ToolVerdict(string Status, string[] Findings, int DurationMs, string? Engine = null, bool EngineAuto = false)
-{
-    public static readonly ToolVerdict Unchecked = new("unchecked", [], 0);
-}
-
-public record ToolRunResult(string Output, string Format, string? Title, ToolVerdict? Verdict = null);
+public record ToolRunResult(string Output, string Format, string? Title, LatexVerdict? Verdict = null);
 
 public interface IToolRunnerService
 {
@@ -54,34 +38,21 @@ public sealed class ToolInputException : Exception
 /// </summary>
 public class ToolRunnerService : IToolRunnerService
 {
-    /// <summary>
-    /// Verification has to finish inside a web request, so it gets a much shorter
-    /// leash than the 30s default. A table that can't compile in this long is
-    /// reported as unchecked rather than made to wait.
-    /// </summary>
-    private const int VerifyTimeoutSeconds = 15;
-
     private readonly IBibliographyService _bibliography;
     private readonly IRenderService _render;
     private readonly IDocxImportService _docx;
-    private readonly ICompilationQueueService _compiler;
-    private readonly IEngineResolver _engines;
-    private readonly ILogger<ToolRunnerService> _logger;
+    private readonly ILatexVerifier _verifier;
 
     public ToolRunnerService(
         IBibliographyService bibliography,
         IRenderService render,
         IDocxImportService docx,
-        ICompilationQueueService compiler,
-        IEngineResolver engines,
-        ILogger<ToolRunnerService> logger)
+        ILatexVerifier verifier)
     {
         _bibliography = bibliography;
         _render = render;
         _docx = docx;
-        _compiler = compiler;
-        _engines = engines;
-        _logger = logger;
+        _verifier = verifier;
     }
 
     public async Task<ToolRunResult> RunAsync(Tool tool, JsonElement input, IFormFile? file, CancellationToken ct)
@@ -174,118 +145,7 @@ public class ToolRunnerService : IToolRunnerService
             ? chosen.ParseEngine()
             : (LatexEngine?)null;
 
-        return new ToolRunResult(latex, "latex", "Table", await VerifyAsync(latex, requestedEngine));
-    }
-
-    /// <summary>
-    /// Compile the fragment and report what actually happened. Never throws: if the
-    /// compiler is unreachable (no TeX on a dev box, queue saturated, timeout) the
-    /// verdict is <c>unchecked</c>, because claiming a table compiles when nothing
-    /// compiled it is the exact failure this tool exists to prevent.
-    /// </summary>
-    /// <param name="requested">
-    /// The engine the author asked for, or null to infer it. An explicit choice is
-    /// honoured even when detection disagrees: someone whose journal mandates
-    /// pdflatex needs to know whether it compiles *there*, and a verdict from an
-    /// engine they will never run is not an answer to their question.
-    /// </param>
-    private async Task<ToolVerdict> VerifyAsync(string latexFragment, LatexEngine? requested)
-    {
-        var auto = requested is null;
-        // Detection is the default because most authors neither know nor should
-        // have to care; a fragment using \setmainfont fails under pdflatex for
-        // reasons that say nothing about the table.
-        var engine = requested ?? _engines.Resolve(latexFragment);
-        var name = engine.ToCli();
-
-        try
-        {
-            var document = LaTeXPreamble.WrapForValidation(latexFragment, engine);
-            var result = await _compiler.CompileLatexAsync(
-                document, CompilationType.Validate, VerifyTimeoutSeconds, engine);
-            var ms = (int)result.Duration.TotalMilliseconds;
-
-            if (result.Success)
-                return new ToolVerdict("verified", [], ms, name, auto);
-
-            // Detection is a guess, and a guess that predicts the wrong engine
-            // reports a fine document as broken. TeX itself knows the answer and
-            // says so plainly, so when the engine we *chose for them* turns out
-            // to be wrong, believe the compiler and run it again properly.
-            //
-            // Only for an inferred engine. If the author asked for pdflatex —
-            // because their journal demands it — then "it does not compile under
-            // pdflatex" is the answer to their question, not an error to route
-            // around.
-            if (auto && engine != LatexEngine.Lualatex && IndicatesWrongEngine(result))
-            {
-                var retryEngine = LatexEngine.Lualatex;
-                var retryDoc = LaTeXPreamble.WrapForValidation(latexFragment, retryEngine);
-                var retry = await _compiler.CompileLatexAsync(
-                    retryDoc, CompilationType.Validate, VerifyTimeoutSeconds, retryEngine);
-                var retryMs = ms + (int)retry.Duration.TotalMilliseconds;
-                var retryName = retryEngine.ToCli();
-
-                _logger.LogInformation(
-                    "[Tools] {First} rejected the document as engine-mismatched; {Second} {Outcome}",
-                    name, retryName, retry.Success ? "accepted it" : "did not");
-
-                return retry.Success
-                    ? new ToolVerdict("verified", [], retryMs, retryName, auto)
-                    : new ToolVerdict("failed", ExtractFindings(retry), retryMs, retryName, auto);
-            }
-
-            return new ToolVerdict("failed", ExtractFindings(result), ms, name, auto);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Tools] verification unavailable — reporting unchecked");
-            return ToolVerdict.Unchecked;
-        }
-    }
-
-    /// <summary>
-    /// Whether a failure says "you ran the wrong engine" rather than "your document
-    /// is wrong".
-    ///
-    /// <para>These are the phrases the packages themselves emit, verified against a
-    /// real run: fontspec aborts with <c>Fatal Package fontspec Error: The fontspec
-    /// package requires either XeTeX or LuaTeX</c>. Matching on the stated
-    /// requirement rather than on a package name keeps it working for packages we
-    /// have never heard of, which is the point — the compiler knows things our
-    /// detector does not.</para>
-    /// </summary>
-    private static bool IndicatesWrongEngine(CompilationResult result)
-    {
-        var log = result.Error ?? string.Empty;
-        return log.Contains("requires either XeTeX or LuaTeX", StringComparison.OrdinalIgnoreCase)
-            || log.Contains("requires XeTeX or LuaTeX", StringComparison.OrdinalIgnoreCase)
-            || log.Contains("only be used with", StringComparison.OrdinalIgnoreCase)
-               && log.Contains("LuaTeX", StringComparison.OrdinalIgnoreCase)
-            || log.Contains("requires LuaTeX", StringComparison.OrdinalIgnoreCase)
-            || log.Contains("requires XeTeX", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Pull the human-readable causes out of a failed compile. LaTeX errors are the
-    /// lines starting with `!`; warnings are the fallback when the log has no error
-    /// line (an overfull box fails validation without an `!`).
-    /// </summary>
-    private static string[] ExtractFindings(CompilationResult result)
-    {
-        var errors = (result.Error ?? string.Empty)
-            .Split('\n')
-            .Select(l => l.TrimEnd('\r'))
-            .Where(l => l.StartsWith('!'))
-            .Select(l => l.TrimStart('!').Trim())
-            .Where(l => l.Length > 0)
-            .Take(3)
-            .ToArray();
-
-        if (errors.Length > 0) return errors;
-
-        var warnings = result.Warnings.Where(w => !string.IsNullOrWhiteSpace(w)).Take(3).ToArray();
-        return warnings.Length > 0 ? warnings : ["The table did not compile, and LaTeX gave no reason."];
+        return new ToolRunResult(latex, "latex", "Table", await _verifier.VerifyAsync(latex, requestedEngine));
     }
 
     // ── .docx → LaTeX (over DocxImportService → blocks → RenderBlockToLatex) ─

@@ -23,6 +23,12 @@ namespace Lilia.Api.Tests.Services;
 /// saturated queue and a timeout all land in the same catch, and the tempting
 /// behaviour — assume it's fine — is exactly the silent failure the product
 /// exists to catch.</para>
+///
+/// <para>The compile-and-report logic itself now lives in
+/// <see cref="LatexVerifier"/> (Lilia.Engines) so the editor's AI path can make
+/// the same claim from the same code. These tests deliberately still drive it
+/// through the real verifier behind the tool, because the claim under test is the
+/// one the tool's output pane renders — not an internal method's return value.</para>
 /// </summary>
 public class ToolRunnerVerificationTests
 {
@@ -43,10 +49,15 @@ public class ToolRunnerVerificationTests
             new Mock<IBibliographyService>().Object,
             render.Object,
             new Mock<IDocxImportService>().Object,
+            Verifier(compiler));
+    }
+
+    /// <summary>The real verifier over a mocked compiler — the logic under test.</summary>
+    private static ILatexVerifier Verifier(Mock<ICompilationQueueService> compiler) =>
+        new LatexVerifier(
             compiler.Object,
             new EngineResolver(new RegexOnlyEngineRequirements()),
-            NullLogger<ToolRunnerService>.Instance);
-    }
+            NullLogger<LatexVerifier>.Instance);
 
     private static Mock<ICompilationQueueService> CompilerReturning(CompilationResult result)
     {
@@ -152,9 +163,7 @@ public class ToolRunnerVerificationTests
         var compiler = CompilerReturning(new CompilationResult(true, null, null, [], TimeSpan.Zero));
         var runner = new ToolRunnerService(
             new Mock<IBibliographyService>().Object, render.Object,
-            new Mock<IDocxImportService>().Object, compiler.Object,
-            new EngineResolver(new RegexOnlyEngineRequirements()),
-            NullLogger<ToolRunnerService>.Instance);
+            new Mock<IDocxImportService>().Object, Verifier(compiler));
 
         await runner.RunAsync(TableTool, TableInput(), null, default);
 
