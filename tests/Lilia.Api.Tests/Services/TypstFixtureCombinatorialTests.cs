@@ -78,11 +78,13 @@ public class TypstFixtureCombinatorialTests
         new Fx("heading h6 cap",             "heading",   """{"text":"Deep","level":9}"""),
         new Fx("heading inline bold",        "heading",   """{"text":"**Important** result","level":2}"""),
 
-        // Math fixtures — most originally documented LaTeX→Typst gaps
-        // now compile after the LatexMathToTypst expansion. Two-letter
-        // variable adjacency ("mc^2", "dx") still trips Typst's
-        // single-letter math identifier rule and remains a known gap.
-        new Fx("equation display mc^2 (LaTeX→Typst gap)", "equation",  """{"latex":"E = mc^2","mode":"display"}""", ExpectCompile: false),
+        // Math fixtures — the documented LaTeX→Typst gaps all compile now.
+        // Two-letter variable adjacency ("mc^2", "dx") was the last one and
+        // is closed too: raw typst still rejects `mc` with "unknown variable"
+        // (checked against 0.15.1), but TypstExportService.SplitImplicitProducts
+        // emits it as `m c`, so the document compiles. These two therefore
+        // expect success — they are the regression test for that splitter.
+        new Fx("equation display mc^2 (implicit product)", "equation",  """{"latex":"E = mc^2","mode":"display"}"""),
         new Fx("equation inline plain",      "equation",  """{"latex":"a + b","mode":"inline"}"""),
         new Fx("equation \\frac",            "equation",  """{"latex":"\\frac{a}{b}","mode":"display"}"""),
         new Fx("equation greek bare",        "equation",  """{"latex":"\\alpha + \\beta","mode":"display"}"""),
@@ -168,10 +170,11 @@ public class TypstFixtureCombinatorialTests
             """{"theoremType":"theorem","content":"For Hilbert space $\\mathcal{H}^2$, ...","numbered":true}"""),
         new Fx("paragraph with inline \\sum math",    "paragraph",
             """{"text":"Compute $\\sum_{i=1}^n a_i$ over the index."}"""),
-        // \\int f(x) dx — "dx" is two letters touching; LaTeX parses
-        // as `d` + `x`, Typst as identifier `dx`. Real fallback case.
-        new Fx("paragraph with inline \\int dx (LaTeX→Typst gap)", "paragraph",
-            """{"text":"Compute $\\int f(x) dx$ over the interval."}""", ExpectCompile: false),
+        // \\int f(x) dx — "dx" is two letters touching; LaTeX parses as
+        // `d` + `x`, typst as the identifier `dx`. SplitImplicitProducts
+        // separates them, so this compiles rather than falling back.
+        new Fx("paragraph with inline \\int dx (implicit product)", "paragraph",
+            """{"text":"Compute $\\int f(x) dx$ over the interval."}"""),
         new Fx("equation \\mathcal",         "equation",
             """{"latex":"\\mathcal{H}^2","mode":"inline"}"""),
         new Fx("equation \\mathbf",          "equation",
@@ -190,22 +193,6 @@ public class TypstFixtureCombinatorialTests
         new Fx("unknown type fallthrough",   "totally-unknown", """{"text":"ignored"}"""),
     }.Select(f => new object[] { f });
 
-    private static bool TypstAvailable()
-    {
-        var home = Environment.GetEnvironmentVariable("HOME");
-        var locations = new[]
-        {
-            Environment.GetEnvironmentVariable("TYPST_BINARY") ?? "",
-            string.IsNullOrEmpty(home) ? "" : Path.Combine(home, ".local", "bin", "typst"),
-            "/usr/local/bin/typst",
-            "/usr/bin/typst",
-        };
-        if (locations.Any(p => !string.IsNullOrEmpty(p) && File.Exists(p))) return true;
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrEmpty(pathEnv)) return false;
-        return pathEnv.Split(Path.PathSeparator).Any(dir => File.Exists(Path.Combine(dir, "typst")));
-    }
 
     /// <summary>
     /// Bibliography block compiles cleanly when a references.bib
@@ -219,7 +206,7 @@ public class TypstFixtureCombinatorialTests
     [Fact]
     public async Task Bibliography_block_compiles_when_references_bib_supplied()
     {
-        if (!TypstAvailable()) return;
+        TypstEnvironment.Require();
 
         var exporter = new TypstExportService();
         var compiler = new TypstCompileService();
@@ -266,12 +253,7 @@ public class TypstFixtureCombinatorialTests
     [MemberData(nameof(Fixtures))]
     public async Task Single_block_document_compiles(Fx f)
     {
-        if (!TypstAvailable())
-        {
-            // CI without typst — graceful skip. Local dev installs via
-            // ~/.local/bin/typst; production via Dockerfile.
-            return;
-        }
+        TypstEnvironment.Require();
 
         var exporter = new TypstExportService();
         var compiler = new TypstCompileService();
