@@ -8,6 +8,7 @@ using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Core.Blocks;
+using Lilia.Engines;
 
 namespace Lilia.Api.Services;
 
@@ -1769,17 +1770,7 @@ public class LaTeXExportService : ILaTeXExportService
     {
         if (string.IsNullOrEmpty(text)) return "";
 
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     // ── Image filename extraction ──────────────────────────────────────

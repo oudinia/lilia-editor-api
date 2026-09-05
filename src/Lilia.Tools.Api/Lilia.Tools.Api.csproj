@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The standalone tools host. Public, anonymous, internet-facing — deliberately
+    a separate process from Lilia.Api, which carries auth, billing and the Stytch
+    webhooks. Deploys and scales on its own (compile load is spiky and CPU-bound;
+    the editor's is not), and is the natural home for an API-driven tools product.
+
+    Shares every engine with the editor by project reference, so nothing is
+    reimplemented and there is no HTTP hop between a tool and its renderer.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
+    <ProjectReference Include="..\Lilia.Engines\Lilia.Engines.csproj" />
+    <ProjectReference Include="..\Lilia.Import\Lilia.Import.csproj" />
+    <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <!--
+    No InternalsVisibleTo here on purpose. Top-level statements emit an internal
+    `Program` into the global namespace; exposing internals to the test project
+    makes it collide with Lilia.Api's `Program` and breaks every
+    WebApplicationFactory<Program> in the suite. Everything a test needs from this
+    host is public (see ToolsHost).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>lilia-tools-api</UserSecretsId>
+  </PropertyGroup>
+
+</Project>

@@ -186,7 +186,14 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             DELETE FROM accounts;
             DELETE FROM group_members;
             DELETE FROM groups;
-            DELETE FROM roles;
+            -- roles are reference data, seeded by migration with fixed ids
+            -- (owner/editor/viewer). Deleting them emptied the table for the
+            -- rest of the run, so any lookup of a canonical role name failed
+            -- and the caller 404'd. Only test-created roles go.
+            DELETE FROM roles WHERE id NOT IN (
+                '00000000-0000-0000-0000-000000000001',
+                '00000000-0000-0000-0000-000000000002',
+                '00000000-0000-0000-0000-000000000003');
             DELETE FROM teams;
             DELETE FROM verifications;
             UPDATE formulas SET user_id = NULL;

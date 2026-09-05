@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Core.Blocks;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public partial class RenderService : IRenderService
 {
@@ -1009,7 +1010,7 @@ public partial class RenderService : IRenderService
     /// could extract the shared preamble now that they align). The exporter's
     /// own preamble lives in LaTeXExportService.
     /// </summary>
-    internal static string BuildPreambleForValidation(Document doc, LatexEngine engine)
+    public static string BuildPreambleForValidation(Document doc, LatexEngine engine)
     {
         var latex = new StringBuilder();
 
@@ -1255,7 +1256,7 @@ public partial class RenderService : IRenderService
     private static readonly Regex DuplicateDocClassRe =
         new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
 
-    internal static string DedupeDocumentClass(string source)
+    public static string DedupeDocumentClass(string source)
     {
         var first = true;
         return DuplicateDocClassRe.Replace(source, m =>
@@ -1436,17 +1437,7 @@ public partial class RenderService : IRenderService
     private static string EscapeLatexStatic(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     private string RenderEmbedToLatex(JsonElement content)
@@ -2024,7 +2015,7 @@ public partial class RenderService : IRenderService
                     var cellText = GetCellText(h);
                     var colspan = GetCellIntProp(h, "colspan", 1);
                     var rowspan = GetCellIntProp(h, "rowspan", 1);
-                    var rendered = $@"\textbf{{{EscapeLatex(cellText)}}}";
+                    var rendered = $@"\textbf{{{LatexText.EscapeCell(cellText)}}}";
 
                     rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                     headerCells.Add(rendered);
@@ -2057,7 +2048,7 @@ public partial class RenderService : IRenderService
                         var cellText = GetCellText(cell);
                         var colspan = GetCellIntProp(cell, "colspan", 1);
                         var rowspan = GetCellIntProp(cell, "rowspan", 1);
-                        var rendered = EscapeLatex(cellText);
+                        var rendered = LatexText.EscapeCell(cellText);
 
                         rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                         // Guard: a cell starting with '[' immediately after a row break (\\)
@@ -2470,17 +2461,7 @@ public partial class RenderService : IRenderService
         if (string.IsNullOrEmpty(text)) return "";
 
         // Escape special LaTeX characters
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     /// <summary>
@@ -2488,7 +2469,7 @@ public partial class RenderService : IRenderService
     /// Body <c>\date{…}</c> (preamble cmd misused mid-paragraph) and
     /// <c>\today</c> → calendar date; <c>\and</c> → comma separator.
     /// </summary>
-    internal static string ExpandBareLatexMetaTokensForDisplay(string text)
+    public static string ExpandBareLatexMetaTokensForDisplay(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
         var today = DateTime.UtcNow.ToString("MMMM d, yyyy",
@@ -2604,17 +2585,7 @@ public partial class RenderService : IRenderService
             // Escape LaTeX special chars inside the code content — texttt
             // is not verbatim (unlike \verb), so `_`, `%`, etc. still
             // need to be escaped to render correctly.
-            var inner = m.Groups[1].Value
-                .Replace("\\", "\\textbackslash{}")
-                .Replace("{", "\\{")
-                .Replace("}", "\\}")
-                .Replace("$", "\\$")
-                .Replace("&", "\\&")
-                .Replace("#", "\\#")
-                .Replace("^", "\\textasciicircum{}")
-                .Replace("_", "\\_")
-                .Replace("~", "\\textasciitilde{}")
-                .Replace("%", "\\%");
+            var inner = LatexText.Escape(m.Groups[1].Value);
             commandRegions.Add($"\\texttt{{{inner}}}");
             return $"\x00CMD{commandRegions.Count - 1}\x00";
         });

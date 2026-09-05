@@ -21,33 +21,11 @@ namespace Lilia.Api.Tests.Services;
 /// </summary>
 public class TypstCompileServiceTests
 {
-    private static bool TypstAvailable()
-    {
-        var home = Environment.GetEnvironmentVariable("HOME");
-        var locations = new[]
-        {
-            Environment.GetEnvironmentVariable("TYPST_BINARY") ?? "",
-            string.IsNullOrEmpty(home) ? "" : Path.Combine(home, ".local", "bin", "typst"),
-            "/usr/local/bin/typst",
-            "/usr/bin/typst",
-        };
-        if (locations.Any(p => !string.IsNullOrEmpty(p) && File.Exists(p))) return true;
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrEmpty(pathEnv)) return false;
-        return pathEnv.Split(Path.PathSeparator).Any(dir => File.Exists(Path.Combine(dir, "typst")));
-    }
 
     [Fact]
     public async Task Plain_paragraph_compiles_to_svg()
     {
-        if (!TypstAvailable())
-        {
-            // CI env without typst binary — graceful skip. Locally
-            // installed via ~/.local/bin/typst, in production via
-            // Dockerfile.
-            return;
-        }
+        TypstEnvironment.Require();
 
         var compiler = new TypstCompileService();
         const string source = "= Hello\n\nThis is a *bold* paragraph with _italic_ text.";
@@ -64,7 +42,7 @@ public class TypstCompileServiceTests
     [Fact]
     public async Task Math_block_compiles_to_pdf()
     {
-        if (!TypstAvailable()) return;
+        TypstEnvironment.Require();
 
         var compiler = new TypstCompileService();
         const string source = "= Equation Test\n\n$ E = m c^2 $\n\nThe famous formula.";
@@ -83,7 +61,7 @@ public class TypstCompileServiceTests
     [Fact]
     public async Task Malformed_source_returns_failure_not_throws()
     {
-        if (!TypstAvailable()) return;
+        TypstEnvironment.Require();
 
         var compiler = new TypstCompileService();
         const string broken = "= Title\n\n#typst-doesnt-have-this-function()";
@@ -97,7 +75,7 @@ public class TypstCompileServiceTests
     [Fact]
     public async Task TypstExporter_output_compiles_end_to_end()
     {
-        if (!TypstAvailable()) return;
+        TypstEnvironment.Require();
 
         // The actual integration test: pipe TypstExporter output
         // through TypstCompileService. This is the path the live-
@@ -148,7 +126,7 @@ public class TypstCompileServiceTests
     [Fact]
     public async Task Compile_timeout_is_enforced()
     {
-        if (!TypstAvailable()) return;
+        TypstEnvironment.Require();
 
         // Construct an obviously-trivial doc but with an unrealistically
         // tight timeout to verify the cancellation plumbing fires.

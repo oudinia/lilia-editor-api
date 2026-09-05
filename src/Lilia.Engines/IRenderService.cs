@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public interface IRenderService
 {

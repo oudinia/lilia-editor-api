@@ -4,10 +4,17 @@ using System.Text.RegularExpressions;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
+using Lilia.Engines;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Tools.Api.Services;
 
-public record ToolRunResult(string Output, string Format, string? Title);
+/// <summary>
+/// A tool's output, plus what compiling it actually proved. The verdict is
+/// <see cref="LatexVerdict"/> from Lilia.Engines — the same type the editor's AI
+/// path uses, so "we checked" means one thing across every surface. Null for
+/// engines that don't produce LaTeX.
+/// </summary>
+public record ToolRunResult(string Output, string Format, string? Title, LatexVerdict? Verdict = null);
 
 public interface IToolRunnerService
 {
@@ -34,18 +41,18 @@ public class ToolRunnerService : IToolRunnerService
     private readonly IBibliographyService _bibliography;
     private readonly IRenderService _render;
     private readonly IDocxImportService _docx;
-    private readonly ILogger<ToolRunnerService> _logger;
+    private readonly ILatexVerifier _verifier;
 
     public ToolRunnerService(
         IBibliographyService bibliography,
         IRenderService render,
         IDocxImportService docx,
-        ILogger<ToolRunnerService> logger)
+        ILatexVerifier verifier)
     {
         _bibliography = bibliography;
         _render = render;
         _docx = docx;
-        _logger = logger;
+        _verifier = verifier;
     }
 
     public async Task<ToolRunResult> RunAsync(Tool tool, JsonElement input, IFormFile? file, CancellationToken ct)
@@ -53,7 +60,7 @@ public class ToolRunnerService : IToolRunnerService
         return tool.Engine switch
         {
             "doi" => await RunDoiAsync(input),
-            "table" => RunTable(input),
+            "table" => await RunTableAsync(input),
             "word" => await RunWordAsync(file, ct),
             _ => throw new ToolInputException($"Unknown tool engine '{tool.Engine}'."),
         };
@@ -116,7 +123,7 @@ public class ToolRunnerService : IToolRunnerService
     }
 
     // ── Table grid → booktabs LaTeX (over RenderService.RenderBlockToLatex) ──
-    private ToolRunResult RunTable(JsonElement input)
+    private async Task<ToolRunResult> RunTableAsync(JsonElement input)
     {
         if (!input.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() == 0)
             throw new ToolInputException("Provide at least one row.");
@@ -131,7 +138,14 @@ public class ToolRunnerService : IToolRunnerService
         });
         var block = new Block { Type = "table", Content = JsonDocument.Parse(content) };
         var latex = _render.RenderBlockToLatex(block);
-        return new ToolRunResult(latex, "latex", "Table");
+        // An empty or absent "engine" means infer it; anything else is a stated
+        // requirement. ParseEngine alone can't express that difference — it maps
+        // every unknown value to pdflatex — so presence is checked first.
+        var requestedEngine = TryGetString(input, "engine") is { Length: > 0 } chosen
+            ? chosen.ParseEngine()
+            : (LatexEngine?)null;
+
+        return new ToolRunResult(latex, "latex", "Table", await _verifier.VerifyAsync(latex, requestedEngine));
     }
 
     // ── .docx → LaTeX (over DocxImportService → blocks → RenderBlockToLatex) ─
@@ -207,11 +221,7 @@ public class ToolRunnerService : IToolRunnerService
         return sb.ToString().TrimEnd();
     }
 
-    private static string LatexEscape(string s) => s
-        .Replace("\\", "\\textbackslash{}")
-        .Replace("&", "\\&").Replace("%", "\\%").Replace("$", "\\$").Replace("#", "\\#")
-        .Replace("_", "\\_").Replace("{", "\\{").Replace("}", "\\}")
-        .Replace("~", "\\textasciitilde{}").Replace("^", "\\textasciicircum{}");
+    private static string LatexEscape(string s) => LatexText.Escape(s);
 
     private static string? TryGetString(JsonElement el, string prop) =>
         el.ValueKind == JsonValueKind.Object && el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String

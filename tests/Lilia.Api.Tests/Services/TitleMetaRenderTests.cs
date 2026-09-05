@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Services;
 

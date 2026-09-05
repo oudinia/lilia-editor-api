@@ -3,6 +3,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Xunit.Abstractions;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Integration.LatexValidation;
 

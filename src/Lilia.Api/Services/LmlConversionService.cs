@@ -1,3 +1,4 @@
+using Lilia.Engines;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -800,17 +801,7 @@ public partial class LmlConversionService : ILmlConversionService
     private static string EscapeLatex(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
-        return text
-            .Replace("\\", "\\textbackslash{}")
-            .Replace("{", "\\{")
-            .Replace("}", "\\}")
-            .Replace("$", "\\$")
-            .Replace("&", "\\&")
-            .Replace("#", "\\#")
-            .Replace("^", "\\textasciicircum{}")
-            .Replace("_", "\\_")
-            .Replace("~", "\\textasciitilde{}")
-            .Replace("%", "\\%");
+        return LatexText.Escape(text);
     }
 
     private static string GenerateLoremParagraphs(int count)

@@ -1,14 +1,26 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 public interface ICompilationQueueService
 {
-    Task<CompilationResult> CompileLatexAsync(string latex, CompilationType type, int timeoutSeconds = 30);
+    /// <param name="engine">
+    /// Which TeX binary actually runs. Defaults to pdflatex, which is what every
+    /// existing caller assumed when this was hardcoded. The image ships xetex and
+    /// luatex too; a document declaring fontspec or unicode-math needs one of them
+    /// and is simply wrong to judge under pdflatex.
+    /// </param>
+    Task<CompilationResult> CompileLatexAsync(
+        string latex,
+        CompilationType type,
+        int timeoutSeconds = 30,
+        LatexEngine engine = LatexEngine.Pdflatex);
     int QueueLength { get; }
     int ActiveCompilations { get; }
     double CacheHitRate { get; }
@@ -91,7 +103,32 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         });
     }
 
-    public async Task<CompilationResult> CompileLatexAsync(string latex, CompilationType type, int timeoutSeconds = 30)
+    /// <summary>
+    /// Content hash of the document being validated.
+    ///
+    /// <para>This was <c>latex.GetHashCode()</c> — 32 bits. Only *successful*
+    /// validations are cached, so a collision could only ever return a false
+    /// pass: a document that was never compiled being told it compiles. That is
+    /// the exact failure this validation exists to catch, and the one direction
+    /// it must never be wrong in. SHA-256 removes the possibility rather than
+    /// making it unlikely.</para>
+    /// </summary>
+    /// <remarks>
+    /// The engine is part of the key. The same source genuinely has different
+    /// outcomes under pdflatex and lualatex — that is the whole reason engines
+    /// exist — so keying on content alone would let a pdflatex pass be served to
+    /// a lualatex request, which is another way to report a compile that never
+    /// happened.
+    /// </remarks>
+    private static string ValidateCacheKey(string latex, LatexEngine engine) =>
+        $"validate:{engine.ToCli()}:" + Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(latex)));
+
+    public async Task<CompilationResult> CompileLatexAsync(
+        string latex,
+        CompilationType type,
+        int timeoutSeconds = 30,
+        LatexEngine engine = LatexEngine.Pdflatex)
     {
         latex = DedupeDocumentClass(latex);
         Interlocked.Increment(ref _totalCompilations);
@@ -99,7 +136,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         // Check cache for validation requests
         if (type == CompilationType.Validate)
         {
-            var cacheKey = $"validate:{latex.GetHashCode()}";
+            var cacheKey = ValidateCacheKey(latex, engine);
             if (_cache.TryGetValue(cacheKey, out var cached))
             {
                 Interlocked.Increment(ref _cacheHits);
@@ -107,7 +144,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
             }
         }
 
-        var request = new CompilationRequest(latex, type, timeoutSeconds);
+        var request = new CompilationRequest(latex, type, timeoutSeconds) { Engine = engine };
 
         await _channel.Writer.WriteAsync(request, request.CancellationToken);
 
@@ -143,7 +180,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
                 // Cache validation results
                 if (request.Type == CompilationType.Validate && finalResult.Success)
                 {
-                    var cacheKey = $"validate:{request.Latex.GetHashCode()}";
+                    var cacheKey = ValidateCacheKey(request.Latex, request.Engine);
                     if (_cache.Count >= MaxCacheSize)
                     {
                         // Simple eviction: clear half the cache
@@ -187,7 +224,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
                 case CompilationType.Validate:
                 {
                     var (exitCode, _, stderr) = await RunProcessAsync(
-                        "pdflatex",
+                        request.Engine.ToCli(),
                         $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
                         tmpDir, request.TimeoutSeconds);
 
@@ -222,7 +259,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
                     for (var pass = 0; pass < 2; pass++)
                     {
                         var (exitCode, _, stderr) = await RunProcessAsync(
-                            "pdflatex",
+                            request.Engine.ToCli(),
                             $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
                             tmpDir, request.TimeoutSeconds);
 
@@ -248,7 +285,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
                 {
                     // Compile to PDF first, then convert
                     var (exitCode, _, _) = await RunProcessAsync(
-                        "pdflatex",
+                        request.Engine.ToCli(),
                         $"-interaction=nonstopmode -halt-on-error -output-directory {tmpDir} {texPath}",
                         tmpDir, request.TimeoutSeconds);
 
@@ -363,6 +400,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         public string Latex { get; }
         public CompilationType Type { get; }
         public int TimeoutSeconds { get; }
+        public LatexEngine Engine { get; init; } = LatexEngine.Pdflatex;
         public TaskCompletionSource<CompilationResult> CompletionSource { get; } = new();
         public CancellationToken CancellationToken { get; }
 

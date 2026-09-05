@@ -5,6 +5,7 @@ using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Services;
 

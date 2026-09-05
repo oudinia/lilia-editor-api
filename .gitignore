@@ -21,9 +21,10 @@ logs/
 uploads/
 scripts/backup-db.env
 
-# TEMPORARY exception (remove after Sunday 2026-07-20 rotation):
-# local-dev.secrets.json is intentionally tracked for second-machine bootstrap.
-# After rotation: delete the file, drop Program.cs AddJsonFile line, remove this note.
+# Local development secrets. Never tracked: this file has held a plaintext
+# Stytch secret and a revb64-obfuscated Anthropic key. Program.cs loads it with
+# optional: true, so a machine without it is unaffected.
+**/local-dev.secrets.json
 
 # TUG font catalogue scraper local cache (not committed to repo)
 data/.tug-cache/

@@ -1,3 +1,4 @@
+using Lilia.Engines;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lilia.Api.ErrorPages;
@@ -25,7 +26,17 @@ var builder = WebApplication.CreateBuilder(args);
 // TEMPORARY (machine transfer, remove after Sunday 2026-07-20): load committed
 // local-dev.secrets.json so a fresh clone works without dotnet user-secrets.
 // File is optional so production / machines without it are unaffected.
-builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
+//
+// Skipped under Testing. This file is added after CreateBuilder, so it wins
+// over everything — including the settings an integration test injects on the
+// test host. That silently pointed the Stytch webhook test at the real
+// https://test.stytch.com instead of its local stub (and the same precedence
+// trap already cost us ConnectionStrings; see _comment_connectionstring in
+// the file). Tests supply their own values and must be able to.
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Configuration.AddJsonFile("local-dev.secrets.json", optional: true, reloadOnChange: false);
+}
 
 // TEMPORARY: decode transfer-encoded Anthropic key (GitHub push protection).
 // Supports revb64: = reverse(UTF8) then base64. Remove with local-dev.secrets.json.
@@ -132,7 +143,7 @@ builder.Host.UseWolverine(opts =>
     // machinery that auto-provisions its own tables should not be interleaved
     // with the domain ones. It also keeps `dotnet ef migrations` output honest —
     // EF does not own these tables and should not see them.
-    var messageStore = builder.Configuration.GetConnectionString("LiliaCore");
+    var messageStore = DatabaseTarget.Resolve(builder.Configuration).ConnectionString;
     if (!string.IsNullOrWhiteSpace(messageStore))
     {
         opts.PersistMessagesWithPostgresql(messageStore, schemaName: "wolverine");
@@ -350,9 +361,16 @@ else
 
 builder.Services.AddAuthorization();
 
-// Configure Database
-var connectionString = builder.Configuration.GetConnectionString("LiliaCore")
-    ?? "Host=localhost;Database=lilia_core;Username=postgres;Password=postgres";
+// Configure Database — an explicit target, not whichever config source happened
+// to win. See DatabaseTarget: user secrets used to capture ConnectionStrings:
+// LiliaCore and silently point this host at Neon while the tools host stayed on
+// localhost. Local is the default; Database:Target=neon opts in.
+var database = DatabaseTarget.Resolve(builder.Configuration);
+var connectionString = database.ConnectionString;
+
+// Say it out loud. Not knowing is how this host spent a while pointed at Neon
+// on a developer machine while the tools host ran against localhost.
+Console.WriteLine($"[BOOT] database target: {database}");
 
 // Cap the Npgsql pool to fit inside the DO managed Postgres plan's
 // max_connections (db-s-1vcpu-1gb → 25, ~20 after superuser reserves).
@@ -647,8 +665,6 @@ builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Ap
 builder.Services.AddScoped<Lilia.Api.Services.Capabilities.CapabilityResolver>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
 builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
-builder.Services.AddSingleton<IToolCatalogService, ToolCatalogService>();
-builder.Services.AddScoped<IToolRunnerService, ToolRunnerService>();
 builder.Services.AddHostedService<ToolArtifactPruneService>();
 
 // ITokenRouter — catalog-backed dispatch decisions for LatexParser
@@ -921,9 +937,6 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     // Warm the AI model catalog so the model picker + resolution serve from memory.
     await app.Services.GetRequiredService<IAiCatalogService>().PreloadAsync();
-
-    // Warm the standalone-tools registry.
-    await app.Services.GetRequiredService<IToolCatalogService>().PreloadAsync();
 
     // Seed the knowledge base from embedded Kb/*.md (idempotent upsert by slug).
     // Scoped — resolve from the migration scope so it shares the post-migrate DbContext.

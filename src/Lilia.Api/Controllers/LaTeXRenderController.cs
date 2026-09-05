@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Lilia.Engines;
 
 namespace Lilia.Api.Controllers;
 
@@ -399,7 +400,7 @@ public class LaTeXRenderController : ControllerBase
             // \documentclass (e.g. an import artifact) would otherwise collide
             // with the wrapper's and fail "Two \documentclass commands".
             engine = EngineDetector.Detect(latex).ToCli();
-            fullLatex = Lilia.Api.Services.RenderService.DedupeDocumentClass(
+            fullLatex = Lilia.Engines.RenderService.DedupeDocumentClass(
                 LaTeXPreamble.WrapForValidation(latex, engine.ParseEngine()));
             contentHash = blockContentHash;
         }
@@ -414,18 +415,18 @@ public class LaTeXRenderController : ControllerBase
             // assembled preamble+fragment needs lua/xelatex (e.g. fontspec).
             var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
             // Build the preamble first so the detector sees imported packages too.
-            var preamble = Lilia.Api.Services.RenderService.BuildPreambleForValidation(doc, explicitEngine);
+            var preamble = Lilia.Engines.RenderService.BuildPreambleForValidation(doc, explicitEngine);
             var detected = EngineDetector.Detect(preamble + "\n" + latex);
             var engineEnum = detected > explicitEngine ? detected : explicitEngine;
             // Preamble may flip engine (fontspec addendum), so rebuild under the
             // resolved engine before assembling the wrapper.
-            preamble = Lilia.Api.Services.RenderService.BuildPreambleForValidation(doc, engineEnum);
+            preamble = Lilia.Engines.RenderService.BuildPreambleForValidation(doc, engineEnum);
             engine = engineEnum.ToCli();
 
             var assembled = preamble + "\n\\begin{document}\n" + counterPriming + "\n" + latex + "\n\\end{document}";
             // DedupeDocumentClass is the chokepoint: a stray \documentclass in the
             // block fragment would collide with the preamble's own otherwise.
-            fullLatex = Lilia.Api.Services.RenderService.DedupeDocumentClass(assembled);
+            fullLatex = Lilia.Engines.RenderService.DedupeDocumentClass(assembled);
 
             // Combined cache key: block content + a hash of the doc CONTEXT
             // (preamble inputs + this block's counter position + rule version).

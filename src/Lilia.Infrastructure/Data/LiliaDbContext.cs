@@ -187,6 +187,9 @@ public class LiliaDbContext : DbContext
             e.Property(x => x.Category).HasColumnName("category").HasMaxLength(40).IsRequired();
             e.Property(x => x.CoverageLevel).HasColumnName("coverage_level").HasMaxLength(20).IsRequired();
             e.Property(x => x.CoverageNotes).HasColumnName("coverage_notes");
+            // Mirrors latex_document_classes.default_engine. Nullable: most
+            // packages run anywhere, and only the exceptions are worth recording.
+            e.Property(x => x.RequiresEngine).HasColumnName("requires_engine").HasMaxLength(20);
             e.Property(x => x.CtanUrl).HasColumnName("ctan_url").HasMaxLength(500);
             e.Property(x => x.Version).HasColumnName("version").HasMaxLength(40);
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");

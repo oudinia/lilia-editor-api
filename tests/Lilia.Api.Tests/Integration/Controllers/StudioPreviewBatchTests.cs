@@ -6,6 +6,7 @@ using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 

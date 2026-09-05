@@ -1,10 +1,13 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using FluentAssertions;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Services;
 
@@ -132,6 +135,14 @@ public class LatexIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The real uid of this process. Used instead of <c>$UID</c>, which bash
+    /// defines as a shell variable and never exports, so it does not reach a
+    /// child process at all.
+    /// </summary>
+    [DllImport("libc", EntryPoint = "getuid")]
+    private static extern uint GetUnixUid();
+
+    /// <summary>
     /// Validates LaTeX by writing to temp file and running pdflatex in Docker.
     /// </summary>
     private async Task<(bool Valid, string? Error)> ValidateWithDocker(string latex)
@@ -189,8 +200,21 @@ public class LatexIntegrationTests : IAsyncLifetime
         // leaving root-owned files in the temp directory; on Windows bind
         // mounts have no such problem, and forcing a uid the image does not
         // know about only breaks it.
-        if (!OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("UID") is { Length: > 0 } uid)
+        //
+        // The uid comes from getuid(), NOT from $UID. `UID` is a bash *shell*
+        // variable and is never exported, so `GetEnvironmentVariable("UID")`
+        // is null in this process and the guard silently did nothing — on
+        // every Linux machine, not just some. The images run as `tex`
+        // (uid 10001) while the bind-mounted temp dir belongs to the test
+        // user, so without --user every one of these 55 tests died on
+        // `! I can't write on file 'test.log'` — a permissions failure that
+        // reads like a missing TeX package.
+        if (!OperatingSystem.IsWindows())
         {
+            var uid = Environment.GetEnvironmentVariable("UID") is { Length: > 0 } overridden
+                ? overridden
+                : GetUnixUid().ToString(CultureInfo.InvariantCulture);
+
             psi.ArgumentList.Add("--user");
             psi.ArgumentList.Add(uid);
         }

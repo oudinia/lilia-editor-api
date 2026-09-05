@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Lilia.Core.Blocks;
+using Lilia.Engines;
 
 namespace Lilia.Api.Services;
 

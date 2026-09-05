@@ -1,9 +1,11 @@
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Lilia.Core.Entities;
+using Lilia.Engines;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 /// <summary>
 /// Single source of truth for building the LaTeX preamble from a Document.

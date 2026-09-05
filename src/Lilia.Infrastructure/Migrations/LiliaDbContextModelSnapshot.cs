@@ -5159,6 +5159,11 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("display_name");
 
+                    b.Property<string>("RequiresEngine")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("requires_engine");
+
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")

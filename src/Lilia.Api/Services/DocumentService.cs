@@ -5,6 +5,7 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Lilia.Engines;
 
 namespace Lilia.Api.Services;
 

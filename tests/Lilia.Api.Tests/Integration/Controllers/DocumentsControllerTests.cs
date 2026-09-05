@@ -4,6 +4,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Lilia.Core.DTOs;
+using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
