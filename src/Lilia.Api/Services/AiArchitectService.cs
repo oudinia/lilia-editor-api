@@ -162,7 +162,7 @@ public class AiArchitectService : IAiArchitectService
             {
                 ModelId = model,
                 MaxOutputTokens = MaxOutputTokens,
-                Temperature = 0.3f,
+                // See AskLiliaService — Claude 5 rejects `temperature` with a 400.
             }, ct);
 
             var (reply, operations) = ParseResponse(response.Text ?? string.Empty);

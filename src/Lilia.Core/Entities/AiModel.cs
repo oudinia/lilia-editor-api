@@ -14,7 +14,7 @@ namespace Lilia.Core.Entities;
 /// </summary>
 public class AiModel
 {
-    /// <summary>Provider model id, e.g. <c>claude-sonnet-4-6</c>. Primary key.</summary>
+    /// <summary>Provider model id, e.g. <c>claude-sonnet-5</c>. Primary key.</summary>
     public string Id { get; set; } = string.Empty;
 
     /// <summary>anthropic | openai | google.</summary>

@@ -54,7 +54,7 @@ public sealed record AskLiliaResponse(
     /// <summary>True when the tool loop hit the round cap while still issuing tool
     /// calls — the document may be only partially updated.</summary>
     bool PartialApply = false,
-    /// <summary>Resolved model id used for this turn (e.g. claude-sonnet-4-6).</summary>
+    /// <summary>Resolved model id used for this turn (e.g. claude-sonnet-5).</summary>
     string? Model = null);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
@@ -386,7 +386,9 @@ public sealed class AskLiliaService : IAskLiliaService
             {
                 ModelId = model,
                 MaxOutputTokens = MaxOutputTokens,
-                Temperature = 0.4f,
+                // The Claude 5 family rejects `temperature` outright ("deprecated for
+                // this model", HTTP 400) and every enabled model is now Claude 5, so
+                // sending it failed the whole call rather than just the sampling hint.
                 Tools = tools,
             };
 
