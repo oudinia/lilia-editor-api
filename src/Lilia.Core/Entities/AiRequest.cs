@@ -32,7 +32,7 @@ public class AiRequest
     /// <summary>Provider slug — anthropic | openai | local.</summary>
     public string Provider { get; set; } = "anthropic";
 
-    /// <summary>Model identifier, e.g. "claude-opus-4-7" / "claude-sonnet-4-6".</summary>
+    /// <summary>Model identifier, e.g. "claude-opus-5" / "claude-sonnet-5".</summary>
     public string Model { get; set; } = string.Empty;
 
     /// <summary>SHA-256 of the outgoing prompt AFTER redaction.</summary>

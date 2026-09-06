@@ -112,7 +112,7 @@ public class AiOrchestrator : IAiOrchestrator
             {
                 ModelId = request.Model,
                 MaxOutputTokens = request.MaxTokens,
-                Temperature = (float)request.Temperature,
+                // See AskLiliaService — Claude 5 rejects `temperature` with a 400.
             }, ct);
 
             var text = response.Text ?? string.Empty;

@@ -22,9 +22,8 @@ public record AiOrchestratorRequest(
     string Purpose,            // matches ai_requests.purpose CHECK vocabulary
     string UserPrompt,
     string? SystemPrompt = null,
-    string Model = "claude-opus-4-7",
-    int MaxTokens = 1024,
-    double Temperature = 0.2);
+    string Model = "claude-opus-5",
+    int MaxTokens = 1024);
 
 public record AiOrchestratorResult(
     Guid AiRequestId,

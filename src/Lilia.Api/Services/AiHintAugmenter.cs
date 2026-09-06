@@ -107,9 +107,8 @@ Rules:
             Purpose: "review_finding",
             UserPrompt: prompt,
             SystemPrompt: SystemPrompt,
-            Model: "claude-opus-4-7",
-            MaxTokens: 2048,
-            Temperature: 0.1), ct);
+            Model: "claude-opus-5",
+            MaxTokens: 2048), ct);
 
         if (result.Status != "success" || string.IsNullOrWhiteSpace(result.Text))
         {
