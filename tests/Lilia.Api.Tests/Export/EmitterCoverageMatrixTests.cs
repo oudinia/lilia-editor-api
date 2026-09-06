@@ -155,18 +155,15 @@ public class EmitterCoverageMatrixTests
             [BlockTypes.PersonalInfo, BlockTypes.Photo, BlockTypes.CvEntry, BlockTypes.CvSection],
             Markdown, Lml, Typst);
 
-        // ── columnLayout in Typst — the one that matters ──────────────────
-        // NOT a vertical and NOT de-scoped. columnLayout is a general layout
-        // block that LaTeX, HTML, Markdown and LML all emit, and Typst does not
-        // — and Typst is the DEFAULT PDF engine (pdfEngine = "auto"). So a
-        // multi-column block in a document exported on default settings reaches
-        // TypstRenderService, matches no arm, and becomes a `// Unknown block
-        // type` comment: the columns silently do not happen.
+        // ── columnLayout in Typst — CLOSED 2026-09-06 ─────────────────
+        // Was the gap that mattered: a general layout block every other emitter
+        // handled, missing from Typst, which is the DEFAULT PDF engine. The block
+        // matched no arm, became a `// Unknown block type` comment, and the
+        // columns silently did not happen — on the path most documents take.
         //
-        // Listed rather than fixed because writing the Typst arm is P3.1 work,
-        // not this branch's. Recorded here so it cannot be forgotten, and
-        // written up in lilia-docs/plan/notebook.md.
-        Gap([BlockTypes.ColumnLayout], Typst);
+        // Deliberately NOT re-added as a gap now that it is emitted: this list is
+        // what the matrix asserts against, so leaving the entry here would let the
+        // fix rot unnoticed. See TypstColumnLayoutTests.
 
         return gaps;
     }
