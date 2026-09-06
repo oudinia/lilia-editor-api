@@ -134,19 +134,7 @@ public class TypstRenderService : ITypstRenderService
         sb.AppendLine("#v(1.2em)");
         sb.AppendLine();
 
-        // Render each block (Title is preamble-only)
-        foreach (var block in blocks)
-        {
-            if (string.Equals(block.Type, "title", StringComparison.OrdinalIgnoreCase))
-                continue;
-            var typst = RenderBlockToTypst(block);
-            if (!string.IsNullOrWhiteSpace(typst))
-            {
-                sb.AppendLine(typst);
-                sb.AppendLine();
-            }
-        }
-
+        sb.Append(RenderBlockSequenceToTypst(blocks));
         return sb.ToString();
     }
 
@@ -169,6 +157,7 @@ public class TypstRenderService : ITypstRenderService
                 "theorem" => RenderTheoremToTypst(content),
                 "abstract" => RenderAbstractToTypst(content),
                 "tableofcontents" => "#outline()",
+                "columnlayout" => RenderColumnLayoutToTypst(content),
                 "columnbreak" => "#colbreak()",
                 "pagebreak" or "divider" => "#pagebreak()",
                 "bibliography" => "// Bibliography handled separately",
@@ -187,6 +176,110 @@ public class TypstRenderService : ITypstRenderService
             return $"// Error rendering block: {block.Id}";
         }
     }
+
+    /// <summary>
+    /// The document body: every block in order, with column layouts resolved.
+    ///
+    /// <para><b>Pure on purpose.</b> It takes blocks and returns a string, so the
+    /// column-pairing logic below can be tested without a database — the
+    /// in-memory EF provider cannot map this model's <c>JsonDocument</c>
+    /// properties, so anything reaching a DbSet is untestable in a unit test.</para>
+    ///
+    /// <para><b>Why the buffering.</b> <c>columnLayout</c> is a PAIR of markers,
+    /// not a container: "start" opens and "end" closes, exactly like
+    /// <c>\begin{multicols}</c>/<c>\end{multicols}</c>. Typst has no such pair —
+    /// <c>#columns(n)[…]</c> takes a body — so the blocks between the markers are
+    /// buffered and wrapped. That preserves multicols semantics: text flows in n
+    /// columns, inline, with no page break. <c>#set page(columns: n)</c> would
+    /// have produced columns too, but started a new page to do it.</para>
+    /// </summary>
+    internal string RenderBlockSequenceToTypst(IEnumerable<Block> blocks)
+    {
+        var body = new StringBuilder();
+        StringBuilder? columnBuffer = null;
+        var columnCount = 2;
+
+        void Emit(string typst)
+        {
+            if (string.IsNullOrWhiteSpace(typst)) return;
+            var target = columnBuffer ?? body;
+            target.AppendLine(typst);
+            target.AppendLine();
+        }
+
+        void CloseColumns()
+        {
+            if (columnBuffer is null) return;
+            body.AppendLine($"#columns({columnCount})[");
+            body.Append(columnBuffer);
+            body.AppendLine("]");
+            body.AppendLine();
+            columnBuffer = null;
+        }
+
+        foreach (var block in blocks)
+        {
+            // Title is preamble-only; RenderToTypstAsync has already used it.
+            if (string.Equals(block.Type, "title", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (string.Equals(block.Type, "columnLayout", StringComparison.OrdinalIgnoreCase))
+            {
+                var content = block.Content.RootElement;
+                CloseColumns();                       // an end closes; a second start also closes
+                if (!IsColumnLayoutEnd(content))
+                {
+                    columnCount = ColumnCountOf(content);
+                    // One column is not a column layout; multicol refuses it too.
+                    columnBuffer = columnCount >= 2 ? new StringBuilder() : null;
+                }
+                continue;
+            }
+
+            Emit(RenderBlockToTypst(block));
+        }
+
+        // An unclosed start is flushed rather than dropped: a missing "end"
+        // marker is a malformed document, not a reason to lose the rest of it.
+        CloseColumns();
+        return body.ToString();
+    }
+
+    /// <summary>
+    /// Column count a <c>columnLayout</c> block asks for, clamped exactly as the
+    /// LaTeX and HTML emitters clamp it so the three cannot disagree.
+    /// </summary>
+    internal static int ColumnCountOf(JsonElement content) =>
+        Math.Clamp(
+            content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number
+                ? c.GetInt32()
+                : 2,
+            1, 3);
+
+    internal static bool IsColumnLayoutEnd(JsonElement content) =>
+        content.TryGetProperty("mode", out var m) &&
+        string.Equals(m.GetString(), "end", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A <c>columnLayout</c> block rendered ON ITS OWN — a per-block preview, or
+    /// any caller that is not assembling a whole document.
+    ///
+    /// <para>In a full document <see cref="RenderToTypstAsync"/> does something
+    /// better: it buffers the blocks between the start and end markers and wraps
+    /// them in <c>#columns(n)[…]</c>, which is what <c>multicols</c> actually
+    /// means — text flowing in n columns, inline, no page break.</para>
+    ///
+    /// <para>That wrapping needs both markers and the blocks between them, which
+    /// a single-block call does not have. So this falls back to
+    /// <c>#set page(columns: n)</c>: the columns are real from here on, at the
+    /// cost of starting a new page, which is the honest approximation. Before
+    /// 2026-09-06 this arm did not exist at all and the block silently produced
+    /// nothing.</para>
+    /// </summary>
+    private static string RenderColumnLayoutToTypst(JsonElement content) =>
+        IsColumnLayoutEnd(content)
+            ? "#set page(columns: 1)"
+            : $"#set page(columns: {ColumnCountOf(content)})";
 
     /// <summary>
     /// A block type this renderer has no arm for. The Typst comment it returns
