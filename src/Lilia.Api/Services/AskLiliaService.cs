@@ -72,6 +72,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly IKbService _kb;
     private readonly IDocumentService _documentService;
     private readonly IBlockService _blockService;
+    private readonly Lilia.Engines.IRenderService _renderService;
     private readonly IVersionService _versionService;
     private readonly ILmlTextParser _lmlParser;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> _hub;
@@ -140,6 +141,7 @@ public sealed class AskLiliaService : IAskLiliaService
         IKbService kb,
         IDocumentService documentService,
         IBlockService blockService,
+        Lilia.Engines.IRenderService renderService,
         IVersionService versionService,
         ILmlTextParser lmlParser,
         Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> hub,
@@ -155,6 +157,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _kb = kb;
         _documentService = documentService;
         _blockService = blockService;
+        _renderService = renderService;
         _versionService = versionService;
         _lmlParser = lmlParser;
         _hub = hub;
@@ -235,7 +238,8 @@ public sealed class AskLiliaService : IAskLiliaService
                 if (document is not null)
                 {
                     systemSb.AppendLine()
-                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.");
+                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text), get_lilia_latex (the LaTeX Lilia itself emits, for a block or the whole document). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
+                        .AppendLine("LATEX PROVENANCE — two different things get called \"the LaTeX\" and you must not blur them. (1) What LILIA EMITS: call get_lilia_latex; the reply is tagged source=\"lilia-emitter\" and is what actually compiles in this system, with Lilia's own preamble, package set and engine choice. (2) What YOU KNOW: idiomatic LaTeX from training, which may be perfectly correct in general and still not be what this document produces. When you show or discuss LaTeX for the open document, read it first and say which one you are giving — e.g. \"Lilia emits this:\" versus \"In standard LaTeX you would normally write:\". Never present recalled LaTeX as if it were the document's actual output, and if the two differ, say so plainly: that difference is usually the answer the author needs.");
                     if (request.EditMode)
                     {
                         systemSb.AppendLine(IsCvDocument(document)
@@ -583,6 +587,19 @@ public sealed class AskLiliaService : IAskLiliaService
                     => DocSearch(live.Dto, query),
                 name: "search_document",
                 description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
+            AIFunctionFactory.Create(
+                ([System.ComponentModel.Description("Block id from get_outline/search_document. Omit for the whole document.")] string? blockId)
+                    => LiliaLatexAsync(live.Dto, docGuid, blockId),
+                name: "get_lilia_latex",
+                description:
+                    "Return the LaTeX that LILIA ITSELF emits for one block or the whole document — "
+                    + "the output of Lilia's own emitter, which is what actually compiles here. "
+                    + "This is NOT the same as LaTeX you can write from training: Lilia has its own "
+                    + "preamble, package set, block-to-LaTeX mapping and engine choice, so idiomatic "
+                    + "LaTeX you recall may differ from what this document really produces. Call this "
+                    + "before quoting, explaining or editing a document's LaTeX. The reply is tagged "
+                    + "source=\"lilia-emitter\"; anything you write from your own knowledge is not, and "
+                    + "you should say which is which when the difference matters."),
         };
 
         if (allowWrite)
@@ -1082,6 +1099,80 @@ public sealed class AskLiliaService : IAskLiliaService
         return b is null
             ? new { error = "block not found" }
             : (object)new { id = b.Id, type = b.Type, content = b.Content };
+    }
+
+    /// <summary>
+    /// The LaTeX Lilia's own emitter produces, for one block or the whole document.
+    ///
+    /// <para><b>Why this tool exists.</b> The other read tools return block
+    /// <em>content</em> — JSON — so when the model talked about a document's LaTeX
+    /// it was reconstructing it from training. That reconstruction is plausible
+    /// and frequently wrong here: Lilia builds its own preamble, chooses the
+    /// engine from the content, and maps blocks to LaTeX its own way. What
+    /// compiles in this system is what <see cref="Lilia.Engines.IRenderService"/>
+    /// emits, not what idiomatic LaTeX would look like.</para>
+    ///
+    /// <para>The reply is tagged <c>source: "lilia-emitter"</c> so an answer can
+    /// distinguish the two, rather than presenting a guess with the same
+    /// confidence as ground truth.</para>
+    /// </summary>
+    private async Task<object> LiliaLatexAsync(
+        Lilia.Core.DTOs.DocumentDto document, Guid docGuid, string? blockId)
+    {
+        const string provenance =
+            "Emitted by Lilia's own renderer for this document. This is what compiles here — "
+            + "it is not general LaTeX knowledge, and may differ from idiomatic LaTeX.";
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(blockId))
+            {
+                var full = await _renderService.RenderToLatexAsync(docGuid);
+                return new
+                {
+                    source = "lilia-emitter",
+                    scope = "document",
+                    engine = document.LatexEngine ?? "auto",
+                    documentClass = document.LatexDocumentClass,
+                    latex = full,
+                    note = provenance,
+                };
+            }
+
+            if (!Guid.TryParse(blockId, out var id))
+                return new { error = "invalid block id" };
+
+            var dto = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>())
+                .FirstOrDefault(x => x.Id == id);
+            if (dto is null) return new { error = "block not found" };
+
+            var block = new Lilia.Core.Entities.Block
+            {
+                Id = dto.Id,
+                DocumentId = docGuid,
+                Type = dto.Type,
+                Content = System.Text.Json.JsonDocument.Parse(dto.Content.GetRawText()),
+                SortOrder = dto.SortOrder,
+            };
+
+            return new
+            {
+                source = "lilia-emitter",
+                scope = "block",
+                blockId = dto.Id,
+                type = dto.Type,
+                latex = _renderService.RenderBlockToLatex(block),
+                note = provenance
+                    + " A title block is empty here by design: its \\title/\\author/\\date live in "
+                    + "the preamble, not the body.",
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AskLilia] get_lilia_latex failed for {DocId} block {BlockId}",
+                docGuid, blockId);
+            return new { error = "could not render this document's LaTeX" };
+        }
     }
 
     private static object DocSearch(Lilia.Core.DTOs.DocumentDto document, string query)
