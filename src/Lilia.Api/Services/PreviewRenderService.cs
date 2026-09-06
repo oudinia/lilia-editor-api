@@ -64,11 +64,51 @@ public class PreviewRenderService : IPreviewRenderService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Above this many blocks, pdflatex is measured to be the faster preview and
+    /// Typst is not tried first.
+    ///
+    /// <para>Measured 2026-09-06 on an idle 8-core box, median of 3, same content
+    /// emitted to both syntaxes (harness in <c>lilia-latex-service/bench</c>):</para>
+    ///
+    /// <code>
+    ///   blocks     typst   pdflatex
+    ///       10     0.064      0.413      typst 6.5x faster
+    ///      100     0.143      0.395      typst 2.8x faster
+    ///      300     0.299      0.460      typst 1.5x faster
+    ///     1000     0.775      0.638      pdflatex faster
+    /// </code>
+    ///
+    /// <para>Typst's advantage is real but it is a SMALL-document advantage, and
+    /// it inverts somewhere between 300 and 1000 blocks. Trying Typst first on a
+    /// 1000-block document costs ~140ms and then, if it falls through, the whole
+    /// pdflatex compile on top.</para>
+    ///
+    /// <para>500 rather than a fitted crossover: the measured documents are plain
+    /// (geometry + amsmath, one pass, no fontspec, no bibliography), so the
+    /// absolute numbers are a floor and the true crossover moves with content.
+    /// A round number inside the measured band is more honest than false
+    /// precision, and it is one config value away from being changed.</para>
+    /// </summary>
+    private const int DefaultTypstFirstMaxBlocks = 500;
+
     public async Task<PreviewRenderResult> RenderPdfAsync(Guid documentId, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
 
-        var typstAttempt = await TryTypstPdfAsync(documentId, ct);
+        var blockCount = await _db.Blocks.AsNoTracking()
+            .CountAsync(b => b.DocumentId == documentId, ct);
+        var typstFirst = blockCount <= DefaultTypstFirstMaxBlocks;
+
+        if (!typstFirst)
+        {
+            _logger.LogInformation(
+                "[Preview] {Blocks} blocks is over the {Max}-block threshold — going straight to " +
+                "pdflatex, which is measured faster at this size", blockCount,
+                DefaultTypstFirstMaxBlocks);
+        }
+
+        var typstAttempt = typstFirst ? await TryTypstPdfAsync(documentId, ct) : null;
         if (typstAttempt is { } pdf)
         {
             sw.Stop();
