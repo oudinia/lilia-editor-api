@@ -73,6 +73,25 @@ public class VersionsController : ControllerBase
         return Ok(document);
     }
 
+    /// <summary>
+    /// A new document holding this version's content. Read access on the source
+    /// is enough — branching writes nothing to it, and the result belongs to
+    /// whoever asked for it.
+    /// </summary>
+    [HttpPost("{id:guid}/branch")]
+    public async Task<ActionResult<DocumentDto>> BranchVersion(
+        Guid docId, Guid id, [FromBody] BranchVersionDto? dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+            return Forbid();
+
+        var document = await _versionService.BranchVersionAsync(docId, id, userId, dto?.Title);
+        if (document == null) return NotFound();
+        return Ok(document);
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> DeleteVersion(Guid docId, Guid id)
     {

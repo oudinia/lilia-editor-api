@@ -240,6 +240,68 @@ public static class VersionSnapshot
     /// make every restore add a redundant "Before restore" version. This
     /// compares the settings and the blocks that actually define the document.
     /// </summary>
+    /// <summary>
+    /// Re-key a snapshot's blocks for a different document.
+    ///
+    /// <para>Restore writes the snapshot's own ids back, because the emitter
+    /// puts them in <c>\label{blk-&lt;id&gt;}</c> and a fresh Guid breaks every
+    /// cross-reference. Branching cannot: block ids are a primary key across
+    /// every document, so two documents holding the same block is not a
+    /// choice.</para>
+    ///
+    /// <para>So the ids change together — parent links and paths remapped with
+    /// them. Rewriting ids and leaving <c>ParentId</c> pointing at the original
+    /// document's blocks is how nesting gets silently flattened, which is the
+    /// bug restore had.</para>
+    /// </summary>
+    public static List<SnapshotBlock> Rebase(IEnumerable<SnapshotBlock> blocks)
+    {
+        var list = blocks.ToList();
+        var map = list.ToDictionary(b => b.Id, _ => Guid.NewGuid());
+
+        return list.Select(b => b with
+        {
+            Id = map[b.Id],
+            ParentId = b.ParentId is { } p && map.TryGetValue(p, out var np) ? np
+                // A parent outside this snapshot is not a parent. Keeping the
+                // dangling id would point the new block at another document's
+                // block; dropping it makes it top-level, which is what it is.
+                : null,
+            Path = RemapPath(b.Path, map),
+        }).ToList();
+    }
+
+    private static string? RemapPath(string? path, Dictionary<Guid, Guid> map)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+
+        var segments = path.Split('/').Select(seg =>
+            Guid.TryParse(seg, out var g) && map.TryGetValue(g, out var mapped)
+                ? mapped.ToString()
+                : seg);
+        return string.Join("/", segments);
+    }
+
+    /// <summary>
+    /// Name a branch after where it came from.
+    ///
+    /// <para>An explicit title wins. Otherwise the snapshot's own title carries
+    /// the version number, because two rows reading "Wave mechanics" in a
+    /// document list is the confusion this feature exists to avoid.</para>
+    /// </summary>
+    public static string BranchTitle(JsonElement snapshot, int versionNumber, string? requested)
+    {
+        if (!string.IsNullOrWhiteSpace(requested)) return requested.Trim();
+
+        var title = snapshot.ValueKind == JsonValueKind.Object
+            && snapshot.TryGetProperty("title", out var t)
+            && t.ValueKind == JsonValueKind.String
+                ? t.GetString()
+                : null;
+
+        return $"{(string.IsNullOrWhiteSpace(title) ? "Untitled" : title!.Trim())} (from v{versionNumber})";
+    }
+
     public static string Fingerprint(JsonElement snapshot)
     {
         var parts = new List<string>();

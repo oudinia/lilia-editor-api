@@ -227,6 +227,112 @@ public class VersionService : IVersionService
     }
 
     /// <summary>
+    /// Copy a stored version into a new document.
+    ///
+    /// <para>Restore is <c>checkout</c>: move the marker, change nothing else.
+    /// This is <c>checkout -b</c>, and it is the action append-on-restore was
+    /// impersonating — an old state carried forward as its own document, which
+    /// is a coherent thing to want and was never what "restore" meant.</para>
+    ///
+    /// <para>The source document is not touched at all: no marker moves, no row
+    /// is written, nothing is overwritten. That is the whole point of branching
+    /// rather than restoring.</para>
+    /// </summary>
+    public async Task<DocumentDto?> BranchVersionAsync(
+        Guid documentId, Guid versionId, string userId, string? title)
+    {
+        var version = await _context.DocumentVersions
+            .FirstOrDefaultAsync(v => v.DocumentId == documentId && v.Id == versionId);
+        if (version == null) return null;
+
+        var snapshot = version.Snapshot.RootElement;
+
+        var branch = new Document
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = userId,
+            Status = "draft",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+
+        // Only the settings that shape output — ApplySettings carries those and
+        // nothing else. Sharing links, template and help flags, collaborators
+        // and the public bit are deliberately not among them: a branch starts as
+        // its author's private draft whatever the document it came from was.
+        VersionSnapshot.ApplySettings(snapshot, branch);
+        branch.Title = VersionSnapshot.BranchTitle(snapshot, version.VersionNumber, title);
+
+        _context.Documents.Add(branch);
+
+        var blocks = new List<Block>();
+        foreach (var b in VersionSnapshot.Rebase(VersionSnapshot.ReadBlocks(snapshot)))
+        {
+            blocks.Add(new Block
+            {
+                Id = b.Id,
+                DocumentId = branch.Id,
+                Type = b.Type,
+                Content = JsonDocument.Parse(b.Content.GetRawText()),
+                SortOrder = b.SortOrder,
+                ParentId = b.ParentId,
+                Depth = b.Depth,
+                Path = b.Path,
+                Status = b.Status,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+
+        _context.Blocks.AddRange(blocks);
+
+        var bibliography = new List<BibliographyEntry>();
+        foreach (var e in VersionSnapshot.ReadBibliography(snapshot))
+        {
+            bibliography.Add(new BibliographyEntry
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = branch.Id,
+                CiteKey = e.CiteKey,
+                EntryType = e.EntryType,
+                Data = JsonDocument.Parse(e.Data.GetRawText()),
+                FormattedText = e.FormattedText,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+
+        _context.BibliographyEntries.AddRange(bibliography);
+
+        // The branch point, as the new document's first version, with the marker
+        // on it. Otherwise a document that is exactly a saved state opens
+        // claiming to be on no version, and its history starts empty — which
+        // loses the one fact worth keeping about where it came from.
+        //
+        // Serialised from the branch, not copied from the source. The copy is
+        // the obvious move and it is wrong: rebasing gave the blocks new ids, so
+        // the source's snapshot no longer describes this document, and the
+        // marker — which is validated against real content — would never match.
+        var origin = new DocumentVersion
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = branch.Id,
+            VersionNumber = 1,
+            Name = $"Branched from v{version.VersionNumber}",
+            Snapshot = VersionSnapshot.Serialise(branch, blocks, bibliography),
+            IsAutoSave = false,
+            CreatedBy = userId,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _context.DocumentVersions.Add(origin);
+        branch.CurrentVersionId = origin.Id;
+
+        await _context.SaveChangesAsync();
+
+        return await _documentService.GetDocumentAsync(branch.Id, userId);
+    }
+
+    /// <summary>
     /// Whether the document still holds the version it claims to.
     ///
     /// The pointer is a hint. Two dozen code paths mutate blocks and none of
