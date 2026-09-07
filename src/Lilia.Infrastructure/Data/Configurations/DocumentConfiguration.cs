@@ -20,6 +20,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(d => d.OwnerId).HasColumnName("owner_id").HasMaxLength(255).IsRequired();
         builder.Property(d => d.TeamId).HasColumnName("team_id");
+        builder.Property(d => d.CurrentVersionId).HasColumnName("current_version_id");
         builder.Property(d => d.Title).HasColumnName("title").HasMaxLength(255).HasDefaultValue("Untitled");
         builder.Property(d => d.Language).HasColumnName("language").HasMaxLength(10).HasDefaultValue("en");
         builder.Property(d => d.PaperSize).HasColumnName("paper_size").HasMaxLength(50).HasDefaultValue("a4");

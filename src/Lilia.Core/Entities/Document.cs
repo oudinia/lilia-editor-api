@@ -57,6 +57,16 @@ public class Document
     /// </summary>
     public int Version { get; set; }
 
+    /// <summary>
+    /// Which stored version this document currently reflects, or null when it
+    /// has been edited since. Set by a restore; never appended to the timeline.
+    ///
+    /// Treated as a hint, not a fact — <c>VersionService</c> re-checks it
+    /// against the document's real content before reporting it, so nothing has
+    /// to remember to clear it on edit.
+    /// </summary>
+    public Guid? CurrentVersionId { get; set; }
+
     // Layout settings
     public string? MarginTop { get; set; }
     public string? MarginBottom { get; set; }
