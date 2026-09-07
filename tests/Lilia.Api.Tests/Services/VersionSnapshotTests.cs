@@ -265,6 +265,108 @@ public class VersionSnapshotTests
             .Should().NotBe(VersionSnapshot.Fingerprint(Snap(after, blocks)));
     }
 
+    // --- Branching (checkout -b) ---------------------------------------------
+
+    [Fact]
+    public void Rebase_gives_every_block_a_new_id()
+    {
+        // Block ids are a primary key across every document, so a branch cannot
+        // keep them — unlike restore, which must.
+        var blocks = VersionSnapshot.ReadBlocks(Snap(Doc(), [
+            Blk(Guid.NewGuid(), "paragraph", """{"text":"one"}""", 0),
+            Blk(Guid.NewGuid(), "paragraph", """{"text":"two"}""", 1),
+        ]));
+
+        var rebased = VersionSnapshot.Rebase(blocks);
+
+        rebased.Select(b => b.Id).Should().NotIntersectWith(blocks.Select(b => b.Id));
+        rebased.Select(b => b.Id).Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public void Rebase_keeps_nesting_by_remapping_the_parent()
+    {
+        // Rewriting ids and leaving ParentId pointing at the original document
+        // is how nesting gets silently flattened — the bug restore had, and the
+        // one UseTemplateAsync still has.
+        var parent = Guid.NewGuid();
+        var child = Guid.NewGuid();
+        var blocks = VersionSnapshot.ReadBlocks(Snap(Doc(), [
+            Blk(parent, "list", """{"ordered":true}""", 0),
+            Blk(child, "listItem", """{"text":"one"}""", 1, parent, depth: 1),
+        ]));
+
+        var rebased = VersionSnapshot.Rebase(blocks);
+
+        rebased[1].ParentId.Should().Be(rebased[0].Id);
+        rebased[1].ParentId.Should().NotBe(parent);
+        rebased[1].Depth.Should().Be(1);
+    }
+
+    [Fact]
+    public void Rebase_rewrites_the_path_to_match_the_new_ids()
+    {
+        var parent = Guid.NewGuid();
+        var child = Guid.NewGuid();
+        var blocks = VersionSnapshot.ReadBlocks(Snap(Doc(), [
+            Blk(parent, "list", """{}""", 0),
+            Blk(child, "listItem", """{"text":"one"}""", 1, parent, depth: 1),
+        ]));
+
+        var rebased = VersionSnapshot.Rebase(blocks);
+
+        rebased[1].Path.Should().Be($"{rebased[0].Id}/{rebased[1].Id}");
+        rebased[1].Path.Should().NotContain(parent.ToString());
+    }
+
+    [Fact]
+    public void Rebase_drops_a_parent_that_is_not_in_the_snapshot()
+    {
+        // A dangling parent id would point the new block at another document's
+        // block. It is not a parent, so the block is what it actually is: top
+        // level.
+        var orphan = new VersionSnapshot.SnapshotBlock(
+            Guid.NewGuid(), "paragraph", JsonDocument.Parse("{}").RootElement,
+            0, Guid.NewGuid(), 1, null, "draft");
+
+        VersionSnapshot.Rebase([orphan]).Single().ParentId.Should().BeNull();
+    }
+
+    [Fact]
+    public void Rebase_leaves_content_and_order_alone()
+    {
+        var blocks = VersionSnapshot.ReadBlocks(Snap(Doc(), [
+            Blk(Guid.NewGuid(), "equation", """{"latex":"E = mc^2"}""", 0),
+        ]));
+
+        var rebased = VersionSnapshot.Rebase(blocks).Single();
+        rebased.Type.Should().Be("equation");
+        rebased.SortOrder.Should().Be(0);
+        rebased.Content.GetProperty("latex").GetString().Should().Be("E = mc^2");
+    }
+
+    [Fact]
+    public void Branch_title_says_where_it_came_from()
+    {
+        var snapshot = Snap(Doc(), []);
+        VersionSnapshot.BranchTitle(snapshot, 3, null).Should().Be("Wave mechanics (from v3)");
+    }
+
+    [Fact]
+    public void An_explicit_branch_title_wins()
+    {
+        var snapshot = Snap(Doc(), []);
+        VersionSnapshot.BranchTitle(snapshot, 3, "  Rewrite  ").Should().Be("Rewrite");
+    }
+
+    [Fact]
+    public void A_branch_of_a_titleless_snapshot_is_still_named()
+    {
+        var snapshot = JsonDocument.Parse("""{"blocks":[]}""").RootElement;
+        VersionSnapshot.BranchTitle(snapshot, 1, null).Should().Be("Untitled (from v1)");
+        VersionSnapshot.BranchTitle(snapshot, 1, "   ").Should().Be("Untitled (from v1)");
+    }
+
     [Fact]
     public void Restoring_the_same_snapshot_twice_gives_the_same_document()
     {

@@ -37,3 +37,12 @@ public record VersionDto(
 public record CreateVersionDto(
     string? Name
 );
+
+public record BranchVersionDto(
+    /// <summary>
+    /// Title for the new document. Optional — omitted, it is derived from the
+    /// snapshot's own title and the version it came from, so the branch says
+    /// where it came from without the caller having to invent a name.
+    /// </summary>
+    string? Title = null
+);
