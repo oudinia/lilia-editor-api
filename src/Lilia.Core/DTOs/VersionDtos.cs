@@ -9,7 +9,17 @@ public record VersionListDto(
     bool IsAutoSave,
     string? CreatedBy,
     string? CreatorName,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    /// <summary>
+    /// The version the document currently holds — the marker moves back when you
+    /// restore, rather than a new row being appended.
+    ///
+    /// Validated on read rather than trusted: the stored pointer is compared
+    /// against the document's actual content, so an edit through any of the
+    /// couple of dozen paths that touch blocks silently makes this false again
+    /// without any of them having to remember to clear it.
+    /// </summary>
+    bool IsCurrent = false
 );
 
 public record VersionDto(

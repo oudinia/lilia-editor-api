@@ -27,6 +27,11 @@ public class VersionService : IVersionService
             .OrderByDescending(v => v.VersionNumber)
             .ToListAsync();
 
+        // Which row the document is actually on. Validated rather than trusted —
+        // see ValidatedCurrentVersionAsync — so an edit through any path shows
+        // up here as "on no version" without that path knowing about the marker.
+        var current = await ValidatedCurrentVersionAsync(documentId);
+
         return versions.Select(v => new VersionListDto(
             v.Id,
             v.VersionNumber,
@@ -34,7 +39,8 @@ public class VersionService : IVersionService
             v.IsAutoSave,
             v.CreatedBy,
             v.Creator?.Name,
-            v.CreatedAt
+            v.CreatedAt,
+            v.Id == current
         )).ToList();
     }
 
@@ -107,22 +113,18 @@ public class VersionService : IVersionService
     }
 
     /// <summary>
-    /// Make the document's content equal to a stored version.
+    /// Move the document to a stored version, and move the marker with it.
     ///
-    /// <para>Restoring is no longer destructive. The previous implementation
-    /// deleted every block and wrote the snapshot's over the top, so restoring
-    /// v3 while sitting on v7 destroyed v7's content unless an auto-version had
-    /// happened to catch it in the previous five minutes. It also minted fresh
-    /// Guids for every block, breaking <c>\label{blk-&lt;id&gt;}</c> cross-references,
-    /// orphaning comments and dropping the whole validation cache — and it
-    /// ignored <c>parentId</c>, so nested blocks came back flattened.</para>
+    /// <para>This is a checkout, not a revert. An earlier version of this
+    /// appended "Restored from version N" so the newest row would equal the
+    /// document — honest, but it read backwards: you asked to go back in time
+    /// and the history grew. Git makes the same distinction, and the useful half
+    /// is <c>checkout</c>: move a pointer, create nothing.</para>
     ///
-    /// <para>The invariant now is: <b>the newest version always equals the
-    /// document.</b> Restoring preserves the current state as a version first
-    /// when it is not already stored, then applies the chosen snapshot, then
-    /// records the result as a new version. Nothing is lost, the ordering stays
-    /// monotonic, and "newest" is a truthful answer to "what am I looking at" —
-    /// which is what the version list needs in order to mark one as current.</para>
+    /// <para>Immutability is untouched. Versions are still write-once, and the
+    /// state about to be overwritten is preserved first when it is not already
+    /// stored — quietly, because losing work is unacceptable but announcing the
+    /// rescue in the timeline is the clutter this removes.</para>
     /// </summary>
     public async Task<DocumentDto?> RestoreVersionAsync(Guid documentId, Guid versionId, string userId)
     {
@@ -138,24 +140,24 @@ public class VersionService : IVersionService
 
         var snapshot = version.Snapshot.RootElement;
 
-        // Keep what is about to be overwritten, unless the newest version
-        // already holds it. Without this, restore is a one-way door.
+        var current = VersionSnapshot.Serialise(
+            document, document.Blocks, document.BibliographyEntries);
+
+        // Already there. Restoring a version the document equals only needs the
+        // marker set — there is nothing to overwrite and nothing to preserve.
+        if (SnapshotsMatch(snapshot, current.RootElement))
+        {
+            document.CurrentVersionId = versionId;
+            await _context.SaveChangesAsync();
+            return await _documentService.GetDocumentAsync(documentId, userId);
+        }
+
+        // Keep what is about to be overwritten, unless a version already holds
+        // it. Without this, restore is a one-way door.
         var newest = await _context.DocumentVersions
             .Where(v => v.DocumentId == documentId)
             .OrderByDescending(v => v.VersionNumber)
             .FirstOrDefaultAsync();
-
-        var current = VersionSnapshot.Serialise(
-            document, document.Blocks, document.BibliographyEntries);
-
-        // Already there. Restoring a version the document currently equals is a
-        // no-op, not a reason to record that nothing happened — otherwise
-        // clicking the same entry twice stacks identical "Restored from"
-        // versions and the history fills with noise.
-        if (SnapshotsMatch(snapshot, current.RootElement))
-        {
-            return await _documentService.GetDocumentAsync(documentId, userId);
-        }
 
         if (newest == null || !SnapshotsMatch(newest.Snapshot.RootElement, current.RootElement))
         {
@@ -164,7 +166,10 @@ public class VersionService : IVersionService
                 Id = Guid.NewGuid(),
                 DocumentId = documentId,
                 VersionNumber = await NextVersionNumberAsync(documentId),
-                Name = "Before restore",
+                // Named for what it preserves, not for what triggered it. Two
+                // rows called "Before restore" tell you nothing about which is
+                // which; the version being left is the useful half.
+                Name = $"Unsaved work before v{version.VersionNumber}",
                 Snapshot = current,
                 IsAutoSave = true,
                 CreatedBy = userId,
@@ -180,7 +185,8 @@ public class VersionService : IVersionService
         {
             _context.Blocks.Add(new Block
             {
-                // The snapshot's id, not a new one — see the summary above.
+                // The snapshot's id, not a new one: the emitter writes
+                // \label{blk-<id>}, so a fresh Guid breaks every cross-reference.
                 Id = b.Id,
                 DocumentId = documentId,
                 Type = b.Type,
@@ -212,25 +218,40 @@ public class VersionService : IVersionService
         }
 
         document.UpdatedAt = DateTime.UtcNow;
-
-        // Record where the document now is, so the newest version is the one it
-        // actually contains and the list can mark it without guessing.
-        _context.DocumentVersions.Add(new DocumentVersion
-        {
-            Id = Guid.NewGuid(),
-            DocumentId = documentId,
-            VersionNumber = await NextVersionNumberAsync(documentId),
-            Name = $"Restored from version {version.VersionNumber}",
-            Snapshot = JsonDocument.Parse(snapshot.GetRawText()),
-            IsAutoSave = false,
-            CreatedBy = userId,
-            CreatedAt = DateTime.UtcNow,
-        });
+        // The marker moves back. Nothing is appended.
+        document.CurrentVersionId = versionId;
 
         await _context.SaveChangesAsync();
 
         return await _documentService.GetDocumentAsync(documentId, userId);
     }
+
+    /// <summary>
+    /// Whether the document still holds the version it claims to.
+    ///
+    /// The pointer is a hint. Two dozen code paths mutate blocks and none of
+    /// them should have to remember to clear it, so it is checked against the
+    /// document's real content on the way out instead — an edit through any path
+    /// makes this false without that path knowing this feature exists.
+    /// </summary>
+    private async Task<Guid?> ValidatedCurrentVersionAsync(Guid documentId)
+    {
+        var document = await _context.Documents
+            .Include(d => d.Blocks)
+            .Include(d => d.BibliographyEntries)
+            .FirstOrDefaultAsync(d => d.Id == documentId);
+        if (document?.CurrentVersionId is not { } pointer) return null;
+
+        var claimed = await _context.DocumentVersions
+            .FirstOrDefaultAsync(v => v.DocumentId == documentId && v.Id == pointer);
+        if (claimed == null) return null;   // deleted out from under us
+
+        var current = VersionSnapshot.Serialise(
+            document, document.Blocks, document.BibliographyEntries);
+
+        return SnapshotsMatch(claimed.Snapshot.RootElement, current.RootElement) ? pointer : null;
+    }
+
 
     private async Task<int> NextVersionNumberAsync(Guid documentId) =>
         (await _context.DocumentVersions
