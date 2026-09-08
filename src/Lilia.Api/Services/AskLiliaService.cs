@@ -400,6 +400,9 @@ public sealed class AskLiliaService : IAskLiliaService
             var inputTokens = 0;
             var outputTokens = 0;
             var toolCalls = 0;
+            // Which tools, and how many times each. Only read when the cap is
+            // hit, but counted throughout because by then it is too late.
+            var toolUsage = new Dictionary<string, int>(StringComparer.Ordinal);
             var webSearches = 0;
             var partialApply = false;
             // Structured citations from web search, accumulated + deduped across rounds.
@@ -429,14 +432,27 @@ public sealed class AskLiliaService : IAskLiliaService
                 if (round == MaxToolRounds - 1)
                 {
                     partialApply = true;
+                    // Log WHICH tools burned the rounds, not just how many were
+                    // left. The cap is nearly always hit the same way — a
+                    // per-block tool called once per block, where apply_lml
+                    // would have done the whole document in one round — and
+                    // without the histogram there is no way to confirm that
+                    // after the fact. "16 rounds, 3 pending" says nothing.
+                    var histogram = string.Join(", ", toolUsage
+                        .OrderByDescending(kv => kv.Value)
+                        .Select(kv => $"{kv.Key}×{kv.Value}"));
                     _logger.LogWarning(
-                        "[AskLilia] tool-round cap ({Max}) hit for skill={Skill} doc={DocId} with {Calls} pending tool call(s)",
-                        MaxToolRounds, skill.Id, documentId, calls.Count);
+                        "[AskLilia] tool-round cap ({Max}) hit for skill={Skill} doc={DocId} req={ReqId} " +
+                        "with {Calls} pending call(s); tools used: {Histogram}",
+                        MaxToolRounds, skill.Id, documentId, aiRequestId, calls.Count,
+                        string.IsNullOrEmpty(histogram) ? "(none)" : histogram);
                 }
 
                 foreach (var call in calls)
                 {
                     toolCalls++;
+                    var toolName = call.Name ?? "(unnamed)";
+                    toolUsage[toolName] = toolUsage.GetValueOrDefault(toolName) + 1;
                     var toolResult = await InvokeKbToolAsync(tools, call, ct);
                     messages.Add(new ChatMessage(ChatRole.Tool,
                         [new FunctionResultContent(call.CallId, toolResult)]));
