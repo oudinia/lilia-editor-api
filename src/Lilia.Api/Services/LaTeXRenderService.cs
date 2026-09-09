@@ -319,6 +319,39 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// still exits 0. Summarised rather than passed through, because a document
     /// can emit one per page and the largest overflow is the actionable number.
     /// </summary>
+    /// <summary>
+    /// A warning that exists only because validation compiles once.
+    ///
+    /// <para>pdflatex resolves <c>\cite</c> and <c>\ref</c> through the .aux
+    /// file, which the first pass writes and a second pass reads. Validation
+    /// runs a single pass (see ValidateAsync), so on that pass every citation
+    /// and every cross-reference is undefined by construction — whether or not
+    /// anything is actually wrong. The warning carries no information here.</para>
+    ///
+    /// <para>Dropping these loses no signal, because the real check is made
+    /// separately and directly: ValidateDocument compares the <c>\cite</c>,
+    /// <c>\citep</c> and <c>\citet</c> keys in the blocks against the
+    /// document's bibliography entries and reports "Missing bibliography
+    /// entry: …" for any that have none. That check does not need a compile
+    /// and does not depend on how many passes ran.</para>
+    ///
+    /// <para>Observed on a document whose bibliography was complete and whose
+    /// exported PDF resolved both citations correctly: the Validate panel still
+    /// reported "There were undefined citations."</para>
+    /// </summary>
+    public static bool IsSinglePassCitationArtifact(string warning) =>
+        (warning.Contains("Citation", StringComparison.Ordinal)
+            && warning.Contains("undefined", StringComparison.Ordinal))
+        || (warning.Contains("Reference", StringComparison.Ordinal)
+            && warning.Contains("undefined", StringComparison.Ordinal))
+        || warning.Contains("There were undefined citations", StringComparison.Ordinal)
+        || warning.Contains("There were undefined references", StringComparison.Ordinal)
+        // natbib's own rerun notice — the sibling of "Label(s) may have
+        // changed", which was already filtered above. It says the .aux moved
+        // and a further pass would settle it, which is always true after the
+        // only pass we run.
+        || warning.Contains("Citation(s) may have changed", StringComparison.Ordinal);
+
     private static string? SummarisePageOverflow(string[] allWarnings)
     {
         var tooTall = allWarnings
@@ -462,6 +495,15 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Where(w => !w.Contains("Rerun to get"))
                         .Where(w => !w.Contains("Rerun LaTeX"))
                         .Where(w => !w.Contains("Label(s) may have changed"))
+                        // Same class, and missed until 2026-09-09: on a single
+                        // pass EVERY citation and cross-reference is undefined,
+                        // because the .aux that defines them is only written by
+                        // that pass. A document whose bibliography is complete
+                        // and whose PDF resolves perfectly still reported
+                        // "There were undefined citations" in the Validate
+                        // panel. See IsSinglePassCitationArtifact for why
+                        // dropping these loses no signal.
+                        .Where(w => !IsSinglePassCitationArtifact(w))
                         // Self-inflicted: UnicodeShimService injects
                         // \newunicodechar for every mapped codepoint present,
                         // and the class or another package may already define
