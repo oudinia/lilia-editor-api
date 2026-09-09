@@ -373,9 +373,30 @@ public partial class RenderService : IRenderService
                 .ToArray();
         }
 
+        // The editor stores column headings in their own "headers" array. Only
+        // "rows" was read, and the first data row was promoted to <th> to stand
+        // in for them — so a real table lost its headings AND had its first row
+        // of data mislabelled as headings (2026-09-09). When "headers" is
+        // present it is the header row and every row is data; without it, the
+        // old first-row-is-header behaviour still applies, which is what
+        // LaTeX-imported tables rely on.
+        var explicitHeaders = content.TryGetProperty("headers", out var headersEl)
+                              && headersEl.ValueKind == JsonValueKind.Array
+                              && headersEl.GetArrayLength() > 0;
+
+        if (explicitHeaders)
+        {
+            html.Append("<tr>");
+            foreach (var header in headersEl.EnumerateArray())
+            {
+                html.Append($"<th>{WebUtility.HtmlEncode(GetCellText(header))}</th>");
+            }
+            html.Append("</tr>");
+        }
+
         if (content.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array)
         {
-            var isFirst = true;
+            var isFirst = !explicitHeaders;
             foreach (var row in rows.EnumerateArray())
             {
                 html.Append("<tr>");
