@@ -54,10 +54,28 @@ public class DocxExportService : IDocxExportService
             AddNumberingDefinitions(mainPart);
 
             // Convert blocks to DOCX elements
+            var sawBibliography = false;
             foreach (var block in document.Blocks)
             {
-                var elements = await ConvertBlock(block, mainPart, options);
+                if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
+                    sawBibliography = true;
+
+                var elements = await ConvertBlock(block, mainPart, options, document);
                 foreach (var element in elements)
+                {
+                    body.AppendChild(element);
+                }
+            }
+
+            // A document can carry references without carrying a block that says
+            // where to put them. The LaTeX export emits \bibliography whenever
+            // there is at least one entry, block or no block, and Word should not
+            // be the format that quietly loses them.
+            if (!sawBibliography
+                && options.IncludeBibliography
+                && document.Bibliography is { Count: > 0 })
+            {
+                foreach (var element in ConvertBibliography(options, document))
                 {
                     body.AppendChild(element);
                 }
@@ -213,16 +231,18 @@ public class DocxExportService : IDocxExportService
         numberingPart.Numbering.Save();
     }
 
-    private Task<IEnumerable<OpenXmlElement>> ConvertBlock(ExportBlock block, MainDocumentPart mainPart, ExportOptions options)
+    private Task<IEnumerable<OpenXmlElement>> ConvertBlock(
+        ExportBlock block, MainDocumentPart mainPart, ExportOptions options, ExportDocument document)
     {
         return block.Type.ToLowerInvariant() switch
         {
             "equation" => ConvertEquation(block, mainPart),
-            _ => Task.FromResult(ConvertBlockSync(block, mainPart, options))
+            _ => Task.FromResult(ConvertBlockSync(block, mainPart, options, document))
         };
     }
 
-    private IEnumerable<OpenXmlElement> ConvertBlockSync(ExportBlock block, MainDocumentPart mainPart, ExportOptions options)
+    private IEnumerable<OpenXmlElement> ConvertBlockSync(
+        ExportBlock block, MainDocumentPart mainPart, ExportOptions options, ExportDocument document)
     {
         return block.Type.ToLowerInvariant() switch
         {
@@ -234,8 +254,9 @@ public class DocxExportService : IDocxExportService
             "figure" => ConvertFigure(block, mainPart),
             "blockquote" => ConvertBlockquote(block),
             "theorem" => ConvertTheorem(block),
+            "title" => ConvertTitle(block),
             "abstract" => ConvertAbstract(block),
-            "bibliography" => ConvertBibliography(block),
+            "bibliography" => ConvertBibliography(options, document),
             "pagebreak" => ConvertPageBreak(),
             "tableofcontents" => ConvertTableOfContents(),
             "algorithm" => ConvertAlgorithm(block),
@@ -440,27 +461,86 @@ public class DocxExportService : IDocxExportService
         var isOrdered = content.ListType?.ToLowerInvariant() == "ordered";
         var numId = isOrdered ? 2 : 1;
 
+        // Walks Children too. It used to iterate Items only, so a nested list
+        // exported its top level and silently dropped everything under it --
+        // the sub-points of an argument, gone, with no error anywhere.
         if (content.Items != null)
         {
-            foreach (var item in content.Items)
-            {
-                var para = new Paragraph();
-                var pPr = new ParagraphProperties();
-                var numPr = new NumberingProperties();
-                numPr.Append(new NumberingLevelReference { Val = item.Level });
-                numPr.Append(new NumberingId { Val = numId });
-                pPr.Append(numPr);
-                para.Append(pPr);
-
-                var run = new Run(new Text(item.Text) { Space = SpaceProcessingModeValues.Preserve });
-                para.AppendChild(run);
-
-                elements.Add(para);
-            }
+            AppendListItems(content.Items, numId, 0, elements);
         }
 
         return elements;
     }
+
+    /// <summary>
+    /// One list item and everything nested beneath it.
+    ///
+    /// <para><paramref name="depth"/> is the fallback indent level, used when an
+    /// item does not carry its own: a child of a level-0 item sits at level 1
+    /// whether or not anyone said so. Word's numbering definition addresses
+    /// nine levels, so deeper nesting is clamped rather than dropped.</para>
+    /// </summary>
+    private void AppendListItems(
+        List<ExportListItem> items, int numId, int depth, List<OpenXmlElement> into)
+    {
+        foreach (var item in items)
+        {
+            var level = Math.Clamp(item.Level > 0 ? item.Level : depth, 0, 8);
+
+            var para = new Paragraph();
+            var pPr = new ParagraphProperties();
+            var numPr = new NumberingProperties();
+            numPr.Append(new NumberingLevelReference { Val = level });
+            numPr.Append(new NumberingId { Val = numId });
+            pPr.Append(numPr);
+            para.Append(pPr);
+
+            if (item.RichText is { Count: > 0 })
+            {
+                foreach (var span in item.RichText) para.AppendChild(CreateRun(span));
+            }
+            else
+            {
+                para.AppendChild(new Run(
+                    new Text(item.Text) { Space = SpaceProcessingModeValues.Preserve }));
+            }
+
+            into.Add(para);
+
+            if (item.Children is { Count: > 0 })
+            {
+                AppendListItems(item.Children, numId, level + 1, into);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Word's fixed highlight palette. An unrecognised colour returns null and
+    /// the run is emitted unhighlighted -- losing a highlight is a cosmetic
+    /// loss, and it beats losing the document.
+    /// </summary>
+    private static HighlightColorValues? ParseHighlight(string name) =>
+        name.Trim().ToLowerInvariant() switch
+        {
+            "yellow" => HighlightColorValues.Yellow,
+            "green" => HighlightColorValues.Green,
+            "cyan" => HighlightColorValues.Cyan,
+            "magenta" => HighlightColorValues.Magenta,
+            "blue" => HighlightColorValues.Blue,
+            "red" => HighlightColorValues.Red,
+            "darkblue" => HighlightColorValues.DarkBlue,
+            "darkcyan" => HighlightColorValues.DarkCyan,
+            "darkgreen" => HighlightColorValues.DarkGreen,
+            "darkmagenta" => HighlightColorValues.DarkMagenta,
+            "darkred" => HighlightColorValues.DarkRed,
+            "darkyellow" => HighlightColorValues.DarkYellow,
+            "darkgray" or "darkgrey" => HighlightColorValues.DarkGray,
+            "lightgray" or "lightgrey" => HighlightColorValues.LightGray,
+            "black" => HighlightColorValues.Black,
+            "white" => HighlightColorValues.White,
+            "none" => HighlightColorValues.None,
+            _ => null,
+        };
 
     private IEnumerable<OpenXmlElement> ConvertTable(ExportBlock block)
     {
@@ -719,42 +799,185 @@ public class DocxExportService : IDocxExportService
     /// Pre-fix this block hit the `_ =>` default and exported as a
     /// generic paragraph — caught by ExportHandlerCoverageTests.
     /// </summary>
-    private IEnumerable<OpenXmlElement> ConvertBibliography(ExportBlock block)
+    /// <summary>
+    /// The References section.
+    ///
+    /// <para>This used to emit the heading and then the literal text
+    /// "[Bibliography entries appended below]", on the stated assumption that
+    /// "entries are appended at the document-conversion layer". No such layer
+    /// existed. <see cref="ExportDocument.Bibliography"/> was populated from
+    /// the database and then never read, so <b>every Word export silently
+    /// dropped its references</b> — a 24-block paper with two cited works
+    /// exported with no References section at all (2026-09-09).</para>
+    ///
+    /// <para>Entries are yielded one at a time rather than gathered into a
+    /// list: a bibliography can run to hundreds of entries and there is no
+    /// reason to hold them all while the caller is appending them anyway.</para>
+    /// </summary>
+    private IEnumerable<OpenXmlElement> ConvertBibliography(
+        ExportOptions options, ExportDocument document)
     {
-        var elements = new List<OpenXmlElement>();
+        if (!options.IncludeBibliography) yield break;
+
+        yield return BibliographyHeading();
+
+        var entries = document.Bibliography;
+        if (entries == null || entries.Count == 0)
+        {
+            // An empty References section is a real state — the author added
+            // the block but has not cited anything yet — and saying so beats
+            // a bare heading that looks like a rendering failure.
+            yield return ItalicParagraph("No references yet.");
+            yield break;
+        }
+
+        foreach (var entry in entries.OrderBy(e => FormatBibliographyEntry(e),
+                                               StringComparer.CurrentCultureIgnoreCase))
+        {
+            yield return BibliographyEntryParagraph(entry);
+        }
+    }
+
+    private static Paragraph BibliographyHeading()
+    {
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties();
+        pPr.Append(new SpacingBetweenLines { Before = "360", After = "180" });
+        para.Append(pPr);
+        var run = new Run();
+        var runProps = new RunProperties();
+        runProps.Append(new Bold());
+        runProps.Append(new FontSize { Val = "32" }); // 16pt
+        run.Append(runProps);
+        run.Append(new Text("References") { Space = SpaceProcessingModeValues.Preserve });
+        para.AppendChild(run);
+        return para;
+    }
+
+    private static Paragraph ItalicParagraph(string text)
+    {
+        var para = new Paragraph();
+        var run = new Run();
+        var runProps = new RunProperties();
+        runProps.Append(new Italic());
+        run.Append(runProps);
+        run.Append(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+        para.AppendChild(run);
+        return para;
+    }
+
+    /// <summary>A hanging-indent entry, the shape a reference list expects.</summary>
+    private static Paragraph BibliographyEntryParagraph(ExportBibliographyEntry entry)
+    {
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties();
+        pPr.Append(new SpacingBetweenLines { After = "120" });
+        pPr.Append(new Indentation { Left = "720", Hanging = "720" });
+        para.Append(pPr);
+        para.AppendChild(new Run(
+            new Text(FormatBibliographyEntry(entry)) { Space = SpaceProcessingModeValues.Preserve }));
+        return para;
+    }
+
+    /// <summary>
+    /// One reference, rendered plainly: author, year, title, then whatever
+    /// publication detail the entry carries.
+    ///
+    /// <para>A missing field is skipped rather than filled with a placeholder —
+    /// an entry with only an author and a title should read like a short
+    /// reference, not like a form with gaps. A mononym author ("Euclid") is
+    /// left exactly as written; splitting it to initialise a given name that
+    /// does not exist is what produced "Euclid, (c. 300 BCE)." on the web
+    /// side.</para>
+    /// </summary>
+    internal static string FormatBibliographyEntry(ExportBibliographyEntry entry)
+    {
+        string Field(string name) =>
+            entry.Fields.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v)
+                ? v.Trim()
+                : "";
+
+        var parts = new List<string>(5);
+
+        var author = Field("author");
+        if (author.Length > 0) parts.Add(author);
+
+        var year = Field("year");
+        if (year.Length > 0) parts.Add($"({year})");
+
+        var title = Field("title");
+        if (title.Length > 0) parts.Add(title);
+
+        // Whichever venue the entry type actually has.
+        var venue = Field("journal");
+        if (venue.Length == 0) venue = Field("booktitle");
+        if (venue.Length == 0) venue = Field("publisher");
+        if (venue.Length > 0) parts.Add(venue);
+
+        var pages = Field("pages");
+        if (pages.Length > 0) parts.Add($"pp. {pages}");
+
+        // Nothing usable at all: the cite key is the only honest label left,
+        // and it at least lets the author find the entry they need to fix.
+        if (parts.Count == 0) return entry.CiteKey;
+
+        return string.Join(". ", parts) + ".";
+    }
+
+    /// <summary>
+    /// The title block: title, then author, then date, centred.
+    ///
+    /// <para>There was no case for this at all — neither here nor in the
+    /// mapper — so a paper exported to Word beginning at its abstract, with no
+    /// title and its author absent from the file entirely.</para>
+    ///
+    /// <para><c>\today</c> is resolved to the current date, matching what
+    /// LaTeX would typeset. Any other date is emitted exactly as written; an
+    /// author writing "Spring 2026" means it.</para>
+    /// </summary>
+    private IEnumerable<OpenXmlElement> ConvertTitle(ExportBlock block)
+    {
         var content = block.Content;
 
-        // "References" heading.
-        var headingPara = new Paragraph();
-        var headingPPr = new ParagraphProperties();
-        headingPPr.Append(new SpacingBetweenLines { Before = "360", After = "180" });
-        headingPara.Append(headingPPr);
-        var headingRun = new Run();
-        var headingRunProps = new RunProperties();
-        headingRunProps.Append(new Bold());
-        headingRunProps.Append(new FontSize { Val = "32" }); // 16pt
-        headingRun.Append(headingRunProps);
-        headingRun.Append(new Text("References") { Space = SpaceProcessingModeValues.Preserve });
-        headingPara.AppendChild(headingRun);
-        elements.Add(headingPara);
+        var title = content.Text;
+        if (!string.IsNullOrWhiteSpace(title))
+            yield return CentredParagraph(title, sizeHalfPoints: "40", bold: true, spaceAfter: "120");
 
-        // Bibliography entries live on ExportDocument, not on the block —
-        // they're appended at the document-conversion layer (mirrors how
-        // LaTeX export uses \bibliography{refs} as a placeholder and
-        // resolves entries via the .bib file). Emit a placeholder marker
-        // here so the block's position in the document is preserved and
-        // visible if entries aren't resolved.
-        var placeholderPara = new Paragraph();
-        var placeholderRun = new Run();
-        var placeholderRunProps = new RunProperties();
-        placeholderRunProps.Append(new Italic());
-        placeholderRun.Append(placeholderRunProps);
-        placeholderRun.Append(new Text("[Bibliography entries appended below]")
-            { Space = SpaceProcessingModeValues.Preserve });
-        placeholderPara.AppendChild(placeholderRun);
-        elements.Add(placeholderPara);
+        if (!string.IsNullOrWhiteSpace(content.Author))
+            yield return CentredParagraph(content.Author, sizeHalfPoints: "24", bold: false, spaceAfter: "60");
 
-        return elements;
+        var date = ResolveDate(content.DateText, content.Date);
+        if (!string.IsNullOrWhiteSpace(date))
+            yield return CentredParagraph(date, sizeHalfPoints: "22", bold: false, spaceAfter: "240");
+    }
+
+    /// <summary>\today means "when this was typeset"; anything else is verbatim.</summary>
+    internal static string? ResolveDate(string? dateText, DateTime? date)
+    {
+        var written = dateText?.Trim();
+        if (string.Equals(written, @"\today", StringComparison.OrdinalIgnoreCase))
+            return DateTime.Now.ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        if (!string.IsNullOrWhiteSpace(written)) return written;
+        return date?.ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static Paragraph CentredParagraph(
+        string text, string sizeHalfPoints, bool bold, string spaceAfter)
+    {
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties();
+        pPr.Append(new Justification { Val = JustificationValues.Center });
+        pPr.Append(new SpacingBetweenLines { After = spaceAfter });
+        para.Append(pPr);
+
+        var run = new Run();
+        var runProps = new RunProperties();
+        if (bold) runProps.Append(new Bold());
+        runProps.Append(new FontSize { Val = sizeHalfPoints });
+        run.Append(runProps);
+        run.Append(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+        para.AppendChild(run);
+        return para;
     }
 
     private IEnumerable<OpenXmlElement> ConvertAbstract(ExportBlock block)
@@ -1000,9 +1223,16 @@ public class DocxExportService : IDocxExportService
 
         if (!string.IsNullOrEmpty(span.Highlight))
         {
-            if (Enum.TryParse<HighlightColorValues>(span.Highlight, true, out var highlightColor))
+            // Enum.TryParse<HighlightColorValues> used to sit here. In
+            // DocumentFormat.OpenXml 3.x HighlightColorValues is a readonly
+            // struct, not an enum, so that call threw
+            //   System.ArgumentException: Type provided must be an Enum
+            // at runtime -- and because it threw rather than returned false,
+            // ONE highlighted word aborted the export of the whole document.
+            var highlight = ParseHighlight(span.Highlight);
+            if (highlight is not null)
             {
-                runProps.Append(new Highlight { Val = highlightColor });
+                runProps.Append(new Highlight { Val = highlight });
             }
         }
 
@@ -1029,19 +1259,17 @@ public class DocxExportService : IDocxExportService
             {
                 try
                 {
-                    // Inline equation: oMath directly in paragraph (no oMathPara wrapper)
-                    var placeholder = new Run();
-                    placeholder.InnerXml = omml.Replace(
-                        $" xmlns:m=\"{MathNs}\"", ""); // strip namespace decl for inner use
-                    // Use a paragraph as a container trick to inject the math element
-                    var tempPara = new Paragraph();
-                    tempPara.InnerXml = omml;
-                    var mathEl = tempPara.FirstChild;
-                    if (mathEl != null)
-                    {
-                        mathEl.Remove();
-                        return mathEl;
-                    }
+                    // Build the element from its XML directly. The previous
+                    // approach set InnerXml on a throwaway Paragraph and lifted
+                    // FirstChild out of it — but the strongly-typed Paragraph
+                    // does not materialise m:oMath as a child, so FirstChild was
+                    // null every time and every inline equation fell through to
+                    // the "$latex$" fallback below. A 24-block paper exported
+                    // with its inline maths as literal "$a^2 + b^2 = c^2$"
+                    // (2026-09-09), while display equations — which take the
+                    // ConvertEquation path and never extract a child — came out
+                    // as proper Word equations.
+                    return new DocumentFormat.OpenXml.Math.OfficeMath(omml);
                 }
                 catch { /* fall through */ }
             }

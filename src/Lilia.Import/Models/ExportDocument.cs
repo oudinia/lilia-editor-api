@@ -210,6 +210,13 @@ public class ExportBlockContent
     public DateTime? Date { get; set; }
 
     /// <summary>
+    /// The date exactly as the author wrote it — including LaTeX's
+    /// <c>\today</c>, which is not a date and cannot round-trip through
+    /// <see cref="Date"/>.
+    /// </summary>
+    public string? DateText { get; set; }
+
+    /// <summary>
     /// Raw LaTeX code for passthrough blocks (exported without escaping).
     /// </summary>
     public string? RawLatex { get; set; }
