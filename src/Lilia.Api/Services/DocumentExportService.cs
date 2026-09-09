@@ -163,7 +163,11 @@ public class DocumentExportService : IDocumentExportService
         var opts = new LaTeXExportOptions
         {
             Structure = "single",
-            IncludeImages = false,
+            // The figures have to be in the project for the compile to find
+            // them. With this false the PDF printed "[Missing figure: ...]" —
+            // the \IfFileExists fallback around every \includegraphics — for
+            // every image in the document.
+            IncludeImages = true,
             DocumentClass = "article",
             FontSize = "11pt",
             PaperSize = "a4paper",
@@ -186,8 +190,49 @@ public class DocumentExportService : IDocumentExportService
         var engine = hint is "xelatex" or "lualatex" or "pdflatex" ? hint : documentEngine;
 
         var pdflatexPdf = await _latexRenderService.RenderToPdfTolerantAsync(
-            latex, timeout: 60, engine: engine);
+            latex, timeout: 60, engine: engine,
+            materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
         return (pdflatexPdf, engine);
+    }
+
+    /// <summary>
+    /// Write everything the project needs beside main.tex into the compile
+    /// directory — figures above all.
+    ///
+    /// <para>Each entry is streamed from the archive straight to disk, so a
+    /// paper with a dozen images never holds a dozen images in memory. The .tex
+    /// is skipped: the caller has already modified it (the bibliography is
+    /// inlined) and passes it separately.</para>
+    ///
+    /// <para>Entry names are checked against the destination even though this
+    /// archive is one we generated ourselves. A zip that can write outside its
+    /// own directory is a classic, and the check costs nothing.</para>
+    /// </summary>
+    private async Task WriteProjectAssetsAsync(
+        System.IO.Compression.ZipArchive archive, string destinationDir)
+    {
+        var root = Path.GetFullPath(destinationDir);
+
+        foreach (var entry in archive.Entries)
+        {
+            if (string.IsNullOrEmpty(entry.Name)) continue;               // directory
+            if (entry.FullName.EndsWith(".tex", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
+            if (!target.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            {
+                _logger.LogWarning("[Export] Skipping archive entry outside the project: {Entry}",
+                    entry.FullName);
+                continue;
+            }
+
+            var dir = Path.GetDirectoryName(target);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+            await using var source = entry.Open();
+            await using var file = File.Create(target);
+            await source.CopyToAsync(file);
+        }
     }
 
     private static readonly System.Text.RegularExpressions.Regex BibliographyCommandRe =
