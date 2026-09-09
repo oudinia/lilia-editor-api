@@ -789,6 +789,12 @@ public class LaTeXExportService : ILaTeXExportService
                 "cvSection" => RenderCvSection(content),
                 "embed" => RenderEmbed(content),
                 "callout" => RenderCallout(content),
+                // Footnotes reached LaTeX as
+                //   % [Unsupported block type for LaTeX export: footnote]
+                // — a comment, which is to say nothing at all. An article with
+                // footnotes exported without them, silently, in both the .tex
+                // and the PDF built from it.
+                "footnote" => RenderFootnote(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
                 _ => RenderUnknownBlock(block),
@@ -1452,6 +1458,18 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine($@"{indent}\end{{{env}}}");
     }
 
+    /// <summary>
+    /// A footnote block. LaTeX attaches the note wherever the command appears,
+    /// so a standalone block becomes a <c>\footnote</c> at that point in the
+    /// text — the same position the author put it in.
+    /// </summary>
+    private string RenderFootnote(JsonElement content)
+    {
+        var text = GetText(content);
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        return $@"\footnote{{{FormatInlineContent(text)}}}";
+    }
+
     private string RenderCallout(JsonElement content)
     {
         // Mirror of RenderService.RenderCalloutToLatex — keep the two
@@ -1747,7 +1765,16 @@ public class LaTeXExportService : ILaTeXExportService
 
         // 5. Italic alias: _text_ → \textit{text} (BlockRenderer accepts
         //    both forms; exporter aligns).
-        result = Regex.Replace(result, @"_([^_]+)_", m => Ph($@"\textit{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        // Word-boundary underscores only. Without the guards this matched
+        // inside identifiers: "the value_of_x" became "the value\textit{of}x",
+        // losing both underscores and inventing italics in the middle of a
+        // name. CommonMark declines intraword underscores for exactly this
+        // reason — snake_case is far more common in a technical paper than
+        // _emphasis_ is. Standalone _emphasis_ still italicises.
+        result = Regex.Replace(
+            result,
+            @"(?<![A-Za-z0-9\\])_([^_]+)_(?![A-Za-z0-9])",
+            m => Ph($@"\textit{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 5. References: @ref{label} → \ref{label}
         result = Regex.Replace(result, @"@ref\{([^}]+)\}", m => Ph($@"\ref{{{m.Groups[1].Value}}}"));
