@@ -1022,6 +1022,14 @@ public partial class RenderService : IRenderService
             latex.AppendLine(importedPkgs);
         }
 
+        // Same natbib rule as the full-document path above; here the body is
+        // a fragment supplied by the caller, so the document's own blocks are
+        // what we have to go on.
+        if (LaTeXPreamble.UsesNatbib(
+                (doc.Blocks ?? new List<Block>()).Select(b => b.Content.RootElement.ToString())))
+        {
+            latex.AppendLine(LaTeXPreamble.Natbib);
+        }
         latex.AppendLine(LaTeXPreamble.Packages);
 
         var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
@@ -1122,6 +1130,15 @@ public partial class RenderService : IRenderService
         if (!string.IsNullOrEmpty(importedPkgs))
         {
             latex.AppendLine(importedPkgs);
+        }
+        // natbib, when the rendered body uses \citep/\citet. Kept in step
+        // with LaTeXExportService via the shared LaTeXPreamble.UsesNatbib —
+        // when these two disagreed, validation failed documents that export
+        // compiled fine. Before Packages, so it precedes hyperref.
+        var usesNatbib = LaTeXPreamble.UsesNatbib(renderedBlocks);
+        if (usesNatbib)
+        {
+            latex.AppendLine(LaTeXPreamble.Natbib);
         }
         latex.AppendLine(LaTeXPreamble.Packages);
         // Engine-specific addendum — fontspec for lua/xelatex. Pdflatex
@@ -1242,7 +1259,7 @@ public partial class RenderService : IRenderService
         if (doc.BibliographyEntries != null && doc.BibliographyEntries.Any())
         {
             latex.AppendLine();
-            latex.AppendLine(RenderBibliographyToLatex(doc.BibliographyEntries));
+            latex.AppendLine(RenderBibliographyToLatex(doc.BibliographyEntries, usesNatbib));
         }
 
         latex.AppendLine(@"\end{document}");
@@ -2417,14 +2434,36 @@ public partial class RenderService : IRenderService
         return sb.ToString();
     }
 
-    private string RenderBibliographyToLatex(IEnumerable<BibliographyEntry> entries)
+    /// <summary>
+    /// The inline bibliography.
+    ///
+    /// <para><paramref name="usesNatbib"/> decides the <c>\bibitem</c> form, and
+    /// it is not cosmetic. natbib in author-year mode rejects a bare
+    /// <c>\bibitem{key}</c> outright:</para>
+    ///
+    /// <code>! Package natbib Error: Bibliography not compatible with author-year citations.</code>
+    ///
+    /// <para>So a document using <c>\citep</c> needs the optional
+    /// <c>[Author(Year)]</c> label on every entry — one unlabelled entry is a
+    /// fatal error for the whole document. Where the entry has no author or no
+    /// year we substitute the cite key and <c>n.d.</c> rather than emit the bare
+    /// form, because a slightly wrong label prints and a missing one does not
+    /// compile. The exporter reaches the same place by a different road: it
+    /// writes references.bib and lets BibTeX build the labels from
+    /// <c>\bibliographystyle{plainnat}</c>.</para>
+    /// </summary>
+    private string RenderBibliographyToLatex(
+        IEnumerable<BibliographyEntry> entries,
+        bool usesNatbib = false)
     {
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{thebibliography}{99}");
 
         foreach (var entry in entries)
         {
-            sb.AppendLine($@"\bibitem{{{entry.CiteKey}}}");
+            sb.AppendLine(usesNatbib
+                ? $@"\bibitem[{NatbibLabel(entry)}]{{{entry.CiteKey}}}"
+                : $@"\bibitem{{{entry.CiteKey}}}");
 
             // Try to build a citation string from the data
             try
@@ -2454,6 +2493,34 @@ public partial class RenderService : IRenderService
 
         sb.AppendLine(@"\end{thebibliography}");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// natbib's <c>Author(Year)</c> label. Falls back to the cite key and
+    /// <c>n.d.</c> so the label is always well-formed — see
+    /// RenderBibliographyToLatex for why an empty one is fatal rather than ugly.
+    /// </summary>
+    private string NatbibLabel(BibliographyEntry entry)
+    {
+        var author = "";
+        var year = "";
+        try
+        {
+            var data = entry.Data?.RootElement;
+            if (data.HasValue)
+            {
+                if (data.Value.TryGetProperty("author", out var a)) author = a.GetString() ?? "";
+                if (data.Value.TryGetProperty("year", out var y)) year = y.GetString() ?? "";
+            }
+        }
+        catch
+        {
+            // Malformed entry data — the fallbacks below still produce a label.
+        }
+
+        if (string.IsNullOrWhiteSpace(author)) author = entry.CiteKey;
+        if (string.IsNullOrWhiteSpace(year)) year = "n.d.";
+        return $"{EscapeLatex(author)}({EscapeLatex(year)})";
     }
 
     private string EscapeLatex(string text)

@@ -629,7 +629,12 @@ public class LaTeXRenderController : ControllerBase
             if (doc != null)
             {
                 var bibKeys = doc.BibliographyEntries.Select(e => e.CiteKey).ToHashSet();
-                var citeRegex = new System.Text.RegularExpressions.Regex(@"\\cite\{([^}]+)\}");
+                // \citep/\citet keys count too. This matched plain \cite only, so a
+                // document citing entirely through natbib commands got no
+                // missing-key warnings at all — the check silently passed on the
+                // citations most likely to be wrong.
+                var citeRegex = new System.Text.RegularExpressions.Regex(
+                    @"\\cite(?:p|t|author|year)?\*?\{([^}]+)\}");
 
                 foreach (var block in doc.Blocks)
                 {

@@ -140,6 +140,52 @@ public static partial class LaTeXPreamble
     /// Order matters: encoding → math → typography → graphics → tables → lists → code → special → links.
     /// hyperref must come before cleveref.
     /// </summary>
+    /// <summary>
+    /// The citation commands that only exist once natbib is loaded.
+    ///
+    /// <para>Plain <c>\cite</c> is deliberately absent: LaTeX defines it
+    /// itself, so seeing it tells you nothing about whether natbib is
+    /// needed — and loading natbib for a legacy <c>\cite</c>-only document
+    /// would silently change its numeric bibliography to author-year.</para>
+    /// </summary>
+    public static readonly Regex NatbibCommandRe =
+        new(@"\\cite(?:p|t|author|year)\*?\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Whether any of these LaTeX sources needs natbib.
+    ///
+    /// <para>This lives here, next to the preamble it guards, because it did
+    /// not for a long time and the two paths drifted. The exporter loaded
+    /// natbib when it saw <c>\citep</c>; validation and preview did not, and
+    /// used <see cref="Packages"/> unchanged. The result, observed on
+    /// 2026-09-08: one document that exported a perfectly good 94 KB PDF and
+    /// simultaneously failed validation with <c>! Undefined control
+    /// sequence</c> — pointing at the <c>\citep</c> the export had just
+    /// typeset. The author of that document then deleted their citations to
+    /// satisfy the false alarm.</para>
+    ///
+    /// <para>Callers pass whatever they are about to compile: rendered block
+    /// LaTeX where that exists, raw block text otherwise. A false positive
+    /// costs one unused package; a false negative costs an undefined control
+    /// sequence, so err towards loading it.</para>
+    /// </summary>
+    public static bool UsesNatbib(IEnumerable<string?> latexSources)
+    {
+        foreach (var src in latexSources)
+        {
+            if (!string.IsNullOrEmpty(src) && NatbibCommandRe.IsMatch(src)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Emitted <i>before</i> <see cref="Packages"/> so it precedes hyperref,
+    /// which is the load order natbib documents.
+    /// </summary>
+    public const string Natbib = @"% natbib — author-year / textual citations (\citet, \citep, …)
+\usepackage{natbib}
+";
+
     public const string Packages = @"% Encoding & fonts
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}

@@ -1996,14 +1996,12 @@ public class LaTeXExportService : ILaTeXExportService
     // must be a natbib-compatible .bst or those commands won't compile;
     // otherwise the plain BibTeX styles are kept so legacy \cite-only docs
     // export exactly as before (no behaviour change).
-    private static readonly System.Text.RegularExpressions.Regex NatbibCommandRe =
-        new(@"\\cite(?:p|t|author|year)\b", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private bool DocumentUsesNatbib(List<Block> blocks) =>
         blocks.Any(b =>
         {
             var t = GetContentText(b);
-            return !string.IsNullOrEmpty(t) && NatbibCommandRe.IsMatch(t);
+            return !string.IsNullOrEmpty(t) && Lilia.Engines.LaTeXPreamble.NatbibCommandRe.IsMatch(t);
         });
 
     private static string BibStyleName(string style, bool usesNatbib = false)
