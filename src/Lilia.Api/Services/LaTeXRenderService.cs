@@ -339,6 +339,58 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// exported PDF resolved both citations correctly: the Validate panel still
     /// reported "There were undefined citations."</para>
     /// </summary>
+    /// <summary>
+    /// A notice about how the server is configured, not about this document.
+    ///
+    /// <para><c>epstopdf</c> reports that shell escape is disabled when the
+    /// package loads, which is before LaTeX has looked at any image. Every
+    /// document carried it, EPS or not, so it never told the author anything
+    /// about their own work — and a panel that always shows a warning teaches
+    /// people to stop reading it.</para>
+    ///
+    /// <para>Nothing is lost by dropping it: an EPS that actually cannot be
+    /// converted raises <c>! Package pdftex.def Error: File
+    /// `NAME-eps-converted-to.pdf' not found</c>, which is a compile error, not
+    /// a warning, so validation fails and says so. See HumaniseKnownErrors.</para>
+    /// </summary>
+    public static bool IsEnvironmentNotice(string warning) =>
+        warning.Contains("epstopdf", StringComparison.Ordinal)
+        && warning.Contains("Shell escape", StringComparison.Ordinal);
+
+    private static readonly System.Text.RegularExpressions.Regex EpsConvertedRe =
+        new(@"File `([^`']+)-eps-converted-to\.pdf' not found",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Rewrite compiler errors that name something the author never wrote.
+    ///
+    /// <para>When an EPS figure cannot be converted, pdftex.def reports a file
+    /// the author has never heard of:</para>
+    ///
+    /// <code>! Package pdftex.def Error: File `fig-eps-converted-to.pdf' not found</code>
+    ///
+    /// <para>There is no <c>fig-eps-converted-to.pdf</c> in their document —
+    /// it is the name the conversion would have produced. The figure they
+    /// wrote is <c>fig.eps</c>, and the fix is to supply it as PDF or PNG.
+    /// The untouched compiler log still travels on the result's Log, so
+    /// nothing is hidden from anyone who wants it.</para>
+    /// </summary>
+    public static string HumaniseKnownErrors(string errorMessage)
+    {
+        if (string.IsNullOrEmpty(errorMessage)) return errorMessage;
+
+        var eps = EpsConvertedRe.Match(errorMessage);
+        if (eps.Success)
+        {
+            var original = $"{eps.Groups[1].Value}.eps";
+            return $"{original} could not be included: converting EPS figures needs a "
+                 + "feature this server keeps switched off. Save the figure as PDF or "
+                 + "PNG and include that instead.";
+        }
+
+        return errorMessage;
+    }
+
     public static bool IsSinglePassCitationArtifact(string warning) =>
         (warning.Contains("Citation", StringComparison.Ordinal)
             && warning.Contains("undefined", StringComparison.Ordinal))
@@ -445,9 +497,9 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Take(5)
                         .ToArray();
 
-                    var errorMsg = errorLines.Length > 0
+                    var errorMsg = HumaniseKnownErrors(errorLines.Length > 0
                         ? string.Join("\n", errorLines)
-                        : stderr.Length > 500 ? stderr[..500] : stderr;
+                        : stderr.Length > 500 ? stderr[..500] : stderr);
 
                     // Parse into structured error for telemetry
                     var rawForParsing = logContent.Length > 0 ? logContent : stderr;
@@ -504,6 +556,15 @@ public class LaTeXRenderService : ILaTeXRenderService
                         // panel. See IsSinglePassCitationArtifact for why
                         // dropping these loses no signal.
                         .Where(w => !IsSinglePassCitationArtifact(w))
+                        // Environmental, and emitted when the package loads --
+                        // before LaTeX has seen a single image -- so it appears
+                        // on every document whether or not one contains an EPS.
+                        // It never distinguished the two cases. A figure that
+                        // genuinely fails to convert raises a pdftex.def *error*
+                        // instead, which fails validation outright and is
+                        // rewritten into something actionable by
+                        // HumaniseKnownErrors.
+                        .Where(w => !IsEnvironmentNotice(w))
                         // Self-inflicted: UnicodeShimService injects
                         // \newunicodechar for every mapped codepoint present,
                         // and the class or another package may already define

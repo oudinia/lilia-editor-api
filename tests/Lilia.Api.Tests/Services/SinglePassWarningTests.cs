@@ -37,6 +37,47 @@ public class SinglePassWarningTests
     public void RealWarningsAreNot(string warning) =>
         LaTeXRenderService.IsSinglePassCitationArtifact(warning).Should().BeFalse();
 
+    [Theory]
+    [InlineData("Package epstopdf Warning: Shell escape feature is not enabled.")]
+    public void TheEnvironmentNoticeIsRecognised(string warning) =>
+        LaTeXRenderService.IsEnvironmentNotice(warning).Should().BeTrue();
+
+    [Theory]
+    [InlineData("Package epstopdf Warning: Could not convert `fig.eps'.")]
+    [InlineData("Package hyperref Warning: Shell escape feature is not enabled.")]
+    public void OtherEpstopdfAndShellEscapeMessagesAreNot(string warning) =>
+        LaTeXRenderService.IsEnvironmentNotice(warning).Should().BeFalse(
+            "only the load-time notice is unconditional; anything naming a real "
+            + "figure is about this document");
+
+    /// <summary>
+    /// The EPS error names a file the author never wrote: pdftex.def reports
+    /// `fig-eps-converted-to.pdf`, which is what the conversion would have
+    /// produced. The author wrote fig.eps.
+    /// </summary>
+    [Fact]
+    public void TheEpsErrorNamesTheFigureTheAuthorActuallyWrote()
+    {
+        var raw = "! Package pdftex.def Error: File `fig-eps-converted-to.pdf' "
+                + "not found: using draft setting.";
+        var friendly = LaTeXRenderService.HumaniseKnownErrors(raw);
+
+        friendly.Should().Contain("fig.eps");
+        friendly.Should().NotContain("-eps-converted-to");
+        friendly.Should().MatchRegex("(?i)pdf or png", "the author needs to know what to do instead");
+    }
+
+    [Fact]
+    public void OtherErrorsPassThroughUntouched()
+    {
+        const string raw = "! Undefined control sequence.\nl.15 \\citep";
+        LaTeXRenderService.HumaniseKnownErrors(raw).Should().Be(raw);
+    }
+
+    [Fact]
+    public void HumanisingIsSafeOnEmptyInput() =>
+        LaTeXRenderService.HumaniseKnownErrors("").Should().Be("");
+
     /// <summary>
     /// The one that decides this is safe: a genuinely missing key is still
     /// reported, because that check compares blocks against entries rather than
