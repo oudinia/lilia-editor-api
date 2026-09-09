@@ -118,10 +118,26 @@ public class DocumentExportService : IDocumentExportService
         //                                  silent fallback to pdflatex)
         var hint = (engineHint ?? "auto").Trim().ToLowerInvariant();
 
-        // Any explicit LaTeX engine means "compile this as LaTeX" — trying Typst
-        // first would ignore the caller's request. Only "auto" (and "typst")
-        // reach the Typst path.
-        if (hint is not ("pdflatex" or "xelatex" or "lualatex"))
+        // The engine the document itself asks for. Read before the Typst branch
+        // because it decides whether that branch may run at all.
+        var documentEngine = await _context.Documents
+            .Where(d => d.Id == documentId)
+            .Select(d => d.LatexEngine)
+            .FirstOrDefaultAsync() ?? "pdflatex";
+
+        // Typst is a different typesetting system, not a faster pdflatex. It is
+        // a fair default for a document on the default engine, and it is the
+        // wrong answer for one that has deliberately chosen xelatex or lualatex
+        // — those choices exist to get fontspec and system fonts, which Typst
+        // does not reproduce. Such a document used to be handed a Typst PDF
+        // anyway, its engine setting never consulted.
+        //
+        // So: an explicit LaTeX engine in the query skips Typst, and so does a
+        // document that has chosen a non-default engine for itself.
+        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex"
+                         || documentEngine is "xelatex" or "lualatex";
+
+        if (!wantsLatex)
         {
             // Phase 2 step 9 — Typst-first preview path. Sub-second compile
             // when it works; on any failure we silently fall through to the
@@ -167,12 +183,7 @@ public class DocumentExportService : IDocumentExportService
         // pdflatex regardless — silently, and with different output for anything
         // relying on fontspec or a system font. An explicit ?engine= wins; every
         // other hint ("auto", "typst") falls back to the document's own setting.
-        var engine = hint is "xelatex" or "lualatex" or "pdflatex"
-            ? hint
-            : await _context.Documents
-                  .Where(d => d.Id == documentId)
-                  .Select(d => d.LatexEngine)
-                  .FirstOrDefaultAsync() ?? "pdflatex";
+        var engine = hint is "xelatex" or "lualatex" or "pdflatex" ? hint : documentEngine;
 
         var pdflatexPdf = await _latexRenderService.RenderToPdfTolerantAsync(
             latex, timeout: 60, engine: engine);
