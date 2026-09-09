@@ -27,7 +27,7 @@ public class DocumentExportService : IDocumentExportService
     private readonly ILaTeXExportService _latexExportService;
     private readonly ILaTeXRenderService _latexRenderService;
     private readonly IPreviewRenderService _previewRender;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IStorageService _storageService;
     private readonly ILogger<DocumentExportService> _logger;
 
     public DocumentExportService(
@@ -37,7 +37,7 @@ public class DocumentExportService : IDocumentExportService
         ILaTeXExportService latexExportService,
         ILaTeXRenderService latexRenderService,
         IPreviewRenderService previewRender,
-        IHttpClientFactory httpClientFactory,
+        IStorageService storageService,
         ILogger<DocumentExportService> logger)
     {
         _context = context;
@@ -46,7 +46,7 @@ public class DocumentExportService : IDocumentExportService
         _latexExportService = latexExportService;
         _latexRenderService = latexRenderService;
         _previewRender = previewRender;
-        _httpClientFactory = httpClientFactory;
+        _storageService = storageService;
         _logger = logger;
     }
 
@@ -118,7 +118,10 @@ public class DocumentExportService : IDocumentExportService
         //                                  silent fallback to pdflatex)
         var hint = (engineHint ?? "auto").Trim().ToLowerInvariant();
 
-        if (hint != "pdflatex")
+        // Any explicit LaTeX engine means "compile this as LaTeX" — trying Typst
+        // first would ignore the caller's request. Only "auto" (and "typst")
+        // reach the Typst path.
+        if (hint is not ("pdflatex" or "xelatex" or "lualatex"))
         {
             // Phase 2 step 9 — Typst-first preview path. Sub-second compile
             // when it works; on any failure we silently fall through to the
@@ -159,8 +162,21 @@ public class DocumentExportService : IDocumentExportService
         latex = await InlineBibliographyAsync(archive, latex, documentId);
         // Tolerant mode — body errors produce a partial PDF instead of 500.
         // Preamble errors still surface (no PDF file generated → exception).
-        var pdflatexPdf = await _latexRenderService.RenderToPdfTolerantAsync(latex, timeout: 60);
-        return (pdflatexPdf, "pdflatex");
+        // Compile with the engine the document asks for. This passed no engine
+        // at all, so a document set to xelatex or lualatex was compiled with
+        // pdflatex regardless — silently, and with different output for anything
+        // relying on fontspec or a system font. An explicit ?engine= wins; every
+        // other hint ("auto", "typst") falls back to the document's own setting.
+        var engine = hint is "xelatex" or "lualatex" or "pdflatex"
+            ? hint
+            : await _context.Documents
+                  .Where(d => d.Id == documentId)
+                  .Select(d => d.LatexEngine)
+                  .FirstOrDefaultAsync() ?? "pdflatex";
+
+        var pdflatexPdf = await _latexRenderService.RenderToPdfTolerantAsync(
+            latex, timeout: 60, engine: engine);
+        return (pdflatexPdf, engine);
     }
 
     private static readonly System.Text.RegularExpressions.Regex BibliographyCommandRe =
@@ -259,7 +275,7 @@ public class DocumentExportService : IDocumentExportService
             "code" => ConvertCodeBlock(content),
             "list" => ConvertListBlock(content),
             "table" => ConvertTableBlock(content),
-            "figure" => await ConvertFigureBlockAsync(content),
+            "figure" => await ConvertFigureBlockAsync(content, block.DocumentId),
             "blockquote" => ConvertBlockquoteBlock(content),
             "theorem" => ConvertTheoremBlock(content, theoremCounter),
             "abstract" => ConvertAbstractBlock(content),
@@ -573,7 +589,7 @@ public class DocumentExportService : IDocumentExportService
         };
     }
 
-    private async Task<ExportBlock> ConvertFigureBlockAsync(JsonElement content)
+    private async Task<ExportBlock> ConvertFigureBlockAsync(JsonElement content, Guid documentId)
     {
         var src = GetString(content, "src");
         var alt = GetString(content, "alt");
@@ -609,9 +625,12 @@ public class DocumentExportService : IDocumentExportService
             imageData = ImageFromDataUri(src);
         }
 
+        // Anything else must be an asset belonging to THIS document, resolved
+        // by database lookup and read straight out of storage. See
+        // ResolveDocumentAssetAsync for why the URL is never fetched.
         if (imageData == null && !string.IsNullOrEmpty(src))
         {
-            imageData = await DownloadImageAsync(src);
+            imageData = await ResolveDocumentAssetAsync(documentId, src);
         }
 
         if (imageData != null)
@@ -808,33 +827,99 @@ public class DocumentExportService : IDocumentExportService
         };
     }
 
-    private async Task<ExportImageData?> DownloadImageAsync(string src)
+    /// <summary>
+    /// The bytes behind a figure's <c>src</c>, if and only if they belong to
+    /// this document.
+    ///
+    /// <para>This used to be <c>DownloadImageAsync</c>: it took the <c>src</c>
+    /// string out of the block's JSON and issued an HTTP GET to it. That made
+    /// exporting a document a request the server performed on behalf of
+    /// whoever wrote the document — server-side request forgery with a pleasant
+    /// user interface. A document containing
+    /// <c>http://169.254.169.254/latest/meta-data/</c> or
+    /// <c>http://127.0.0.1:5432/</c> would have had the API fetch it, from
+    /// inside the network, whenever the author chose.</para>
+    ///
+    /// <para>The rule now is: <b>no URL is ever fetched.</b> An image exports if
+    /// it is embedded in the block, or if it is an asset row belonging to this
+    /// document — read from storage by its <c>StorageKey</c>, a value the server
+    /// wrote and the author cannot influence. Scoping the lookup to the document
+    /// also stops one document pulling in another's assets by quoting its
+    /// URL.</para>
+    ///
+    /// <para>An unresolvable image is skipped and the figure keeps its caption.
+    /// Losing a picture is a visible, recoverable loss; fetching an arbitrary
+    /// URL is not.</para>
+    /// </summary>
+    private async Task<ExportImageData?> ResolveDocumentAssetAsync(Guid documentId, string src)
     {
+        if (string.IsNullOrWhiteSpace(src)) return null;
+
+        var asset = await _context.Assets
+            .Where(a => a.DocumentId == documentId)
+            .FirstOrDefaultAsync(a => a.Url == src);
+
+        if (asset != null)
+            return await ReadAssetAsync(asset.StorageKey, asset.FileType, asset.FileName, asset.FileSize);
+
+        // Fall back to the storage key appearing in the URL: a public URL may be
+        // rewritten (CDN host, signature) after the block was written, but the
+        // key inside it does not move.
+        var candidates = await _context.Assets
+            .Where(a => a.DocumentId == documentId)
+            .Select(a => new { a.StorageKey, a.FileType, a.FileName, a.FileSize })
+            .ToListAsync();
+
+        var match = candidates.FirstOrDefault(
+            a => !string.IsNullOrEmpty(a.StorageKey)
+                 && src.Contains(a.StorageKey, StringComparison.Ordinal));
+
+        if (match == null)
+        {
+            _logger.LogInformation(
+                "[Export] Figure src for document {DocId} matches no asset of that document; "
+                + "skipping the image. Remote URLs are not fetched.", documentId);
+            return null;
+        }
+
+        return await ReadAssetAsync(match.StorageKey, match.FileType, match.FileName, match.FileSize);
+    }
+
+    /// <summary>Ten megabytes — the same limit the asset passed to be uploaded.</summary>
+    private const long MaxEmbeddableAssetBytes = 10L * 1024 * 1024;
+
+    private async Task<ExportImageData?> ReadAssetAsync(
+        string storageKey, string? fileType, string? fileName, long fileSize)
+    {
+        if (string.IsNullOrEmpty(storageKey)) return null;
+
+        if (fileSize > MaxEmbeddableAssetBytes)
+        {
+            _logger.LogWarning(
+                "[Export] Asset {Key} is {Bytes} bytes, above the embedding limit; skipping.",
+                storageKey, fileSize);
+            return null;
+        }
+
         try
         {
-            if (!Uri.TryCreate(src, UriKind.Absolute, out var uri))
-                return null;
+            await using var stream = await _storageService.DownloadAsync(storageKey);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
 
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
-
-            var response = await client.GetAsync(uri);
-            if (!response.IsSuccessStatusCode)
-                return null;
-
-            var bytes = await response.Content.ReadAsByteArrayAsync();
-            var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+            if (buffer.Length == 0 || buffer.Length > MaxEmbeddableAssetBytes) return null;
 
             return new ExportImageData
             {
-                Data = Convert.ToBase64String(bytes),
-                MimeType = contentType,
-                Filename = Path.GetFileName(uri.LocalPath)
+                Data = Convert.ToBase64String(buffer.ToArray()),
+                MimeType = string.IsNullOrWhiteSpace(fileType) ? "image/png" : fileType,
+                Filename = fileName,
             };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to download image from {Src}", src);
+            // Storage being unavailable must not cost the whole document.
+            _logger.LogWarning(ex, "[Export] Could not read asset {Key}; skipping the image.", storageKey);
             return null;
         }
     }

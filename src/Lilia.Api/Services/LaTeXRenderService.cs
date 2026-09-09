@@ -11,7 +11,13 @@ public interface ILaTeXRenderService
 {
     Task<byte[]> RenderToPdfAsync(string latex, int timeout = 30);
     Task<byte[]> RenderToPdfAsync(string latex, string engine, int timeout = 30);
-    Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60);
+    /// <summary>
+    /// Tolerant render — body errors yield a partial PDF rather than nothing.
+    /// <paramref name="engine"/> takes the same values as
+    /// <see cref="RenderToPdfAsync"/>: it had none, so every caller compiled
+    /// with pdflatex whatever the document said.
+    /// </summary>
+    Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60, string engine = "pdflatex");
 
     /// <summary>
     /// Compile and return the PDF alongside the block → page map read from the
@@ -164,12 +170,13 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// Document-export variant: runs pdflatex without -halt-on-error so minor
     /// body errors produce a partial PDF rather than aborting with zero output.
     /// </summary>
-    public async Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60)
+    public async Task<byte[]> RenderToPdfTolerantAsync(
+        string latex, int timeout = 60, string engine = "pdflatex")
     {
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _, _) = await CompileLatexAsync(latex, timeout, tolerant: true);
+            var (pdf, _, _) = await CompileLatexAsync(latex, timeout, tolerant: true, engine: engine);
             return pdf;
         }
         finally
