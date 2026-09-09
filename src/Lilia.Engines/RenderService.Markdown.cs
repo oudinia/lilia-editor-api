@@ -161,7 +161,16 @@ public partial class RenderService
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var alt = content.TryGetProperty("alt", out var a) ? a.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
-        if (string.IsNullOrEmpty(src)) return "";
+        // A figure whose image has not been supplied yet still carries meaning:
+        // the caption is the author's sentence about it. Returning "" here
+        // dropped the whole block, so a placeholder figure vanished from the
+        // Markdown with nothing to show it had been there.
+        if (string.IsNullOrEmpty(src))
+        {
+            return string.IsNullOrEmpty(caption)
+                ? ""
+                : $"*{ProcessMarkdownInline(caption)}*";
+        }
 
         var altText = !string.IsNullOrEmpty(alt) ? alt : caption;
         var md = $"![{EscapeMarkdownBrackets(altText)}]({src})";
@@ -262,6 +271,17 @@ public partial class RenderService
 
         if (!content.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             return "";
+
+            // Objects in "items" go through the rich renderer too. Nesting was
+            // only reachable via a separate "richItems" key that nothing in the
+            // codebase ever writes — a dead contract — while lists carrying
+            // objects (DOCX import produces these; see ListBlock.tsx) fell to
+            // the string path below, where GetString() returns null for an
+            // object and every bullet came out empty.
+            if (items.EnumerateArray().Any(i => i.ValueKind == JsonValueKind.Object))
+        {
+            return RenderRichListItems(items, ordered, 0, start);
+        }
 
         var sb = new StringBuilder();
         var idx = 0;

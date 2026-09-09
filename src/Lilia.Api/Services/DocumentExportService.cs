@@ -565,6 +565,35 @@ public class DocumentExportService : IDocumentExportService
         var rows = new List<List<ExportTableCell>>();
         var hasHeader = GetBool(content, "hasHeader", true);
 
+        // The editor stores a table as { headers: [...], rows: [[...]] } — the
+        // column headings live in their own array, not as the first entry of
+        // rows. Only "rows" was read, so every real table exported to Word with
+        // its header row missing: the data survived, the thing telling you what
+        // the columns meant did not (2026-09-09). Markdown and LML read it and
+        // were unaffected, which is why this took a shape-accurate test to see.
+        if (content.ValueKind == JsonValueKind.Object
+            && content.TryGetProperty("headers", out var headersEl)
+            && headersEl.ValueKind == JsonValueKind.Array
+            && headersEl.GetArrayLength() > 0)
+        {
+            var headerRow = new List<ExportTableCell>();
+            foreach (var header in headersEl.EnumerateArray())
+            {
+                var text = header.ValueKind == JsonValueKind.String
+                    ? header.GetString() ?? ""
+                    : header.ValueKind == JsonValueKind.Object
+                        ? GetString(header, "text")
+                        : "";
+                headerRow.Add(new ExportTableCell { Text = text });
+            }
+
+            if (headerRow.Any(c => !string.IsNullOrWhiteSpace(c.Text)))
+            {
+                rows.Add(headerRow);
+                hasHeader = true;
+            }
+        }
+
         if (content.TryGetProperty("rows", out var rowsEl) && rowsEl.ValueKind == JsonValueKind.Array)
         {
             foreach (var row in rowsEl.EnumerateArray())

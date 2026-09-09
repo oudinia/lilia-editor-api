@@ -291,6 +291,43 @@ public class DocxExportBlockVocabularyTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task AListInTheShapeTheEditorWrites()
+    {
+        // Plain strings under "items", with "ordered" rather than "listType".
+        // Every list test here used the DTO shape, which the editor never
+        // writes — so they proved the mapper's tolerance, not the real path.
+        var (_, text, _) = await ExportOneAsync("list",
+            """{"ordered":false,"items":["EDITORSHAPEONE","EDITORSHAPETWO"]}""");
+
+        text.Should().Contain("EDITORSHAPEONE").And.Contain("EDITORSHAPETWO");
+    }
+
+    [Fact]
+    public async Task AnOrderedListInTheShapeTheEditorWrites()
+    {
+        var (_, text, _) = await ExportOneAsync("list",
+            """{"ordered":true,"items":["STEPONE","STEPTWO"]}""");
+
+        text.Should().Contain("STEPONE").And.Contain("STEPTWO");
+    }
+
+    [Fact]
+    public async Task ATableInTheShapeTheEditorWritesKeepsItsHeaders()
+    {
+        // The regression this was written for: the editor stores column
+        // headings in their own "headers" array, and only "rows" was read — so
+        // every real table exported to Word without its headings. The data
+        // survived; the thing telling you what the columns meant did not.
+        var (_, text, xml) = await ExportOneAsync("table",
+            """{"headers":["METHODCOL","ERRORCOL"],"rows":[["OURSROW","POINTZEROONE"]]}""");
+
+        xml.Should().Contain("<w:tbl>");
+        text.Should().Contain("METHODCOL", "a table without its headings is a grid of unlabelled numbers");
+        text.Should().Contain("ERRORCOL");
+        text.Should().Contain("OURSROW").And.Contain("POINTZEROONE");
+    }
+
+    [Fact]
     public async Task NestedListsKeepEveryLevel()
     {
         var (_, text, _) = await ExportOneAsync("list", """
@@ -449,9 +486,9 @@ public class DocxExportBlockVocabularyTests : IntegrationTestBase
         await SeedBlockAsync(doc.Id, "theorem",
             """{"text":"THEOREMTEXT","theoremType":"theorem"}""", order++);
         await SeedBlockAsync(doc.Id, "list",
-            """{"listType":"bullet","items":[{"text":"LISTONE","children":[{"text":"LISTNESTED","level":1}]}]}""", order++);
+            """{"ordered":false,"items":["LISTONE","LISTNESTED"]}""", order++);
         await SeedBlockAsync(doc.Id, "table",
-            """{"hasHeader":true,"rows":[[{"text":"COLHEAD"}],[{"text":"CELLVALUE"}]]}""", order++);
+            """{"headers":["COLHEAD"],"rows":[["CELLVALUE"]]}""", order++);
         await SeedBlockAsync(doc.Id, "code", """{"code":"CODELINE","language":"python"}""", order++);
         await SeedBlockAsync(doc.Id, "heading", """{"text":"CONCLUSIONHEAD","level":1}""", order++);
         await SeedBlockAsync(doc.Id, "bibliography", """{}""", order);

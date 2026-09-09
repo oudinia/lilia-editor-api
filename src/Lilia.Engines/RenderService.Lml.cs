@@ -229,7 +229,19 @@ public partial class RenderService
         {
             AppendRichListItemsLml(sb, rich, ordered, 0, start);
         }
-        else if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+        // Objects in "items" go through the rich renderer too. Nesting was only
+        // reachable via a separate "richItems" key that nothing in the codebase
+        // ever writes — a dead contract — while lists carrying objects (DOCX
+        // import produces these) fell to the string path below, where
+        // GetString() returns null for an object and every bullet came out
+        // empty.
+        else if (content.TryGetProperty("items", out var items)
+                 && items.ValueKind == JsonValueKind.Array
+                 && items.EnumerateArray().Any(i => i.ValueKind == JsonValueKind.Object))
+        {
+            AppendRichListItemsLml(sb, items, ordered, 0, start);
+        }
+        else if (content.TryGetProperty("items", out items) && items.ValueKind == JsonValueKind.Array)
         {
             var idx = 0;
             foreach (var item in items.EnumerateArray())
