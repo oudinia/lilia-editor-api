@@ -268,7 +268,28 @@ public class DocumentExportService : IDocumentExportService
             "algorithm" => ConvertAlgorithmBlock(content),
             "callout" => ConvertCalloutBlock(content),
             "footnote" => ConvertFootnoteBlock(content),
-            "bibliography" => null, // handled at document level
+            // Passed through, not dropped. This returned null for "handled at
+            // document level" — and no document level handled it, so the block
+            // never reached the exporter and every Word export came out with no
+            // References section (2026-09-09). The entries themselves were
+            // being loaded and mapped onto ExportDocument.Bibliography the
+            // whole time; only the block that marks where they go was missing.
+            "bibliography" => new ExportBlock { Type = "bibliography" },
+            // The title block carries the paper's title, author and date. It
+            // had no case at all, so it fell through to null and every Word
+            // export came out untitled and unattributed — a 24-block paper
+            // exported starting at its abstract, with its author nowhere in the
+            // file (2026-09-09).
+            "title" => new ExportBlock
+            {
+                Type = "title",
+                Content = new ExportBlockContent
+                {
+                    Text = GetString(content, "title"),
+                    Author = GetString(content, "author"),
+                    DateText = GetString(content, "date"),
+                }
+            },
             _ => ConvertParagraphBlock(content) // fallback
         };
     }
@@ -285,10 +306,96 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Text = text,
-                RichText = ParseInlineFormatting(text)
+                RichText = MapRichText(content, text)
             }
         };
     }
+
+    /// <summary>
+    /// The spans a paragraph is actually made of.
+    ///
+    /// <para>This used to be <c>ParseInlineFormatting(text)</c> unconditionally,
+    /// which re-derived the formatting from the plain-text rendering and threw
+    /// away the <c>richText</c> the editor had stored. Bold, italic, links,
+    /// colour and highlight authored in Lilia all arrived in Word as plain
+    /// text (2026-09-09).</para>
+    ///
+    /// <para>Stored spans win when present. Inline maths is still expanded
+    /// inside each of them, carrying that span's marks onto the pieces, so a
+    /// bold sentence containing <c>$x$</c> stays bold on both sides of the
+    /// equation.</para>
+    /// </summary>
+    private static List<ExportRichTextSpan> MapRichText(JsonElement content, string text)
+    {
+        if (content.ValueKind != JsonValueKind.Object
+            || !content.TryGetProperty("richText", out var stored)
+            || stored.ValueKind != JsonValueKind.Array
+            || stored.GetArrayLength() == 0)
+        {
+            return ParseInlineFormatting(text);
+        }
+
+        var spans = new List<ExportRichTextSpan>();
+
+        foreach (var element in stored.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object) continue;
+
+            var spanText = GetString(element, "text");
+            var marks = new ExportRichTextSpan
+            {
+                Bold = GetBool(element, "bold", false),
+                Italic = GetBool(element, "italic", false),
+                Underline = GetBool(element, "underline", false),
+                Strikethrough = GetBool(element, "strikethrough", false),
+                Superscript = GetBool(element, "superscript", false),
+                Subscript = GetBool(element, "subscript", false),
+                Color = NullIfEmpty(GetString(element, "color")),
+                Highlight = NullIfEmpty(GetString(element, "highlight")),
+                Link = NullIfEmpty(GetString(element, "link")),
+                FontSize = NullIfEmpty(GetString(element, "fontSize")),
+                FontFamily = NullIfEmpty(GetString(element, "fontFamily")),
+            };
+
+            // An explicit equation on the span needs no further parsing.
+            var explicitEquation = NullIfEmpty(GetString(element, "equation"));
+            if (explicitEquation != null)
+            {
+                spans.Add(WithMarks(marks, spanText, explicitEquation));
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(spanText)) continue;
+
+            foreach (var piece in ParseInlineFormatting(spanText))
+            {
+                spans.Add(WithMarks(marks, piece.Text, piece.Equation));
+            }
+        }
+
+        return spans.Count > 0 ? spans : ParseInlineFormatting(text);
+    }
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static ExportRichTextSpan WithMarks(
+        ExportRichTextSpan marks, string text, string? equation) => new()
+    {
+        Text = text,
+        Equation = equation,
+        Bold = marks.Bold,
+        Italic = marks.Italic,
+        Underline = marks.Underline,
+        Strikethrough = marks.Strikethrough,
+        Superscript = marks.Superscript,
+        Subscript = marks.Subscript,
+        Color = marks.Color,
+        Highlight = marks.Highlight,
+        Link = marks.Link,
+        FontSize = marks.FontSize,
+        FontFamily = marks.FontFamily,
+    };
 
     private ExportBlock ConvertHeadingBlock(JsonElement content)
     {
@@ -309,7 +416,14 @@ public class DocumentExportService : IDocumentExportService
 
     private ExportBlock ConvertEquationBlock(JsonElement content)
     {
-        var latex = GetString(content, "latex");
+        // "source" is the current key and "latex" the legacy one — the same
+        // order DocxExportService.ConvertEquation coalesces in, and says so in
+        // its own comment. This read "latex" then "text" and never "source", so
+        // an equation block saved by the current editor arrived with nothing in
+        // it and exported to Word as an italic "[]" (2026-09-09).
+        var latex = GetString(content, "source");
+        if (string.IsNullOrEmpty(latex))
+            latex = GetString(content, "latex");
         if (string.IsNullOrEmpty(latex))
             latex = GetString(content, "text");
 
@@ -467,15 +581,44 @@ public class DocumentExportService : IDocumentExportService
         var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
 
         ExportImageData? imageData = null;
-        if (!string.IsNullOrEmpty(src))
+
+        // An image object carrying base64 directly — what an upload produces.
+        // Checked before the URL path so an embedded image never triggers a
+        // network fetch.
+        if (content.ValueKind == JsonValueKind.Object
+            && content.TryGetProperty("image", out var embedded)
+            && embedded.ValueKind == JsonValueKind.Object)
+        {
+            var data = GetString(embedded, "data");
+            if (!string.IsNullOrWhiteSpace(data))
+            {
+                imageData = new ExportImageData
+                {
+                    Data = StripDataUriPrefix(data),
+                    MimeType = NullIfEmpty(GetString(embedded, "mimeType")) ?? "image/png",
+                    Filename = NullIfEmpty(GetString(embedded, "filename")),
+                };
+            }
+        }
+
+        // A data: URI in src — the shape the editor writes for a pasted or
+        // uploaded image. DownloadImageAsync speaks HTTP only, so these used to
+        // fall straight through and the figure exported with no image at all.
+        if (imageData == null && src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            imageData = ImageFromDataUri(src);
+        }
+
+        if (imageData == null && !string.IsNullOrEmpty(src))
         {
             imageData = await DownloadImageAsync(src);
-            if (imageData != null)
-            {
-                imageData.AltText = alt;
-                imageData.Width = width * 500; // approximate pixel width
-                imageData.Height = imageData.Width * 0.75; // default 4:3 aspect
-            }
+        }
+
+        if (imageData != null)
+        {
+            imageData.AltText = alt;
+            imageData.Width = width * 500; // approximate pixel width
+            imageData.Height = imageData.Width * 0.75; // default 4:3 aspect
         }
 
         return new ExportBlock
@@ -559,7 +702,12 @@ public class DocumentExportService : IDocumentExportService
     private ExportBlock ConvertAlgorithmBlock(JsonElement content)
     {
         var title = GetString(content, "title");
+        // "code" is the usual key; "text" and "content" appear in documents
+        // written by other paths. Reading only "code" meant an algorithm block
+        // exported as an empty caption with its steps gone.
         var code = GetString(content, "code");
+        if (string.IsNullOrEmpty(code)) code = GetString(content, "text");
+        if (string.IsNullOrEmpty(code)) code = GetString(content, "content");
         var caption = GetString(content, "caption");
 
         if (string.IsNullOrEmpty(caption) && !string.IsNullOrEmpty(title))
@@ -629,6 +777,37 @@ public class DocumentExportService : IDocumentExportService
         };
     }
 
+    /// <summary>Everything after the base64 comma in a data: URI.</summary>
+    private static string StripDataUriPrefix(string data)
+    {
+        if (!data.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return data;
+        var comma = data.IndexOf(',');
+        return comma >= 0 ? data[(comma + 1)..] : data;
+    }
+
+    /// <summary>
+    /// An image embedded in the document rather than hosted somewhere.
+    /// <c>data:image/png;base64,iVBOR...</c> — no network involved.
+    /// </summary>
+    private static ExportImageData? ImageFromDataUri(string uri)
+    {
+        var comma = uri.IndexOf(',');
+        if (comma < 0) return null;
+
+        var header = uri[5..comma];          // "image/png;base64"
+        var payload = uri[(comma + 1)..];
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+
+        var semicolon = header.IndexOf(';');
+        var mime = (semicolon >= 0 ? header[..semicolon] : header).Trim();
+
+        return new ExportImageData
+        {
+            Data = payload,
+            MimeType = string.IsNullOrWhiteSpace(mime) ? "image/png" : mime,
+        };
+    }
+
     private async Task<ExportImageData?> DownloadImageAsync(string src)
     {
         try
@@ -686,6 +865,30 @@ public class DocumentExportService : IDocumentExportService
 
         while (i < text.Length)
         {
+            // Display math: $$...$$
+            //
+            // This ran second to the single-$ case below, which explicitly
+            // declines to match when the next character is also '$' — so a
+            // paragraph containing $$a^2 + b^2 = c^2$$ matched neither branch
+            // and the dollars reached Word as literal text (2026-09-09).
+            //
+            // It becomes an equation span like any other. A display equation
+            // sitting inside a paragraph is still typeset inline rather than
+            // centred on its own line; splitting the paragraph around it is a
+            // larger change than this, and literal "$$" was the actual defect.
+            if (text[i] == '$' && i + 1 < text.Length && text[i + 1] == '$')
+            {
+                var closer = text.IndexOf("$$", i + 2, StringComparison.Ordinal);
+                if (closer > i + 2)
+                {
+                    FlushCurrent();
+                    var latex = text[(i + 2)..closer];
+                    spans.Add(new ExportRichTextSpan { Text = latex, Equation = latex });
+                    i = closer + 2;
+                    continue;
+                }
+            }
+
             // Inline math: $...$
             if (text[i] == '$' && i + 1 < text.Length && text[i + 1] != '$')
             {
