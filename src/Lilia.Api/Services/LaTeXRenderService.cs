@@ -17,7 +17,9 @@ public interface ILaTeXRenderService
     /// <see cref="RenderToPdfAsync"/>: it had none, so every caller compiled
     /// with pdflatex whatever the document said.
     /// </summary>
-    Task<byte[]> RenderToPdfTolerantAsync(string latex, int timeout = 60, string engine = "pdflatex");
+    Task<byte[]> RenderToPdfTolerantAsync(
+        string latex, int timeout = 60, string engine = "pdflatex",
+        Func<string, Task>? materialiseAssets = null);
 
     /// <summary>
     /// Compile and return the PDF alongside the block → page map read from the
@@ -171,12 +173,14 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// body errors produce a partial PDF rather than aborting with zero output.
     /// </summary>
     public async Task<byte[]> RenderToPdfTolerantAsync(
-        string latex, int timeout = 60, string engine = "pdflatex")
+        string latex, int timeout = 60, string engine = "pdflatex",
+        Func<string, Task>? materialiseAssets = null)
     {
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _, _) = await CompileLatexAsync(latex, timeout, tolerant: true, engine: engine);
+            var (pdf, _, _) = await CompileLatexAsync(
+                latex, timeout, tolerant: true, engine: engine, materialiseAssets: materialiseAssets);
             return pdf;
         }
         finally
@@ -701,13 +705,29 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
-    private async Task<(byte[] Pdf, string Log, string Aux)> CompileLatexAsync(string latex, int timeout, bool tolerant = false, string engine = "pdflatex")
+    /// <summary>
+    /// <paramref name="materialiseAssets"/> is handed the compile directory and
+    /// may write anything the document needs beside the .tex — figures, most of
+    /// all. It is a callback rather than a list of byte arrays so the caller can
+    /// stream each file straight to disk; a paper with a dozen images should
+    /// never hold a dozen images in memory to compile.
+    ///
+    /// <para>Without it the compile directory contained only the .tex, so
+    /// <c>\IfFileExists</c> around every <c>\includegraphics</c> took its false
+    /// branch and the PDF printed "[Missing figure: ...]" where the figure
+    /// belonged (2026-09-09).</para>
+    /// </summary>
+    private async Task<(byte[] Pdf, string Log, string Aux)> CompileLatexAsync(
+        string latex, int timeout, bool tolerant = false, string engine = "pdflatex",
+        Func<string, Task>? materialiseAssets = null)
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
 
         try
         {
+            if (materialiseAssets != null) await materialiseAssets(tmpDir);
+
             var texPath = Path.Combine(tmpDir, "document.tex");
             var pdfPath = Path.Combine(tmpDir, "document.pdf");
             var logPath = Path.Combine(tmpDir, "document.log");
