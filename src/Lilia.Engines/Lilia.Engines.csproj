@@ -8,6 +8,12 @@
   -->
 
   <ItemGroup>
+    <!-- The self-contained maths renderer the HTML export inlines. Generated
+         by ops/build-katex-asset.py; regenerate after a KaTeX upgrade. -->
+    <EmbeddedResource Include="Assets\katex-inline.html" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
     <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
   </ItemGroup>
