@@ -195,7 +195,7 @@ public class PreviewRenderService : IPreviewRenderService
         {
             assets = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["references.bib"] = BibTeXSerializer.Serialize(bibEntries),
+                ["references.bib"] = BibTeXSerializer.SerializeForTypst(bibEntries),
             };
         }
 

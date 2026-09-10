@@ -32,6 +32,14 @@ namespace Lilia.Api.Services;
 public class TypstExportService : ITypstExportService
 {
     private readonly ILogger<TypstExportService> _logger;
+
+    /// <summary>
+    /// Whether this document has references to point the directive at. Set
+    /// per build; the bibliography block renderer is static and cannot see
+    /// the document, which is how the directive came to be unconditional.
+    /// </summary>
+    [ThreadStatic]
+    private static bool HasBibliographyEntries;
     private readonly IImportTelemetrySink _telemetry;
 
     public TypstExportService(
@@ -65,6 +73,11 @@ public class TypstExportService : ITypstExportService
         TypstExportOptions? options = null)
     {
         options ??= new TypstExportOptions();
+
+        // The bibliography block renderer is static and cannot see the
+        // document, so tell it here whether there is anything to cite.
+        HasBibliographyEntries = doc.BibliographyEntries?.Count > 0;
+
         var sb = new StringBuilder();
 
         // Resolve title/author/date from a Title block when present —
@@ -652,7 +665,15 @@ public class TypstExportService : ITypstExportService
         // Typst-native bibliography expects a .bib file path. The
         // export wrapper resolves entries to references.bib at the
         // document level, mirroring how LaTeX export does it.
-        return "#bibliography(\"references.bib\")";
+        // Only when there is a file to point at. This was emitted
+        // unconditionally, so a document holding a bibliography block but no
+        // entries — a section the author added and has not filled yet —
+        // compiled to "file not found (searched at …/references.bib)" and
+        // fell back to pdflatex (2026-09-10). An empty References section is
+        // an ordinary state and must not cost the document its fast path.
+        return HasBibliographyEntries
+            ? "#bibliography(\"references.bib\")"
+            : "";
     }
 
     private static string RenderEmbed(JsonElement content)
