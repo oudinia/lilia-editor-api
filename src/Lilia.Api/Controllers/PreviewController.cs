@@ -22,6 +22,7 @@ public class PreviewController : ControllerBase
     private readonly ITypstCompileService _typstCompiler;
     private readonly IDistributedCache _outputCache;
     private readonly LiliaDbContext _context;
+    private readonly IDocumentImageStager _imageStager;
     private readonly ILogger<PreviewController> _logger;
 
     public PreviewController(
@@ -32,6 +33,7 @@ public class PreviewController : ControllerBase
         ITypstCompileService typstCompiler,
         IDistributedCache outputCache,
         LiliaDbContext context,
+        IDocumentImageStager imageStager,
         ILogger<PreviewController> logger)
     {
         _renderService = renderService;
@@ -41,6 +43,7 @@ public class PreviewController : ControllerBase
         _typstCompiler = typstCompiler;
         _outputCache = outputCache;
         _context = context;
+        _imageStager = imageStager;
         _logger = logger;
     }
 
@@ -365,7 +368,12 @@ public class PreviewController : ControllerBase
             .Include(g => g.Memberships)
             .ToListAsync();
 
-        var typstSource = _typstExporter.BuildTypstDocument(document, blocks, layoutGroups);
+        // The document's own images, resolved and staged so the generator can
+        // point at real files instead of drawing placeholder rectangles.
+        var staged = await _imageStager.StageAsync(docId);
+
+        var typstSource = _typstExporter.BuildTypstDocument(document, blocks, layoutGroups,
+            new TypstExportOptions { LocalImagePaths = staged.Paths });
 
         var outputFormat = format.ToLowerInvariant() switch
         {
@@ -427,7 +435,7 @@ public class PreviewController : ControllerBase
             };
         }
 
-        var result = await _typstCompiler.CompileAsync(typstSource, outputFormat, assets);
+        var result = await _typstCompiler.CompileAsync(typstSource, outputFormat, assets, staged.Files);
 
         if (!result.Success)
         {

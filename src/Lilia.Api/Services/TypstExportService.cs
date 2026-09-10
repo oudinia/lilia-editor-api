@@ -40,6 +40,15 @@ public class TypstExportService : ITypstExportService
     /// </summary>
     [ThreadStatic]
     private static bool HasBibliographyEntries;
+
+    /// <summary>
+    /// Staged image paths for the build in progress. Static for the same
+    /// reason as the flag above — the block renderers take only their own
+    /// content — and per-thread so concurrent exports cannot see each
+    /// other's files.
+    /// </summary>
+    [ThreadStatic]
+    private static IReadOnlyDictionary<string, string>? LocalImagePaths;
     private readonly IImportTelemetrySink _telemetry;
 
     public TypstExportService(
@@ -77,6 +86,7 @@ public class TypstExportService : ITypstExportService
         // The bibliography block renderer is static and cannot see the
         // document, so tell it here whether there is anything to cite.
         HasBibliographyEntries = doc.BibliographyEntries?.Count > 0;
+        LocalImagePaths = options.LocalImagePaths;
 
         var sb = new StringBuilder();
 
@@ -331,6 +341,13 @@ public class TypstExportService : ITypstExportService
         // a drawn placeholder rect instead so the rest of the document
         // still compiles via the fast preview path. The LaTeX export
         // path resolves the real asset on the export path.
+        // A staged local copy wins: it is the only thing Typst can actually
+        // open, and the caller has already checked it belongs to this document.
+        if (LocalImagePaths is not null && LocalImagePaths.TryGetValue(src, out var localPath))
+        {
+            return $"#figure(image({QuoteTypst(localPath)}){captionPart})";
+        }
+
         if (IsUnresolvableFigureSrc(src))
         {
             // Typst rect with fill+stroke; placed inside #figure so
@@ -1587,4 +1604,20 @@ public class TypstExportOptions
     public string DocumentClass { get; set; } = "article";
     public string FontSize { get; set; } = "11pt";
     public string PaperSize { get; set; } = "a4";
+
+    /// <summary>
+    /// Where each figure's stored <c>src</c> can be found inside the compile
+    /// directory, keyed by the src exactly as the block holds it.
+    ///
+    /// <para>Typst reads images from disk and cannot fetch a URL, and blocks
+    /// store an absolute one. Without this every figure fell to the
+    /// "unresolvable" branch and rendered as a grey placeholder — in the
+    /// preview, and in the PDF whenever Typst served it.</para>
+    ///
+    /// <para>The caller resolves and stages the files, because it is the only
+    /// layer that may: an image is fetched from this document's own asset
+    /// rows, never from the URL the block names. The same rule the Word and
+    /// PDF exporters follow, for the same reason.</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? LocalImagePaths { get; set; }
 }

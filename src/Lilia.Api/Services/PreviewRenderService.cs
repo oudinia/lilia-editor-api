@@ -44,6 +44,7 @@ public class PreviewRenderService : IPreviewRenderService
     private readonly IRenderService _renderService;
     private readonly ILaTeXRenderService _latexService;
     private readonly IImportTelemetrySink _telemetry;
+    private readonly IDocumentImageStager _imageStager;
     private readonly ILogger<PreviewRenderService> _logger;
 
     public PreviewRenderService(
@@ -53,6 +54,7 @@ public class PreviewRenderService : IPreviewRenderService
         IRenderService renderService,
         ILaTeXRenderService latexService,
         IImportTelemetrySink telemetry,
+        IDocumentImageStager imageStager,
         ILogger<PreviewRenderService> logger)
     {
         _db = db;
@@ -61,6 +63,7 @@ public class PreviewRenderService : IPreviewRenderService
         _renderService = renderService;
         _latexService = latexService;
         _telemetry = telemetry;
+        _imageStager = imageStager;
         _logger = logger;
     }
 
@@ -175,10 +178,17 @@ public class PreviewRenderService : IPreviewRenderService
             return null;
         }
 
+        // Resolve the document's figure images first: the generator needs to
+        // know where each one will sit in the compile directory, or it emits a
+        // placeholder rectangle instead. Nothing is fetched from the URL a
+        // block names — see DocumentImageStager.
+        var staged = await _imageStager.StageAsync(documentId, ct);
+
         string source;
         try
         {
-            source = _typstExporter.BuildTypstDocument(doc, blocks, layoutGroups);
+            source = _typstExporter.BuildTypstDocument(doc, blocks, layoutGroups,
+                new TypstExportOptions { LocalImagePaths = staged.Paths });
         }
         catch (Exception ex)
         {
@@ -186,10 +196,9 @@ public class PreviewRenderService : IPreviewRenderService
             return null;
         }
 
-        // Drop a references.bib alongside main.typ when there are
-        // entries; otherwise we'd hit "file not found" inside the
-        // compile temp dir. Generated source emits the directive
-        // unconditionally — see TypstExportService.RenderBibliography.
+        // Drop a references.bib alongside main.typ when there are entries.
+        // The directive is only emitted when there are, so an unfilled
+        // References section no longer costs a "file not found".
         Dictionary<string, string>? assets = null;
         if (bibEntries.Count > 0)
         {
@@ -199,7 +208,8 @@ public class PreviewRenderService : IPreviewRenderService
             };
         }
 
-        var result = await _typstCompiler.CompileAsync(source, TypstOutputFormat.Pdf, assets, ct);
+        var result = await _typstCompiler.CompileAsync(
+            source, TypstOutputFormat.Pdf, assets, staged.Files, ct);
         if (result.Success && result.Output is { Length: > 0 })
         {
             return result.Output;

@@ -449,6 +449,7 @@ builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 // the export path for publication-grade output. Engine selection
 // happens in PreviewService; user picks neither.
 builder.Services.AddScoped<ITypstExportService, TypstExportService>();
+builder.Services.AddScoped<IDocumentImageStager, DocumentImageStager>();
 builder.Services.AddSingleton<ITypstCompileService, TypstCompileService>();
 builder.Services.AddScoped<IPreviewRenderService, PreviewRenderService>();
 builder.Services.AddScoped<ITypstCoverageService, TypstCoverageService>();
