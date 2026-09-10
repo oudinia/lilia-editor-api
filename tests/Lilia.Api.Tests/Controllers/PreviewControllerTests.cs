@@ -39,6 +39,9 @@ public class PreviewControllerTests
                 Microsoft.Extensions.Options.Options.Create(
                     new Microsoft.Extensions.Caching.Memory.MemoryDistributedCacheOptions())),
             null!,
+            // The image stager, null-tolerant like the db context above:
+            // these tests do not exercise the /typst route.
+            null!,
             _loggerMock.Object);
 
         // Setup default authenticated user

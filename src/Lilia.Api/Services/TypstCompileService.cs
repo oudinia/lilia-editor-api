@@ -53,12 +53,21 @@ public class TypstCompileService : ITypstCompileService
         string source,
         TypstOutputFormat format = TypstOutputFormat.Svg,
         CancellationToken ct = default) =>
-        CompileAsync(source, format, assetFiles: null, ct);
+        CompileAsync(source, format, assetFiles: null, binaryAssets: null, ct);
+
+    /// <summary>Text siblings only — the shape most callers still want.</summary>
+    public Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
+        CancellationToken ct = default) =>
+        CompileAsync(source, format, assetFiles, binaryAssets: null, ct);
 
     public async Task<TypstCompileResult> CompileAsync(
         string source,
         TypstOutputFormat format,
         IReadOnlyDictionary<string, string>? assetFiles,
+        IReadOnlyDictionary<string, byte[]>? binaryAssets,
         CancellationToken ct = default)
     {
         var binary = ResolveBinary();
@@ -109,6 +118,24 @@ public class TypstCompileService : ITypstCompileService
                     var dir = Path.GetDirectoryName(path);
                     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
                     await File.WriteAllTextAsync(path, content, Encoding.UTF8, ct);
+                }
+            }
+
+            // Images are bytes, and the text channel above cannot carry them —
+            // WriteAllTextAsync would mangle a PNG beyond recognition. Without
+            // this there was no way to put a figure where Typst could open it,
+            // so every one rendered as a grey placeholder.
+            if (binaryAssets is { Count: > 0 })
+            {
+                foreach (var (name, payload) in binaryAssets)
+                {
+                    if (string.IsNullOrWhiteSpace(name) || name.Contains("..") || Path.IsPathRooted(name))
+                        continue;
+                    var path = Path.Combine(workDir, name);
+                    if (!path.StartsWith(workDir, StringComparison.Ordinal)) continue;
+                    var dir = Path.GetDirectoryName(path);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    await File.WriteAllBytesAsync(path, payload, ct);
                 }
             }
 
@@ -288,11 +315,23 @@ public interface ITypstCompileService
     /// <c>#bibliography("references.bib")</c> resolves at compile
     /// time. Filenames must be relative and must not traverse out
     /// of the work dir; anything else is silently skipped.
+    ///
+    /// <para><paramref name="binaryAssets"/> carries images. They cannot go
+    /// through <paramref name="assetFiles"/>: that writes UTF-8 text, which
+    /// mangles a PNG beyond recognition.</para>
     /// </summary>
+    /// <summary>Text siblings only.</summary>
     Task<TypstCompileResult> CompileAsync(
         string source,
         TypstOutputFormat format,
         IReadOnlyDictionary<string, string>? assetFiles,
+        CancellationToken ct = default);
+
+    Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
+        IReadOnlyDictionary<string, byte[]>? binaryAssets,
         CancellationToken ct = default);
 }
 
