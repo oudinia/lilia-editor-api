@@ -335,6 +335,21 @@ public class ExportController : ControllerBase
             .lilia-preview { max-width: none; }
             @media (prefers-color-scheme: dark) { body { background: #1a1a1a; color: #e0e0e0; } pre { background: #2a2a2a; } figcaption, blockquote { color: #aaa; } }
             """;
+        // Equations used to arrive as literal "$a^2 + b^2 = c^2.$" because the
+        // page carried no maths renderer of any kind. KaTeX now travels inside
+        // the file — but only when there is something to typeset, since the
+        // self-contained bundle weighs about 627 KB.
+        // A document with a title block already renders its own title. Adding
+        // one unconditionally printed it twice, one above the other, on every
+        // export of a document that had one.
+        var wrapperTitle = body.Contains("doc-title", StringComparison.Ordinal)
+            ? ""
+            : $"""<h1 class="lilia-doc-title">{encodedTitle}</h1>""";
+
+        var mathSupport = Lilia.Engines.KatexBundle.IsNeededFor(body)
+            ? Lilia.Engines.KatexBundle.Html
+            : "";
+
         return $"""
             <!doctype html>
             <html lang="en">
@@ -343,9 +358,10 @@ public class ExportController : ControllerBase
               <meta name="viewport" content="width=device-width,initial-scale=1">
               <title>{encodedTitle}</title>
               <style>{css}</style>
+              {mathSupport}
             </head>
             <body>
-              <h1 class="lilia-doc-title">{encodedTitle}</h1>
+              {wrapperTitle}
               {body}
             </body>
             </html>
