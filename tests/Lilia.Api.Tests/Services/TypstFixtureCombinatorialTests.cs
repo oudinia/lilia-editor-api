@@ -123,11 +123,12 @@ public class TypstFixtureCombinatorialTests
         new Fx("columnbreak lowercase",      "columnbreak","""{}"""),
         new Fx("divider alias",              "divider",   """{}"""),
 
-        // Bibliography emits #bibliography("references.bib") but the
-        // file is only written by the LaTeX export wrapper. Preview
-        // compile path falls back to pdflatex, which has the real
-        // resolution. Expected fallback for now.
-        new Fx("bibliography (no .bib in preview ctx)", "bibliography", """{}""", ExpectCompile: false),
+        // A bibliography block with no entries no longer emits the directive,
+        // so there is nothing to resolve and the document compiles. This
+        // fixture used to expect the fallback — "Expected fallback for now" —
+        // which is how the gap stayed open: the failure was known, written
+        // down, and therefore stopped being noticed. Closed 2026-09-10.
+        new Fx("bibliography (no entries)", "bibliography", """{}"""),
 
         // figure with external/placeholder URL → Typst can't resolve
         // the file inside the sandbox; we now render a drawn

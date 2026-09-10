@@ -190,9 +190,14 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "#block(", "Abstract" }),
 
         // bibliography
-        new Fx("bibliography: #bibliography call",
+        // A bibliography block with no entries behind it must NOT emit the
+        // directive: there is no references.bib to point at, and typst fails
+        // the whole document with "file not found". This fixture asserted the
+        // opposite until 2026-09-10, which is why every unfilled References
+        // section silently cost its document the Typst path.
+        new Fx("bibliography: no directive without entries",
             "bibliography", """{}""",
-            ExpectIn: new[] { "#bibliography(\"references.bib\")" }),
+            ExpectNotIn: new[] { "#bibliography(" }),
 
         // tableOfContents
         new Fx("tableOfContents: #outline()",

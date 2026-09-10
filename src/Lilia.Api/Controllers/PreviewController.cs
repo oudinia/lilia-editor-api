@@ -423,7 +423,7 @@ public class PreviewController : ControllerBase
         {
             assets = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["references.bib"] = BibTeXSerializer.Serialize(bibEntries),
+                ["references.bib"] = BibTeXSerializer.SerializeForTypst(bibEntries),
             };
         }
 

@@ -16,10 +16,70 @@ namespace Lilia.Api.Services;
 /// </summary>
 public static class BibTeXSerializer
 {
+    /// <summary>
+    /// The same entries, with years Typst's BibLaTeX reader will accept.
+    ///
+    /// <para>Typst parses <c>year</c> as a number and rejects the whole file
+    /// otherwise — "failed to parse BibLaTeX (wrong number of digits)". So a
+    /// perfectly ordinary classical citation, <c>year = {c. 300 BCE}</c>,
+    /// takes down the bibliography of the entire document. BibTeX itself is
+    /// happy with it, which is why the LaTeX path must keep the text as
+    /// written and only this one is adjusted.</para>
+    ///
+    /// <para>The digits become the year and the original is kept in
+    /// <c>note</c>, so "c. 300 BCE" still reaches the reader instead of being
+    /// silently rounded to "300". An entry with no digits at all loses the
+    /// year field and keeps the note.</para>
+    /// </summary>
+    public static string SerializeForTypst(IEnumerable<BibliographyEntry> entries)
+        => Serialize(entries.Select(TypstSafeYear).ToList());
+
+    private static readonly System.Text.RegularExpressions.Regex YearDigits =
+        new(@"\d{1,4}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static BibliographyEntry TypstSafeYear(BibliographyEntry entry)
+    {
+        var data = entry.Data?.RootElement;
+        if (data is not { ValueKind: System.Text.Json.JsonValueKind.Object }) return entry;
+
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in data.Value.EnumerateObject())
+        {
+            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                fields[prop.Name] = prop.Value.GetString() ?? "";
+        }
+
+        if (!fields.TryGetValue("year", out var year) || string.IsNullOrWhiteSpace(year)) return entry;
+        if (int.TryParse(year.Trim(), out _)) return entry;          // already numeric
+
+        var digits = YearDigits.Match(year);
+        if (digits.Success) fields["year"] = digits.Value;
+        else fields.Remove("year");
+
+        // Keep what the author wrote where a reader will still see it.
+        if (!fields.ContainsKey("note")) fields["note"] = year.Trim();
+
+        return new BibliographyEntry
+        {
+            Id = entry.Id,
+            DocumentId = entry.DocumentId,
+            CiteKey = entry.CiteKey,
+            EntryType = entry.EntryType,
+            Data = System.Text.Json.JsonDocument.Parse(
+                System.Text.Json.JsonSerializer.Serialize(fields)),
+            FormattedText = entry.FormattedText,
+        };
+    }
+
     private static readonly string[] DefaultFields =
     {
         "author", "title", "year", "journal", "booktitle",
         "volume", "number", "pages", "publisher", "doi", "url",
+        // "note" carries what a field could not hold literally — a classical
+        // date Typst will not parse as a year, for one. Without it here the
+        // rescue in SerializeForTypst wrote to a field nobody emitted, and
+        // "c. 300 BCE" was silently rounded to "300".
+        "note",
     };
 
     public static string Serialize(IReadOnlyCollection<BibliographyEntry> entries)

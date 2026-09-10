@@ -83,7 +83,14 @@ public class TypstCompileService : ITypstCompileService
                 TypstOutputFormat.Png => "png",
                 _ => "svg",
             };
-            var outputFile = Path.Combine(workDir, $"main.{outputExt}");
+            // A multi-page document cannot be written to a single SVG: typst
+            // refuses with "cannot export multiple images without a page
+            // number template". Naming the output main-{p}.svg satisfies it,
+            // and the first page is what a preview wants. PDF is inherently
+            // multi-page and takes the plain name.
+            var multiPageSvg = format == TypstOutputFormat.Svg;
+            var outputFile = Path.Combine(workDir,
+                multiPageSvg ? $"main-{{p}}.{outputExt}" : $"main.{outputExt}");
 
             await File.WriteAllTextAsync(sourceFile, source, Encoding.UTF8, ct);
 
@@ -173,6 +180,16 @@ public class TypstCompileService : ITypstCompileService
                 return TypstCompileResult.Failure(stderr.Length > 0
                     ? stderr
                     : $"Typst compile exited with code {proc.ExitCode}");
+            }
+
+            // With a {p} template typst writes main-1.svg, main-2.svg, … so
+            // the path it was given never exists. A preview shows one page;
+            // take the first.
+            if (multiPageSvg)
+            {
+                var pages = Directory.GetFiles(workDir, $"main-*.{outputExt}");
+                Array.Sort(pages, StringComparer.Ordinal);
+                if (pages.Length > 0) outputFile = pages[0];
             }
 
             if (!File.Exists(outputFile))
