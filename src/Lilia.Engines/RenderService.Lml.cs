@@ -389,8 +389,24 @@ public partial class RenderService
         foreach (var (key, value) in pairs)
         {
             if (string.IsNullOrEmpty(value)) continue;
-            var escaped = value.Replace("]", "\\]");
-            sb.Append('[').Append(key).Append('=').Append(escaped).Append(']');
+
+            // An unquoted value is read back only as far as the first comma, so
+            // a title like "Statement, Proofs, and Generalizations" came back
+            // as "Statement". Quote anything the reader could not otherwise
+            // recover; a plain value stays plain, which keeps the common case
+            // readable and existing files unchanged.
+            var needsQuoting = value.IndexOfAny([',', '"', '[', ']', '\n']) >= 0
+                               || value != value.Trim();
+
+            if (needsQuoting)
+            {
+                var quoted = value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                sb.Append('[').Append(key).Append("=\"").Append(quoted).Append("\"]");
+            }
+            else
+            {
+                sb.Append('[').Append(key).Append('=').Append(value).Append(']');
+            }
         }
         return sb.ToString();
     }

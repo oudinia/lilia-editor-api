@@ -19,11 +19,11 @@ namespace Lilia.Import.Services;
 public sealed class LmlTextParser : ILmlTextParser
 {
     private static readonly Regex BlockStartRegex = new(
-        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>\[[^\]]*\])?\s*$",
+        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>(?:\[[^\]]*\])+)?\s*$",
         RegexOptions.Compiled);
 
     private static readonly Regex InlineBlockStartRegex = new(
-        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>\[[^\]]*\])?\s+(?<rest>.+)$",
+        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>(?:\[[^\]]*\])+)?\s+(?<rest>.+)$",
         RegexOptions.Compiled);
 
     private static readonly HashSet<string> KnownTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -454,6 +454,34 @@ public sealed class LmlTextParser : ILmlTextParser
                 return;
             }
 
+            // @title[title=…][author=…][date=…]
+            //
+            // Absent from the directive table, so it fell through to the
+            // default and became a PARAGRAPH containing its own raw markup:
+            //
+            //   {"type":"paragraph","content":{"text":
+            //     "@title[title=A Paper][author=El Yadini Salma][date=\\today]"}}
+            //
+            // This parser backs Ask Lilia's apply_lml, the tool it uses to
+            // rewrite a whole document — so asking Lilia to restructure a paper
+            // replaced its title block with a line of visible markup, losing the
+            // title, the author and the date as structure (2026-09-10). The LML
+            // exporter has always written this directive; nothing read it.
+            case "title":
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "title",
+                    Content = new
+                    {
+                        title = attrs.GetValueOrDefault("title")
+                                ?? (string.IsNullOrWhiteSpace(body) ? "" : body.Trim()),
+                        author = attrs.GetValueOrDefault("author") ?? "",
+                        date = attrs.GetValueOrDefault("date") ?? "",
+                    },
+                    Depth = 0,
+                });
+                return;
+
             case "figure":
             case "image":
                 blocks.Add(new LmlParsedBlock
@@ -674,10 +702,41 @@ public sealed class LmlTextParser : ILmlTextParser
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(attrsRaw)) return result;
 
-        var inner = attrsRaw.Trim();
-        if (inner.StartsWith('[')) inner = inner[1..];
-        if (inner.EndsWith(']')) inner = inner[..^1];
-        inner = inner.Trim();
+        var raw = attrsRaw.Trim();
+
+        // "[a=1][b=2]" — the form the LML exporter has always written. Only a
+        // single group was ever accepted, so a directive with more than one
+        // attribute group matched neither block regex, fell through to the
+        // default, and became a PARAGRAPH containing its own raw markup. That
+        // is what happened to every @title[title=…][author=…][date=…]
+        // (2026-09-10), and this parser backs Ask Lilia's apply_lml, so asking
+        // Lilia to rewrite a paper turned its title block into a line of
+        // visible syntax.
+        //
+        // Groups are parsed one at a time: a "]" bounds a value, so a comma
+        // inside one group cannot leak into the next.
+        var groups = new List<string>();
+        var depth = 0;
+        var current = new StringBuilder();
+        foreach (var ch in raw)
+        {
+            if (ch == '[' && depth++ == 0) continue;
+            if (ch == ']' && --depth == 0) { groups.Add(current.ToString()); current.Clear(); continue; }
+            current.Append(ch);
+        }
+        if (current.Length > 0) groups.Add(current.ToString());   // unterminated: take what there is
+
+        if (groups.Count > 1)
+        {
+            foreach (var group in groups)
+            {
+                foreach (var (k, v) in ParseAttributes("[" + group + "]"))
+                    result[k] = v;
+            }
+            return result;
+        }
+
+        var inner = groups.Count == 1 ? groups[0].Trim() : "";
         if (inner.Length == 0) return result;
 
         var positional = 0;
