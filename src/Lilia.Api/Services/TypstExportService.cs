@@ -277,8 +277,25 @@ public class TypstExportService : ITypstExportService
 
     private static string RenderEquation(JsonElement content)
     {
-        var latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
-        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "display" : "display";
+        // "source" is the current key and "latex" the legacy one — the same
+        // order DocxExportService and RenderService coalesce in. This read
+        // "latex" only, so an equation saved by today's editor arrived empty
+        // and rendered as "$  $": a blank space where the equation belongs,
+        // in a document that compiles perfectly (2026-09-10). Typst is the
+        // default PDF path, so that was the PDF most documents got.
+        var latex = content.TryGetProperty("source", out var src) ? src.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(latex))
+            latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(latex))
+            latex = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+
+        // Likewise "displayMode" (boolean) is what the editor writes; "mode"
+        // (string) is the older shape.
+        var mode = "display";
+        if (content.TryGetProperty("displayMode", out var dm) && dm.ValueKind is JsonValueKind.False)
+            mode = "inline";
+        else if (content.TryGetProperty("mode", out var m))
+            mode = m.GetString() ?? "display";
         // Typst math syntax: '$...$' for inline, '$ ... $' (with spaces)
         // for display. We convert basic LaTeX math to Typst-compatible
         // form here. KaTeX-compatible LaTeX is mostly Typst-compatible
@@ -838,139 +855,22 @@ public class TypstExportService : ITypstExportService
     /// <summary>Best-effort LaTeX math → Typst math conversion. Most
     /// KaTeX-compatible LaTeX works in Typst's math mode unchanged;
     /// this just rewrites the most common divergences.</summary>
+    /// <summary>
+    /// LaTeX maths → Typst maths.
+    ///
+    /// <para>Sixteen ordered regex rewrites used to live here, and whatever
+    /// none of them matched was passed through — so Typst read the backslash
+    /// as its own escape and <c>\nabla</c> arrived as the variable
+    /// <c>abla</c>. Worse, an expression the rules emptied out produced
+    /// <c>$  $</c>: a document that compiles perfectly with a blank space
+    /// where the mathematics was.</para>
+    ///
+    /// <para>The work now sits in <see cref="LatexToTypst"/> — a scanner, with
+    /// its substitutions held as data in <see cref="LatexToTypstSymbols"/> —
+    /// and anything it cannot express is reported rather than dropped.</para>
+    /// </summary>
     private static string LatexMathToTypst(string latex)
-    {
-        if (string.IsNullOrEmpty(latex)) return "";
-        var s = latex;
-
-        // Top-N LaTeX math commands surfaced by silent_fallback telemetry.
-        // Typst math mode accepts most LaTeX greek/operators as-is
-        // (\alpha, \sum, \int, \in, \to, etc.) but its font-family
-        // commands have a different syntax. Translate the families
-        // first; arguments inside {...} pass through untouched.
-        s = Regex.Replace(s, @"\\mathbb\{([^{}]+)\}", "bb($1)");
-        s = Regex.Replace(s, @"\\mathcal\{([^{}]+)\}", "cal($1)");
-        s = Regex.Replace(s, @"\\mathbf\{([^{}]+)\}", "bold($1)");
-        s = Regex.Replace(s, @"\\mathit\{([^{}]+)\}", "italic($1)");
-        s = Regex.Replace(s, @"\\mathrm\{([^{}]+)\}", "upright($1)");
-        s = Regex.Replace(s, @"\\mathsf\{([^{}]+)\}", "sans($1)");
-        s = Regex.Replace(s, @"\\mathtt\{([^{}]+)\}", "mono($1)");
-        s = Regex.Replace(s, @"\\mathfrak\{([^{}]+)\}", "frak($1)");
-
-        // \text{X} inside math mode → upright text. Typst spells this
-        // as `"X"` (literal string in math).
-        s = Regex.Replace(s, @"\\text\{([^{}]+)\}", "\"$1\"");
-
-        // Matrix environments — must run BEFORE the line-break
-        // translation below, because the matrix split relies on
-        // the LaTeX `\\\\` row-separator surviving intact. Doing
-        // the line-break pass first would turn it into `\ ` and
-        // every matrix would render as a single row.
-        s = ConvertMatrixEnvironments(s);
-
-        // Spacing commands → Typst equivalents. Run before bareOps
-        // strip so `\quad` doesn't end up half-stripped.
-        s = Regex.Replace(s, @"\\quad(?![A-Za-z])", "quad");
-        s = Regex.Replace(s, @"\\qquad(?![A-Za-z])", "wide");
-        s = Regex.Replace(s, @"\\,(?![A-Za-z])", "thin");
-        s = Regex.Replace(s, @"\\;(?![A-Za-z])", "med");
-        s = Regex.Replace(s, @"\\:(?![A-Za-z])", "med");
-        s = Regex.Replace(s, @"\\!(?![A-Za-z])", "");
-
-        // \\ inside math is a line break in LaTeX. Typst math line
-        // break is single backslash; remap to avoid the parser
-        // treating it as escape.
-        s = Regex.Replace(s, @"\\\\(?!\\)", "\\ ");
-
-        // Big operators that need a name swap (LaTeX → Typst name).
-        var operatorRenames = new (string From, string To)[]
-        {
-            ("int",    "integral"),
-            ("iint",   "integral.double"),
-            ("iiint",  "integral.triple"),
-            ("oint",   "integral.cont"),
-            ("prod",   "product"),
-            ("coprod", "product.co"),
-            ("lim",    "limits.lim"),
-            ("limsup", "limits.lim.sup"),
-            ("liminf", "limits.lim.inf"),
-        };
-        foreach (var (from, to) in operatorRenames)
-        {
-            // `\b` doesn't fire between letter and `_` (both word chars),
-            // so use an explicit non-letter lookahead. End-of-string also
-            // counts as a valid match boundary.
-            s = Regex.Replace(s, $@"\\{from}(?![A-Za-z])", to);
-        }
-
-        // Functions / operators Typst math accepts as bare identifiers
-        // — just strip the leading LaTeX backslash.
-        var bareOps = new[]
-        {
-            "sum",
-            "min", "max", "sup", "inf",
-            "sin", "cos", "tan", "cot", "sec", "csc",
-            "arcsin", "arccos", "arctan",
-            "sinh", "cosh", "tanh",
-            "log", "ln", "exp", "det", "dim", "ker", "deg",
-            "gcd", "hom", "arg", "Pr", "mod",
-        };
-        foreach (var op in bareOps)
-        {
-            s = Regex.Replace(s, $@"\\{op}(?![A-Za-z])", op);
-        }
-
-        // \sqrt{x} → sqrt(x) ; \sqrt[n]{x} → root(n, x)
-        // MUST run before \frac so a nested `\frac{1}{\sqrt{2}}` has
-        // the inner braces resolved before \frac's `[^{}]+` test.
-        s = Regex.Replace(s, @"\\sqrt\[([^\]]+)\]\{([^{}]+)\}", "root($1, $2)");
-        s = Regex.Replace(s, @"\\sqrt\{([^{}]+)\}", "sqrt($1)");
-
-        // \frac{a}{b} → frac(a, b) — Typst's function-call syntax.
-        // Apply in a loop so nested `\frac{\frac{a}{b}}{c}` resolves
-        // bottom-up (each pass eats the innermost match).
-        for (int pass = 0; pass < 5; pass++)
-        {
-            var next = Regex.Replace(s, @"\\frac\{([^{}]+)\}\{([^{}]+)\}", "frac($1, $2)");
-            if (next == s) break;
-            s = next;
-        }
-        // (matrix env conversion moved earlier in the pipeline so it
-        // runs before the `\\\\` line-break replacement.)
-
-        // Greek letters — Typst math accepts these as bare identifiers
-        // ("alpha", "beta", "Gamma", etc.). Strip the leading backslash.
-        var greekLowercase = new[]
-        {
-            "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon",
-            "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda",
-            "mu", "nu", "xi", "pi", "varpi", "rho", "varrho", "sigma",
-            "varsigma", "tau", "upsilon", "phi", "varphi", "chi", "psi",
-            "omega",
-        };
-        var greekUppercase = new[]
-        {
-            "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma",
-            "Upsilon", "Phi", "Psi", "Omega",
-        };
-        foreach (var g in greekLowercase.Concat(greekUppercase))
-        {
-            s = Regex.Replace(s, $@"\\{g}(?![A-Za-z])", g);
-        }
-
-        // _{X} / ^{X} → Typst's _(X) / ^(X) for multi-char sub/super
-        // scripts. LaTeX requires braces; Typst uses parens for groups.
-        // Single-char sub/super (`x_i`, `x^2`) work in both unchanged.
-        s = Regex.Replace(s, @"_\{([^{}]+)\}", "_($1)");
-        s = Regex.Replace(s, @"\^\{([^{}]+)\}", "^($1)");
-
-        // Implicit multiplication. Runs last, once every command above has
-        // produced the identifiers it is allowed to produce — anything still
-        // spelled as a bare letter run at this point is user variables.
-        s = SplitImplicitProducts(s);
-
-        return s;
-    }
+        => LatexToTypst.Convert(latex);
 
     /// <summary>
     /// Separate adjacent single-letter variables so Typst reads them as a

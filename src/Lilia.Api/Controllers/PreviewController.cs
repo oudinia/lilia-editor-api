@@ -410,7 +410,24 @@ public class PreviewController : ControllerBase
             return File(cachedOutput, ContentTypeFor(outputFormat));
         }
 
-        var result = await _typstCompiler.CompileAsync(typstSource, outputFormat);
+        // The generated source ends in #bibliography("references.bib"), so the
+        // file has to be beside it in the work dir. PreviewRenderService has
+        // always passed it; this path did not, so any document with a
+        // reference failed to compile with "file not found" and fell back —
+        // silently, because the fallback works (2026-09-10).
+        Dictionary<string, string>? assets = null;
+        var bibEntries = await _context.BibliographyEntries
+            .Where(e => e.DocumentId == docId)
+            .ToListAsync();
+        if (bibEntries.Count > 0)
+        {
+            assets = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["references.bib"] = BibTeXSerializer.Serialize(bibEntries),
+            };
+        }
+
+        var result = await _typstCompiler.CompileAsync(typstSource, outputFormat, assets);
 
         if (!result.Success)
         {
