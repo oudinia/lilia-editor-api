@@ -133,7 +133,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             // Phase 3 — Stage blocks via COPY (zero EF tracking).
             await tracker.ReportConvertingBlocksAsync(0, parsed.Elements.Count);
             var stagedBlocks = await _bulk.BulkInsertBlockReviewsAsync(
-                EnumerateBlockReviews(sessionId, parsed.Elements),
+                EnumerateBlockReviews(sessionId, parsed),
                 ct);
             _logger.LogInformation("[LatexImport] Staged {Count} block reviews for session {Session}", stagedBlocks, sessionId);
 
@@ -146,7 +146,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             {
                 try
                 {
-                    var mirrored = await StageRevMirrorAsync(sessionId, loaded.DocumentTitle, parsed.Elements, ct);
+                    var mirrored = await StageRevMirrorAsync(sessionId, loaded.DocumentTitle, parsed, ct);
                     _logger.LogInformation(
                         "[LatexImport] Mirrored {Count} blocks to rev_* for session {Session}",
                         mirrored, sessionId);
@@ -258,7 +258,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     private async Task<int> StageRevMirrorAsync(
         Guid sessionId,
         string documentTitle,
-        List<ImportElement> elements,
+        ImportDocument doc,
         CancellationToken ct)
     {
         var revDocId = Guid.NewGuid();
@@ -272,13 +272,58 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         await _context.SaveChangesAsync(ct);
 
         return await _bulk.BulkInsertRevBlocksAsync(
-            EnumerateRevBlocks(revDocId, elements),
+            EnumerateRevBlocks(revDocId, doc),
             ct);
     }
 
-    // Mirrors EnumerateBlockReviews — same (type, content) mapping, different target shape.
-    private static IEnumerable<RevBlock> EnumerateRevBlocks(Guid revDocumentId, List<ImportElement> elements)
+    /// <summary>
+    /// The title block a LaTeX preamble implies, or null if it implies none.
+    ///
+    /// <para>The parser reads <c>\title</c>, <c>\author</c> and <c>\date</c>
+    /// into metadata and strips them from the body, and the import element
+    /// vocabulary has no title element — so nothing carried them into the
+    /// document. Exporting a paper and importing it back returned every
+    /// section, both proofs and all its citations, and silently lost the
+    /// author (measured 2026-09-10: "El Yadini Salma" absent from the
+    /// round trip).</para>
+    ///
+    /// <para>Lilia keeps a title, author and date in a <c>title</c> block, so
+    /// that is the faithful inverse of what the exporter emits. Built only
+    /// when the preamble actually said something: a fragment with no
+    /// <c>\title</c> should not gain an empty banner.</para>
+    /// </summary>
+    private static (string type, object content)? TitleBlockFor(ImportDocument doc)
     {
+        var title = doc.Title?.Trim() ?? "";
+        var author = doc.Metadata?.Author?.Trim() ?? "";
+        var date = doc.Metadata?.Date?.Trim() ?? "";
+
+        if (title.Length == 0 && author.Length == 0 && date.Length == 0) return null;
+
+        return ("title", new { title, author, date });
+    }
+
+    // Mirrors EnumerateBlockReviews — same (type, content) mapping, different target shape.
+    private static IEnumerable<RevBlock> EnumerateRevBlocks(Guid revDocumentId, ImportDocument doc)
+    {
+        var elements = doc.Elements;
+        var offset = 0;
+
+        if (TitleBlockFor(doc) is { } titleBlock)
+        {
+            yield return new RevBlock
+            {
+                Id = Guid.NewGuid(),
+                RevDocumentId = revDocumentId,
+                Type = titleBlock.type,
+                Content = JsonDocument.Parse(JsonSerializer.Serialize(titleBlock.content)),
+                SortOrder = 0,
+                Depth = 0,
+                Status = "kept",
+            };
+            offset = 1;
+        }
+
         for (var i = 0; i < elements.Count; i++)
         {
             var (type, content) = MapImportElementToBlock(elements[i]);
@@ -288,7 +333,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                 RevDocumentId = revDocumentId,
                 Type = type,
                 Content = JsonDocument.Parse(JsonSerializer.Serialize(content)),
-                SortOrder = i * 100,
+                SortOrder = (i + offset) * 100,
                 Depth = 0,
                 Status = "kept",
             };
@@ -296,8 +341,28 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     }
 
     // Yields ImportBlockReview rows lazily — never materialises the full list.
-    private static IEnumerable<ImportBlockReview> EnumerateBlockReviews(Guid sessionId, List<ImportElement> elements)
+    private static IEnumerable<ImportBlockReview> EnumerateBlockReviews(Guid sessionId, ImportDocument doc)
     {
+        var elements = doc.Elements;
+        var offset = 0;
+
+        if (TitleBlockFor(doc) is { } titleBlock)
+        {
+            yield return new ImportBlockReview
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                BlockIndex = 0,
+                BlockId = $"blk_{Guid.NewGuid():N}",
+                Status = "pending",
+                OriginalContent = JsonDocument.Parse(JsonSerializer.Serialize(titleBlock.content)),
+                OriginalType = titleBlock.type,
+                SortOrder = 0,
+                Depth = 0,
+            };
+            offset = 1;
+        }
+
         for (var i = 0; i < elements.Count; i++)
         {
             var (type, content) = MapImportElementToBlock(elements[i]);
@@ -305,12 +370,12 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             {
                 Id = Guid.NewGuid(),
                 SessionId = sessionId,
-                BlockIndex = i,
+                BlockIndex = i + offset,
                 BlockId = $"blk_{Guid.NewGuid():N}",
                 Status = "pending",
                 OriginalContent = JsonDocument.Parse(JsonSerializer.Serialize(content)),
                 OriginalType = type,
-                SortOrder = i * 100,
+                SortOrder = (i + offset) * 100,
                 Depth = 0,
             };
         }
