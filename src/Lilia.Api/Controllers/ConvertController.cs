@@ -1,3 +1,4 @@
+using Lilia.Core.Entities;
 using Lilia.Engines;
 using System.Diagnostics;
 using System.Text;
@@ -24,6 +25,7 @@ public class ConvertController : ControllerBase
     private readonly IDocxImportService _docxImportService;
     private readonly IDocxExportService _docxExportService;
     private readonly ILatexParser _latexParser;
+    private readonly IRenderService _renderService;
     private readonly IDistributedCache _cache;
     private readonly ILogger<ConvertController> _logger;
 
@@ -36,12 +38,14 @@ public class ConvertController : ControllerBase
         IDocxImportService docxImportService,
         IDocxExportService docxExportService,
         ILatexParser latexParser,
+        IRenderService renderService,
         IDistributedCache cache,
         ILogger<ConvertController> logger)
     {
         _docxImportService = docxImportService;
         _docxExportService = docxExportService;
         _latexParser = latexParser;
+        _renderService = renderService;
         _cache = cache;
         _logger = logger;
     }
@@ -1094,6 +1098,64 @@ public class ConvertController : ControllerBase
     /// <summary>
     /// Parse raw LaTeX text and return structured editor blocks.
     /// </summary>
+    /// <summary>
+    /// Render a single block to LaTeX, using the same renderer the document's
+    /// own PDF export uses.
+    /// </summary>
+    /// <remarks>
+    /// The table tool showed LaTeX produced by its own client-side generator,
+    /// which is a second implementation of something <see cref="IRenderService"/>
+    /// already does — and a weaker one: it cannot emit <c>\multicolumn</c> or
+    /// <c>\multirow</c> at all, while <c>RenderTableToLatex</c> tracks covered
+    /// cells and handles longtable, short captions and column alignment.
+    ///
+    /// An author editing in the tool was therefore shown LaTeX that was not what
+    /// their document would compile. This endpoint is the one source of truth
+    /// for the grid → LaTeX direction, as <c>latex-to-blocks</c> is for the
+    /// reverse.
+    ///
+    /// Stateless: <c>RenderBlockToLatex</c> needs no document and touches no
+    /// database, so nothing here reads or writes the caller's data.
+    /// </remarks>
+    [HttpPost("block-to-latex")]
+    [Authorize]
+    [ProducesResponseType(typeof(BlockToLatexResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public IActionResult BlockToLatex([FromBody] BlockToLatexRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Type))
+            return BadRequest(new ErrorResponse { Message = "Block type is required.", Code = "EMPTY_INPUT" });
+
+        if (request.Content.ValueKind == JsonValueKind.Undefined || request.Content.ValueKind == JsonValueKind.Null)
+            return BadRequest(new ErrorResponse { Message = "Block content is required.", Code = "EMPTY_INPUT" });
+
+        var raw = request.Content.GetRawText();
+        if (raw.Length > MaxLatexTextLength)
+            return BadRequest(new ErrorResponse { Message = $"Block content must be at most {MaxLatexTextLength} characters.", Code = "INPUT_TOO_LARGE" });
+
+        try
+        {
+            var block = new Block
+            {
+                Id = Guid.NewGuid(),
+                Type = request.Type,
+                Content = JsonDocument.Parse(raw),
+            };
+
+            var latex = _renderService.RenderBlockToLatex(block);
+            return Ok(new BlockToLatexResponse(latex ?? string.Empty));
+        }
+        catch (JsonException ex)
+        {
+            return BadRequest(new ErrorResponse { Message = $"Block content is not valid JSON: {ex.Message}", Code = "INVALID_JSON" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Convert] block-to-latex failed for type {Type}", request.Type);
+            return BadRequest(new ErrorResponse { Message = "Could not render that block to LaTeX.", Code = "RENDER_FAILED" });
+        }
+    }
+
     [HttpPost("latex-to-blocks")]
     [Authorize]
     [ProducesResponseType(typeof(LatexToBlocksResponse), StatusCodes.Status200OK)]
@@ -1402,6 +1464,12 @@ public class ConvertController : ControllerBase
         return text;
     }
 }
+
+/// <summary>One block, as the editor holds it: its type and its content JSON.</summary>
+public record BlockToLatexRequest(string Type, JsonElement Content);
+
+/// <summary>The LaTeX the document's own renderer would emit for that block.</summary>
+public record BlockToLatexResponse(string Latex);
 
 public record LatexToBlocksRequest(string Latex);
 
