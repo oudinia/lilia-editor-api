@@ -42,6 +42,40 @@ public static class LatexText
     /// <para>The recognised set matches the client's renderer exactly. Widening
     /// it on one side only would recreate the divergence.</para>
     /// </summary>
+    /// <summary>
+    /// Whether the whole cell is one <c>\textbf{…}</c> — not merely whether it
+    /// contains one.
+    /// </summary>
+    /// <remarks>
+    /// Used by the table renderer so a header the author already bolded is not
+    /// bolded a second time. Walks the braces rather than matching on the last
+    /// character, because <c>\textbf{a} and \textbf{b}</c> also starts with the
+    /// command and ends with a brace, and is not wholly bold.
+    /// </remarks>
+    public static bool IsWhollyBold(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        const string Bold = "\\textbf{";
+        var t = text.Trim();
+        if (!t.StartsWith(Bold, StringComparison.Ordinal) || !t.EndsWith("}", StringComparison.Ordinal))
+            return false;
+
+        var depth = 0;
+        for (var i = Bold.Length - 1; i < t.Length; i++)
+        {
+            if (t[i] == '\\') { i++; continue; }          // an escaped brace is literal
+            if (t[i] == '{') depth++;
+            else if (t[i] == '}')
+            {
+                depth--;
+                // The command's own brace closed before the end, so whatever
+                // follows is outside it.
+                if (depth == 0) return i == t.Length - 1;
+            }
+        }
+        return false;
+    }
+
     public static string EscapeCell(string? text)
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
