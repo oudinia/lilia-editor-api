@@ -76,6 +76,32 @@ public static class LatexText
         return false;
     }
 
+    /// <summary>
+    /// Whether the whole cell is a single <c>$…$</c> maths run.
+    /// </summary>
+    /// <remarks>
+    /// <c>\textbf</c> switches the TEXT font, and content inside <c>$…$</c> is
+    /// typeset in math mode and does not inherit it — so <c>\textbf{$\Delta$}</c>
+    /// changes no glyph. Bolding maths needs <c>\bm</c> or <c>\boldmath</c>,
+    /// which is a different decision from "headers are bold" and not one to make
+    /// on an author's behalf. So the table renderer leaves these unwrapped
+    /// rather than emitting a wrapper that does nothing.
+    /// </remarks>
+    public static bool IsWhollyMaths(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        var t = text.Trim();
+        if (t.Length < 2 || t[0] != '$' || t[^1] != '$') return false;
+
+        // Exactly one run: the opening $ must close at the very end.
+        for (var i = 1; i < t.Length - 1; i++)
+        {
+            if (t[i] == '\\') { i++; continue; }   // an escaped dollar is literal
+            if (t[i] == '$') return false;
+        }
+        return true;
+    }
+
     public static string EscapeCell(string? text)
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;

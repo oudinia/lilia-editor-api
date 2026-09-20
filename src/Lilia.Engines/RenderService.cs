@@ -2059,7 +2059,12 @@ public partial class RenderService : IRenderService
                     // same, but is not what anyone wrote, and it is the first
                     // thing they see when they read the source.
                     var escaped = LatexText.EscapeCell(cellText);
-                    var rendered = LatexText.IsWhollyBold(escaped) ? escaped : $@"\textbf{{{escaped}}}";
+                    // Bold once, and never around maths — \textbf does not reach
+                    // inside $…$, so wrapping it changes nothing and leaves a
+                    // no-op in source the author reads.
+                    var rendered = LatexText.IsWhollyBold(escaped) || LatexText.IsWhollyMaths(escaped)
+                        ? escaped
+                        : $@"\textbf{{{escaped}}}";
 
                     rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                     headerCells.Add(rendered);

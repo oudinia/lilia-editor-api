@@ -874,6 +874,30 @@ public class RenderServiceTests
         result.Should().Contain("\\textbf{\\textbf{a} b}");
     }
 
+    [Fact]
+    public void RenderBlockToLatex_Table_DoesNotWrapAMathsOnlyHeaderInTextbf()
+    {
+        // \textbf switches the text font; $…$ is typeset in math mode and does
+        // not inherit it, so \textbf{$\Delta$} changes no glyph. Emitting it
+        // puts a no-op in source the author is meant to read.
+        var block = HeaderTable("{\"headers\": [\"Dataset\", \"$\\\\Delta$\"], \"rows\": [[\"CIFAR\", \"$+2.7$\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().Contain("\\textbf{Dataset}");
+        result.Should().NotContain("\\textbf{$");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_Table_StillBoldsAHeaderThatOnlyContainsSomeMaths()
+    {
+        // "Surface gravity $\kappa$" has text outside the maths, and that text
+        // still needs bolding.
+        var block = HeaderTable("{\"headers\": [\"Gravity $\\\\kappa$\"], \"rows\": [[\"x\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().Contain("\\textbf{Gravity $");
+    }
+
     private static Block HeaderTable(string contentJson) => new()
     {
         Id = Guid.NewGuid(),
