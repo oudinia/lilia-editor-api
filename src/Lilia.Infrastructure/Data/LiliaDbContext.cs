@@ -26,6 +26,12 @@ public class LiliaDbContext : DbContext
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<DocumentLabel> DocumentLabels => Set<DocumentLabel>();
     public DbSet<DocumentCollaborator> DocumentCollaborators => Set<DocumentCollaborator>();
+
+    // Tables as their own entity — owned by an author, referenced by any number
+    // of documents. See database/040_tables_entity.sql.
+    public DbSet<TableEntity> Tables => Set<TableEntity>();
+    public DbSet<DocumentTable> DocumentTables => Set<DocumentTable>();
+    public DbSet<TableCollaborator> TableCollaborators => Set<TableCollaborator>();
     public DbSet<DocumentGroup> DocumentGroups => Set<DocumentGroup>();
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
     // Templates are now documents with is_template = true — no separate table
@@ -172,6 +178,58 @@ public class LiliaDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // --- Tables as their own entity (database/040_tables_entity.sql) ---
+        //
+        // Mapped explicitly because this context has no global snake_case
+        // convention: every column that differs from its property name says so.
+        modelBuilder.Entity<TableEntity>(e =>
+        {
+            e.ToTable("tables");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.OwnerId).HasColumnName("owner_id").IsRequired();
+            e.Property(x => x.Caption).HasColumnName("caption").IsRequired();
+            e.Property(x => x.Label).HasColumnName("label").IsRequired();
+            e.Property(x => x.Content).HasColumnName("content").HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.DeletedAt).HasColumnName("deleted_at");
+            // Soft-deleted tables are gone as far as every query is concerned.
+            e.HasQueryFilter(x => x.DeletedAt == null);
+            e.HasIndex(x => new { x.OwnerId, x.UpdatedAt });
+        });
+
+        modelBuilder.Entity<DocumentTable>(e =>
+        {
+            e.ToTable("document_tables");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.DocumentId).HasColumnName("document_id");
+            e.Property(x => x.TableId).HasColumnName("table_id");
+            e.Property(x => x.BlockId).HasColumnName("block_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(x => new { x.DocumentId, x.TableId }).IsUnique();
+            e.HasOne(x => x.Table).WithMany(t => t!.Documents)
+                .HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Document).WithMany()
+                .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TableCollaborator>(e =>
+        {
+            e.ToTable("table_collaborators");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.TableId).HasColumnName("table_id");
+            e.Property(x => x.UserId).HasColumnName("user_id").IsRequired();
+            e.Property(x => x.RoleId).HasColumnName("role_id");
+            e.Property(x => x.InvitedBy).HasColumnName("invited_by");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(x => new { x.TableId, x.UserId }).IsUnique();
+            e.HasOne(x => x.Table).WithMany(t => t!.Collaborators)
+                .HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         // --- LaTeX catalog ---
         modelBuilder.Entity<LatexPackage>(e =>
