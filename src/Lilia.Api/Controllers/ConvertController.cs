@@ -1,3 +1,4 @@
+using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Lilia.Engines;
 using System.Diagnostics;
@@ -26,6 +27,7 @@ public class ConvertController : ControllerBase
     private readonly IDocxExportService _docxExportService;
     private readonly ILatexParser _latexParser;
     private readonly IRenderService _renderService;
+    private readonly ILaTeXRenderService _latexRenderService;
     private readonly IDistributedCache _cache;
     private readonly ILogger<ConvertController> _logger;
 
@@ -39,6 +41,7 @@ public class ConvertController : ControllerBase
         IDocxExportService docxExportService,
         ILatexParser latexParser,
         IRenderService renderService,
+        ILaTeXRenderService latexRenderService,
         IDistributedCache cache,
         ILogger<ConvertController> logger)
     {
@@ -46,6 +49,7 @@ public class ConvertController : ControllerBase
         _docxExportService = docxExportService;
         _latexParser = latexParser;
         _renderService = renderService;
+        _latexRenderService = latexRenderService;
         _cache = cache;
         _logger = logger;
     }
@@ -1156,6 +1160,61 @@ public class ConvertController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Render a block and compile it — does this thing actually build?
+    /// </summary>
+    /// <remarks>
+    /// One backend, one pattern, many tools: this is block-generic, so the
+    /// equation, figure and code tools inherit it the day they want it. Nothing
+    /// here knows what a table is.
+    ///
+    /// <b>Why it exists.</b> The table tool was calling
+    /// <c>POST /api/latex/validate</c> with a bare fragment. That endpoint
+    /// compiles against a precompiled <c>standalone</c> format, which has no
+    /// <c>table</c> float — so <b>every</b> table came back "Environment table
+    /// undefined". A verdict about our harness rather than the author's work,
+    /// and worse than no verdict at all.
+    ///
+    /// A block is judged in the preamble a real document would give it, so
+    /// passing here means passing in the paper it is going into.
+    /// </remarks>
+    [HttpPost("block/validate")]
+    [Authorize]
+    [ProducesResponseType(typeof(BlockValidationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ValidateBlock([FromBody] BlockToLatexRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Type))
+            return BadRequest(new ErrorResponse { Message = "Block type is required.", Code = "EMPTY_INPUT" });
+
+        var raw = request.Content.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? "{}" : request.Content.GetRawText();
+        if (raw.Length > MaxLatexTextLength)
+            return BadRequest(new ErrorResponse { Message = $"Block content must be at most {MaxLatexTextLength} characters.", Code = "INPUT_TOO_LARGE" });
+
+        string latex;
+        try
+        {
+            var block = new Block { Id = Guid.NewGuid(), Type = request.Type, Content = JsonDocument.Parse(raw) };
+            latex = _renderService.RenderBlockToLatex(block) ?? string.Empty;
+        }
+        catch (JsonException ex)
+        {
+            return BadRequest(new ErrorResponse { Message = $"Block content is not valid JSON: {ex.Message}", Code = "INVALID_JSON" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Convert] block/validate render failed for {Type}", request.Type);
+            return Ok(new BlockValidationResponse(false, "Could not render that block to LaTeX.", string.Empty, Array.Empty<string>()));
+        }
+
+        if (string.IsNullOrWhiteSpace(latex))
+            return Ok(new BlockValidationResponse(false, "That block rendered to nothing.", string.Empty, Array.Empty<string>()));
+
+        var result = await _latexRenderService.ValidateAsync(BlockPreamble.Wrap(latex));
+        return Ok(new BlockValidationResponse(result.Valid, result.Error, latex, result.Warnings));
+    }
+
     [HttpPost("latex-to-blocks")]
     [Authorize]
     [ProducesResponseType(typeof(LatexToBlocksResponse), StatusCodes.Status200OK)]
@@ -1470,6 +1529,9 @@ public record BlockToLatexRequest(string Type, JsonElement Content);
 
 /// <summary>The LaTeX the document's own renderer would emit for that block.</summary>
 public record BlockToLatexResponse(string Latex);
+
+/// <summary>Whether a block builds, and the LaTeX it made.</summary>
+public record BlockValidationResponse(bool Valid, string? Error, string Latex, IReadOnlyList<string> Warnings);
 
 public record LatexToBlocksRequest(string Latex);
 

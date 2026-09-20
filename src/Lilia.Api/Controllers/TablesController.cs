@@ -21,7 +21,6 @@ public class TablesController : ControllerBase
 {
     private readonly LiliaDbContext _db;
     private readonly ILogger<TablesController> _logger;
-
     public TablesController(LiliaDbContext db, ILogger<TablesController> logger)
     {
         _db = db;
