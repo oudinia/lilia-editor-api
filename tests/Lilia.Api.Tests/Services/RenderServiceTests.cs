@@ -837,6 +837,52 @@ public class RenderServiceTests
         };
     }
 
+    [Fact]
+    public void RenderBlockToLatex_Table_BoldsTheHeaderRow()
+    {
+        var block = HeaderTable("{\"headers\": [\"Dataset\", \"Score\"], \"rows\": [[\"CIFAR\", \"92.1\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().Contain("\\textbf{Dataset}");
+        result.Should().Contain("\\textbf{Score}");
+        // Body cells are not headers.
+        result.Should().NotContain("\\textbf{CIFAR}");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_Table_DoesNotBoldAHeaderTheAuthorAlreadyBolded()
+    {
+        // The table tool stores a cell's LaTeX as its text, so a header the
+        // author bolded arrives as "\textbf{Dataset}". Wrapping it again gave
+        // \textbf{\textbf{Dataset}}: it compiles and renders the same, but it
+        // is not what anyone wrote, and the source is meant to be read.
+        var block = HeaderTable("{\"headers\": [\"\\\\textbf{Dataset}\", \"Score\"], \"rows\": [[\"CIFAR\", \"92.1\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().NotContain("\\textbf{\\textbf{");
+        result.Should().Contain("\\textbf{Dataset}");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_Table_StillBoldsAHeaderThatMerelyContainsBold()
+    {
+        // "\textbf{a} b" is not wholly bold, so the header still needs wrapping
+        // for the rest of it to be bold.
+        var block = HeaderTable("{\"headers\": [\"\\\\textbf{a} b\"], \"rows\": [[\"x\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().Contain("\\textbf{\\textbf{a} b}");
+    }
+
+    private static Block HeaderTable(string contentJson) => new()
+    {
+        Id = Guid.NewGuid(),
+        DocumentId = Guid.NewGuid(),
+        Type = "table",
+        Content = JsonDocument.Parse(contentJson),
+        SortOrder = 0
+    };
+
     private static Block CreateTableBlock(Guid documentId, int sortOrder)
     {
         return new Block

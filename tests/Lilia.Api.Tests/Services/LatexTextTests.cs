@@ -96,4 +96,47 @@ public class LatexTextTests
         LatexText.EscapeCell("\\textbf{oops").Should().StartWith("\\textbackslash{}");
         LatexText.EscapeCell("$unclosed").Should().Be("\\$unclosed");
     }
+
+    // ── IsWhollyBold — so the table renderer does not bold a header twice ──
+
+    [Fact]
+    public void A_cell_that_is_entirely_one_textbf_is_wholly_bold()
+    {
+        LatexText.IsWhollyBold("\\textbf{Ours}").Should().BeTrue();
+        LatexText.IsWhollyBold("  \\textbf{Ours}  ").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Nested_braces_inside_the_command_still_count_as_wholly_bold()
+    {
+        LatexText.IsWhollyBold("\\textbf{a{b}c}").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Two_bold_runs_are_not_wholly_bold()
+    {
+        // Starts with the command and ends with a brace, so matching on the
+        // first and last character would get this wrong.
+        LatexText.IsWhollyBold("\\textbf{a} and \\textbf{b}").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Bold_followed_by_plain_text_is_not_wholly_bold()
+    {
+        LatexText.IsWhollyBold("\\textbf{a} b").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Plain_text_and_empty_cells_are_not_wholly_bold()
+    {
+        LatexText.IsWhollyBold("Ours").Should().BeFalse();
+        LatexText.IsWhollyBold("").Should().BeFalse();
+        LatexText.IsWhollyBold(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_unclosed_textbf_is_not_wholly_bold()
+    {
+        LatexText.IsWhollyBold("\\textbf{oops").Should().BeFalse();
+    }
 }

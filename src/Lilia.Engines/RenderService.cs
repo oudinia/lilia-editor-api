@@ -2053,7 +2053,13 @@ public partial class RenderService : IRenderService
                     var cellText = GetCellText(h);
                     var colspan = GetCellIntProp(h, "colspan", 1);
                     var rowspan = GetCellIntProp(h, "rowspan", 1);
-                    var rendered = $@"\textbf{{{LatexText.EscapeCell(cellText)}}}";
+                    // Bold once. A cell the author already bolded arrives as
+                    // "\textbf{Ours}", and wrapping it again gives
+                    // \textbf{\textbf{Ours}} — which compiles and renders the
+                    // same, but is not what anyone wrote, and it is the first
+                    // thing they see when they read the source.
+                    var escaped = LatexText.EscapeCell(cellText);
+                    var rendered = LatexText.IsWhollyBold(escaped) ? escaped : $@"\textbf{{{escaped}}}";
 
                     rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                     headerCells.Add(rendered);
