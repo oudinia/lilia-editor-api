@@ -139,4 +139,37 @@ public class LatexTextTests
     {
         LatexText.IsWhollyBold("\\textbf{oops").Should().BeFalse();
     }
+
+    // ── IsWhollyMaths — \textbf does not reach inside $…$ ──
+
+    [Fact]
+    public void A_cell_that_is_one_maths_run_is_wholly_maths()
+    {
+        LatexText.IsWhollyMaths("$\\Delta$").Should().BeTrue();
+        LatexText.IsWhollyMaths("  $x^2$  ").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Two_maths_runs_are_not_wholly_maths()
+    {
+        // Starts and ends with $, so checking only the ends would be wrong —
+        // the " to " between them is text and does need bolding.
+        LatexText.IsWhollyMaths("$a$ to $b$").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Maths_mixed_with_text_is_not_wholly_maths()
+    {
+        LatexText.IsWhollyMaths("Surface gravity $\\kappa$").Should().BeFalse();
+        LatexText.IsWhollyMaths("$\\kappa$ (units)").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Plain_text_and_empty_cells_are_not_wholly_maths()
+    {
+        LatexText.IsWhollyMaths("Dataset").Should().BeFalse();
+        LatexText.IsWhollyMaths("$").Should().BeFalse();
+        LatexText.IsWhollyMaths("").Should().BeFalse();
+        LatexText.IsWhollyMaths(null).Should().BeFalse();
+    }
 }
