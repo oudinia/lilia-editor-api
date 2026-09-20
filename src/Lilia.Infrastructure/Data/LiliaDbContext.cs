@@ -195,6 +195,7 @@ public class LiliaDbContext : DbContext
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.DeletedAt).HasColumnName("deleted_at");
+            e.Property(x => x.CopiedFrom).HasColumnName("copied_from");
             // Soft-deleted tables are gone as far as every query is concerned.
             e.HasQueryFilter(x => x.DeletedAt == null);
             e.HasIndex(x => new { x.OwnerId, x.UpdatedAt });

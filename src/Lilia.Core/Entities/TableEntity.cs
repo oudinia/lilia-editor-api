@@ -37,6 +37,18 @@ public class TableEntity
 
     public DateTime? DeletedAt { get; set; }
 
+    /// <summary>
+    /// The table this one was copied from, when it was made by detaching rather
+    /// than from scratch.
+    /// </summary>
+    /// <remarks>
+    /// Olivia's rule: the choice happens at insert, not at divergence — link by
+    /// default, because copying is the recoverable mistake of the two. When
+    /// someone does take a copy, this records where it came from, because a
+    /// reference model dies of forking invisibly.
+    /// </remarks>
+    public Guid? CopiedFrom { get; set; }
+
     public ICollection<DocumentTable> Documents { get; set; } = new List<DocumentTable>();
     public ICollection<TableCollaborator> Collaborators { get; set; } = new List<TableCollaborator>();
 }

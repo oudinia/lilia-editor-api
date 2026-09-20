@@ -98,6 +98,7 @@ public class TablesController : ControllerBase
             Caption = dto.Caption ?? string.Empty,
             Label = dto.Label ?? string.Empty,
             Content = JsonDocument.Parse(dto.Content.GetRawText()),
+            CopiedFrom = dto.CopiedFrom,
         };
         _db.Tables.Add(t);
         await _db.SaveChangesAsync();
@@ -158,11 +159,30 @@ public class TablesController : ControllerBase
             (x.OwnerId == userId || x.Collaborators.Any(c => c.UserId == userId)));
         if (!exists) return NotFound();
 
-        var rows = await _db.DocumentTables
+        // Permission-filtered. A table can be shared with someone who has no
+        // access to the papers it is used in, and "used in 3 documents" must not
+        // become a list of their titles. Olivia caught this in review.
+        //
+        // The count is still honest — you are told the table is used elsewhere,
+        // just not by whom or in what. Hiding the number instead would make a
+        // shared table look unused and invite someone to delete it.
+        var links = await _db.DocumentTables
             .Where(dt => dt.TableId == id)
-            .Select(dt => new TableUsageDto(dt.DocumentId, dt.Document!.Title, dt.BlockId))
+            .Select(dt => new
+            {
+                dt.DocumentId,
+                dt.BlockId,
+                Title = dt.Document!.Title,
+                Visible = dt.Document!.OwnerId == userId
+                          || dt.Document!.Collaborators.Any(c => c.UserId == userId),
+            })
             .ToListAsync();
-        return Ok(rows);
+
+        return Ok(new TableUsageResponse(
+            links.Count,
+            links.Where(l => l.Visible)
+                 .Select(l => new TableUsageDto(l.DocumentId, l.Title, l.BlockId))
+                 .ToList()));
     }
 
     /// <summary>Attach this table to a document, by reference.</summary>
@@ -229,5 +249,21 @@ public record TableSummaryDto(
 
 public record TableUsageDto(Guid DocumentId, string DocumentTitle, Guid? BlockId);
 
+/// <summary>
+/// Where a table is used. <paramref name="Total"/> counts every document;
+/// <paramref name="Visible"/> holds only the ones this caller may see.
+/// </summary>
+/// <remarks>
+/// The two differ when a table is shared more widely than the papers using it.
+/// The share sheet should say so — a recipient sees the table and the count, not
+/// the titles.
+/// </remarks>
+public record TableUsageResponse(int Total, IReadOnlyList<TableUsageDto> Visible);
+
 /// <summary>Create and update take the same body.</summary>
-public record SaveTableDto(string? Caption, string? Label, JsonElement Content);
+/// <param name="CopiedFrom">
+/// Set when this table was made by detaching a copy from another. Provenance is
+/// the point: a reference model dies of forking invisibly, so a fork that
+/// records where it came from is a fork you can still reason about.
+/// </param>
+public record SaveTableDto(string? Caption, string? Label, JsonElement Content, Guid? CopiedFrom = null);
