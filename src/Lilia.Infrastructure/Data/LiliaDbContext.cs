@@ -212,6 +212,7 @@ public class LiliaDbContext : DbContext
             e.HasIndex(x => new { x.DocumentId, x.TableId }).IsUnique();
             e.HasOne(x => x.Table).WithMany(t => t!.Documents)
                 .HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(x => x.Table!.DeletedAt == null);
             e.HasOne(x => x.Document).WithMany()
                 .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -229,6 +230,10 @@ public class LiliaDbContext : DbContext
             e.HasIndex(x => new { x.TableId, x.UserId }).IsUnique();
             e.HasOne(x => x.Table).WithMany(t => t!.Collaborators)
                 .HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
+            // Match the parent's soft-delete filter: a collaborator on a deleted
+            // table should disappear with it, not be filtered out from under a
+            // required relationship.
+            e.HasQueryFilter(x => x.Table!.DeletedAt == null);
         });
 
         // --- LaTeX catalog ---
