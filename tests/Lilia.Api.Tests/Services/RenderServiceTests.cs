@@ -898,6 +898,45 @@ public class RenderServiceTests
         result.Should().Contain("\\textbf{Gravity $");
     }
 
+    [Fact]
+    public void RenderBlockToLatex_Table_KeepsCellsBeyondTheHeaderWidth()
+    {
+        // A four-cell row against a two-column header used to render as
+        // "1 & 2 \\" — the other two cells silently discarded, and the LaTeX
+        // compiled, so nothing ever reported the loss.
+        var block = HeaderTable("{\"headers\": [\"A\", \"B\"], \"rows\": [[\"1\", \"2\", \"3\", \"4\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().Contain("3");
+        result.Should().Contain("4");
+        // The table is as wide as its widest row, so the spec grows too.
+        result.Should().Contain("\\begin{tabular}{llll}");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_Table_PadsAShortRowRatherThanShiftingColumns()
+    {
+        // Too few & means LaTeX shifts the remaining columns left, so values end
+        // up under the wrong headings — a wrong table that compiles.
+        var block = HeaderTable("{\"headers\": [\"A\", \"B\", \"C\"], \"rows\": [[\"1\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        var bodyLine = result.Split('\n').First(l => l.TrimStart().StartsWith("1 "));
+        bodyLine.Count(c => c == '&').Should().Be(2, "a 3-column table needs two separators on every row");
+    }
+
+    [Fact]
+    public void RenderBlockToLatex_Table_CountsAColspanAsTheColumnsItCovers()
+    {
+        // The header occupies 3 columns via a span, so the body's 3 cells fit
+        // and the spec must be 3 wide — not 2, which is the cell count.
+        var block = HeaderTable("{\"headers\": [{\"text\": \"Wide\", \"colspan\": 2}, \"C\"], \"rows\": [[\"1\", \"2\", \"3\"]]}");
+        var result = CreateRenderServiceWithoutDb().RenderBlockToLatex(block);
+
+        result.Should().Contain("\\begin{tabular}{lll}");
+        result.Should().Contain("3");
+    }
+
     private static Block HeaderTable(string contentJson) => new()
     {
         Id = Guid.NewGuid(),

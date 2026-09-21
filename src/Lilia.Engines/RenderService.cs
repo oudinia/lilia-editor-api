@@ -1925,6 +1925,19 @@ public partial class RenderService : IRenderService
     /// verified with pdflatex). <see cref="RenderService.SupportsLongtable"/>
     /// is the guard.</para>
     /// </summary>
+    /// <summary>
+    /// How many columns a row occupies — cells, with each colspan counted as the
+    /// columns it covers rather than as one cell.
+    /// </summary>
+    private static int ExtentOf(JsonElement row)
+    {
+        if (row.ValueKind != JsonValueKind.Array) return 0;
+        var n = 0;
+        foreach (var cell in row.EnumerateArray())
+            n += Math.Max(1, GetCellIntProp(cell, "colspan", 1));
+        return n;
+    }
+
     private string RenderTableToLatex(JsonElement content, bool useLongtable = false)
     {
         var sb = new StringBuilder();
@@ -1936,11 +1949,23 @@ public partial class RenderService : IRenderService
         if (content.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array)
         {
             var rowList = rows.EnumerateArray().ToList();
-            var colCount = hasHeaders
-                ? headers.GetArrayLength()
-                : rowList.Count > 0 && rowList[0].ValueKind == JsonValueKind.Array
-                    ? rowList[0].GetArrayLength()
-                    : 1;
+
+            // The table is as wide as its WIDEST row, not as wide as its header.
+            //
+            // This used to take the header's length (or row 0's) and then break
+            // out of every row that exceeded it — so a four-cell row against a
+            // two-column header rendered as `1 & 2 \\` and the other two cells
+            // were gone. Silently: the LaTeX compiled, the verdict was green,
+            // and the author's data had been discarded to make it so.
+            //
+            // Taking the maximum means nothing is dropped. A row that is too
+            // short is padded with empty cells, which is visible and fixable;
+            // tableProblems reports both cases so the author is told rather than
+            // quietly corrected.
+            var colCount = Math.Max(
+                hasHeaders ? ExtentOf(headers) : 0,
+                rowList.Where(r => r.ValueKind == JsonValueKind.Array).Select(ExtentOf).DefaultIfEmpty(0).Max());
+            if (colCount < 1) colCount = 1;
 
             // 1.3 — Column alignment from content JSON, default to 'l'.
             // Now also honors p/m/b paragraph specifiers when a parallel
@@ -2070,6 +2095,13 @@ public partial class RenderService : IRenderService
                     headerCells.Add(rendered);
                     colIdx += Math.Max(colspan, 1);
                 }
+                // Same padding as the body: a header shorter than the widest
+                // row would shift every column heading left of its data.
+                while (colIdx < colCount)
+                {
+                    headerCells.Add("");
+                    colIdx++;
+                }
                 sb.AppendLine(string.Join(" & ", headerCells) + @" \\");
                 sb.AppendLine(@"\midrule");
                 currentRowIndex++;
@@ -2108,6 +2140,18 @@ public partial class RenderService : IRenderService
                         cells.Add(rendered);
                         colIdx += Math.Max(colspan, 1);
                     }
+
+                    // Pad a short row out to the table's width. Without this a
+                    // row with fewer cells than the column spec emits too few
+                    // `&` and LaTeX silently shifts the remaining columns left,
+                    // so the numbers end up under the wrong headings — a wrong
+                    // table that compiles, which is the worst kind.
+                    while (colIdx < colCount)
+                    {
+                        cells.Add("");
+                        colIdx++;
+                    }
+
                     sb.AppendLine(string.Join(" & ", cells) + @" \\");
 
                     // If no explicit headers, treat first row as header
