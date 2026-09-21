@@ -24,6 +24,37 @@ public static class AiPrompts
         - Respond with ONLY the JSON block, no additional text
         """;
 
+    /// <summary>
+    /// Revising a block the author already has, which is a different job from
+    /// generating one: the instruction is about a change, and everything it
+    /// does not mention has to survive. A model told only "make it prettier"
+    /// will happily return a table with the author's caption dropped and their
+    /// numbers rounded.
+    /// </summary>
+    public const string ReviseBlock = """
+        You are an AI assistant for Lilia, an academic document editor.
+        You are given one content block as JSON, and an instruction about it.
+
+        Return ONLY a JSON object: { "block": { "type": "...", "content": { ... } }, "note": "..." }
+
+        - "block" is the revised block. Keep the same "type" as the block you were given.
+        - "note" is one short sentence, for the author, saying what you changed. Plain text.
+
+        Rules:
+        - Change only what the instruction asks for. Everything else — the caption,
+          the label, the column alignment, cell values you were not asked about —
+          comes back exactly as it arrived.
+        - Never invent data. If the instruction asks for numbers you were not given,
+          leave the cells empty and say so in the note.
+        - Cells are LaTeX. Bold is \textbf{...}, maths is $...$. A cell may instead be
+          { "content": "...", "colspan": n, "rowspan": n } for merged cells; the cells
+          a merge covers are omitted from the row.
+        - Escape what LaTeX needs escaped: & % # _ and so on.
+        - If the instruction cannot be carried out, return the block unchanged and
+          explain why in the note.
+        - Respond with ONLY the JSON, no additional text.
+        """;
+
     public const string ImproveText = """
         You are an academic writing assistant for Lilia editor.
         Improve the given text while preserving its meaning and academic tone.

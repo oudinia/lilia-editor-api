@@ -7,6 +7,13 @@ public interface IAiService
 {
     // AI features
     Task<GenerateBlockResponse> GenerateBlockAsync(string prompt, GenerateBlockContext? context = null);
+    /// <summary>
+    /// Revise an existing block. <paramref name="compilerError"/> is fed back on
+    /// a retry: the model gets to see why LaTeX rejected its last attempt,
+    /// which is the difference between one guess and a corrected one.
+    /// </summary>
+    Task<ReviseBlockResult> ReviseBlockAsync(
+        string type, JsonElement content, string instruction, string? compilerError = null);
     Task<ImproveTextResponse> ImproveTextAsync(string text, string action);
     Task<SuggestEquationResponse> SuggestEquationAsync(string description);
     Task<GrammarCheckResponse> GrammarCheckAsync(string text);
