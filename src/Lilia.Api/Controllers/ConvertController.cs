@@ -1228,6 +1228,48 @@ public class ConvertController : ControllerBase
 
         var verdict = await _latexVerifier.VerifyAsync(latex, requested);
 
+        // Auto-fit: a table that compiles and then runs off the page is a pass
+        // nobody wants. Re-emit it as a longtable, which breaks across pages,
+        // and only keep that if it actually fixed the overflow — July's
+        // document-level auto-fit verifies the second pass for the same reason.
+        //
+        // Not attempted for other block types: an overflowing figure or code
+        // block is a real problem, but not this one's to solve.
+        var overflowPt = TableOverflow.TooTallBy(verdict.Warnings);
+        var autoFitted = false;
+        if (request.AutoFit && overflowPt is not null
+            && string.Equals(request.Type, "table", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var asLongtable = _renderService.RenderBlockToLatex(
+                    new Block { Id = Guid.NewGuid(), Type = request.Type, Content = JsonDocument.Parse(raw) },
+                    true);
+
+                if (!string.IsNullOrWhiteSpace(asLongtable))
+                {
+                    var second = await _latexVerifier.VerifyAsync(asLongtable, requested);
+                    var stillOver = TableOverflow.TooTallBy(second.Warnings);
+
+                    // Keep the longtable only if it compiled AND the overflow
+                    // went away. A "fix" that trades one failure for another is
+                    // worse than saying the table does not fit.
+                    if (second.Status == "verified" && stillOver is null)
+                    {
+                        latex = asLongtable;
+                        verdict = second;
+                        overflowPt = null;
+                        autoFitted = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // The measured verdict stands; the author is told it overflows.
+                _logger.LogWarning(ex, "[Convert] longtable auto-fit failed for {Type}", request.Type);
+            }
+        }
+
         // "unchecked" is not "invalid": no compiler was reachable, so claim
         // nothing rather than telling an author their table is broken.
         var valid = verdict.Status == "verified";
@@ -1239,7 +1281,8 @@ public class ConvertController : ControllerBase
         };
 
         return Ok(new BlockValidationResponse(
-            valid, error, latex, verdict.Findings, verdict.Engine, verdict.EngineAuto));
+            valid, error, latex, verdict.Findings, verdict.Engine, verdict.EngineAuto,
+            overflowPt, autoFitted));
     }
 
     [HttpPost("latex-to-blocks")]
@@ -1562,7 +1605,12 @@ public record BlockToLatexResponse(string Latex);
 /// <c>pdflatex</c>, <c>xelatex</c> or <c>lualatex</c>. Omit to infer it from the
 /// content — the author has not stated a requirement, so we guess and say so.
 /// </param>
-public record ValidateBlockRequest(string Type, JsonElement Content, string? Engine = null);
+/// <param name="AutoFit">
+/// When true and the block is a table that overflows the page, re-emit it as a
+/// <c>longtable</c> and keep that only if it compiles and the overflow goes away.
+/// </param>
+public record ValidateBlockRequest(
+    string Type, JsonElement Content, string? Engine = null, bool AutoFit = false);
 
 /// <summary>Whether a block builds, the LaTeX it made, and under which engine.</summary>
 /// <param name="Engine">
@@ -1573,9 +1621,18 @@ public record ValidateBlockRequest(string Type, JsonElement Content, string? Eng
 /// True when that engine was inferred rather than asked for — a guess the author
 /// may want to override, not a requirement they stated.
 /// </param>
+/// <param name="OverflowPt">
+/// How far past the page the table runs, in points, or null when it fits. A
+/// table can compile and still be unprintable.
+/// </param>
+/// <param name="AutoFitted">
+/// True when <c>Latex</c> is a longtable we re-emitted because the original
+/// overflowed — the author should know their table changed shape.
+/// </param>
 public record BlockValidationResponse(
     bool Valid, string? Error, string Latex, IReadOnlyList<string> Warnings,
-    string? Engine = null, bool EngineAuto = false);
+    string? Engine = null, bool EngineAuto = false,
+    double? OverflowPt = null, bool AutoFitted = false);
 
 public record LatexToBlocksRequest(string Latex);
 
