@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
+using Lilia.Engines;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -109,7 +110,36 @@ public class AiService : IAiService
             type, model, compilerError is null ? "" : " (retry after compiler error)");
         var response = await _chatClient.GetResponseAsync(
             messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
-        var json = JsonSerializer.Deserialize<JsonElement>(StripMarkdownFences(response.Text), JsonOptions);
+
+        var raw = StripMarkdownFences(response.Text);
+        JsonElement json;
+        try
+        {
+            json = JsonSerializer.Deserialize<JsonElement>(raw, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            // Told to answer in JSON, the model will still occasionally lead
+            // with a sentence, or append one. Take the object and ignore the
+            // rest — refusing here would turn a usable table into "the
+            // assistant did not return a usable block", which is what the
+            // author actually saw.
+            var only = JsonText.FirstObject(raw);
+            if (only is null)
+            {
+                // The one case worth logging loudly: with no JSON in the reply
+                // at all, nothing downstream can say what went wrong, and the
+                // author gets an error with no cause attached.
+                _logger.LogWarning("[Ai] revise returned no JSON object. Model said: {Reply}",
+                    raw.Length > 800 ? raw[..800] + "…" : raw);
+                throw;
+            }
+            // Logged because it is the difference between "the model is
+            // following the format" and "it is answering in prose and we are
+            // rescuing it" — worth knowing before anyone tunes the prompt.
+            _logger.LogInformation("[Ai] revise: took the JSON object out of a reply with prose around it");
+            json = JsonSerializer.Deserialize<JsonElement>(only, JsonOptions);
+        }
 
         var block = json.TryGetProperty("block", out var b) ? b : json;
         var note = json.TryGetProperty("note", out var n) && n.ValueKind == JsonValueKind.String
