@@ -19,7 +19,15 @@ namespace Lilia.Engines;
 /// UI distinguishes the two: a detected engine is a guess the author may want to
 /// override, a chosen one is a requirement they stated.
 /// </param>
-public record LatexVerdict(string Status, string[] Findings, int DurationMs, string? Engine = null, bool EngineAuto = false)
+/// <param name="Warnings">
+/// What the compiler said while still succeeding. Carried because "verified"
+/// used to discard it, and some of it is the caller's business: an overfull
+/// \vbox means the table compiled and runs off the page, which is a pass that
+/// nobody wants. Empty when the compile failed — the findings say why instead.
+/// </param>
+public record LatexVerdict(
+    string Status, string[] Findings, int DurationMs, string? Engine = null, bool EngineAuto = false,
+    string[]? Warnings = null)
 {
     public static readonly LatexVerdict Unchecked = new("unchecked", [], 0);
 }
@@ -95,7 +103,7 @@ public sealed class LatexVerifier : ILatexVerifier
             var ms = (int)result.Duration.TotalMilliseconds;
 
             if (result.Success)
-                return new LatexVerdict("verified", [], ms, name, auto);
+                return new LatexVerdict("verified", [], ms, name, auto, result.Warnings?.ToArray() ?? []);
 
             // Detection is a guess, and a guess that predicts the wrong engine
             // reports a fine document as broken. TeX itself knows the answer and
@@ -120,7 +128,7 @@ public sealed class LatexVerifier : ILatexVerifier
                     name, retryName, retry.Success ? "accepted it" : "did not");
 
                 return retry.Success
-                    ? new LatexVerdict("verified", [], retryMs, retryName, auto)
+                    ? new LatexVerdict("verified", [], retryMs, retryName, auto, retry.Warnings?.ToArray() ?? [])
                     : new LatexVerdict("failed", ExtractFindings(retry), retryMs, retryName, auto);
             }
 

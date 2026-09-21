@@ -25,6 +25,17 @@ public interface IRenderService
     Task<string> RenderToLmlAsync(Guid documentId);
     string RenderBlockToHtml(Block block);
     string RenderBlockToLatex(Block block);
+
+    /// <summary>
+    /// Render a block, optionally emitting a table as a <c>longtable</c> so it
+    /// can break across pages.
+    /// </summary>
+    /// <remarks>
+    /// Already implemented on RenderService and used by the document-level
+    /// auto-fit; exposed here so a single block can be fitted the same way,
+    /// without a second implementation of what "as a longtable" means.
+    /// </remarks>
+    string RenderBlockToLatex(Block block, bool useLongtable);
     string RenderBlockToMarkdown(Block block);
     string RenderBlockToLml(Block block);
 }

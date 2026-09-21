@@ -172,4 +172,58 @@ public class LatexTextTests
         LatexText.IsWhollyMaths("").Should().BeFalse();
         LatexText.IsWhollyMaths(null).Should().BeFalse();
     }
+
+    // ── TableOverflow — a table can compile and still be unprintable ──
+
+    [Fact]
+    public void An_overfull_vbox_is_an_overflow_with_its_magnitude()
+    {
+        Lilia.Engines.TableOverflow.TooTallBy(
+            new[] { @"Overfull \vbox (525.0pt too high) has occurred while \output is active" })
+            .Should().BeApproximately(525.0, 0.01);
+    }
+
+    [Fact]
+    public void A_float_too_large_is_an_overflow_too()
+    {
+        Lilia.Engines.TableOverflow.TooTallBy(
+            new[] { "LaTeX Warning: Float too large for page by 1161.16pt on input line 42." })
+            .Should().BeApproximately(1161.16, 0.01);
+    }
+
+    [Fact]
+    public void An_overfull_hbox_is_not_a_page_overflow()
+    {
+        // A line sticking out by a few points is a typesetting nag. Treating it
+        // as an overflow would turn every slightly-wide table into a longtable
+        // nobody asked for.
+        Lilia.Engines.TableOverflow.Overflows(
+            new[] { @"Overfull \hbox (12.3pt too wide) in paragraph at lines 4--5" })
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void No_warnings_means_it_fits()
+    {
+        Lilia.Engines.TableOverflow.TooTallBy(Array.Empty<string>()).Should().BeNull();
+        Lilia.Engines.TableOverflow.TooTallBy(null).Should().BeNull();
+    }
+
+    [Fact]
+    public void An_overflow_with_no_stated_size_still_counts_as_one()
+    {
+        // Zero would read as "fits" to a caller comparing against null.
+        Lilia.Engines.TableOverflow.TooTallBy(new[] { "LaTeX Warning: Float too large for page." })
+            .Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void The_worst_offender_is_the_one_reported()
+    {
+        Lilia.Engines.TableOverflow.TooTallBy(new[]
+        {
+            @"Overfull \vbox (40.0pt too high)",
+            @"Overfull \vbox (525.0pt too high)",
+        }).Should().BeApproximately(525.0, 0.01);
+    }
 }
