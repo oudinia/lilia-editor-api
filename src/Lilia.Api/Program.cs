@@ -459,6 +459,22 @@ builder.Services.AddScoped<IStudioService, StudioService>();
 
 // LaTeX rendering — runs pdflatex directly (no separate container)
 builder.Services.AddSingleton<ILaTeXRenderService, LaTeXRenderService>();
+
+// Compile-and-report. Lives in Lilia.Engines precisely so this host can make the
+// same "we checked, and here is the engine it was checked under" claim as the
+// tools host, from the same code — its own docs say there must be exactly one
+// implementation, because a second copy is a second set of engine-retry rules
+// that can disagree about whether the same document compiles.
+//
+// The regex floor, not the catalog: PackageEngineRequirements reads
+// latex_packages and lives in Lilia.Tools.Api, which this host does not
+// reference. The floor still covers the commands that imply an engine without
+// naming a package (\setmainfont, \directlua), and being wrong costs one
+// compile that LatexVerifier's retry corrects. Moving the catalog source into
+// Lilia.Engines would upgrade this host for free and is worth doing.
+builder.Services.AddSingleton<IEngineRequirementSource, RegexOnlyEngineRequirements>();
+builder.Services.AddSingleton<IEngineResolver, EngineResolver>();
+builder.Services.AddSingleton<ILatexVerifier, LatexVerifier>();
 builder.Services.AddSingleton<ICompilationQueueService, CompilationQueueService>();
 builder.Services.AddScoped<ITypstRenderService, TypstRenderService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();

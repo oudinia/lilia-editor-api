@@ -27,7 +27,7 @@ public class ConvertController : ControllerBase
     private readonly IDocxExportService _docxExportService;
     private readonly ILatexParser _latexParser;
     private readonly IRenderService _renderService;
-    private readonly ILaTeXRenderService _latexRenderService;
+    private readonly ILatexVerifier _latexVerifier;
     private readonly IDistributedCache _cache;
     private readonly ILogger<ConvertController> _logger;
 
@@ -41,7 +41,7 @@ public class ConvertController : ControllerBase
         IDocxExportService docxExportService,
         ILatexParser latexParser,
         IRenderService renderService,
-        ILaTeXRenderService latexRenderService,
+        ILatexVerifier latexVerifier,
         IDistributedCache cache,
         ILogger<ConvertController> logger)
     {
@@ -49,7 +49,7 @@ public class ConvertController : ControllerBase
         _docxExportService = docxExportService;
         _latexParser = latexParser;
         _renderService = renderService;
-        _latexRenderService = latexRenderService;
+        _latexVerifier = latexVerifier;
         _cache = cache;
         _logger = logger;
     }
@@ -1172,17 +1172,22 @@ public class ConvertController : ControllerBase
     /// <c>POST /api/latex/validate</c> with a bare fragment. That endpoint
     /// compiles against a precompiled <c>standalone</c> format, which has no
     /// <c>table</c> float — so <b>every</b> table came back "Environment table
-    /// undefined". A verdict about our harness rather than the author's work,
-    /// and worse than no verdict at all.
+    /// undefined". A verdict about our harness rather than the author's work.
     ///
-    /// A block is judged in the preamble a real document would give it, so
-    /// passing here means passing in the paper it is going into.
+    /// <b>It goes through <see cref="ILatexVerifier"/>.</b> That service already
+    /// wraps a fragment in the validation preamble, picks an engine when none is
+    /// asked for, retries under another when the first fails for an engine
+    /// reason, and reports which engine the verdict is about and whether it was
+    /// inferred. Its own documentation says there must be exactly one
+    /// implementation of "we compiled this and it passed", because a second copy
+    /// is a second set of engine-retry rules that can disagree. This endpoint
+    /// briefly was that second copy; it is not any more.
     /// </remarks>
     [HttpPost("block/validate")]
     [Authorize]
     [ProducesResponseType(typeof(BlockValidationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> ValidateBlock([FromBody] BlockToLatexRequest request)
+    public async Task<IActionResult> ValidateBlock([FromBody] ValidateBlockRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Type))
             return BadRequest(new ErrorResponse { Message = "Block type is required.", Code = "EMPTY_INPUT" });
@@ -1209,10 +1214,32 @@ public class ConvertController : ControllerBase
         }
 
         if (string.IsNullOrWhiteSpace(latex))
-            return Ok(new BlockValidationResponse(false, "That block rendered to nothing.", string.Empty, Array.Empty<string>()));
+            return Ok(new BlockValidationResponse(false, "That block rendered to nothing.", string.Empty, Array.Empty<string>(), null, false));
 
-        var result = await _latexRenderService.ValidateAsync(BlockPreamble.Wrap(latex));
-        return Ok(new BlockValidationResponse(result.Valid, result.Error, latex, result.Warnings));
+        // null engine = infer it. An engine named by the caller is a requirement
+        // the author stated; an inferred one is a guess they may want to
+        // override, and the response says which it was.
+        LatexEngine? requested = null;
+        if (!string.IsNullOrWhiteSpace(request.Engine)
+            && Enum.TryParse<LatexEngine>(request.Engine, ignoreCase: true, out var parsed))
+        {
+            requested = parsed;
+        }
+
+        var verdict = await _latexVerifier.VerifyAsync(latex, requested);
+
+        // "unchecked" is not "invalid": no compiler was reachable, so claim
+        // nothing rather than telling an author their table is broken.
+        var valid = verdict.Status == "verified";
+        var error = verdict.Status switch
+        {
+            "verified" => null,
+            "unchecked" => "Not checked — no compiler was reachable.",
+            _ => string.Join("\n", verdict.Findings),
+        };
+
+        return Ok(new BlockValidationResponse(
+            valid, error, latex, verdict.Findings, verdict.Engine, verdict.EngineAuto));
     }
 
     [HttpPost("latex-to-blocks")]
@@ -1530,8 +1557,25 @@ public record BlockToLatexRequest(string Type, JsonElement Content);
 /// <summary>The LaTeX the document's own renderer would emit for that block.</summary>
 public record BlockToLatexResponse(string Latex);
 
-/// <summary>Whether a block builds, and the LaTeX it made.</summary>
-public record BlockValidationResponse(bool Valid, string? Error, string Latex, IReadOnlyList<string> Warnings);
+/// <summary>A block to validate, optionally under a named engine.</summary>
+/// <param name="Engine">
+/// <c>pdflatex</c>, <c>xelatex</c> or <c>lualatex</c>. Omit to infer it from the
+/// content — the author has not stated a requirement, so we guess and say so.
+/// </param>
+public record ValidateBlockRequest(string Type, JsonElement Content, string? Engine = null);
+
+/// <summary>Whether a block builds, the LaTeX it made, and under which engine.</summary>
+/// <param name="Engine">
+/// The TeX binary the verdict is about. "Compiles" is not a claim on its own:
+/// the same source can pass under one engine and fail under another.
+/// </param>
+/// <param name="EngineAuto">
+/// True when that engine was inferred rather than asked for — a guess the author
+/// may want to override, not a requirement they stated.
+/// </param>
+public record BlockValidationResponse(
+    bool Valid, string? Error, string Latex, IReadOnlyList<string> Warnings,
+    string? Engine = null, bool EngineAuto = false);
 
 public record LatexToBlocksRequest(string Latex);
 
