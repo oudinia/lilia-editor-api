@@ -80,6 +80,48 @@ public class AiService : IAiService
         return new GenerateBlockResponse(type, content);
     }
 
+    public async Task<ReviseBlockResult> ReviseBlockAsync(
+        string type, JsonElement content, string instruction, string? compilerError = null)
+    {
+        var model = GetModelForFeature("generate");
+
+        var user = new System.Text.StringBuilder();
+        user.AppendLine($"Block type: {type}");
+        user.AppendLine("Block:");
+        user.AppendLine(JsonSerializer.Serialize(new { type, content }, JsonOptions));
+        user.AppendLine();
+        user.AppendLine($"Instruction: {instruction}");
+        if (!string.IsNullOrWhiteSpace(compilerError))
+        {
+            user.AppendLine();
+            user.AppendLine("Your previous attempt did not compile. LaTeX said:");
+            user.AppendLine(compilerError.Trim());
+            user.AppendLine("Fix that, and carry out the instruction as well.");
+        }
+
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, AiPrompts.ReviseBlock),
+            new(ChatRole.User, user.ToString()),
+        };
+
+        _logger.LogInformation("Revising {Type} block with model {Model}{Retry}",
+            type, model, compilerError is null ? "" : " (retry after compiler error)");
+        var response = await _chatClient.GetResponseAsync(
+            messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
+        var json = JsonSerializer.Deserialize<JsonElement>(StripMarkdownFences(response.Text), JsonOptions);
+
+        var block = json.TryGetProperty("block", out var b) ? b : json;
+        var note = json.TryGetProperty("note", out var n) && n.ValueKind == JsonValueKind.String
+            ? n.GetString() ?? "" : "";
+
+        // The type comes back from us, not from the model: a revise that
+        // silently turned a table into a paragraph would be accepted by every
+        // caller downstream.
+        var revised = block.TryGetProperty("content", out var c) ? c : block;
+        return new ReviseBlockResult(type, revised.Clone(), note.Trim());
+    }
+
     public async Task<ImproveTextResponse> ImproveTextAsync(string text, string action)
     {
         var model = GetModelForFeature("improve");
