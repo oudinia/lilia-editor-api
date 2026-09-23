@@ -1209,7 +1209,12 @@ public class LatexParser : ILatexParser
             // Equation environments
             if (options.ConvertEquationEnvironments)
             {
-                var eqEnvMatch = Regex.Match(remaining, @"\\begin\{(equation|align|gather|multline|eqnarray)\*?\}([\s\S]*?)\\end\{\1\*?\}", RegexOptions.Singleline);
+                // The star is captured (group 3) rather than matched and thrown away. It
+                // used to sit outside the group, so align* came back as "align" and
+                // was re-wrapped unstarred — every unnumbered equation imported as a
+                // numbered one. The backreference now requires the same star on
+                // \end as on \begin, which is what LaTeX requires too.
+                var eqEnvMatch = Regex.Match(remaining, @"\\begin\{(equation|align|gather|multline|eqnarray)(\*?)\}([\s\S]*?)\\end\{\1\2\}", RegexOptions.Singleline);
                 if (eqEnvMatch.Success)
                     matches.Add((eqEnvMatch, "equation_env"));
             }
@@ -1488,8 +1493,9 @@ public class LatexParser : ILatexParser
 
                 case "equation_env":
                     {
-                        var envName = firstMatch.match.Groups[1].Value; // equation/align/gather/multline
-                        var rawLatex = firstMatch.match.Groups[2].Value.Trim();
+                        var envName = firstMatch.match.Groups[1].Value; // equation/align/gather/multline — never starred
+                        var starred = firstMatch.match.Groups[2].Value == "*";
+                        var rawLatex = firstMatch.match.Groups[3].Value.Trim();
                         // P1-4: lift \label{...} out of the equation body so the editor can store it as block metadata.
                         var labelExtract = Regex.Match(rawLatex, @"\\label\{([^}]+)\}");
                         if (labelExtract.Success)
@@ -1505,7 +1511,9 @@ public class LatexParser : ILatexParser
                             Order = elementOrder++,
                             LatexContent = wrappedLatex,
                             ConversionSucceeded = true,
-                            IsInline = false
+                            IsInline = false,
+                            // The star, as numbering. The renderer puts it back.
+                            Numbered = !starred,
                         });
                     }
                     break;

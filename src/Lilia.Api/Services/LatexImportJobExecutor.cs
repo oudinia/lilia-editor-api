@@ -396,7 +396,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     {
         ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
         ImportParagraph p => ("paragraph", new { text = p.Text }),
-        ImportEquation eq => ("equation", new { latex = eq.LatexContent ?? eq.OmmlXml, equationMode = eq.IsInline ? "inline" : "display" }),
+        ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
         ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
         ImportTable t => ("table", new
         {

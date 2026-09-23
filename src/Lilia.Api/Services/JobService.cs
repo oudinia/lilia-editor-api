@@ -1004,7 +1004,7 @@ public class JobService : IJobService
         {
             ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
             ImportParagraph p => ("paragraph", new { text = p.Text }),
-            ImportEquation eq => ("equation", new { latex = eq.LatexContent ?? eq.OmmlXml, equationMode = eq.IsInline ? "inline" : "display" }),
+            ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
             ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
             ImportTable t => ("table", new
             {
@@ -1105,11 +1105,13 @@ public class JobService : IJobService
                 ImportEquation eq => new CreateReviewBlockDto(
                     Id: Guid.NewGuid().ToString(),
                     Type: "equation",
-                    Content: JsonSerializer.SerializeToElement(new
-                    {
-                        latex = eq.LatexContent ?? eq.OmmlXml,
-                        displayMode = !eq.IsInline
-                    }),
+                    // Not EquationBlockContent: the import-review UI reads
+                    // displayMode by name (useImportReview.ts, blockFormatters.ts),
+                    // so this shape stays. Numbering is added the same way —
+                    // written only when false.
+                    Content: JsonSerializer.SerializeToElement(eq.Numbered
+                        ? (object)new { latex = eq.LatexContent ?? eq.OmmlXml, displayMode = !eq.IsInline }
+                        : new { latex = eq.LatexContent ?? eq.OmmlXml, displayMode = !eq.IsInline, numbered = false }),
                     Confidence: eq.LatexContent != null ? 80 : 50,
                     Warnings: eq.LatexContent == null
                         ? JsonSerializer.SerializeToElement(new[]
