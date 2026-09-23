@@ -626,6 +626,7 @@ public class LaTeXRenderController : ControllerBase
 
             var bibWarnings = new List<string>();
             var layoutWarnings = new List<string>();
+            var refWarnings = new List<string>();
             if (doc != null)
             {
                 var bibKeys = doc.BibliographyEntries.Select(e => e.CiteKey).ToHashSet();
@@ -682,8 +683,28 @@ public class LaTeXRenderController : ControllerBase
             var result = await _latexService.ValidateAsync(latex);
             var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
 
-            // Merge bibliography + layout warnings with LaTeX warnings
-            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(warnings).Distinct().ToArray();
+            // A \ref to a label nothing defines is the reference defect that
+            // actually costs the author: LaTeX sets "??" in the PDF and exits
+            // successfully, so the compile says nothing and neither did we.
+            // Duplicates go in for the same reason — LaTeX silently keeps the
+            // last, so half the references point somewhere unintended. "Unused"
+            // is deliberately left out: a label with no reference yet is a draft
+            // in progress far more often than it is a mistake, and warning about
+            // it would train authors to ignore the list.
+            if (doc != null)
+            {
+                foreach (var problem in ReferenceIndex.Build(doc.Blocks).Problems)
+                {
+                    if (problem.Kind == "dangling")
+                        refWarnings.Add($"Reference to a label nothing defines: \\ref{{{problem.Key}}}");
+                    else if (problem.Kind == "duplicate")
+                        refWarnings.Add($"Label defined {problem.BlockIds.Count} times, LaTeX keeps the last: {problem.Key}");
+                }
+            }
+
+            // Merge bibliography + layout + reference warnings with LaTeX warnings
+            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(refWarnings)
+                .Concat(warnings).Distinct().ToArray();
 
             if (!valid || allWarnings.Length > 0)
             {

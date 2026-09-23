@@ -29,6 +29,18 @@ public interface ILaTeXRenderService
     Task<(byte[] Pdf, IReadOnlyDictionary<Guid, int> PageMap)> RenderToPdfWithPageMapAsync(
         string latex, string engine = "pdflatex", int timeout = 60);
 
+    /// <summary>
+    /// Compile and return the raw .aux, for callers that want what LaTeX
+    /// resolved rather than the PDF — every label's number and page.
+    ///
+    /// <para>Separate from the page map rather than folded into it: that method
+    /// returns a block → page dictionary, and a caller after the author's own
+    /// labels needs the file, not a projection of it. The compile is the same
+    /// one, run tolerantly, so a document with errors still yields the labels
+    /// that did resolve.</para>
+    /// </summary>
+    Task<string?> RenderToAuxAsync(string latex, string engine = "pdflatex", int timeout = 60);
+
     Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30);
     Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150);
     Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true);
@@ -211,6 +223,23 @@ public class LaTeXRenderService : ILaTeXRenderService
             var (pdf, _, aux) = await CompileLatexAsync(
                 latex, timeout, tolerant: true, engine: ResolveEngine(engine));
             return (pdf, AuxPageMap.Parse(aux));
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> RenderToAuxAsync(
+        string latex, string engine = "pdflatex", int timeout = 60)
+    {
+        await _semaphore.WaitAsync();
+        try
+        {
+            var (_, _, aux) = await CompileLatexAsync(
+                latex, timeout, tolerant: true, engine: ResolveEngine(engine));
+            return aux;
         }
         finally
         {

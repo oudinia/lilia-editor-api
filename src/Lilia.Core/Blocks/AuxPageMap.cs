@@ -51,7 +51,44 @@ public static class AuxPageMap
     public static IReadOnlyDictionary<Guid, int> Parse(string? auxContent)
     {
         var map = new Dictionary<Guid, int>();
-        if (string.IsNullOrEmpty(auxContent)) return map;
+        foreach (var label in ReadAll(auxContent))
+        {
+            if (!label.Key.StartsWith(LabelPrefix, StringComparison.Ordinal)
+                || !Guid.TryParse(label.Key[LabelPrefix.Length..], out var blockId)
+                || label.Page is not { } page)
+            {
+                continue;
+            }
+
+            // Last write wins: LaTeX appends a fresh .aux each run, but a label
+            // redefined within one run means the later position is the one the
+            // PDF actually reflects.
+            map[blockId] = page;
+        }
+
+        return map;
+    }
+
+    /// <summary>
+    /// Every <c>\newlabel</c> in the file — the author's labels as well as our
+    /// per-block ones — with the number LaTeX assigned and the page it landed on.
+    ///
+    /// <para>The number is the <b>first</b> sub-group, which the page map has
+    /// always skipped over to reach the second. It is what <c>\ref</c> prints,
+    /// and taking it from here rather than counting floats ourselves is the
+    /// difference between reporting LaTeX's answer and reimplementing it —
+    /// float order, <c>\numberwithin</c>, chapter resets, <c>\appendix</c> and
+    /// starred variants are each a way to be confidently wrong.</para>
+    ///
+    /// <para>Kept as a string: a number can be <c>2.1</c>, <c>A.3</c> or a roman
+    /// numeral, and parsing it would only throw information away. The page is an
+    /// <c>int?</c> for the same reason — front matter is roman, and
+    /// <c>\thepage</c> can be redefined to anything.</para>
+    /// </summary>
+    public static IReadOnlyList<AuxLabel> ReadAll(string? auxContent)
+    {
+        var labels = new List<AuxLabel>();
+        if (string.IsNullOrEmpty(auxContent)) return labels;
 
         var span = auxContent.AsSpan();
         var marker = @"\newlabel{".AsSpan();
@@ -68,15 +105,8 @@ public static class AuxPageMap
             var nameEnd = span[cursor..].IndexOf('}');
             if (nameEnd < 0) break;
 
-            var name = span.Slice(cursor, nameEnd);
+            var name = span.Slice(cursor, nameEnd).ToString();
             cursor += nameEnd + 1;
-
-            if (!name.StartsWith(LabelPrefix, StringComparison.Ordinal)
-                || !Guid.TryParse(name[LabelPrefix.Length..], out var blockId))
-            {
-                index = cursor;
-                continue;
-            }
 
             // Value — the outer group holding the sub-groups.
             if (!TryReadGroup(span, cursor, out var value, out var afterValue))
@@ -86,20 +116,24 @@ public static class AuxPageMap
             }
 
             // First sub-group is the reference number, second is the page.
-            if (TryReadGroup(value, 0, out _, out var afterRef)
-                && TryReadGroup(value, afterRef, out var page, out _)
-                && int.TryParse(page, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pageNumber))
+            if (TryReadGroup(value, 0, out var number, out var afterRef))
             {
-                // Last write wins: LaTeX appends a fresh .aux each run, but a
-                // label redefined within one run means the later position is the
-                // one the PDF actually reflects.
-                map[blockId] = pageNumber;
+                int? page = TryReadGroup(value, afterRef, out var pageText, out _)
+                    && int.TryParse(pageText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var p)
+                        ? p
+                        : null;
+
+                var numberText = number.Trim().ToString();
+                labels.Add(new AuxLabel(
+                    name,
+                    numberText.Length == 0 ? null : numberText,
+                    page));
             }
 
             index = afterValue;
         }
 
-        return map;
+        return labels;
     }
 
     /// <summary>
@@ -143,3 +177,15 @@ public static class AuxPageMap
         return false;
     }
 }
+
+/// <summary>
+/// One <c>\newlabel</c> as LaTeX wrote it.
+/// </summary>
+/// <param name="Key">The label name, exactly as the author wrote it —
+/// <c>tab:results</c> — or one of our <c>blk-…</c> labels.</param>
+/// <param name="Number">What <c>\ref</c> to this label prints: <c>3</c>,
+/// <c>2.1</c>, <c>A.3</c>. Null when the group was empty, which happens for
+/// labels LaTeX could not number.</param>
+/// <param name="Page">The page it landed on, or null when the page is not an
+/// integer — roman front matter, or a redefined <c>\thepage</c>.</param>
+public readonly record struct AuxLabel(string Key, string? Number, int? Page);

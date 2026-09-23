@@ -184,3 +184,113 @@ public class AuxPageMapTests
         AuxPageMap.Parse($@"\newlabel{{{label}}}{{{{1}}{{3}}}}")[BlockA].Should().Be(3);
     }
 }
+
+/// <summary>
+/// Reading every label, not only ours — the same walk, keeping the group the
+/// page map steps over.
+///
+/// <para>The number is what <c>\ref</c> prints. Taking it from the .aux rather
+/// than counting floats is the difference between reporting LaTeX's answer and
+/// reimplementing it, and the cases below are the ones where reimplementing
+/// would have gone wrong quietly: <c>\numberwithin</c> makes a number
+/// <c>2.1</c>, an appendix makes it <c>A.3</c>, and front matter pages are
+/// roman.</para>
+/// </summary>
+public class AuxLabelTests
+{
+    [Fact]
+    public void Reads_the_authors_own_labels_not_only_block_labels()
+    {
+        var aux = @"\newlabel{tab:results}{{3}{7}{Top-1 accuracy}{table.3}{}}";
+
+        var labels = AuxPageMap.ReadAll(aux);
+
+        labels.Should().ContainSingle();
+        labels[0].Key.Should().Be("tab:results");
+        labels[0].Number.Should().Be("3");
+        labels[0].Page.Should().Be(7);
+    }
+
+    [Fact]
+    public void The_number_is_the_group_the_page_map_steps_over()
+    {
+        // 2.1 is the number \ref prints; 7 is the page. The page map has always
+        // taken the second and discarded the first.
+        var aux = @"\newlabel{sec:method}{{2.1}{7}}";
+
+        var only = AuxPageMap.ReadAll(aux).Single();
+        only.Number.Should().Be("2.1");
+        only.Page.Should().Be(7);
+    }
+
+    [Fact]
+    public void A_number_is_not_parsed_into_an_int()
+    {
+        // \appendix and \numberwithin both produce numbers no int can hold, and
+        // an author reading "A.3" wants to see "A.3".
+        var aux = @"\newlabel{tab:appendix}{{A.3}{12}}";
+
+        AuxPageMap.ReadAll(aux).Single().Number.Should().Be("A.3");
+    }
+
+    [Fact]
+    public void A_roman_page_leaves_the_number_intact()
+    {
+        // Front matter. The page is unusable as an int; the number is still the
+        // answer to "what does \ref print", so losing it here would be a bug.
+        var aux = @"\newlabel{fig:frontispiece}{{1}{iv}}";
+
+        var only = AuxPageMap.ReadAll(aux).Single();
+        only.Number.Should().Be("1");
+        only.Page.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_braced_title_does_not_shift_the_number()
+    {
+        // The defect the brace-counting exists for, now applied to the group
+        // before the one it was written for.
+        var aux = @"\newlabel{sec:bold}{{4}{9}{A \textbf{bold} title}{section.4}{}}";
+
+        var only = AuxPageMap.ReadAll(aux).Single();
+        only.Number.Should().Be("4");
+        only.Page.Should().Be(9);
+    }
+
+    [Fact]
+    public void Block_labels_and_author_labels_come_back_together()
+    {
+        var aux = $@"\newlabel{{blk-{Guid.Empty}}}{{{{1}}{{2}}}}
+\newlabel{{eq:euler}}{{{{5}}{{3}}}}";
+
+        var labels = AuxPageMap.ReadAll(aux);
+
+        labels.Should().HaveCount(2);
+        labels.Select(l => l.Key).Should().Contain($"blk-{Guid.Empty}").And.Contain("eq:euler");
+    }
+
+    [Fact]
+    public void The_page_map_still_answers_exactly_as_before()
+    {
+        // ReadAll is the walk; Parse is a projection over it. This is the test
+        // that would catch the projection drifting from the thing it projects.
+        var block = Guid.Parse("7f3a0000-0000-0000-0000-00000000000a");
+        var aux = $@"\newlabel{{{AuxPageMap.LabelFor(block)}}}{{{{2.1}}{{7}}}}
+\newlabel{{tab:ignored-by-the-page-map}}{{{{3}}{{8}}}}";
+
+        var map = AuxPageMap.Parse(aux);
+
+        map.Should().ContainKey(block).WhoseValue.Should().Be(7);
+        map.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void An_unnumbered_label_reports_no_number_rather_than_an_empty_string()
+    {
+        var aux = @"\newlabel{nolabel}{{}{5}}";
+
+        var only = AuxPageMap.ReadAll(aux).Single();
+        only.Number.Should().BeNull();
+        only.Page.Should().Be(5);
+    }
+}
