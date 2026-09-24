@@ -1389,7 +1389,7 @@ public class ConvertController : ControllerBase
                         blocks.Add(new LatexBlockDto("paragraph", new { text = ConvertLatexFormattingToMarkdown(p.Text) }));
                         break;
                     case ImportEquation eq:
-                        blocks.Add(new LatexBlockDto("equation", new { latex = eq.LatexContent, equationMode = eq.IsInline ? "inline" : "display" }));
+                        blocks.Add(new LatexBlockDto("equation", EquationBlockContent.From(eq, eq.LatexContent)));
                         break;
                     case ImportCodeBlock cb:
                         blocks.Add(new LatexBlockDto("code", new { code = cb.Text, language = cb.Language ?? "" }));

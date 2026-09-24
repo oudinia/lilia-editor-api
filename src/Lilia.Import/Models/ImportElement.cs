@@ -122,6 +122,20 @@ public class ImportEquation : ImportElement
     /// Whether this is an inline equation (within text) or display equation (on its own line).
     /// </summary>
     public bool IsInline { get; set; }
+
+    /// <summary>
+    /// False for a starred environment — <c>align*</c>, <c>equation*</c>.
+    ///
+    /// <para>The star is carried here rather than in <see cref="LatexContent"/>
+    /// because the renderer already treats numbering as a property of the block
+    /// and emits the star itself (<c>RenderEquationToLatex</c>). A literal star in
+    /// the source would fight that: the author's numbering toggle would stop
+    /// working, and <c>equation*</c> would be wrapped in a second equation
+    /// environment. So the source holds the environment, and this holds whether
+    /// it is numbered — which is also the shape the equation model is settling on,
+    /// where <c>align*</c> is never a value.</para>
+    /// </summary>
+    public bool Numbered { get; set; } = true;
 }
 
 /// <summary>
@@ -748,4 +762,32 @@ public class ImportLatexPassthrough : ImportElement
     /// Optional description for preview display.
     /// </summary>
     public string? Description { get; set; }
+}
+
+/// <summary>
+/// Equation block content, built in one place.
+///
+/// <para>Four import paths turned an <see cref="ImportEquation"/> into block
+/// content, each with its own anonymous object, and none of them carried
+/// numbering — which is how a starred environment lost its star in all four at
+/// once. They go through this now, so the next field an equation grows reaches
+/// every path or none.</para>
+/// </summary>
+public static class EquationBlockContent
+{
+    /// <summary>
+    /// <c>numbered</c> is written only when false. Absent means numbered — that
+    /// is how the renderer reads it — so existing blocks keep their meaning and
+    /// the payload does not grow a field on every equation to say the default.
+    /// </summary>
+    public static Dictionary<string, object?> From(ImportEquation eq, string? latexOverride = null)
+    {
+        var content = new Dictionary<string, object?>
+        {
+            ["latex"] = latexOverride ?? eq.LatexContent ?? eq.OmmlXml,
+            ["equationMode"] = eq.IsInline ? "inline" : "display",
+        };
+        if (!eq.Numbered) content["numbered"] = false;
+        return content;
+    }
 }
