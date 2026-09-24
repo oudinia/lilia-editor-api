@@ -19,6 +19,18 @@ public readonly record struct UnicodeShimResult(string Shim, IReadOnlyList<int> 
     public bool HasUnmapped => UnmappedCodepoints.Count > 0;
 }
 
+/// <summary>
+/// How each distinct non-ASCII character in a run of text fares under pdflatex.
+/// </summary>
+/// <param name="Shimmed">In the catalog: compiles inside Lilia because the shim
+/// maps it, but only there — source copied out to another editor carries the raw
+/// character and fails. Codepoint → replacement.</param>
+/// <param name="Unmapped">Not in the catalog and not something inputenc handles:
+/// these fail to compile, here and everywhere.</param>
+public readonly record struct UnicodeClassification(
+    IReadOnlyDictionary<int, string> Shimmed,
+    IReadOnlyList<int> Unmapped);
+
 public interface IUnicodeShimService
 {
     Task PreloadAsync();
@@ -29,6 +41,13 @@ public interface IUnicodeShimService
     /// the loaded map.
     /// </summary>
     UnicodeShimResult BuildShim(string source);
+
+    /// <summary>
+    /// The classification <see cref="BuildShim"/> is built on, exposed so a paste
+    /// check can ask the same question the validator asks — rather than keep a
+    /// second copy of the rules that would drift from it.
+    /// </summary>
+    UnicodeClassification Classify(string text);
 
     /// <summary>
     /// Insert a shim block into a full LaTeX source immediately before
@@ -97,48 +116,52 @@ public class UnicodeShimService : IUnicodeShimService
         }
     }
 
-    public UnicodeShimResult BuildShim(string source)
+    public UnicodeClassification Classify(string text)
     {
-        if (string.IsNullOrEmpty(source) || _map.IsEmpty)
-            return new UnicodeShimResult(string.Empty, Array.Empty<int>());
+        var shimmed = new SortedDictionary<int, string>();
+        var unmapped = new List<int>();
+        if (string.IsNullOrEmpty(text) || _map.IsEmpty)
+            return new UnicodeClassification(shimmed, unmapped);
 
-        // Collect the distinct non-ASCII codepoints actually present, so the
-        // shim only carries what the document uses (adaptive, lean preamble).
         var present = new HashSet<int>();
         var i = 0;
-        while (i < source.Length)
+        while (i < text.Length)
         {
-            int cp = char.ConvertToUtf32(source, i);
-            i += char.IsSurrogatePair(source, i) ? 2 : 1;
+            int cp = char.ConvertToUtf32(text, i);
+            i += char.IsSurrogatePair(text, i) ? 2 : 1;
             if (cp > 0x7F) present.Add(cp);
         }
-        if (present.Count == 0)
-            return new UnicodeShimResult(string.Empty, Array.Empty<int>());
 
-        var sb = new StringBuilder();
-        List<int>? unmapped = null;
         // Deterministic ordering keeps the assembled source stable.
         foreach (var cp in present.OrderBy(c => c))
         {
-            if (_map.TryGetValue(cp, out var repl))
-            {
-                sb.Append(@"\newunicodechar{")
-                  .Append(char.ConvertFromUtf32(cp))
-                  .Append("}{").Append(repl).Append("}\n");
-            }
-            else if (!IsInputencSafe(cp))
-            {
-                (unmapped ??= new List<int>()).Add(cp);
-            }
+            if (_map.TryGetValue(cp, out var repl)) shimmed[cp] = repl;
+            else if (!IsInputencSafe(cp)) unmapped.Add(cp);
         }
 
-        if (sb.Length == 0)
-            return new UnicodeShimResult(string.Empty, (IReadOnlyList<int>?)unmapped ?? Array.Empty<int>());
+        return new UnicodeClassification(shimmed, unmapped);
+    }
+
+    public UnicodeShimResult BuildShim(string source)
+    {
+        // Collect the distinct non-ASCII codepoints actually present, so the
+        // shim only carries what the document uses (adaptive, lean preamble).
+        var classified = Classify(source);
+        if (classified.Shimmed.Count == 0)
+            return new UnicodeShimResult(string.Empty, classified.Unmapped);
+
+        var sb = new StringBuilder();
+        foreach (var (cp, repl) in classified.Shimmed)
+        {
+            sb.Append(@"\newunicodechar{")
+              .Append(char.ConvertFromUtf32(cp))
+              .Append("}{").Append(repl).Append("}\n");
+        }
 
         // textcomp covers the \text… typographic replacements; newunicodechar
         // provides the mapping mechanism itself.
         var shim = "\\usepackage{textcomp}\n\\usepackage{newunicodechar}\n" + sb;
-        return new UnicodeShimResult(shim, (IReadOnlyList<int>?)unmapped ?? Array.Empty<int>());
+        return new UnicodeShimResult(shim, classified.Unmapped);
     }
 
     public string Inject(string source, string shim)
