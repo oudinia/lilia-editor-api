@@ -116,8 +116,9 @@ public class BlockService : IBlockService
 
         _context.Blocks.Add(block);
 
-        // Update document timestamp
+        // Update document timestamp and version (see BumpVersion).
         document.UpdatedAt = DateTime.UtcNow;
+        BumpVersion(document);
 
         // A Title block's title doubles as the document name + LaTeX \title —
         // keep them in sync on create too (mirrors UpdateBlockAsync).
@@ -159,6 +160,7 @@ public class BlockService : IBlockService
         if (document != null)
         {
             document.UpdatedAt = DateTime.UtcNow;
+            BumpVersion(document);
             // Single source of truth: a Title block's title doubles as the
             // document name (and the LaTeX \title). Keep them in sync.
             if (block.Type == BlockTypes.Title)
@@ -182,9 +184,9 @@ public class BlockService : IBlockService
 
         _context.Blocks.Remove(block);
 
-        // Update document timestamp
+        // Update document timestamp and version (see BumpVersion).
         var document = await _context.Documents.FindAsync(documentId);
-        if (document != null) document.UpdatedAt = DateTime.UtcNow;
+        if (document != null) { document.UpdatedAt = DateTime.UtcNow; BumpVersion(document); }
 
         await _context.SaveChangesAsync();
 
@@ -328,9 +330,9 @@ public class BlockService : IBlockService
             }
         }
 
-        // Update document timestamp
+        // Update document timestamp and version (see BumpVersion).
         var document = await _context.Documents.FindAsync(documentId);
-        if (document != null) document.UpdatedAt = DateTime.UtcNow;
+        if (document != null) { document.UpdatedAt = DateTime.UtcNow; BumpVersion(document); }
 
         await _context.SaveChangesAsync();
 
@@ -634,11 +636,21 @@ WHERE b.document_id = @doc AND b.id = ANY(@ids) AND b.type = 'heading';";
             DeletedIds: deletedIds.ToList());
     }
 
+    // Every write to a document's blocks advances its version. The Flow editor
+    // saves the whole document at once and the server deletes whatever that
+    // save leaves out, so a write that did not advance the version was
+    // invisible to it: its next save — no 409, no rebase — deleted a block
+    // created here or overwrote an edit made here.
+    private static void BumpVersion(Document document) => document.Version += 1;
+
     private async Task TouchDocumentSqlAsync(Guid documentId)
     {
+        // The raw-SQL paths (convert, merge, re-level) advance it too.
         await _context.Documents
             .Where(d => d.Id == documentId)
-            .ExecuteUpdateAsync(d => d.SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+            .ExecuteUpdateAsync(d => d
+                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow)
+                .SetProperty(x => x.Version, x => x.Version + 1));
     }
 
     private static BlockDto MapToDto(Block b)

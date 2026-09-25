@@ -182,6 +182,7 @@ public class StudioService : IStudioService
         };
 
         _db.Blocks.Add(block);
+        await ConcurrencyVersion.BumpAsync(_db, documentId);
         await _db.SaveChangesAsync();
 
         return ToNodeDto(block);
@@ -201,10 +202,9 @@ public class StudioService : IStudioService
 
         block.UpdatedAt = DateTime.UtcNow;
 
-        // Update document timestamp so dashboard shows recent edit
-        var document = await _db.Documents.FindAsync(documentId);
-        if (document != null)
-            document.UpdatedAt = DateTime.UtcNow;
+        // Timestamp and version, so an open Flow editor rebases onto this edit
+        // instead of overwriting it (ConcurrencyVersion).
+        await ConcurrencyVersion.BumpAsync(_db, documentId);
 
         // Invalidate cached preview
         var previews = await _db.BlockPreviews
@@ -234,6 +234,7 @@ public class StudioService : IStudioService
         }
 
         _db.Blocks.Remove(block);
+        await ConcurrencyVersion.BumpAsync(_db, documentId);
         await _db.SaveChangesAsync();
         return true;
     }
@@ -262,6 +263,7 @@ public class StudioService : IStudioService
             block.Path = $"{dto.NewPosition:D4}";
         }
 
+        await ConcurrencyVersion.BumpAsync(_db, documentId);
         await _db.SaveChangesAsync();
         return true;
     }

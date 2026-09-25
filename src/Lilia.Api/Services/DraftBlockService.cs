@@ -177,6 +177,7 @@ public class DraftBlockService : IDraftBlockService
         };
 
         _db.Blocks.Add(block);
+        await ConcurrencyVersion.BumpAsync(_db, dto.DocumentId);
         draft.UsageCount++;
         draft.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
