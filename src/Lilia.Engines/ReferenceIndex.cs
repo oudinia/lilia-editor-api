@@ -119,8 +119,13 @@ public static class ReferenceIndex
             var root = block.Content?.RootElement ?? default;
             if (root.ValueKind != JsonValueKind.Object) continue;
 
-            foreach (var (key, caption) in LabelsIn(root))
+            foreach (var (label, caption) in LabelsIn(root))
             {
+                // The key the compiled document defines, by the same rule the
+                // exporter writes it with — so a bare "main" on an equation is
+                // eq:main here too, and the panel agrees with the PDF. Sub-figure
+                // labels live on figure blocks, so the block's type is theirs.
+                var key = LabelKey.Effective(block.Type, label);
                 numbers.TryGetValue(key, out var aux);
                 targets.Add(new ReferenceTarget(
                     key, KindOf(block.Type), block.Id, caption, aux.Number, aux.Page));
