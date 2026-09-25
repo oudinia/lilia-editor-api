@@ -63,11 +63,20 @@ public class TypstCompileService : ITypstCompileService
         CancellationToken ct = default) =>
         CompileAsync(source, format, assetFiles, binaryAssets: null, ct);
 
+    public Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
+        IReadOnlyDictionary<string, byte[]>? binaryAssets,
+        CancellationToken ct = default) =>
+        CompileAsync(source, format, assetFiles, binaryAssets, evalAfter: null, ct);
+
     public async Task<TypstCompileResult> CompileAsync(
         string source,
         TypstOutputFormat format,
         IReadOnlyDictionary<string, string>? assetFiles,
         IReadOnlyDictionary<string, byte[]>? binaryAssets,
+        string? evalAfter,
         CancellationToken ct = default)
     {
         var binary = ResolveBinary();
@@ -226,11 +235,73 @@ public class TypstCompileService : ITypstCompileService
             }
 
             var bytes = await File.ReadAllBytesAsync(outputFile, ct);
-            return TypstCompileResult.Ok(bytes, format, stopwatch.Elapsed);
+            var evaluated = evalAfter is null
+                ? null
+                : await EvaluateAsync(binary, workDir, sourceFile, evalAfter, ct);
+            return TypstCompileResult.Ok(bytes, format, stopwatch.Elapsed, evaluated);
         }
         finally
         {
             try { Directory.Delete(workDir, recursive: true); } catch { /* ignore cleanup failures */ }
+        }
+    }
+
+    /// <summary>
+    /// <c>typst eval &lt;expression&gt; --in main.typ</c>, in the compile's own
+    /// directory while its files are still there — so images and the .bib
+    /// resolve exactly as they did for the PDF. Returns the JSON typst prints,
+    /// or null on any failure: what is evaluated is a by-product of the PDF,
+    /// and never a reason to fail it.
+    /// </summary>
+    private async Task<string?> EvaluateAsync(
+        string binary, string workDir, string sourceFile, string expression, CancellationToken ct)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = binary,
+                WorkingDirectory = workDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("eval");
+            psi.ArgumentList.Add(expression);
+            psi.ArgumentList.Add("--in");
+            psi.ArgumentList.Add(sourceFile);
+            psi.ArgumentList.Add("--root");
+            psi.ArgumentList.Add(workDir);
+
+            using var proc = Process.Start(psi);
+            if (proc is null) return null;
+            var stdout = proc.StandardOutput.ReadToEndAsync(ct);
+            var stderr = proc.StandardError.ReadToEndAsync(ct);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(_options.PerCompileTimeout);
+            try
+            {
+                await proc.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                return null;
+            }
+
+            if (proc.ExitCode != 0)
+            {
+                _logger.LogWarning("Typst eval failed (exit={ExitCode}): {Stderr}", proc.ExitCode, await stderr);
+                return null;
+            }
+            return (await stdout).Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Typst eval could not run");
+            return null;
         }
     }
 
@@ -333,6 +404,20 @@ public interface ITypstCompileService
         IReadOnlyDictionary<string, string>? assetFiles,
         IReadOnlyDictionary<string, byte[]>? binaryAssets,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// As above, then evaluate <paramref name="evalAfter"/> against the same
+    /// source (<c>typst eval</c>) and return its JSON in
+    /// <see cref="TypstCompileResult.Evaluated"/>. The preview uses it to read
+    /// back the numbers it gave each label.
+    /// </summary>
+    Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
+        IReadOnlyDictionary<string, byte[]>? binaryAssets,
+        string? evalAfter,
+        CancellationToken ct = default);
 }
 
 public enum TypstOutputFormat
@@ -357,9 +442,11 @@ public sealed class TypstCompileResult
     public TypstOutputFormat Format { get; private init; }
     public TimeSpan Elapsed { get; private init; }
     public string? Error { get; private init; }
+    /// <summary>What <c>evalAfter</c> evaluated to, as JSON; null when not asked or it failed.</summary>
+    public string? Evaluated { get; private init; }
 
-    public static TypstCompileResult Ok(byte[] output, TypstOutputFormat format, TimeSpan elapsed) =>
-        new() { Success = true, Output = output, Format = format, Elapsed = elapsed };
+    public static TypstCompileResult Ok(byte[] output, TypstOutputFormat format, TimeSpan elapsed, string? evaluated = null) =>
+        new() { Success = true, Output = output, Format = format, Elapsed = elapsed, Evaluated = evaluated };
 
     public static TypstCompileResult Failure(string error) =>
         new() { Success = false, Error = error };

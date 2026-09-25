@@ -185,7 +185,44 @@ public class TypstExportService : ITypstExportService
 
         if (currentRunCols is > 1) sb.AppendLine("]");
 
+        if (attached.Count > 0) sb.Append(LabelNumbersProbe(attached.Values));
+
         return ResolveReferences(sb.ToString(), defined, attached);
+    }
+
+    /// <summary>The label on the probe element; see <see cref="LabelNumbersEval"/>.</summary>
+    internal const string LabelNumbersTag = "lilia-label-numbers";
+
+    /// <summary>
+    /// What to <c>typst eval</c> after a preview compile to read back the number
+    /// and page Typst gave each label — so the editor can show them without a
+    /// PDF compile. JSON: <c>[["tab:results","1",2], …]</c>.
+    /// </summary>
+    public const string LabelNumbersEval = "query(<" + LabelNumbersTag + ">).first().value";
+
+    /// <summary>
+    /// An invisible element listing, for each attached label, what \ref would
+    /// print and the page — computed by Typst from the same counters that
+    /// numbered the PDF, never counted here.
+    /// </summary>
+    private static string LabelNumbersProbe(IEnumerable<ReferenceTarget> targets)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("#context [#metadata((");
+        foreach (var t in targets)
+        {
+            var (counter, pattern) = t.Kind switch
+            {
+                ReferenceKind.Section => ("counter(heading)", "1.1"),
+                ReferenceKind.Equation => ("counter(math.equation)", "1"),
+                ReferenceKind.Table => ("counter(figure.where(kind: table))", "1"),
+                _ => ("counter(figure.where(kind: image))", "1"),
+            };
+            sb.AppendLine(
+                $"  (\"{t.Key}\", numbering(\"{pattern}\", ..{counter}.at(<{t.Key}>)), counter(page).at(<{t.Key}>).first()),");
+        }
+        sb.AppendLine($")) <{LabelNumbersTag}>]");
+        return sb.ToString();
     }
 
     // ────────── cross-references ──────────

@@ -47,4 +47,36 @@ public class LabelNumbersTests
     {
         LabelNumbers.Parse(stored).Should().BeEmpty();
     }
+
+    // ── Numbers from a Typst preview (typst eval on the exporter's probe) ──
+
+    [Fact]
+    public void Reads_what_typst_eval_returns_into_the_same_stored_form_as_the_aux()
+    {
+        var stored = LabelNumbers.FromTypst("""[["sec:details","2.1",1],["tab:two","2",3]]""");
+
+        var numbers = LabelNumbers.Parse(stored);
+        numbers["sec:details"].Number.Should().Be("2.1");
+        numbers["tab:two"].Page.Should().Be(3);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("[]")]
+    [InlineData("not json")]
+    [InlineData("""{"tab:x":"1"}""")]
+    [InlineData("""[["tab:x"]]""")]
+    [InlineData("""[["","1",1]]""")]
+    public void A_preview_with_nothing_usable_is_null_so_it_never_blanks_the_last_numbers(string? evaluated)
+    {
+        LabelNumbers.FromTypst(evaluated).Should().BeNull();
+    }
+
+    [Fact]
+    public void Skips_a_bad_row_and_keeps_the_good_ones()
+    {
+        var numbers = LabelNumbers.Parse(LabelNumbers.FromTypst("""[["tab:x"],["tab:y","4",2]]"""));
+        numbers.Keys.Should().Equal("tab:y");
+    }
 }
