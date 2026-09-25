@@ -157,8 +157,11 @@ public class TypstFixtureCombinatorialTests
         // Bibliography_block_compiles_when_references_bib_supplied).
         new Fx("paragraph with native \\cite (no bib in fixture ctx → fallback)", "paragraph",
             """{"text":"As shown in \\cite{smith2024}, the result holds."}""", ExpectCompile: false),
-        new Fx("paragraph with native \\ref (no label in fixture ctx → fallback)", "paragraph",
-            """{"text":"See Theorem \\ref{thm:main} for the proof."}""", ExpectCompile: false),
+        // A reference to a label nothing defines prints ?? — what the PDF
+        // prints — and the preview compiles. It used to fail the whole
+        // document and fall back to pdflatex (TypstReferencesTests).
+        new Fx("paragraph with native \\ref to a missing label (prints ??)", "paragraph",
+            """{"text":"See Theorem \\ref{thm:main} for the proof."}"""),
         new Fx("paragraph with native \\url",         "paragraph",
             """{"text":"Available at \\url{https://example.com}."}"""),
         new Fx("paragraph with native \\href",        "paragraph",
