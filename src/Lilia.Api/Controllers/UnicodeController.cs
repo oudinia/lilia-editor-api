@@ -60,10 +60,10 @@ public class UnicodeController : ControllerBase
         var counts = CountCodepoints(text);
 
         var wontCompile = classified.Unmapped
-            .Select(cp => new UnicodeCharDto(char.ConvertFromUtf32(cp), cp, null, counts.GetValueOrDefault(cp)))
+            .Select(cp => new UnicodeCharDto(char.ConvertFromUtf32(cp), cp, null, counts.GetValueOrDefault(cp), UnicodeKind.Of(cp)))
             .ToList();
         var shimmed = classified.Shimmed
-            .Select(kv => new UnicodeCharDto(char.ConvertFromUtf32(kv.Key), kv.Key, kv.Value, counts.GetValueOrDefault(kv.Key)))
+            .Select(kv => new UnicodeCharDto(char.ConvertFromUtf32(kv.Key), kv.Key, kv.Value, counts.GetValueOrDefault(kv.Key), UnicodeKind.Of(kv.Key)))
             .ToList();
 
         return Ok(new UnicodeCheckResponse(true, wontCompile, shimmed));
@@ -97,4 +97,7 @@ public record UnicodeCheckResponse(
 /// <param name="Replacement">The LaTeX the shim substitutes; null for a character
 /// that has none, which is why it will not compile.</param>
 /// <param name="Count">Occurrences in the text.</param>
-public record UnicodeCharDto(string Char, int Codepoint, string? Replacement, int Count);
+/// <param name="Kind"><c>symbol</c>, <c>script</c> or <c>emoji</c> — see
+/// <see cref="UnicodeKind"/>. Whether a lookup can help: only a symbol might
+/// have a command.</param>
+public record UnicodeCharDto(string Char, int Codepoint, string? Replacement, int Count, string Kind);

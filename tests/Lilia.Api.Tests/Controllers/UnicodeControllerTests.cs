@@ -41,6 +41,22 @@ public class UnicodeControllerTests
     }
 
     [Fact]
+    public void Says_what_kind_of_character_each_one_is()
+    {
+        // Olivia, 25 Sep: the chip offers "Look up ℵ" for a symbol and nothing
+        // for script or emoji, which have no command to find.
+        _shim.Setup(s => s.Classify(It.IsAny<string>())).Returns(new UnicodeClassification(
+            new SortedDictionary<int, string> { [0x03B3] = @"\ensuremath{\gamma}" },
+            [0x2135, 0x4E2D, 0x1F642]));
+
+        var body = Body(_sut.Check(new UnicodeCheckRequest("γ ℵ 中 🙂")));
+
+        body.WontCompile.Select(c => (c.Char, c.Kind)).Should().Equal(
+            ("ℵ", "symbol"), ("中", "script"), ("🙂", "emoji"));
+        body.Shimmed.Single().Kind.Should().Be("symbol");
+    }
+
+    [Fact]
     public void Counts_occurrences_not_kinds()
     {
         // The chip's copy is "2 pasted characters won't compile" — the author
