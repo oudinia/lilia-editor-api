@@ -980,7 +980,7 @@ public class LaTeXExportService : ILaTeXExportService
         var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "display" : "display";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var numbered = !content.TryGetProperty("numbered", out var n) || n.ValueKind != JsonValueKind.False;
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{eq:{label}}}" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
 
         // An alignment body with no mode to match it.
         //
@@ -1024,7 +1024,7 @@ public class LaTeXExportService : ILaTeXExportService
         var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
         var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure";
 
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{fig:{label}}}" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("figure", label)}}}" : "";
 
         // Subfigures — when the figure carries a `subfigures` array, emit a
         // subcaption layout (subcaption is in the preamble). Each panel gets an
@@ -1051,7 +1051,7 @@ public class LaTeXExportService : ILaTeXExportService
                     fsb.AppendLine($@"\IfFileExists{{figures/{fn}}}{{\includegraphics[width=\textwidth]{{figures/{fn}}}}}{{\fbox{{\small\textit{{[Missing: {EscapeLatex(fn)}]}}}}}}");
                 }
                 if (!string.IsNullOrEmpty(sfCap))
-                    fsb.AppendLine($@"\caption{{{EscapeLatex(sfCap)}}}" + (!string.IsNullOrEmpty(sfLabel) ? $@"\label{{fig:{sfLabel}}}" : ""));
+                    fsb.AppendLine($@"\caption{{{EscapeLatex(sfCap)}}}" + (!string.IsNullOrEmpty(sfLabel) ? $@"\label{{{LabelKey.Effective("figure", sfLabel)}}}" : ""));
                 fsb.AppendLine(@"\end{subfigure}");
                 // a little horizontal gap between panels (not after the last)
                 if (i < panels.Count - 1) fsb.AppendLine(@"\hfill");
@@ -1165,7 +1165,7 @@ public class LaTeXExportService : ILaTeXExportService
             ? sc.GetString() ?? ""
             : "";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{tbl:{label}}}" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("table", label)}}}" : "";
         var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
         var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "table*" : "table";
 
@@ -1524,7 +1524,7 @@ public class LaTeXExportService : ILaTeXExportService
     {
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{alg:{label}}}" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("algorithm", label)}}}" : "";
 
         // Build the algorithmic body. The editor stores `lines` as structured
         // objects { indent, keyword, text, comment }; legacy/imported data may
@@ -1595,7 +1595,7 @@ public class LaTeXExportService : ILaTeXExportService
         var text = GetText(content);
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{thm:{label}}}" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("theorem", label)}}}" : "";
 
         if (theoremType == "proof")
             return $@"\begin{{proof}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{proof}";
@@ -1684,8 +1684,13 @@ public class LaTeXExportService : ILaTeXExportService
         // citeauthor / citeyear) through the escape pass. Group 1 captures the
         // command so natbib modes aren't flattened back to \cite.
         result = Regex.Replace(result, @"\\(cite(?:p|t|author|year)?)\{([^}]+)\}", m => Ph($@"\{m.Groups[1].Value}{{{m.Groups[2].Value}}}"));
-        result = Regex.Replace(result, @"\\eqref\{([^}]+)\}", m => Ph($@"\eqref{{{m.Groups[1].Value}}}"));
-        result = Regex.Replace(result, @"\\ref\{([^}]+)\}", m => Ph($@"\ref{{{m.Groups[1].Value}}}"));
+        // Reference family — preserve the exact command, as the cite family does.
+        // This used to know \ref and \eqref only, so \cref — what the editor's @
+        // picker writes, and cleveref is in the preamble — was escaped to
+        // \textbackslash{}cref and printed as raw text. Same set the editor
+        // round-trips and the reference index recognises.
+        result = Regex.Replace(result, @"\\(ref|eqref|cref|Cref|autoref|pageref|nameref)\{([^}]+)\}",
+            m => Ph($@"\{m.Groups[1].Value}{{{m.Groups[2].Value}}}"));
         result = Regex.Replace(result, @"\\url\{([^}]+)\}", m => Ph($@"\url{{{m.Groups[1].Value}}}"));
         // \href two-arg form first, then single-arg fallback (treat as bare link).
         result = Regex.Replace(result, @"\\href\{([^}]+)\}\{([^}]+)\}", m => Ph($@"\href{{{m.Groups[1].Value}}}{{{m.Groups[2].Value}}}"));
