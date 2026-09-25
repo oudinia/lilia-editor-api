@@ -555,26 +555,70 @@ public class TypstExportService : ITypstExportService
         var rows = rowsEl.EnumerateArray().ToList();
         if (rows.Count == 0) return "// [Empty table]";
 
-        // Determine column count from first row
-        var firstRow = rows[0];
-        int colCount = firstRow.ValueKind == JsonValueKind.Array ? firstRow.GetArrayLength() : 1;
+        // The editor stores a header row separately, in `headers`; the LaTeX
+        // export draws it as the bold first row and takes the column count
+        // from it. This path used to ignore it, so the preview lost the header.
+        var headers = content.TryGetProperty("headers", out var h) && h.ValueKind == JsonValueKind.Array
+            ? h.EnumerateArray().ToList()
+            : [];
+        int colCount = headers.Count > 0
+            ? headers.Count
+            : rows[0].ValueKind == JsonValueKind.Array ? Math.Max(1, rows[0].GetArrayLength()) : 1;
+
+        // Span origins and the cells they absorb, as LaTeXExportService builds
+        // them for \multicolumn / \multirow. The editor keeps full-width rows,
+        // so an absorbed cell is still in the grid; Typst places a spanned cell
+        // itself and must not be handed the absorbed ones too.
+        var covered = new HashSet<(int, int)>();
+        for (int r = 0; r < rows.Count; r++)
+        {
+            if (rows[r].ValueKind != JsonValueKind.Array) continue;
+            var cells = rows[r].EnumerateArray().ToList();
+            for (int c = 0; c < cells.Count; c++)
+            {
+                var (cs, rs) = TableCellSpan(cells[c]);
+                for (int rr = r; rr < r + rs; rr++)
+                    for (int cc = c; cc < c + cs; cc++)
+                        if (rr != r || cc != c) covered.Add((rr, cc));
+            }
+        }
 
         var sb = new StringBuilder();
         sb.AppendLine($"#table(");
         sb.AppendLine($"  columns: {colCount},");
-        var hasHeader = content.TryGetProperty("hasHeader", out var hh) && hh.GetBoolean();
+
+        if (headers.Count > 0)
+        {
+            var headerCells = headers.Select(x => TableCellText(x))
+                .Select(x => x.Length == 0 ? "[]" : $"[#strong[{FormatInline(x)}]]");
+            sb.AppendLine($"  table.header({string.Join(", ", headerCells)}),");
+        }
+
+        // Imported tables mark their first row as the header instead (hasHeader),
+        // with no `headers` array; that first row keeps its old treatment.
+        var firstRowIsHeader = headers.Count == 0
+            && content.TryGetProperty("hasHeader", out var hh) && hh.ValueKind == JsonValueKind.True;
 
         for (int r = 0; r < rows.Count; r++)
         {
-            var row = rows[r];
-            if (row.ValueKind != JsonValueKind.Array) continue;
-            var cells = row.EnumerateArray()
-                .Select(c => c.ValueKind == JsonValueKind.String ? c.GetString() ?? "" : c.ToString())
-                .Select(t => $"[{FormatInline(t)}]")
-                .ToList();
-            var prefix = (hasHeader && r == 0) ? "  table.header(" : "  ";
-            var suffix = (hasHeader && r == 0) ? ")," : ",";
-            sb.AppendLine($"{prefix}{string.Join(", ", cells)}{suffix}");
+            if (rows[r].ValueKind != JsonValueKind.Array) continue;
+            var cells = rows[r].EnumerateArray().ToList();
+            var toks = new List<string>();
+            // Every grid column once, as LaTeX does: a short row is padded, or
+            // Typst would pull the next row's cells up into it.
+            for (int c = 0; c < colCount; c++)
+            {
+                if (covered.Contains((r, c))) continue;
+                var cell = c < cells.Count ? cells[c] : default;
+                var text = cell.ValueKind == JsonValueKind.Undefined ? "" : TableCellText(cell);
+                var (cs, rs) = cell.ValueKind == JsonValueKind.Undefined ? (1, 1) : TableCellSpan(cell);
+                var body = $"[{FormatInline(text)}]";
+                toks.Add(cs > 1 || rs > 1
+                    ? $"table.cell({SpanArgs(Math.Min(cs, colCount - c), Math.Min(rs, rows.Count - r))}){body}"
+                    : body);
+            }
+            var line = string.Join(", ", toks);
+            sb.AppendLine(firstRowIsHeader && r == 0 ? $"  table.header({line})," : $"  {line},");
         }
         sb.Append(")");
 
@@ -589,6 +633,37 @@ public class TypstExportService : ITypstExportService
             // written without its leading '#'.
             return $"#figure(\n{sb.ToString().TrimStart('#')},\n  caption: [{FormatInline(caption)}],\n)";
         return sb.ToString();
+    }
+
+    private static string SpanArgs(int colspan, int rowspan) =>
+        string.Join(", ", new[]
+        {
+            colspan > 1 ? $"colspan: {colspan}" : null,
+            rowspan > 1 ? $"rowspan: {rowspan}" : null,
+        }.Where(a => a is not null));
+
+    /// <summary>
+    /// A table cell is a plain string or an object <c>{content|text, colspan,
+    /// rowspan}</c> — read exactly as <c>LaTeXExportService.TableCellText</c>
+    /// reads it. The object used to be printed whole, as JSON, in the preview.
+    /// </summary>
+    internal static string TableCellText(JsonElement cell)
+    {
+        if (cell.ValueKind == JsonValueKind.String) return cell.GetString() ?? "";
+        if (cell.ValueKind == JsonValueKind.Object)
+        {
+            if (cell.TryGetProperty("content", out var ct) && ct.ValueKind == JsonValueKind.String) return ct.GetString() ?? "";
+            if (cell.TryGetProperty("text", out var tx) && tx.ValueKind == JsonValueKind.String) return tx.GetString() ?? "";
+        }
+        return "";
+    }
+
+    private static (int Colspan, int Rowspan) TableCellSpan(JsonElement cell)
+    {
+        if (cell.ValueKind != JsonValueKind.Object) return (1, 1);
+        int cs = cell.TryGetProperty("colspan", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 1;
+        int rs = cell.TryGetProperty("rowspan", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt32() : 1;
+        return (Math.Max(1, cs), Math.Max(1, rs));
     }
 
     private static string RenderCode(JsonElement content)
