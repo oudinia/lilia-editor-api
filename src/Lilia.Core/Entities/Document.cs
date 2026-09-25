@@ -151,6 +151,20 @@ public class Document
     public int ValidationWarningCount { get; set; }
     public DateTime? ValidationCheckedAt { get; set; }
 
+    /// <summary>
+    /// The number and page of every label, as the last PDF compile printed them:
+    /// JSON, <c>{"tab:results":{"n":"3","p":7}}</c>. Written by the PDF export
+    /// the editor's preview calls, from the .aux that compile already produced.
+    ///
+    /// <para>Only the numbers are kept. Which labels exist, and what points at
+    /// them, is still derived from the blocks on every request and cannot go
+    /// stale. The numbers can — which is why they carry
+    /// <see cref="LabelNumbersAt"/>, and the UI says when they were measured
+    /// instead of presenting them as current.</para>
+    /// </summary>
+    public string? LabelNumbers { get; set; }
+    public DateTime? LabelNumbersAt { get; set; }
+
     // AI one-liner — a one-sentence gist of the document, generated on demand
     // (POST api/documents/{id}/summary) and shown on the My Documents cards.
     public string? AiSummary { get; set; }

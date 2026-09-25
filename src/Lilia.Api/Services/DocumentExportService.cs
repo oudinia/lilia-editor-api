@@ -189,10 +189,41 @@ public class DocumentExportService : IDocumentExportService
         // other hint ("auto", "typst") falls back to the document's own setting.
         var engine = hint is "xelatex" or "lualatex" or "pdflatex" ? hint : documentEngine;
 
-        var pdflatexPdf = await _latexRenderService.RenderToPdfTolerantAsync(
+        var (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
             latex, timeout: 60, engine: engine,
             materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
+        await KeepLabelNumbersAsync(documentId, aux);
         return (pdflatexPdf, engine);
+    }
+
+    /// <summary>
+    /// Keep the number every label got in this compile, dated, so the
+    /// references panel can show them without compiling again — the numbers in
+    /// the panel are then the ones in the PDF the author is looking at.
+    ///
+    /// <para>Best effort. The PDF is what was asked for; failing to record a
+    /// by-product must never fail the export. And a compile that produced no
+    /// labels leaves the last good numbers in place rather than blanking them,
+    /// because the date beside them already says how old they are.</para>
+    /// </summary>
+    internal async Task KeepLabelNumbersAsync(Guid documentId, string? aux)
+    {
+        try
+        {
+            var stored = LabelNumbers.FromAux(aux);
+            if (stored is null) return;
+
+            var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == documentId);
+            if (doc is null) return;
+
+            doc.LabelNumbers = stored;
+            doc.LabelNumbersAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Export] could not keep label numbers for {DocumentId}", documentId);
+        }
     }
 
     /// <summary>

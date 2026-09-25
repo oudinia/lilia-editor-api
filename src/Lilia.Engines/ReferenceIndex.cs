@@ -98,6 +98,18 @@ public static class ReferenceIndex
             // Last write wins, as in the page map: a label redefined within one
             // run leaves the later entry as the one the PDF reflects.
             .ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
+        return Build(blocks, numbers);
+    }
+
+    /// <summary>
+    /// Build the report with numbers already read — the ones the last PDF
+    /// compile stored (<see cref="LabelNumbers"/>), so the index costs no
+    /// compile. The .aux overload is a projection over this, so the two cannot
+    /// disagree about how a number is joined on.
+    /// </summary>
+    public static ReferenceReport Build(
+        IEnumerable<Block> blocks, IReadOnlyDictionary<string, AuxLabel> numbers)
+    {
 
         var targets = new List<ReferenceTarget>();
         var uses = new List<ReferenceUse>();
