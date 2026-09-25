@@ -208,15 +208,47 @@ public class PreviewRenderService : IPreviewRenderService
             };
         }
 
+        // A document with labels also asks Typst which number each got, so the
+        // editor can show "table 1" after a preview rather than only after a
+        // pdflatex compile.
+        var probe = source.Contains($"<{TypstExportService.LabelNumbersTag}>", StringComparison.Ordinal)
+            ? TypstExportService.LabelNumbersEval
+            : null;
         var result = await _typstCompiler.CompileAsync(
-            source, TypstOutputFormat.Pdf, assets, staged.Files, ct);
+            source, TypstOutputFormat.Pdf, assets, staged.Files, probe, ct);
         if (result.Success && result.Output is { Length: > 0 })
         {
+            await KeepLabelNumbersAsync(documentId, result.Evaluated, ct);
             return result.Output;
         }
 
         EmitFallback(documentId, "typst-compile-failed", result.Error, sample: source);
         return null;
+    }
+
+    /// <summary>
+    /// Keep the numbers this preview gave the document's labels, dated, as the
+    /// pdflatex path does — the references panel and the editor read them from
+    /// the same place, so whichever compile ran last is what they show.
+    /// Best effort: the PDF is what was asked for.
+    /// </summary>
+    private async Task KeepLabelNumbersAsync(Guid documentId, string? evaluated, CancellationToken ct)
+    {
+        var stored = LabelNumbers.FromTypst(evaluated);
+        if (stored is null) return;
+        try
+        {
+            var now = DateTime.UtcNow;
+            await _db.Documents
+                .Where(d => d.Id == documentId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(d => d.LabelNumbers, stored)
+                    .SetProperty(d => d.LabelNumbersAt, now), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Preview] could not keep label numbers for {DocId}", documentId);
+        }
     }
 
     private void EmitFallback(Guid documentId, string reason, string? detail, string? sample)
