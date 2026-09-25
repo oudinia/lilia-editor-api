@@ -119,6 +119,12 @@ public class TypstExportService : ITypstExportService
         // fonts-liberation, an unrelated family. See MapFontList.
         sb.AppendLine($"#set text(font: ({MapFontList(doc.FontFamily)}), size: 11pt)");
         sb.AppendLine($"#set par(justify: true)");
+        // Number what the PDF numbers, so a reference has a number to print:
+        // sections and display equations, as pdflatex does. Tables carry their
+        // caption above, as the LaTeX export writes it.
+        sb.AppendLine("#set heading(numbering: \"1.1\")");
+        sb.AppendLine("#set math.equation(numbering: \"(1)\")");
+        sb.AppendLine("#show figure.where(kind: table): set figure.caption(position: top)");
         sb.AppendLine();
 
         // Visible title block (maketitle analogue). Imported docs often
@@ -143,11 +149,26 @@ public class TypstExportService : ITypstExportService
             .OrderBy(b => b.SortOrder)
             .ToList();
 
+        // Every key the document defines, by the rule the LaTeX export and the
+        // editor's index use — so all three agree on what "tab:results" is.
+        var defined = ReferenceIndex.Build(blocks).Targets
+            .GroupBy(t => t.Key, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        // The subset Typst can number, because the label was attached here.
+        var attached = new Dictionary<string, ReferenceTarget>(StringComparer.Ordinal);
+
         int? currentRunCols = null;
         foreach (var block in orderedBlocks)
         {
             var rendered = RenderBlock(block);
             if (string.IsNullOrWhiteSpace(rendered)) continue;
+
+            var key = AttachableLabel(block, rendered);
+            if (key is not null && defined.TryGetValue(key, out var target) && !attached.ContainsKey(key))
+            {
+                rendered = $"{rendered} <{key}>";
+                attached[key] = target;
+            }
 
             var blockCols = blockToCols.TryGetValue(block.Id, out var n) ? n : defaultCols;
 
@@ -164,8 +185,128 @@ public class TypstExportService : ITypstExportService
 
         if (currentRunCols is > 1) sb.AppendLine("]");
 
-        return sb.ToString();
+        return ResolveReferences(sb.ToString(), defined, attached);
     }
+
+    // ────────── cross-references ──────────
+
+    // Markers FormatInline leaves where a reference was, resolved once the whole
+    // document is known. Control characters: nothing in escaping touches them.
+    private const char RefOpen = '\u0001', RefSep = '\u0002', RefClose = '\u0003';
+    private static readonly Regex RefMarker = new("\u0001([A-Za-z]+)\u0002([^\u0003]*)\u0003", RegexOptions.Compiled);
+
+    /// <summary>A key Typst's <c>&lt;label&gt;</c> and <c>@ref</c> syntax both accept.</summary>
+    private static readonly Regex TypstLabelSafe = new(@"^[A-Za-z0-9_](?:[A-Za-z0-9_:.\-]*[A-Za-z0-9_])?$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The key to attach after this block's Typst, or null. Only elements Typst
+    /// numbers the way pdflatex does: a numbered heading, a numbered display
+    /// equation, a figure, a captioned table. Anything else — a theorem, which
+    /// is a plain block here; an equation* — is left unlabelled, and a
+    /// reference to it prints the pending slot rather than a wrong number.
+    /// </summary>
+    private static string? AttachableLabel(Block block, string rendered)
+    {
+        if (rendered.StartsWith("//", StringComparison.Ordinal)) return null;   // a placeholder comment
+        var content = block.Content?.RootElement ?? default;
+        if (content.ValueKind != JsonValueKind.Object) return null;
+        if (!content.TryGetProperty("label", out var l) || l.ValueKind != JsonValueKind.String) return null;
+
+        var numbered = !(content.TryGetProperty("numbered", out var n) && n.ValueKind == JsonValueKind.False);
+        var eligible = block.Type switch
+        {
+            "heading" => numbered,
+            "equation" => numbered && rendered.StartsWith("$ ", StringComparison.Ordinal),
+            "figure" => rendered.StartsWith("#figure(", StringComparison.Ordinal),
+            "table" => rendered.StartsWith("#figure(", StringComparison.Ordinal),
+            _ => false,
+        };
+        if (!eligible) return null;
+
+        var key = LabelKey.Effective(block.Type, l.GetString());
+        return key.Length > 0 && TypstLabelSafe.IsMatch(key) ? key : null;
+    }
+
+    /// <summary>
+    /// Replace each reference marker with what pdflatex would print, measured
+    /// command by command (25 Sep): <c>\ref</c> 1, <c>\eqref</c> (1), <c>\cref</c>
+    /// table 1 · eq. (1) · fig. 1 · section 1, <c>\Cref</c> Table 1 · Equation (1),
+    /// <c>\autoref</c> Table 1 · Equation 1, a missing label ??. Typst prints the
+    /// number itself through <c>@key[]</c>; the word is written here, because
+    /// Typst's own words ("Equation 1") are not cleveref's.
+    /// </summary>
+    internal static string ResolveReferences(
+        string typst,
+        IReadOnlyDictionary<string, ReferenceTarget> defined,
+        IReadOnlyDictionary<string, ReferenceTarget> attached)
+    {
+        return RefMarker.Replace(typst, m =>
+        {
+            var form = m.Groups[1].Value;
+            var keys = m.Groups[2].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            return string.Join(", ", keys.Select(k => TypstReference(form, k, defined, attached)));
+        });
+    }
+
+    private static string TypstReference(
+        string form, string key,
+        IReadOnlyDictionary<string, ReferenceTarget> defined,
+        IReadOnlyDictionary<string, ReferenceTarget> attached)
+    {
+        // Nothing carries the label: what the PDF prints, so the preview does
+        // not compile a document the PDF would show broken as if it were fine.
+        if (!defined.TryGetValue(key, out var target))
+            return form == "eqref" ? "(??)" : "??";
+
+        // Defined, but not something the preview numbers: the slot the editor
+        // uses for "no number yet", never a question mark.
+        var number = attached.ContainsKey(key) ? $"@{key}[]" : PendingSlot;
+
+        switch (form)
+        {
+            case "eqref":
+                return $"({number})";
+            case "pageref":
+                return attached.ContainsKey(key) ? $"#(context counter(page).at(<{key}>).first())" : PendingSlot;
+            case "nameref":
+                return !string.IsNullOrWhiteSpace(target.Caption) ? EscapeTypstInline(target.Caption) : number;
+            case "cref":
+            case "Cref":
+            case "autoref":
+                var word = ReferenceWord(form, target.Kind);
+                if (word is null) return number;
+                // cleveref writes an equation's number in its parentheses; autoref does not.
+                return target.Kind == ReferenceKind.Equation && form != "autoref"
+                    ? $"{word} ({number})"
+                    : $"{word} {number}";
+            default:
+                return number;
+        }
+    }
+
+    internal const string PendingSlot = "▯";
+
+    /// <summary>The words pdflatex printed, per command and kind. Kinds that
+    /// were not measured get no word rather than a guessed one.</summary>
+    private static string? ReferenceWord(string form, ReferenceKind kind) => (form, kind) switch
+    {
+        ("cref", ReferenceKind.Table) => "table",
+        ("cref", ReferenceKind.Equation) => "eq.",
+        ("cref", ReferenceKind.Section) => "section",
+        ("cref", ReferenceKind.Figure) => "fig.",
+        ("cref", ReferenceKind.Theorem) => "theorem",
+        ("Cref", ReferenceKind.Table) => "Table",
+        ("Cref", ReferenceKind.Equation) => "Equation",
+        ("Cref", ReferenceKind.Section) => "Section",
+        ("Cref", ReferenceKind.Figure) => "Figure",
+        ("Cref", ReferenceKind.Theorem) => "Theorem",
+        ("autoref", ReferenceKind.Table) => "Table",
+        ("autoref", ReferenceKind.Equation) => "Equation",
+        ("autoref", ReferenceKind.Section) => "section",
+        ("autoref", ReferenceKind.Figure) => "Figure",
+        ("autoref", ReferenceKind.Theorem) => "Theorem",
+        _ => null,
+    };
 
     /// <summary>
     /// Map each block id to its effective column count. Layout-dimension
@@ -283,7 +424,12 @@ public class TypstExportService : ITypstExportService
         // text. With Typst auto-numbering on (and TOC entries deriving
         // from heading text), leaving the prefix in shows the number
         // twice in the rendered PDF.
-        return $"{prefix} {FormatInline(StripBakedNumberingPrefix(text))}";
+        var body = FormatInline(StripBakedNumberingPrefix(text));
+        // numbered:false is \section* in the LaTeX export: no number there,
+        // so none here, now that headings are numbered by default.
+        if (content.TryGetProperty("numbered", out var n) && n.ValueKind == JsonValueKind.False)
+            return $"#heading(level: {Math.Clamp(level, 1, 6)}, numbering: none)[{body}]";
+        return $"{prefix} {body}";
     }
 
     /// <summary>
@@ -324,7 +470,12 @@ public class TypstExportService : ITypstExportService
         // form here. KaTeX-compatible LaTeX is mostly Typst-compatible
         // for common operators.
         var typstMath = LatexMathToTypst(latex);
-        return mode == "inline" ? $"${typstMath}$" : $"$ {typstMath} $";
+        if (mode == "inline") return $"${typstMath}$";
+        // numbered:false is equation* / \[ \] in the LaTeX export — unnumbered,
+        // so it must not take a number from the document-wide rule.
+        if (content.TryGetProperty("numbered", out var num) && num.ValueKind == JsonValueKind.False)
+            return $"#[#set math.equation(numbering: none)\n$ {typstMath} $\n]";
+        return $"$ {typstMath} $";
     }
 
     private static string RenderFigure(JsonElement content)
@@ -389,6 +540,17 @@ public class TypstExportService : ITypstExportService
             sb.AppendLine($"{prefix}{string.Join(", ", cells)}{suffix}");
         }
         sb.Append(")");
+
+        // A captioned table is a numbered float in the LaTeX export
+        // (\begin{table} … \caption), so here it is a figure: numbered
+        // "Table 1", caption on top, and something a reference can point at.
+        // Uncaptioned tables are not numbered by LaTeX, and are not here.
+        var caption = content.TryGetProperty("caption", out var cap) && cap.ValueKind == JsonValueKind.String
+            ? cap.GetString() ?? "" : "";
+        if (!string.IsNullOrWhiteSpace(caption))
+            // Inside figure( … ) Typst is in code mode, where the table is
+            // written without its leading '#'.
+            return $"#figure(\n{sb.ToString().TrimStart('#')},\n  caption: [{FormatInline(caption)}],\n)";
         return sb.ToString();
     }
 
@@ -736,6 +898,14 @@ public class TypstExportService : ITypstExportService
 
         var s = text;
 
+        // References become markers, resolved once the whole document is
+        // rendered (ResolveReferences): whether \cref{tab:x} can print
+        // "table 1" depends on a table this paragraph cannot see. First, so no
+        // later rule — italics on an underscore, escaping — reaches the key.
+        s = Regex.Replace(s, @"\\(ref|eqref|cref|Cref|autoref|pageref|nameref)\{([^}]+)\}",
+            m => Ph($"{RefOpen}{m.Groups[1].Value}{RefSep}{m.Groups[2].Value}{RefClose}"));
+        s = Regex.Replace(s, @"@ref\{([^}]+)\}", m => Ph($"{RefOpen}ref{RefSep}{m.Groups[1].Value}{RefClose}"));
+
         // 0. Bare LaTeX date/author tokens in body text (Sample Report:
         //    "Date: \today"). Typst has no \today — expand to a calendar
         //    date; body `\date{…}` (preamble cmd misused mid-paragraph)
@@ -853,11 +1023,8 @@ public class TypstExportService : ITypstExportService
         s = Regex.Replace(s, @"(?<![A-Za-z0-9_])_([^_\s][^_]*?[^_\s]|[^_\s])_(?![A-Za-z0-9_])",
             m => Ph($"_{EscapeTypstInline(m.Groups[1].Value)}_"));
 
-        // 6. References / citations — Typst uses @label syntax for both.
-        s = Regex.Replace(s, @"\\eqref\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
-        s = Regex.Replace(s, @"\\ref\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
+        // 6. Citations — Typst uses @key. (References were taken at the top.)
         s = Regex.Replace(s, @"\\cite\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
-        s = Regex.Replace(s, @"@ref\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
         s = Regex.Replace(s, @"@cite\{([^}]+)\}", m => Ph($"@{m.Groups[1].Value}"));
 
         // 7. URLs + links.
