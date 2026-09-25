@@ -22,6 +22,16 @@ public interface ILaTeXRenderService
         Func<string, Task>? materialiseAssets = null);
 
     /// <summary>
+    /// As <see cref="RenderToPdfTolerantAsync"/>, and also the .aux the same
+    /// compile wrote. The PDF preview compiles every document the author looks
+    /// at; its .aux holds the number of every label exactly as that PDF prints
+    /// it. It used to be thrown away.
+    /// </summary>
+    Task<(byte[] Pdf, string? Aux)> RenderToPdfTolerantWithAuxAsync(
+        string latex, int timeout = 60, string engine = "pdflatex",
+        Func<string, Task>? materialiseAssets = null);
+
+    /// <summary>
     /// Compile and return the PDF alongside the block → page map read from the
     /// .aux. One compile, two outputs — the map is a by-product of a render that
     /// had to happen anyway.
@@ -188,12 +198,21 @@ public class LaTeXRenderService : ILaTeXRenderService
         string latex, int timeout = 60, string engine = "pdflatex",
         Func<string, Task>? materialiseAssets = null)
     {
+        var (pdf, _) = await RenderToPdfTolerantWithAuxAsync(latex, timeout, engine, materialiseAssets);
+        return pdf;
+    }
+
+    /// <inheritdoc />
+    public async Task<(byte[] Pdf, string? Aux)> RenderToPdfTolerantWithAuxAsync(
+        string latex, int timeout = 60, string engine = "pdflatex",
+        Func<string, Task>? materialiseAssets = null)
+    {
         await _semaphore.WaitAsync();
         try
         {
-            var (pdf, _, _) = await CompileLatexAsync(
+            var (pdf, _, aux) = await CompileLatexAsync(
                 latex, timeout, tolerant: true, engine: engine, materialiseAssets: materialiseAssets);
-            return pdf;
+            return (pdf, aux);
         }
         finally
         {

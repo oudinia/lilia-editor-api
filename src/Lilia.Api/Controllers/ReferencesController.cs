@@ -3,6 +3,8 @@ using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Engines;
+using Lilia.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -31,6 +33,7 @@ public class ReferencesController : ControllerBase
     private readonly IDocumentService _documents;
     private readonly IRenderService _render;
     private readonly ILaTeXRenderService _latex;
+    private readonly LiliaDbContext _db;
     private readonly ILogger<ReferencesController> _logger;
 
     public ReferencesController(
@@ -38,12 +41,14 @@ public class ReferencesController : ControllerBase
         IDocumentService documents,
         IRenderService render,
         ILaTeXRenderService latex,
+        LiliaDbContext db,
         ILogger<ReferencesController> logger)
     {
         _blocks = blocks;
         _documents = documents;
         _render = render;
         _latex = latex;
+        _db = db;
         _logger = logger;
     }
 
@@ -81,15 +86,31 @@ public class ReferencesController : ControllerBase
             Content = JsonDocument.Parse(b.Content.GetRawText()),
         }).ToList();
 
-        string? aux = null;
-        var numbered = false;
+        ReferenceReport report;
+        DateTime? numberedAt;
         if (numbers)
         {
-            (aux, numbered) = await TryCompileForNumbersAsync(docId);
+            // Asked for fresh numbers: compile now.
+            var (aux, compiled) = await TryCompileForNumbersAsync(docId);
+            report = ReferenceIndex.Build(blocks, aux);
+            numberedAt = compiled ? DateTime.UtcNow : null;
+        }
+        else
+        {
+            // The numbers the last PDF compile kept — no compile, and they are
+            // the ones in the PDF the author is looking at. Dated, because they
+            // can be older than the blocks: the caller says so rather than
+            // presenting them as current.
+            var kept = await _db.Documents.AsNoTracking()
+                .Where(d => d.Id == docId)
+                .Select(d => new { d.LabelNumbers, d.LabelNumbersAt })
+                .FirstOrDefaultAsync();
+            var stored = LabelNumbers.Parse(kept?.LabelNumbers);
+            report = ReferenceIndex.Build(blocks, stored);
+            numberedAt = stored.Count > 0 ? kept?.LabelNumbersAt : null;
         }
 
-        var report = ReferenceIndex.Build(blocks, aux);
-        return Ok(ReferenceReportDto.From(report, numbered));
+        return Ok(ReferenceReportDto.From(report, numberedAt));
     }
 
     /// <summary>
@@ -116,17 +137,21 @@ public class ReferencesController : ControllerBase
 }
 
 /// <param name="Numbered">
-/// True when the numbers below were taken from a compile that just succeeded.
-/// False means every <c>number</c> is null — not that they are zero.
+/// True when the numbers below come from a compile — just now, or the last PDF
+/// compile. False means every <c>number</c> is null, not that they are zero.
 /// </param>
+/// <param name="NumberedAt">When that compile happened. A target with no number
+/// while this is set was added since — the panel's "1 target added since".</param>
 public record ReferenceReportDto(
     bool Numbered,
+    DateTime? NumberedAt,
     IReadOnlyList<ReferenceTargetDto> Targets,
     IReadOnlyList<ReferenceUseDto> Uses,
     IReadOnlyList<ReferenceProblemDto> Problems)
 {
-    public static ReferenceReportDto From(ReferenceReport report, bool numbered) => new(
-        numbered,
+    public static ReferenceReportDto From(ReferenceReport report, DateTime? numberedAt) => new(
+        numberedAt is not null,
+        numberedAt,
         report.Targets.Select(t => new ReferenceTargetDto(
             t.Key,
             t.Kind.ToString().ToLowerInvariant(),
