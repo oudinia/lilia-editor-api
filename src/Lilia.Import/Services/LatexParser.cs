@@ -726,11 +726,14 @@ public class LatexParser : ILatexParser
         // scan in ExtractInlineReferences would miss them.
         var (harvestedCites, harvestedLabels) = HarvestInlineReferences(documentContent);
 
-        // Cross-references — surface the label as plain text so the
-        // user sees the reference target without raw LaTeX syntax. A
-        // proper cross-ref node is a separate piece of work; readable
-        // text beats "\ref{pythagorean}" in the meantime.
-        documentContent = Regex.Replace(documentContent, @"\\(?:eqref|cref|Cref|autoref|pageref|nameref|ref)\{([^}]+)\}", "$1");
+        // Cross-references stay as \ref{…} / \eqref{…} / \cref{…} … in block
+        // text: the editor has a reference node for each form
+        // (content-converter.ts) and the exporter writes each back as-is.
+        // They used to be flattened here to the bare label ("see eq:pyth"),
+        // from before that node existed — every cross-reference in an
+        // imported paper became plain text. Plain-text fields (captions,
+        // titles, table cells) still get the label, in
+        // StripInlineCommandsForPlainText / CleanCellText.
 
         // Remove document setup commands
         documentContent = Regex.Replace(documentContent, @"\\maketitle\b", "");
@@ -951,8 +954,12 @@ public class LatexParser : ILatexParser
     }
 
     /// <summary>Strip simple inline LaTeX commands (\textbf{x} → x) so a string is safe to use as plain text.</summary>
+    private static readonly Regex CrossReference = new(
+        @"\\(?:eqref|cref|Cref|autoref|pageref|nameref|ref)\{([^}]+)\}", RegexOptions.Compiled);
+
     private static string StripInlineCommandsForPlainText(string text)
     {
+        text = CrossReference.Replace(text, "$1");
         text = Regex.Replace(text, @"\\(?:textbf|textit|emph|texttt|textsc|textrm|textsf|underline)\{([^{}]*)\}", "$1");
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
@@ -987,7 +994,9 @@ public class LatexParser : ILatexParser
         ["textit"] = ("*", "*"),
         ["emph"]   = ("*", "*"),
         ["underline"] = ("__", "__"),
-        // textsc / textrm / textsf — keep plain (Markdown has no small-caps / font-family inline).
+        // The editor's small-caps mark is ^^text^^ (LML); the exporter writes \textsc.
+        ["textsc"] = ("^^", "^^"),
+        // textrm / textsf — keep plain (no inline font-family mark).
     };
 
     /// <summary>
@@ -1040,15 +1049,11 @@ public class LatexParser : ILatexParser
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
 
-        // \href{URL}{LABEL} → [LABEL](URL). The editor has no downstream
-        // renderer for raw \href like it does for \cite/\ref, so leaving
-        // it as LaTeX means users see "\href{...}{...}" in blocks.
-        text = Regex.Replace(
-            text,
-            @"\\href\{([^{}]*)\}\{([^{}]*)\}",
-            m => "[" + m.Groups[2].Value + "](" + m.Groups[1].Value + ")");
-        // \url{URL} → URL (no markdown link wrapper needed; URL is its own label).
-        text = Regex.Replace(text, @"\\url\{([^{}]*)\}", m => m.Groups[1].Value);
+        // \href{URL}{LABEL} and \url{URL} stay as written (PreservedInlineCommands):
+        // the editor parses both into link nodes and the exporter writes both
+        // back. They used to become a Markdown [LABEL](URL) — which neither
+        // the editor nor the exporter reads, so it printed literally — and a
+        // bare URL that was no longer a link.
 
         // Handle \verb<delim>...<delim> and \lstinline<delim>...<delim>
         // — the delimiter is a single non-letter char (typically | or +).
@@ -2274,7 +2279,7 @@ public class LatexParser : ILatexParser
     private static string CleanCellText(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return raw;
-        var s = raw;
+        var s = CrossReference.Replace(raw, "$1");
 
         // 1. Standalone font shape/series/family commands — apply to
         //    following text in LaTeX, no semantic value in plain cell text.

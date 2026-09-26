@@ -45,12 +45,11 @@ public class LatexCorpusTests
         // File-level includes are structural; parser recurses but the
         // directive can linger in passthrough blocks.
         "input", "include",
-        // Hyperlinks — post-fix these become markdown, but legacy paths
-        // may still have the raw command in passthrough content. Leaving
-        // on the allow-list avoids false positives on unconverted paths
-        // while preserving the real user-visible invariant (rendered
-        // block text is clean in the hot path).
-        "hyperref",
+        // Hyperlinks — \href and \url are kept as written: the editor parses
+        // both into link nodes (content-converter.ts) and the exporter writes
+        // both back. (They used to become a Markdown [label](url), which
+        // neither reads, so it printed literally.)
+        "hyperref", "href", "url",
     };
 
     // Generates (FixtureRelPath) tuples for the xUnit [Theory]. xUnit
