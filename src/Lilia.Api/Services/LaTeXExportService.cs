@@ -1791,6 +1791,13 @@ public class LaTeXExportService : ILaTeXExportService
         // 2. Inline code: `text` → \texttt{text}
         result = Regex.Replace(result, @"`([^`]+)`", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
+        // 2b. Underline: __text__ → \underline{text}. The editor serialises its
+        //     underline mark as __text__ (content-converter.ts) and the preview
+        //     renderer maps it (RenderService). Without this rule the italic
+        //     _text_ rule below took the inner pair, exporting
+        //     "\_\textit{text}\_".
+        result = Regex.Replace(result, @"__([^_]+)__", m => Ph($@"\underline{{{EscapeLatex(m.Groups[1].Value)}}}"));
+
         // 3. Bold: **text** → \textbf{text} (canonical markdown form;
         //    matches what tiptapToBlockContent emits + sanitizeToHtml
         //    on the preview side. Pre-fix the exporter only handled
