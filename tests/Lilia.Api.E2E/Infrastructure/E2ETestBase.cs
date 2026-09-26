@@ -33,10 +33,16 @@ public abstract class E2ETestBase : IAsyncLifetime
             throw new InvalidOperationException($"Test user '{userKey}' not found in config");
 
         if (string.IsNullOrEmpty(user.UserId))
+        {
+            if (AuthTokenProvider.IsDevHeaderMode)
+                throw new InvalidOperationException(
+                    "DevHeader mode cannot make anonymous requests: the dev API authenticates every " +
+                    "request without an Authorization header as its built-in dev user (the owner's own " +
+                    "account). Run anonymous tests with DevJwt/Kinde/StaticToken instead.");
             return client; // Anonymous
+        }
 
-        var token = await AuthTokenProvider.GetTokenAsync(user);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        await AuthTokenProvider.AuthenticateAsync(client, user);
         return client;
     }
 
@@ -89,8 +95,7 @@ public abstract class E2ETestBase : IAsyncLifetime
         // Try to get an owner token for cleanup
         try
         {
-            var token = await AuthTokenProvider.GetTokenAsync(GetUser("Owner"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            await AuthTokenProvider.AuthenticateAsync(client, GetUser("Owner"));
         }
         catch
         {
