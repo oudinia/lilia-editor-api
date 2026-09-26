@@ -25,8 +25,12 @@ public record UpdateBibliographyEntryDto(
     JsonElement? Data
 );
 
+/// <param name="Overwrite">An entry whose cite key already exists: replace it
+/// (true), or leave it and skip the incoming one (false). Omitted means true,
+/// the behaviour before the flag existed.</param>
 public record ImportBibTexDto(
-    string BibTexContent
+    string BibTexContent,
+    bool? Overwrite = null
 );
 
 public record DoiLookupDto(

@@ -93,7 +93,7 @@ public partial class BibliographyService : IBibliographyService
         return true;
     }
 
-    public async Task<List<BibliographyEntryDto>> ImportBibTexAsync(Guid documentId, string bibTexContent)
+    public async Task<List<BibliographyEntryDto>> ImportBibTexAsync(Guid documentId, string bibTexContent, bool overwrite = true)
     {
         var entries = ParseBibTex(bibTexContent);
         var results = new List<BibliographyEntryDto>();
@@ -104,6 +104,11 @@ public partial class BibliographyService : IBibliographyService
             var existing = await _context.BibliographyEntries
                 .FirstOrDefaultAsync(e => e.DocumentId == documentId && e.CiteKey == citeKey);
 
+            if (existing != null && !overwrite)
+            {
+                // Kept as it is; the caller counts it as skipped (it is not returned).
+                continue;
+            }
             if (existing != null)
             {
                 existing.EntryType = entryType;
@@ -232,31 +237,18 @@ public partial class BibliographyService : IBibliographyService
         }
     }
 
-    private static List<(string CiteKey, string EntryType, Dictionary<string, string> Data)> ParseBibTex(string content)
-    {
-        var results = new List<(string, string, Dictionary<string, string>)>();
-        var entryPattern = EntryRegex();
-        var fieldPattern = FieldRegex();
-
-        foreach (Match entryMatch in entryPattern.Matches(content))
-        {
-            var entryType = entryMatch.Groups[1].Value.ToLower();
-            var citeKey = entryMatch.Groups[2].Value;
-            var fieldsContent = entryMatch.Groups[3].Value;
-
-            var data = new Dictionary<string, string>();
-            foreach (Match fieldMatch in fieldPattern.Matches(fieldsContent))
-            {
-                var fieldName = fieldMatch.Groups[1].Value.ToLower();
-                var fieldValue = fieldMatch.Groups[2].Value.Trim('{', '}', '"');
-                data[fieldName] = fieldValue;
-            }
-
-            results.Add((citeKey, entryType, data));
-        }
-
-        return results;
-    }
+    /// <summary>
+    /// Through <see cref="BibTexParser"/>, which balances braces. The regex this
+    /// replaces matched each entry lazily up to its FIRST closing brace — the end
+    /// of the first braced field — so every braced field was cut off and the
+    /// entry was stored with a cite key and a type and nothing else. Found 26 Sep
+    /// by the e2e bibliography spec; the panel's import had also never reached
+    /// this code (it sent the wrong field name).
+    /// </summary>
+    private static List<(string CiteKey, string EntryType, Dictionary<string, string> Data)> ParseBibTex(string content) =>
+        BibTexParser.Parse(content)
+            .Select(e => (e.CiteKey, e.EntryType, new Dictionary<string, string>(e.Fields, StringComparer.OrdinalIgnoreCase)))
+            .ToList();
 
     private static string FormatCitation(string entryType, JsonElement data)
     {
@@ -324,12 +316,6 @@ public partial class BibliographyService : IBibliographyService
             e.UpdatedAt
         );
     }
-
-    [GeneratedRegex(@"@(\w+)\s*\{\s*([^,]+)\s*,\s*([\s\S]*?)\s*\}", RegexOptions.Multiline)]
-    private static partial Regex EntryRegex();
-
-    [GeneratedRegex(@"(\w+)\s*=\s*(?:\{([^}]*)\}|""([^""]*)"")", RegexOptions.Multiline)]
-    private static partial Regex FieldRegex();
 
     public async Task<DoiLookupResultDto?> LookupIsbnAsync(string isbn)
     {
