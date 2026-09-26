@@ -712,6 +712,13 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\newtheorem\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\]|\{[^}]*\})*", "");
         documentContent = Regex.Replace(documentContent, @"\\(?:re)?newcommand\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\newenvironment\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
+        // \def\name{…}, \theoremstyle{…} and \DeclareMathOperator — also
+        // definitions, not text. They leaked as "\defour method" and a stray
+        // "definition" paragraph. (LatexPreambleExtractor carries the macro
+        // definitions onto the document's custom preamble.)
+        documentContent = Regex.Replace(documentContent, @"\\def\s*\\[A-Za-z@]+\s*(?:#\d)*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\theoremstyle\s*\{[^}]*\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*\{[^}]*\}", "");
 
         // When a user pastes a full document, \begin{document} /
         // \end{document} are wrappers, not content. The generic

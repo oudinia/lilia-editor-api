@@ -77,10 +77,17 @@ public static class LatexPreambleExtractor
 
         // Macros / environments — collect each match with its position so the
         // output preserves source order across the different definition kinds.
+        // The body counts too: \newcommand, \def and \newenvironment are legal
+        // after \begin{document}, and papers do define macros there. The body
+        // parser strips those definitions from the text, so a macro defined in
+        // the body used to be lost entirely — its uses were left undefined and
+        // the export no longer compiled.
         var hits = new List<(int Pos, string Text)>();
+        var seenDefinitions = new HashSet<string>(StringComparer.Ordinal);
         foreach (var re in MacroRes)
-            foreach (Match m in re.Matches(preamble))
-                hits.Add((m.Index, m.Value.Trim()));
+            foreach (Match m in re.Matches(rawLatex))
+                if (seenDefinitions.Add(m.Value.Trim()))
+                    hits.Add((m.Index, m.Value.Trim()));
         hits.Sort((a, b) => a.Pos.CompareTo(b.Pos));
 
         string? customPreamble = null;
