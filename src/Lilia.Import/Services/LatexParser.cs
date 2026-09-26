@@ -1617,7 +1617,12 @@ public class LatexParser : ILatexParser
                         Order = elementOrder++,
                         LatexContent = firstMatch.match.Groups[1].Value.Trim(),
                         ConversionSucceeded = true,
-                        IsInline = false
+                        IsInline = false,
+                        // \[…\], $$…$$ and displaymath are unnumbered display
+                        // maths. Left at the default they imported as numbered and
+                        // exported as \begin{equation}, printing an (n) the source
+                        // never had and shifting every later number.
+                        Numbered = false,
                     });
                     break;
 
