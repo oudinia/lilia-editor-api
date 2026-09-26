@@ -30,17 +30,31 @@ public static class LatexToTypst
     /// that cares — the export telemetry does — can decide whether to trust
     /// the result or fall back to LaTeX.
     /// </param>
-    public static string Convert(string latex, out IReadOnlyList<string> unmapped)
+    public static string Convert(string latex, out IReadOnlyList<string> unmapped) =>
+        Convert(latex, Grid.None, out unmapped);
+
+    /// <summary>
+    /// What <c>&amp;</c> and <c>\</c> mean where they appear. Only a matrix
+    /// body separates cells with "," and rows with ";" — the arguments of
+    /// <c>mat()</c>. In <c>cases()</c> each row is an argument and
+    /// <c>&amp;</c> aligns; everywhere else (align, aligned, split, a bare
+    /// alignment body) they are Typst's own alignment point and line break.
+    /// Translating them as matrix separators everywhere printed
+    /// <c>a &amp;= b \ c &amp;= d</c> as "a, = b; c, = d".
+    /// </summary>
+    private enum Grid { None, Matrix, Cases }
+
+    private static string Convert(string latex, Grid grid, out IReadOnlyList<string> unmapped)
     {
         var found = new List<string>();
         unmapped = found;
         if (string.IsNullOrWhiteSpace(latex)) return "";
 
-        var scanner = new Scanner(latex, found);
+        var scanner = new Scanner(latex, found, grid);
         return scanner.ReadUntilEnd().Trim();
     }
 
-    private sealed class Scanner(string src, List<string> unmapped)
+    private sealed class Scanner(string src, List<string> unmapped, Grid grid)
     {
         private int _i;
 
@@ -175,7 +189,7 @@ public static class LatexToTypst
 
                 case '&':
                     _i++;
-                    sb.Append(',');                  // matrix column separator
+                    sb.Append(grid == Grid.Matrix ? "," : " & ");   // a cell, or an alignment point
                     return;
 
                 case '~':
@@ -201,7 +215,16 @@ public static class LatexToTypst
                 var punct = Current.ToString();
                 _i++;
 
-                if (punct == "\\") { sb.Append(';'); return; }          // matrix row break
+                if (punct == "\\")
+                {
+                    sb.Append(grid switch
+                    {
+                        Grid.Matrix => ";",                              // matrix row
+                        Grid.Cases => ",",                               // the next case
+                        _ => " \\ ",                                   // Typst's line break
+                    });
+                    return;
+                }
                 if (LatexToTypstSymbols.Spacing.TryGetValue(punct, out var space))
                 {
                     if (space.Length > 0) sb.Append(' ').Append(space).Append(' ');
@@ -330,14 +353,14 @@ public static class LatexToTypst
             if (delim is not null)
             {
                 sb.Append("mat(delim: ").Append(delim).Append(", ")
-                  .Append(Convert(body, out var nested).Trim()).Append(')');
+                  .Append(Convert(body, Grid.Matrix, out var nested).Trim()).Append(')');
                 unmapped.AddRange(nested);
                 return;
             }
 
             if (env is "cases")
             {
-                sb.Append("cases(").Append(Convert(body, out var nested).Trim()).Append(')');
+                sb.Append("cases(").Append(Convert(body, Grid.Cases, out var nested).Trim()).Append(')');
                 unmapped.AddRange(nested);
                 return;
             }

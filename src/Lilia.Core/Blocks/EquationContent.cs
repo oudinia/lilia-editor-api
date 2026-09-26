@@ -58,6 +58,32 @@ public static class EquationContent
     }
 
     /// <summary>
+    /// The equation's mode, without its star, and whether it is numbered.
+    ///
+    /// <para><c>equationMode</c> is what the editor writes ("display",
+    /// "display*", "align*", "gather", "inline" …); <c>mode</c> is the older
+    /// shape and <c>displayMode: false</c> the oldest spelling of inline. A
+    /// trailing star, or <c>numbered: false</c>, means no number — as
+    /// <c>equation*</c> does in LaTeX. Both exporters read the mode here, so
+    /// neither can drift from what the editor shows again.</para>
+    /// </summary>
+    public static (string Mode, bool Numbered) ReadMode(JsonElement content)
+    {
+        string mode;
+        if (TryReadString(content, "equationMode", out var em) && em.Length > 0) mode = em;
+        else if (TryReadString(content, "mode", out var m) && m.Length > 0) mode = m;
+        else if (content.ValueKind == JsonValueKind.Object
+                 && content.TryGetProperty("displayMode", out var dm) && dm.ValueKind == JsonValueKind.False) mode = "inline";
+        else mode = "display";
+
+        var starred = mode.EndsWith('*');
+        var baseMode = starred ? mode[..^1] : mode;
+        var optedOut = content.ValueKind == JsonValueKind.Object
+            && content.TryGetProperty("numbered", out var n) && n.ValueKind == JsonValueKind.False;
+        return (baseMode, baseMode != "inline" && !starred && !optedOut);
+    }
+
+    /// <summary>
     /// The notation the source is written in. Defaults to <c>latex</c>: every
     /// row predating this field is LaTeX, and so is everything the editor
     /// writes today. Callers should not branch on it yet — it exists so that
