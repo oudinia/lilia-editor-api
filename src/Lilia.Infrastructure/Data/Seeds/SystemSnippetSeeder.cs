@@ -5,21 +5,52 @@ namespace Lilia.Infrastructure.Data.Seeds;
 
 public static class SystemSnippetSeeder
 {
+    /// <summary>
+    /// Brings the system snippets in line with the list below, matched by
+    /// name. A snippet that is still listed keeps its id — users' favourites
+    /// (snippet_favorites) and usage point at it, and deleting and re-adding
+    /// every snippet at each start wiped them — and takes the listed content.
+    /// A snippet no longer listed goes; a new one is added.
+    /// </summary>
     public static async Task SeedAsync(LiliaDbContext context)
     {
-        var existingSystemSnippets = await context.Snippets
+        var existing = await context.Snippets
             .Where(s => s.IsSystem)
             .ToListAsync();
+        var existingByName = existing
+            .GroupBy(s => s.Name)
+            .ToDictionary(g => g.Key, g => g.OrderBy(s => s.CreatedAt).ToList());
 
-        if (existingSystemSnippets.Any())
+        foreach (var wanted in GetSystemSnippets())
         {
-            context.Snippets.RemoveRange(existingSystemSnippets);
-            await context.SaveChangesAsync();
+            if (existingByName.TryGetValue(wanted.Name, out var matches))
+            {
+                var kept = matches[0];
+                kept.Description = wanted.Description;
+                kept.LatexContent = wanted.LatexContent;
+                kept.BlockType = wanted.BlockType;
+                kept.Category = wanted.Category;
+                kept.RequiredPackages = wanted.RequiredPackages;
+                kept.Preamble = wanted.Preamble;
+                kept.Tags = wanted.Tags;
+                // Favourites of a system snippet are per user now; the shared flag stays off.
+                kept.IsFavorite = false;
+                kept.UserId = null;
+                // Any duplicates of the same name (left by an older seeder) go.
+                context.Snippets.RemoveRange(matches.Skip(1));
+                existingByName.Remove(wanted.Name);
+            }
+            else
+            {
+                context.Snippets.Add(wanted);
+            }
         }
 
-        var snippets = GetSystemSnippets();
-        context.Snippets.AddRange(snippets);
-        await context.SaveChangesAsync();
+        // What remains is no longer in the list.
+        context.Snippets.RemoveRange(existingByName.Values.SelectMany(v => v));
+
+        if (context.ChangeTracker.HasChanges())
+            await context.SaveChangesAsync();
     }
 
     private static List<Snippet> GetSystemSnippets()

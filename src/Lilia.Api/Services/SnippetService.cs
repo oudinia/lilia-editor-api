@@ -40,12 +40,6 @@ public class SnippetService : ISnippetService
             query = query.Where(s => s.Category == search.Category);
         }
 
-        // Favorites filter
-        if (search.FavoritesOnly == true)
-        {
-            query = query.Where(s => s.IsFavorite);
-        }
-
         // Text search (ILIKE on name, description, latexContent)
         if (!string.IsNullOrEmpty(search.Query))
         {
@@ -57,18 +51,26 @@ public class SnippetService : ISnippetService
             );
         }
 
-        var totalCount = await query.CountAsync();
+        var rows = WithFavorite(query, userId);
 
-        var items = await query
-            .OrderByDescending(s => s.IsFavorite)
-            .ThenByDescending(s => s.UsageCount)
-            .ThenBy(s => s.Name)
+        // Favorites filter
+        if (search.FavoritesOnly == true)
+        {
+            rows = rows.Where(r => r.IsFavorite);
+        }
+
+        var totalCount = await rows.CountAsync();
+
+        var items = await rows
+            .OrderByDescending(r => r.IsFavorite)
+            .ThenByDescending(r => r.Snippet.UsageCount)
+            .ThenBy(r => r.Snippet.Name)
             .Skip((search.Page - 1) * search.PageSize)
             .Take(search.PageSize)
             .ToListAsync();
 
         return new SnippetPageDto(
-            items.Select(MapToDto).ToList(),
+            items.Select(r => MapToDto(r.Snippet, r.IsFavorite)).ToList(),
             totalCount,
             search.Page,
             search.PageSize
@@ -77,10 +79,12 @@ public class SnippetService : ISnippetService
 
     public async Task<SnippetDto?> GetSnippetAsync(Guid id, string userId)
     {
-        var snippet = await _context.Snippets
-            .FirstOrDefaultAsync(s => s.Id == id && (s.UserId == userId || (s.IsSystem && s.UserId == null)));
+        var row = await WithFavorite(
+                _context.Snippets.Where(s => s.Id == id && (s.UserId == userId || (s.IsSystem && s.UserId == null))),
+                userId)
+            .FirstOrDefaultAsync();
 
-        return snippet == null ? null : MapToDto(snippet);
+        return row == null ? null : MapToDto(row.Snippet, row.IsFavorite);
     }
 
     public async Task<SnippetDto> CreateSnippetAsync(string userId, CreateSnippetDto dto)
@@ -153,12 +157,27 @@ public class SnippetService : ISnippetService
 
         if (snippet == null) return null;
 
-        snippet.IsFavorite = !snippet.IsFavorite;
-        snippet.UpdatedAt = DateTime.UtcNow;
+        if (!snippet.IsSystem)
+        {
+            // The user's own snippet: the row is theirs alone, so the flag is too.
+            snippet.IsFavorite = !snippet.IsFavorite;
+            snippet.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return MapToDto(snippet, snippet.IsFavorite);
+        }
+
+        // A system snippet is one row shared by every user; the favourite is
+        // this user's own, kept beside it. The shared row is not touched.
+        var favorite = await _context.SnippetFavorites
+            .FirstOrDefaultAsync(f => f.SnippetId == id && f.UserId == userId);
+        if (favorite == null)
+            _context.SnippetFavorites.Add(new SnippetFavorite { UserId = userId, SnippetId = id, CreatedAt = DateTime.UtcNow });
+        else
+            _context.SnippetFavorites.Remove(favorite);
 
         await _context.SaveChangesAsync();
 
-        return MapToDto(snippet);
+        return MapToDto(snippet, isFavorite: favorite == null);
     }
 
     public async Task<bool> IncrementUsageAsync(Guid id, string userId)
@@ -185,7 +204,29 @@ public class SnippetService : ISnippetService
             .ToListAsync();
     }
 
-    private static SnippetDto MapToDto(Snippet s)
+    private sealed class SnippetRow
+    {
+        public Snippet Snippet { get; init; } = null!;
+        public bool IsFavorite { get; init; }
+    }
+
+    /// <summary>
+    /// Pairs each snippet with whether it is this user's favourite: their own
+    /// snippet's flag, or — for a system snippet, shared by everyone — a
+    /// snippet_favorites row of theirs.
+    /// </summary>
+    private IQueryable<SnippetRow> WithFavorite(IQueryable<Snippet> snippets, string userId) =>
+        snippets.Select(s => new SnippetRow
+        {
+            Snippet = s,
+            IsFavorite = s.IsSystem
+                ? _context.SnippetFavorites.Any(f => f.SnippetId == s.Id && f.UserId == userId)
+                : s.IsFavorite,
+        });
+
+    private static SnippetDto MapToDto(Snippet s) => MapToDto(s, s.IsFavorite);
+
+    private static SnippetDto MapToDto(Snippet s, bool isFavorite)
     {
         return new SnippetDto(
             s.Id,
@@ -197,7 +238,7 @@ public class SnippetService : ISnippetService
             s.RequiredPackages,
             s.Preamble,
             s.Tags,
-            s.IsFavorite,
+            isFavorite,
             s.IsSystem,
             s.UsageCount,
             s.UserId,
