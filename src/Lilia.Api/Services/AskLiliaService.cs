@@ -229,18 +229,22 @@ public sealed class AskLiliaService : IAskLiliaService
         // answer in that doc's current blocks (the author is editing it live).
         Guid? documentId = null;
         Lilia.Core.DTOs.DocumentDto? document = null;
+        var editMode = false; // granted below only to someone who may write
         if (!string.IsNullOrWhiteSpace(request.DocumentId) && Guid.TryParse(request.DocumentId, out var docGuid))
         {
             documentId = docGuid;
             try
             {
                 document = await _documentService.GetDocumentAsync(docGuid, userId);
+                editMode = MayEditWithAi(request.EditMode, document);
+                if (request.EditMode && !editMode && document is not null)
+                    _logger.LogWarning("[AskLilia] edit mode refused: {UserId} is {Role} on {DocId}", userId, document.Role, docGuid);
                 if (document is not null)
                 {
                     systemSb.AppendLine()
                         .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text), get_lilia_latex (the LaTeX Lilia itself emits, for a block or the whole document). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
                         .AppendLine("LATEX PROVENANCE — two different things get called \"the LaTeX\" and you must not blur them. (1) What LILIA EMITS: call get_lilia_latex; the reply is tagged source=\"lilia-emitter\" and is what actually compiles in this system, with Lilia's own preamble, package set and engine choice. (2) What YOU KNOW: idiomatic LaTeX from training, which may be perfectly correct in general and still not be what this document produces. When you show or discuss LaTeX for the open document, read it first and say which one you are giving — e.g. \"Lilia emits this:\" versus \"In standard LaTeX you would normally write:\". Never present recalled LaTeX as if it were the document's actual output, and if the two differ, say so plainly: that difference is usually the answer the author needs.");
-                    if (request.EditMode)
+                    if (editMode)
                     {
                         systemSb.AppendLine(IsCvDocument(document)
                             ? """
@@ -365,7 +369,7 @@ public sealed class AskLiliaService : IAskLiliaService
             // can write, so the client can offer "Undo AI changes". Surfaced
             // only if a write actually happened.
             Guid? undoVersionId = null;
-            if (request.EditMode && document is not null)
+            if (editMode && document is not null)
             {
                 try { undoVersionId = (await _versionService.CreateVersionAsync(documentId!.Value, userId, new Lilia.Core.DTOs.CreateVersionDto("Before Ask Lilia edit"))).Id; }
                 catch (Exception ex) { _logger.LogWarning(ex, "[AskLilia] undo snapshot failed for {DocId}", documentId); }
@@ -375,7 +379,7 @@ public sealed class AskLiliaService : IAskLiliaService
             {
                 var liveDoc = new LiveDocument(document);
                 tools = tools.Concat(BuildDocumentTools(
-                    liveDoc, documentId!.Value, userId, request.EditMode, changed, () => metaChanged = true, ct)).ToList();
+                    liveDoc, documentId!.Value, userId, editMode, changed, () => metaChanged = true, ct)).ToList();
             }
             // Live web search (Anthropic server-side tool). It runs provider-side —
             // results arrive within the same response, so the KB tool-use loop below
@@ -580,6 +584,16 @@ public sealed class AskLiliaService : IAskLiliaService
     // ── Document read tools (Phase 1 of agentic Ask Lilia) ───────────────────
     // Let the model READ the open document on demand instead of only the static
     // dump: outline/structure, one block's full content, or a text search.
+    /// <summary>
+    /// Edit mode hands the model tools that write the document — and those
+    /// tools call the block service with no user, so this is the only
+    /// permission check they get. It used to be whatever the client asked
+    /// for: a viewer could have Ask Lilia rewrite a document they may only
+    /// read. Only the owner and editors write.
+    /// </summary>
+    internal static bool MayEditWithAi(bool requested, Lilia.Core.DTOs.DocumentDto? document) =>
+        requested && document?.Role is "owner" or "editor";
+
     private IList<AITool> BuildDocumentTools(
         LiveDocument live,
         Guid docGuid,
