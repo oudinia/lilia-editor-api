@@ -977,9 +977,8 @@ public class LaTeXExportService : ILaTeXExportService
     private string RenderEquation(JsonElement content)
     {
         var latex = EquationContent.ReadSource(content);
-        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "display" : "display";
+        var (mode, numbered) = EquationContent.ReadMode(content);
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var numbered = !content.TryGetProperty("numbered", out var n) || n.ValueKind != JsonValueKind.False;
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
 
         // An alignment body with no mode to match it.

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Lilia.Core.Blocks;
 using Lilia.Core.Entities;
 using Lilia.Import.Services;
 using Microsoft.Extensions.Logging;
@@ -495,22 +496,18 @@ public class TypstExportService : ITypstExportService
         if (string.IsNullOrEmpty(latex))
             latex = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
 
-        // Likewise "displayMode" (boolean) is what the editor writes; "mode"
-        // (string) is the older shape.
-        var mode = "display";
-        if (content.TryGetProperty("displayMode", out var dm) && dm.ValueKind is JsonValueKind.False)
-            mode = "inline";
-        else if (content.TryGetProperty("mode", out var m))
-            mode = m.GetString() ?? "display";
+        // The mode the editor saved, read the way the LaTeX export reads it.
+        var (mode, numbered) = EquationContent.ReadMode(content);
         // Typst math syntax: '$...$' for inline, '$ ... $' (with spaces)
         // for display. We convert basic LaTeX math to Typst-compatible
         // form here. KaTeX-compatible LaTeX is mostly Typst-compatible
         // for common operators.
         var typstMath = LatexMathToTypst(latex);
         if (mode == "inline") return $"${typstMath}$";
-        // numbered:false is equation* / \[ \] in the LaTeX export — unnumbered,
-        // so it must not take a number from the document-wide rule.
-        if (content.TryGetProperty("numbered", out var num) && num.ValueKind == JsonValueKind.False)
+        // Unnumbered (a starred mode, or numbered:false) is equation* / \[ \]
+        // in the LaTeX export, so it must not take a number from the
+        // document-wide rule.
+        if (!numbered)
             return $"#[#set math.equation(numbering: none)\n$ {typstMath} $\n]";
         return $"$ {typstMath} $";
     }
