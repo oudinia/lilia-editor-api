@@ -47,6 +47,7 @@ public class TemplatesController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var template = await _templateService.CreateTemplateAsync(userId, dto);
+        if (template == null) return NotFound();
         await _auditService.LogAsync("template.create", "Template", template.Id.ToString(), new { dto.Name, dto.Category });
         return CreatedAtAction(nameof(GetTemplate), new { id = template.Id }, template);
     }
