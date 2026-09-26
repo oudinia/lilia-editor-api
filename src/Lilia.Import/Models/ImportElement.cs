@@ -121,6 +121,9 @@ public class ImportEquation : ImportElement
     /// <summary>
     /// Whether this is an inline equation (within text) or display equation (on its own line).
     /// </summary>
+    /// <summary>The \label{…} lifted out of the body, for \ref to find.</summary>
+    public string? Label { get; set; }
+
     public bool IsInline { get; set; }
 
     /// <summary>
@@ -242,6 +245,12 @@ public class ImportTable : ImportElement
     /// <summary>
     /// Whether the first row is a header row.
     /// </summary>
+    /// <summary>\caption{…} of the table float, as plain text.</summary>
+    public string? Caption { get; set; }
+
+    /// <summary>\label{…} of the table float.</summary>
+    public string? Label { get; set; }
+
     public bool HasHeaderRow { get; set; }
 
     /// <summary>
@@ -360,6 +369,12 @@ public class ImportListItem : ImportElement
     /// <summary>
     /// Whether this is a numbered list item (vs bullet).
     /// </summary>
+    /// <summary>
+    /// Which list environment the item came from. Items of one list share it,
+    /// so they become one list block; null when the source has no lists.
+    /// </summary>
+    public int? ListGroup { get; set; }
+
     public bool IsNumbered { get; set; }
 
     /// <summary>
@@ -788,6 +803,7 @@ public static class EquationBlockContent
             ["equationMode"] = eq.IsInline ? "inline" : "display",
         };
         if (!eq.Numbered) content["numbered"] = false;
+        if (!string.IsNullOrWhiteSpace(eq.Label)) content["label"] = eq.Label;
         return content;
     }
 }
