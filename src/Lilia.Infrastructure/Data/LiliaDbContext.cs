@@ -25,6 +25,7 @@ public class LiliaDbContext : DbContext
     public DbSet<BibliographyEntry> BibliographyEntries => Set<BibliographyEntry>();
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<DocumentLabel> DocumentLabels => Set<DocumentLabel>();
+    public DbSet<DocumentHide> DocumentHides => Set<DocumentHide>();
     public DbSet<DocumentCollaborator> DocumentCollaborators => Set<DocumentCollaborator>();
 
     // Tables as their own entity — owned by an author, referenced by any number

@@ -299,6 +299,32 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// "Remove from my documents" — a document shared with the caller stops
+    /// being listed for them. Deletes nothing; the share stays. 404 for the
+    /// owner (who trashes instead) or without access.
+    /// </summary>
+    [HttpPost("{id:guid}/hide")]
+    public async Task<ActionResult> HideDocument(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HideDocumentAsync(id, userId)) return NotFound();
+        await _auditService.LogAsync("document.hide", "Document", id.ToString());
+        return NoContent();
+    }
+
+    /// <summary>Undo "Remove from my documents".</summary>
+    [HttpDelete("{id:guid}/hide")]
+    public async Task<ActionResult> UnhideDocument(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.UnhideDocumentAsync(id, userId)) return NotFound();
+        await _auditService.LogAsync("document.unhide", "Document", id.ToString());
+        return NoContent();
+    }
+
+    /// <summary>
     /// Permanently delete a document from trash
     /// </summary>
     [HttpDelete("{id:guid}/permanent")]

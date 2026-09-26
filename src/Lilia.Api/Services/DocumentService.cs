@@ -127,7 +127,9 @@ public class DocumentService : IDocumentService
             .Where(d => !d.IsPlayground) // FT-SANDBOX-SCOPE: sandbox docs never in real lists
             .Where(d => d.OwnerId == userId ||
                         d.Collaborators.Any(c => c.UserId == userId) ||
-                        d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)));
+                        d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)))
+            // "Remove from my documents" — shared with them, but not listed.
+            .Where(d => !_context.DocumentHides.Any(h => h.DocumentId == d.Id && h.UserId == userId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -952,6 +954,29 @@ public class DocumentService : IDocumentService
         var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
         return new PaginatedResult<TrashDocumentDto>(items, page, pageSize, totalCount, totalPages);
+    }
+
+    public async Task<bool> HideDocumentAsync(Guid id, string userId)
+    {
+        var document = await _context.Documents.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null);
+        // The owner trashes instead; nobody hides what they can't read.
+        if (document == null || document.OwnerId == userId) return false;
+        if (!await HasAccessAsync(id, userId, Permissions.Read)) return false;
+
+        if (!await _context.DocumentHides.AnyAsync(h => h.DocumentId == id && h.UserId == userId))
+        {
+            _context.DocumentHides.Add(new DocumentHide { DocumentId = id, UserId = userId, HiddenAt = DateTime.UtcNow });
+            await _context.SaveChangesAsync();
+        }
+        return true;
+    }
+
+    public async Task<bool> UnhideDocumentAsync(Guid id, string userId)
+    {
+        var removed = await _context.DocumentHides
+            .Where(h => h.DocumentId == id && h.UserId == userId)
+            .ExecuteDeleteAsync();
+        return removed > 0;
     }
 
     public async Task<bool> RestoreDocumentAsync(Guid id, string userId)
