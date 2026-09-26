@@ -41,6 +41,7 @@ public class LiliaDbContext : DbContext
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<Formula> Formulas => Set<Formula>();
     public DbSet<Snippet> Snippets => Set<Snippet>();
+    public DbSet<SnippetFavorite> SnippetFavorites => Set<SnippetFavorite>();
     public DbSet<DraftBlock> DraftBlocks => Set<DraftBlock>();
     /// <summary>
     /// User-triggered diagnostic bundles from the math editor and

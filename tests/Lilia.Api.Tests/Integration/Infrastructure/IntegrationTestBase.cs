@@ -179,6 +179,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             DELETE FROM user_preferences;
             -- templates table was removed (now represented as documents with is_template=true)
             DELETE FROM formulas WHERE is_system = false;
+            DELETE FROM snippet_favorites;
             DELETE FROM snippets WHERE is_system = false;
             DELETE FROM passkeys;
             DELETE FROM two_factors;
