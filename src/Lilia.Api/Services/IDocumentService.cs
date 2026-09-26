@@ -84,6 +84,10 @@ public interface IDocumentService
     /// Restore a soft-deleted document
     /// </summary>
     Task<bool> RestoreDocumentAsync(Guid id, string userId);
+    /// <summary>"Remove from my documents": a non-owner stops listing it. False for the owner or no access.</summary>
+    Task<bool> HideDocumentAsync(Guid id, string userId);
+    /// <summary>Undo of <see cref="HideDocumentAsync"/>.</summary>
+    Task<bool> UnhideDocumentAsync(Guid id, string userId);
 
     /// <summary>
     /// Permanently delete a soft-deleted document
