@@ -127,7 +127,9 @@ public class DocumentService : IDocumentService
             .Where(d => !d.IsPlayground) // FT-SANDBOX-SCOPE: sandbox docs never in real lists
             .Where(d => d.OwnerId == userId ||
                         d.Collaborators.Any(c => c.UserId == userId) ||
-                        d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)))
+                        d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)) ||
+                        // A document in a team the user is in.
+                        (d.TeamId != null && _context.GroupMembers.Any(gm => gm.Group.TeamId == d.TeamId && gm.UserId == userId)))
             // "Remove from my documents" — shared with them, but not listed.
             .Where(d => !_context.DocumentHides.Any(h => h.DocumentId == d.Id && h.UserId == userId));
 
@@ -194,12 +196,27 @@ public class DocumentService : IDocumentService
             .Where(dc => documentIds.Contains(dc.DocumentId) && dc.UserId == userId)
             .ToDictionaryAsync(dc => dc.DocumentId, dc => dc.Role.Name);
 
+        // Teams whose documents the user may edit (their team role writes).
+        var teamIds = documents.Where(d => d.TeamId != null && d.OwnerId != userId)
+            .Select(d => d.TeamId!.Value).Distinct().ToList();
+        var writableTeams = (await _context.GroupMembers
+                .Where(gm => teamIds.Contains(gm.Group.TeamId) && gm.UserId == userId)
+                .Select(gm => new { gm.Group.TeamId, gm.Role.Permissions })
+                .ToListAsync())
+            .Where(x => x.Permissions.Contains(Permissions.Write))
+            .Select(x => x.TeamId)
+            .ToHashSet();
+
         var items = documents.Select(d =>
         {
             string role;
             if (d.OwnerId == userId)
                 role = "owner";
-            else if (collaboratorRoles.TryGetValue(d.Id, out var roleName))
+            else if (collaboratorRoles.TryGetValue(d.Id, out var roleName) && roleName is RoleNames.Owner or RoleNames.Editor)
+                role = roleName;
+            else if (d.TeamId is { } teamId && writableTeams.Contains(teamId))
+                role = RoleNames.Editor;
+            else if (roleName != null)
                 role = roleName;
             else
                 role = "viewer"; // group access fallback
@@ -304,7 +321,12 @@ public class DocumentService : IDocumentService
             .Where(dc => dc.DocumentId == document.Id && dc.UserId == userId)
             .Select(dc => dc.Role.Name)
             .FirstOrDefaultAsync();
-        return collaborator ?? "viewer"; // group access
+        if (collaborator is RoleNames.Owner or RoleNames.Editor) return collaborator;
+        // Group or team access can be more than the direct share: say what
+        // the user can actually do, so the editor opens read-only only for
+        // someone who can't write.
+        if (await HasAccessAsync(document.Id, userId, Permissions.Write)) return RoleNames.Editor;
+        return collaborator ?? RoleNames.Viewer;
     }
 
     /// <summary>
@@ -926,8 +948,22 @@ public class DocumentService : IDocumentService
             }
         }
 
+        // Team access: a document put in a team is open to the team's
+        // members, at their team role. It stops at editing: deleting,
+        // managing the sharing and transferring stay with the owner.
+        if (document.TeamId is { } teamId && TeamGrantable.Contains(requiredPermission))
+        {
+            var teamRoles = await _context.GroupMembers
+                .Where(gm => gm.Group.TeamId == teamId && gm.UserId == userId)
+                .Select(gm => gm.Role.Permissions)
+                .ToListAsync();
+            if (teamRoles.Any(p => p.Contains(requiredPermission))) return true;
+        }
+
         return false;
     }
+
+    private static readonly HashSet<string> TeamGrantable = [Permissions.Read, Permissions.Write];
 
     public async Task<PaginatedResult<TrashDocumentDto>> GetTrashDocumentsPaginatedAsync(string userId, int page = 1, int pageSize = 20)
     {
