@@ -1011,17 +1011,23 @@ public class LatexParser : ILatexParser
         // turned \, into a space. Set every $…$ / $$…$$ aside first and put
         // it back verbatim at the end. An escaped \$ is a dollar sign, not a
         // delimiter.
+        // Placeholders carry a per-call id: the normaliser recurses into
+        // preserved commands' arguments, and an inner call must never restore
+        // (or index into) an outer call's spans.
         var mathSpans = new List<string>();
+        var callId = Interlocked.Increment(ref _mathSpanCallId);
         text = InlineMathSpan.Replace(text, m =>
         {
             mathSpans.Add(m.Value);
-            return $"\uE000{mathSpans.Count - 1}\uE001";
+            return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
         });
         text = NormaliseInlineCommandsOutsideMath(text);
         return mathSpans.Count == 0
             ? text
-            : Regex.Replace(text, "\uE000(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
+            : Regex.Replace(text, $"\uE000{callId}:(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
     }
+
+    private static long _mathSpanCallId;
 
     private static readonly Regex InlineMathSpan = new(
         @"(?<!\\)\$\$(?:\\.|[^$\\])+\$\$|(?<!\\)\$(?:\\.|[^$\\])+\$",
