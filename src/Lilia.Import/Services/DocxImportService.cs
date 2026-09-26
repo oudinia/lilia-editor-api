@@ -58,6 +58,21 @@ public class DocxImportService : IDocxImportService
         return _supportedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Whether the file is a Word package: a zip holding word/document.xml.
+    /// Anything else named .docx used to "import" as an empty document.
+    /// </summary>
+    public static bool IsWordPackage(string filePath)
+    {
+        try
+        {
+            using var zip = System.IO.Compression.ZipFile.OpenRead(filePath);
+            return zip.GetEntry("word/document.xml") is not null;
+        }
+        catch (InvalidDataException) { return false; }
+        catch (IOException) { return false; }
+    }
+
     /// <inheritdoc/>
     public async Task<ImportResult> ImportAsync(
         string filePath,
@@ -75,6 +90,11 @@ public class DocxImportService : IDocxImportService
         if (!File.Exists(filePath))
         {
             return ImportResult.Failed($"File not found: {filePath}");
+        }
+
+        if (!IsWordPackage(filePath))
+        {
+            return ImportResult.Failed("This file isn't a Word document (.docx), so it can't be imported as one.");
         }
 
         try
