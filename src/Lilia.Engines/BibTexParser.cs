@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Lilia.Api.Services;
+namespace Lilia.Engines;
 
 /// <summary>
 /// Minimal BibTeX parser — pulls out cite key, entry type, and the

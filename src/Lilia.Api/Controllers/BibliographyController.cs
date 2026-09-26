@@ -100,7 +100,7 @@ public class BibliographyController : ControllerBase
         if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
             return Forbid();
 
-        var entries = await _bibliographyService.ImportBibTexAsync(docId, dto.BibTexContent);
+        var entries = await _bibliographyService.ImportBibTexAsync(docId, dto.BibTexContent, dto.Overwrite ?? true);
         return Ok(entries);
     }
 

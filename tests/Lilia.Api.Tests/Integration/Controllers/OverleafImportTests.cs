@@ -1,6 +1,7 @@
 using System.Net;
 using FluentAssertions;
 using Lilia.Api.Services;
+using Lilia.Engines;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Lilia.Import.Services;
 using Lilia.Core.Entities;
