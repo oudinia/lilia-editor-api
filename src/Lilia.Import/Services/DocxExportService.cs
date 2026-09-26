@@ -53,6 +53,8 @@ public class DocxExportService : IDocxExportService
             // Add numbering for lists
             AddNumberingDefinitions(mainPart);
 
+            NumberCaptions(document.Blocks);
+
             // Convert blocks to DOCX elements
             var sawBibliography = false;
             foreach (var block in document.Blocks)
@@ -158,6 +160,15 @@ public class DocxExportService : IDocxExportService
 
             styles.Append(headingStyle);
         }
+
+        // Word's built-in Caption style, so captions look like captions and
+        // Word's "Insert Caption" / cross-reference tools recognise them.
+        var captionStyle = new Style { Type = StyleValues.Paragraph, StyleId = "Caption" };
+        captionStyle.Append(new StyleName { Val = "caption" });
+        captionStyle.Append(new BasedOn { Val = "Normal" });
+        captionStyle.Append(new StyleParagraphProperties(new SpacingBetweenLines { Before = "120", After = "120" }));
+        captionStyle.Append(new StyleRunProperties(new Italic(), new FontSize { Val = "20" }));
+        styles.Append(captionStyle);
 
         // Add code style
         var codeStyle = new Style
@@ -542,7 +553,52 @@ public class DocxExportService : IDocxExportService
             _ => null,
         };
 
+    /// <summary>
+    /// Number captioned tables and figures in document order, as LaTeX's
+    /// counters do — only a block with a caption takes a number.
+    /// </summary>
+    private static void NumberCaptions(IEnumerable<ExportBlock> blocks)
+    {
+        int tables = 0, figures = 0;
+        foreach (var b in blocks)
+        {
+            if (b.Content is null || string.IsNullOrWhiteSpace(b.Content.Caption)) continue;
+            if (string.Equals(b.Type, "table", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++tables;
+            else if (string.Equals(b.Type, "figure", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++figures;
+        }
+    }
+
+    /// <summary>
+    /// A Word caption: the built-in Caption style, "Table " + a SEQ field + ": "
+    /// + the text. The field is what Word numbers (and cross-references point
+    /// at — Olivia, 23 Sep: use Word's own fields, so Word numbers them); the
+    /// run inside it is the number shown before Word updates fields.
+    /// </summary>
+    private static Paragraph CaptionParagraph(string label, int? number, string text, bool center)
+    {
+        var para = new Paragraph();
+        var pPr = new ParagraphProperties(new ParagraphStyleId { Val = "Caption" });
+        if (center) pPr.Append(new Justification { Val = JustificationValues.Center });
+        para.Append(pPr);
+        if (number is int n)
+        {
+            para.Append(new Run(new Text($"{label} ") { Space = SpaceProcessingModeValues.Preserve }));
+            para.Append(new SimpleField(new Run(new Text(n.ToString()))) { Instruction = $" SEQ {label} \\* ARABIC " });
+            para.Append(new Run(new Text(": ") { Space = SpaceProcessingModeValues.Preserve }));
+        }
+        para.Append(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
+        return para;
+    }
+
     private IEnumerable<OpenXmlElement> ConvertTable(ExportBlock block)
+    {
+        // The caption goes above the table, as the LaTeX export places it.
+        if (!string.IsNullOrWhiteSpace(block.Content?.Caption))
+            yield return CaptionParagraph("Table", block.Content.CaptionNumber, block.Content.Caption!, center: true);
+        foreach (var element in ConvertTableBody(block)) yield return element;
+    }
+
+    private IEnumerable<OpenXmlElement> ConvertTableBody(ExportBlock block)
     {
         var table = new Table();
         var content = block.Content;
@@ -660,21 +716,9 @@ public class DocxExportService : IDocxExportService
             }
         }
 
-        // Add caption if present
+        // Add caption if present — "Figure N: …", as the PDF prints it.
         if (!string.IsNullOrEmpty(content.Caption))
-        {
-            var captionPara = new Paragraph();
-            var pPr = new ParagraphProperties();
-            pPr.Append(new Justification { Val = JustificationValues.Center });
-            captionPara.Append(pPr);
-
-            var run = new Run();
-            run.Append(new RunProperties(new Italic()));
-            run.Append(new Text(content.Caption) { Space = SpaceProcessingModeValues.Preserve });
-            captionPara.Append(run);
-
-            elements.Add(captionPara);
-        }
+            elements.Add(CaptionParagraph("Figure", content.CaptionNumber, content.Caption, center: true));
 
         if (elements.Count == 0)
         {

@@ -155,6 +155,13 @@ public class ExportBlockContent
     public string? Caption { get; set; }
 
     /// <summary>
+    /// "Table 2", "Figure 3": the caption's number among captioned blocks of
+    /// its kind, set by the exporter before it renders (a singleton cannot
+    /// count as it goes). Null when not numbered.
+    /// </summary>
+    public int? CaptionNumber { get; set; }
+
+    /// <summary>
     /// List items.
     /// </summary>
     public List<ExportListItem>? Items { get; set; }

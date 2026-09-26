@@ -700,7 +700,10 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Rows = rows,
-                HasHeader = hasHeader
+                HasHeader = hasHeader,
+                // Dropped until 26 Sep: every other export printed the table's
+                // caption; the .docx had none.
+                Caption = GetString(content, "caption")
             }
         };
     }
