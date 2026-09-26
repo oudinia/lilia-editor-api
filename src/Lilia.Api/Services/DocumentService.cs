@@ -261,7 +261,17 @@ public class DocumentService : IDocumentService
         document.LastOpenedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        return MapToDto(document) with { Role = await RoleForAsync(document, userId) };
+        var owner = await _context.Users
+            .Where(u => u.Id == document.OwnerId)
+            .Select(u => new { u.Name, u.Email })
+            .FirstOrDefaultAsync();
+
+        return MapToDto(document) with
+        {
+            Role = await RoleForAsync(document, userId),
+            OwnerName = owner?.Name,
+            OwnerEmail = owner?.Email,
+        };
     }
 
     /// <summary>
