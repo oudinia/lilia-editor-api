@@ -93,7 +93,11 @@ public record DocumentDto(
     // "viewer" for group access — as the list already carries. The editor's
     // ⋯ shows only the actions that will succeed (Rename and Trash are the
     // owner's). Null where no user is in view (the public viewer).
-    string? Role = null
+    string? Role = null,
+    // Whose document this is, for the viewer's "View only · shared by …" chip
+    // (view-only handoff, Olivia 26 Sep). Filled for signed-in readers only.
+    string? OwnerName = null,
+    string? OwnerEmail = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as

@@ -147,7 +147,7 @@ public class DocumentCarriesTheReadersRoleTests : IntegrationTestBase
     [Fact]
     public async Task The_owner_reads_owner_and_an_invited_editor_reads_editor()
     {
-        await SeedUserAsync("test_user_001");
+        await SeedUserAsync("test_user_001", "ada@lilia.test", "Ada Lovelace");
         await SeedUserAsync("test_user_002");
         var doc = await SeedDocumentAsync("test_user_001", "Shared");
         await using (var db = CreateDbContext())
@@ -168,5 +168,8 @@ public class DocumentCarriesTheReadersRoleTests : IntegrationTestBase
         using var editor = CreateClientAs("test_user_002");
         var theirs = await editor.GetFromJsonAsync<DocumentDto>($"/api/documents/{doc.Id}");
         theirs!.Role.Should().Be("editor");
+        // …and whose it is: the viewer's top-bar chip names the owner.
+        theirs.OwnerName.Should().Be("Ada Lovelace");
+        theirs.OwnerEmail.Should().Be("ada@lilia.test");
     }
 }
