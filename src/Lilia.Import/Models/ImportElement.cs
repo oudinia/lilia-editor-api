@@ -676,6 +676,13 @@ public class ImportBlockquote : ImportElement
     /// How this blockquote was detected.
     /// </summary>
     public BlockquoteDetectionReason DetectionReason { get; set; }
+
+    /// <summary>
+    /// The blockquote block's <c>variant</c> ("verse", "epigraph"); null for a
+    /// plain quote. A LaTeX <c>verse</c> environment sets "verse", and its
+    /// <see cref="Text"/> then holds one line per <c>\\</c>-separated verse line.
+    /// </summary>
+    public string? Variant { get; set; }
 }
 
 /// <summary>

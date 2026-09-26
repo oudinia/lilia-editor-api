@@ -1754,13 +1754,27 @@ public class LatexParser : ILatexParser
                     break;
 
                 case "blockquote":
-                    document.Elements.Add(new ImportBlockquote
                     {
-                        Order = elementOrder++,
-                        Text = firstMatch.match.Groups[2].Value.Trim(),
-                        Formatting = ParseLatexFormatting(firstMatch.match.Groups[2].Value.Trim()),
-                        DetectionReason = BlockquoteDetectionReason.StyleName,
-                    });
+                        var quoteEnv = firstMatch.match.Groups[1].Value;
+                        var quoteBody = firstMatch.match.Groups[2].Value.Trim();
+                        // A verse keeps its lines: one per \\, which the block's
+                        // verse variant stores as newlines and the exporter turns
+                        // back into \\. Quote/quotation text is ordinary
+                        // paragraph text, normalised the same way.
+                        var quoteText = quoteEnv == "verse"
+                            ? string.Join("\n", Regex.Split(quoteBody, @"\\\\(?:\[[^\]]*\])?")
+                                .Select(l => NormaliseInlineCommands(l.Trim()))
+                                .Where(l => l.Length > 0))
+                            : NormaliseInlineCommands(quoteBody);
+                        document.Elements.Add(new ImportBlockquote
+                        {
+                            Order = elementOrder++,
+                            Text = quoteText,
+                            Variant = quoteEnv == "verse" ? "verse" : null,
+                            Formatting = ParseLatexFormatting(quoteBody),
+                            DetectionReason = BlockquoteDetectionReason.StyleName,
+                        });
+                    }
                     break;
 
                 case "unknown_env":
