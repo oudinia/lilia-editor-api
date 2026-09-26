@@ -77,6 +77,7 @@ public class TemplatesController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var document = await _templateService.UseTemplateAsync(id, userId, dto);
+        if (document == null) return NotFound();
         return Ok(document);
     }
 

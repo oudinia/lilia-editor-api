@@ -59,9 +59,7 @@ public class TemplateService : ITemplateService
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
             .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate);
 
-        if (doc == null) return null;
-        if (!doc.IsPublicTemplate && doc.OwnerId != userId && doc.OwnerId != "system")
-            return null;
+        if (doc == null || !IsVisibleTo(doc, userId)) return null;
 
         // Build content from blocks (for backward compat with frontend)
         var blocksJson = doc.Blocks.Select(b => new
@@ -192,15 +190,16 @@ public class TemplateService : ITemplateService
         return true;
     }
 
-    public async Task<DocumentDto> UseTemplateAsync(Guid templateId, string userId, UseTemplateDto dto)
+    public async Task<DocumentDto?> UseTemplateAsync(Guid templateId, string userId, UseTemplateDto dto)
     {
         var template = await _context.Documents
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
             .Include(d => d.BibliographyEntries)
             .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate);
 
-        if (template == null)
-            throw new ArgumentException("Template not found");
+        // Using a template copies its content, so it is visible on the same
+        // terms as reading it: someone else's private template is not found.
+        if (template == null || !IsVisibleTo(template, userId)) return null;
 
         // Create new document from template
         var newDoc = new Document
@@ -247,6 +246,13 @@ public class TemplateService : ITemplateService
 
         return (await _documentService.GetDocumentAsync(newDoc.Id, userId))!;
     }
+
+    /// <summary>
+    /// Who may see a template — and so read it or use it: its owner, anyone
+    /// when it is public, and everyone for a system template.
+    /// </summary>
+    private static bool IsVisibleTo(Document template, string userId) =>
+        template.IsPublicTemplate || template.OwnerId == userId || template.OwnerId == "system";
 
     public async Task<List<TemplateCategoryDto>> GetCategoriesAsync()
     {

@@ -9,6 +9,6 @@ public interface ITemplateService
     Task<TemplateDto> CreateTemplateAsync(string userId, CreateTemplateDto dto);
     Task<TemplateDto?> UpdateTemplateAsync(Guid templateId, string userId, UpdateTemplateDto dto);
     Task<bool> DeleteTemplateAsync(Guid templateId, string userId);
-    Task<DocumentDto> UseTemplateAsync(Guid templateId, string userId, UseTemplateDto dto);
+    Task<DocumentDto?> UseTemplateAsync(Guid templateId, string userId, UseTemplateDto dto);
     Task<List<TemplateCategoryDto>> GetCategoriesAsync();
 }
