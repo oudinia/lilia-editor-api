@@ -422,7 +422,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     // must be free to diverge without breaking the legacy DOCX path).
     private static (string type, object content) MapImportElementToBlock(ImportElement element) => element switch
     {
-        ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
+        ImportHeading h => ("heading", HeadingContent(h)),
         ImportParagraph p => ("paragraph", new { text = p.Text }),
         ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
         ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
@@ -453,6 +453,19 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         ImportAlgorithm algo => ("algorithm", AlgorithmContent(algo)),
         _ => ("paragraph", new { text = "" }),
     };
+
+    /// <summary>
+    /// label and numbered are written only when they say something — absent
+    /// means "no label" and "numbered", which is how the editor and the
+    /// exporter already read a heading.
+    /// </summary>
+    private static Dictionary<string, object> HeadingContent(ImportHeading h)
+    {
+        var content = new Dictionary<string, object> { ["text"] = h.Text, ["level"] = h.Level };
+        if (!string.IsNullOrWhiteSpace(h.Label)) content["label"] = h.Label;
+        if (!h.Numbered) content["numbered"] = false;
+        return content;
+    }
 
     private static object BlockquoteContent(ImportBlockquote bq) =>
         string.IsNullOrEmpty(bq.Variant)

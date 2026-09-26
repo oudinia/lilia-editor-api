@@ -1490,11 +1490,24 @@ public class LatexParser : ILatexParser
                 AddParagraphs(textBefore, document, ref elementOrder);
             }
 
+            // Source consumed beyond the match itself (a heading's trailing \label).
+            var consumedAfterMatch = 0;
+
             // Handle the matched element
             switch (firstMatch.type)
             {
                 case "section":
                     var sectionType = firstMatch.match.Groups[1].Value;
+                    // \section*{…} — unnumbered, and out of the table of contents.
+                    var sectionStarred = firstMatch.match.Value.StartsWith($"\\{sectionType}*", StringComparison.Ordinal);
+                    // The \label that names the section follows its title. It used to
+                    // be left in the stream, where the paragraph splitter saw a
+                    // paragraph starting with \label and dropped the whole of it —
+                    // the section's first paragraph vanished, and every \ref to the
+                    // section dangled.
+                    var afterSection = remaining[(firstMatch.match.Index + firstMatch.match.Length)..];
+                    var sectionLabel = Regex.Match(afterSection, @"^\s*\\label\{([^}]+)\}");
+                    if (sectionLabel.Success) consumedAfterMatch = sectionLabel.Length;
                     var sectionTitle = NormaliseInlineCommands(firstMatch.match.Groups[2].Value);
                     var level = sectionType switch
                     {
@@ -1512,7 +1525,9 @@ public class LatexParser : ILatexParser
                         {
                             Order = elementOrder++,
                             Level = level,
-                            Text = sectionTitle
+                            Text = sectionTitle,
+                            Label = sectionLabel.Success ? sectionLabel.Groups[1].Value.Trim() : null,
+                            Numbered = !sectionStarred,
                         });
                     }
                     else
@@ -1847,7 +1862,7 @@ public class LatexParser : ILatexParser
             }
 
             // Continue with remaining content
-            remaining = remaining[(firstMatch.match.Index + firstMatch.match.Length)..];
+            remaining = remaining[(firstMatch.match.Index + firstMatch.match.Length + consumedAfterMatch)..];
         }
     }
 
@@ -1860,8 +1875,10 @@ public class LatexParser : ILatexParser
 
         foreach (var para in paragraphs)
         {
-            // Skip if it's just LaTeX commands
-            if (Regex.IsMatch(para, @"^\\(label|ref|cite|newpage|clearpage|vspace|hspace|centering)\b"))
+            // Skip a paragraph that is nothing but layout / anchor commands. This
+            // used to skip any paragraph that merely *started* with one — a
+            // paragraph opening with \label, \ref or \cite was dropped whole.
+            if (Regex.IsMatch(para, @"^(?:\s*\\(?:label|ref|cite|newpage|clearpage|vspace\*?|hspace\*?|centering)\b(?:\{[^{}]*\})?)+\s*$"))
                 continue;
 
             // Skip empty or comment-only content

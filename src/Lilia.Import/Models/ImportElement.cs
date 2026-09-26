@@ -56,6 +56,12 @@ public class ImportHeading : ImportElement
     /// Original style ID from the DOCX (e.g., "Heading1", "Heading2").
     /// </summary>
     public string? StyleId { get; set; }
+
+    /// <summary>The \label{…} that follows a LaTeX sectioning command.</summary>
+    public string? Label { get; set; }
+
+    /// <summary>False for a starred sectioning command (<c>\section*</c>).</summary>
+    public bool Numbered { get; set; } = true;
 }
 
 /// <summary>
