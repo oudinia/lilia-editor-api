@@ -1514,6 +1514,7 @@ public class LatexParser : ILatexParser
                             IsInline = false,
                             // The star, as numbering. The renderer puts it back.
                             Numbered = !starred,
+                            Label = labelExtract.Success ? labelExtract.Groups[1].Value.Trim() : null,
                         });
                     }
                     break;
@@ -1592,6 +1593,13 @@ public class LatexParser : ILatexParser
                         var table = ParseTabular(tabularMatch.Groups[2].Value);
                         table.Order = elementOrder++;
                         table.Span = firstMatch.type == "table*" ? "page" : "column";
+                        // The float's caption and label sit outside the tabular.
+                        var outside = tableContent.Remove(tabularMatch.Index, tabularMatch.Length);
+                        var tableCaption = MatchBalanced(outside, "caption");
+                        if (tableCaption.HasValue)
+                            table.Caption = StripInlineCommandsForPlainText(tableCaption.Value.Inner).Trim();
+                        var tableLabel = Regex.Match(outside, @"\\label\{([^}]+)\}");
+                        if (tableLabel.Success) table.Label = tableLabel.Groups[1].Value.Trim();
                         document.Elements.Add(table);
                     }
                     else
@@ -1626,6 +1634,7 @@ public class LatexParser : ILatexParser
                         var listKind = firstMatch.match.Groups[1].Value; // itemize | enumerate | description
                         var body = firstMatch.match.Groups[2].Value;
                         var isNumbered = listKind == "enumerate";
+                        var listGroup = elementOrder;             // unique per list environment
                         // Split on \item — first split is preamble (whitespace) and is dropped.
                         var items = Regex.Split(body, @"\\item\b").Skip(1);
                         foreach (var raw in items)
@@ -1650,6 +1659,7 @@ public class LatexParser : ILatexParser
                                 Order = elementOrder++,
                                 Text = normalisedItem,
                                 IsNumbered = isNumbered,
+                                ListGroup = listGroup,
                                 ListMarker = marker,
                                 Formatting = ParseLatexFormatting(itemText),
                             });

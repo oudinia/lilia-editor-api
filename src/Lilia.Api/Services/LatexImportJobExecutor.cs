@@ -324,9 +324,10 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             offset = 1;
         }
 
-        for (var i = 0; i < elements.Count; i++)
+        var mapped = MapElements(elements);
+        for (var i = 0; i < mapped.Count; i++)
         {
-            var (type, content) = MapImportElementToBlock(elements[i]);
+            var (type, content) = mapped[i];
             yield return new RevBlock
             {
                 Id = Guid.NewGuid(),
@@ -363,9 +364,10 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             offset = 1;
         }
 
-        for (var i = 0; i < elements.Count; i++)
+        var mapped = MapElements(elements);
+        for (var i = 0; i < mapped.Count; i++)
         {
-            var (type, content) = MapImportElementToBlock(elements[i]);
+            var (type, content) = mapped[i];
             yield return new ImportBlockReview
             {
                 Id = Guid.NewGuid(),
@@ -389,6 +391,32 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         }
     }
 
+    /// <summary>
+    /// Elements to blocks, in order. The items of one list environment become
+    /// one list block — mapped one by one, an itemize of two arrived as two
+    /// lists of one. (JobService, the DOCX path, groups them its own way.)
+    /// </summary>
+    internal static List<(string type, object content)> MapElements(IReadOnlyList<ImportElement> elements)
+    {
+        var blocks = new List<(string type, object content)>(elements.Count);
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (elements[i] is ImportListItem { ListGroup: { } group } first)
+            {
+                var items = new List<string> { first.Text };
+                while (i + 1 < elements.Count && elements[i + 1] is ImportListItem { ListGroup: var g } next && g == group)
+                {
+                    items.Add(next.Text);
+                    i++;
+                }
+                blocks.Add(("list", new { items, ordered = first.IsNumbered }));
+                continue;
+            }
+            blocks.Add(MapImportElementToBlock(elements[i]));
+        }
+        return blocks;
+    }
+
     // Mirror of JobService.MapImportElementToBlock — we don't reuse the private
     // JobService version so the two pipelines stay independent (new pipeline
     // must be free to diverge without breaking the legacy DOCX path).
@@ -403,7 +431,9 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             headers = t.HasHeaderRow && t.Rows.Count > 0
                 ? t.Rows[0].Select(c => c.Text).ToArray()
                 : Enumerable.Range(0, t.ColumnCount).Select(i => $"Column {i + 1}").ToArray(),
-            rows = (t.HasHeaderRow ? t.Rows.Skip(1) : t.Rows).Select(r => r.Select(c => c.Text).ToArray()).ToArray()
+            rows = (t.HasHeaderRow ? t.Rows.Skip(1) : t.Rows).Select(r => r.Select(c => c.Text).ToArray()).ToArray(),
+            caption = t.Caption ?? "",
+            label = t.Label ?? "",
         }),
         ImportAbstract a => ("abstract", new { text = a.Text }),
         ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
