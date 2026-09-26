@@ -981,6 +981,15 @@ public class LaTeXExportService : ILaTeXExportService
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
 
+        // The source is itself a display environment — what a .tex import
+        // stores for align / gather / multline (it keeps the environment so
+        // KaTeX can render the alignment). Wrapping that in equation or \[…\]
+        // is fatal: "Erroneous nesting of equation structures" / "\begin{gather}
+        // allowed only in paragraph mode", no PDF. Emit it as the environment
+        // it is; numbering is the block's, so the star follows `numbered`.
+        if (mode != "inline" && TryRenderStandaloneMathEnvironment(latex, numbered, labelPart) is { } standalone)
+            return standalone;
+
         // An alignment body with no mode to match it.
         //
         // Four blocks in the corpus store `a &= b \\ c &= d` with mode unset,
@@ -1011,6 +1020,31 @@ public class LaTeXExportService : ILaTeXExportService
         if (numbered)
             return $@"\begin{{equation}}{labelPart}" + "\n" + latex + "\n" + @"\end{equation}";
         return $@"\[" + "\n" + latex + "\n" + @"\]";
+    }
+
+    // Display environments that cannot sit inside equation / \[…\]. split,
+    // aligned, cases and friends are deliberately absent: they need the wrapper.
+    private static readonly Regex StandaloneMathEnvironment = new(
+        @"^\\begin\{(align|gather|multline|flalign|alignat|eqnarray)(\*?)\}([\s\S]*)\\end\{\1\2\}$",
+        RegexOptions.Compiled);
+
+    internal static string? TryRenderStandaloneMathEnvironment(string latex, bool numbered, string labelPart)
+    {
+        var m = StandaloneMathEnvironment.Match(latex.Trim());
+        if (!m.Success) return null;
+
+        var env = m.Groups[1].Value + (numbered ? "" : "*");
+        var body = m.Groups[3].Value;
+        // alignat takes its column count as the first argument; keep it on the
+        // \begin line and put the label after it.
+        var arg = "";
+        var argMatch = Regex.Match(body, @"^\{[^{}]*\}");
+        if (m.Groups[1].Value == "alignat" && argMatch.Success)
+        {
+            arg = argMatch.Value;
+            body = body[argMatch.Length..];
+        }
+        return $@"\begin{{{env}}}{arg}{labelPart}" + "\n" + body.Trim('\n', '\r') + "\n" + $@"\end{{{env}}}";
     }
 
     private string RenderFigure(JsonElement content)
