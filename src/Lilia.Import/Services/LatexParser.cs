@@ -1005,6 +1005,31 @@ public class LatexParser : ILatexParser
     {
         if (string.IsNullOrEmpty(text)) return text;
 
+        // Inline math is LaTeX the editor renders as math, not text to tidy:
+        // the command flattener below turned $\mathbb{R}$ into $R$ and
+        // $\operatorname{rank}(A)$ into $rank(A)$, and the typography pass
+        // turned \, into a space. Set every $…$ / $$…$$ aside first and put
+        // it back verbatim at the end. An escaped \$ is a dollar sign, not a
+        // delimiter.
+        var mathSpans = new List<string>();
+        text = InlineMathSpan.Replace(text, m =>
+        {
+            mathSpans.Add(m.Value);
+            return $"\uE000{mathSpans.Count - 1}\uE001";
+        });
+        text = NormaliseInlineCommandsOutsideMath(text);
+        return mathSpans.Count == 0
+            ? text
+            : Regex.Replace(text, "\uE000(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
+    }
+
+    private static readonly Regex InlineMathSpan = new(
+        @"(?<!\\)\$\$(?:\\.|[^$\\])+\$\$|(?<!\\)\$(?:\\.|[^$\\])+\$",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private string NormaliseInlineCommandsOutsideMath(string text)
+    {
+
         // Normalise escaped TeX marks first.
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
