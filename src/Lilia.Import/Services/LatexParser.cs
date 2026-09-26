@@ -457,6 +457,12 @@ public class LatexParser : ILatexParser
         // fontspec/unicode-math loads that would otherwise abort compilation.
         content = StripXeLuaConditionals(content);
 
+        // % comments are not content. Nothing removed them, so a trailing
+        // "% note to self" imported as paragraph text and exported as a
+        // printed "\% note to self". Verbatim-like bodies, \verb and URL
+        // arguments keep their percent signs.
+        content = StripComments(content);
+
         // Batch A coverage — normalise well-known environment variants to
         // their kernel equivalents so the rest of the parser doesn't need
         // special cases for each. Cheap regex rewrites; the catalog rows
@@ -753,6 +759,40 @@ public class LatexParser : ILatexParser
 
         return document;
     }
+
+    // Regions where % is literal: verbatim-like environments, \verb|…| and the
+    // URL argument of \url / \href.
+    private static readonly Regex CommentProtected = new(
+        @"\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment)\}[\s\S]*?\\end\{\1\}"
+        + @"|\\(?:verb|lstinline)\*?([^a-zA-Z\s{]).*?\2"
+        + @"|\\(?:url|href)\{[^{}]*\}",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    // A line that is only a comment goes with its newline, so it cannot turn
+    // one paragraph into two; a trailing comment goes up to the newline. A %
+    // after an even run of backslashes (\\%) is a comment; after an odd run
+    // (\%) it is a percent sign.
+    private static readonly Regex CommentLine = new(@"^[ \t]*(?<!\\)%[^\n]*(?:\n|$)", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex TrailingComment = new(@"(?<=(?:^|[^\\])(?:\\\\)*)%[^\n]*", RegexOptions.Compiled | RegexOptions.Multiline);
+
+    internal static string StripComments(string content)
+    {
+        if (content.IndexOf('%') < 0) return content;
+
+        var sb = new System.Text.StringBuilder(content.Length);
+        var last = 0;
+        foreach (Match m in CommentProtected.Matches(content))
+        {
+            sb.Append(StripCommentsIn(content[last..m.Index]));
+            sb.Append(m.Value);
+            last = m.Index + m.Length;
+        }
+        sb.Append(StripCommentsIn(content[last..]));
+        return sb.ToString();
+    }
+
+    private static string StripCommentsIn(string text) =>
+        text.IndexOf('%') < 0 ? text : TrailingComment.Replace(CommentLine.Replace(text, ""), "");
 
     /// <summary>
     /// Detect LaTeX package combinations that produce silent rendering bugs
@@ -1235,7 +1275,7 @@ public class LatexParser : ILatexParser
             // Section title allows one level of nested braces so cases
             // like \section{The \texttt{deploy} command} capture the
             // full title instead of truncating at the first `}`.
-            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{((?:[^{}]|\{[^{}]*\})+)\}");
+            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
             if (sectionMatch.Success)
             {
                 CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");

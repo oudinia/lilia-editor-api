@@ -1,4 +1,7 @@
-% EXPECTED-LEAKS: documentclass, orcid, makecvheader
+% EXPECTED-LEAKS: documentclass, orcid, makecvheader, null
+% (Comment stripping, 2026-09-26: paragraphs that opened with a % comment
+%  line used to be dropped whole; their content now imports, template
+%  macros included.)
 %%%%%%%%%%%%%%%%%
 % This is an sample CV template created using maltacv.cls
 % (May 2020) written by Riccardo Mancini, based on the 
