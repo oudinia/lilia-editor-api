@@ -259,7 +259,40 @@ public class DocumentService : IDocumentService
         document.LastOpenedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        return MapToDto(document);
+        return MapToDto(document) with { Role = await RoleForAsync(document, userId) };
+    }
+
+    /// <summary>
+    /// "Title (copy)", then "(copy 2)", "(copy 3)"… — the first name the user
+    /// doesn't already have. A suffix, so the copies sort beside the original;
+    /// and a copy of a copy counts on rather than stacking "(copy) (copy)"
+    /// (Olivia, documents-actions reply, 26 Sep).
+    /// </summary>
+    private async Task<string> CopyTitleAsync(string title, string userId)
+    {
+        var stem = CopySuffix.Replace(title ?? "", "");
+        var prefix = stem + " (copy";
+        var taken = (await _context.Documents
+            .Where(d => d.OwnerId == userId && d.DeletedAt == null && d.Title.StartsWith(prefix))
+            .Select(d => d.Title)
+            .ToListAsync()).ToHashSet();
+        var name = $"{stem} (copy)";
+        for (var n = 2; taken.Contains(name); n++) name = $"{stem} (copy {n})";
+        return name;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CopySuffix =
+        new(@" \(copy(?: \d+)?\)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The user's role on one document, by the list's rules.</summary>
+    private async Task<string> RoleForAsync(Document document, string userId)
+    {
+        if (document.OwnerId == userId) return "owner";
+        var collaborator = await _context.DocumentCollaborators
+            .Where(dc => dc.DocumentId == document.Id && dc.UserId == userId)
+            .Select(dc => dc.Role.Name)
+            .FirstOrDefaultAsync();
+        return collaborator ?? "viewer"; // group access
     }
 
     /// <summary>
@@ -691,33 +724,68 @@ public class DocumentService : IDocumentService
         if (!await HasAccessAsync(id, userId, Permissions.Read))
             return null;
 
-        var newDoc = new Document
-        {
-            Id = Guid.NewGuid(),
-            OwnerId = userId,
-            TeamId = original.TeamId,
-            Title = $"{original.Title} (Copy)",
-            Language = original.Language,
-            PaperSize = original.PaperSize,
-            FontFamily = original.FontFamily,
-            FontSize = original.FontSize,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+        // Every setting comes along — class, packages, preamble, columns,
+        // margins, headers, spacing, engine, and whatever is added next — by
+        // copying all of the original's values and then resetting only what
+        // makes a document itself: identity, owner, sharing, bookkeeping.
+        // Copying a hand-picked list dropped all but four settings, and a copy
+        // that used the author's own macros did not compile.
+        var now = DateTime.UtcNow;
+        var fresh = new Document();
+        var newDoc = new Document();
+        _context.Entry(newDoc).CurrentValues.SetValues(_context.Entry(original).CurrentValues);
+        newDoc.Id = Guid.NewGuid();
+        newDoc.OwnerId = userId;
+        newDoc.TeamId = null;                        // private to whoever made it
+        newDoc.Title = await CopyTitleAsync(original.Title, userId);
+        newDoc.IsPublic = false;
+        newDoc.ShareLink = null;
+        newDoc.ShareSlug = null;
+        newDoc.LinkExpiresAt = null;
+        newDoc.LinkPermission = fresh.LinkPermission;
+        newDoc.CreatedAt = now;
+        newDoc.UpdatedAt = now;
+        newDoc.LastOpenedAt = null;
+        newDoc.LastAutoSavedAt = null;
+        newDoc.DeletedAt = null;
+        newDoc.Status = fresh.Status;
+        newDoc.Version = fresh.Version;
+        newDoc.CurrentVersionId = null;
+        newDoc.IsPlayground = false;
+        newDoc.IsTemplate = false;
+        newDoc.TemplateName = null;
+        newDoc.TemplateDescription = null;
+        newDoc.TemplateCategory = null;
+        newDoc.TemplateThumbnail = null;
+        newDoc.IsPublicTemplate = false;
+        newDoc.TemplateUsageCount = 0;
+        newDoc.IsStarter = false;
+        newDoc.IsHelpContent = false;
+        newDoc.HelpCategory = null;
+        newDoc.HelpOrder = 0;
+        newDoc.HelpSlug = null;
+        newDoc.ValidationErrorCount = 0;
+        newDoc.ValidationWarningCount = 0;
+        newDoc.ValidationCheckedAt = null;
+        newDoc.LabelNumbers = null;
+        newDoc.LabelNumbersAt = null;
 
-        // Copy blocks
+        // Copy blocks, nesting included: a child hangs under the copy of its
+        // parent, not the original's.
+        var newIds = original.Blocks.ToDictionary(b => b.Id, _ => Guid.NewGuid());
         foreach (var block in original.Blocks.OrderBy(b => b.SortOrder))
         {
             newDoc.Blocks.Add(new Block
             {
-                Id = Guid.NewGuid(),
+                Id = newIds[block.Id],
                 DocumentId = newDoc.Id,
                 Type = block.Type,
                 Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
                 SortOrder = block.SortOrder,
                 Depth = block.Depth,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                ParentId = block.ParentId is { } parent && newIds.TryGetValue(parent, out var np) ? np : null,
+                CreatedAt = now,
+                UpdatedAt = now
             });
         }
 

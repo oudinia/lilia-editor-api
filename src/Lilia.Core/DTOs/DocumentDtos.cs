@@ -88,7 +88,12 @@ public record DocumentDto(
     string? CustomPreamble = null,
     // Page-bottom fill: "ragged" | "flush" | null (keep the class default).
     // See Document.PaginationPolicy.
-    string? PaginationPolicy = null
+    string? PaginationPolicy = null,
+    // The requesting user's role — "owner", a collaborator role, or
+    // "viewer" for group access — as the list already carries. The editor's
+    // ⋯ shows only the actions that will succeed (Rename and Trash are the
+    // owner's). Null where no user is in view (the public viewer).
+    string? Role = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
