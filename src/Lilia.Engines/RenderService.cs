@@ -1210,8 +1210,11 @@ public partial class RenderService : IRenderService
         // that bare EscapeLatex would mangle into \textbackslash{}.
         var (titleText, authorText, dateText) = ResolveTitleMeta(doc);
         latex.AppendLine($@"\title{{{FormatTitleMetaLatex(titleText)}}}");
-        if (!string.IsNullOrWhiteSpace(authorText))
-            latex.AppendLine($@"\author{{{FormatTitleMetaLatex(authorText)}}}");
+        // Always written, empty when there is none — as the export does.
+        // Leaving it out made pdflatex warn "No \author given" on every
+        // document without one, so validation never came back clean and the
+        // rail's Validate dot lit for a warning the author never caused.
+        latex.AppendLine($@"\author{{{FormatTitleMetaLatex(authorText ?? "")}}}");
         // Empty date → LaTeX default (\today). Explicit value is formatted
         // so a user-typed \today still works.
         if (!string.IsNullOrWhiteSpace(dateText))
