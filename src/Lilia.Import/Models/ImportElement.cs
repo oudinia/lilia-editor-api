@@ -56,6 +56,12 @@ public class ImportHeading : ImportElement
     /// Original style ID from the DOCX (e.g., "Heading1", "Heading2").
     /// </summary>
     public string? StyleId { get; set; }
+
+    /// <summary>The \label{…} that follows a LaTeX sectioning command.</summary>
+    public string? Label { get; set; }
+
+    /// <summary>False for a starred sectioning command (<c>\section*</c>).</summary>
+    public bool Numbered { get; set; } = true;
 }
 
 /// <summary>
@@ -676,6 +682,13 @@ public class ImportBlockquote : ImportElement
     /// How this blockquote was detected.
     /// </summary>
     public BlockquoteDetectionReason DetectionReason { get; set; }
+
+    /// <summary>
+    /// The blockquote block's <c>variant</c> ("verse", "epigraph"); null for a
+    /// plain quote. A LaTeX <c>verse</c> environment sets "verse", and its
+    /// <see cref="Text"/> then holds one line per <c>\\</c>-separated verse line.
+    /// </summary>
+    public string? Variant { get; set; }
 }
 
 /// <summary>

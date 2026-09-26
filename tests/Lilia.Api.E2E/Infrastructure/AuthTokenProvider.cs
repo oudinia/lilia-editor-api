@@ -6,12 +6,45 @@ using Microsoft.IdentityModel.Tokens;
 namespace Lilia.Api.E2E.Infrastructure;
 
 /// <summary>
-/// Provides auth tokens for E2E tests.
-/// - DevJwt mode: generates self-signed JWTs (for local/staging with no Auth:Authority)
+/// Provides auth for E2E tests.
+/// - DevHeader mode: no token at all — sends <c>X-Development-User-Id: {user.UserId}</c>.
+///   This is how a local Development API authenticates today: its
+///   DevelopmentAuthMiddleware (Auth:Authority unset) turns every request that
+///   carries no Authorization header into that user, and UserSyncMiddleware
+///   creates the user row on first sight. Each test user is its own isolated
+///   account (e2e_owner_001 …), never the built-in dev user.
+/// - DevJwt mode: generates self-signed JWTs (stale: a local dev API answers 401)
 /// - Kinde mode: uses M2M client credentials to get real tokens from Kinde
+/// - StaticToken mode: a pre-issued bearer token
 /// </summary>
 public static class AuthTokenProvider
 {
+    public const string DevUserHeader = "X-Development-User-Id";
+
+    public static bool IsDevHeaderMode =>
+        string.Equals(E2EConfiguration.Instance.AuthMode, "DevHeader", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Authenticates <paramref name="client"/> as <paramref name="user"/> in the
+    /// configured mode: a dev-user header in DevHeader mode, a bearer token otherwise.
+    /// </summary>
+    public static async Task AuthenticateAsync(HttpClient client, TestUserConfig user)
+    {
+        if (IsDevHeaderMode)
+        {
+            if (string.IsNullOrEmpty(user.UserId))
+                throw new InvalidOperationException("DevHeader mode needs a user id.");
+            client.DefaultRequestHeaders.Authorization = null;
+            client.DefaultRequestHeaders.Remove(DevUserHeader);
+            client.DefaultRequestHeaders.Add(DevUserHeader, user.UserId);
+            return;
+        }
+
+        var token = await GetTokenAsync(user);
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+    }
+
     private static readonly Dictionary<string, string> _tokenCache = new();
     private static readonly SemaphoreSlim _lock = new(1, 1);
 

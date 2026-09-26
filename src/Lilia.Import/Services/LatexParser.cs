@@ -457,6 +457,12 @@ public class LatexParser : ILatexParser
         // fontspec/unicode-math loads that would otherwise abort compilation.
         content = StripXeLuaConditionals(content);
 
+        // % comments are not content. Nothing removed them, so a trailing
+        // "% note to self" imported as paragraph text and exported as a
+        // printed "\% note to self". Verbatim-like bodies, \verb and URL
+        // arguments keep their percent signs.
+        content = StripComments(content);
+
         // Batch A coverage — normalise well-known environment variants to
         // their kernel equivalents so the rest of the parser doesn't need
         // special cases for each. Cheap regex rewrites; the catalog rows
@@ -706,6 +712,13 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\newtheorem\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\]|\{[^}]*\})*", "");
         documentContent = Regex.Replace(documentContent, @"\\(?:re)?newcommand\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\newenvironment\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
+        // \def\name{…}, \theoremstyle{…} and \DeclareMathOperator — also
+        // definitions, not text. They leaked as "\defour method" and a stray
+        // "definition" paragraph. (LatexPreambleExtractor carries the macro
+        // definitions onto the document's custom preamble.)
+        documentContent = Regex.Replace(documentContent, @"\\def\s*\\[A-Za-z@]+\s*(?:#\d)*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\theoremstyle\s*\{[^}]*\}", "");
+        documentContent = Regex.Replace(documentContent, @"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*\{[^}]*\}", "");
 
         // When a user pastes a full document, \begin{document} /
         // \end{document} are wrappers, not content. The generic
@@ -726,11 +739,14 @@ public class LatexParser : ILatexParser
         // scan in ExtractInlineReferences would miss them.
         var (harvestedCites, harvestedLabels) = HarvestInlineReferences(documentContent);
 
-        // Cross-references — surface the label as plain text so the
-        // user sees the reference target without raw LaTeX syntax. A
-        // proper cross-ref node is a separate piece of work; readable
-        // text beats "\ref{pythagorean}" in the meantime.
-        documentContent = Regex.Replace(documentContent, @"\\(?:eqref|cref|Cref|autoref|pageref|nameref|ref)\{([^}]+)\}", "$1");
+        // Cross-references stay as \ref{…} / \eqref{…} / \cref{…} … in block
+        // text: the editor has a reference node for each form
+        // (content-converter.ts) and the exporter writes each back as-is.
+        // They used to be flattened here to the bare label ("see eq:pyth"),
+        // from before that node existed — every cross-reference in an
+        // imported paper became plain text. Plain-text fields (captions,
+        // titles, table cells) still get the label, in
+        // StripInlineCommandsForPlainText / CleanCellText.
 
         // Remove document setup commands
         documentContent = Regex.Replace(documentContent, @"\\maketitle\b", "");
@@ -750,6 +766,40 @@ public class LatexParser : ILatexParser
 
         return document;
     }
+
+    // Regions where % is literal: verbatim-like environments, \verb|…| and the
+    // URL argument of \url / \href.
+    private static readonly Regex CommentProtected = new(
+        @"\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment)\}[\s\S]*?\\end\{\1\}"
+        + @"|\\(?:verb|lstinline)\*?([^a-zA-Z\s{]).*?\2"
+        + @"|\\(?:url|href)\{[^{}]*\}",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    // A line that is only a comment goes with its newline, so it cannot turn
+    // one paragraph into two; a trailing comment goes up to the newline. A %
+    // after an even run of backslashes (\\%) is a comment; after an odd run
+    // (\%) it is a percent sign.
+    private static readonly Regex CommentLine = new(@"^[ \t]*(?<!\\)%[^\n]*(?:\n|$)", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex TrailingComment = new(@"(?<=(?:^|[^\\])(?:\\\\)*)%[^\n]*", RegexOptions.Compiled | RegexOptions.Multiline);
+
+    internal static string StripComments(string content)
+    {
+        if (content.IndexOf('%') < 0) return content;
+
+        var sb = new System.Text.StringBuilder(content.Length);
+        var last = 0;
+        foreach (Match m in CommentProtected.Matches(content))
+        {
+            sb.Append(StripCommentsIn(content[last..m.Index]));
+            sb.Append(m.Value);
+            last = m.Index + m.Length;
+        }
+        sb.Append(StripCommentsIn(content[last..]));
+        return sb.ToString();
+    }
+
+    private static string StripCommentsIn(string text) =>
+        text.IndexOf('%') < 0 ? text : TrailingComment.Replace(CommentLine.Replace(text, ""), "");
 
     /// <summary>
     /// Detect LaTeX package combinations that produce silent rendering bugs
@@ -951,8 +1001,12 @@ public class LatexParser : ILatexParser
     }
 
     /// <summary>Strip simple inline LaTeX commands (\textbf{x} → x) so a string is safe to use as plain text.</summary>
+    private static readonly Regex CrossReference = new(
+        @"\\(?:eqref|cref|Cref|autoref|pageref|nameref|ref)\{([^}]+)\}", RegexOptions.Compiled);
+
     private static string StripInlineCommandsForPlainText(string text)
     {
+        text = CrossReference.Replace(text, "$1");
         text = Regex.Replace(text, @"\\(?:textbf|textit|emph|texttt|textsc|textrm|textsf|underline)\{([^{}]*)\}", "$1");
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
@@ -987,7 +1041,9 @@ public class LatexParser : ILatexParser
         ["textit"] = ("*", "*"),
         ["emph"]   = ("*", "*"),
         ["underline"] = ("__", "__"),
-        // textsc / textrm / textsf — keep plain (Markdown has no small-caps / font-family inline).
+        // The editor's small-caps mark is ^^text^^ (LML); the exporter writes \textsc.
+        ["textsc"] = ("^^", "^^"),
+        // textrm / textsf — keep plain (no inline font-family mark).
     };
 
     /// <summary>
@@ -1005,19 +1061,46 @@ public class LatexParser : ILatexParser
     {
         if (string.IsNullOrEmpty(text)) return text;
 
+        // Inline math is LaTeX the editor renders as math, not text to tidy:
+        // the command flattener below turned $\mathbb{R}$ into $R$ and
+        // $\operatorname{rank}(A)$ into $rank(A)$, and the typography pass
+        // turned \, into a space. Set every $…$ / $$…$$ aside first and put
+        // it back verbatim at the end. An escaped \$ is a dollar sign, not a
+        // delimiter.
+        // Placeholders carry a per-call id: the normaliser recurses into
+        // preserved commands' arguments, and an inner call must never restore
+        // (or index into) an outer call's spans.
+        var mathSpans = new List<string>();
+        var callId = Interlocked.Increment(ref _mathSpanCallId);
+        text = InlineMathSpan.Replace(text, m =>
+        {
+            mathSpans.Add(m.Value);
+            return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
+        });
+        text = NormaliseInlineCommandsOutsideMath(text);
+        return mathSpans.Count == 0
+            ? text
+            : Regex.Replace(text, $"\uE000{callId}:(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
+    }
+
+    private static long _mathSpanCallId;
+
+    private static readonly Regex InlineMathSpan = new(
+        @"(?<!\\)\$\$(?:\\.|[^$\\])+\$\$|(?<!\\)\$(?:\\.|[^$\\])+\$",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private string NormaliseInlineCommandsOutsideMath(string text)
+    {
+
         // Normalise escaped TeX marks first.
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
 
-        // \href{URL}{LABEL} → [LABEL](URL). The editor has no downstream
-        // renderer for raw \href like it does for \cite/\ref, so leaving
-        // it as LaTeX means users see "\href{...}{...}" in blocks.
-        text = Regex.Replace(
-            text,
-            @"\\href\{([^{}]*)\}\{([^{}]*)\}",
-            m => "[" + m.Groups[2].Value + "](" + m.Groups[1].Value + ")");
-        // \url{URL} → URL (no markdown link wrapper needed; URL is its own label).
-        text = Regex.Replace(text, @"\\url\{([^{}]*)\}", m => m.Groups[1].Value);
+        // \href{URL}{LABEL} and \url{URL} stay as written (PreservedInlineCommands):
+        // the editor parses both into link nodes and the exporter writes both
+        // back. They used to become a Markdown [LABEL](URL) — which neither
+        // the editor nor the exporter reads, so it printed literally — and a
+        // bare URL that was no longer a link.
 
         // Handle \verb<delim>...<delim> and \lstinline<delim>...<delim>
         // — the delimiter is a single non-letter char (typically | or +).
@@ -1199,7 +1282,7 @@ public class LatexParser : ILatexParser
             // Section title allows one level of nested braces so cases
             // like \section{The \texttt{deploy} command} capture the
             // full title instead of truncating at the first `}`.
-            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\{((?:[^{}]|\{[^{}]*\})+)\}");
+            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
             if (sectionMatch.Success)
             {
                 CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");
@@ -1454,11 +1537,24 @@ public class LatexParser : ILatexParser
                 AddParagraphs(textBefore, document, ref elementOrder);
             }
 
+            // Source consumed beyond the match itself (a heading's trailing \label).
+            var consumedAfterMatch = 0;
+
             // Handle the matched element
             switch (firstMatch.type)
             {
                 case "section":
                     var sectionType = firstMatch.match.Groups[1].Value;
+                    // \section*{…} — unnumbered, and out of the table of contents.
+                    var sectionStarred = firstMatch.match.Value.StartsWith($"\\{sectionType}*", StringComparison.Ordinal);
+                    // The \label that names the section follows its title. It used to
+                    // be left in the stream, where the paragraph splitter saw a
+                    // paragraph starting with \label and dropped the whole of it —
+                    // the section's first paragraph vanished, and every \ref to the
+                    // section dangled.
+                    var afterSection = remaining[(firstMatch.match.Index + firstMatch.match.Length)..];
+                    var sectionLabel = Regex.Match(afterSection, @"^\s*\\label\{([^}]+)\}");
+                    if (sectionLabel.Success) consumedAfterMatch = sectionLabel.Length;
                     var sectionTitle = NormaliseInlineCommands(firstMatch.match.Groups[2].Value);
                     var level = sectionType switch
                     {
@@ -1476,7 +1572,9 @@ public class LatexParser : ILatexParser
                         {
                             Order = elementOrder++,
                             Level = level,
-                            Text = sectionTitle
+                            Text = sectionTitle,
+                            Label = sectionLabel.Success ? sectionLabel.Groups[1].Value.Trim() : null,
+                            Numbered = !sectionStarred,
                         });
                     }
                     else
@@ -1526,7 +1624,12 @@ public class LatexParser : ILatexParser
                         Order = elementOrder++,
                         LatexContent = firstMatch.match.Groups[1].Value.Trim(),
                         ConversionSucceeded = true,
-                        IsInline = false
+                        IsInline = false,
+                        // \[…\], $$…$$ and displaymath are unnumbered display
+                        // maths. Left at the default they imported as numbered and
+                        // exported as \begin{equation}, printing an (n) the source
+                        // never had and shifting every later number.
+                        Numbered = false,
                     });
                     break;
 
@@ -1754,13 +1857,27 @@ public class LatexParser : ILatexParser
                     break;
 
                 case "blockquote":
-                    document.Elements.Add(new ImportBlockquote
                     {
-                        Order = elementOrder++,
-                        Text = firstMatch.match.Groups[2].Value.Trim(),
-                        Formatting = ParseLatexFormatting(firstMatch.match.Groups[2].Value.Trim()),
-                        DetectionReason = BlockquoteDetectionReason.StyleName,
-                    });
+                        var quoteEnv = firstMatch.match.Groups[1].Value;
+                        var quoteBody = firstMatch.match.Groups[2].Value.Trim();
+                        // A verse keeps its lines: one per \\, which the block's
+                        // verse variant stores as newlines and the exporter turns
+                        // back into \\. Quote/quotation text is ordinary
+                        // paragraph text, normalised the same way.
+                        var quoteText = quoteEnv == "verse"
+                            ? string.Join("\n", Regex.Split(quoteBody, @"\\\\(?:\[[^\]]*\])?")
+                                .Select(l => NormaliseInlineCommands(l.Trim()))
+                                .Where(l => l.Length > 0))
+                            : NormaliseInlineCommands(quoteBody);
+                        document.Elements.Add(new ImportBlockquote
+                        {
+                            Order = elementOrder++,
+                            Text = quoteText,
+                            Variant = quoteEnv == "verse" ? "verse" : null,
+                            Formatting = ParseLatexFormatting(quoteBody),
+                            DetectionReason = BlockquoteDetectionReason.StyleName,
+                        });
+                    }
                     break;
 
                 case "unknown_env":
@@ -1797,7 +1914,7 @@ public class LatexParser : ILatexParser
             }
 
             // Continue with remaining content
-            remaining = remaining[(firstMatch.match.Index + firstMatch.match.Length)..];
+            remaining = remaining[(firstMatch.match.Index + firstMatch.match.Length + consumedAfterMatch)..];
         }
     }
 
@@ -1810,8 +1927,10 @@ public class LatexParser : ILatexParser
 
         foreach (var para in paragraphs)
         {
-            // Skip if it's just LaTeX commands
-            if (Regex.IsMatch(para, @"^\\(label|ref|cite|newpage|clearpage|vspace|hspace|centering)\b"))
+            // Skip a paragraph that is nothing but layout / anchor commands. This
+            // used to skip any paragraph that merely *started* with one — a
+            // paragraph opening with \label, \ref or \cite was dropped whole.
+            if (Regex.IsMatch(para, @"^(?:\s*\\(?:label|ref|cite|newpage|clearpage|vspace\*?|hspace\*?|centering)\b(?:\{[^{}]*\})?)+\s*$"))
                 continue;
 
             // Skip empty or comment-only content
@@ -2229,7 +2348,7 @@ public class LatexParser : ILatexParser
     private static string CleanCellText(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return raw;
-        var s = raw;
+        var s = CrossReference.Replace(raw, "$1");
 
         // 1. Standalone font shape/series/family commands — apply to
         //    following text in LaTeX, no semantic value in plain cell text.

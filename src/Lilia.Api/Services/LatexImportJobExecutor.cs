@@ -422,7 +422,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     // must be free to diverge without breaking the legacy DOCX path).
     private static (string type, object content) MapImportElementToBlock(ImportElement element) => element switch
     {
-        ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
+        ImportHeading h => ("heading", HeadingContent(h)),
         ImportParagraph p => ("paragraph", new { text = p.Text }),
         ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
         ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
@@ -445,8 +445,87 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         // the filename and producing placeholder figure blocks.
         ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
         ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
+        // quote / quotation / verse and algorithm floats used to fall through to
+        // the empty-paragraph default below: the parser recognised them, and the
+        // import threw their whole content away. They map to the blocks the
+        // editor and both exporters already have.
+        ImportBlockquote bq => ("blockquote", BlockquoteContent(bq)),
+        ImportAlgorithm algo => ("algorithm", AlgorithmContent(algo)),
         _ => ("paragraph", new { text = "" }),
     };
+
+    /// <summary>
+    /// label and numbered are written only when they say something — absent
+    /// means "no label" and "numbered", which is how the editor and the
+    /// exporter already read a heading.
+    /// </summary>
+    private static Dictionary<string, object> HeadingContent(ImportHeading h)
+    {
+        var content = new Dictionary<string, object> { ["text"] = h.Text, ["level"] = h.Level };
+        if (!string.IsNullOrWhiteSpace(h.Label)) content["label"] = h.Label;
+        if (!h.Numbered) content["numbered"] = false;
+        return content;
+    }
+
+    private static object BlockquoteContent(ImportBlockquote bq) =>
+        string.IsNullOrEmpty(bq.Variant)
+            ? new { text = bq.Text }
+            : new { text = bq.Text, variant = bq.Variant };
+
+    /// <summary>
+    /// The editor's algorithm model: a caption, a label and lines of
+    /// <c>{ indent, keyword, text, comment }</c>, where keyword is one of the
+    /// editor's own ("if", "for", "end" …). The parser's typed lines carry the
+    /// algorithmic command kind; nesting becomes the indent.
+    /// </summary>
+    internal static object AlgorithmContent(ImportAlgorithm algo)
+    {
+        var lines = new List<object>();
+        var indent = 0;
+        foreach (var line in algo.Lines)
+        {
+            var kind = line.Kind.ToLowerInvariant();
+            // Closers and else-branches sit at the level of their opener.
+            if (kind is "endif" or "endfor" or "endwhile" or "endloop" or "until" or "else" or "elsif")
+                indent = Math.Max(0, indent - 1);
+
+            var keyword = kind switch
+            {
+                "if" => "if",
+                "elsif" => "else if",
+                "else" => "else",
+                "for" => "for",
+                "while" => "while",
+                "repeat" => "repeat",
+                "until" => "until",
+                "loop" => "do",
+                "return" => "return",
+                "require" => "input",
+                "ensure" => "output",
+                "endif" or "endfor" or "endwhile" or "endloop" => "end",
+                _ => "",
+            };
+            var isComment = kind == "comment";
+            lines.Add(new
+            {
+                indent,
+                keyword,
+                text = isComment ? "" : line.Text,
+                comment = isComment ? line.Text : "",
+            });
+
+            if (kind is "if" or "elsif" or "else" or "for" or "while" or "repeat" or "loop")
+                indent++;
+        }
+
+        return new
+        {
+            caption = algo.Caption ?? "",
+            label = algo.Label ?? "",
+            lineNumbers = algo.LineNumbers,
+            lines,
+        };
+    }
 
     private async Task MarkJobAsync(Guid jobId, string status, int progress, CancellationToken ct, string? errorMessage = null)
     {

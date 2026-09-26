@@ -1,0 +1,3778 @@
+{
+  "version": 1,
+  "description": "LaTeX features exercised by the API e2e (import, export, compile, round-trip) and the UI e2e (render, survives editing). `tex` is body content; a test wraps it in a minimal document and adds the packages named in `note`. Canonical copy: lilia-editor-api tests/Lilia.Api.E2E/Fixtures/latex-features.json; the web copy must be identical.",
+  "features": [
+    {
+      "id": "structure.section",
+      "category": "Structure",
+      "title": "\\section",
+      "tex": "\\section{Introduction}\nThe opening paragraph.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{Introduction}\nThe opening paragraph.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Introduction"
+            ],
+            "fields": {
+              "level": 1
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "The opening paragraph."
+            ]
+          }
+        ],
+        "export": [
+          "\\section{Introduction}",
+          "The opening paragraph."
+        ]
+      }
+    },
+    {
+      "id": "structure.subsection",
+      "category": "Structure",
+      "title": "\\subsection",
+      "tex": "\\section{Methods}\n\\subsection{Sampling}\nWe sampled soil.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{Methods}\n\\subsection{Sampling}\nWe sampled soil.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Methods"
+            ],
+            "fields": {
+              "level": 1
+            }
+          },
+          {
+            "type": "heading",
+            "text": [
+              "Sampling"
+            ],
+            "fields": {
+              "level": 2
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "We sampled soil."
+            ]
+          }
+        ],
+        "export": [
+          "\\section{Methods}",
+          "\\subsection{Sampling}",
+          "We sampled soil."
+        ]
+      }
+    },
+    {
+      "id": "structure.subsubsection",
+      "category": "Structure",
+      "title": "\\subsubsection",
+      "tex": "\\section{A}\n\\subsection{B}\n\\subsubsection{Depth three}\nDeep text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{A}\n\\subsection{B}\n\\subsubsection{Depth three}\nDeep text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "A"
+            ],
+            "fields": {
+              "level": 1
+            }
+          },
+          {
+            "type": "heading",
+            "text": [
+              "B"
+            ],
+            "fields": {
+              "level": 2
+            }
+          },
+          {
+            "type": "heading",
+            "text": [
+              "Depth three"
+            ],
+            "fields": {
+              "level": 3
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Deep text."
+            ]
+          }
+        ],
+        "export": [
+          "\\subsubsection{Depth three}",
+          "Deep text."
+        ]
+      }
+    },
+    {
+      "id": "structure.paragraph-heading",
+      "category": "Structure",
+      "title": "\\paragraph",
+      "tex": "\\paragraph{Remark.} A run-in paragraph heading.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\paragraph{Remark.} A run-in paragraph heading.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Remark."
+            ],
+            "fields": {
+              "level": 4
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "A run-in paragraph heading."
+            ]
+          }
+        ],
+        "export": [
+          "\\paragraph{Remark.}",
+          "A run-in paragraph heading."
+        ]
+      }
+    },
+    {
+      "id": "structure.section-starred",
+      "category": "Structure",
+      "title": "\\section*",
+      "tex": "\\section*{Acknowledgements}\nWe thank the reviewers.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section*{Acknowledgements}\nWe thank the reviewers.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Acknowledgements"
+            ],
+            "fields": {
+              "level": 1,
+              "numbered": false
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "We thank the reviewers."
+            ]
+          }
+        ],
+        "export": [
+          "\\section*{Acknowledgements}",
+          "We thank the reviewers."
+        ]
+      }
+    },
+    {
+      "id": "structure.chapter",
+      "category": "Structure",
+      "title": "\\chapter (report/book)",
+      "tex": "\\chapter{Background}\nChapter text.",
+      "note": "needs \\documentclass{report}",
+      "documentClass": "report",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{report}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\chapter{Background}\nChapter text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Background"
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Chapter text."
+            ]
+          }
+        ],
+        "exactTypes": [
+          "heading",
+          "paragraph"
+        ],
+        "export": [
+          "\\chapter{Background}",
+          "Chapter text."
+        ]
+      }
+    },
+    {
+      "id": "structure.title-block",
+      "category": "Structure",
+      "title": "\\title \\author \\date \\maketitle",
+      "tex": "\\title{Soil Carbon}\n\\author{Ada Byron}\n\\date{2026}\n\\maketitle\nBody.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\title{Soil Carbon}\n\\author{Ada Byron}\n\\date{2026}\n\\maketitle\nBody.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "title",
+            "fields": {
+              "title": "Soil Carbon",
+              "author": "Ada Byron",
+              "date": "2026"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Body."
+            ]
+          }
+        ],
+        "exportFull": [
+          "\\title{Soil Carbon}",
+          "\\author{Ada Byron}",
+          "\\date{2026}"
+        ],
+        "export": [
+          "\\maketitle",
+          "Body."
+        ]
+      }
+    },
+    {
+      "id": "structure.abstract",
+      "category": "Structure",
+      "title": "abstract environment",
+      "tex": "\\begin{abstract}\nWe measure carbon in soil.\n\\end{abstract}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{abstract}\nWe measure carbon in soil.\n\\end{abstract}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "abstract",
+            "text": [
+              "We measure carbon in soil."
+            ]
+          }
+        ],
+        "export": [
+          "\\begin{abstract}",
+          "We measure carbon in soil."
+        ]
+      }
+    },
+    {
+      "id": "structure.appendix",
+      "category": "Structure",
+      "title": "\\appendix",
+      "tex": "\\section{Main}\nMain text.\n\\appendix\n\\section{Extra tables}\nAppendix text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{Main}\nMain text.\n\\appendix\n\\section{Extra tables}\nAppendix text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Main"
+            ],
+            "fields": {
+              "level": 1
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Main text."
+            ]
+          },
+          {
+            "type": "heading",
+            "text": [
+              "Extra tables"
+            ],
+            "fields": {
+              "level": 1
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Appendix text."
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\appendix\\s+\\\\section\\{Extra tables\\}"
+        ]
+      }
+    },
+    {
+      "id": "structure.tableofcontents",
+      "category": "Structure",
+      "title": "\\tableofcontents",
+      "tex": "\\tableofcontents\n\\section{One}\nText.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\tableofcontents\n\\section{One}\nText.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "tableOfContents"
+          },
+          {
+            "type": "heading",
+            "text": [
+              "One"
+            ],
+            "fields": {
+              "level": 1
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Text."
+            ]
+          }
+        ],
+        "export": [
+          "\\tableofcontents",
+          "\\section{One}"
+        ]
+      }
+    },
+    {
+      "id": "text.bold",
+      "category": "Text",
+      "title": "\\textbf",
+      "tex": "This is \\textbf{bold} text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nThis is \\textbf{bold} text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "**bold**"
+            ]
+          }
+        ],
+        "export": [
+          "\\textbf{bold}"
+        ]
+      }
+    },
+    {
+      "id": "text.italic",
+      "category": "Text",
+      "title": "\\textit",
+      "tex": "This is \\textit{italic} text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nThis is \\textit{italic} text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "*italic*"
+            ]
+          }
+        ],
+        "export": [
+          "\\textit{italic}"
+        ]
+      }
+    },
+    {
+      "id": "text.emph",
+      "category": "Text",
+      "title": "\\emph",
+      "tex": "This is \\emph{emphasised} text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nThis is \\emph{emphasised} text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "emphasised"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\(textit|emph)\\{emphasised\\}"
+        ]
+      }
+    },
+    {
+      "id": "text.underline",
+      "category": "Text",
+      "title": "\\underline",
+      "tex": "This is \\underline{underlined} text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nThis is \\underline{underlined} text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "underlined"
+            ]
+          }
+        ],
+        "export": [
+          "\\underline{underlined}"
+        ]
+      }
+    },
+    {
+      "id": "text.monospace",
+      "category": "Text",
+      "title": "\\texttt",
+      "tex": "Run \\texttt{make all} first.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nRun \\texttt{make all} first.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "`make all`"
+            ]
+          }
+        ],
+        "export": [
+          "\\texttt{make all}"
+        ]
+      }
+    },
+    {
+      "id": "text.smallcaps",
+      "category": "Text",
+      "title": "\\textsc",
+      "tex": "The \\textsc{Lilia} editor.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nThe \\textsc{Lilia} editor.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Lilia"
+            ]
+          }
+        ],
+        "export": [
+          "\\textsc{Lilia}"
+        ]
+      }
+    },
+    {
+      "id": "text.nested-formatting",
+      "category": "Text",
+      "title": "nested formatting",
+      "tex": "A \\textbf{bold and \\textit{italic}} phrase.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nA \\textbf{bold and \\textit{italic}} phrase.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "bold and",
+              "italic"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\textbf\\{bold and \\\\textit\\{italic\\}\\s*\\}"
+        ]
+      }
+    },
+    {
+      "id": "text.font-size",
+      "category": "Text",
+      "title": "\\small \\large",
+      "tex": "Normal {\\small small} and {\\large large} text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nNormal {\\small small} and {\\large large} text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "{\\small small}",
+              "{\\large large}"
+            ]
+          }
+        ],
+        "export": [
+          "{\\small small}",
+          "{\\large large}"
+        ]
+      }
+    },
+    {
+      "id": "text.footnote",
+      "category": "Text",
+      "title": "\\footnote",
+      "tex": "A claim.\\footnote{The supporting source.} More text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nA claim.\\footnote{The supporting source.} More text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "A claim.",
+              "\\footnote{The supporting source.}",
+              "More text."
+            ]
+          }
+        ],
+        "export": [
+          "\\footnote{The supporting source.}"
+        ]
+      }
+    },
+    {
+      "id": "text.url",
+      "category": "Text",
+      "title": "\\url",
+      "tex": "See \\url{https://example.org/data}.",
+      "note": "\\usepackage{hyperref}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nSee \\url{https://example.org/data}.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\url{https://example.org/data}"
+            ]
+          }
+        ],
+        "export": [
+          "\\url{https://example.org/data}"
+        ]
+      }
+    },
+    {
+      "id": "text.href",
+      "category": "Text",
+      "title": "\\href",
+      "tex": "See \\href{https://example.org}{the website}.",
+      "note": "\\usepackage{hyperref}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nSee \\href{https://example.org}{the website}.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\href{https://example.org}{the website}"
+            ]
+          }
+        ],
+        "export": [
+          "\\href{https://example.org}{the website}"
+        ]
+      }
+    },
+    {
+      "id": "text.special-chars",
+      "category": "Text",
+      "title": "\\% \\& \\$ \\# \\_",
+      "tex": "Costs 5\\% \\& \\$10, item \\#3, file\\_name.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nCosts 5\\% \\& \\$10, item \\#3, file\\_name.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "5%",
+              "&",
+              "$10",
+              "#3",
+              "file_name"
+            ]
+          }
+        ],
+        "export": [
+          "5\\%",
+          "\\&",
+          "\\$10",
+          "\\#3",
+          "file\\_name"
+        ]
+      }
+    },
+    {
+      "id": "text.quotes-dashes",
+      "category": "Text",
+      "title": "quotes and dashes",
+      "tex": "``Quoted'' pages 3--5 --- an aside.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n``Quoted'' pages 3--5 --- an aside.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Quoted",
+              "an aside"
+            ]
+          }
+        ],
+        "export": [
+          "re:(``Quoted''|“Quoted”|\\\\enquote\\{Quoted\\})",
+          "re:3(--|–)5",
+          "re:(---|—)"
+        ]
+      }
+    },
+    {
+      "id": "text.accents",
+      "category": "Text",
+      "title": "accent macros \\'e \\\"o",
+      "tex": "Caf\\'e and M\\\"obius and na\\\"ive.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nCaf\\'e and M\\\"obius and na\\\"ive.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Café",
+              "Möbius",
+              "naïve"
+            ]
+          }
+        ],
+        "export": [
+          "re:Caf(é|\\\\'e|\\\\'\\{e\\})"
+        ]
+      }
+    },
+    {
+      "id": "text.unicode",
+      "category": "Text",
+      "title": "UTF-8 text",
+      "tex": "Café, Straße, Ελληνικά, 日本語.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nCafé, Straße, Ελληνικά, 日本語.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Café",
+              "Straße",
+              "Ελληνικά",
+              "日本語"
+            ]
+          }
+        ],
+        "export": [
+          "Straße",
+          "Ελληνικά",
+          "日本語"
+        ]
+      }
+    },
+    {
+      "id": "text.nbsp-linebreak",
+      "category": "Text",
+      "title": "~ and \\\\",
+      "tex": "Figure~1 is here.\\\\ New line after a break.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nFigure~1 is here.\\\\ New line after a break.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "1 is here.",
+              "New line after a break."
+            ]
+          }
+        ],
+        "export": [
+          "re:is here\\.\\s*(\\\\\\\\|\\\\newline)"
+        ]
+      }
+    },
+    {
+      "id": "text.comments",
+      "category": "Text",
+      "title": "% comments",
+      "tex": "Visible text. % a hidden comment\nMore visible text.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nVisible text. % a hidden comment\nMore visible text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Visible text.",
+              "More visible text."
+            ]
+          }
+        ],
+        "absent": [
+          "hidden comment"
+        ],
+        "exportAbsent": [
+          "hidden comment"
+        ]
+      }
+    },
+    {
+      "id": "text.color",
+      "category": "Text",
+      "title": "\\textcolor",
+      "tex": "This is \\textcolor{red}{red} text.",
+      "note": "\\usepackage{xcolor}",
+      "documentClass": "article",
+      "packages": [
+        "xcolor",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{xcolor}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nThis is \\textcolor{red}{red} text.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\textcolor{red}{red}"
+            ]
+          }
+        ],
+        "export": [
+          "\\textcolor{red}{red}"
+        ]
+      }
+    },
+    {
+      "id": "lists.itemize",
+      "category": "Lists",
+      "title": "itemize",
+      "tex": "\\begin{itemize}\n\\item Apples\n\\item Pears\n\\end{itemize}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{itemize}\n\\item Apples\n\\item Pears\n\\end{itemize}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "Apples",
+              "Pears"
+            ],
+            "fields": {
+              "ordered": false
+            }
+          }
+        ],
+        "export": [
+          "\\begin{itemize}",
+          "\\item Apples",
+          "\\item Pears"
+        ]
+      }
+    },
+    {
+      "id": "lists.enumerate",
+      "category": "Lists",
+      "title": "enumerate",
+      "tex": "\\begin{enumerate}\n\\item First\n\\item Second\n\\end{enumerate}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{enumerate}\n\\item First\n\\item Second\n\\end{enumerate}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "First",
+              "Second"
+            ],
+            "fields": {
+              "ordered": true
+            }
+          }
+        ],
+        "export": [
+          "\\begin{enumerate}",
+          "\\item First",
+          "\\item Second"
+        ]
+      }
+    },
+    {
+      "id": "lists.nested",
+      "category": "Lists",
+      "title": "nested lists",
+      "tex": "\\begin{itemize}\n\\item Fruit\n\\begin{enumerate}\n\\item Apple\n\\item Pear\n\\end{enumerate}\n\\item Vegetables\n\\end{itemize}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{itemize}\n\\item Fruit\n\\begin{enumerate}\n\\item Apple\n\\item Pear\n\\end{enumerate}\n\\item Vegetables\n\\end{itemize}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "Fruit",
+              "Apple",
+              "Pear",
+              "Vegetables"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "list"
+        ],
+        "absent": [
+          "enumerate"
+        ],
+        "export": [
+          "re:\\\\item Fruit\\s*\\\\begin\\{(enumerate|itemize)\\}\\s*\\\\item Apple"
+        ]
+      }
+    },
+    {
+      "id": "lists.description",
+      "category": "Lists",
+      "title": "description",
+      "tex": "\\begin{description}\n\\item[Soil] The top layer.\n\\item[Rock] Below it.\n\\end{description}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{description}\n\\item[Soil] The top layer.\n\\item[Rock] Below it.\n\\end{description}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "Soil",
+              "The top layer.",
+              "Rock",
+              "Below it."
+            ],
+            "fields": {
+              "kind": "description"
+            }
+          }
+        ],
+        "export": [
+          "\\begin{description}",
+          "\\item[Soil] The top layer."
+        ]
+      }
+    },
+    {
+      "id": "lists.custom-item-label",
+      "category": "Lists",
+      "title": "\\item[label]",
+      "tex": "\\begin{itemize}\n\\item[$\\star$] Starred point\n\\item[--] Dashed point\n\\end{itemize}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{itemize}\n\\item[$\\star$] Starred point\n\\item[--] Dashed point\n\\end{itemize}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "Starred point",
+              "Dashed point"
+            ]
+          }
+        ],
+        "export": [
+          "\\item[$\\star$] Starred point"
+        ]
+      }
+    },
+    {
+      "id": "lists.enumitem-label",
+      "category": "Lists",
+      "title": "enumitem label=(\\alph*)",
+      "tex": "\\begin{enumerate}[label=(\\alph*)]\n\\item Alpha\n\\item Beta\n\\end{enumerate}",
+      "note": "\\usepackage{enumitem}",
+      "documentClass": "article",
+      "packages": [
+        "enumitem",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{enumitem}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{enumerate}[label=(\\alph*)]\n\\item Alpha\n\\item Beta\n\\end{enumerate}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "Alpha",
+              "Beta"
+            ],
+            "fields": {
+              "ordered": true,
+              "labelFormat": "alpha"
+            }
+          }
+        ],
+        "export": [
+          "label=(\\alph*)",
+          "\\item Alpha"
+        ]
+      }
+    },
+    {
+      "id": "lists.formatted-items",
+      "category": "Lists",
+      "title": "formatting and math in items",
+      "tex": "\\begin{itemize}\n\\item A \\textbf{bold} item with $x^2$\n\\end{itemize}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{itemize}\n\\item A \\textbf{bold} item with $x^2$\n\\end{itemize}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "list",
+            "text": [
+              "**bold**",
+              "$x^2$"
+            ]
+          }
+        ],
+        "export": [
+          "\\textbf{bold}",
+          "$x^2$"
+        ]
+      }
+    },
+    {
+      "id": "math.inline-dollar",
+      "category": "Math",
+      "title": "$…$",
+      "tex": "Energy is $E = mc^2$ here.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nEnergy is $E = mc^2$ here.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "$E = mc^2$"
+            ]
+          }
+        ],
+        "export": [
+          "$E = mc^2$"
+        ]
+      }
+    },
+    {
+      "id": "math.inline-paren",
+      "category": "Math",
+      "title": "\\(…\\)",
+      "tex": "Energy is \\(E = mc^2\\) here.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nEnergy is \\(E = mc^2\\) here.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "E = mc^2"
+            ]
+          }
+        ],
+        "export": [
+          "re:(\\$E = mc\\^2\\$|\\\\\\(E = mc\\^2\\\\\\))"
+        ]
+      }
+    },
+    {
+      "id": "math.display-bracket",
+      "category": "Math",
+      "title": "\\[…\\]",
+      "tex": "\\[\n\\int_0^1 x\\,dx = \\frac{1}{2}\n\\]",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\[\n\\int_0^1 x\\,dx = \\frac{1}{2}\n\\]\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\int_0^1 x\\,dx = \\frac{1}{2}"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "re:(\\\\\\[|\\\\begin\\{equation\\*\\})\\s*\\\\int_0\\^1"
+        ]
+      }
+    },
+    {
+      "id": "math.display-dollars",
+      "category": "Math",
+      "title": "$$…$$",
+      "tex": "$$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n$$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "re:(\\\\\\[|\\\\begin\\{equation\\*\\})\\s*\\\\sum_\\{i=1\\}"
+        ]
+      }
+    },
+    {
+      "id": "math.equation",
+      "category": "Math",
+      "title": "equation",
+      "tex": "\\begin{equation}\na^2 + b^2 = c^2\n\\end{equation}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{equation}\na^2 + b^2 = c^2\n\\end{equation}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "a^2 + b^2 = c^2"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{equation\\}\\s*a\\^2 \\+ b\\^2 = c\\^2"
+        ]
+      }
+    },
+    {
+      "id": "math.equation-starred",
+      "category": "Math",
+      "title": "equation*",
+      "tex": "\\begin{equation*}\ne^{i\\pi} + 1 = 0\n\\end{equation*}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{equation*}\ne^{i\\pi} + 1 = 0\n\\end{equation*}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "e^{i\\pi} + 1 = 0"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "re:(\\\\\\[|\\\\begin\\{equation\\*\\})\\s*e\\^\\{i\\\\pi\\}"
+        ]
+      }
+    },
+    {
+      "id": "math.align",
+      "category": "Math",
+      "title": "align",
+      "tex": "\\begin{align}\nf(x) &= x^2 + 2x + 1 \\\\\n&= (x+1)^2\n\\end{align}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{align}\nf(x) &= x^2 + 2x + 1 \\\\\n&= (x+1)^2\n\\end{align}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "f(x) &= x^2 + 2x + 1",
+              "&= (x+1)^2"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{align\\}\\s*f\\(x\\) &= x\\^2"
+        ],
+        "exportAbsent": [
+          "re:\\\\begin\\{equation\\*?\\}\\s*\\\\begin\\{(align|gather|multline)",
+          "re:\\\\\\[\\s*\\\\begin\\{(align|gather|multline)"
+        ]
+      }
+    },
+    {
+      "id": "math.align-starred",
+      "category": "Math",
+      "title": "align*",
+      "tex": "\\begin{align*}\na &= b + c \\\\\nd &= e\n\\end{align*}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{align*}\na &= b + c \\\\\nd &= e\n\\end{align*}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "a &= b + c",
+              "d &= e"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{align\\*\\}\\s*a &= b \\+ c"
+        ],
+        "exportAbsent": [
+          "re:\\\\begin\\{equation\\*?\\}\\s*\\\\begin\\{(align|gather|multline)",
+          "re:\\\\\\[\\s*\\\\begin\\{(align|gather|multline)"
+        ]
+      }
+    },
+    {
+      "id": "math.gather",
+      "category": "Math",
+      "title": "gather",
+      "tex": "\\begin{gather}\nx = 1 \\\\\ny = 2\n\\end{gather}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{gather}\nx = 1 \\\\\ny = 2\n\\end{gather}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "x = 1",
+              "y = 2"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{gather\\}\\s*x = 1"
+        ],
+        "exportAbsent": [
+          "re:\\\\begin\\{equation\\*?\\}\\s*\\\\begin\\{(align|gather|multline)",
+          "re:\\\\\\[\\s*\\\\begin\\{(align|gather|multline)"
+        ]
+      }
+    },
+    {
+      "id": "math.multline",
+      "category": "Math",
+      "title": "multline",
+      "tex": "\\begin{multline}\na + b + c \\\\\n+ d + e\n\\end{multline}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{multline}\na + b + c \\\\\n+ d + e\n\\end{multline}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "a + b + c",
+              "+ d + e"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{multline\\}\\s*a \\+ b \\+ c"
+        ],
+        "exportAbsent": [
+          "re:\\\\begin\\{equation\\*?\\}\\s*\\\\begin\\{(align|gather|multline)",
+          "re:\\\\\\[\\s*\\\\begin\\{(align|gather|multline)"
+        ]
+      }
+    },
+    {
+      "id": "math.split",
+      "category": "Math",
+      "title": "split in equation",
+      "tex": "\\begin{equation}\n\\begin{split}\na &= b \\\\\n&= c\n\\end{split}\n\\end{equation}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{equation}\n\\begin{split}\na &= b \\\\\n&= c\n\\end{split}\n\\end{equation}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\begin{split}",
+              "a &= b"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{equation\\}\\s*\\\\begin\\{split\\}"
+        ]
+      }
+    },
+    {
+      "id": "math.cases",
+      "category": "Math",
+      "title": "cases",
+      "tex": "\\[\n|x| = \\begin{cases} x & x \\ge 0 \\\\ -x & x < 0 \\end{cases}\n\\]",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\[\n|x| = \\begin{cases} x & x \\ge 0 \\\\ -x & x < 0 \\end{cases}\n\\]\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\begin{cases} x & x \\ge 0"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "\\begin{cases}"
+        ]
+      }
+    },
+    {
+      "id": "math.matrices",
+      "category": "Math",
+      "title": "pmatrix / bmatrix",
+      "tex": "\\[\nA = \\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}, \\quad B = \\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}\n\\]",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\[\nA = \\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}, \\quad B = \\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}\n\\]\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\begin{pmatrix} 1 & 2",
+              "\\begin{bmatrix} a & b"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "\\begin{pmatrix}",
+          "\\begin{bmatrix}"
+        ]
+      }
+    },
+    {
+      "id": "math.fractions-roots",
+      "category": "Math",
+      "title": "\\frac \\sqrt",
+      "tex": "\\[ \\frac{\\sqrt{a^2+b^2}}{\\sqrt[3]{c}} \\]",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\[ \\frac{\\sqrt{a^2+b^2}}{\\sqrt[3]{c}} \\]\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\frac{\\sqrt{a^2+b^2}}{\\sqrt[3]{c}}"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "\\frac{\\sqrt{a^2+b^2}}{\\sqrt[3]{c}}"
+        ]
+      }
+    },
+    {
+      "id": "math.sums-integrals",
+      "category": "Math",
+      "title": "sums, integrals, limits",
+      "tex": "\\[ \\lim_{n\\to\\infty} \\sum_{k=1}^{n} \\frac{1}{k^2} = \\frac{\\pi^2}{6}, \\quad \\oint_C f\\,dz \\]",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\[ \\lim_{n\\to\\infty} \\sum_{k=1}^{n} \\frac{1}{k^2} = \\frac{\\pi^2}{6}, \\quad \\oint_C f\\,dz \\]\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "\\lim_{n\\to\\infty}",
+              "\\oint_C f\\,dz"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "\\lim_{n\\to\\infty}",
+          "\\oint_C"
+        ]
+      }
+    },
+    {
+      "id": "math.greek-symbols",
+      "category": "Math",
+      "title": "Greek and symbols",
+      "tex": "$\\alpha, \\beta, \\Gamma, \\Omega, \\infty, \\partial, \\nabla, \\forall, \\exists$",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n$\\alpha, \\beta, \\Gamma, \\Omega, \\infty, \\partial, \\nabla, \\forall, \\exists$\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "$\\alpha, \\beta, \\Gamma, \\Omega, \\infty, \\partial, \\nabla, \\forall, \\exists$"
+            ]
+          }
+        ],
+        "export": [
+          "$\\alpha, \\beta, \\Gamma, \\Omega, \\infty, \\partial, \\nabla, \\forall, \\exists$"
+        ]
+      }
+    },
+    {
+      "id": "math.fonts",
+      "category": "Math",
+      "title": "\\mathbb \\mathcal \\mathrm \\mathbf",
+      "tex": "$\\mathbb{R}, \\mathcal{L}, \\mathrm{d}x, \\mathbf{v}$",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n$\\mathbb{R}, \\mathcal{L}, \\mathrm{d}x, \\mathbf{v}$\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "$\\mathbb{R}, \\mathcal{L}, \\mathrm{d}x, \\mathbf{v}$"
+            ]
+          }
+        ],
+        "export": [
+          "$\\mathbb{R}, \\mathcal{L}, \\mathrm{d}x, \\mathbf{v}$"
+        ]
+      }
+    },
+    {
+      "id": "math.operatorname",
+      "category": "Math",
+      "title": "\\operatorname",
+      "tex": "$\\operatorname{rank}(A) = 2$",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n$\\operatorname{rank}(A) = 2$\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "$\\operatorname{rank}(A) = 2$"
+            ]
+          }
+        ],
+        "export": [
+          "$\\operatorname{rank}(A) = 2$"
+        ]
+      }
+    },
+    {
+      "id": "math.text-in-math",
+      "category": "Math",
+      "title": "\\text in math",
+      "tex": "\\[ f(x) = 0 \\text{ for all } x \\]",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\[ f(x) = 0 \\text{ for all } x \\]\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "f(x) = 0 \\text{ for all } x"
+            ],
+            "fields": {
+              "numbered": false
+            }
+          }
+        ],
+        "export": [
+          "\\text{ for all }"
+        ]
+      }
+    },
+    {
+      "id": "math.label-eqref",
+      "category": "Math",
+      "title": "\\label + \\eqref",
+      "tex": "\\begin{equation}\\label{eq:pyth}\na^2+b^2=c^2\n\\end{equation}\nBy \\eqref{eq:pyth} the sides relate.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{equation}\\label{eq:pyth}\na^2+b^2=c^2\n\\end{equation}\nBy \\eqref{eq:pyth} the sides relate.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "a^2+b^2=c^2"
+            ],
+            "fields": {
+              "label": "eq:pyth"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\eqref{eq:pyth}",
+              "the sides relate"
+            ]
+          }
+        ],
+        "export": [
+          "\\label{eq:pyth}",
+          "\\eqref{eq:pyth}"
+        ]
+      }
+    },
+    {
+      "id": "math.tag",
+      "category": "Math",
+      "title": "\\tag",
+      "tex": "\\begin{equation}\nx = y \\tag{$\\ast$}\n\\end{equation}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{equation}\nx = y \\tag{$\\ast$}\n\\end{equation}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "x = y \\tag{$\\ast$}"
+            ]
+          }
+        ],
+        "export": [
+          "\\tag{$\\ast$}"
+        ]
+      }
+    },
+    {
+      "id": "math.newcommand-macro",
+      "category": "Math",
+      "title": "\\newcommand used in math",
+      "tex": "\\newcommand{\\R}{\\mathbb{R}}\nLet $x \\in \\R$.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newcommand{\\R}{\\mathbb{R}}\nLet $x \\in \\R$.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "x \\in"
+            ]
+          }
+        ],
+        "export": [
+          "re:x \\\\in (\\\\R|\\\\mathbb\\{R\\})"
+        ],
+        "exportFull": [
+          "re:(\\\\newcommand\\{\\\\R\\}\\{\\\\mathbb\\{R\\}\\}|x \\\\in \\\\mathbb\\{R\\})"
+        ]
+      }
+    },
+    {
+      "id": "math.declaremathoperator",
+      "category": "Math",
+      "title": "\\DeclareMathOperator",
+      "tex": "\\DeclareMathOperator{\\Tr}{Tr}\nThen $\\Tr(A) = 0$.",
+      "note": "preamble",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "preamble": "\\DeclareMathOperator{\\Tr}{Tr}",
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\DeclareMathOperator{\\Tr}{Tr}\n\\begin{document}\nThen $\\Tr(A) = 0$.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Then $",
+              "(A) = 0$."
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "exportFull": [
+          "re:(\\\\DeclareMathOperator\\{\\\\Tr\\}\\{Tr\\}|\\\\operatorname\\{Tr\\})"
+        ]
+      }
+    },
+    {
+      "id": "math.subequations",
+      "category": "Math",
+      "title": "subequations",
+      "tex": "\\begin{subequations}\n\\begin{align}\na &= 1 \\\\\nb &= 2\n\\end{align}\n\\end{subequations}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{subequations}\n\\begin{align}\na &= 1 \\\\\nb &= 2\n\\end{align}\n\\end{subequations}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "equation",
+            "text": [
+              "a &= 1",
+              "b &= 2"
+            ]
+          }
+        ],
+        "export": [
+          "re:\\\\begin\\{align\\}"
+        ],
+        "exportAbsent": [
+          "\\begin{lstlisting}"
+        ]
+      }
+    },
+    {
+      "id": "theorems.theorem",
+      "category": "Theorems",
+      "title": "theorem",
+      "tex": "\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{theorem}\nEvery bounded sequence has a convergent subsequence.\n\\end{theorem}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{theorem}\nEvery bounded sequence has a convergent subsequence.\n\\end{theorem}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "Every bounded sequence has a convergent subsequence."
+            ],
+            "fields": {
+              "theoremType": "theorem"
+            }
+          }
+        ],
+        "exactTypes": [
+          "theorem"
+        ],
+        "export": [
+          "\\begin{theorem}",
+          "Every bounded sequence"
+        ]
+      }
+    },
+    {
+      "id": "theorems.lemma",
+      "category": "Theorems",
+      "title": "lemma",
+      "tex": "\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{lemma}\nA small step.\n\\end{lemma}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{lemma}\nA small step.\n\\end{lemma}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "A small step."
+            ],
+            "fields": {
+              "theoremType": "lemma"
+            }
+          }
+        ],
+        "exactTypes": [
+          "theorem"
+        ],
+        "export": [
+          "\\begin{lemma}",
+          "A small step."
+        ]
+      }
+    },
+    {
+      "id": "theorems.named",
+      "category": "Theorems",
+      "title": "theorem with a name",
+      "tex": "\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{theorem}[Bolzano--Weierstrass]\nBounded sequences converge on a subsequence.\n\\end{theorem}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{theorem}[Bolzano--Weierstrass]\nBounded sequences converge on a subsequence.\n\\end{theorem}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "Bounded sequences converge"
+            ],
+            "fields": {
+              "theoremType": "theorem",
+              "title": "Bolzano--Weierstrass"
+            }
+          }
+        ],
+        "export": [
+          "\\begin{theorem}[Bolzano--Weierstrass]"
+        ]
+      }
+    },
+    {
+      "id": "theorems.proof",
+      "category": "Theorems",
+      "title": "proof",
+      "tex": "\\begin{proof}\nTrivial.\n\\end{proof}",
+      "note": "amsthm",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{proof}\nTrivial.\n\\end{proof}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "Trivial."
+            ],
+            "fields": {
+              "theoremType": "proof"
+            }
+          }
+        ],
+        "exactTypes": [
+          "theorem"
+        ],
+        "export": [
+          "\\begin{proof}",
+          "Trivial."
+        ]
+      }
+    },
+    {
+      "id": "theorems.definition",
+      "category": "Theorems",
+      "title": "definition (theoremstyle)",
+      "tex": "\\theoremstyle{definition}\n\\newtheorem{definition}{Definition}\n\\begin{definition}\nA set is open if it contains a ball around each point.\n\\end{definition}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\theoremstyle{definition}\n\\newtheorem{definition}{Definition}\n\\begin{definition}\nA set is open if it contains a ball around each point.\n\\end{definition}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "A set is open"
+            ],
+            "fields": {
+              "theoremType": "definition"
+            }
+          }
+        ],
+        "exactTypes": [
+          "theorem"
+        ],
+        "export": [
+          "\\begin{definition}",
+          "A set is open"
+        ]
+      }
+    },
+    {
+      "id": "theorems.corollary-remark",
+      "category": "Theorems",
+      "title": "corollary and remark",
+      "tex": "\\newtheorem{corollary}{Corollary}\n\\newtheorem*{remark}{Remark}\n\\begin{corollary}\nIt follows.\n\\end{corollary}\n\\begin{remark}\nNote this.\n\\end{remark}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newtheorem{corollary}{Corollary}\n\\newtheorem*{remark}{Remark}\n\\begin{corollary}\nIt follows.\n\\end{corollary}\n\\begin{remark}\nNote this.\n\\end{remark}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "It follows."
+            ],
+            "fields": {
+              "theoremType": "corollary"
+            }
+          },
+          {
+            "type": "theorem",
+            "text": [
+              "Note this."
+            ],
+            "fields": {
+              "theoremType": "remark"
+            }
+          }
+        ],
+        "exactTypes": [
+          "theorem",
+          "theorem"
+        ],
+        "export": [
+          "\\begin{corollary}",
+          "re:\\\\begin\\{remark\\*?\\}"
+        ]
+      }
+    },
+    {
+      "id": "theorems.label-ref",
+      "category": "Theorems",
+      "title": "theorem \\label + \\ref",
+      "tex": "\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{theorem}\\label{thm:main}\nMain result.\n\\end{theorem}\nTheorem~\\ref{thm:main} is the key.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newtheorem{theorem}{Theorem}\n\\newtheorem{lemma}[theorem]{Lemma}\n\\begin{theorem}\\label{thm:main}\nMain result.\n\\end{theorem}\nTheorem~\\ref{thm:main} is the key.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "theorem",
+            "text": [
+              "Main result."
+            ],
+            "fields": {
+              "label": "thm:main"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\ref{thm:main}",
+              "is the key"
+            ]
+          }
+        ],
+        "export": [
+          "\\label{thm:main}",
+          "\\ref{thm:main}"
+        ]
+      }
+    },
+    {
+      "id": "tables.tabular",
+      "category": "Tables",
+      "title": "tabular",
+      "tex": "\\begin{tabular}{lcr}\na & b & c \\\\\n1 & 2 & 3\n\\end{tabular}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{lcr}\na & b & c \\\\\n1 & 2 & 3\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "a",
+              "b",
+              "c",
+              "1",
+              "2",
+              "3"
+            ]
+          }
+        ],
+        "export": [
+          "1 & 2 & 3",
+          "\\begin{tabular}{lcr}"
+        ]
+      }
+    },
+    {
+      "id": "tables.hlines",
+      "category": "Tables",
+      "title": "tabular with \\hline and |",
+      "tex": "\\begin{tabular}{|l|r|}\n\\hline\nName & Value \\\\\n\\hline\npH & 6.5 \\\\\n\\hline\n\\end{tabular}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{|l|r|}\n\\hline\nName & Value \\\\\n\\hline\npH & 6.5 \\\\\n\\hline\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "Name",
+              "Value",
+              "pH",
+              "6.5"
+            ]
+          }
+        ],
+        "export": [
+          "pH & 6.5",
+          "re:\\\\begin\\{tabular\\}\\{\\|?l\\|?r\\|?\\}"
+        ]
+      }
+    },
+    {
+      "id": "tables.booktabs",
+      "category": "Tables",
+      "title": "booktabs",
+      "tex": "\\begin{tabular}{ll}\n\\toprule\nSite & Carbon \\\\\n\\midrule\nNorth & 12 \\\\\n\\bottomrule\n\\end{tabular}",
+      "note": "\\usepackage{booktabs}",
+      "documentClass": "article",
+      "packages": [
+        "booktabs",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{ll}\n\\toprule\nSite & Carbon \\\\\n\\midrule\nNorth & 12 \\\\\n\\bottomrule\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "Site",
+              "Carbon",
+              "North",
+              "12"
+            ]
+          }
+        ],
+        "export": [
+          "\\toprule",
+          "\\midrule",
+          "\\bottomrule",
+          "North & 12"
+        ]
+      }
+    },
+    {
+      "id": "tables.float-caption-label",
+      "category": "Tables",
+      "title": "table float with caption and label",
+      "tex": "\\begin{table}[h]\n\\centering\n\\caption{Soil samples}\\label{tab:soil}\n\\begin{tabular}{ll}\nSite & Carbon \\\\\nNorth & 12\n\\end{tabular}\n\\end{table}\nTable~\\ref{tab:soil} lists them.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{table}[h]\n\\centering\n\\caption{Soil samples}\\label{tab:soil}\n\\begin{tabular}{ll}\nSite & Carbon \\\\\nNorth & 12\n\\end{tabular}\n\\end{table}\nTable~\\ref{tab:soil} lists them.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "Site",
+              "Carbon",
+              "North",
+              "12"
+            ],
+            "fields": {
+              "caption": "Soil samples",
+              "label": "tab:soil"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\ref{tab:soil}",
+              "lists them"
+            ]
+          }
+        ],
+        "export": [
+          "\\caption{Soil samples}",
+          "\\label{tab:soil}",
+          "North & 12",
+          "\\ref{tab:soil}"
+        ]
+      }
+    },
+    {
+      "id": "tables.multicolumn",
+      "category": "Tables",
+      "title": "\\multicolumn",
+      "tex": "\\begin{tabular}{lll}\n\\multicolumn{2}{c}{Merged} & c \\\\\n1 & 2 & 3\n\\end{tabular}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{lll}\n\\multicolumn{2}{c}{Merged} & c \\\\\n1 & 2 & 3\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "Merged",
+              "c",
+              "1",
+              "2",
+              "3"
+            ]
+          }
+        ],
+        "export": [
+          "\\multicolumn{2}{c}{Merged}",
+          "1 & 2 & 3"
+        ]
+      }
+    },
+    {
+      "id": "tables.multirow",
+      "category": "Tables",
+      "title": "\\multirow",
+      "tex": "\\begin{tabular}{ll}\n\\multirow{2}{*}{Tall} & a \\\\\n & b\n\\end{tabular}",
+      "note": "\\usepackage{multirow}",
+      "documentClass": "article",
+      "packages": [
+        "multirow",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{multirow}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{ll}\n\\multirow{2}{*}{Tall} & a \\\\\n & b\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "Tall",
+              "a",
+              "b"
+            ]
+          }
+        ],
+        "export": [
+          "\\multirow{2}{*}{Tall}"
+        ]
+      }
+    },
+    {
+      "id": "tables.paragraph-column",
+      "category": "Tables",
+      "title": "p{width} column",
+      "tex": "\\begin{tabular}{p{3cm}l}\nA long wrapped description & x\n\\end{tabular}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{p{3cm}l}\nA long wrapped description & x\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "A long wrapped description",
+              "x"
+            ]
+          }
+        ],
+        "absent": [
+          "Column 1"
+        ],
+        "export": [
+          "re:p\\{3cm\\}",
+          "A long wrapped description & x"
+        ],
+        "exportAbsent": [
+          "Column 1"
+        ]
+      }
+    },
+    {
+      "id": "tables.math-in-cells",
+      "category": "Tables",
+      "title": "math in cells",
+      "tex": "\\begin{tabular}{cc}\n$x$ & $x^2$ \\\\\n$2$ & $4$\n\\end{tabular}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabular}{cc}\n$x$ & $x^2$ \\\\\n$2$ & $4$\n\\end{tabular}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "$x$",
+              "$x^2$",
+              "$2$",
+              "$4$"
+            ]
+          }
+        ],
+        "export": [
+          "$x^2$",
+          "re:\\$2\\$ & \\$4\\$"
+        ],
+        "exportAbsent": [
+          "\\$x",
+          "\\$2\\$"
+        ]
+      }
+    },
+    {
+      "id": "tables.tabularx",
+      "category": "Tables",
+      "title": "tabularx",
+      "tex": "\\begin{tabularx}{\\textwidth}{lX}\nKey & A stretching column \\\\\n\\end{tabularx}",
+      "note": "\\usepackage{tabularx}",
+      "documentClass": "article",
+      "packages": [
+        "tabularx",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{tabularx}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tabularx}{\\textwidth}{lX}\nKey & A stretching column \\\\\n\\end{tabularx}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "Key",
+              "A stretching column"
+            ]
+          }
+        ],
+        "absent": [
+          "Column 1"
+        ],
+        "export": [
+          "Key & A stretching column"
+        ],
+        "exportAbsent": [
+          "Column 1"
+        ]
+      }
+    },
+    {
+      "id": "tables.longtable",
+      "category": "Tables",
+      "title": "longtable",
+      "tex": "\\begin{longtable}{ll}\na & b \\\\\nc & d \\\\\n\\end{longtable}",
+      "note": "\\usepackage{longtable}",
+      "documentClass": "article",
+      "packages": [
+        "longtable",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{longtable}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{longtable}{ll}\na & b \\\\\nc & d \\\\\n\\end{longtable}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "table",
+            "text": [
+              "a",
+              "b",
+              "c",
+              "d"
+            ]
+          }
+        ],
+        "export": [
+          "\\begin{longtable}",
+          "c & d"
+        ]
+      }
+    },
+    {
+      "id": "figures.includegraphics",
+      "category": "Figures",
+      "title": "\\includegraphics",
+      "tex": "\\includegraphics[width=0.5\\textwidth]{plot.png}",
+      "note": "graphicx; image file absent",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\includegraphics[width=0.5\\textwidth]{plot.png}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "figure",
+            "text": [
+              "plot.png"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "figure"
+        ],
+        "export": [
+          "re:\\\\includegraphics(\\[[^\\]]*\\])?\\{[^}]*plot\\.png\\}"
+        ]
+      }
+    },
+    {
+      "id": "figures.float-caption-label",
+      "category": "Figures",
+      "title": "figure float with caption and label",
+      "tex": "\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=0.8\\linewidth]{plot.png}\n\\caption{Carbon by depth}\\label{fig:carbon}\n\\end{figure}\nFigure~\\ref{fig:carbon} shows it.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=0.8\\linewidth]{plot.png}\n\\caption{Carbon by depth}\\label{fig:carbon}\n\\end{figure}\nFigure~\\ref{fig:carbon} shows it.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "figure",
+            "text": [
+              "plot.png"
+            ],
+            "fields": {
+              "caption": "Carbon by depth",
+              "label": "fig:carbon"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\ref{fig:carbon}",
+              "shows it"
+            ]
+          }
+        ],
+        "export": [
+          "\\caption{Carbon by depth}",
+          "\\label{fig:carbon}",
+          "\\ref{fig:carbon}"
+        ]
+      }
+    },
+    {
+      "id": "figures.subfigure",
+      "category": "Figures",
+      "title": "subfigure",
+      "tex": "\\begin{figure}\n\\begin{subfigure}{0.45\\textwidth}\n\\includegraphics[width=\\linewidth]{a.png}\n\\caption{Left}\n\\end{subfigure}\n\\begin{subfigure}{0.45\\textwidth}\n\\includegraphics[width=\\linewidth]{b.png}\n\\caption{Right}\n\\end{subfigure}\n\\caption{Both}\n\\end{figure}",
+      "note": "\\usepackage{subcaption}",
+      "documentClass": "article",
+      "packages": [
+        "subcaption",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{subcaption}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{figure}\n\\begin{subfigure}{0.45\\textwidth}\n\\includegraphics[width=\\linewidth]{a.png}\n\\caption{Left}\n\\end{subfigure}\n\\begin{subfigure}{0.45\\textwidth}\n\\includegraphics[width=\\linewidth]{b.png}\n\\caption{Right}\n\\end{subfigure}\n\\caption{Both}\n\\end{figure}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "figure",
+            "text": [
+              "a.png"
+            ]
+          }
+        ],
+        "docText": [
+          "a.png",
+          "b.png",
+          "Left",
+          "Right",
+          "Both"
+        ],
+        "export": [
+          "a.png",
+          "b.png",
+          "Left",
+          "Right",
+          "Both"
+        ]
+      }
+    },
+    {
+      "id": "refs.section-ref",
+      "category": "References",
+      "title": "section \\label + \\ref",
+      "tex": "\\section{Setup}\\label{sec:setup}\nText.\nAs in Section~\\ref{sec:setup}.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{Setup}\\label{sec:setup}\nText.\nAs in Section~\\ref{sec:setup}.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Setup"
+            ],
+            "fields": {
+              "level": 1,
+              "label": "sec:setup"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Text.",
+              "\\ref{sec:setup}"
+            ]
+          }
+        ],
+        "export": [
+          "\\section{Setup}\\label{sec:setup}",
+          "\\ref{sec:setup}"
+        ]
+      }
+    },
+    {
+      "id": "refs.pageref",
+      "category": "References",
+      "title": "\\pageref",
+      "tex": "\\section{Setup}\\label{sec:setup}\nSee page~\\pageref{sec:setup}.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{Setup}\\label{sec:setup}\nSee page~\\pageref{sec:setup}.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Setup"
+            ],
+            "fields": {
+              "level": 1,
+              "label": "sec:setup"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\pageref{sec:setup}"
+            ]
+          }
+        ],
+        "export": [
+          "\\section{Setup}\\label{sec:setup}",
+          "\\pageref{sec:setup}"
+        ]
+      }
+    },
+    {
+      "id": "refs.autoref",
+      "category": "References",
+      "title": "\\autoref",
+      "tex": "\\section{Setup}\\label{sec:setup}\nSee \\autoref{sec:setup}.",
+      "note": "hyperref",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\section{Setup}\\label{sec:setup}\nSee \\autoref{sec:setup}.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Setup"
+            ],
+            "fields": {
+              "level": 1,
+              "label": "sec:setup"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\autoref{sec:setup}"
+            ]
+          }
+        ],
+        "export": [
+          "\\section{Setup}\\label{sec:setup}",
+          "\\autoref{sec:setup}"
+        ]
+      }
+    },
+    {
+      "id": "refs.cref",
+      "category": "References",
+      "title": "\\cref",
+      "tex": "\\section{Setup}\\label{sec:setup}\nSee \\cref{sec:setup}.",
+      "note": "\\usepackage{cleveref}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref",
+        "cleveref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{cleveref}\n\\begin{document}\n\\section{Setup}\\label{sec:setup}\nSee \\cref{sec:setup}.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "heading",
+            "text": [
+              "Setup"
+            ],
+            "fields": {
+              "level": 1,
+              "label": "sec:setup"
+            }
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "\\cref{sec:setup}"
+            ]
+          }
+        ],
+        "export": [
+          "\\section{Setup}\\label{sec:setup}",
+          "\\cref{sec:setup}"
+        ]
+      }
+    },
+    {
+      "id": "cite.cite-thebibliography",
+      "category": "Citations",
+      "title": "\\cite with thebibliography",
+      "tex": "As shown by \\cite{knuth}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nAs shown by \\cite{knuth}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\cite{knuth}"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "absent": [
+          "D. Knuth",
+          "L. Lamport"
+        ],
+        "bibKeys": [
+          "knuth",
+          "lamport"
+        ],
+        "export": [
+          "\\cite{knuth}"
+        ],
+        "exportFull": [
+          "re:(\\\\bibitem(\\[[^\\]]*\\])?\\{knuth\\}|\\\\bibliography\\{|\\\\printbibliography)"
+        ]
+      }
+    },
+    {
+      "id": "cite.multiple-keys",
+      "category": "Citations",
+      "title": "\\cite{a,b}",
+      "tex": "Both \\cite{knuth,lamport} agree.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nBoth \\cite{knuth,lamport} agree.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\cite{knuth,lamport}"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "absent": [
+          "D. Knuth",
+          "L. Lamport"
+        ],
+        "bibKeys": [
+          "knuth",
+          "lamport"
+        ],
+        "export": [
+          "re:\\\\cite\\{knuth, ?lamport\\}"
+        ]
+      }
+    },
+    {
+      "id": "cite.cite-with-note",
+      "category": "Citations",
+      "title": "\\cite[p.~5]{key}",
+      "tex": "See \\cite[p.~5]{knuth}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nSee \\cite[p.~5]{knuth}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\cite[p.",
+              "{knuth}"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "absent": [
+          "D. Knuth",
+          "L. Lamport"
+        ],
+        "bibKeys": [
+          "knuth"
+        ],
+        "export": [
+          "re:\\\\cite\\[p\\.(~|\\\\,| )5\\]\\{knuth\\}"
+        ]
+      }
+    },
+    {
+      "id": "cite.natbib",
+      "category": "Citations",
+      "title": "\\citep \\citet",
+      "tex": "\\citet{knuth} argued it \\citep{lamport}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}",
+      "note": "\\usepackage{natbib}",
+      "documentClass": "article",
+      "packages": [
+        "natbib",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "packageOptions": {
+        "natbib": "numbers"
+      },
+      "document": "\\documentclass{article}\n\\usepackage[numbers]{natbib}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\citet{knuth} argued it \\citep{lamport}.\n\\begin{thebibliography}{9}\n\\bibitem{knuth} D. Knuth. \\emph{The TeXbook}. 1984.\n\\bibitem{lamport} L. Lamport. \\emph{LaTeX}. 1994.\n\\end{thebibliography}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\citet{knuth}",
+              "\\citep{lamport}"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "absent": [
+          "D. Knuth",
+          "L. Lamport"
+        ],
+        "bibKeys": [
+          "knuth",
+          "lamport"
+        ],
+        "export": [
+          "\\citet{knuth}",
+          "\\citep{lamport}"
+        ]
+      }
+    },
+    {
+      "id": "cite.bibliography-command",
+      "category": "Citations",
+      "title": "\\bibliography{refs} (no .bib)",
+      "tex": "As shown by \\cite{knuth}.\n\\bibliographystyle{plain}\n\\bibliography{refs}",
+      "note": "the .bib file is not part of the upload",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nAs shown by \\cite{knuth}.\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\cite{knuth}"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "export": [
+          "\\cite{knuth}"
+        ]
+      }
+    },
+    {
+      "id": "cite.biblatex",
+      "category": "Citations",
+      "title": "biblatex \\printbibliography",
+      "tex": "As shown by \\cite{knuth}.\n\\printbibliography",
+      "note": "\\usepackage{biblatex} \\addbibresource{refs.bib}",
+      "documentClass": "article",
+      "packages": [
+        "biblatex",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "preamble": "\\addbibresource{refs.bib}",
+      "document": "\\documentclass{article}\n\\usepackage{biblatex}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\addbibresource{refs.bib}\n\\begin{document}\nAs shown by \\cite{knuth}.\n\\printbibliography\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "\\cite{knuth}"
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "export": [
+          "\\cite{knuth}"
+        ]
+      }
+    },
+    {
+      "id": "code.verbatim",
+      "category": "Code",
+      "title": "verbatim",
+      "tex": "\\begin{verbatim}\nfor i in range(3):\n    print(i)  # 100% literal {braces}\n\\end{verbatim}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{verbatim}\nfor i in range(3):\n    print(i)  # 100% literal {braces}\n\\end{verbatim}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "code",
+            "text": [
+              "for i in range(3):",
+              "print(i)  # 100% literal {braces}"
+            ]
+          }
+        ],
+        "export": [
+          "print(i)  # 100% literal {braces}"
+        ]
+      }
+    },
+    {
+      "id": "code.verb",
+      "category": "Code",
+      "title": "\\verb",
+      "tex": "Use \\verb|x_1 & y| literally.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nUse \\verb|x_1 & y| literally.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "x_1 & y"
+            ]
+          }
+        ],
+        "export": [
+          "re:(\\\\verb\\|x_1 & y\\||\\\\texttt\\{x\\\\_1 \\\\& y\\})"
+        ]
+      }
+    },
+    {
+      "id": "code.lstlisting",
+      "category": "Code",
+      "title": "lstlisting",
+      "tex": "\\begin{lstlisting}[language=Python]\ndef f(x):\n    return x * 2\n\\end{lstlisting}",
+      "note": "\\usepackage{listings}",
+      "documentClass": "article",
+      "packages": [
+        "listings",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{listings}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{lstlisting}[language=Python]\ndef f(x):\n    return x * 2\n\\end{lstlisting}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "code",
+            "text": [
+              "def f(x):",
+              "return x * 2"
+            ],
+            "fields": {
+              "language": "python"
+            }
+          }
+        ],
+        "export": [
+          "re:(?i)language=python",
+          "return x * 2"
+        ]
+      }
+    },
+    {
+      "id": "code.minted",
+      "category": "Code",
+      "title": "minted",
+      "tex": "\\begin{minted}{python}\nprint('hi')\n\\end{minted}",
+      "note": "\\usepackage{minted} needs -shell-escape",
+      "documentClass": "article",
+      "packages": [
+        "minted",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{minted}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{minted}{python}\nprint('hi')\n\\end{minted}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "code",
+            "text": [
+              "print('hi')"
+            ],
+            "fields": {
+              "language": "python"
+            }
+          }
+        ],
+        "export": [
+          "print('hi')"
+        ]
+      }
+    },
+    {
+      "id": "layout.quote",
+      "category": "Layout",
+      "title": "quote",
+      "tex": "\\begin{quote}\nTo be or not to be.\n\\end{quote}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{quote}\nTo be or not to be.\n\\end{quote}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "blockquote",
+            "text": [
+              "To be or not to be."
+            ]
+          }
+        ],
+        "exactTypes": [
+          "blockquote"
+        ],
+        "export": [
+          "\\begin{quote}",
+          "To be or not to be."
+        ]
+      }
+    },
+    {
+      "id": "layout.quotation",
+      "category": "Layout",
+      "title": "quotation",
+      "tex": "\\begin{quotation}\nA longer quoted passage.\n\\end{quotation}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{quotation}\nA longer quoted passage.\n\\end{quotation}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "blockquote",
+            "text": [
+              "A longer quoted passage."
+            ]
+          }
+        ],
+        "exactTypes": [
+          "blockquote"
+        ],
+        "export": [
+          "re:\\\\begin\\{(quote|quotation)\\}",
+          "A longer quoted passage."
+        ]
+      }
+    },
+    {
+      "id": "layout.verse",
+      "category": "Layout",
+      "title": "verse",
+      "tex": "\\begin{verse}\nLine one \\\\\nLine two\n\\end{verse}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{verse}\nLine one \\\\\nLine two\n\\end{verse}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "blockquote",
+            "text": [
+              "Line one",
+              "Line two"
+            ],
+            "fields": {
+              "variant": "verse"
+            }
+          }
+        ],
+        "exactTypes": [
+          "blockquote"
+        ],
+        "export": [
+          "\\begin{verse}",
+          "re:Line one\\s*\\\\\\\\\\s*Line two"
+        ]
+      }
+    },
+    {
+      "id": "layout.center",
+      "category": "Layout",
+      "title": "center / flushleft / flushright",
+      "tex": "\\begin{center}\nCentred text.\n\\end{center}\n\\begin{flushright}\nRight text.\n\\end{flushright}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{center}\nCentred text.\n\\end{center}\n\\begin{flushright}\nRight text.\n\\end{flushright}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Centred text."
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Right text."
+            ]
+          }
+        ],
+        "export": [
+          "re:(\\\\begin\\{center\\}|\\\\centering)\\s*Centred text\\.",
+          "re:(\\\\begin\\{flushright\\}|\\\\raggedleft)\\s*Right text\\."
+        ]
+      }
+    },
+    {
+      "id": "layout.newpage",
+      "category": "Layout",
+      "title": "\\newpage \\clearpage",
+      "tex": "Page one.\n\\newpage\nPage two.\n\\clearpage\nPage three.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nPage one.\n\\newpage\nPage two.\n\\clearpage\nPage three.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Page one."
+            ]
+          },
+          {
+            "type": "pageBreak"
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Page two."
+            ]
+          },
+          {
+            "type": "pageBreak"
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Page three."
+            ]
+          }
+        ],
+        "export": [
+          "re:Page one\\.\\s*\\\\(newpage|clearpage)\\s*Page two\\.\\s*\\\\(newpage|clearpage)\\s*Page three\\."
+        ]
+      }
+    },
+    {
+      "id": "layout.spacing",
+      "category": "Layout",
+      "title": "\\vspace \\hspace",
+      "tex": "Before.\\vspace{1em}\n\nAfter\\hspace{2em}gap.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nBefore.\\vspace{1em}\n\nAfter\\hspace{2em}gap.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Before."
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "gap."
+            ]
+          }
+        ],
+        "absent": [
+          "Before.1em",
+          "After2em"
+        ],
+        "export": [
+          "Before.",
+          "gap."
+        ],
+        "exportAbsent": [
+          "Before.1em",
+          "After2em"
+        ]
+      }
+    },
+    {
+      "id": "layout.minipage",
+      "category": "Layout",
+      "title": "minipage",
+      "tex": "\\begin{minipage}{0.45\\textwidth}\nLeft column.\n\\end{minipage}\n\\begin{minipage}{0.45\\textwidth}\nRight column.\n\\end{minipage}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{minipage}{0.45\\textwidth}\nLeft column.\n\\end{minipage}\n\\begin{minipage}{0.45\\textwidth}\nRight column.\n\\end{minipage}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Left column."
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Right column."
+            ]
+          }
+        ],
+        "export": [
+          "Left column.",
+          "Right column."
+        ]
+      }
+    },
+    {
+      "id": "layout.hrule",
+      "category": "Layout",
+      "title": "horizontal rule",
+      "tex": "Above.\n\n\\noindent\\rule{\\textwidth}{0.4pt}\n\nBelow.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nAbove.\n\n\\noindent\\rule{\\textwidth}{0.4pt}\n\nBelow.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Above."
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": [
+              "Below."
+            ]
+          }
+        ],
+        "absent": [
+          "noindent",
+          "0.4pt"
+        ],
+        "export": [
+          "re:Above\\.\\s*(\\\\noindent)?\\s*\\\\(rule|hrule|hrulefill)",
+          "Below."
+        ],
+        "exportAbsent": [
+          "noindent0.4pt"
+        ]
+      }
+    },
+    {
+      "id": "advanced.algorithm",
+      "category": "Advanced",
+      "title": "algorithm + algorithmic",
+      "tex": "\\begin{algorithm}\n\\caption{Sum}\n\\begin{algorithmic}\n\\State $s \\gets 0$\n\\For{$i = 1$ to $n$}\n\\State $s \\gets s + i$\n\\EndFor\n\\end{algorithmic}\n\\end{algorithm}",
+      "note": "algorithm, algpseudocode",
+      "documentClass": "article",
+      "packages": [
+        "algorithm",
+        "algpseudocode",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{algorithm}\n\\usepackage{algpseudocode}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{algorithm}\n\\caption{Sum}\n\\begin{algorithmic}\n\\State $s \\gets 0$\n\\For{$i = 1$ to $n$}\n\\State $s \\gets s + i$\n\\EndFor\n\\end{algorithmic}\n\\end{algorithm}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "algorithm",
+            "text": [
+              "s \\gets 0"
+            ],
+            "fields": {
+              "caption": "Sum"
+            }
+          }
+        ],
+        "exactTypes": [
+          "algorithm"
+        ],
+        "export": [
+          "\\begin{algorithm}",
+          "\\caption{Sum}",
+          "s \\gets 0",
+          "s \\gets s + i"
+        ]
+      }
+    },
+    {
+      "id": "advanced.tikz",
+      "category": "Advanced",
+      "title": "tikzpicture",
+      "tex": "\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}",
+      "note": "\\usepackage{tikz}",
+      "documentClass": "article",
+      "packages": [
+        "tikz",
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{tikz}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "code",
+            "text": [
+              "\\draw (0,0) -- (1,1);"
+            ]
+          }
+        ],
+        "export": [
+          "\\begin{tikzpicture}",
+          "\\draw (0,0) -- (1,1);"
+        ],
+        "exportAbsent": [
+          "\\begin{lstlisting}"
+        ],
+        "exportFull": [
+          "re:\\\\usepackage(\\[[^\\]]*\\])?\\{tikz\\}"
+        ]
+      }
+    },
+    {
+      "id": "advanced.input-include",
+      "category": "Advanced",
+      "title": "\\input / \\include (file absent)",
+      "tex": "Before.\n\\input{chapter1}\nAfter.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nBefore.\n\\input{chapter1}\nAfter.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Before."
+            ]
+          }
+        ],
+        "docText": [
+          "Before.",
+          "After."
+        ],
+        "exportAbsent": [
+          "input\\{chapter1\\}"
+        ]
+      }
+    },
+    {
+      "id": "advanced.marginpar-todo",
+      "category": "Advanced",
+      "title": "\\marginpar",
+      "tex": "Main text.\\marginpar{A margin note.}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\nMain text.\\marginpar{A margin note.}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "Main text."
+            ]
+          }
+        ],
+        "docText": [
+          "A margin note."
+        ],
+        "export": [
+          "re:\\\\(marginpar|marginnote|todo|footnote)\\{A margin note\\.\\}"
+        ]
+      }
+    },
+    {
+      "id": "advanced.text-macro",
+      "category": "Advanced",
+      "title": "\\newcommand text macro",
+      "tex": "\\newcommand{\\lilia}{\\textsc{Lilia}}\nWe use \\lilia{} daily.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\newcommand{\\lilia}{\\textsc{Lilia}}\nWe use \\lilia{} daily.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "We use",
+              "daily."
+            ]
+          }
+        ],
+        "docText": [
+          "re:(Lilia|\\\\lilia)"
+        ],
+        "export": [
+          "re:(Lilia|\\\\lilia)"
+        ]
+      }
+    },
+    {
+      "id": "advanced.renewcommand",
+      "category": "Advanced",
+      "title": "\\renewcommand",
+      "tex": "\\renewcommand{\\abstractname}{Summary}\n\\begin{abstract}\nShort.\n\\end{abstract}",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\renewcommand{\\abstractname}{Summary}\n\\begin{abstract}\nShort.\n\\end{abstract}\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "abstract",
+            "text": [
+              "Short."
+            ]
+          }
+        ],
+        "exactTypes": [
+          "abstract"
+        ],
+        "export": [
+          "\\begin{abstract}",
+          "Short."
+        ],
+        "exportFull": [
+          "re:(\\\\renewcommand\\{?\\\\abstractname\\}?\\{Summary\\})"
+        ]
+      }
+    },
+    {
+      "id": "advanced.def",
+      "category": "Advanced",
+      "title": "\\def",
+      "tex": "\\def\\ours{our method}\nWe apply \\ours{} here.",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n\\def\\ours{our method}\nWe apply \\ours{} here.\n\\end{document}\n",
+      "expect": {
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": [
+              "We apply",
+              "here."
+            ]
+          }
+        ],
+        "exactTypes": [
+          "paragraph"
+        ],
+        "absent": [
+          "\\def",
+          "defour"
+        ],
+        "docText": [
+          "our method"
+        ],
+        "export": [
+          "our method"
+        ]
+      }
+    },
+    {
+      "id": "advanced.unknown-environment",
+      "category": "Advanced",
+      "title": "an unknown environment",
+      "tex": "\\begin{mybox}\nInside a custom box.\n\\end{mybox}",
+      "note": "defined with \\newenvironment in the preamble",
+      "documentClass": "article",
+      "packages": [
+        "amsmath",
+        "amssymb",
+        "amsthm",
+        "graphicx",
+        "hyperref"
+      ],
+      "preamble": "\\newenvironment{mybox}{\\begin{quote}}{\\end{quote}}",
+      "document": "\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\usepackage{amsthm}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\newenvironment{mybox}{\\begin{quote}}{\\end{quote}}\n\\begin{document}\n\\begin{mybox}\nInside a custom box.\n\\end{mybox}\n\\end{document}\n",
+      "expect": {
+        "docText": [
+          "Inside a custom box."
+        ],
+        "export": [
+          "\\begin{mybox}",
+          "Inside a custom box."
+        ],
+        "exportAbsent": [
+          "\\begin{lstlisting}"
+        ],
+        "exportFull": [
+          "\\newenvironment{mybox}"
+        ]
+      }
+    }
+  ],
+  "wrap": "`document` is the exact .tex imported by both suites: \\documentclass{documentClass}, \\usepackage for each of `packages` in order, then `preamble` (preamble-only lines such as \\DeclareMathOperator are hoisted there from `tex`), then \\begin{document} tex \\end{document}.",
+  "expectSchema": {
+    "blocks": "ordered subsequence of expected blocks; type must match, every `text` substring must occur in the block's string leaves, every `fields` entry must equal the top-level content property",
+    "exactTypes": "exact block-type sequence of the imported document",
+    "docText": "substrings (or re:regex) that must occur somewhere in the imported blocks",
+    "absent": "substrings that must not occur in any imported block (leaks)",
+    "bibKeys": "citation keys that must be in the imported document's bibliography",
+    "export": "substrings (or re:regex) required in the exported LaTeX body (after \\begin{document})",
+    "exportAbsent": "substrings (or re:regex) forbidden in the exported LaTeX body",
+    "exportFull": "substrings (or re:regex) required anywhere in the exported .tex (preamble included)"
+  }
+}

@@ -1,4 +1,7 @@
-% EXPECTED-LEAKS: paracolbackgroundoptions, setasidefontcolour, lorem, color, bg, barrule, LaTeX, pictofraction, faCircle, sfdefault, selectfont, protectjack
+% EXPECTED-LEAKS: paracolbackgroundoptions, setasidefontcolour, lorem, color, bg, barrule, LaTeX, pictofraction, faCircle, sfdefault, selectfont, protectjack, protect, subsection
+% (Comment stripping, 2026-09-26: paragraphs that opened with a % comment
+%  line used to be dropped whole; their content now imports, template
+%  macros included.)
 % a mashup of hipstercv, friggeri and twenty cv
 % https://www.latextemplates.com/template/twenty-seconds-resumecv
 % https://www.latextemplates.com/template/friggeri-resume-cv

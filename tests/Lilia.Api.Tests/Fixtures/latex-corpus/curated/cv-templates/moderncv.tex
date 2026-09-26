@@ -1,4 +1,7 @@
-% EXPECTED-LEAKS: item, enclname, makelettertitle, makeletterclosing
+% EXPECTED-LEAKS: item, enclname, makelettertitle, makeletterclosing, cvskillentry, cvskillhead, cvskilllegend, makecvtitle
+% (Comment stripping, 2026-09-26: paragraphs that opened with a % comment
+%  line used to be dropped whole; their content now imports, template
+%  macros included.)
 % (item leaks when itemize body falls through nested envs; framework
 %  envs and letter-class commands are template-author specific.)
 %% start of file `template.tex'.

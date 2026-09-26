@@ -1,4 +1,7 @@
-% EXPECTED-LEAKS: selectfont, dimexpr, linewidth, relax, name, phone, course, emailb, github, website, linkedin, fi, resumeSubHeadingListStart, resumeSubheading, resumeItemListStart, textbf, textit, resumeItemListEnd, resumeSubHeadingListEnd, resumeProject, resumeHeadingSkillStart, resumeHeadingSkillEnd, href, item
+% EXPECTED-LEAKS: selectfont, dimexpr, linewidth, relax, name, phone, course, emailb, github, website, linkedin, fi, resumeSubHeadingListStart, resumeSubheading, resumeItemListStart, textbf, textit, resumeItemListEnd, resumeSubHeadingListEnd, resumeProject, resumeHeadingSkillStart, resumeHeadingSkillEnd, href, item, iffalse
+% (Comment stripping, 2026-09-26: paragraphs that opened with a % comment
+%  line used to be dropped whole; their content now imports, template
+%  macros included.)
 %-------------------------
 % Resume in Latex
 % Author : Puneet Gautam, puneet.gautam0206@gmail.com, punitrajgautam@uiit.ac.in
