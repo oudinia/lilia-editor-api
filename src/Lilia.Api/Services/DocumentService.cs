@@ -262,6 +262,14 @@ public class DocumentService : IDocumentService
         return MapToDto(document);
     }
 
+    /// <summary>
+    /// Iter 8 — link expiry gate. An expired link is "no longer shared": the
+    /// viewer gets the same 404 as a revoked link, and nothing can be copied
+    /// through it. The owner can re-enable from the drawer.
+    /// </summary>
+    private static bool LinkIsLive(Document document) =>
+        document.LinkExpiresAt is not { } expiry || expiry >= DateTime.UtcNow;
+
     public async Task<DocumentDto?> GetSharedDocumentAsync(string shareLink)
     {
         var document = await _context.Documents
@@ -273,13 +281,7 @@ public class DocumentService : IDocumentService
 
         if (document == null) return null;
 
-        // Iter 8 — link expiry gate. Treat an expired link as
-        // "no longer shared" rather than returning 410 or similar;
-        // a 404 from the public viewer says "this link doesn't work"
-        // and matches what a revoked link does today. Owner can
-        // re-enable from the drawer to rotate to a fresh slug.
-        if (document.LinkExpiresAt is { } expiry && expiry < DateTime.UtcNow)
-            return null;
+        if (!LinkIsLive(document)) return null;
 
         return MapToDto(document);
     }
@@ -646,7 +648,7 @@ public class DocumentService : IDocumentService
         // revoked-link URL from cloning anything new.
         var source = await _context.Documents.FirstOrDefaultAsync(d =>
             d.ShareLink == shareToken && d.IsPublic);
-        if (source == null) return null;
+        if (source == null || !LinkIsLive(source)) return null;
         // Reuse the existing clone machinery — DuplicateDocumentAsync
         // would 403 here because the requester has no collaborator
         // row, so we call it as the source's owner and then re-own
