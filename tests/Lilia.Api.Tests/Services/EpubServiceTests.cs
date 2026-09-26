@@ -753,4 +753,27 @@ public class EpubServiceTests
         using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
         writer.Write(content);
     }
+
+    [Fact]
+    public async Task Export_writes_the_mimetype_first_uncompressed_and_without_a_byte_order_mark()
+    {
+        // The EPUB spec: the first entry is "mimetype", stored, and exactly
+        // "application/epub+zip" — strict readers refuse anything else. It was
+        // written through a UTF-8 StreamWriter, which prefixes a BOM (23 bytes).
+        var blocks = new List<Block>
+        {
+            new() { Id = Guid.NewGuid(), Type = BlockTypes.Heading, SortOrder = 0, Content = JsonDocument.Parse("""{"text":"Chapter","level":1}""") },
+            new() { Id = Guid.NewGuid(), Type = BlockTypes.Paragraph, SortOrder = 1, Content = JsonDocument.Parse("""{"text":"Body."}""") },
+        };
+        var bytes = await _service.ExportAsync(blocks, new EpubExportOptions("Book"));
+
+        using var zip = new ZipArchive(new MemoryStream(bytes));
+        var first = zip.Entries[0];
+        first.FullName.Should().Be("mimetype");
+        first.CompressedLength.Should().Be(first.Length, "stored, not deflated");
+        using var s = first.Open();
+        using var ms = new MemoryStream();
+        await s.CopyToAsync(ms);
+        ms.ToArray().Should().Equal(Encoding.ASCII.GetBytes("application/epub+zip"));
+    }
 }

@@ -900,7 +900,10 @@ public partial class EpubService : IEpubService
     private static async Task AddEntryAsync(ZipArchive zip, string entryName, string content, CompressionLevel compressionLevel = CompressionLevel.Optimal)
     {
         var entry = zip.CreateEntry(entryName, compressionLevel);
-        using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+        // No byte-order mark: Encoding.UTF8 writes one, and the EPUB spec wants
+        // "mimetype" to be exactly "application/epub+zip" — strict readers
+        // refuse a file whose first entry starts with EF BB BF.
+        using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         await writer.WriteAsync(content);
     }
 

@@ -336,6 +336,11 @@ public class JobService : IJobService
                 {
                     await File.WriteAllBytesAsync(tempPath, bytes);
 
+                    // Not a Word package → a 400 the author can read, and the job
+                    // fails; it used to "succeed" as an empty document.
+                    if (!Lilia.Import.Services.DocxImportService.IsWordPackage(tempPath))
+                        throw new ArgumentException($"\"{request.Filename}\" isn't a Word document (.docx), so it can't be imported as one.");
+
                     // Report parsing phase
                     await tracker.ReportParsingAsync("Parsing DOCX structure...");
                     job.Progress = 30;
@@ -361,9 +366,9 @@ public class JobService : IJobService
                     // Use DOCX import service
                     var importResult = await _docxImportService.ImportAsync(tempPath, importOptions);
 
-                    if (importResult.Document == null)
+                    if (!importResult.Success || importResult.Document == null)
                     {
-                        throw new InvalidOperationException("Import failed - no document created");
+                        throw new InvalidOperationException(importResult.ErrorMessage ?? "Import failed - no document created");
                     }
 
                     // Report extraction completed
@@ -859,16 +864,11 @@ public class JobService : IJobService
             throw new InvalidOperationException("Only failed jobs can be retried");
         }
 
-        // Reset job status
-        job.Status = JobStatus.Pending;
-        job.Progress = 0;
-        job.ErrorMessage = null;
-        job.UpdatedAt = DateTime.UtcNow;
-        job.CompletedAt = null;
-
-        await _context.SaveChangesAsync();
-
-        // If it's an export job, process it immediately
+        // Only an export can run again: it is rebuilt from the document, and
+        // runs as a new job — the failed one stays the record of what failed.
+        // This used to set every failed job PENDING first, and then nothing
+        // re-ran an import at all, while an export retry left the old job
+        // PENDING beside the new one. An import's file isn't kept to re-read.
         if (job.JobType == JobTypes.Export && job.DocumentId.HasValue)
         {
             return await CreateExportJobAsync(userId, new CreateExportJobDto(
@@ -877,7 +877,7 @@ public class JobService : IJobService
             ));
         }
 
-        return MapToDto(job);
+        throw new InvalidOperationException("This job can't run again — import the file again instead.");
     }
 
     public async Task<bool> CancelJobAsync(Guid jobId, string userId)
