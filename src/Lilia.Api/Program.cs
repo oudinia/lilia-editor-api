@@ -442,6 +442,7 @@ builder.Services.AddScoped<IDraftBlockService, DraftBlockService>();
 builder.Services.AddScoped<IJobService, JobService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
+builder.Services.AddScoped<IRecentActivityService, RecentActivityService>();
 builder.Services.AddScoped<IRenderService, RenderService>();
 builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 
