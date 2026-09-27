@@ -66,6 +66,68 @@ public class PreferencesControllerTests : IntegrationTestBase
         prefs.DefaultFontFamily.Should().Be("monospace");
     }
 
+    // Personality: how the editor's "saved" moment looks. "pro" by default.
+    [Fact]
+    public async Task GetPreferences_PersonalityIsPro_ForAFreshUser()
+    {
+        await SeedUserAsync(UserId);
+
+        var response = await Client.GetAsync("/api/preferences");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadAsStringAsync();
+        json.Should().Contain("\"personality\":\"pro\"");
+        var prefs = await response.Content.ReadFromJsonAsync<UserPreferencesDto>();
+        prefs!.Personality.Should().Be("pro");
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_SetsPersonalityToFun_AndKeepsOtherFields()
+    {
+        await SeedUserAsync(UserId);
+        await Client.PutAsJsonAsync("/api/preferences", new { theme = "dark", defaultFontFamily = "serif" });
+
+        var put = await Client.PutAsJsonAsync("/api/preferences", new { personality = "FUN" });
+
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+        var prefs = await Client.GetFromJsonAsync<UserPreferencesDto>("/api/preferences");
+        prefs!.Personality.Should().Be("fun"); // stored lowercase
+        prefs.Theme.Should().Be("dark");
+        prefs.DefaultFontFamily.Should().Be("serif");
+        prefs.AutoSaveEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_WithoutPersonality_LeavesItUnchanged()
+    {
+        await SeedUserAsync(UserId);
+        await Client.PutAsJsonAsync("/api/preferences", new { personality = "fun" });
+
+        var put = await Client.PutAsJsonAsync("/api/preferences", new { theme = "light" });
+
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+        var prefs = await Client.GetFromJsonAsync<UserPreferencesDto>("/api/preferences");
+        prefs!.Personality.Should().Be("fun");
+        prefs.Theme.Should().Be("light");
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_Returns400_ForAnUnknownPersonality_AndChangesNothing()
+    {
+        await SeedUserAsync(UserId);
+        await Client.PutAsJsonAsync("/api/preferences", new { theme = "dark", personality = "fun" });
+
+        var put = await Client.PutAsJsonAsync("/api/preferences", new { theme = "light", personality = "loud" });
+
+        put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await put.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("personality");
+
+        var prefs = await Client.GetFromJsonAsync<UserPreferencesDto>("/api/preferences");
+        prefs!.Personality.Should().Be("fun");
+        prefs.Theme.Should().Be("dark");
+    }
+
     [Fact]
     public async Task GetPreferences_Returns401_WhenAnonymous()
     {
