@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -124,10 +126,55 @@ public class TablesController : ControllerBase
         t.Label = dto.Label ?? string.Empty;
         t.Content = JsonDocument.Parse(dto.Content.GetRawText());
         t.UpdatedAt = DateTime.UtcNow;
+        await WriteThroughToLinkedBlocksAsync(t);
         await _db.SaveChangesAsync();
 
         return Ok(new TableSummaryDto(t.Id, t.Caption, t.Label, t.Content.RootElement.Clone(),
             t.CreatedAt, t.UpdatedAt, t.Documents.Count, t.OwnerId == userId));
+    }
+
+    /// <summary>
+    /// A linked table's edit reaches the papers that use it: each linked block
+    /// takes the table's grid, caption and label. Keys the block has and the
+    /// table does not (a paper's own column widths, say) are kept.
+    /// </summary>
+    /// <remarks>
+    /// The documents' versions move with the blocks, in the same SaveChanges, so
+    /// an editor open on one of them sees a conflict and rebases, rather than
+    /// its next save quietly putting the old table back (see ConcurrencyVersion).
+    /// A copy is not linked here — it has its own row — so it is untouched.
+    /// </remarks>
+    private async Task WriteThroughToLinkedBlocksAsync(TableEntity t)
+    {
+        var links = t.Documents.Where(d => d.BlockId.HasValue)
+            .Select(d => new { d.DocumentId, BlockId = d.BlockId!.Value })
+            .ToList();
+        if (links.Count == 0) return;
+
+        var blockIds = links.Select(l => l.BlockId).ToList();
+        var blocks = await _db.Blocks
+            .Where(b => blockIds.Contains(b.Id) && b.Type == BlockTypes.Table)
+            .ToListAsync();
+        // The block must be in the document the link names — a block id alone
+        // is not permission to write into whatever document holds it.
+        blocks = blocks.Where(b => links.Any(l => l.BlockId == b.Id && l.DocumentId == b.DocumentId)).ToList();
+        if (blocks.Count == 0) return;
+
+        var table = JsonNode.Parse(t.Content.RootElement.GetRawText()) as JsonObject ?? new JsonObject();
+        var now = DateTime.UtcNow;
+        foreach (var block in blocks)
+        {
+            var content = JsonNode.Parse(block.Content.RootElement.GetRawText()) as JsonObject ?? new JsonObject();
+            foreach (var (key, value) in table)
+                content[key] = value?.DeepClone();
+            content["caption"] = t.Caption;
+            content["label"] = t.Label;
+            block.Content = JsonDocument.Parse(content.ToJsonString());
+            block.UpdatedAt = now;
+        }
+        foreach (var documentId in blocks.Select(b => b.DocumentId).Distinct())
+            await ConcurrencyVersion.BumpAsync(_db, documentId);
+        _logger.LogInformation("[Tables] {Id} edit written through to {Count} linked block(s)", t.Id, blocks.Count);
     }
 
     /// <summary>Soft delete. Owner only — a collaborator can edit, not remove.</summary>
