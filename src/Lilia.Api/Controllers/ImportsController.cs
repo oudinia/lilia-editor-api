@@ -25,6 +25,7 @@ public class ImportsController : ControllerBase
     private readonly ILatexProjectExtractor _projectExtractor;
     private readonly Wolverine.IMessageBus _bus;
     private readonly Lilia.Core.Interfaces.IStorageService _storage;
+    private readonly IEpubReviewImporter _epubImporter;
     private readonly ILogger<ImportsController> _logger;
 
     // Cap the direct upload at 15 MB — raised from 5 MB to fit typical
@@ -37,8 +38,10 @@ public class ImportsController : ControllerBase
         ILatexProjectExtractor projectExtractor,
         Wolverine.IMessageBus bus,
         Lilia.Core.Interfaces.IStorageService storage,
+        IEpubReviewImporter epubImporter,
         ILogger<ImportsController> logger)
     {
+        _epubImporter = epubImporter;
         _context = context;
         _projectExtractor = projectExtractor;
         _bus = bus;
@@ -212,5 +215,46 @@ public class ImportsController : ControllerBase
         await _bus.PublishAsync(new RunImportJobEvent(jobId, sessionId));
 
         return Ok(new LatexImportUploadResponseDto(sessionId, jobId));
+    }
+
+    /// <summary>
+    /// Upload an .epub. Parsed by the Clean Up parser, staged as a job and an
+    /// import review session — the same review .tex and .docx go through —
+    /// and returned as { sessionId, jobId }. The job is COMPLETED when this
+    /// answers; with <paramref name="autoFinalize"/> the session is also
+    /// finalized and the job carries the new document's id.
+    ///
+    /// <para>Anything that is not a readable ePub is a 400, and writes nothing.</para>
+    /// </summary>
+    [HttpPost("epub")]
+    [RequestSizeLimit(MaxUploadBytes)]
+    public async Task<ActionResult<LatexImportUploadResponseDto>> UploadEpub(
+        IFormFile file,
+        [FromQuery] bool autoFinalize = false,
+        CancellationToken ct = default)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        if (file is null || file.Length == 0) return BadRequest(new { message = "file is required" });
+        if (file.Length > MaxUploadBytes) return BadRequest(new { message = $"file exceeds {MaxUploadBytes / 1024 / 1024} MB cap" });
+        if (!file.FileName.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "File must be an .epub file" });
+
+        byte[] bytes;
+        using (var ms = new MemoryStream())
+        {
+            await file.CopyToAsync(ms, ct);
+            bytes = ms.ToArray();
+        }
+
+        try
+        {
+            return Ok(await _epubImporter.StageAsync(userId, file.FileName, bytes, autoFinalize, ct));
+        }
+        catch (NotAnEpubException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

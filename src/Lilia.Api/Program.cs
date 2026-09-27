@@ -726,6 +726,7 @@ builder.Services.AddScoped<IAccessibilityService, AccessibilityService>();
 
 // Register ePub service
 builder.Services.AddScoped<IEpubService, EpubService>();
+builder.Services.AddScoped<IEpubReviewImporter, EpubReviewImporter>();
 
 var app = builder.Build();
 
