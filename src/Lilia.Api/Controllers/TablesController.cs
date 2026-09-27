@@ -53,7 +53,7 @@ public class TablesController : ControllerBase
             .Take(limit)
             .Select(t => new
             {
-                t.Id, t.Caption, t.Label, t.Content, t.CreatedAt, t.UpdatedAt, t.OwnerId,
+                t.Id, t.Caption, t.Label, t.Content, t.CreatedAt, t.UpdatedAt, t.OwnerId, t.CopiedFrom,
                 // How many papers use it. The listing shows this because it is
                 // the one thing a table library has that a document list does not.
                 DocumentCount = t.Documents.Count(),
@@ -62,7 +62,7 @@ public class TablesController : ControllerBase
 
         return Ok(rows.Select(r => new TableSummaryDto(
             r.Id, r.Caption, r.Label, r.Content.RootElement.Clone(),
-            r.CreatedAt, r.UpdatedAt, r.DocumentCount, r.OwnerId == userId)));
+            r.CreatedAt, r.UpdatedAt, r.DocumentCount, r.OwnerId == userId, r.CopiedFrom)));
     }
 
     [HttpGet("{id:guid}")]
@@ -80,7 +80,7 @@ public class TablesController : ControllerBase
         if (t is null) return NotFound();
 
         return Ok(new TableSummaryDto(t.Id, t.Caption, t.Label, t.Content.RootElement.Clone(),
-            t.CreatedAt, t.UpdatedAt, t.Documents.Count, t.OwnerId == userId));
+            t.CreatedAt, t.UpdatedAt, t.Documents.Count, t.OwnerId == userId, t.CopiedFrom));
     }
 
     [HttpPost]
@@ -106,7 +106,7 @@ public class TablesController : ControllerBase
 
         return CreatedAtAction(nameof(Get), new { id = t.Id },
             new TableSummaryDto(t.Id, t.Caption, t.Label, t.Content.RootElement.Clone(),
-                t.CreatedAt, t.UpdatedAt, 0, true));
+                t.CreatedAt, t.UpdatedAt, 0, true, t.CopiedFrom));
     }
 
     /// <summary>Update a table. Every document referencing it sees the change.</summary>
@@ -130,7 +130,7 @@ public class TablesController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(new TableSummaryDto(t.Id, t.Caption, t.Label, t.Content.RootElement.Clone(),
-            t.CreatedAt, t.UpdatedAt, t.Documents.Count, t.OwnerId == userId));
+            t.CreatedAt, t.UpdatedAt, t.Documents.Count, t.OwnerId == userId, t.CopiedFrom));
     }
 
     /// <summary>
@@ -224,11 +224,17 @@ public class TablesController : ControllerBase
             })
             .ToListAsync();
 
+        // Copies are separate tables, so they are counted, never listed: "1 copy
+        // was made from this table" (Olivia, tables-modern 1e). A number only,
+        // like the papers the caller cannot see.
+        var copies = await _db.Tables.CountAsync(x => x.CopiedFrom == id);
+
         return Ok(new TableUsageResponse(
             links.Count,
             links.Where(l => l.Visible)
                  .Select(l => new TableUsageDto(l.DocumentId, l.Title, l.BlockId))
-                 .ToList()));
+                 .ToList(),
+            copies));
     }
 
     /// <summary>Attach this table to a document, by reference.</summary>
@@ -291,20 +297,24 @@ public record TableSummaryDto(
     DateTime UpdatedAt,
     /// <summary>How many documents reference it. Zero is a normal state.</summary>
     int DocumentCount,
-    bool IsOwner);
+    bool IsOwner,
+    /// <summary>The table this one was copied from, when it is a copy. The copy
+    /// remembers where it came from; the original counts its copies.</summary>
+    Guid? CopiedFrom = null);
 
 public record TableUsageDto(Guid DocumentId, string DocumentTitle, Guid? BlockId);
 
 /// <summary>
 /// Where a table is used. <paramref name="Total"/> counts every document;
-/// <paramref name="Visible"/> holds only the ones this caller may see.
+/// <paramref name="Visible"/> holds only the ones this caller may see;
+/// <paramref name="Copies"/> counts the tables copied from this one.
 /// </summary>
 /// <remarks>
 /// The two differ when a table is shared more widely than the papers using it.
 /// The share sheet should say so — a recipient sees the table and the count, not
 /// the titles.
 /// </remarks>
-public record TableUsageResponse(int Total, IReadOnlyList<TableUsageDto> Visible);
+public record TableUsageResponse(int Total, IReadOnlyList<TableUsageDto> Visible, int Copies = 0);
 
 /// <summary>Create and update take the same body.</summary>
 /// <param name="CopiedFrom">
