@@ -194,6 +194,86 @@ public class TablesController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>The tables this user deleted, newest deletion first. Owner only.</summary>
+    /// <remarks>
+    /// Tables have their own Trash: a deleted table is hidden by the global query
+    /// filter, so this is the one place it can be seen again. A literal segment,
+    /// so it never competes with the <c>{id:guid}</c> routes.
+    /// </remarks>
+    [HttpGet("trash")]
+    [ProducesResponseType(typeof(IEnumerable<TrashedTableDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Trash()
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        // IgnoreQueryFilters reaches the navigation too: the link rows are
+        // filtered by their table's DeletedAt, so without it every trashed table
+        // would say it is used in no papers.
+        var rows = await _db.Tables.IgnoreQueryFilters()
+            .Where(t => t.OwnerId == userId && t.DeletedAt != null)
+            .OrderByDescending(t => t.DeletedAt)
+            .Select(t => new TrashedTableDto(
+                t.Id, t.Caption, t.Label, t.DeletedAt!.Value, t.UpdatedAt,
+                // Same count as the list: the papers using it.
+                t.Documents.Count()))
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
+    /// <summary>Take a table out of the Trash. Owner only.</summary>
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Restore(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var t = await FindTrashedAsync(id, userId);
+        if (t is null) return NotFound();
+
+        // Its links were never removed, only hidden; they come back with it.
+        t.DeletedAt = null;
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("[Tables] {Id} restored from trash by {User}", id, userId);
+        return NoContent();
+    }
+
+    /// <summary>Delete a trashed table for good. Owner only.</summary>
+    /// <remarks>
+    /// Only a table already in the Trash: a live one answers 404, the same as a
+    /// table that does not exist or is someone else's — "not in your Trash" —
+    /// rather than 409, so the endpoint never says what it will not act on.
+    ///
+    /// The database cascades the table's link rows (document_tables) and its
+    /// collaborators (table_collaborators). Papers are not changed: a block keeps
+    /// its own content, it just stops being linked. <c>copied_from</c> is a plain
+    /// column, not a foreign key, so copies keep the id of the table they came
+    /// from — provenance, not a reference — and nothing blocks the delete.
+    /// </remarks>
+    [HttpDelete("{id:guid}/permanent")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Purge(Guid id)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var t = await FindTrashedAsync(id, userId);
+        if (t is null) return NotFound();
+
+        _db.Tables.Remove(t);
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("[Tables] {Id} permanently deleted by {User}", id, userId);
+        return NoContent();
+    }
+
+    private Task<TableEntity?> FindTrashedAsync(Guid id, string userId) =>
+        _db.Tables.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId && x.DeletedAt != null);
+
     /// <summary>Which documents reference this table.</summary>
     [HttpGet("{id:guid}/documents")]
     public async Task<IActionResult> Usage(Guid id)
@@ -301,6 +381,16 @@ public record TableSummaryDto(
     /// <summary>The table this one was copied from, when it is a copy. The copy
     /// remembers where it came from; the original counts its copies.</summary>
     Guid? CopiedFrom = null);
+
+/// <summary>A table in its owner's Trash.</summary>
+public record TrashedTableDto(
+    Guid Id,
+    string Caption,
+    string Label,
+    DateTime DeletedAt,
+    DateTime UpdatedAt,
+    /// <summary>How many papers still link it; they keep their own copy of the content.</summary>
+    int DocumentCount);
 
 public record TableUsageDto(Guid DocumentId, string DocumentTitle, Guid? BlockId);
 
