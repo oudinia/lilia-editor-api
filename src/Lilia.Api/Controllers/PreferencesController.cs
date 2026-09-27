@@ -1,5 +1,6 @@
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
+using Lilia.Core.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -34,6 +35,16 @@ public class PreferencesController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        // Omitted or null leaves personality as it is; anything else must be
+        // one of the known values (any case, stored lowercase).
+        if (dto.Personality != null && Personalities.Normalize(dto.Personality) == null)
+        {
+            ModelState.AddModelError("personality",
+                $"Personality must be \"{Personalities.Pro}\" or \"{Personalities.Fun}\".");
+            return ValidationProblem(ModelState);
+        }
+
         var preferences = await _preferencesService.UpdatePreferencesAsync(userId, dto);
         return Ok(preferences);
     }

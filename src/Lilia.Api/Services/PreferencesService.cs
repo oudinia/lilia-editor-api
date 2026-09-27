@@ -37,6 +37,7 @@ public class PreferencesService : IPreferencesService
                 Theme = "system",
                 AutoSaveEnabled = true,
                 AutoSaveInterval = 2000,
+                Personality = Personalities.Pro,
                 KeyboardShortcuts = JsonDocument.Parse("{}"),
                 UpdatedAt = DateTime.UtcNow
             };
@@ -90,6 +91,13 @@ public class PreferencesService : IPreferencesService
         if (dto.DefaultPaperSize != null) preferences.DefaultPaperSize = dto.DefaultPaperSize;
         if (dto.AutoSaveEnabled.HasValue) preferences.AutoSaveEnabled = dto.AutoSaveEnabled.Value;
         if (dto.AutoSaveInterval.HasValue) preferences.AutoSaveInterval = dto.AutoSaveInterval.Value;
+        if (dto.Personality != null)
+        {
+            // The controller answers an unknown value with a 400 before it
+            // gets here; this guard keeps any other caller from storing one.
+            preferences.Personality = Personalities.Normalize(dto.Personality)
+                ?? throw new ArgumentException($"Unknown personality '{dto.Personality}'.", nameof(dto));
+        }
 
         preferences.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -128,6 +136,7 @@ public class PreferencesService : IPreferencesService
             p.DefaultPaperSize,
             p.AutoSaveEnabled,
             p.AutoSaveInterval,
+            p.Personality,
             p.KeyboardShortcuts.RootElement,
             p.UpdatedAt
         );
