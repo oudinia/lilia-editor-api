@@ -88,6 +88,32 @@ public class TypstExportService : ITypstExportService
         // document, so tell it here whether there is anything to cite.
         HasBibliographyEntries = doc.BibliographyEntries?.Count > 0;
         LocalImagePaths = options.LocalImagePaths;
+        try
+        {
+            return BuildTypstDocumentCore(doc, blocks, layoutGroups, options);
+        }
+        finally
+        {
+            // The state is the build's, not the thread's: pool threads are
+            // reused, and what a build left here leaked into the next render
+            // on the same thread (a lone bibliography block got a directive
+            // pointing at a .bib that does not exist).
+            ClearBuildState();
+        }
+    }
+
+    private static void ClearBuildState()
+    {
+        HasBibliographyEntries = false;
+        LocalImagePaths = null;
+    }
+
+    private string BuildTypstDocumentCore(
+        Document doc,
+        List<Block> blocks,
+        IReadOnlyList<BlockGroup>? layoutGroups,
+        TypstExportOptions options)
+    {
 
         var sb = new StringBuilder();
 
@@ -381,7 +407,12 @@ public class TypstExportService : ITypstExportService
 
     /// <summary>Public test entry — render a single block to its
     /// Typst representation. Used by TypstExportFixtureTests.</summary>
-    public string RenderBlockForTest(Block block) => RenderBlock(block);
+    /// <summary>A block rendered on its own, outside any document build.</summary>
+    public string RenderBlockForTest(Block block)
+    {
+        ClearBuildState();
+        return RenderBlock(block);
+    }
 
     private string RenderBlock(Block block)
     {
