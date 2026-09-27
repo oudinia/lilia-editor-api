@@ -10,6 +10,7 @@ public record UserPreferencesDto(
     string? DefaultPaperSize,
     bool AutoSaveEnabled,
     int AutoSaveInterval,
+    string Personality,
     JsonElement KeyboardShortcuts,
     DateTime UpdatedAt
 );
@@ -20,7 +21,8 @@ public record UpdatePreferencesDto(
     int? DefaultFontSize,
     string? DefaultPaperSize,
     bool? AutoSaveEnabled,
-    int? AutoSaveInterval
+    int? AutoSaveInterval,
+    string? Personality = null
 );
 
 public record UpdateKeyboardShortcutsDto(
