@@ -106,55 +106,24 @@ public class TemplateService : ITemplateService
             return null;
 
         var source = await _context.Documents
-            .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+            .Include(d => d.Blocks)
+            .Include(d => d.BibliographyEntries)
             .FirstOrDefaultAsync(d => d.Id == dto.DocumentId);
 
         if (source == null) return null;
 
-        // Create a new document as template (copy)
-        var templateDoc = new Document
-        {
-            Id = Guid.NewGuid(),
-            OwnerId = userId,
-            Title = dto.Name,
-            Language = source.Language,
-            PaperSize = source.PaperSize,
-            FontFamily = source.FontFamily,
-            FontSize = source.FontSize,
-            Columns = source.Columns,
-            ColumnSeparator = source.ColumnSeparator,
-            ColumnGap = source.ColumnGap,
-            IsTemplate = true,
-            TemplateName = dto.Name,
-            TemplateDescription = dto.Description,
-            TemplateCategory = dto.Category,
-            IsPublicTemplate = dto.IsPublic,
-            TemplateUsageCount = 0,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        };
+        // The same rule as Duplicate: content, class, columns, margins and
+        // preamble come along; collaborators, team and sharing never do
+        // (Olivia, templates handoff 27 Sep §2). It belongs to its maker.
+        var templateDoc = DocumentCopy.Of(_context, source, userId, dto.Name);
+        templateDoc.IsTemplate = true;
+        templateDoc.TemplateName = dto.Name;
+        templateDoc.TemplateDescription = dto.Description;
+        templateDoc.TemplateCategory = dto.Category;
+        templateDoc.IsPublicTemplate = dto.IsPublic;
+        templateDoc.TemplateUsageCount = 0;
 
         _context.Documents.Add(templateDoc);
-
-        // Copy blocks
-        foreach (var block in source.Blocks)
-        {
-            _context.Blocks.Add(new Block
-            {
-                Id = Guid.NewGuid(),
-                DocumentId = templateDoc.Id,
-                Type = block.Type,
-                Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
-                SortOrder = block.SortOrder,
-                Depth = block.Depth,
-                Path = block.Path,
-                Status = "draft",
-                Metadata = JsonDocument.Parse("{}"),
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            });
-        }
-
         await _context.SaveChangesAsync();
 
         return (await GetTemplateAsync(templateDoc.Id, userId))!;
@@ -205,44 +174,10 @@ public class TemplateService : ITemplateService
         // terms as reading it: someone else's private template is not found.
         if (template == null || !IsVisibleTo(template, userId)) return null;
 
-        // Create new document from template
-        var newDoc = new Document
-        {
-            Id = Guid.NewGuid(),
-            OwnerId = userId,
-            Title = dto.Title ?? template.TemplateName ?? template.Title,
-            Language = template.Language,
-            PaperSize = template.PaperSize,
-            FontFamily = template.FontFamily,
-            FontSize = template.FontSize,
-            Columns = template.Columns,
-            ColumnSeparator = template.ColumnSeparator,
-            ColumnGap = template.ColumnGap,
-            IsTemplate = false,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        };
-
+        // A new document, on the same rule as Duplicate: the template's
+        // settings and content, owned by whoever used it.
+        var newDoc = DocumentCopy.Of(_context, template, userId, dto.Title ?? template.TemplateName ?? template.Title);
         _context.Documents.Add(newDoc);
-
-        // Copy blocks
-        foreach (var block in template.Blocks)
-        {
-            _context.Blocks.Add(new Block
-            {
-                Id = Guid.NewGuid(),
-                DocumentId = newDoc.Id,
-                Type = block.Type,
-                Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
-                SortOrder = block.SortOrder,
-                Depth = block.Depth,
-                Path = block.Path,
-                Status = "draft",
-                Metadata = JsonDocument.Parse("{}"),
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            });
-        }
 
         // Increment usage count
         template.TemplateUsageCount++;

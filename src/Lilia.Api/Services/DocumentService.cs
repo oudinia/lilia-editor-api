@@ -758,86 +758,9 @@ public class DocumentService : IDocumentService
         if (!await HasAccessAsync(id, userId, Permissions.Read))
             return null;
 
-        // Every setting comes along — class, packages, preamble, columns,
-        // margins, headers, spacing, engine, and whatever is added next — by
-        // copying all of the original's values and then resetting only what
-        // makes a document itself: identity, owner, sharing, bookkeeping.
-        // Copying a hand-picked list dropped all but four settings, and a copy
-        // that used the author's own macros did not compile.
-        var now = DateTime.UtcNow;
-        var fresh = new Document();
-        var newDoc = new Document();
-        _context.Entry(newDoc).CurrentValues.SetValues(_context.Entry(original).CurrentValues);
-        newDoc.Id = Guid.NewGuid();
-        newDoc.OwnerId = userId;
-        newDoc.TeamId = null;                        // private to whoever made it
-        newDoc.Title = await CopyTitleAsync(original.Title, userId);
-        newDoc.IsPublic = false;
-        newDoc.ShareLink = null;
-        newDoc.ShareSlug = null;
-        newDoc.LinkExpiresAt = null;
-        newDoc.LinkPermission = fresh.LinkPermission;
-        newDoc.CreatedAt = now;
-        newDoc.UpdatedAt = now;
-        newDoc.LastOpenedAt = null;
-        newDoc.LastAutoSavedAt = null;
-        newDoc.DeletedAt = null;
-        newDoc.Status = fresh.Status;
-        newDoc.Version = fresh.Version;
-        newDoc.CurrentVersionId = null;
-        newDoc.IsPlayground = false;
-        newDoc.IsTemplate = false;
-        newDoc.TemplateName = null;
-        newDoc.TemplateDescription = null;
-        newDoc.TemplateCategory = null;
-        newDoc.TemplateThumbnail = null;
-        newDoc.IsPublicTemplate = false;
-        newDoc.TemplateUsageCount = 0;
-        newDoc.IsStarter = false;
-        newDoc.IsHelpContent = false;
-        newDoc.HelpCategory = null;
-        newDoc.HelpOrder = 0;
-        newDoc.HelpSlug = null;
-        newDoc.ValidationErrorCount = 0;
-        newDoc.ValidationWarningCount = 0;
-        newDoc.ValidationCheckedAt = null;
-        newDoc.LabelNumbers = null;
-        newDoc.LabelNumbersAt = null;
-
-        // Copy blocks, nesting included: a child hangs under the copy of its
-        // parent, not the original's.
-        var newIds = original.Blocks.ToDictionary(b => b.Id, _ => Guid.NewGuid());
-        foreach (var block in original.Blocks.OrderBy(b => b.SortOrder))
-        {
-            newDoc.Blocks.Add(new Block
-            {
-                Id = newIds[block.Id],
-                DocumentId = newDoc.Id,
-                Type = block.Type,
-                Content = JsonDocument.Parse(block.Content.RootElement.GetRawText()),
-                SortOrder = block.SortOrder,
-                Depth = block.Depth,
-                ParentId = block.ParentId is { } parent && newIds.TryGetValue(parent, out var np) ? np : null,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-        }
-
-        // Copy bibliography
-        foreach (var entry in original.BibliographyEntries)
-        {
-            newDoc.BibliographyEntries.Add(new BibliographyEntry
-            {
-                Id = Guid.NewGuid(),
-                DocumentId = newDoc.Id,
-                CiteKey = entry.CiteKey,
-                EntryType = entry.EntryType,
-                Data = JsonDocument.Parse(entry.Data.RootElement.GetRawText()),
-                FormattedText = entry.FormattedText,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
+        // Every setting comes along; identity, sharing and collaborators do
+        // not. DocumentCopy holds the rule, shared with templates.
+        var newDoc = DocumentCopy.Of(_context, original, userId, await CopyTitleAsync(original.Title, userId));
 
         _context.Documents.Add(newDoc);
         await _context.SaveChangesAsync();
