@@ -45,6 +45,9 @@ public class PreferencesController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
+        if (dto.PinnedTools != null && PreferencesService.ValidatePinnedTools(dto.PinnedTools) is { } error)
+            return BadRequest(new { message = error });
+
         var preferences = await _preferencesService.UpdatePreferencesAsync(userId, dto);
         return Ok(preferences);
     }

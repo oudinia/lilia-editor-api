@@ -11,7 +11,24 @@ public class UserPreferences
     public string? DefaultPaperSize { get; set; }
     public bool AutoSaveEnabled { get; set; } = true;
     public int AutoSaveInterval { get; set; } = 2000;
+    /// <summary>
+    /// The user's keyboard shortcuts — and, under <see cref="PinnedToolsKey"/>,
+    /// the Lilia menu's pinned tools.
+    /// </summary>
     public JsonDocument KeyboardShortcuts { get; set; } = JsonDocument.Parse("{}");
+
+    /// <summary>
+    /// Reserved key inside <see cref="KeyboardShortcuts"/> holding the pinned
+    /// tools, a JSON array of tool keys in the user's order.
+    /// </summary>
+    /// <remarks>
+    /// Stored there rather than in a column of its own to avoid a migration:
+    /// this jsonb is already the user's own bag of UI customisation, and a
+    /// short list of strings sits in it naturally. The API never shows the key
+    /// as a shortcut — it is lifted out into <c>pinnedTools</c> on read, and a
+    /// shortcuts write keeps it.
+    /// </remarks>
+    public const string PinnedToolsKey = "_pinnedTools";
     public string DefaultLanguage { get; set; } = "en";
     public string DefaultExportFormat { get; set; } = "PDF";
     public JsonDocument? ExportOptions { get; set; }
