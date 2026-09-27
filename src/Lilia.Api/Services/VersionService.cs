@@ -220,6 +220,11 @@ public class VersionService : IVersionService
         document.UpdatedAt = DateTime.UtcNow;
         // The marker moves back. Nothing is appended.
         document.CurrentVersionId = versionId;
+        // A restore rewrites every block, so it advances the version like any
+        // other write (see ConcurrencyVersion). Left alone, an open editor's
+        // next save still matched it and wrote its older copy back over the
+        // restore — Ask Lilia's Undo came undone.
+        document.Version += 1;
 
         await _context.SaveChangesAsync();
 
