@@ -84,6 +84,9 @@ public static class AskAttachmentBuilder
         try
         {
             using var ms = new System.IO.MemoryStream(bytes);
+            // Zip-bomb limits before the SDK decompresses anything (a refused
+            // attachment lands in the catch below and is left out).
+            Lilia.Core.Security.SafeZip.Verify(ms);
             using var doc = WordprocessingDocument.Open(ms, false);
             var body = doc.MainDocumentPart?.Document?.Body;
             if (body is null) return null;

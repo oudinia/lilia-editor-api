@@ -1,3 +1,5 @@
+using Lilia.Core.Security;
+using Microsoft.Extensions.Options;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
@@ -18,10 +20,12 @@ public partial class EpubService : IEpubService
     private static readonly XNamespace EpubTypeNs = "http://www.idpf.org/2007/ops";
 
     private readonly ILogger<EpubService> _logger;
+    private readonly ZipLimitsOptions _zipLimits;
 
-    public EpubService(ILogger<EpubService> logger)
+    public EpubService(ILogger<EpubService> logger, IOptions<ZipLimitsOptions>? zipLimits = null)
     {
         _logger = logger;
+        _zipLimits = zipLimits?.Value ?? ZipLimitsOptions.Default;
     }
 
     // ────────────────────────── Import ──────────────────────────
@@ -31,8 +35,12 @@ public partial class EpubService : IEpubService
         var warnings = new List<string>();
         using var ms = await CopyToMemoryStreamAsync(epubStream);
         using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
+        // An uploaded book: check what it declares, then read every entry
+        // through one budget, since a header can claim any size (zip bombs).
+        SafeZip.CheckHeaders(zip, _zipLimits);
+        var budget = new ZipBudget(_zipLimits);
 
-        var opfPath = FindOpfPath(zip);
+        var opfPath = FindOpfPath(zip, budget);
         if (opfPath == null)
         {
             warnings.Add("Could not find OPF file via META-INF/container.xml");
@@ -47,7 +55,7 @@ public partial class EpubService : IEpubService
             return (new EpubMetadata("Unknown"), new List<Block>(), warnings);
         }
 
-        var opfDoc = await LoadXmlAsync(opfEntry);
+        var opfDoc = await LoadXmlAsync(opfEntry, budget);
         var metadata = ExtractMetadata(opfDoc);
         var spineItems = GetSpineItems(opfDoc, opfDir);
 
@@ -72,7 +80,7 @@ public partial class EpubService : IEpubService
 
             try
             {
-                var xhtmlDoc = await LoadXmlAsync(entry);
+                var xhtmlDoc = await LoadXmlAsync(entry, budget);
                 var body = xhtmlDoc.Descendants(XhtmlNs + "body").FirstOrDefault()
                            ?? xhtmlDoc.Descendants("body").FirstOrDefault();
 
@@ -358,12 +366,12 @@ public partial class EpubService : IEpubService
 
     // ────────────────────────── OPF / Container Parsing ──────────────────────────
 
-    internal static string? FindOpfPath(ZipArchive zip)
+    internal static string? FindOpfPath(ZipArchive zip, ZipBudget budget)
     {
         var containerEntry = zip.GetEntry("META-INF/container.xml");
         if (containerEntry == null) return null;
 
-        using var stream = containerEntry.Open();
+        using var stream = SafeZip.OpenBounded(containerEntry, budget);
         var doc = XDocument.Load(stream);
         var rootfile = doc.Descendants(ContainerNs + "rootfile").FirstOrDefault()
                        ?? doc.Descendants("rootfile").FirstOrDefault();
@@ -891,9 +899,9 @@ public partial class EpubService : IEpubService
         return ms;
     }
 
-    private static async Task<XDocument> LoadXmlAsync(ZipArchiveEntry entry)
+    private static async Task<XDocument> LoadXmlAsync(ZipArchiveEntry entry, ZipBudget budget)
     {
-        using var stream = entry.Open();
+        using var stream = SafeZip.OpenBounded(entry, budget);
         return await XDocument.LoadAsync(stream, LoadOptions.None, CancellationToken.None);
     }
 

@@ -1,3 +1,4 @@
+using Lilia.Core.Security;
 using System.Diagnostics;
 using Lilia.Import.Converters;
 using Lilia.Import.Interfaces;
@@ -95,6 +96,18 @@ public class DocxImportService : IDocxImportService
         if (!IsWordPackage(filePath))
         {
             return ImportResult.Failed("This file isn't a Word document (.docx), so it can't be imported as one.");
+        }
+
+        // The OpenXML SDK decompresses the package itself, past any stream we
+        // could wrap; read it through the limits once before handing it over,
+        // so a zip bomb is refused here instead of exhausting memory there.
+        try
+        {
+            SafeZip.VerifyFile(filePath);
+        }
+        catch (UnsafeZipException)
+        {
+            return ImportResult.Failed(UnsafeZipException.UserMessage);
         }
 
         try
