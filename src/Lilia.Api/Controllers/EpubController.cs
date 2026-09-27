@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Lilia.Api.Controllers;
 
 [ApiController]
+[Lilia.Api.Filters.UnreadableArchiveFilter]
 [Route("api/lilia/epub")]
 [Authorize]
 public class EpubController : ControllerBase

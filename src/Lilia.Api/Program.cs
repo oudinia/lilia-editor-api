@@ -599,6 +599,11 @@ builder.Services.AddHttpClient();
 
 // Configure AI services
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("AI"));
+// Limits for reading uploaded archives (.epub, .docx, LaTeX .zip) — zip bombs.
+// Bound onto the shared Default too, which the import library's parsers read.
+builder.Configuration.GetSection(Lilia.Core.Security.ZipLimitsOptions.Section).Bind(Lilia.Core.Security.ZipLimitsOptions.Default);
+builder.Services.Configure<Lilia.Core.Security.ZipLimitsOptions>(
+    builder.Configuration.GetSection(Lilia.Core.Security.ZipLimitsOptions.Section));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection("Stripe"));
 
 var anthropicKey = builder.Configuration["AI:Anthropic:ApiKey"];

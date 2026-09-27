@@ -78,6 +78,11 @@ public class EpubReviewImporter : IEpubReviewImporter
             using var stream = new MemoryStream(bytes, writable: false);
             (metadata, blocks, warnings) = await _epub.ImportAsync(stream);
         }
+        catch (Lilia.Core.Security.UnsafeZipException ex)
+        {
+            _logger.LogWarning("ePub {FileName} refused by zip limits: {Detail}", fileName, ex.Message);
+            throw new NotAnEpubException(Lilia.Core.Security.UnsafeZipException.BookMessage);
+        }
         catch (Exception ex) when (ex is InvalidDataException or System.Xml.XmlException)
         {
             throw new NotAnEpubException($"\"{fileName}\" isn't a readable ePub: {ex.Message}");

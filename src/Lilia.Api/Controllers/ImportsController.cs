@@ -133,6 +133,11 @@ public class ImportsController : ControllerBase
                     extracted.Files.Count(f => f.Kind == LatexProjectFileKinds.Bib),
                     extracted.Notices.Count);
             }
+            catch (Lilia.Core.Security.UnsafeZipException ex)
+            {
+                _logger.LogWarning("[ImportsController] Zip project {Filename} refused by zip limits: {Detail}", file.FileName, ex.Message);
+                return BadRequest(new { message = Lilia.Core.Security.UnsafeZipException.UserMessage });
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[ImportsController] Failed to extract zip project {Filename}", file.FileName);

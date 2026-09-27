@@ -1,3 +1,4 @@
+using Lilia.Core.Security;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -70,6 +71,9 @@ public record LatexProjectBibFile(string Path, string Content);
 
 public class LatexProjectExtractor : ILatexProjectExtractor
 {
+    /// <summary>Largest file taken from a project; bigger ones are skipped with a notice.</summary>
+    private const long MaxFileBytes = 5L * 1024 * 1024;
+
     private static readonly Regex DocumentClassPattern =
         new(@"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}", RegexOptions.Compiled);
     private static readonly Regex BeginDocumentPattern =
@@ -83,9 +87,15 @@ public class LatexProjectExtractor : ILatexProjectExtractor
         var files = new List<LatexProjectFile>();
         var notices = new List<string>();
 
+        // Per file, 5 MB of real bytes (a header can claim any size); the
+        // archive-wide limits (entries, total, ratio) are the shared ones.
+        var limits = ZipLimitsOptions.Default.WithMaxEntryBytes(MaxFileBytes);
+        var budget = new ZipBudget(limits);
+
         using (var ms = new MemoryStream(zipBytes))
         using (var archive = new ZipArchive(ms, ZipArchiveMode.Read))
         {
+            SafeZip.CheckEntryCount(archive, limits);
             foreach (var entry in archive.Entries)
             {
                 if (entry.Length == 0 || entry.FullName.EndsWith("/")) continue;
@@ -97,15 +107,17 @@ public class LatexProjectExtractor : ILatexProjectExtractor
                     entry.FullName.EndsWith("Thumbs.db"))
                     continue;
 
-                // Hard ceiling per file: 5 MB. Stops zip-bombs, caps the
-                // parser memory budget, and keeps R2 uploads reasonable.
-                // Large included PDFs hit this — we surface a notice so
-                // users know which file was skipped.
-                if (entry.Length > 5 * 1024 * 1024)
+                // Hard ceiling per file: 5 MB, as declared — caps the parser
+                // memory budget and keeps R2 uploads reasonable. Large included
+                // PDFs hit this; a notice says which file was skipped. The
+                // declared size can lie, so every read below is also bounded
+                // by real bytes (SafeZip): a lying entry fails the import.
+                if (entry.Length > MaxFileBytes)
                 {
                     notices.Add($"Skipped {entry.FullName} ({entry.Length / 1024 / 1024} MB) — per-file cap is 5 MB.");
                     continue;
                 }
+                SafeZip.CheckRatio(entry, limits);
 
                 var ext = Path.GetExtension(entry.FullName).ToLowerInvariant();
 
@@ -113,7 +125,7 @@ public class LatexProjectExtractor : ILatexProjectExtractor
                 // they go through the inline resolver instead.
                 if (ext == ".tex" || ext == ".ltx")
                 {
-                    using var r = new StreamReader(entry.Open(), Encoding.UTF8);
+                    using var r = new StreamReader(SafeZip.OpenBounded(entry, budget), Encoding.UTF8);
                     texFiles[NormalizeKey(entry.FullName)] = r.ReadToEnd();
                     continue;
                 }
@@ -121,7 +133,7 @@ public class LatexProjectExtractor : ILatexProjectExtractor
                 // Everything else: read bytes, classify, and add to the
                 // unified asset list.
                 byte[] bytes;
-                using (var stream = entry.Open())
+                using (var stream = SafeZip.OpenBounded(entry, budget))
                 using (var buf = new MemoryStream())
                 {
                     stream.CopyTo(buf);

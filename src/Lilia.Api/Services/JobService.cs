@@ -340,6 +340,13 @@ public class JobService : IJobService
                     // fails; it used to "succeed" as an empty document.
                     if (!Lilia.Import.Services.DocxImportService.IsWordPackage(tempPath))
                         throw new ArgumentException($"\"{request.Filename}\" isn't a Word document (.docx), so it can't be imported as one.");
+                    // Zip-bomb limits, before the parser decompresses anything.
+                    try { Lilia.Core.Security.SafeZip.VerifyFile(tempPath); }
+                    catch (Lilia.Core.Security.UnsafeZipException ex)
+                    {
+                        _logger.LogWarning("DOCX {Filename} refused by zip limits: {Detail}", request.Filename, ex.Message);
+                        throw new ArgumentException(Lilia.Core.Security.UnsafeZipException.UserMessage);
+                    }
 
                     // Report parsing phase
                     await tracker.ReportParsingAsync("Parsing DOCX structure...");
