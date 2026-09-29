@@ -127,7 +127,13 @@ public class TypstExportService : ITypstExportService
         // styles. Body content follows directly; no \documentclass
         // ceremony like LaTeX needs.
         sb.AppendLine($"// {EscapeTypstComment(titleText)}");
-        if (!string.IsNullOrWhiteSpace(authorText))
+        var gridAuthors = TypstTitleAuthors.ParseForGrid(authorText);
+        if (gridAuthors.Count > 0)
+        {
+            sb.AppendLine(
+                $"#set document(title: {QuoteTypst(titleText)}, author: ({TypstTitleAuthors.NameArray(gridAuthors, QuoteTypst)}))");
+        }
+        else if (!string.IsNullOrWhiteSpace(authorText))
         {
             sb.AppendLine(
                 $"#set document(title: {QuoteTypst(titleText)}, author: ({QuoteTypst(PlainTitleMetaForTypst(authorText))}))");
@@ -1416,7 +1422,7 @@ public class TypstExportService : ITypstExportService
     /// Author/date convert common LaTeX tokens (\and, \today, \thanks)
     /// into plain Typst-safe text.
     /// </summary>
-    private static void AppendTypstTitleBlock(
+    internal static void AppendTypstTitleBlock(
         StringBuilder sb, string title, string? author, string? date)
     {
         if (string.IsNullOrWhiteSpace(title) &&
@@ -1429,7 +1435,13 @@ public class TypstExportService : ITypstExportService
         {
             sb.AppendLine($"  #text(size: 1.6em, weight: \"bold\")[{EscapeTypstInline(title)}]");
         }
-        if (!string.IsNullOrWhiteSpace(author))
+        var gridAuthors = TypstTitleAuthors.ParseForGrid(author);
+        if (gridAuthors.Count > 0)
+        {
+            sb.AppendLine("  #v(0.6em)");
+            TypstTitleAuthors.AppendGrid(sb, gridAuthors);
+        }
+        else if (!string.IsNullOrWhiteSpace(author))
         {
             sb.AppendLine("  #v(0.6em)");
             sb.AppendLine($"  {EscapeTypstInline(PlainTitleMetaForTypst(author))}");
@@ -1447,6 +1459,7 @@ public class TypstExportService : ITypstExportService
             sb.AppendLine($"  {EscapeTypstInline(dateDisplay)}");
         }
         sb.AppendLine("]");
+        if (gridAuthors.Count > 0) TypstTitleAuthors.AppendNotes(sb, gridAuthors);
         sb.AppendLine("#v(1.2em)");
         sb.AppendLine();
     }
@@ -1581,6 +1594,8 @@ public class TypstExportService : ITypstExportService
         if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }
+
+    internal static string EscapeInline(string text) => EscapeTypstInline(text);
 
     private static string EscapeTypstInline(string text)
     {

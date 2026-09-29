@@ -99,13 +99,7 @@ public class TypstRenderService : ITypstRenderService
             catch { /* fall through */ }
         }
 
-        // Document metadata
-        sb.AppendLine("#set document(");
-        sb.AppendLine($"  title: \"{EscapeTypst(titleText)}\",");
-        if (!string.IsNullOrWhiteSpace(authorText))
-            sb.AppendLine($"  author: (\"{EscapeTypst(TypstExportService.PlainTitleMetaForTypst(authorText))}\"),");
-        sb.AppendLine(")");
-        sb.AppendLine();
+        AppendMetadata(sb, titleText, authorText);
 
         // Page setup
         sb.AppendLine("#set page(paper: \"a4\", margin: 2.5cm)");
@@ -113,10 +107,40 @@ public class TypstRenderService : ITypstRenderService
         sb.AppendLine("#set par(justify: true)");
         sb.AppendLine();
 
+        AppendTitleBlock(sb, titleText, authorText, dateText);
+
+        sb.Append(RenderBlockSequenceToTypst(blocks));
+        return sb.ToString();
+    }
+
+    /// <summary>The <c>#set document(...)</c> metadata: title and a plain array of author names.</summary>
+    internal static void AppendMetadata(StringBuilder sb, string titleText, string? authorText)
+    {
+        // Document metadata
+        sb.AppendLine("#set document(");
+        sb.AppendLine($"  title: \"{EscapeTypst(titleText)}\",");
+        var gridAuthors = TypstTitleAuthors.ParseForGrid(authorText);
+        if (gridAuthors.Count > 0)
+            sb.AppendLine($"  author: ({TypstTitleAuthors.NameArray(gridAuthors, n => $"\"{EscapeTypst(n)}\"")}),");
+        else if (!string.IsNullOrWhiteSpace(authorText))
+            sb.AppendLine($"  author: (\"{EscapeTypst(TypstExportService.PlainTitleMetaForTypst(authorText))}\"),");
+        sb.AppendLine(")");
+        sb.AppendLine();
+    }
+
+    /// <summary>The visible centred title, author and date, then the author notes.</summary>
+    internal static void AppendTitleBlock(StringBuilder sb, string titleText, string? authorText, string? dateText)
+    {
         // Visible title + author + date (maketitle analogue)
+        var gridAuthors = TypstTitleAuthors.ParseForGrid(authorText);
         sb.AppendLine("#align(center)[");
         sb.AppendLine($"  #text(size: 1.6em, weight: \"bold\")[{EscapeTypst(titleText)}]");
-        if (!string.IsNullOrWhiteSpace(authorText))
+        if (gridAuthors.Count > 0)
+        {
+            sb.AppendLine("  #v(0.6em)");
+            TypstTitleAuthors.AppendGrid(sb, gridAuthors);
+        }
+        else if (!string.IsNullOrWhiteSpace(authorText))
         {
             sb.AppendLine("  #v(0.6em)");
             sb.AppendLine($"  {EscapeTypst(TypstExportService.PlainTitleMetaForTypst(authorText))}");
@@ -131,11 +155,9 @@ public class TypstRenderService : ITypstRenderService
             sb.AppendLine($"  {EscapeTypst(dateDisplay)}");
         }
         sb.AppendLine("]");
+        if (gridAuthors.Count > 0) TypstTitleAuthors.AppendNotes(sb, gridAuthors);
         sb.AppendLine("#v(1.2em)");
         sb.AppendLine();
-
-        sb.Append(RenderBlockSequenceToTypst(blocks));
-        return sb.ToString();
     }
 
     public string RenderBlockToTypst(Block block)
