@@ -28,6 +28,21 @@ public class LatexImportCoverageTests
         doc.Title.Should().BeEmpty();
     }
 
+    // ── multi-author Title block: \author survives import and LaTeX export verbatim ──
+
+    [Fact]
+    public async Task MultiAuthor_AuthorString_IsKeptVerbatimOnImport_AndPassesThroughLatexExport()
+    {
+        const string author = TitleAuthorsTests.Example;
+        var doc = await ParseAsync(
+            "\\documentclass{article}\n\\title{T}\n\\author{" + author + "}\n" +
+            "\\begin{document}\n\\maketitle\nBody.\n\\end{document}");
+
+        doc.Metadata.Author.Should().Be(author);
+        Lilia.Api.Services.LaTeXExportService.FormatTitleMetaLatex(doc.Metadata.Author!)
+            .Should().Be(author, "the export must hand the same \\author string back to pdflatex");
+    }
+
     // ── P0-8 — \title{} extracted AND stripped from body ──────────────
 
     [Fact]

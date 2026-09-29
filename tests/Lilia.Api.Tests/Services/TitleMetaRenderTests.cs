@@ -76,7 +76,9 @@ public class TitleMetaRenderTests
         var source = svc.BuildTypstDocument(doc, new List<Block> { titleBlock, para });
 
         source.Should().Contain("Paper Title");
-        source.Should().Contain("Ada Lovelace, Alan Turing");
+        // Two authors are a grid, one cell each (no longer flattened to a comma list).
+        source.Should().Contain("[Ada Lovelace],").And.Contain("[Alan Turing],");
+        source.Should().Contain("author: (\"Ada Lovelace\", \"Alan Turing\"))");
         // \today → formatted calendar date
         source.Should().MatchRegex(@"[A-Z][a-z]+ \d{1,2}, \d{4}");
         source.Should().Contain("Body.");
