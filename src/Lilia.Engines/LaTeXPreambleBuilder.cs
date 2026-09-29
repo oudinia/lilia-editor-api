@@ -191,6 +191,21 @@ public static class LaTeXPreambleBuilder
     /// Class name to use when the stored class isn't in
     /// <see cref="SafeDocumentClasses"/>. Defaults to "article".
     /// </param>
+    /// <summary>
+    /// The \documentclass option for a stored paper size. Only letter used to be
+    /// mapped, so a5, legal, executive and b5 all came out as a4paper.
+    /// </summary>
+    internal static string ClassPaperOption(string? paperSize) =>
+        paperSize?.Trim().ToLowerInvariant() switch
+        {
+            "letter" => "letterpaper",
+            "legal" => "legalpaper",
+            "a5" => "a5paper",
+            "b5" => "b5paper",
+            "executive" => "executivepaper",
+            _ => "a4paper",
+        };
+
     public static string BuildClassDirective(
         Document doc,
         string? fontSizeOverride = null,
@@ -206,9 +221,7 @@ public static class LaTeXPreambleBuilder
         if (!string.IsNullOrEmpty(fontSize)) classOpts.Add(fontSize);
 
         var paperSize = paperSizeOverride
-            ?? (string.Equals(doc.PaperSize, "letter", StringComparison.OrdinalIgnoreCase)
-                ? "letterpaper"
-                : "a4paper");
+            ?? ClassPaperOption(doc.PaperSize);
         if (!string.IsNullOrEmpty(paperSize)) classOpts.Add(paperSize);
 
         if (!string.IsNullOrWhiteSpace(doc.LatexDocumentClassOptions))

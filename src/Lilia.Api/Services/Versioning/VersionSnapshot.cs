@@ -81,7 +81,21 @@ public static class VersionSnapshot
         "headerText", "footerText", "pageNumbering",
         "documentCategory", "latexDocumentClass", "latexDocumentClassOptions",
         "customPreamble", "latexEngine",
+        // Added after schema 2 without a bump: readers treat a missing key as
+        // "leave the current value", so old snapshots still restore.
+        "columnGap", "headerLeft", "headerCenter", "headerRight",
+        "footerLeft", "footerCenter", "footerRight",
+        "lineSpacing", "paragraphIndent", "paginationPolicy",
     ];
+
+    /// <summary>Keys added after schema 2. A snapshot that lacks one, and a
+    /// document that holds its default, describe the same settings.</summary>
+    private static readonly HashSet<string> LateKeys = new(StringComparer.Ordinal)
+    {
+        "columnGap", "headerLeft", "headerCenter", "headerRight",
+        "footerLeft", "footerCenter", "footerRight",
+        "lineSpacing", "paragraphIndent", "paginationPolicy",
+    };
 
     public static object Build(
         Document document,
@@ -110,6 +124,16 @@ public static class VersionSnapshot
             latexDocumentClassOptions = document.LatexDocumentClassOptions,
             customPreamble = document.CustomPreamble,
             latexEngine = document.LatexEngine,
+            columnGap = document.ColumnGap,
+            headerLeft = document.HeaderLeft,
+            headerCenter = document.HeaderCenter,
+            headerRight = document.HeaderRight,
+            footerLeft = document.FooterLeft,
+            footerCenter = document.FooterCenter,
+            footerRight = document.FooterRight,
+            lineSpacing = document.LineSpacing,
+            paragraphIndent = document.ParagraphIndent,
+            paginationPolicy = document.PaginationPolicy,
             blocks = blocks.OrderBy(b => b.SortOrder).Select(b => new
             {
                 id = b.Id,
@@ -230,6 +254,18 @@ public static class VersionSnapshot
         if (Has(snapshot, "customPreamble")) document.CustomPreamble = ReadString(snapshot, "customPreamble");
 
         document.LatexEngine = ReadString(snapshot, "latexEngine") ?? document.LatexEngine;
+
+        // Layout added later: same rule, a missing key leaves today's value.
+        if (ReadDouble(snapshot, "columnGap") is { } gap) document.ColumnGap = gap;
+        if (Has(snapshot, "headerLeft")) document.HeaderLeft = ReadString(snapshot, "headerLeft");
+        if (Has(snapshot, "headerCenter")) document.HeaderCenter = ReadString(snapshot, "headerCenter");
+        if (Has(snapshot, "headerRight")) document.HeaderRight = ReadString(snapshot, "headerRight");
+        if (Has(snapshot, "footerLeft")) document.FooterLeft = ReadString(snapshot, "footerLeft");
+        if (Has(snapshot, "footerCenter")) document.FooterCenter = ReadString(snapshot, "footerCenter");
+        if (Has(snapshot, "footerRight")) document.FooterRight = ReadString(snapshot, "footerRight");
+        if (Has(snapshot, "lineSpacing")) document.LineSpacing = ReadDouble(snapshot, "lineSpacing");
+        if (Has(snapshot, "paragraphIndent")) document.ParagraphIndent = ReadString(snapshot, "paragraphIndent");
+        if (Has(snapshot, "paginationPolicy")) document.PaginationPolicy = ReadString(snapshot, "paginationPolicy");
     }
 
     /// <summary>
@@ -307,6 +343,11 @@ public static class VersionSnapshot
         var parts = new List<string>();
         foreach (var key in SettingKeys)
         {
+            if (LateKeys.Contains(key) && IsDefaultLate(snapshot, key))
+            {
+                parts.Add($"{key}=~");
+                continue;
+            }
             parts.Add(snapshot.TryGetProperty(key, out var v)
                 ? $"{key}={v.ValueKind}:{v.ToString()}"
                 : $"{key}=~");
@@ -352,6 +393,23 @@ public static class VersionSnapshot
                 return e.GetRawText();
         }
     }
+
+    private static bool IsDefaultLate(JsonElement snapshot, string key)
+    {
+        if (!snapshot.TryGetProperty(key, out var v)) return true;
+        return v.ValueKind switch
+        {
+            JsonValueKind.Null => true,
+            JsonValueKind.String => string.IsNullOrEmpty(v.GetString()),
+            JsonValueKind.Number when key == "columnGap" => Math.Abs(v.GetDouble() - 1.5) < 1e-9,
+            _ => false,
+        };
+    }
+
+    private static double? ReadDouble(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number
+            ? v.GetDouble()
+            : null;
 
     private static bool Has(JsonElement e, string name) => e.TryGetProperty(name, out _);
 

@@ -97,7 +97,16 @@ public record DocumentDto(
     // Whose document this is, for the viewer's "View only · shared by …" chip
     // (view-only handoff, Olivia 26 Sep). Filled for signed-in readers only.
     string? OwnerName = null,
-    string? OwnerEmail = null
+    string? OwnerEmail = null,
+    // "portrait" | "landscape", and the six fancyhdr slots (read-back for the
+    // settings dialog and for Ask Lilia's get_document_settings).
+    string? Orientation = null,
+    string? HeaderLeft = null,
+    string? HeaderCenter = null,
+    string? HeaderRight = null,
+    string? FooterLeft = null,
+    string? FooterCenter = null,
+    string? FooterRight = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -149,7 +158,17 @@ public record UpdateDocumentDto(
     // alone (consistent with every other field on this DTO), which means the
     // policy cannot be cleared back to "class default" through this route —
     // add an explicit sentinel if that turns out to be wanted.
-    string? PaginationPolicy = null
+    string? PaginationPolicy = null,
+    // L/C/R header and footer slots (fancyhdr). Null leaves a slot alone; an
+    // empty string clears it. They were on the entity and read by the LaTeX
+    // preamble builder but missing from this DTO, so the Document Settings
+    // dialog's six slot inputs were silently dropped on save.
+    string? HeaderLeft = null,
+    string? HeaderCenter = null,
+    string? HeaderRight = null,
+    string? FooterLeft = null,
+    string? FooterCenter = null,
+    string? FooterRight = null
 );
 
 public record TrashDocumentDto(

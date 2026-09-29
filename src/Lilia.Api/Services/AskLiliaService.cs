@@ -632,6 +632,14 @@ public sealed class AskLiliaService : IAskLiliaService
                     + "before quoting, explaining or editing a document's LaTeX. The reply is tagged "
                     + "source=\"lilia-emitter\"; anything you write from your own knowledge is not, and "
                     + "you should say which is which when the difference matters."),
+            AIFunctionFactory.Create(
+                () => SettingsView(live.Dto),
+                name: "get_document_settings",
+                description:
+                    "Read the document's page setup: paperSize, orientation, margins (top/bottom/left/right), "
+                    + "columns (+ gap in cm, separator, balanced), fontFamily, fontSize, lineSpacing, paragraphIndent, "
+                    + "pageNumbering, the six header/footer slots and the custom preamble. A null value means the "
+                    + "class default applies. Call it before changing settings or when asked about the page layout."),
         };
 
         if (allowWrite)
@@ -680,8 +688,114 @@ public sealed class AskLiliaService : IAskLiliaService
                     => SetDocumentKindAsync(live, docGuid, userId, category, documentClass, markMetaChanged),
                 name: "set_document_kind",
                 description: "Set the open document's category (article|book|report|cv) and/or LaTeX document class. Call when converting kind (e.g. article→CV) or fixing a wrong class before apply_lml. Does not rewrite body blocks."));
+            tools.Add(AIFunctionFactory.Create(
+                ([Description("Paper: a4 | letter | legal | a5 | executive | b5.")] string? paperSize = null,
+                 [Description("portrait | landscape.")] string? orientation = null,
+                 [Description("Top margin with a unit, e.g. 2.5cm, 1in, 20mm, 72pt. \"\" resets it to the class default.")] string? marginTop = null,
+                 [Description("Bottom margin, same format as marginTop.")] string? marginBottom = null,
+                 [Description("Left margin, same format as marginTop.")] string? marginLeft = null,
+                 [Description("Right margin, same format as marginTop.")] string? marginRight = null,
+                 [Description("Number of text columns: 1 to 3.")] int? columns = null,
+                 [Description("Gap between columns in centimetres, 0 to 5.")] double? columnGap = null,
+                 [Description("Column separator: none | rule (a vertical line between columns).")] string? columnSeparator = null,
+                 [Description("true to balance the columns on the last page (multicol).")] bool? balancedColumns = null,
+                 [Description("Body font: serif | sans-serif | monospace | charter | times | palatino | bookman. Other fonts are not supported.")] string? fontFamily = null,
+                 [Description("Base font size in pt: 10 | 11 | 12.")] int? fontSize = null,
+                 [Description("Line spacing factor, 0.8 to 3 (1 single, 1.5 one-and-a-half, 2 double).")] double? lineSpacing = null,
+                 [Description("Paragraph indent as a length (1.5em, 1cm, 12pt) or \"none\" for no indent.")] string? paragraphIndent = null,
+                 [Description("Page numbers: arabic | roman | none.")] string? pageNumbering = null,
+                 [Description("Running header, left slot. Plain text: LaTeX commands such as \\thepage are not interpreted. \"\" clears it.")] string? headerLeft = null,
+                 [Description("Running header, centre slot. Plain text.")] string? headerCenter = null,
+                 [Description("Running header, right slot. Plain text.")] string? headerRight = null,
+                 [Description("Running footer, left slot. Plain text.")] string? footerLeft = null,
+                 [Description("Running footer, centre slot. Plain text.")] string? footerCenter = null,
+                 [Description("Running footer, right slot. Plain text.")] string? footerRight = null,
+                 [Description("ADVANCED: raw LaTeX added to the preamble (\\newcommand, \\DeclareMathOperator, \\newenvironment). Replaces the whole current preamble, so read it with get_document_settings first and include what should stay. Emitted verbatim after Lilia's packages; a mistake here can break compilation.")] string? customPreamble = null)
+                    => SetDocumentSettingsAsync(live, docGuid, userId, markMetaChanged,
+                        new DocumentSettingsValidator.Input(paperSize, orientation, marginTop, marginBottom, marginLeft, marginRight,
+                            columns, columnGap, columnSeparator, balancedColumns, fontFamily, fontSize, lineSpacing, paragraphIndent,
+                            pageNumbering, headerLeft, headerCenter, headerRight, footerLeft, footerCenter, footerRight, customPreamble)),
+                name: "set_document_settings",
+                description: "Set the document's page setup: paper size, orientation, margins, columns, font, size, line spacing, "
+                    + "paragraph indent, page numbering, running headers and footers, and (advanced) the custom preamble. "
+                    + "Pass ONLY the fields to change; everything else is left alone. Invalid values are rejected with the valid "
+                    + "choices and nothing is changed. Returns the resulting settings. Does not touch body blocks."));
         }
         return tools;
+    }
+
+    // A dictionary, not an anonymous type: the tool serializer drops null
+    // properties, and "this setting is at the class default" must be visible.
+    private static Dictionary<string, object?> SettingsView(Lilia.Core.DTOs.DocumentDto d) => new()
+    {
+        ["paperSize"] = d.PaperSize,
+        ["orientation"] = d.Orientation ?? "portrait",
+        ["marginTop"] = d.MarginTop,
+        ["marginBottom"] = d.MarginBottom,
+        ["marginLeft"] = d.MarginLeft,
+        ["marginRight"] = d.MarginRight,
+        ["columns"] = d.Columns,
+        ["columnGap"] = d.ColumnGap,
+        ["columnSeparator"] = d.ColumnSeparator,
+        ["balancedColumns"] = d.BalancedColumns,
+        ["fontFamily"] = d.FontFamily,
+        ["fontSize"] = d.FontSize,
+        ["lineSpacing"] = d.LineSpacing,
+        ["paragraphIndent"] = d.ParagraphIndent,
+        ["pageNumbering"] = d.PageNumbering,
+        ["headerLeft"] = d.HeaderLeft,
+        ["headerCenter"] = d.HeaderCenter,
+        ["headerRight"] = d.HeaderRight,
+        ["footerLeft"] = d.FooterLeft,
+        ["footerCenter"] = d.FooterCenter,
+        ["footerRight"] = d.FooterRight,
+        ["legacyHeaderText"] = d.HeaderText,
+        ["legacyFooterText"] = d.FooterText,
+        ["customPreamble"] = d.CustomPreamble,
+        ["note"] = "null = class default. Header/footer slots are plain text. Legacy header/footer text is used only while all six slots are empty.",
+    };
+
+    /// <summary>
+    /// Page setup through the same service the Document Settings dialog saves
+    /// with. Only the supplied fields change; values are checked first by
+    /// <see cref="DocumentSettingsValidator"/> and a bad one changes nothing.
+    /// </summary>
+    private async Task<object> SetDocumentSettingsAsync(
+        LiveDocument live, Guid docId, string userId, Action markMetaChanged,
+        DocumentSettingsValidator.Input input)
+    {
+        try
+        {
+            var check = DocumentSettingsValidator.Validate(input);
+            if (check.Fields.Count == 0)
+                return new { error = "Provide at least one setting to change. Call get_document_settings to see the current values." };
+            if (!check.Ok)
+                return new { error = "No settings were changed. " + string.Join(" ", check.Errors) };
+
+            var updated = await _documentService.UpdateDocumentAsync(docId, userId, check.Update!);
+            if (updated is null)
+                return new { error = "document not found or no write access" };
+
+            live.Dto = updated.Blocks is { Count: > 0 } ? updated : updated with { Blocks = live.Dto.Blocks };
+            markMetaChanged();
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "document_settings", fields = check.Fields });
+
+            _logger.LogInformation("[AskLilia] set_document_settings doc={DocId} fields={Fields}",
+                docId, string.Join(",", check.Fields));
+
+            return new
+            {
+                ok = true,
+                changed = check.Fields,
+                settings = SettingsView(live.Dto),
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] set_document_settings failed for {DocId}", docId);
+            return new { error = "set_document_settings failed: " + ex.Message };
+        }
     }
 
     /// <summary>

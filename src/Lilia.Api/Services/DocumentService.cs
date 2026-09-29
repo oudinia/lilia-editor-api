@@ -571,6 +571,12 @@ public class DocumentService : IDocumentService
         if (dto.MarginRight != null) document.MarginRight = dto.MarginRight;
         if (dto.HeaderText != null) document.HeaderText = dto.HeaderText;
         if (dto.FooterText != null) document.FooterText = dto.FooterText;
+        if (dto.HeaderLeft != null) document.HeaderLeft = dto.HeaderLeft;
+        if (dto.HeaderCenter != null) document.HeaderCenter = dto.HeaderCenter;
+        if (dto.HeaderRight != null) document.HeaderRight = dto.HeaderRight;
+        if (dto.FooterLeft != null) document.FooterLeft = dto.FooterLeft;
+        if (dto.FooterCenter != null) document.FooterCenter = dto.FooterCenter;
+        if (dto.FooterRight != null) document.FooterRight = dto.FooterRight;
         if (dto.LineSpacing.HasValue) document.LineSpacing = dto.LineSpacing.Value;
         if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
@@ -612,6 +618,12 @@ public class DocumentService : IDocumentService
             var titlePage = dto.TitlePage ?? existing.TitlePage;
             var orientation = dto.Orientation ?? existing.Orientation;
             document.LatexDocumentClassOptions = BuildClassOptionsString(sides, titlePage, orientation);
+            // The preamble builder also reads the structured column, so keep the
+            // two in step. The popover only ever wrote the options blob, which
+            // left a document that was once landscape landscape for good.
+            if (dto.Orientation != null)
+                document.Orientation = string.Equals(dto.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
+                    ? "landscape" : "portrait";
         }
 
         document.UpdatedAt = DateTime.UtcNow;
@@ -1287,7 +1299,14 @@ public class DocumentService : IDocumentService
             DocumentCategory: d.DocumentCategory,
             Version: d.Version,
             CustomPreamble: d.CustomPreamble,
-            PaginationPolicy: d.PaginationPolicy
+            PaginationPolicy: d.PaginationPolicy,
+            Orientation: d.Orientation,
+            HeaderLeft: d.HeaderLeft,
+            HeaderCenter: d.HeaderCenter,
+            HeaderRight: d.HeaderRight,
+            FooterLeft: d.FooterLeft,
+            FooterCenter: d.FooterCenter,
+            FooterRight: d.FooterRight
         );
     }
 
