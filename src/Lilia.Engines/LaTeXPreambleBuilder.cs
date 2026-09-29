@@ -459,6 +459,15 @@ public static class LaTeXPreambleBuilder
             if (fL is not null) sb.AppendLine($"\\lfoot{{{EscapeUserText(fL)}}}");
             if (fC is not null) sb.AppendLine($"\\cfoot{{{EscapeUserText(fC)}}}");
             if (fR is not null) sb.AppendLine($"\\rfoot{{{EscapeUserText(fR)}}}");
+            // \fancyhf{} above clears the automatic page number, so a header
+            // alone made the numbers vanish from the foot of every page. When
+            // no footer slot is set, put the page number back where the class
+            // default has it (centred), unless numbering is switched off.
+            if (fL is null && fC is null && fR is null
+                && !string.Equals(doc.PageNumbering?.Trim(), "none", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine("\\cfoot{\\thepage}");
+            }
         }
 
         // Font family. Native pdflatex packages only — Georgia is
