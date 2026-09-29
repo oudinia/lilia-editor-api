@@ -103,6 +103,45 @@ public sealed class AskLiliaService : IAskLiliaService
     // enough for smaller multi-step edits that still use per-block tools.
     private const int MaxToolRounds = 16;
 
+    /// <summary>
+    /// What the model must know about page setup. Before this it had no tool for
+    /// margins, columns, headers and the rest, concluded they were unsupported,
+    /// and told authors so. Kept next to the tools it describes.
+    /// </summary>
+    internal static string PageSetupNote(bool editMode) =>
+        """
+        PAGE SETUP — Lilia DOES support page setup, and you must never tell the author that margins, columns, headers, footers, page numbers, line spacing, font, orientation or paper size are unsupported. If unsure what a document has, call get_document_settings. Supported:
+        • paper: a4, letter, legal, a5, executive, b5; orientation: portrait or landscape
+        • margins: top, bottom, left, right, each a length with a unit (2.5cm, 1in, 20mm)
+        • columns: 1 to 3, with gap (cm), a vertical rule between them, and balanced columns
+        • font family: serif, sans-serif, monospace, charter, times, palatino, bookman; font size 10, 11 or 12 pt
+        • line spacing (1, 1.5, 2 or any factor 0.8 to 3), paragraph indent (a length or none)
+        • page numbering: arabic, roman or none
+        • running header and footer, each with a left, centre and right slot (plain text)
+        • a custom preamble for macros (\newcommand, \DeclareMathOperator): advanced, use it only for that.
+        """ + (editMode
+            ? """
+
+              Set them with set_document_settings, passing only the fields that change and all of them in ONE call; the reply is the resulting settings, so confirm from that, not from memory. A rejected value changes nothing and the error lists the valid ones.
+              """
+            : """
+
+              You can read them but not change them in this chat: to change page setup the author turns on Edit mode (or uses Document Settings).
+              """) + """
+
+
+        When the author pastes a .tex file or asks you to reproduce a LaTeX document's look, map its preamble to these settings instead of ignoring it:
+        • \documentclass options: 10pt/11pt/12pt -> fontSize; a4paper/letterpaper/legalpaper/a5paper -> paperSize; landscape -> orientation; twocolumn -> columns 2; onecolumn -> 1
+        • geometry ([margin=2.5cm], left=, right=, top=, bottom=, hmargin=, vmargin=) -> marginLeft/Right/Top/Bottom
+        • \pagestyle{fancy} with \fancyhead / \fancyfoot / \lhead \chead \rhead \lfoot \cfoot \rfoot -> headerLeft/Center/Right and footerLeft/Center/Right
+        • \pagenumbering{roman} -> pageNumbering roman; \pagestyle{empty} -> pageNumbering none
+        • \linespread{1.3}, \setstretch{1.5}, \onehalfspacing, \doublespacing -> lineSpacing
+        • \setlength{\parindent}{0pt} -> paragraphIndent (none, or the length); \setlength{\columnsep}{..} -> columnGap in cm
+        • \usepackage{times} or mathptmx, palatino or mathpazo, charter, bookman, \renewcommand{\familydefault}{\sfdefault} -> fontFamily
+        • \newcommand, \DeclareMathOperator, \newenvironment definitions -> customPreamble (read the current one first and keep what is there)
+        NOT supported, so say so plainly and do not drop it silently ("your file uses X; Lilia can't do that, so I left it out; here is what I did instead"): watermarks; arbitrary or OpenType fonts (\setmainfont, fontspec, a named typeface); manual size switches (\tiny to \Huge) as a document setting; header/footer content other than plain text (\thepage, \leftmark, \rightmark and other commands are not interpreted: use pageNumbering for the page number); known limitation: once any header or footer slot is set, the automatic page number is not printed (the slots replace the class footer), so warn the author if they want both; titlesec or other package-level restyling of headings.
+        """;
+
     private const string PartialApplyNote =
         "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
         "Ask me to **continue**, or paste the full LML and I'll apply it in one step with `apply_lml`.";
@@ -242,7 +281,7 @@ public sealed class AskLiliaService : IAskLiliaService
                 if (document is not null)
                 {
                     systemSb.AppendLine()
-                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text), get_lilia_latex (the LaTeX Lilia itself emits, for a block or the whole document). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
+                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text), get_lilia_latex (the LaTeX Lilia itself emits, for a block or the whole document), get_document_settings (page setup: paper, margins, columns, font, spacing, headers/footers, page numbering). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
                         .AppendLine("LATEX PROVENANCE — two different things get called \"the LaTeX\" and you must not blur them. (1) What LILIA EMITS: call get_lilia_latex; the reply is tagged source=\"lilia-emitter\" and is what actually compiles in this system, with Lilia's own preamble, package set and engine choice. (2) What YOU KNOW: idiomatic LaTeX from training, which may be perfectly correct in general and still not be what this document produces. When you show or discuss LaTeX for the open document, read it first and say which one you are giving — e.g. \"Lilia emits this:\" versus \"In standard LaTeX you would normally write:\". Never present recalled LaTeX as if it were the document's actual output, and if the two differ, say so plainly: that difference is usually the answer the author needs.");
                     if (editMode)
                     {
@@ -251,6 +290,7 @@ public sealed class AskLiliaService : IAskLiliaService
                             EDIT MODE IS ON — this is a CV/résumé document. You may WRITE with these tools:
                             • apply_lml(lml, title?) — PREFERRED for full rewrites. Use CV LML: @personalInfo, @cvSection, @cvEntry, @paragraph, @list, @equation. Do NOT rebuild a CV with @heading + @paragraph only. Do NOT use many add_block calls for a whole rewrite.
                             • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class. Defaults: article→article, book→book, report→report, cv→moderncv. Call before a rewrite if the kind/class is wrong.
+                            • set_document_settings(...) — page setup: paper size, orientation, margins, columns, font, size, spacing, page numbering, header/footer slots. Pass only what changes. See PAGE SETUP below.
                             • add_block / edit_block / remove_block / reorder_blocks — small targeted edits only.
                             • set_title(title, author?, date?) — document title string only (e.g. "Curriculum Vitae — Name"). Person name + contact go in personalInfo, never as a heading or set_title substitute.
                             CV content JSON shapes:
@@ -263,11 +303,13 @@ public sealed class AskLiliaService : IAskLiliaService
                             EDIT MODE IS ON — you may WRITE to the document with these tools:
                             • apply_lml(lml, title?) — PREFERRED for full rewrites / "apply this LML" / replacing most of the document. Parses LML and replaces ALL body blocks in ONE call (atomic). Use the full LML you proposed (with @abstract, @heading, @paragraph, @equation, @theorem, …; for CVs use @personalInfo / @cvSection / @cvEntry). Do NOT rewrite a whole article with many add_block/edit_block/remove_block calls.
                             • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class (e.g. article, book, report, moderncv). Defaults: article→article, book→book, report→report, cv→moderncv. Use when converting kind (e.g. article→cv) before rewriting structure.
+                            • set_document_settings(...) — page setup: paper size, orientation, margins (top/bottom/left/right), columns (+gap, rule, balanced), font family and size, line spacing, paragraph indent, page numbering, header/footer slots (left/centre/right), custom preamble (advanced). Pass only the fields that change. See PAGE SETUP below.
                             • add_block / edit_block / remove_block / reorder_blocks — for small, targeted edits only (one or a few blocks).
                             • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title. On CVs, person identity is personalInfo, not set_title.
                             Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem), {"name","headline","email",…} (personalInfo), {"title"} (cvSection), {"period","role","org","description"} (cvEntry).
                             """);
                     }
+                    systemSb.AppendLine().AppendLine(PageSetupNote(editMode));
                     systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
