@@ -575,7 +575,7 @@ public sealed class AskLiliaService : IAskLiliaService
     /// Mutable handle so write tools can refresh category/class (and reloaded
     /// blocks) mid tool-loop without rebuilding the tool list.
     /// </summary>
-    private sealed class LiveDocument
+    internal sealed class LiveDocument
     {
         public DocumentDto Dto;
         public LiveDocument(DocumentDto dto) => Dto = dto;
@@ -594,7 +594,7 @@ public sealed class AskLiliaService : IAskLiliaService
     internal static bool MayEditWithAi(bool requested, Lilia.Core.DTOs.DocumentDto? document) =>
         requested && document?.Role is "owner" or "editor";
 
-    private IList<AITool> BuildDocumentTools(
+    internal IList<AITool> BuildDocumentTools(
         LiveDocument live,
         Guid docGuid,
         string userId,
@@ -620,7 +620,7 @@ public sealed class AskLiliaService : IAskLiliaService
                 name: "search_document",
                 description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Block id from get_outline/search_document. Omit for the whole document.")] string? blockId)
+                ([System.ComponentModel.Description("Block id from get_outline/search_document. Omit for the whole document.")] string? blockId = null)
                     => LiliaLatexAsync(live.Dto, docGuid, blockId),
                 name: "get_lilia_latex",
                 description:
@@ -639,21 +639,21 @@ public sealed class AskLiliaService : IAskLiliaService
             // Atomic full-document replace — preferred for "apply this LML" / rewrites.
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Full LML source for the document body. May include a ```lml fenced block. Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography. CV/résumé: @personalInfo[name=…, email=…, location=…], @cvSection[title=…], @cvEntry[period=…, role=…, org=…, location=…], @list, @paragraph. Bodies indented 2 spaces.")] string lml,
-                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, personalInfo name, or keeps the existing title.")] string? title)
+                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, personalInfo name, or keeps the existing title.")] string? title = null)
                     => ApplyLmlAsync(live.Dto, docGuid, lml, title, changed),
                 name: "apply_lml",
                 description: "PREFERRED for full rewrites: parse LML and replace the entire document body in ONE atomic batch (deletes old body blocks, inserts the parsed ones, keeps/updates the Title block). For CVs use @personalInfo/@cvSection/@cvEntry — not article headings. Do not rebuild a whole document with many add_block/edit_block calls."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote, personalInfo, cvSection, cvEntry, photo. (Document title → set_title. CV person header → personalInfo, not heading.)")] string type,
                  [System.ComponentModel.Description("JSON content matching the type. Examples: {\"text\":\"…\"}; {\"text\":\"…\",\"level\":1}; {\"latex\":\"…\"}; personalInfo {\"name\",\"headline\",\"email\",\"phones\":[{\"number\"}],\"homepage\",\"location\",\"socials\":[],\"extra\"}; cvSection {\"title\"}; cvEntry {\"period\",\"role\",\"org\",\"location\",\"description\",\"tech\":[]}.")] string content,
-                 [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId)
+                 [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId = null)
                     => AddBlockAsync(live.Dto, docGuid, type, content, afterId, changed),
                 name: "add_block",
                 description: "Add a new block to the open document (small targeted inserts only). Returns the new block id. On CVs prefer personalInfo/cvSection/cvEntry."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to edit.")] string blockId,
                  [System.ComponentModel.Description("New JSON content object for the block.")] string content,
-                 [System.ComponentModel.Description("Optional new block type.")] string? type)
+                 [System.ComponentModel.Description("Optional new block type.")] string? type = null)
                     => EditBlockAsync(live.Dto, docGuid, blockId, content, type, changed),
                 name: "edit_block",
                 description: "Replace a block's content (and optionally its type) by id. Small targeted edits only."));
@@ -669,14 +669,14 @@ public sealed class AskLiliaService : IAskLiliaService
                 description: "Reorder the document's blocks to this exact id order."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
-                 [System.ComponentModel.Description("Author name(s). Optional.")] string? author,
-                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date)
+                 [System.ComponentModel.Description("Author name(s). Optional.")] string? author = null,
+                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date = null)
                     => SetTitleAsync(live.Dto, docGuid, title, author, date, changed),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
             tools.Add(AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Document kind: article | book | report | cv. Aliases: paper→article, thesis→book, resume/résumé→cv. Omit to keep current or derive from documentClass.")] string? category,
-                 [System.ComponentModel.Description("LaTeX \\documentclass slug, e.g. article, book, report, moderncv, altacv, memoir. Omit to use the default for the category (article→article, book→book, report→report, cv→moderncv).")] string? documentClass)
+                ([System.ComponentModel.Description("Document kind: article | book | report | cv. Aliases: paper→article, thesis→book, resume/résumé→cv. Omit to keep current or derive from documentClass.")] string? category = null,
+                 [System.ComponentModel.Description("LaTeX \\documentclass slug, e.g. article, book, report, moderncv, altacv, memoir. Omit to use the default for the category (article→article, book→book, report→report, cv→moderncv).")] string? documentClass = null)
                     => SetDocumentKindAsync(live, docGuid, userId, category, documentClass, markMetaChanged),
                 name: "set_document_kind",
                 description: "Set the open document's category (article|book|report|cv) and/or LaTeX document class. Call when converting kind (e.g. article→CV) or fixing a wrong class before apply_lml. Does not rewrite body blocks."));
