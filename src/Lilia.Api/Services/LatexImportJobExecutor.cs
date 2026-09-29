@@ -292,7 +292,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     /// when the preamble actually said something: a fragment with no
     /// <c>\title</c> should not gain an empty banner.</para>
     /// </summary>
-    private static (string type, object content)? TitleBlockFor(ImportDocument doc)
+    internal static (string type, object content)? TitleBlockFor(ImportDocument doc)
     {
         var title = doc.Title?.Trim() ?? "";
         var author = doc.Metadata?.Author?.Trim() ?? "";

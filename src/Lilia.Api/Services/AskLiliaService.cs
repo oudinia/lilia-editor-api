@@ -75,6 +75,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly Lilia.Engines.IRenderService _renderService;
     private readonly IVersionService _versionService;
     private readonly ILmlTextParser _lmlParser;
+    private readonly ILatexParser _latexParser;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> _hub;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
@@ -102,6 +103,46 @@ public sealed class AskLiliaService : IAskLiliaService
     // replies). Prefer apply_lml for whole-document replace; keep this high
     // enough for smaller multi-step edits that still use per-block tools.
     private const int MaxToolRounds = 16;
+
+    /// <summary>
+    /// What the model must know about page setup. Before this it had no tool for
+    /// margins, columns, headers and the rest, concluded they were unsupported,
+    /// and told authors so. Kept next to the tools it describes.
+    /// </summary>
+    internal static string PageSetupNote(bool editMode) =>
+        """
+        PAGE SETUP — Lilia DOES support page setup, and you must never tell the author that margins, columns, headers, footers, page numbers, line spacing, font, orientation or paper size are unsupported. If unsure what a document has, call get_document_settings. Supported:
+        • paper: a4, letter, legal, a5, executive, b5; orientation: portrait or landscape
+        • margins: top, bottom, left, right, each a length with a unit (2.5cm, 1in, 20mm)
+        • columns: 1 to 3, with gap (cm), a vertical rule between them, and balanced columns
+        • font family: serif, sans-serif, monospace, charter, times, palatino, bookman; font size 10, 11 or 12 pt
+        • line spacing (1, 1.5, 2 or any factor 0.8 to 3), paragraph indent (a length or none)
+        • page numbering: arabic, roman or none
+        • running header and footer, each with a left, centre and right slot (plain text)
+        • a custom preamble for macros (\newcommand, \DeclareMathOperator): advanced, use it only for that.
+        """ + (editMode
+            ? """
+
+              Set them with set_document_settings, passing only the fields that change and all of them in ONE call; the reply is the resulting settings, so confirm from that, not from memory. A rejected value changes nothing and the error lists the valid ones.
+              """
+            : """
+
+              You can read them but not change them in this chat: to change page setup the author turns on Edit mode (or uses Document Settings).
+              """) + """
+
+
+        When the author pastes a .tex file or asks you to reproduce a LaTeX document's look, map its preamble to these settings instead of ignoring it. (In Edit mode, hand a whole .tex to import_latex: it does this mapping itself with Lilia's importer, and its reply lists settingsApplied and notApplied. Check its result against the list below, set anything it missed with set_document_settings, and report notApplied to the author.) The mapping:
+        • \documentclass options: 10pt/11pt/12pt -> fontSize; a4paper/letterpaper/legalpaper/a5paper -> paperSize; landscape -> orientation; twocolumn -> columns 2; onecolumn -> 1
+        • geometry ([margin=2.5cm], left=, right=, top=, bottom=, hmargin=, vmargin=) -> marginLeft/Right/Top/Bottom
+        • \pagestyle{fancy} with \fancyhead / \fancyfoot / \lhead \chead \rhead \lfoot \cfoot \rfoot -> headerLeft/Center/Right and footerLeft/Center/Right
+        • \pagenumbering{roman} -> pageNumbering roman; \pagestyle{empty} -> pageNumbering none
+        • \linespread{1.3}, \setstretch{1.5}, \onehalfspacing, \doublespacing -> lineSpacing
+        • \setlength{\parindent}{0pt} -> paragraphIndent (none, or the length); \setlength{\columnsep}{..} -> columnGap in cm
+        • \usepackage{times} or mathptmx, palatino or mathpazo, charter, bookman, \renewcommand{\familydefault}{\sfdefault} -> fontFamily
+        • \fancyfoot[C]{\thepage} (or any footer that is only the page number) -> leave the footer slots EMPTY: with a header set and no footer slot, Lilia prints the page number centred at the foot by itself. Say that is what happened.
+        • \newcommand, \DeclareMathOperator, \newenvironment definitions -> customPreamble (read the current one first and keep what is there)
+        NOT supported, so say so plainly and do not drop it silently ("your file uses X; Lilia can't do that, so I left it out; here is what I did instead"): watermarks; arbitrary or OpenType fonts (\setmainfont, fontspec, a named typeface); manual size switches (\tiny to \Huge) as a document setting; header/footer content other than plain text (\thepage, \leftmark, \rightmark and other commands are not interpreted: use pageNumbering for the page number); known limitation: once any header or footer slot is set, the automatic page number is not printed (the slots replace the class footer), so warn the author if they want both; titlesec or other package-level restyling of headings.
+        """;
 
     private const string PartialApplyNote =
         "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
@@ -144,6 +185,7 @@ public sealed class AskLiliaService : IAskLiliaService
         Lilia.Engines.IRenderService renderService,
         IVersionService versionService,
         ILmlTextParser lmlParser,
+        ILatexParser latexParser,
         Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> hub,
         LiliaDbContext context,
         IOptions<AiOptions> options,
@@ -160,6 +202,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _renderService = renderService;
         _versionService = versionService;
         _lmlParser = lmlParser;
+        _latexParser = latexParser;
         _hub = hub;
         _context = context;
         _options = options.Value;
@@ -242,7 +285,7 @@ public sealed class AskLiliaService : IAskLiliaService
                 if (document is not null)
                 {
                     systemSb.AppendLine()
-                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text), get_lilia_latex (the LaTeX Lilia itself emits, for a block or the whole document). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
+                        .AppendLine("CURRENT DOCUMENT — the author is editing this right now. You also have tools to READ it on demand: get_outline (structure + block ids), get_block (one block's full content by id), search_document (find text), get_lilia_latex (the LaTeX Lilia itself emits, for a block or the whole document), get_document_settings (page setup: paper, margins, columns, font, spacing, headers/footers, page numbering). Prefer the tools for detail; reference existing blocks, match style/structure, and don't restate what's already there.")
                         .AppendLine("LATEX PROVENANCE — two different things get called \"the LaTeX\" and you must not blur them. (1) What LILIA EMITS: call get_lilia_latex; the reply is tagged source=\"lilia-emitter\" and is what actually compiles in this system, with Lilia's own preamble, package set and engine choice. (2) What YOU KNOW: idiomatic LaTeX from training, which may be perfectly correct in general and still not be what this document produces. When you show or discuss LaTeX for the open document, read it first and say which one you are giving — e.g. \"Lilia emits this:\" versus \"In standard LaTeX you would normally write:\". Never present recalled LaTeX as if it were the document's actual output, and if the two differ, say so plainly: that difference is usually the answer the author needs.");
                     if (editMode)
                     {
@@ -251,6 +294,8 @@ public sealed class AskLiliaService : IAskLiliaService
                             EDIT MODE IS ON — this is a CV/résumé document. You may WRITE with these tools:
                             • apply_lml(lml, title?) — PREFERRED for full rewrites. Use CV LML: @personalInfo, @cvSection, @cvEntry, @paragraph, @list, @equation. Do NOT rebuild a CV with @heading + @paragraph only. Do NOT use many add_block calls for a whole rewrite.
                             • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class. Defaults: article→article, book→book, report→report, cv→moderncv. Call before a rewrite if the kind/class is wrong.
+                            • set_document_settings(...) — page setup: paper size, orientation, margins, columns, font, size, spacing, page numbering, header/footer slots. Pass only what changes. See PAGE SETUP below.
+                            • import_latex(text, replace?) — a pasted .tex file through Lilia's own importer: blocks AND page setup in one step.
                             • add_block / edit_block / remove_block / reorder_blocks — small targeted edits only.
                             • set_title(title, author?, date?) — document title string only (e.g. "Curriculum Vitae — Name"). Person name + contact go in personalInfo, never as a heading or set_title substitute.
                             CV content JSON shapes:
@@ -263,11 +308,14 @@ public sealed class AskLiliaService : IAskLiliaService
                             EDIT MODE IS ON — you may WRITE to the document with these tools:
                             • apply_lml(lml, title?) — PREFERRED for full rewrites / "apply this LML" / replacing most of the document. Parses LML and replaces ALL body blocks in ONE call (atomic). Use the full LML you proposed (with @abstract, @heading, @paragraph, @equation, @theorem, …; for CVs use @personalInfo / @cvSection / @cvEntry). Do NOT rewrite a whole article with many add_block/edit_block/remove_block calls.
                             • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class (e.g. article, book, report, moderncv). Defaults: article→article, book→book, report→report, cv→moderncv. Use when converting kind (e.g. article→cv) before rewriting structure.
+                            • set_document_settings(...) — page setup: paper size, orientation, margins (top/bottom/left/right), columns (+gap, rule, balanced), font family and size, line spacing, paragraph indent, page numbering, header/footer slots (left/centre/right), custom preamble (advanced). Pass only the fields that change. See PAGE SETUP below.
+                            • import_latex(text, replace?) — a pasted .tex file (from \documentclass on) through Lilia's own importer: converts the body to blocks AND applies the page setup it finds. PREFERRED over converting a whole .tex to LML by hand. replace=false appends blocks only.
                             • add_block / edit_block / remove_block / reorder_blocks — for small, targeted edits only (one or a few blocks).
                             • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title. On CVs, person identity is personalInfo, not set_title.
                             Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem), {"name","headline","email",…} (personalInfo), {"title"} (cvSection), {"period","role","org","description"} (cvEntry).
                             """);
                     }
+                    systemSb.AppendLine().AppendLine(PageSetupNote(editMode));
                     systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
@@ -575,7 +623,7 @@ public sealed class AskLiliaService : IAskLiliaService
     /// Mutable handle so write tools can refresh category/class (and reloaded
     /// blocks) mid tool-loop without rebuilding the tool list.
     /// </summary>
-    private sealed class LiveDocument
+    internal sealed class LiveDocument
     {
         public DocumentDto Dto;
         public LiveDocument(DocumentDto dto) => Dto = dto;
@@ -594,7 +642,7 @@ public sealed class AskLiliaService : IAskLiliaService
     internal static bool MayEditWithAi(bool requested, Lilia.Core.DTOs.DocumentDto? document) =>
         requested && document?.Role is "owner" or "editor";
 
-    private IList<AITool> BuildDocumentTools(
+    internal IList<AITool> BuildDocumentTools(
         LiveDocument live,
         Guid docGuid,
         string userId,
@@ -620,7 +668,7 @@ public sealed class AskLiliaService : IAskLiliaService
                 name: "search_document",
                 description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Block id from get_outline/search_document. Omit for the whole document.")] string? blockId)
+                ([System.ComponentModel.Description("Block id from get_outline/search_document. Omit for the whole document.")] string? blockId = null)
                     => LiliaLatexAsync(live.Dto, docGuid, blockId),
                 name: "get_lilia_latex",
                 description:
@@ -632,6 +680,14 @@ public sealed class AskLiliaService : IAskLiliaService
                     + "before quoting, explaining or editing a document's LaTeX. The reply is tagged "
                     + "source=\"lilia-emitter\"; anything you write from your own knowledge is not, and "
                     + "you should say which is which when the difference matters."),
+            AIFunctionFactory.Create(
+                () => SettingsView(live.Dto),
+                name: "get_document_settings",
+                description:
+                    "Read the document's page setup: paperSize, orientation, margins (top/bottom/left/right), "
+                    + "columns (+ gap in cm, separator, balanced), fontFamily, fontSize, lineSpacing, paragraphIndent, "
+                    + "pageNumbering, the six header/footer slots and the custom preamble. A null value means the "
+                    + "class default applies. Call it before changing settings or when asked about the page layout."),
         };
 
         if (allowWrite)
@@ -639,21 +695,21 @@ public sealed class AskLiliaService : IAskLiliaService
             // Atomic full-document replace — preferred for "apply this LML" / rewrites.
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Full LML source for the document body. May include a ```lml fenced block. Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography. CV/résumé: @personalInfo[name=…, email=…, location=…], @cvSection[title=…], @cvEntry[period=…, role=…, org=…, location=…], @list, @paragraph. Bodies indented 2 spaces.")] string lml,
-                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, personalInfo name, or keeps the existing title.")] string? title)
+                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, personalInfo name, or keeps the existing title.")] string? title = null)
                     => ApplyLmlAsync(live.Dto, docGuid, lml, title, changed),
                 name: "apply_lml",
                 description: "PREFERRED for full rewrites: parse LML and replace the entire document body in ONE atomic batch (deletes old body blocks, inserts the parsed ones, keeps/updates the Title block). For CVs use @personalInfo/@cvSection/@cvEntry — not article headings. Do not rebuild a whole document with many add_block/edit_block calls."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, abstract, blockquote, personalInfo, cvSection, cvEntry, photo. (Document title → set_title. CV person header → personalInfo, not heading.)")] string type,
                  [System.ComponentModel.Description("JSON content matching the type. Examples: {\"text\":\"…\"}; {\"text\":\"…\",\"level\":1}; {\"latex\":\"…\"}; personalInfo {\"name\",\"headline\",\"email\",\"phones\":[{\"number\"}],\"homepage\",\"location\",\"socials\":[],\"extra\"}; cvSection {\"title\"}; cvEntry {\"period\",\"role\",\"org\",\"location\",\"description\",\"tech\":[]}.")] string content,
-                 [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId)
+                 [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId = null)
                     => AddBlockAsync(live.Dto, docGuid, type, content, afterId, changed),
                 name: "add_block",
                 description: "Add a new block to the open document (small targeted inserts only). Returns the new block id. On CVs prefer personalInfo/cvSection/cvEntry."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to edit.")] string blockId,
                  [System.ComponentModel.Description("New JSON content object for the block.")] string content,
-                 [System.ComponentModel.Description("Optional new block type.")] string? type)
+                 [System.ComponentModel.Description("Optional new block type.")] string? type = null)
                     => EditBlockAsync(live.Dto, docGuid, blockId, content, type, changed),
                 name: "edit_block",
                 description: "Replace a block's content (and optionally its type) by id. Small targeted edits only."));
@@ -669,19 +725,260 @@ public sealed class AskLiliaService : IAskLiliaService
                 description: "Reorder the document's blocks to this exact id order."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
-                 [System.ComponentModel.Description("Author name(s). Optional.")] string? author,
-                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date)
+                 [System.ComponentModel.Description("Author name(s). Optional.")] string? author = null,
+                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date = null)
                     => SetTitleAsync(live.Dto, docGuid, title, author, date, changed),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
             tools.Add(AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Document kind: article | book | report | cv. Aliases: paper→article, thesis→book, resume/résumé→cv. Omit to keep current or derive from documentClass.")] string? category,
-                 [System.ComponentModel.Description("LaTeX \\documentclass slug, e.g. article, book, report, moderncv, altacv, memoir. Omit to use the default for the category (article→article, book→book, report→report, cv→moderncv).")] string? documentClass)
+                ([System.ComponentModel.Description("Document kind: article | book | report | cv. Aliases: paper→article, thesis→book, resume/résumé→cv. Omit to keep current or derive from documentClass.")] string? category = null,
+                 [System.ComponentModel.Description("LaTeX \\documentclass slug, e.g. article, book, report, moderncv, altacv, memoir. Omit to use the default for the category (article→article, book→book, report→report, cv→moderncv).")] string? documentClass = null)
                     => SetDocumentKindAsync(live, docGuid, userId, category, documentClass, markMetaChanged),
                 name: "set_document_kind",
                 description: "Set the open document's category (article|book|report|cv) and/or LaTeX document class. Call when converting kind (e.g. article→CV) or fixing a wrong class before apply_lml. Does not rewrite body blocks."));
+            tools.Add(AIFunctionFactory.Create(
+                ([Description("Paper: a4 | letter | legal | a5 | executive | b5.")] string? paperSize = null,
+                 [Description("portrait | landscape.")] string? orientation = null,
+                 [Description("Top margin with a unit, e.g. 2.5cm, 1in, 20mm, 72pt. \"\" resets it to the class default.")] string? marginTop = null,
+                 [Description("Bottom margin, same format as marginTop.")] string? marginBottom = null,
+                 [Description("Left margin, same format as marginTop.")] string? marginLeft = null,
+                 [Description("Right margin, same format as marginTop.")] string? marginRight = null,
+                 [Description("Number of text columns: 1 to 3.")] int? columns = null,
+                 [Description("Gap between columns in centimetres, 0 to 5.")] double? columnGap = null,
+                 [Description("Column separator: none | rule (a vertical line between columns).")] string? columnSeparator = null,
+                 [Description("true to balance the columns on the last page (multicol).")] bool? balancedColumns = null,
+                 [Description("Body font: serif | sans-serif | monospace | charter | times | palatino | bookman. Other fonts are not supported.")] string? fontFamily = null,
+                 [Description("Base font size in pt: 10 | 11 | 12.")] int? fontSize = null,
+                 [Description("Line spacing factor, 0.8 to 3 (1 single, 1.5 one-and-a-half, 2 double).")] double? lineSpacing = null,
+                 [Description("Paragraph indent as a length (1.5em, 1cm, 12pt) or \"none\" for no indent.")] string? paragraphIndent = null,
+                 [Description("Page numbers: arabic | roman | none.")] string? pageNumbering = null,
+                 [Description("Running header, left slot. Plain text: LaTeX commands such as \\thepage are not interpreted. \"\" clears it.")] string? headerLeft = null,
+                 [Description("Running header, centre slot. Plain text.")] string? headerCenter = null,
+                 [Description("Running header, right slot. Plain text.")] string? headerRight = null,
+                 [Description("Running footer, left slot. Plain text.")] string? footerLeft = null,
+                 [Description("Running footer, centre slot. Plain text.")] string? footerCenter = null,
+                 [Description("Running footer, right slot. Plain text.")] string? footerRight = null,
+                 [Description("ADVANCED: raw LaTeX added to the preamble (\\newcommand, \\DeclareMathOperator, \\newenvironment). Replaces the whole current preamble, so read it with get_document_settings first and include what should stay. Emitted verbatim after Lilia's packages; a mistake here can break compilation.")] string? customPreamble = null)
+                    => SetDocumentSettingsAsync(live, docGuid, userId, markMetaChanged,
+                        new DocumentSettingsValidator.Input(paperSize, orientation, marginTop, marginBottom, marginLeft, marginRight,
+                            columns, columnGap, columnSeparator, balancedColumns, fontFamily, fontSize, lineSpacing, paragraphIndent,
+                            pageNumbering, headerLeft, headerCenter, headerRight, footerLeft, footerCenter, footerRight, customPreamble)),
+                name: "set_document_settings",
+                description: "Set the document's page setup: paper size, orientation, margins, columns, font, size, line spacing, "
+                    + "paragraph indent, page numbering, running headers and footers, and (advanced) the custom preamble. "
+                    + "Pass ONLY the fields to change; everything else is left alone. Invalid values are rejected with the valid "
+                    + "choices and nothing is changed. Returns the resulting settings. Does not touch body blocks."));
+            tools.Add(AIFunctionFactory.Create(
+                ([Description("The complete LaTeX source the author pasted, from \\documentclass to \\end{document} (or a fragment).")] string text,
+                 [Description("true (default): replace the whole document body and apply the file's page setup. false: append the converted blocks after the existing ones and leave settings alone.")] bool replace = true)
+                    => ImportLatexAsync(live, docGuid, userId, text, replace, changed, markMetaChanged),
+                name: "import_latex",
+                description: "Hand a pasted .tex file to Lilia's own LaTeX importer (the one behind Import LaTeX): converts the body to blocks AND applies the "
+                    + "page setup it finds (font size, paper, orientation, columns and gap, geometry margins, line spacing, paragraph indent, "
+                    + "\\pagenumbering, fancyhdr header/footer slots, font packages, and the macros as the custom preamble). Prefer this to converting a whole "
+                    + ".tex to LML by hand. The reply lists settingsApplied and notApplied: tell the author what could not be carried."));
         }
         return tools;
+    }
+
+    // A dictionary, not an anonymous type: the tool serializer drops null
+    // properties, and "this setting is at the class default" must be visible.
+    private static Dictionary<string, object?> SettingsView(Lilia.Core.DTOs.DocumentDto d) => new()
+    {
+        ["paperSize"] = d.PaperSize,
+        ["orientation"] = d.Orientation ?? "portrait",
+        ["marginTop"] = d.MarginTop,
+        ["marginBottom"] = d.MarginBottom,
+        ["marginLeft"] = d.MarginLeft,
+        ["marginRight"] = d.MarginRight,
+        ["columns"] = d.Columns,
+        ["columnGap"] = d.ColumnGap,
+        ["columnSeparator"] = d.ColumnSeparator,
+        ["balancedColumns"] = d.BalancedColumns,
+        ["fontFamily"] = d.FontFamily,
+        ["fontSize"] = d.FontSize,
+        ["lineSpacing"] = d.LineSpacing,
+        ["paragraphIndent"] = d.ParagraphIndent,
+        ["pageNumbering"] = d.PageNumbering,
+        ["headerLeft"] = d.HeaderLeft,
+        ["headerCenter"] = d.HeaderCenter,
+        ["headerRight"] = d.HeaderRight,
+        ["footerLeft"] = d.FooterLeft,
+        ["footerCenter"] = d.FooterCenter,
+        ["footerRight"] = d.FooterRight,
+        ["legacyHeaderText"] = d.HeaderText,
+        ["legacyFooterText"] = d.FooterText,
+        ["customPreamble"] = d.CustomPreamble,
+        ["note"] = "null = class default. Header/footer slots are plain text. Legacy header/footer text is used only while all six slots are empty.",
+    };
+
+    private const int MaxImportLatexChars = 100_000;
+
+    /// <summary>
+    /// A whole .tex through Lilia's own importer: the body becomes blocks
+    /// (<see cref="LatexImportJobExecutor.MapElements"/>, the mapping Import
+    /// LaTeX uses) and the preamble becomes settings
+    /// (<see cref="LatexPageSetupExtractor"/>) through the same update the
+    /// settings dialog uses. Settings go first so the macros are in place when
+    /// the equation blocks are normalised.
+    /// </summary>
+    private async Task<object> ImportLatexAsync(
+        LiveDocument live, Guid docId, string userId, string text, bool replace,
+        List<string> changed, Action markMetaChanged)
+    {
+        try
+        {
+            var source = StripLatexFences(text ?? "");
+            if (string.IsNullOrWhiteSpace(source)) return new { error = "empty LaTeX" };
+            if (source.Length > MaxImportLatexChars)
+                return new { error = $"LaTeX is {source.Length} characters; the limit is {MaxImportLatexChars}. Import it in parts with replace=false." };
+
+            var parsed = await _latexParser.ParseTextAsync(source);
+            var mapped = LatexImportJobExecutor.MapElements(parsed.Elements);
+            var titleBlock = LatexImportJobExecutor.TitleBlockFor(parsed);
+            if (mapped.Count == 0 && titleBlock is null)
+                return new
+                {
+                    error = "no content found; is this LaTeX source? Nothing was changed.",
+                    warnings = parsed.Warnings.Select(w => w.Message).Take(8).ToList(),
+                };
+
+            var applied = new List<string>();
+            var notApplied = new List<string>();
+            if (replace)
+            {
+                var ex = LatexPageSetupExtractor.Extract(source, parsed.Metadata);
+                applied.AddRange(ex.Applied);
+                notApplied.AddRange(ex.NotApplied);
+                var check = DocumentSettingsValidator.Validate(ex.Settings);
+                var dto = (check.Update ?? throw new InvalidOperationException("extracted settings failed validation"))
+                    with
+                    {
+                        LatexDocumentClass = ex.DocumentClass,
+                        DocumentCategory = CategoryFromClass(ex.DocumentClass),
+                        LatexPackages = ex.PackagesJson,
+                        Sides = ex.Sides,
+                        TitlePage = ex.TitlePage ? true : null,
+                    };
+                var updated = await _documentService.UpdateDocumentAsync(docId, userId, dto);
+                if (updated is null) return new { error = "document not found or no write access" };
+                live.Dto = updated.Blocks is { Count: > 0 } ? updated : updated with { Blocks = live.Dto.Blocks };
+                markMetaChanged();
+            }
+            else
+            {
+                notApplied.Add("replace=false appends the blocks only; the document's page setup was left as it was");
+            }
+
+            var doc = live.Dto;
+            var existing = doc.Blocks ?? new List<BlockDto>();
+            var existingTitle = existing.FirstOrDefault(b =>
+                string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+            var batch = new List<BatchUpdateBlockDto>();
+            var sort = 0;
+            if (replace)
+            {
+                // Title first, as apply_lml does: from the file if it names one,
+                // otherwise the one the document already has.
+                if (titleBlock is { } tb)
+                    batch.Add(new BatchUpdateBlockDto(existingTitle?.Id ?? Guid.NewGuid(), BlockTypes.Title,
+                        JsonSerializer.SerializeToElement(tb.content), sort++, null, 0));
+                else if (existingTitle is not null)
+                    batch.Add(new BatchUpdateBlockDto(existingTitle.Id, null, null, sort++, null, 0));
+            }
+            else
+            {
+                foreach (var b in existing.OrderBy(b => b.SortOrder))
+                    batch.Add(new BatchUpdateBlockDto(b.Id, null, null, sort++, null, null));
+            }
+            foreach (var (type, content) in mapped)
+                batch.Add(new BatchUpdateBlockDto(Guid.NewGuid(), type,
+                    JsonSerializer.SerializeToElement(content), sort++, null, 0));
+
+            var result = await _blockService.BatchUpdateBlocksAsync(docId, batch);
+            if (doc.Blocks is not null)
+            {
+                doc.Blocks.Clear();
+                doc.Blocks.AddRange(result.Blocks);
+            }
+            foreach (var b in result.Blocks) changed.Add(b.Id.ToString());
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "replace", count = result.Blocks.Count, title = parsed.Title });
+
+            _logger.LogInformation(
+                "[AskLilia] import_latex doc={DocId} replace={Replace} blocks={Count} applied={Applied} notApplied={NotApplied}",
+                docId, replace, mapped.Count, applied.Count, notApplied.Count);
+
+            return new
+            {
+                ok = true,
+                mode = replace ? "replaced" : "appended",
+                importedBlocks = mapped.Count,
+                totalBlocks = result.Blocks.Count,
+                types = mapped.GroupBy(m => m.type).ToDictionary(g => g.Key, g => g.Count()),
+                title = string.IsNullOrWhiteSpace(parsed.Title) ? null : parsed.Title,
+                settingsApplied = applied,
+                notApplied,
+                importerWarnings = parsed.Warnings.Select(w => w.Message).Take(8).ToList(),
+                settings = SettingsView(live.Dto),
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] import_latex failed for {DocId}", docId);
+            return new { error = "import_latex failed: " + ex.Message };
+        }
+    }
+
+    /// <summary>Strip an optional markdown fence (```latex … ```) around pasted LaTeX.</summary>
+    internal static string StripLatexFences(string source)
+    {
+        var s = source.Trim();
+        var m = Regex.Match(s, @"^```(?:latex|tex|LaTeX)?[ \t]*\r?\n([\s\S]*?)\r?\n?```\s*$");
+        return m.Success ? m.Groups[1].Value.Trim() : s;
+    }
+
+    /// <summary>
+    /// Page setup through the same service the Document Settings dialog saves
+    /// with. Only the supplied fields change; values are checked first by
+    /// <see cref="DocumentSettingsValidator"/> and a bad one changes nothing.
+    /// </summary>
+    private async Task<object> SetDocumentSettingsAsync(
+        LiveDocument live, Guid docId, string userId, Action markMetaChanged,
+        DocumentSettingsValidator.Input input)
+    {
+        try
+        {
+            var check = DocumentSettingsValidator.Validate(input);
+            if (check.Fields.Count == 0)
+                return new { error = "Provide at least one setting to change. Call get_document_settings to see the current values." };
+            if (!check.Ok)
+                return new { error = "No settings were changed. " + string.Join(" ", check.Errors) };
+
+            var updated = await _documentService.UpdateDocumentAsync(docId, userId, check.Update!);
+            if (updated is null)
+                return new { error = "document not found or no write access" };
+
+            live.Dto = updated.Blocks is { Count: > 0 } ? updated : updated with { Blocks = live.Dto.Blocks };
+            markMetaChanged();
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "document_settings", fields = check.Fields });
+
+            _logger.LogInformation("[AskLilia] set_document_settings doc={DocId} fields={Fields}",
+                docId, string.Join(",", check.Fields));
+
+            return new
+            {
+                ok = true,
+                changed = check.Fields,
+                settings = SettingsView(live.Dto),
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] set_document_settings failed for {DocId}", docId);
+            return new { error = "set_document_settings failed: " + ex.Message };
+        }
     }
 
     /// <summary>
@@ -970,10 +1267,10 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private async Task<object> EditBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, string contentJson, string? type, List<string> changed)
     {
-        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        if (!Guid.TryParse(blockId, out var id)) return BlockIdError(doc, blockId, parsed: false);
         var updated = await _blockService.UpdateBlockAsync(docId, id,
             new Lilia.Core.DTOs.UpdateBlockDto(type, ParseContent(contentJson), null, null, null));
-        if (updated is null) return new { error = "block not found" };
+        if (updated is null) return BlockIdError(doc, blockId, parsed: true);
         var i = doc.Blocks?.FindIndex(b => b.Id == id) ?? -1;
         if (i >= 0) doc.Blocks![i] = updated;
         changed.Add(id.ToString());
@@ -984,9 +1281,9 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private async Task<object> RemoveBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, List<string> changed)
     {
-        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        if (!Guid.TryParse(blockId, out var id)) return BlockIdError(doc, blockId, parsed: false);
         var ok = await _blockService.DeleteBlockAsync(docId, id);
-        if (!ok) return new { error = "block not found" };
+        if (!ok) return BlockIdError(doc, blockId, parsed: true);
         doc.Blocks?.RemoveAll(b => b.Id == id);
         changed.Add(id.ToString());
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged", new { op = "remove", id });
@@ -1126,11 +1423,57 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private static object DocBlock(Lilia.Core.DTOs.DocumentDto document, string blockId)
     {
-        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        if (!Guid.TryParse(blockId, out var id)) return BlockIdError(document, blockId, parsed: false);
         var b = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).FirstOrDefault(x => x.Id == id);
         return b is null
-            ? new { error = "block not found" }
+            ? BlockIdError(document, blockId, parsed: true)
             : (object)new { id = b.Id, type = b.Type, content = b.Content };
+    }
+
+    /// <summary>
+    /// The error for a block id that is malformed (<paramref name="parsed"/> false)
+    /// or well-formed but absent. A bare "block not found" sent the model
+    /// guessing; this names the block it most likely meant (the given text is a
+    /// prefix of an id, or one character off) or points it at get_outline.
+    /// </summary>
+    internal static object BlockIdError(Lilia.Core.DTOs.DocumentDto document, string? given, bool parsed)
+    {
+        var text = (given ?? "").Trim();
+        var blocks = document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>();
+        var near = NearestBlock(blocks, text);
+        var head = parsed
+            ? $"block not found: no block with id '{text}' in this document."
+            : $"invalid block id '{text}': block ids are full GUIDs (e.g. 3f2a9c1e-7b40-4d1a-9a52-0c8e5b6d7f10).";
+        var tail = near is null
+            ? " Call get_outline for valid ids."
+            : $" Did you mean {near.Id} (type {near.Type})? Call get_outline to confirm.";
+        return new { error = head + tail };
+    }
+
+    private static Lilia.Core.DTOs.BlockDto? NearestBlock(
+        IReadOnlyList<Lilia.Core.DTOs.BlockDto> blocks, string given)
+    {
+        if (given.Length < 4) return null;
+        // Unique prefix match first: the model often truncates a GUID.
+        var byPrefix = blocks.Where(b => b.Id.ToString()
+            .StartsWith(given, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (byPrefix.Count == 1) return byPrefix[0];
+        if (byPrefix.Count > 1) return null;
+        // One character substituted, dropped or added.
+        var close = blocks.Where(b => WithinOneEdit(b.Id.ToString(), given)).ToList();
+        return close.Count == 1 ? close[0] : null;
+    }
+
+    private static bool WithinOneEdit(string a, string b)
+    {
+        if (Math.Abs(a.Length - b.Length) > 1) return false;
+        var i = 0;
+        while (i < a.Length && i < b.Length && char.ToLowerInvariant(a[i]) == char.ToLowerInvariant(b[i])) i++;
+        if (i == a.Length && i == b.Length) return true;
+        if (a.Length == b.Length) return string.Equals(a[(i + 1)..], b[(i + 1)..], StringComparison.OrdinalIgnoreCase);
+        return a.Length > b.Length
+            ? string.Equals(a[(i + 1)..], b[i..], StringComparison.OrdinalIgnoreCase)
+            : string.Equals(a[i..], b[(i + 1)..], StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1172,11 +1515,11 @@ public sealed class AskLiliaService : IAskLiliaService
             }
 
             if (!Guid.TryParse(blockId, out var id))
-                return new { error = "invalid block id" };
+                return BlockIdError(document, blockId, parsed: false);
 
             var dto = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>())
                 .FirstOrDefault(x => x.Id == id);
-            if (dto is null) return new { error = "block not found" };
+            if (dto is null) return BlockIdError(document, blockId, parsed: true);
 
             var block = new Lilia.Core.Entities.Block
             {

@@ -206,6 +206,29 @@ public class PreambleEmissionTests
     }
 
     [Fact]
+    public void A_header_alone_keeps_the_page_number_in_the_footer()
+    {
+        // \fancyhf{} clears the automatic number; without this the pages of a
+        // document that only set a header printed no page number at all.
+        var preamble = BuildPreamble(NewDoc(d => d.HeaderLeft = "Lecture 8"));
+        preamble.Should().Contain("\\cfoot{\\thepage}");
+    }
+
+    [Fact]
+    public void A_header_with_numbering_none_does_not_bring_the_number_back()
+    {
+        var preamble = BuildPreamble(NewDoc(d => { d.HeaderLeft = "Lecture 8"; d.PageNumbering = "none"; }));
+        preamble.Should().NotContain("\\thepage");
+    }
+
+    [Fact]
+    public void A_footer_slot_set_by_the_author_is_not_overridden_by_the_page_number()
+    {
+        var preamble = BuildPreamble(NewDoc(d => { d.HeaderLeft = "Lecture 8"; d.FooterRight = "v1"; }));
+        preamble.Should().NotContain("\\thepage");
+    }
+
+    [Fact]
     public void FooterText_emits_rfoot()
     {
         var doc = NewDoc(d => d.FooterText = "Confidential");
