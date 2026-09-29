@@ -970,10 +970,10 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private async Task<object> EditBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, string contentJson, string? type, List<string> changed)
     {
-        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        if (!Guid.TryParse(blockId, out var id)) return BlockIdError(doc, blockId, parsed: false);
         var updated = await _blockService.UpdateBlockAsync(docId, id,
             new Lilia.Core.DTOs.UpdateBlockDto(type, ParseContent(contentJson), null, null, null));
-        if (updated is null) return new { error = "block not found" };
+        if (updated is null) return BlockIdError(doc, blockId, parsed: true);
         var i = doc.Blocks?.FindIndex(b => b.Id == id) ?? -1;
         if (i >= 0) doc.Blocks![i] = updated;
         changed.Add(id.ToString());
@@ -984,9 +984,9 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private async Task<object> RemoveBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, List<string> changed)
     {
-        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        if (!Guid.TryParse(blockId, out var id)) return BlockIdError(doc, blockId, parsed: false);
         var ok = await _blockService.DeleteBlockAsync(docId, id);
-        if (!ok) return new { error = "block not found" };
+        if (!ok) return BlockIdError(doc, blockId, parsed: true);
         doc.Blocks?.RemoveAll(b => b.Id == id);
         changed.Add(id.ToString());
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged", new { op = "remove", id });
@@ -1126,11 +1126,57 @@ public sealed class AskLiliaService : IAskLiliaService
 
     private static object DocBlock(Lilia.Core.DTOs.DocumentDto document, string blockId)
     {
-        if (!Guid.TryParse(blockId, out var id)) return new { error = "invalid block id" };
+        if (!Guid.TryParse(blockId, out var id)) return BlockIdError(document, blockId, parsed: false);
         var b = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).FirstOrDefault(x => x.Id == id);
         return b is null
-            ? new { error = "block not found" }
+            ? BlockIdError(document, blockId, parsed: true)
             : (object)new { id = b.Id, type = b.Type, content = b.Content };
+    }
+
+    /// <summary>
+    /// The error for a block id that is malformed (<paramref name="parsed"/> false)
+    /// or well-formed but absent. A bare "block not found" sent the model
+    /// guessing; this names the block it most likely meant (the given text is a
+    /// prefix of an id, or one character off) or points it at get_outline.
+    /// </summary>
+    internal static object BlockIdError(Lilia.Core.DTOs.DocumentDto document, string? given, bool parsed)
+    {
+        var text = (given ?? "").Trim();
+        var blocks = document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>();
+        var near = NearestBlock(blocks, text);
+        var head = parsed
+            ? $"block not found: no block with id '{text}' in this document."
+            : $"invalid block id '{text}': block ids are full GUIDs (e.g. 3f2a9c1e-7b40-4d1a-9a52-0c8e5b6d7f10).";
+        var tail = near is null
+            ? " Call get_outline for valid ids."
+            : $" Did you mean {near.Id} (type {near.Type})? Call get_outline to confirm.";
+        return new { error = head + tail };
+    }
+
+    private static Lilia.Core.DTOs.BlockDto? NearestBlock(
+        IReadOnlyList<Lilia.Core.DTOs.BlockDto> blocks, string given)
+    {
+        if (given.Length < 4) return null;
+        // Unique prefix match first: the model often truncates a GUID.
+        var byPrefix = blocks.Where(b => b.Id.ToString()
+            .StartsWith(given, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (byPrefix.Count == 1) return byPrefix[0];
+        if (byPrefix.Count > 1) return null;
+        // One character substituted, dropped or added.
+        var close = blocks.Where(b => WithinOneEdit(b.Id.ToString(), given)).ToList();
+        return close.Count == 1 ? close[0] : null;
+    }
+
+    private static bool WithinOneEdit(string a, string b)
+    {
+        if (Math.Abs(a.Length - b.Length) > 1) return false;
+        var i = 0;
+        while (i < a.Length && i < b.Length && char.ToLowerInvariant(a[i]) == char.ToLowerInvariant(b[i])) i++;
+        if (i == a.Length && i == b.Length) return true;
+        if (a.Length == b.Length) return string.Equals(a[(i + 1)..], b[(i + 1)..], StringComparison.OrdinalIgnoreCase);
+        return a.Length > b.Length
+            ? string.Equals(a[(i + 1)..], b[i..], StringComparison.OrdinalIgnoreCase)
+            : string.Equals(a[i..], b[(i + 1)..], StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1172,11 +1218,11 @@ public sealed class AskLiliaService : IAskLiliaService
             }
 
             if (!Guid.TryParse(blockId, out var id))
-                return new { error = "invalid block id" };
+                return BlockIdError(document, blockId, parsed: false);
 
             var dto = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>())
                 .FirstOrDefault(x => x.Id == id);
-            if (dto is null) return new { error = "block not found" };
+            if (dto is null) return BlockIdError(document, blockId, parsed: true);
 
             var block = new Lilia.Core.Entities.Block
             {
