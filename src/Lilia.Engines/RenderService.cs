@@ -1375,7 +1375,9 @@ public partial class RenderService : IRenderService
             2 => "subsection",
             3 => "subsubsection",
             4 => "paragraph",
-            5 => "subparagraph",
+            // LaTeX has nothing below \subparagraph: a deeper level stays at the
+            // deepest command rather than jumping back up to \section.
+            >= 5 => "subparagraph",
             _ => "section"
         };
 
@@ -1401,7 +1403,16 @@ public partial class RenderService : IRenderService
         // any % or [ escape pass would mangle them. TrimEnd strips the
         // trailing whitespace ProcessLatexText adds via the paragraph-
         // break pass — single-line headings don't need it.
-        return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}";
+        // The heading's label (or its LML id) is what \ref{sec:intro} points at.
+        // The exporter has always written it; this emitter, which is what the
+        // preview, the PDF compile and Ask Lilia's get_lilia_latex use, dropped
+        // it, so every reference to a section printed "??".
+        var label = content.TryGetProperty("label", out var lbl) && lbl.ValueKind == JsonValueKind.String ? lbl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(label))
+            label = content.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+        var labelPart = string.IsNullOrWhiteSpace(label) ? "" : $@"\label{{{label!.Trim()}}}";
+
+        return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}{labelPart}";
     }
 
     private string RenderParagraphToLatex(JsonElement content)

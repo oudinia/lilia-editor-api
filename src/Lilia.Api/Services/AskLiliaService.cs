@@ -139,6 +139,7 @@ public sealed class AskLiliaService : IAskLiliaService
         • \linespread{1.3}, \setstretch{1.5}, \onehalfspacing, \doublespacing -> lineSpacing
         • \setlength{\parindent}{0pt} -> paragraphIndent (none, or the length); \setlength{\columnsep}{..} -> columnGap in cm
         • \usepackage{times} or mathptmx, palatino or mathpazo, charter, bookman, \renewcommand{\familydefault}{\sfdefault} -> fontFamily
+        • \fancyfoot[C]{\thepage} (or any footer that is only the page number) -> leave the footer slots EMPTY: with a header set and no footer slot, Lilia prints the page number centred at the foot by itself. Say that is what happened.
         • \newcommand, \DeclareMathOperator, \newenvironment definitions -> customPreamble (read the current one first and keep what is there)
         NOT supported, so say so plainly and do not drop it silently ("your file uses X; Lilia can't do that, so I left it out; here is what I did instead"): watermarks; arbitrary or OpenType fonts (\setmainfont, fontspec, a named typeface); manual size switches (\tiny to \Huge) as a document setting; header/footer content other than plain text (\thepage, \leftmark, \rightmark and other commands are not interpreted: use pageNumbering for the page number); known limitation: once any header or footer slot is set, the automatic page number is not printed (the slots replace the class footer), so warn the author if they want both; titlesec or other package-level restyling of headings.
         """;
