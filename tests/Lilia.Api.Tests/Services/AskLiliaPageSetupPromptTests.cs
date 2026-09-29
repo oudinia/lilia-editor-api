@@ -31,6 +31,13 @@ public class AskLiliaPageSetupPromptTests
     }
 
     [Fact]
+    public void A_pasted_tex_is_sent_to_the_importer_and_its_gaps_are_reported()
+    {
+        var note = AskLiliaService.PageSetupNote(true);
+        note.Should().Contain("import_latex").And.Contain("notApplied");
+    }
+
+    [Fact]
     public void The_note_is_honest_about_what_is_not_supported()
     {
         var note = AskLiliaService.PageSetupNote(true);

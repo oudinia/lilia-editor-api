@@ -75,6 +75,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly Lilia.Engines.IRenderService _renderService;
     private readonly IVersionService _versionService;
     private readonly ILmlTextParser _lmlParser;
+    private readonly ILatexParser _latexParser;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> _hub;
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
@@ -130,7 +131,7 @@ public sealed class AskLiliaService : IAskLiliaService
               """) + """
 
 
-        When the author pastes a .tex file or asks you to reproduce a LaTeX document's look, map its preamble to these settings instead of ignoring it:
+        When the author pastes a .tex file or asks you to reproduce a LaTeX document's look, map its preamble to these settings instead of ignoring it. (In Edit mode, hand a whole .tex to import_latex: it does this mapping itself with Lilia's importer, and its reply lists settingsApplied and notApplied. Check its result against the list below, set anything it missed with set_document_settings, and report notApplied to the author.) The mapping:
         • \documentclass options: 10pt/11pt/12pt -> fontSize; a4paper/letterpaper/legalpaper/a5paper -> paperSize; landscape -> orientation; twocolumn -> columns 2; onecolumn -> 1
         • geometry ([margin=2.5cm], left=, right=, top=, bottom=, hmargin=, vmargin=) -> marginLeft/Right/Top/Bottom
         • \pagestyle{fancy} with \fancyhead / \fancyfoot / \lhead \chead \rhead \lfoot \cfoot \rfoot -> headerLeft/Center/Right and footerLeft/Center/Right
@@ -183,6 +184,7 @@ public sealed class AskLiliaService : IAskLiliaService
         Lilia.Engines.IRenderService renderService,
         IVersionService versionService,
         ILmlTextParser lmlParser,
+        ILatexParser latexParser,
         Microsoft.AspNetCore.SignalR.IHubContext<Lilia.Api.Hubs.DocumentHub> hub,
         LiliaDbContext context,
         IOptions<AiOptions> options,
@@ -199,6 +201,7 @@ public sealed class AskLiliaService : IAskLiliaService
         _renderService = renderService;
         _versionService = versionService;
         _lmlParser = lmlParser;
+        _latexParser = latexParser;
         _hub = hub;
         _context = context;
         _options = options.Value;
@@ -291,6 +294,7 @@ public sealed class AskLiliaService : IAskLiliaService
                             • apply_lml(lml, title?) — PREFERRED for full rewrites. Use CV LML: @personalInfo, @cvSection, @cvEntry, @paragraph, @list, @equation. Do NOT rebuild a CV with @heading + @paragraph only. Do NOT use many add_block calls for a whole rewrite.
                             • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class. Defaults: article→article, book→book, report→report, cv→moderncv. Call before a rewrite if the kind/class is wrong.
                             • set_document_settings(...) — page setup: paper size, orientation, margins, columns, font, size, spacing, page numbering, header/footer slots. Pass only what changes. See PAGE SETUP below.
+                            • import_latex(text, replace?) — a pasted .tex file through Lilia's own importer: blocks AND page setup in one step.
                             • add_block / edit_block / remove_block / reorder_blocks — small targeted edits only.
                             • set_title(title, author?, date?) — document title string only (e.g. "Curriculum Vitae — Name"). Person name + contact go in personalInfo, never as a heading or set_title substitute.
                             CV content JSON shapes:
@@ -304,6 +308,7 @@ public sealed class AskLiliaService : IAskLiliaService
                             • apply_lml(lml, title?) — PREFERRED for full rewrites / "apply this LML" / replacing most of the document. Parses LML and replaces ALL body blocks in ONE call (atomic). Use the full LML you proposed (with @abstract, @heading, @paragraph, @equation, @theorem, …; for CVs use @personalInfo / @cvSection / @cvEntry). Do NOT rewrite a whole article with many add_block/edit_block/remove_block calls.
                             • set_document_kind(category?, documentClass?) — set document kind (article|book|report|cv) and/or LaTeX class (e.g. article, book, report, moderncv). Defaults: article→article, book→book, report→report, cv→moderncv. Use when converting kind (e.g. article→cv) before rewriting structure.
                             • set_document_settings(...) — page setup: paper size, orientation, margins (top/bottom/left/right), columns (+gap, rule, balanced), font family and size, line spacing, paragraph indent, page numbering, header/footer slots (left/centre/right), custom preamble (advanced). Pass only the fields that change. See PAGE SETUP below.
+                            • import_latex(text, replace?) — a pasted .tex file (from \documentclass on) through Lilia's own importer: converts the body to blocks AND applies the page setup it finds. PREFERRED over converting a whole .tex to LML by hand. replace=false appends blocks only.
                             • add_block / edit_block / remove_block / reorder_blocks — for small, targeted edits only (one or a few blocks).
                             • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title. On CVs, person identity is personalInfo, not set_title.
                             Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem), {"name","headline","email",…} (personalInfo), {"title"} (cvSection), {"period","role","org","description"} (cvEntry).
@@ -762,6 +767,15 @@ public sealed class AskLiliaService : IAskLiliaService
                     + "paragraph indent, page numbering, running headers and footers, and (advanced) the custom preamble. "
                     + "Pass ONLY the fields to change; everything else is left alone. Invalid values are rejected with the valid "
                     + "choices and nothing is changed. Returns the resulting settings. Does not touch body blocks."));
+            tools.Add(AIFunctionFactory.Create(
+                ([Description("The complete LaTeX source the author pasted, from \\documentclass to \\end{document} (or a fragment).")] string text,
+                 [Description("true (default): replace the whole document body and apply the file's page setup. false: append the converted blocks after the existing ones and leave settings alone.")] bool replace = true)
+                    => ImportLatexAsync(live, docGuid, userId, text, replace, changed, markMetaChanged),
+                name: "import_latex",
+                description: "Hand a pasted .tex file to Lilia's own LaTeX importer (the one behind Import LaTeX): converts the body to blocks AND applies the "
+                    + "page setup it finds (font size, paper, orientation, columns and gap, geometry margins, line spacing, paragraph indent, "
+                    + "\\pagenumbering, fancyhdr header/footer slots, font packages, and the macros as the custom preamble). Prefer this to converting a whole "
+                    + ".tex to LML by hand. The reply lists settingsApplied and notApplied: tell the author what could not be carried."));
         }
         return tools;
     }
@@ -796,6 +810,132 @@ public sealed class AskLiliaService : IAskLiliaService
         ["customPreamble"] = d.CustomPreamble,
         ["note"] = "null = class default. Header/footer slots are plain text. Legacy header/footer text is used only while all six slots are empty.",
     };
+
+    private const int MaxImportLatexChars = 100_000;
+
+    /// <summary>
+    /// A whole .tex through Lilia's own importer: the body becomes blocks
+    /// (<see cref="LatexImportJobExecutor.MapElements"/>, the mapping Import
+    /// LaTeX uses) and the preamble becomes settings
+    /// (<see cref="LatexPageSetupExtractor"/>) through the same update the
+    /// settings dialog uses. Settings go first so the macros are in place when
+    /// the equation blocks are normalised.
+    /// </summary>
+    private async Task<object> ImportLatexAsync(
+        LiveDocument live, Guid docId, string userId, string text, bool replace,
+        List<string> changed, Action markMetaChanged)
+    {
+        try
+        {
+            var source = StripLatexFences(text ?? "");
+            if (string.IsNullOrWhiteSpace(source)) return new { error = "empty LaTeX" };
+            if (source.Length > MaxImportLatexChars)
+                return new { error = $"LaTeX is {source.Length} characters; the limit is {MaxImportLatexChars}. Import it in parts with replace=false." };
+
+            var parsed = await _latexParser.ParseTextAsync(source);
+            var mapped = LatexImportJobExecutor.MapElements(parsed.Elements);
+            var titleBlock = LatexImportJobExecutor.TitleBlockFor(parsed);
+            if (mapped.Count == 0 && titleBlock is null)
+                return new
+                {
+                    error = "no content found; is this LaTeX source? Nothing was changed.",
+                    warnings = parsed.Warnings.Select(w => w.Message).Take(8).ToList(),
+                };
+
+            var applied = new List<string>();
+            var notApplied = new List<string>();
+            if (replace)
+            {
+                var ex = LatexPageSetupExtractor.Extract(source, parsed.Metadata);
+                applied.AddRange(ex.Applied);
+                notApplied.AddRange(ex.NotApplied);
+                var check = DocumentSettingsValidator.Validate(ex.Settings);
+                var dto = (check.Update ?? throw new InvalidOperationException("extracted settings failed validation"))
+                    with
+                    {
+                        LatexDocumentClass = ex.DocumentClass,
+                        DocumentCategory = CategoryFromClass(ex.DocumentClass),
+                        LatexPackages = ex.PackagesJson,
+                        Sides = ex.Sides,
+                        TitlePage = ex.TitlePage ? true : null,
+                    };
+                var updated = await _documentService.UpdateDocumentAsync(docId, userId, dto);
+                if (updated is null) return new { error = "document not found or no write access" };
+                live.Dto = updated.Blocks is { Count: > 0 } ? updated : updated with { Blocks = live.Dto.Blocks };
+                markMetaChanged();
+            }
+            else
+            {
+                notApplied.Add("replace=false appends the blocks only; the document's page setup was left as it was");
+            }
+
+            var doc = live.Dto;
+            var existing = doc.Blocks ?? new List<BlockDto>();
+            var existingTitle = existing.FirstOrDefault(b =>
+                string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+            var batch = new List<BatchUpdateBlockDto>();
+            var sort = 0;
+            if (replace)
+            {
+                // Title first, as apply_lml does: from the file if it names one,
+                // otherwise the one the document already has.
+                if (titleBlock is { } tb)
+                    batch.Add(new BatchUpdateBlockDto(existingTitle?.Id ?? Guid.NewGuid(), BlockTypes.Title,
+                        JsonSerializer.SerializeToElement(tb.content), sort++, null, 0));
+                else if (existingTitle is not null)
+                    batch.Add(new BatchUpdateBlockDto(existingTitle.Id, null, null, sort++, null, 0));
+            }
+            else
+            {
+                foreach (var b in existing.OrderBy(b => b.SortOrder))
+                    batch.Add(new BatchUpdateBlockDto(b.Id, null, null, sort++, null, null));
+            }
+            foreach (var (type, content) in mapped)
+                batch.Add(new BatchUpdateBlockDto(Guid.NewGuid(), type,
+                    JsonSerializer.SerializeToElement(content), sort++, null, 0));
+
+            var result = await _blockService.BatchUpdateBlocksAsync(docId, batch);
+            if (doc.Blocks is not null)
+            {
+                doc.Blocks.Clear();
+                doc.Blocks.AddRange(result.Blocks);
+            }
+            foreach (var b in result.Blocks) changed.Add(b.Id.ToString());
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
+                new { op = "replace", count = result.Blocks.Count, title = parsed.Title });
+
+            _logger.LogInformation(
+                "[AskLilia] import_latex doc={DocId} replace={Replace} blocks={Count} applied={Applied} notApplied={NotApplied}",
+                docId, replace, mapped.Count, applied.Count, notApplied.Count);
+
+            return new
+            {
+                ok = true,
+                mode = replace ? "replaced" : "appended",
+                importedBlocks = mapped.Count,
+                totalBlocks = result.Blocks.Count,
+                types = mapped.GroupBy(m => m.type).ToDictionary(g => g.Key, g => g.Count()),
+                title = string.IsNullOrWhiteSpace(parsed.Title) ? null : parsed.Title,
+                settingsApplied = applied,
+                notApplied,
+                importerWarnings = parsed.Warnings.Select(w => w.Message).Take(8).ToList(),
+                settings = SettingsView(live.Dto),
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AskLilia] import_latex failed for {DocId}", docId);
+            return new { error = "import_latex failed: " + ex.Message };
+        }
+    }
+
+    /// <summary>Strip an optional markdown fence (```latex … ```) around pasted LaTeX.</summary>
+    internal static string StripLatexFences(string source)
+    {
+        var s = source.Trim();
+        var m = Regex.Match(s, @"^```(?:latex|tex|LaTeX)?[ \t]*\r?\n([\s\S]*?)\r?\n?```\s*$");
+        return m.Success ? m.Groups[1].Value.Trim() : s;
+    }
 
     /// <summary>
     /// Page setup through the same service the Document Settings dialog saves

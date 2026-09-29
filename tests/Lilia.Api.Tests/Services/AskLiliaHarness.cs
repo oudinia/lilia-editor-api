@@ -26,6 +26,8 @@ internal sealed class AskLiliaHarness
     public Mock<IVersionService> Versions { get; } = new();
     public Mock<IRenderService> Render { get; } = new();
     public Mock<ILmlTextParser> Lml { get; } = new();
+    /// <summary>The real parser: the tool is only worth testing against what Import LaTeX really reads.</summary>
+    public ILatexParser LatexParser { get; } = new Lilia.Import.Services.LatexParser();
     public List<(string Group, string Method, object?[] Args)> Sent { get; } = new();
     public LiliaDbContext Db { get; } = new(
         new DbContextOptionsBuilder<LiliaDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -45,7 +47,7 @@ internal sealed class AskLiliaHarness
         Service = new AskLiliaService(
             Mock.Of<IChatClient>(), Mock.Of<IEntitlementService>(), Mock.Of<IAiCatalogService>(),
             Mock.Of<IAskLiliaRouter>(), Mock.Of<IKbService>(),
-            Documents.Object, Blocks.Object, Render.Object, Versions.Object, Lml.Object,
+            Documents.Object, Blocks.Object, Render.Object, Versions.Object, Lml.Object, LatexParser,
             hub.Object, Db, Options.Create(new AiOptions()),
             new ConfigurationBuilder().Build(), NullLogger<AskLiliaService>.Instance);
     }
