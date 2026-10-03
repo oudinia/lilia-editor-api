@@ -13,7 +13,7 @@ namespace Lilia.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/typst-coverage")]
-[Authorize]
+[Authorize(Policy = Lilia.Api.Security.AdminPolicy.Name)]
 public class TypstCoverageAdminController : ControllerBase
 {
     private readonly ITypstCoverageService _coverage;

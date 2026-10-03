@@ -200,6 +200,14 @@ builder.Services.AddControllers(options =>
         // No per-controller try/catch needed for logging.
         options.Filters.Add<ExceptionLoggingFilter>();
     })
+    // E2E and DevTools controllers do not exist in a Production API (404), unless
+    // Features:ExposeE2E is set for a staging API that CI e2e targets.
+    .ConfigureApplicationPartManager(manager =>
+    {
+        var provider = manager.FeatureProviders.OfType<Microsoft.AspNetCore.Mvc.Controllers.ControllerFeatureProvider>().FirstOrDefault();
+        if (provider is not null) manager.FeatureProviders.Remove(provider);
+        manager.FeatureProviders.Add(new Lilia.Api.Security.DevOnlyControllerFeatureProvider(builder.Environment, builder.Configuration));
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -359,7 +367,7 @@ else
         });
 }
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options => Lilia.Api.Security.AdminPolicy.Register(options, builder.Configuration));
 
 // Configure Database — an explicit target, not whichever config source happened
 // to win. See DatabaseTarget: user secrets used to capture ConnectionStrings:
