@@ -24,6 +24,10 @@ namespace Lilia.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/invites")]
+// Authenticated by the framework, not only by the handlers' own userId check: accept and
+// decline carried no attribute and answered 401 only because the body looked. Resolve is
+// the one public action (the invitee has not signed in yet).
+[Authorize]
 public class InvitesController : ControllerBase
 {
     private readonly LiliaDbContext _context;
