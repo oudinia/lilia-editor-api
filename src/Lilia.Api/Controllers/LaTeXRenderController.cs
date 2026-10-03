@@ -54,7 +54,7 @@ public class LaTeXRenderController : ControllerBase
     /// Get compilation queue metrics.
     /// </summary>
     [HttpGet("metrics")]
-    [AllowAnonymous]
+    [Authorize(Policy = Lilia.Api.Security.AdminPolicy.Name)]
     public IActionResult GetMetrics()
     {
         return Ok(new
