@@ -1,6 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
+    <!-- ASP0026: an [Authorize] on an action under an [AllowAnonymous] controller is ignored. It hid
+         three open endpoints; make the compiler refuse it. -->
+    <WarningsAsErrors>$(WarningsAsErrors);ASP0026</WarningsAsErrors>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

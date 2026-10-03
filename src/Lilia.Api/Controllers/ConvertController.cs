@@ -19,7 +19,10 @@ namespace Lilia.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[AllowAnonymous]
+// Not [AllowAnonymous] on the class: it wins over an action's [Authorize] (ASP0026),
+// which left block-to-latex, block/validate and latex-to-blocks open to anyone. The
+// free-tool actions below say [AllowAnonymous] themselves; the editor-internal ones
+// carry [Authorize].
 [EnableRateLimiting("strict")]
 public class ConvertController : ControllerBase
 {
@@ -58,6 +61,7 @@ public class ConvertController : ControllerBase
     /// Convert DOCX to LaTeX format.
     /// </summary>
     [HttpPost("docx-to-latex")]
+    [AllowAnonymous]
     [RequestSizeLimit(MaxFileSizeBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
@@ -74,6 +78,7 @@ public class ConvertController : ControllerBase
     /// Convert DOCX to HTML format.
     /// </summary>
     [HttpPost("docx-to-html")]
+    [AllowAnonymous]
     [RequestSizeLimit(MaxFileSizeBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
@@ -88,6 +93,7 @@ public class ConvertController : ControllerBase
     /// Convert DOCX to Markdown format.
     /// </summary>
     [HttpPost("docx-to-markdown")]
+    [AllowAnonymous]
     [RequestSizeLimit(MaxFileSizeBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
@@ -102,6 +108,7 @@ public class ConvertController : ControllerBase
     /// Convert DOCX to PDF format (returns HTML for browser printing).
     /// </summary>
     [HttpPost("docx-to-pdf")]
+    [AllowAnonymous]
     [RequestSizeLimit(MaxFileSizeBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
@@ -116,6 +123,7 @@ public class ConvertController : ControllerBase
     /// Convert LaTeX to DOCX format.
     /// </summary>
     [HttpPost("latex-to-docx")]
+    [AllowAnonymous]
     [RequestSizeLimit(MaxFileSizeBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
@@ -130,6 +138,7 @@ public class ConvertController : ControllerBase
     /// Convert Markdown to LaTeX format.
     /// </summary>
     [HttpPost("markdown-to-latex")]
+    [AllowAnonymous]
     [RequestSizeLimit(MaxFileSizeBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ConversionResponse), StatusCodes.Status200OK)]
@@ -146,6 +155,7 @@ public class ConvertController : ControllerBase
     /// Get conversion job status.
     /// </summary>
     [HttpGet("jobs/{jobId:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(JobStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetJobStatus(Guid jobId)
@@ -169,6 +179,7 @@ public class ConvertController : ControllerBase
     /// Download conversion result.
     /// </summary>
     [HttpGet("jobs/{jobId:guid}/download")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DownloadResult(Guid jobId)
@@ -192,6 +203,7 @@ public class ConvertController : ControllerBase
     /// Get remaining conversion quota for the current user/IP.
     /// </summary>
     [HttpGet("quota")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(QuotaResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetQuota()
     {
