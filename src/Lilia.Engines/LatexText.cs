@@ -18,6 +18,19 @@ namespace Lilia.Engines;
 /// </summary>
 public static class LatexText
 {
+    /// <summary>
+    /// Written at the start of a table's header row. A document theme (lilia-theme.sty) styles
+    /// the header from it; the table's LaTeX is the same under every theme.
+    /// </summary>
+    public const string HeadRow = @"\liliaHeadRow ";
+
+    /// <summary>
+    /// Written before a table that has a header row: an empty \liliaHeadRow unless a theme defined
+    /// one, so the table compiles anywhere it is copied. Empty rather than \relax, because a header
+    /// cell may start with \multicolumn, which must come first in its cell.
+    /// </summary>
+    public const string HeadRowFallback = @"\providecommand{\liliaHeadRow}{}";
+
     /// <summary>Escape every LaTeX-special character. The result is literal text.</summary>
     public static string Escape(string? text)
     {

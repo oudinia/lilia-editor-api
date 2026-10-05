@@ -744,6 +744,10 @@ builder.Services.AddScoped<IEpubReviewImporter, EpubReviewImporter>();
 
 var app = builder.Build();
 
+// Document themes: find out once, in the background, which themes' TeX packages are installed
+// (GET /api/themes reports it as `available`; an unavailable theme is never compiled).
+_ = Lilia.Engines.Themes.ThemeAvailability.WarmUpAsync();
+
 // Error handling — must be early in the pipeline
 var editorBaseUrl = builder.Configuration["Editor:BaseUrl"] ?? "http://localhost:3001";
 

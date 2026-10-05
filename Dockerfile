@@ -47,6 +47,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Document themes (lilia-theme.sty, Document settings -> Look). Cerulean and Index set their type in
+# Montserrat over Source Serif; Carnet and Gazette (planned) add EB Garamond and Josefin. Debian and
+# Ubuntu ship these only inside texlive-fonts-extra (over a gigabyte), so just these TeX Live
+# packages are fetched from the TeX Live repository and unpacked into TEXMFLOCAL: the four font
+# packages, mweights (which they load) and ly1 (montserrat loads the LY1 encoding). Their Type 1
+# maps are enabled for pdfTeX and LuaTeX. The kpsewhich at the end fails the build if anything is
+# missing; at runtime GET /api/themes reports a theme unavailable, and it is never compiled, when its
+# fonts are not found, so a theme never prints in a substitute face.
+# One fixed mirror: mirrors.ctan.org redirects to a random one, and one with a broken certificate
+# failed a build. Override with --build-arg CTAN_MIRROR=... if it is down.
+ARG CTAN_MIRROR=https://mirrors.mit.edu/CTAN
+RUN set -eux; \
+    texmf=/usr/local/share/texmf; \
+    mkdir -p "$texmf"; \
+    for pkg in montserrat sourceserif ebgaramond josefin mweights ly1; do \
+      curl -fsSL --retry 3 "$CTAN_MIRROR/systems/texlive/tlnet/archive/$pkg.tar.xz" | tar -xJf - -C "$texmf"; \
+    done; \
+    rm -rf "$texmf/tlpkg"; \
+    mktexlsr "$texmf"; \
+    for map in Montserrat.map SourceSerifFour.map EBGaramond.map josefin.map; do \
+      updmap-sys --nohash --enable "Map=$map"; \
+    done; \
+    updmap-sys; \
+    kpsewhich montserrat.sty sourceserifpro.sty ebgaramond.sty josefin.sty mweights.sty ly1enc.def fontaxes.sty
+
 # Install Typst
 RUN curl -sSL https://github.com/typst/typst/releases/latest/download/typst-x86_64-unknown-linux-musl.tar.xz \
     | tar xJf - -C /usr/local/bin --strip-components=1

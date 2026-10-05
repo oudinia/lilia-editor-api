@@ -6,6 +6,7 @@ using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Lilia.Engines;
+using Lilia.Engines.Themes;
 
 namespace Lilia.Api.Services;
 
@@ -545,6 +546,10 @@ public class DocumentService : IDocumentService
         if (!await HasAccessAsync(id, userId, Permissions.Write))
             return null;
 
+        // The look is checked before anything is applied, against the class the document will
+        // have after this update, so a refused look leaves the whole update unapplied.
+        var lookUpdate = ResolveLookUpdate(dto, dto.DocumentClass ?? dto.LatexDocumentClass ?? document.LatexDocumentClass);
+
         if (dto.Title != null)
         {
             document.Title = dto.Title;
@@ -627,11 +632,30 @@ public class DocumentService : IDocumentService
                     ? "landscape" : "portrait";
         }
 
+        if (lookUpdate.Apply) document.Look = lookUpdate.Stored;
+
         document.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
         return await GetDocumentAsync(id, userId);
+    }
+
+    /// <summary>
+    /// Validate <see cref="UpdateDocumentDto.Look"/>. Absent or null: no change. Classic clears the
+    /// column. Anything else must be a known, available theme on a class that does not lock the
+    /// look; otherwise <see cref="DocumentLookException"/> (400) says what is valid.
+    /// </summary>
+    internal static (bool Apply, string? Stored) ResolveLookUpdate(UpdateDocumentDto dto, string? documentClass)
+    {
+        if (dto.Look is not { } element || element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return (false, null);
+        var (look, errors) = DocumentLook.Validate(element);
+        if (errors.Count > 0 || look is null) throw new DocumentLookException(string.Join(" ", errors));
+        if (look.IsClassic) return (true, null);
+        if (ThemeLock.Reason(documentClass) is { } locked) throw new DocumentLookException(locked);
+        if (ThemeAvailability.WhyUnavailable(look.Theme) is { } why) throw new DocumentLookException(why);
+        return (true, look.ToStorage());
     }
 
     /// <summary>
@@ -1317,7 +1341,9 @@ public class DocumentService : IDocumentService
             HeaderRight: d.HeaderRight,
             FooterLeft: d.FooterLeft,
             FooterCenter: d.FooterCenter,
-            FooterRight: d.FooterRight
+            FooterRight: d.FooterRight,
+            Look: ReadLook(d.Look),
+            LookLocked: ThemeLock.Reason(d.LatexDocumentClass)
         );
     }
 
@@ -1365,4 +1391,22 @@ public class DocumentService : IDocumentService
             return null;
         }
     }
+
+    /// <summary>The stored look as JSON for the DTO; null (Classic) when unset or unreadable.</summary>
+    private static JsonElement? ReadLook(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(stored);
+            return doc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
+
+/// <summary>A look the server will not store; the message names the valid values. Mapped to 400.</summary>
+public sealed class DocumentLookException(string message) : Exception(message);

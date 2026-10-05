@@ -895,6 +895,7 @@ public class LaTeXRenderController : ControllerBase
             doc.LatexDocumentClassOptions ?? "",
             doc.LatexPackages ?? "",
             doc.CustomPreamble ?? "",
+            doc.Look ?? "",
             doc.LatexEngine ?? "",
             counterPriming,
             ValidationCacheService.RuleVersion,

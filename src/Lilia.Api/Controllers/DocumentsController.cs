@@ -174,7 +174,15 @@ public class DocumentsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        var document = await _documentService.UpdateDocumentAsync(id, userId, dto);
+        DocumentDto? document;
+        try
+        {
+            document = await _documentService.UpdateDocumentAsync(id, userId, dto);
+        }
+        catch (DocumentLookException ex)
+        {
+            return BadRequest(new { message = ex.Message, error = "invalid_look" });
+        }
         if (document == null) return NotFound();
         return Ok(document);
     }

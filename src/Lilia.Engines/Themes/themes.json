@@ -1,0 +1,78 @@
+{
+  "comment": "Document themes: one descriptor per theme, read by GET /api/themes, by the preamble builder and by the lilia-theme.sty tests. Colours and faces from Olivia's design (design-handoffs/2026-10-05-document-themes). texFiles are what kpsewhich must find for the theme to be available on this server.",
+  "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
+  "themes": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "for": "Submissions, and anything with a publisher class",
+      "status": "ready",
+      "fonts": { "heading": "Latin Modern", "body": "Latin Modern", "headingCss": "var(--lilia-font-serif)", "bodyCss": "var(--lilia-font-serif)" },
+      "colours": { "paper": "#FFFFFF", "ink": "#1A1A1A", "accent": "#1A1A1A", "heading": "#1A1A1A", "kicker": "#1A1A1A" },
+      "printSafe": { "paper": "#FFFFFF", "ink": "#1A1A1A" },
+      "sequence": null,
+      "tablesDefault": "ruled",
+      "texFiles": []
+    },
+    {
+      "id": "cerulean",
+      "name": "Cerulean",
+      "for": "Reports, theses, lab handbooks",
+      "status": "ready",
+      "fonts": { "heading": "Montserrat", "body": "Source Serif", "headingCss": "'Montserrat', sans-serif", "bodyCss": "'Source Serif 4', serif" },
+      "colours": { "paper": "#FFFFFF", "ink": "#22262B", "accent": "#0A76A4", "heading": "#08597F", "kicker": "#0A76A4" },
+      "printSafe": { "paper": "#FFFFFF", "ink": "#22262B" },
+      "sequence": null,
+      "tablesDefault": "ruled",
+      "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
+    },
+    {
+      "id": "index",
+      "name": "Index",
+      "for": "Course notes, lecture series, handbooks",
+      "status": "ready",
+      "fonts": { "heading": "Montserrat", "body": "Source Serif", "headingCss": "'Montserrat', sans-serif", "bodyCss": "'Source Serif 4', serif" },
+      "colours": { "paper": "#FFFFFF", "ink": "#2F2E2C", "accent": "#4A5FA3", "heading": "#4A5FA3", "kicker": "#5B6E9E" },
+      "printSafe": { "paper": "#FFFFFF", "ink": "#2F2E2C" },
+      "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
+      "tablesDefault": "ruled",
+      "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
+    },
+    {
+      "id": "carnet",
+      "name": "Carnet",
+      "for": "Essays, humanities, long reading on screen",
+      "status": "planned",
+      "fonts": { "heading": "EB Garamond", "body": "EB Garamond", "headingCss": "'EB Garamond', serif", "bodyCss": "'EB Garamond', serif" },
+      "colours": { "paper": "#F4EFE4", "ink": "#2B2724", "accent": "#9A3F1C", "heading": "#9A3F1C", "kicker": "#9A3F1C" },
+      "printSafe": { "paper": "#FFFFFF", "ink": "#2B2724" },
+      "sequence": null,
+      "tablesDefault": "ruled",
+      "texFiles": ["ebgaramond.sty"]
+    },
+    {
+      "id": "gazette",
+      "name": "Gazette",
+      "for": "Newsletters, posters, outreach, never a paper",
+      "status": "planned",
+      "fonts": { "heading": "Josefin Sans", "body": "Montserrat", "headingCss": "'Josefin Sans', sans-serif", "bodyCss": "'Montserrat', sans-serif" },
+      "colours": { "paper": "#F3D54E", "ink": "#2A2926", "accent": "#B8303A", "heading": "#2A2926", "kicker": "#2A2926" },
+      "printSafe": { "paper": "#FFFFFF", "ink": "#2A2926" },
+      "sequence": null,
+      "tablesDefault": "header",
+      "texFiles": ["josefin.sty", "montserrat.sty", "pdfrender.sty"]
+    },
+    {
+      "id": "exposition",
+      "name": "Exposition",
+      "for": "Beamer slides, posters on screen",
+      "status": "planned",
+      "fonts": { "heading": "Josefin Sans", "body": "Montserrat", "headingCss": "'Josefin Sans', sans-serif", "bodyCss": "'Montserrat', sans-serif" },
+      "colours": { "paper": "#4A1B22", "ink": "#F3E9DC", "accent": "#EBC155", "heading": "#EBC155", "kicker": "#F3E9DC" },
+      "printSafe": { "paper": "#F3E9DC", "ink": "#4A1B22" },
+      "sequence": null,
+      "tablesDefault": "header",
+      "texFiles": ["josefin.sty", "montserrat.sty"]
+    }
+  ]
+}

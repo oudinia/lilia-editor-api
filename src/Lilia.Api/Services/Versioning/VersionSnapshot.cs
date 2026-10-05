@@ -126,6 +126,7 @@ public static class VersionSnapshot
             latexDocumentClass = document.LatexDocumentClass,
             latexDocumentClassOptions = document.LatexDocumentClassOptions,
             customPreamble = document.CustomPreamble,
+            look = document.Look,
             latexPackages = document.LatexPackages,
             latexEngine = document.LatexEngine,
             columnGap = document.ColumnGap,
@@ -256,6 +257,7 @@ public static class VersionSnapshot
         if (Has(snapshot, "latexDocumentClass")) document.LatexDocumentClass = ReadString(snapshot, "latexDocumentClass");
         if (Has(snapshot, "latexDocumentClassOptions")) document.LatexDocumentClassOptions = ReadString(snapshot, "latexDocumentClassOptions");
         if (Has(snapshot, "customPreamble")) document.CustomPreamble = ReadString(snapshot, "customPreamble");
+        if (Has(snapshot, "look")) document.Look = ReadString(snapshot, "look");
         if (Has(snapshot, "latexPackages")) document.LatexPackages = ReadString(snapshot, "latexPackages");
 
         document.LatexEngine = ReadString(snapshot, "latexEngine") ?? document.LatexEngine;

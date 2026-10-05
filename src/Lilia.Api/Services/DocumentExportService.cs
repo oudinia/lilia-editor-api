@@ -8,6 +8,7 @@ using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Engines;
+using Lilia.Engines.Themes;
 
 namespace Lilia.Api.Services;
 
@@ -17,6 +18,13 @@ public interface IDocumentExportService
     Task<byte[]> ExportToDocxAsync(Guid documentId);
     Task<byte[]> ExportToPdfAsync(Guid documentId);
     Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId, string? engineHint = null);
+
+    /// <summary>
+    /// The PDF with this export's look: <paramref name="lookTheme"/> (a theme id) and
+    /// <paramref name="printSafe"/> override the document's stored look for this export only.
+    /// </summary>
+    Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(
+        Guid documentId, string? engineHint, string? lookTheme, bool printSafe);
 }
 
 public class DocumentExportService : IDocumentExportService
@@ -110,7 +118,11 @@ public class DocumentExportService : IDocumentExportService
         return pdf;
     }
 
-    public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId, string? engineHint = null)
+    public Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId, string? engineHint = null) =>
+        ExportToPdfWithEngineAsync(documentId, engineHint, lookTheme: null, printSafe: false);
+
+    public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(
+        Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
     {
         // engineHint = "typst"     → Typst only, throw if it fails
         // engineHint = "pdflatex"  → skip Typst, go straight to pdflatex
@@ -137,11 +149,21 @@ public class DocumentExportService : IDocumentExportService
         var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex"
                          || documentEngine is "xelatex" or "lualatex";
 
+        // This export's look (Export PDF: Look ▾ / Print-safe). Null: the document's own.
+        DocumentLook? lookOverride = null;
+        if (!string.IsNullOrWhiteSpace(lookTheme) || printSafe)
+        {
+            var stored = await _context.Documents.AsNoTracking()
+                .Where(d => d.Id == documentId).Select(d => d.Look).FirstOrDefaultAsync();
+            lookOverride = DocumentLook.Parse(stored).With(lookTheme, printSafe);
+        }
+
         // And a document whose page setup Typst would ignore (PageSetupRouting), unless the caller asked
-        // for Typst by name.
+        // for Typst by name. A themed look is one of those: the theme is a LaTeX package.
         if (!wantsLatex && hint != "typst")
         {
             var setupDoc = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId);
+            if (setupDoc is not null && lookOverride is not null) setupDoc.Look = lookOverride.ToStorage();
             if (setupDoc is not null && PageSetupRouting.WhyLatex(setupDoc) is not null) wantsLatex = true;
         }
 
@@ -178,6 +200,9 @@ public class DocumentExportService : IDocumentExportService
             IncludeImages = true,
             DocumentClass = "article",
             // No FontSize / PaperSize: the document's own (they overrode it, so every LaTeX PDF was 11pt A4).
+            // Compiled here: a theme this server cannot print fails the export with a message.
+            CompileHere = true,
+            LookOverride = lookOverride,
         };
         var projectStream = await _latexExportService.ExportToZipAsync(documentId, opts);
         using var archive = new System.IO.Compression.ZipArchive(projectStream, System.IO.Compression.ZipArchiveMode.Read);
@@ -308,7 +333,7 @@ public class DocumentExportService : IDocumentExportService
         {
             if (string.IsNullOrEmpty(entry.Name)) continue;
             if (!entry.FullName.EndsWith(".tex") && !entry.FullName.EndsWith(".bib")
-                && !entry.FullName.EndsWith(".bst")) continue;
+                && !entry.FullName.EndsWith(".bst") && !entry.FullName.EndsWith(".sty")) continue;
             using var entryReader = new System.IO.StreamReader(entry.Open());
             files.Add((entry.FullName, await entryReader.ReadToEndAsync()));
         }
