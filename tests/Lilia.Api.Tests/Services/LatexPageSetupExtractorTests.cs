@@ -158,4 +158,31 @@ Hello $\R$.
             .Should().Be("Notes & more");
         dropped.Should().Contain(@"\thepage");
     }
+
+    // ── review of 5 Oct: the notes said a header removed the page number ──
+
+    private const string Head = "\\documentclass{article}\n\\usepackage{fancyhdr}\n\\pagestyle{fancy}\n";
+    private const string Body = "\\begin{document}\nText.\n\\end{document}\n";
+
+    [Fact]
+    public void A_header_alone_does_not_claim_the_page_number_is_lost()
+    {
+        var r = Run(Head + "\\fancyhead[L]{Lecture 8}\n" + Body);
+        r.NotApplied.Should().NotContain(n => n.Contains("does not print"));
+    }
+
+    [Fact]
+    public void A_footer_page_number_with_no_footer_slot_is_said_to_be_printed()
+    {
+        var r = Run(Head + "\\fancyhead[L]{Lecture 8}\n\\fancyfoot[C]{\\thepage}\n" + Body);
+        r.NotApplied.Should().Contain(n => n.Contains("still printed"));
+        r.NotApplied.Should().NotContain(n => n.Contains("not reproduced"));
+    }
+
+    [Fact]
+    public void A_footer_slot_is_said_to_replace_the_page_number()
+    {
+        var r = Run(Head + "\\fancyfoot[L]{Draft}\n" + Body);
+        r.NotApplied.Should().Contain(n => n.Contains("does not print the automatic page number"));
+    }
 }

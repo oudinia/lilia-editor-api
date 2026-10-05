@@ -189,11 +189,17 @@ public static class LatexPageSetupExtractor
                 case "footerRight": Set(name, i => i with { FooterRight = v }, $"\"{v}\""); break;
             }
         }
+        // What Lilia prints (LaTeXPreambleBuilder): with no footer slot set it keeps the page number
+        // centred at the foot; a footer slot replaces it. These notes said a header alone removed it,
+        // which the \cfoot{\thepage} rule made false (5 Oct review).
+        var footerSlotSet = slots.Keys.Any(k => k.StartsWith("footer", StringComparison.Ordinal));
         if (dynamic.Count > 0)
             notes.Add("header/footer commands dropped, Lilia's slots are plain text: " + string.Join("; ", dynamic)
-                + ". A page number in a footer is not reproduced.");
-        if (slots.Count > 0 && !dynamic.Any(d => d.Contains("thepage")))
-            notes.Add("with header/footer slots set, Lilia does not print an automatic page number");
+                + (footerSlotSet
+                    ? ". A page number in a footer is not reproduced, because a footer slot is set."
+                    : ". A page number in the footer is still printed: Lilia puts it centred at the foot."));
+        else if (footerSlotSet)
+            notes.Add("with a footer slot set, Lilia does not print the automatic page number");
 
         // ── columns ────────────────────────────────────────────────────────
         var gap = Regex.Match(pre, @"\\setlength\s*\{?\\columnsep\}?\s*\{\s*([0-9.]+)\s*(cm|mm|pt|in|em)\s*\}");
