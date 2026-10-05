@@ -63,7 +63,7 @@ public class DocumentThemeTests : IDisposable
     [Fact]
     public void The_index_sequence_is_the_designed_one_and_only_index_carries_it()
     {
-        var designed = new[] { "#4A5FA3", "#A86F00", "#B8303A", "#3A3836", "#C14E12", "#66701A", "#6E2430", "#2E6E9E" };
+        var designed = new[] { "#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E" };
         ThemeCatalog.Sequence.Should().Equal(designed);
         ThemeCatalog.Find("index")!.Sequence.Should().Equal(designed);
         ThemeCatalog.All.Where(t => t.Id != "index").Should().OnlyContain(t => t.Sequence == null);
@@ -90,15 +90,23 @@ public class DocumentThemeTests : IDisposable
     }
 
     [Fact]
-    public void Every_index_colour_but_the_gold_is_at_least_4_5_to_1_on_white()
+    public void Every_index_colour_is_at_least_4_5_to_1_on_white_and_on_its_own_8_percent_tint()
     {
-        // The design says all eight are >= 4.5:1. Measured (WCAG 2 relative luminance), the gold
-        // #A86F00 is 4.25:1: enough for large headings (3:1) but not for the contents rows set in
-        // body size. The sequence is fixed by the contract, so this records the gap for the
-        // designer (#A06900 would measure 4.65:1) rather than changing a colour here.
-        foreach (var hex in ThemeCatalog.Sequence.Where(h => h != "#A86F00"))
-            Contrast(hex, "#FFFFFF").Should().BeGreaterThanOrEqualTo(4.5, hex);
-        Contrast("#A86F00", "#FFFFFF").Should().BeApproximately(4.25, 0.01);
+        // Olivia's rule (5 Oct): every sequence colour also sits on its own 8% tint (Banded table
+        // stripes, tinted boxes), so it must pass there too. The gold and the orange were
+        // corrected to #996300 and #B84A10 for it.
+        foreach (var hex in ThemeCatalog.Sequence)
+        {
+            Contrast(hex, "#FFFFFF").Should().BeGreaterThanOrEqualTo(4.5, $"{hex} on white");
+            Contrast(hex, Tint(hex, 0.08)).Should().BeGreaterThanOrEqualTo(4.5, $"{hex} on its tint");
+        }
+    }
+
+    private static string Tint(string hex, double amount)
+    {
+        var h = hex.TrimStart('#');
+        int Mix(int i) => (int)Math.Round(Convert.ToInt32(h.Substring(i, 2), 16) * amount + 255 * (1 - amount));
+        return $"#{Mix(0):X2}{Mix(2):X2}{Mix(4):X2}";
     }
 
     [Fact]

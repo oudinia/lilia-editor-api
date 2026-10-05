@@ -167,7 +167,7 @@ public class DocumentThemeCompileTests
 
         var colours = FillColours(pdf);
         colours.Should().Contain(c => Near(c, "#4A5FA3"), "heading 1 takes the first colour");
-        colours.Should().Contain(c => Near(c, "#A86F00"), "heading 2 takes the second");
+        colours.Should().Contain(c => Near(c, "#996300"), "heading 2 takes the second");
         colours.Should().Contain(c => Near(c, "#2E6E9E"), "heading 3 is pinned to the eighth");
         colours.Should().NotContain(c => Near(c, "#B8303A"), "the pin replaces the third colour, which nothing else uses");
     }

@@ -1,6 +1,6 @@
 {
   "comment": "Document themes: one descriptor per theme, read by GET /api/themes, by the preamble builder and by the lilia-theme.sty tests. Colours and faces from Olivia's design (design-handoffs/2026-10-05-document-themes). texFiles are what kpsewhich must find for the theme to be available on this server.",
-  "sequence": ["#4A5FA3", "#A86F00", "#B8303A", "#3A3836", "#C14E12", "#66701A", "#6E2430", "#2E6E9E"],
+  "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
   "themes": [
     {
       "id": "classic",
@@ -34,7 +34,7 @@
       "fonts": { "heading": "Montserrat", "body": "Source Serif", "headingCss": "'Montserrat', sans-serif", "bodyCss": "'Source Serif 4', serif" },
       "colours": { "paper": "#FFFFFF", "ink": "#2F2E2C", "accent": "#4A5FA3", "heading": "#4A5FA3", "kicker": "#5B6E9E" },
       "printSafe": { "paper": "#FFFFFF", "ink": "#2F2E2C" },
-      "sequence": ["#4A5FA3", "#A86F00", "#B8303A", "#3A3836", "#C14E12", "#66701A", "#6E2430", "#2E6E9E"],
+      "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
       "tablesDefault": "ruled",
       "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
