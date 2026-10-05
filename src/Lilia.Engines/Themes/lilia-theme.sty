@@ -9,22 +9,32 @@
 %% never through font file paths.
 %%
 %% Options
-%%   theme     = classic | cerulean | index | carnet | gazette   (exposition: planned)
-%%   paper     = theme | white                (Carnet's cream and Gazette's yellow are
+%%   theme        = classic | cerulean | index | carnet | gazette   (exposition: planned)
+%%   paper        = theme | white             (Carnet's cream and Gazette's yellow are
 %%                                              screen colours: white prints them on white)
-%%   printsafe = true | false                 (white paper, dark grounds to their light pair)
-%%   foottab   = true | false                 (the page number in a rounded foot tab)
-%%   top       = auto | section | chapter     (the level that takes Index colours;
+%%   printsafe    = true | false              (white paper, dark grounds to their light pair)
+%%   foottab      = true | false              (the page number in a rounded foot tab)
+%%   top          = auto | section | chapter  (the level that takes Index colours;
 %%                                              auto: \chapter when the class has it)
+%%   tables       = ruled | banded | header   (the paper's table style; default: the
+%%                                              theme's, header for Gazette, else ruled)
+%%   tabledensity = normal | compact          (compact: \small, tighter columns and rows)
+%%   captions     = above | below             (where table captions go; above by default)
 %%
 %% Commands
 %%   \liliaHeadRow          at the start of a table's header row (Lilia's exporter
 %%                          writes it). Without this package it is defined empty
 %%                          by the table itself, so a copied table still compiles.
-%%   \liliaTableHead{text}  a header cell in the theme's header face.
+%%   \liliaTableHead{text}  a header cell (the exporter wraps each one, keeping its
+%%                          \textbf); a pass-through without this package.
+%%   \liliaFewRows          before a table with fewer than 4 body rows, which is
+%%                          never banded; empty without this package.
 %%   \liliaPinColour{n}{k}  Index: top-level heading n takes sequence colour k (0-7).
 %%                          Unpinned headings fill the sequence in order, skipping
 %%                          the colours taken by pins.
+%%
+%% Classic with today's tables (ruled, normal, captions above) loads nothing.
+%% Classic with another table setting loads only the table part.
 %%
 %% The author's preamble wins: Lilia writes this line before the custom
 %% preamble, so anything set there overrides the theme.
@@ -38,12 +48,16 @@
 \DeclareStringOption[auto]{top}
 \DeclareBoolOption{printsafe}
 \DeclareBoolOption[true]{foottab}
+\DeclareStringOption[]{tables}
+\DeclareStringOption[normal]{tabledensity}
+\DeclareStringOption[above]{captions}
 \ProcessKeyvalOptions*
 
-% Both macros exist whatever the theme, so Lilia's table LaTeX and pin lines
+% These macros exist whatever the theme, so Lilia's table LaTeX and pin lines
 % always compile. Classic leaves them doing nothing.
 \providecommand\liliaHeadRow{}
 \providecommand\liliaTableHead[1]{#1}
+\providecommand\liliaFewRows{}
 \providecommand\liliaPinColour[2]{}
 
 \def\lilia@theme@classic{classic}
@@ -54,13 +68,9 @@
 \def\lilia@theme@exposition{exposition}
 \edef\lilia@theme{\lilia@opt@theme}
 
-% Classic is today's look: it loads nothing and changes nothing.
-\ifx\lilia@theme\lilia@theme@classic
-  \expandafter\endinput
-\fi
-
 \newif\iflilia@known
 \newif\iflilia@planned
+\ifx\lilia@theme\lilia@theme@classic \lilia@knowntrue \fi
 \ifx\lilia@theme\lilia@theme@cerulean \lilia@knowntrue \fi
 \ifx\lilia@theme\lilia@theme@index \lilia@knowntrue \fi
 \ifx\lilia@theme\lilia@theme@carnet \lilia@knowntrue \fi
@@ -79,6 +89,51 @@
 \fi
 
 % ---------------------------------------------------------------------------
+% The table settings (Look -> Tables). A bad value is an error; the table is
+% then ruled, as today.
+% ---------------------------------------------------------------------------
+\def\lilia@style@ruled{ruled}
+\def\lilia@style@banded{banded}
+\def\lilia@style@header{header}
+\edef\lilia@style{\lilia@opt@tables}
+\ifx\lilia@style\@empty
+  \ifx\lilia@theme\lilia@theme@gazette \let\lilia@style\lilia@style@header
+  \else\ifx\lilia@theme\lilia@theme@exposition \let\lilia@style\lilia@style@header
+  \else \let\lilia@style\lilia@style@ruled \fi\fi
+\fi
+\ifx\lilia@style\lilia@style@ruled\else\ifx\lilia@style\lilia@style@banded\else
+  \ifx\lilia@style\lilia@style@header\else
+    \PackageError{lilia-theme}{Unknown table style `\lilia@style'}%
+      {The table styles are ruled, banded and header. Tables stay ruled.}%
+    \let\lilia@style\lilia@style@ruled
+\fi\fi\fi
+
+\newif\iflilia@compact
+\def\lilia@density@compact{compact}
+\def\lilia@density@normal{normal}
+\edef\lilia@density{\lilia@opt@tabledensity}
+\ifx\lilia@density\lilia@density@compact \lilia@compacttrue
+\else\ifx\lilia@density\lilia@density@normal\else
+  \PackageError{lilia-theme}{Unknown table density `\lilia@density'}%
+    {The densities are normal and compact.}%
+\fi\fi
+
+\newif\iflilia@below
+\def\lilia@captions@below{below}
+\def\lilia@captions@above{above}
+\edef\lilia@captions{\lilia@opt@captions}
+\ifx\lilia@captions\lilia@captions@below \lilia@belowtrue
+\else\ifx\lilia@captions\lilia@captions@above\else
+  \PackageError{lilia-theme}{Unknown caption position `\lilia@captions'}%
+    {Table captions go above or below.}%
+\fi\fi
+
+% Classic with today's tables is today's look: it loads nothing.
+\newif\iflilia@plaintables
+\ifx\lilia@style\lilia@style@ruled \iflilia@compact\else\iflilia@below\else \lilia@plaintablestrue \fi\fi\fi
+\ifx\lilia@theme\lilia@theme@classic \iflilia@plaintables \endinput \fi\fi
+
+% ---------------------------------------------------------------------------
 % Paper. Carnet's cream and Gazette's yellow are the theme's paper; paper=white
 % and printsafe print every theme on white.
 % ---------------------------------------------------------------------------
@@ -87,6 +142,123 @@
 \edef\lilia@paper{\lilia@opt@paper}
 \iflilia@opt@printsafe \let\lilia@paper\lilia@paper@white \fi
 \ifx\lilia@paper\lilia@paper@white \lilia@whitepapertrue \fi
+% Classic has no paper of its own.
+\ifx\lilia@theme\lilia@theme@classic \lilia@whitepapertrue \fi
+
+\PassOptionsToPackage{table}{xcolor}
+\RequirePackage{xcolor}
+\RequirePackage{colortbl}
+\definecolor{lilia@paperc}{HTML}{FFFFFF}
+
+% ---------------------------------------------------------------------------
+% Tables. The exporter writes the same booktabs table under every paper; this
+% part alone decides how it looks.
+%   ruled  booktabs as written; a theme colours the top rule and the label.
+%   banded light stripes (\rowcolors) from the 2nd body row, restarting after
+%          every \midrule, never on a table marked \liliaFewRows.
+%   header the header row filled (\liliaHeadRow -> \rowcolor), no top rule.
+% Banded and header zero booktabs' rule separations, so no white seam shows
+% between a fill and a rule, and give the room back through \extrarowheight.
+% ---------------------------------------------------------------------------
+% \lilia@tablecolours{hue}{band %}{header fill}{header ink}: a hex, or `chapter'
+% for Index's current chapter colour. The stripe is band % of the hue over the
+% paper; the header ink is white where the fill takes it at 4.5:1, else charcoal.
+\def\lilia@chapterword{chapter}
+\def\lilia@tablecolours#1#2#3#4{%
+  \def\lilia@tmp{#1}%
+  \ifx\lilia@tmp\lilia@chapterword \def\lilia@huename{lilia@chapter}%
+  \else \definecolor{lilia@tablehue}{HTML}{#1}\def\lilia@huename{lilia@tablehue}\fi
+  \edef\lilia@bandspec{\lilia@huename!#2!lilia@paperc}%
+  \def\lilia@tmp{#3}%
+  \ifx\lilia@tmp\lilia@chapterword \def\lilia@headfill{lilia@chapter}%
+  \else \definecolor{lilia@tablefill}{HTML}{#3}\def\lilia@headfill{lilia@tablefill}\fi
+  \definecolor{lilia@headink}{HTML}{#4}}
+% Classic's; a theme sets its own below.
+\lilia@tablecolours{1A1A1A}{8}{3A3836}{FFFFFF}
+
+% The header cell's face: Classic keeps the cell's own \textbf; a theme uses
+% its structure face.
+\let\lilia@tablehead\@empty
+\ifx\lilia@style\lilia@style@header
+  \renewcommand\liliaTableHead[1]{{\lilia@tablehead\color{lilia@headink}#1}}
+  \renewcommand\liliaHeadRow{\rowcolor{\lilia@headfill}}
+\else
+  \renewcommand\liliaTableHead[1]{{\lilia@tablehead #1}}
+\fi
+
+\newif\iflilia@intable
+\newif\iflilia@fewrows
+\renewcommand\liliaFewRows{\global\lilia@fewrowstrue}
+\def\lilia@tablesetup{%
+  \iflilia@compact
+    \small
+    \setlength\tabcolsep{4pt}%
+    \edef\arraystretch{\strip@pt\dimexpr\arraystretch pt*85/100\relax}%
+  \fi
+  \ifx\lilia@style\lilia@style@ruled\else
+    \ifdefined\aboverulesep \setlength\aboverulesep{0pt}\setlength\belowrulesep{0pt}\fi
+    \setlength\extrarowheight{2pt}%
+  \fi
+  \ifx\lilia@style\lilia@style@banded
+    \iflilia@fewrows\else \ifdefined\rowcolors \rowcolors{2}{}{\lilia@bandspec}\fi\fi
+  \fi
+  \global\lilia@fewrowsfalse}
+% Only the tables in a table float (and longtables): a tabular in a title
+% block or a box is left alone.
+\AddToHook{env/table/begin}{\lilia@intabletrue}
+\AddToHook{env/table*/begin}{\lilia@intabletrue}
+\AddToHook{env/tabular/begin}{\iflilia@intable\lilia@tablesetup\fi}
+\AddToHook{env/longtable/begin}{\lilia@tablesetup}
+
+\AtBeginDocument{%
+  \ifdefined\@BTrule
+    % Banded: every \midrule starts a new group of stripes, so the row after
+    % it is plain and the one after that striped. The colour for that row was
+    % chosen at the \\ before the rule, so it is cleared here.
+    \ifx\lilia@style\lilia@style@banded \ifdefined\rowcolors
+      \let\lilia@midrule\midrule
+      \def\midrule{\noalign{\lilia@bandrestart}\lilia@midrule}%
+    \fi\fi
+    % Header: the filled row is the top; no rule above it.
+    \ifx\lilia@style\lilia@style@header
+      \def\toprule{\noalign{\ifnum0=`}\fi\@ifnextchar[\lilia@notoprule{\lilia@notoprule[]}}%
+    \fi
+  \fi
+  \@ifpackageloaded{caption}{%
+    \iflilia@below \captionsetup[table]{position=bottom}\else \captionsetup[table]{position=top}\fi}{}}
+\def\lilia@notoprule[#1]{\ifnum0=`{\fi}}
+\def\lilia@bandrestart{\if@rowcolors\global\rownum\@ne\@norowcolor\fi}
+
+% Captions below: the exporter writes \caption before the tabular, so in a
+% table float it is typeset where it stands (its number and \label stay right)
+% into a box, and the box is put out at \end{table}. A longtable's caption is
+% its first row and stays there.
+\newbox\lilia@capbox
+\newif\iflilia@heldcap
+\iflilia@below
+  \def\lilia@holdcaption{\@ifnextchar[\lilia@holdcaption@o\lilia@holdcaption@n}
+  \long\def\lilia@holdcaption@o[#1]#2{\lilia@boxcaption{\lilia@caption[#1]{#2}}}
+  \long\def\lilia@holdcaption@n#1{\lilia@boxcaption{\lilia@caption{#1}}}
+  \long\def\lilia@boxcaption#1{%
+    \global\setbox\lilia@capbox\vbox{#1%
+      \global\let\lilia@caplabel\@currentlabel
+      \ifdefined\@currentHref \global\let\lilia@caphref\@currentHref \fi
+      \ifdefined\@currentlabelname \global\let\lilia@capname\@currentlabelname \fi}%
+    \global\lilia@heldcaptrue
+    \let\@currentlabel\lilia@caplabel
+    \ifdefined\@currentHref \let\@currentHref\lilia@caphref \fi
+    \ifdefined\@currentlabelname \let\@currentlabelname\lilia@capname \fi
+    \ignorespaces}
+  \def\lilia@putcaption{\iflilia@heldcap \par\unvbox\lilia@capbox \global\lilia@heldcapfalse \fi}
+  \def\lilia@takecaption{\let\lilia@caption\caption \let\caption\lilia@holdcaption}
+  \AddToHook{env/table/begin}{\lilia@takecaption}
+  \AddToHook{env/table*/begin}{\lilia@takecaption}
+  \AddToHook{env/table/end}{\lilia@putcaption}
+  \AddToHook{env/table*/end}{\lilia@putcaption}
+\fi
+
+% Classic stops here: it changes the tables and nothing else.
+\ifx\lilia@theme\lilia@theme@classic \endinput \fi
 
 % ---------------------------------------------------------------------------
 % Faces. A missing font package is an error that stops the run: a theme never
@@ -119,7 +291,6 @@
   \def\lilia@headfont{\normalfont\sffamily\bfseries}
 \fi\fi
 
-\RequirePackage{xcolor}
 \RequirePackage{ragged2e}
 \RequirePackage{titlesec}
 \RequirePackage{fancyhdr}
@@ -129,7 +300,6 @@
 % Colours. Body ink is at least 7:1 on the paper; every Index colour is at
 % least 4.5:1 on white.
 % ---------------------------------------------------------------------------
-\definecolor{lilia@paperc}{HTML}{FFFFFF}
 \definecolor{lilia@seq0}{HTML}{4A5FA3}
 \definecolor{lilia@seq1}{HTML}{996300}
 \definecolor{lilia@seq2}{HTML}{B8303A}
@@ -158,6 +328,7 @@
   \definecolor{lilia@footink}{HTML}{FFFFFF}
   \definecolor{lilia@link}{HTML}{08597F}
   \colorlet{lilia@chapter}{lilia@sec}
+  \lilia@tablecolours{0A76A4}{8}{0A76A4}{FFFFFF}
 \else\ifx\lilia@theme\lilia@theme@carnet
   % The Voyage pages: warm paper, a book face, terracotta for structure.
   \iflilia@whitepaper\else \definecolor{lilia@paperc}{HTML}{F4EFE4}\lilia@painttrue\fi
@@ -173,6 +344,9 @@
   \definecolor{lilia@footink}{HTML}{F4EFE4}
   \definecolor{lilia@link}{HTML}{9A3F1C}
   \colorlet{lilia@chapter}{lilia@sec}
+  % On cream a 4% stripe keeps the body at 12:1; on white the usual 8%.
+  \iflilia@whitepaper \lilia@tablecolours{9A3F1C}{8}{9A3F1C}{FFFFFF}%
+  \else \lilia@tablecolours{9A3F1C}{4}{9A3F1C}{FFFFFF}\fi
 \else\ifx\lilia@theme\lilia@theme@gazette
   % The booklet's full voice: yellow paper, charcoal ink, a solid headline.
   \let\lilia@case\MakeUppercase
@@ -190,6 +364,11 @@
   \definecolor{lilia@footink}{HTML}{F3D54E}
   \definecolor{lilia@link}{HTML}{2A2926}
   \colorlet{lilia@chapter}{lilia@sec}
+  % Yellow is a light hue on a light ground: the stripe is half white over the
+  % yellow paper (half yellow over white), the only tint that keeps the body at
+  % 12:1; the header fill is the tab's, with charcoal ink.
+  \iflilia@whitepaper \lilia@tablecolours{F3D54E}{50}{F3D54E}{2A2926}%
+  \else \lilia@tablecolours{FFFFFF}{50}{FFFFFF}{2A2926}\fi
 \else
   \lilia@indextrue
   \definecolor{lilia@ink}{HTML}{2F2E2C}      % 13.9:1
@@ -202,6 +381,9 @@
   % Before the first numbered top-level heading, and under unnumbered ones
   % (front matter, bibliography), everything stays in neutral ink.
   \colorlet{lilia@chapter}{lilia@ink}
+  % The stripe and the header fill follow the chapter; 6% keeps every one of
+  % the eight colours (and the neutral ink) at 12:1 under the body text.
+  \lilia@tablecolours{chapter}{6}{chapter}{FFFFFF}
 \fi\fi\fi
 \colorlet{lilia@neutral}{lilia@ink}
 
@@ -434,17 +616,11 @@
 \fi
 
 % ---------------------------------------------------------------------------
-% Tables (Ruled): the header row in the structure face, the top rule and the
-% caption label in the theme colour. The table's LaTeX never changes.
+% Tables under a theme: the header in the structure face, the top rule and the
+% caption label in the theme colour (Index: the chapter's). The table's LaTeX
+% never changes.
 % ---------------------------------------------------------------------------
-\renewcommand\liliaTableHead[1]{{\lilia@headfont #1}}
-\let\lilia@cellhook\@empty
-\def\lilia@headcell{\lilia@headfont}
-\renewcommand\liliaHeadRow{\noalign{\global\let\lilia@cellhook\lilia@headcell}}
-% The kernel's table hooks (LaTeX 2025 and later). Without them the header row
-% keeps the body face: nothing breaks.
-\AddToHook{tbl/cell/begin}{\lilia@cellhook}
-\AddToHook{tbl/row/end}{\global\let\lilia@cellhook\@empty}
+\let\lilia@tablehead\lilia@headfont
 
 \iflilia@index
   \def\lilia@rulecolour{lilia@chapter}
@@ -458,14 +634,14 @@
   \def\lilia@labelcolour{lilia@sec}
 \fi
 \AtBeginDocument{%
-  \ifdefined\@BTrule
+  \ifx\lilia@style\lilia@style@header\else \ifdefined\@BTrule
     \def\toprule{\noalign{\ifnum0=`}\fi
       \@aboverulesep=\abovetopsep
       \global\@belowrulesep=\belowrulesep
       \global\@thisruleclass=\@ne
       \def\CT@arc@{\color{\lilia@rulecolour}}%
       \@ifnextchar[{\@BTrule}{\@BTrule[\heavyrulewidth]}}%
-  \fi
+  \fi\fi
   \@ifpackageloaded{caption}{%
     \DeclareCaptionFont{lilialabel}{\lilia@headfont\color{\lilia@labelcolour}}%
     \captionsetup{labelfont=lilialabel}}{}%

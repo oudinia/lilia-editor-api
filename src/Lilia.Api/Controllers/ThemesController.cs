@@ -27,7 +27,7 @@ public class ThemesController : ControllerBase
 
     internal static ThemeDto ToDto(ThemeDescriptor t) => new(
         t.Id, t.Name, t.For, ThemeAvailability.IsAvailable(t.Id), t.Status,
-        t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault);
+        t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault, t.Table);
 }
 
 public sealed record ThemeDto(
@@ -41,4 +41,8 @@ public sealed record ThemeDto(
     ThemePrintSafe PrintSafe,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     IReadOnlyList<string>? Sequence,
-    string TablesDefault);
+    string TablesDefault,
+    // The table styles' colours (Look → Tables), on the theme's paper and on white, for the
+    // editor's Preview as; null for a planned theme.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    ThemeTable? Table = null);

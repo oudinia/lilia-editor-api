@@ -31,6 +31,28 @@ public static class LatexText
     /// </summary>
     public const string HeadRowFallback = @"\providecommand{\liliaHeadRow}{}";
 
+    /// <summary>
+    /// Written beside <see cref="HeadRowFallback"/>: a pass-through \liliaTableHead unless a theme
+    /// defined one, so a copied table compiles and prints exactly as before.
+    /// </summary>
+    public const string TableHeadFallback = @"\providecommand{\liliaTableHead}[1]{#1}";
+
+    /// <summary>
+    /// Written before a table with fewer than <see cref="BandMinBodyRows"/> body rows: a Banded
+    /// paper leaves it unstriped (stripes on two or three rows are noise). Empty without a theme.
+    /// The same for every paper, since it depends only on the table.
+    /// </summary>
+    public const string FewRows = @"\providecommand{\liliaFewRows}{}\liliaFewRows";
+
+    /// <summary>Banded tables need at least this many body rows.</summary>
+    public const int BandMinBodyRows = 4;
+
+    /// <summary>
+    /// A header cell's content in the theme's header wrapper, its \textbf kept: the theme sets
+    /// the face (and, for a header band, the ink) per cell, and without a theme it is the cell.
+    /// </summary>
+    public static string TableHead(string cell) => @"\liliaTableHead{" + cell + "}";
+
     /// <summary>Escape every LaTeX-special character. The result is literal text.</summary>
     public static string Escape(string? text)
     {

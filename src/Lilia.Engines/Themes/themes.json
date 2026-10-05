@@ -1,5 +1,5 @@
 {
-  "comment": "Document themes: one descriptor per theme, read by GET /api/themes, by the preamble builder and by the lilia-theme.sty tests. Colours and faces from Olivia's design (design-handoffs/2026-10-05-document-themes). texFiles are what kpsewhich must find for the theme to be available on this server.",
+  "comment": "Document themes: one descriptor per theme, read by GET /api/themes, by the preamble builder and by the lilia-theme.sty tests. Colours and faces from Olivia's design (design-handoffs/2026-10-05-document-themes). texFiles are what kpsewhich must find for the theme to be available on this server. table: the table styles' colours on the theme's paper (onPaper) and on white (onWhite, paper=white or print-safe): the stripe is band % of hue over the paper, the header band is head with headInk; chapter means Index's current chapter colour.",
   "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
   "themes": [
     {
@@ -12,6 +12,7 @@
       "printSafe": { "paper": "#FFFFFF", "ink": "#1A1A1A" },
       "sequence": null,
       "tablesDefault": "ruled",
+      "table": { "onPaper": {"hue": "#1A1A1A", "band": 8, "head": "#3A3836", "headInk": "#FFFFFF"}, "onWhite": {"hue": "#1A1A1A", "band": 8, "head": "#3A3836", "headInk": "#FFFFFF"} },
       "texFiles": []
     },
     {
@@ -24,6 +25,7 @@
       "printSafe": { "paper": "#FFFFFF", "ink": "#22262B" },
       "sequence": null,
       "tablesDefault": "ruled",
+      "table": { "onPaper": {"hue": "#0A76A4", "band": 8, "head": "#0A76A4", "headInk": "#FFFFFF"}, "onWhite": {"hue": "#0A76A4", "band": 8, "head": "#0A76A4", "headInk": "#FFFFFF"} },
       "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
     {
@@ -36,6 +38,7 @@
       "printSafe": { "paper": "#FFFFFF", "ink": "#2F2E2C" },
       "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
       "tablesDefault": "ruled",
+      "table": { "onPaper": {"hue": "chapter", "band": 6, "head": "chapter", "headInk": "#FFFFFF"}, "onWhite": {"hue": "chapter", "band": 6, "head": "chapter", "headInk": "#FFFFFF"} },
       "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
     {
@@ -48,6 +51,7 @@
       "printSafe": { "paper": "#FFFFFF", "ink": "#2B2724" },
       "sequence": null,
       "tablesDefault": "ruled",
+      "table": { "onPaper": {"hue": "#9A3F1C", "band": 4, "head": "#9A3F1C", "headInk": "#FFFFFF"}, "onWhite": {"hue": "#9A3F1C", "band": 8, "head": "#9A3F1C", "headInk": "#FFFFFF"} },
       "texFiles": ["ebgaramond.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
     {
@@ -60,6 +64,7 @@
       "printSafe": { "paper": "#FFFFFF", "ink": "#2A2926" },
       "sequence": null,
       "tablesDefault": "header",
+      "table": { "onPaper": {"hue": "#FFFFFF", "band": 50, "head": "#FFFFFF", "headInk": "#2A2926"}, "onWhite": {"hue": "#F3D54E", "band": 50, "head": "#F3D54E", "headInk": "#2A2926"} },
       "texFiles": ["josefin.sty", "montserrat.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
     {
@@ -72,6 +77,7 @@
       "printSafe": { "paper": "#F3E9DC", "ink": "#4A1B22" },
       "sequence": null,
       "tablesDefault": "header",
+      "table": null,
       "texFiles": ["josefin.sty", "montserrat.sty"]
     }
   ]

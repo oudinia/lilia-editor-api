@@ -1961,6 +1961,24 @@ public partial class RenderService : IRenderService
         return n;
     }
 
+    /// <summary>
+    /// The lines before a table's tabular that a document theme reads (lilia-theme.sty): the
+    /// fallbacks that keep \liliaHeadRow and \liliaTableHead harmless without a theme, and
+    /// \liliaFewRows on a table with fewer than four body rows, which a Banded paper leaves
+    /// unstriped. They depend only on the table, so its LaTeX is the same under every paper.
+    /// Without headers the first row is printed as the header (followed by \midrule).
+    /// </summary>
+    private static void AppendThemeMarkers(StringBuilder sb, bool hasHeaders, List<JsonElement> rowList)
+    {
+        if (hasHeaders)
+        {
+            sb.AppendLine(LatexText.HeadRowFallback);
+            sb.AppendLine(LatexText.TableHeadFallback);
+        }
+        var bodyRows = rowList.Count(r => r.ValueKind == JsonValueKind.Array) - (hasHeaders ? 0 : 1);
+        if (bodyRows < LatexText.BandMinBodyRows) sb.AppendLine(LatexText.FewRows);
+    }
+
     private string RenderTableToLatex(JsonElement content, bool useLongtable = false)
     {
         var sb = new StringBuilder();
@@ -2055,7 +2073,7 @@ public partial class RenderService : IRenderService
                 // \arraystretch goes OUTSIDE: inside longtable it would sit in
                 // the alignment body, where a declaration is not a row.
                 sb.AppendLine(@"{\renewcommand{\arraystretch}{1.3}");
-                if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
+                AppendThemeMarkers(sb, hasHeaders, rowList);
                 sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
 
                 // Caption and label must share ONE row, terminated by a single
@@ -2083,7 +2101,7 @@ public partial class RenderService : IRenderService
                 sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
                 if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
                 if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
-                if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
+                AppendThemeMarkers(sb, hasHeaders, rowList);
                 sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
                 sb.AppendLine(@"\toprule");
             }
@@ -2116,7 +2134,8 @@ public partial class RenderService : IRenderService
                         ? escaped
                         : $@"\textbf{{{escaped}}}";
 
-                    rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
+                    // \liliaTableHead inside any \multicolumn, which must come first in its cell.
+                    rendered = WrapLatexSpans(LatexText.TableHead(rendered), colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                     headerCells.Add(rendered);
                     colIdx += Math.Max(colspan, 1);
                 }

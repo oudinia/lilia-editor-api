@@ -642,9 +642,10 @@ public class DocumentService : IDocumentService
     }
 
     /// <summary>
-    /// Validate <see cref="UpdateDocumentDto.Look"/>. Absent or null: no change. Classic clears the
-    /// column. Anything else must be a known, available theme on a class that does not lock the
-    /// look; otherwise <see cref="DocumentLookException"/> (400) says what is valid.
+    /// Validate <see cref="UpdateDocumentDto.Look"/>. Absent or null: no change. Classic without
+    /// table settings clears the column. Anything else must be a known, available theme (or
+    /// Classic with table settings) on a class that does not lock the look; otherwise
+    /// <see cref="DocumentLookException"/> (400) says what is valid.
     /// </summary>
     internal static (bool Apply, string? Stored) ResolveLookUpdate(UpdateDocumentDto dto, string? documentClass)
     {
@@ -652,8 +653,14 @@ public class DocumentService : IDocumentService
             return (false, null);
         var (look, errors) = DocumentLook.Validate(element);
         if (errors.Count > 0 || look is null) throw new DocumentLookException(string.Join(" ", errors));
-        if (look.IsClassic) return (true, null);
-        if (ThemeLock.Reason(documentClass) is { } locked) throw new DocumentLookException(locked);
+        if (ThemeLock.Reason(documentClass) is { } locked)
+        {
+            // Under a publisher class tables stay ruled: a table setting is refused with the
+            // reason, like a theme, never stored to be silently ignored.
+            if (look.IsClassic && !look.HasTableOptions) return (true, look.ToStorage());
+            throw new DocumentLookException(look.IsClassic ? $"{locked} Its tables stay ruled." : locked);
+        }
+        if (look.IsClassic) return (true, look.ToStorage());
         if (ThemeAvailability.WhyUnavailable(look.Theme) is { } why) throw new DocumentLookException(why);
         return (true, look.ToStorage());
     }

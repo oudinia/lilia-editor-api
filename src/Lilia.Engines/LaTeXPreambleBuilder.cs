@@ -517,8 +517,11 @@ public static class LaTeXPreambleBuilder
 
     /// <summary>
     /// The document theme's managed preamble line (Document settings → Look), or an empty string
-    /// for Classic and for a class that sets its own look. Callers emit it just BEFORE the custom
-    /// preamble, so the author's own settings win.
+    /// for Classic with today's tables and for a class that sets its own look. Callers emit it just
+    /// BEFORE the custom preamble, so the author's own settings win. The table settings (Look →
+    /// Tables) add <c>tables=…</c>, <c>tabledensity=compact</c> and <c>captions=below</c> where they
+    /// differ from the theme's defaults; Classic with such a setting writes
+    /// <c>\usepackage[theme=classic, tables=banded]{lilia-theme}</c>.
     ///
     /// <code>
     /// % Document theme (Document settings → Look)
@@ -545,8 +548,17 @@ public static class LaTeXPreambleBuilder
         ThemeUse use = ThemeUse.Compile)
     {
         var look = lookOverride ?? DocumentLook.Parse(doc.Look);
-        if (look.IsClassic) return string.Empty;
+        if (!look.LoadsPackage) return string.Empty;
+        // Under a class that sets its own look nothing is written: tables stay ruled.
         if (ThemeLock.Reason(doc.LatexDocumentClass) is not null) return string.Empty;
+        if (look.IsClassic)
+        {
+            // Classic with a table setting: the package's table part only (Classic loads nothing else).
+            var classic = new StringBuilder();
+            classic.AppendLine("% Document theme (Document settings → Look): Classic, with its table settings.");
+            classic.AppendLine($"\\usepackage[{string.Join(", ", new[] { "theme=classic" }.Concat(look.TableOptions()))}]{{{ThemeCatalog.PackageName}}}");
+            return classic.ToString();
+        }
         if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme) is { } why)
         {
             if (use == ThemeUse.Validation) return string.Empty;
@@ -565,6 +577,8 @@ public static class LaTeXPreambleBuilder
             var chapterTop = rawChapters || blocks.Any(IsNumberedTopHeading);
             options.Add(chapterTop ? "top=chapter" : "top=section");
         }
+        // Look → Tables: only what differs from the theme's defaults.
+        options.AddRange(look.TableOptions());
 
         var sb = new StringBuilder();
         sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");

@@ -10,6 +10,17 @@ public sealed record ThemeColours(string Paper, string Ink, string Accent, strin
 
 public sealed record ThemePrintSafe(string Paper, string Ink);
 
+/// <summary>
+/// A table style's colours on one paper: the Banded stripe is <paramref name="Band"/> % of
+/// <paramref name="Hue"/> over the paper, the Header band is <paramref name="Head"/> with
+/// <paramref name="HeadInk"/> (white where the fill takes it at 4.5:1, else charcoal).
+/// <c>"chapter"</c> as a hue or a fill means Index's current chapter colour.
+/// </summary>
+public sealed record ThemeTableColours(string Hue, int Band, string Head, string HeadInk);
+
+/// <summary>The table colours on the theme's own paper and on white (paper=white, print-safe).</summary>
+public sealed record ThemeTable(ThemeTableColours OnPaper, ThemeTableColours OnWhite);
+
 /// <summary>One document theme, as <c>themes.json</c> describes it.</summary>
 public sealed record ThemeDescriptor(
     string Id,
@@ -21,7 +32,8 @@ public sealed record ThemeDescriptor(
     ThemePrintSafe PrintSafe,
     IReadOnlyList<string>? Sequence,
     string TablesDefault,
-    IReadOnlyList<string> TexFiles)
+    IReadOnlyList<string> TexFiles,
+    ThemeTable? Table = null)
 {
     /// <summary>Built in <c>lilia-theme.sty</c>. Planned themes are listed but never compile.</summary>
     public bool IsBuilt => string.Equals(Status, "ready", StringComparison.Ordinal);

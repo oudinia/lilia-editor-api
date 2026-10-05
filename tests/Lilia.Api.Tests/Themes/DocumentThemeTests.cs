@@ -160,7 +160,8 @@ public class DocumentThemeTests : IDisposable
     [InlineData("""{"theme":"index","pins":{"b1":-1}}""", "from 0 to 7")]
     [InlineData("""{"theme":"index","pins":{"b1":"red"}}""", "from 0 to 7")]
     [InlineData("""{"theme":"index","pins":[1,2]}""", "must be an object")]
-    [InlineData("""{"theme":"index","tables":"banded"}""", "Valid keys: theme, paper, pins")]
+    [InlineData("""{"theme":"index","width":"full"}""", "Valid keys: theme, paper, pins, tables")]
+    [InlineData("""{"theme":"index","tables":"banded"}""", "look.tables must be an object")]
     [InlineData("""["index"]""", "look must be an object")]
     public void An_invalid_look_is_refused_with_the_valid_values(string json, string named)
     {
@@ -401,8 +402,10 @@ public class DocumentThemeTests : IDisposable
         var table = B("table", """{"caption":"R","headers":["Model","Acc"],"rows":[["A","1"]]}""");
         var tex = Export(Doc(null), table);
 
-        tex.Should().Contain(@"\liliaHeadRow \textbf{Model} & \textbf{Acc} \\");
-        tex.Should().Contain(@"\providecommand{\liliaHeadRow}{}" + Environment.NewLine + @"\begin{tabular}");
+        tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & \liliaTableHead{\textbf{Acc}} \\");
+        tex.Should().Contain(string.Join(Environment.NewLine,
+            @"\providecommand{\liliaHeadRow}{}", @"\providecommand{\liliaTableHead}[1]{#1}",
+            @"\providecommand{\liliaFewRows}{}\liliaFewRows", @"\begin{tabular}"));
     }
 
     [Fact]

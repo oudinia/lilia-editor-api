@@ -196,6 +196,6 @@ public class DocumentThemesApiTests : IntegrationTestBase
         var line = tex.IndexOf("{lilia-theme}", StringComparison.Ordinal);
         line.Should().BePositive();
         tex.IndexOf(@"\newcommand{\R}", StringComparison.Ordinal).Should().BeGreaterThan(line);
-        tex.Should().Contain(@"\liliaHeadRow \textbf{Model}");
+        tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}}");
     }
 }

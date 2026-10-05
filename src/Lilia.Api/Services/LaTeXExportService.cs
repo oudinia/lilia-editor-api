@@ -1322,7 +1322,12 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         var tableEnv = longTable ? "longtable" : "tabular";
-        if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
+        if (hasHeaders)
+        {
+            sb.AppendLine(LatexText.HeadRowFallback);
+            sb.AppendLine(LatexText.TableHeadFallback);
+        }
+        if (rowList.Count(r => r.ValueKind == JsonValueKind.Array) < LatexText.BandMinBodyRows) sb.AppendLine(LatexText.FewRows);
         if (longTable)
         {
             sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
@@ -1335,9 +1340,10 @@ public class LaTeXExportService : ILaTeXExportService
         if (hasHeaders)
         {
             var headerCells = headers.EnumerateArray()
-                .Select(h => $@"\textbf{{{EscapeLatex(TableCellText(h))}}}")
+                .Select(h => LatexText.TableHead($@"\textbf{{{EscapeLatex(TableCellText(h))}}}"))
                 .ToList();
-            // \liliaHeadRow: a document theme styles the header row; the cells keep \textbf.
+            // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
+            // cells; the cells keep \textbf.
             sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\");
             sb.AppendLine(@"\midrule");
             // longtable: repeat the header on every page, then mark the body.
