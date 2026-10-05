@@ -130,6 +130,12 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         int timeoutSeconds = 30,
         LatexEngine engine = LatexEngine.Pdflatex)
     {
+        // Before the cache, the queue and the engine: a document may not make the compiler read the host's
+        // files or run its commands (see TexSourceGuard for what this does and does not guarantee).
+        var unsafeReason = Lilia.Engines.TexSafety.TexSourceGuard.Violation(latex);
+        if (unsafeReason is not null)
+            return new CompilationResult(false, null, unsafeReason, Array.Empty<string>(), TimeSpan.Zero);
+
         latex = DedupeDocumentClass(latex);
         Interlocked.Increment(ref _totalCompilations);
 
@@ -345,46 +351,10 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         }
     }
 
-    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
-        string command, string arguments, string workingDir, int timeoutSeconds)
-    {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = command,
-                Arguments = arguments,
-                WorkingDirectory = workingDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            }
-        };
-
-        var stdoutBuilder = new StringBuilder();
-        var stderrBuilder = new StringBuilder();
-
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) stdoutBuilder.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderrBuilder.AppendLine(e.Data); };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(true);
-            throw new TimeoutException($"Process timed out after {timeoutSeconds}s");
-        }
-
-        return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
-    }
+    // One hardened launcher for every TeX process: shell escape off, scrubbed environment, optional other user.
+    private static Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
+        string command, string arguments, string workingDir, int timeoutSeconds) =>
+        Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds);
 
     public void Dispose()
     {
