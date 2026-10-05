@@ -47,6 +47,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.LastAutoSavedAt).HasColumnName("last_auto_saved_at");
         builder.Property(d => d.IsPlayground).HasColumnName("is_playground").HasDefaultValue(false).IsRequired();
         builder.Property(d => d.CustomPreamble).HasColumnName("custom_preamble");
+        // Document theme (Look). Nullable: every existing row stays Classic.
+        builder.Property(d => d.Look).HasColumnName("look").HasColumnType("jsonb");
 
         // Layout fields
         builder.Property(d => d.MarginTop).HasColumnName("margin_top");

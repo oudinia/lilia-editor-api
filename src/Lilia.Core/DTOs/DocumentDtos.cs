@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Lilia.Core.DTOs;
 
@@ -106,7 +107,13 @@ public record DocumentDto(
     string? HeaderRight = null,
     string? FooterLeft = null,
     string? FooterCenter = null,
-    string? FooterRight = null
+    string? FooterRight = null,
+    // Document theme (Look): { theme, paper, pins }, null when unset (Classic). Always written,
+    // null included, whatever the serializer's null handling.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] JsonElement? Look = null,
+    // Non-null when the class sets its own look (publisher, CV, beamer): the sentence the
+    // editor shows, "IEEEtran sets its own look, so themes are off for this document."
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? LookLocked = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -168,7 +175,11 @@ public record UpdateDocumentDto(
     string? HeaderRight = null,
     string? FooterLeft = null,
     string? FooterCenter = null,
-    string? FooterRight = null
+    string? FooterRight = null,
+    // Document theme: { "theme": "classic"|"cerulean"|"index"|…, "paper": "theme"|"white",
+    // "pins": { "<headingBlockId>": 0..7 } }. Null leaves it alone; theme "classic" clears it.
+    // Validated (400 listing the valid values) by DocumentLook.Validate.
+    JsonElement? Look = null
 );
 
 public record TrashDocumentDto(

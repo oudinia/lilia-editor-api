@@ -188,6 +188,15 @@ public class Document
     /// </summary>
     public string? CustomPreamble { get; set; }
 
+    /// <summary>
+    /// The document theme (Document settings → Look), jsonb:
+    /// <c>{ "theme": "index", "paper": "theme"|"white", "pins": { "&lt;headingBlockId&gt;": 0..7 } }</c>.
+    /// Null means Classic, today's look, which loads no package. Read through
+    /// <c>Lilia.Engines.Themes.DocumentLook</c>; the preamble builder turns it into one line,
+    /// <c>\usepackage[theme=…, paper=…]{lilia-theme}</c>, just before the custom preamble.
+    /// </summary>
+    public string? Look { get; set; }
+
     /// Multi-column balancing — maps to multicol's auto-balance behaviour in
     /// LaTeX, w:cols w:equalWidth in DOCX, and column-fill:balance in HTML.
     public bool BalancedColumns { get; set; }
