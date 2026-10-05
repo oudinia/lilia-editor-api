@@ -15,6 +15,8 @@ public class AskLiliaImportLatexToolTests
         var doc = Doc(existing);
         var batch = new List<BatchUpdateBlockDto>();
         var updates = new List<UpdateDocumentDto>();
+        // import_latex reads the document fresh before writing (the author may have saved meanwhile).
+        h.Documents.Setup(d => d.GetDocumentAsync(doc.Id, "u1")).ReturnsAsync(() => doc);
         h.Documents.Setup(d => d.UpdateDocumentAsync(doc.Id, "u1", It.IsAny<UpdateDocumentDto>()))
             .Callback<Guid, string, UpdateDocumentDto>((_, _, dto) => updates.Add(dto))
             .ReturnsAsync(doc);
@@ -121,5 +123,69 @@ public class AskLiliaImportLatexToolTests
     {
         Lilia.Api.Services.AskLiliaService.StripLatexFences("```latex\n\\section{a}\n```").Should().Be("\\section{a}");
         Lilia.Api.Services.AskLiliaService.StripLatexFences("\\section{a}").Should().Be("\\section{a}");
+    }
+
+    // ── review of 5 Oct ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Replace_resets_the_layout_the_file_does_not_set()
+    {
+        var (h, doc, _, updates) = Setup();
+        var r = await Call(Fn(h.Tools(doc, true), "import_latex"),
+            ("text", "\\documentclass{article}\n\\begin{document}\n\\section{One}\nText.\n\\end{document}"));
+        r.GetProperty("ok").GetBoolean().Should().BeTrue(r.ToString());
+        var u = updates.Should().ContainSingle().Subject;
+        u.Columns.Should().Be(1);
+        u.Orientation.Should().Be("portrait");
+        u.LineSpacing.Should().Be(1.0);
+        new[] { u.MarginTop, u.MarginBottom, u.MarginLeft, u.MarginRight, u.ParagraphIndent, u.PageNumbering,
+                u.HeaderLeft, u.HeaderCenter, u.HeaderRight, u.FooterLeft, u.FooterCenter, u.FooterRight,
+                u.HeaderText, u.FooterText, u.CustomPreamble }
+            .Should().OnlyContain(v => v == "", "every layout field the file does not set is cleared, not left as it was");
+    }
+
+    [Fact]
+    public async Task A_concurrent_save_stops_the_import_and_nothing_changes()
+    {
+        var (h, doc, _, updates) = Setup();
+        h.Blocks.Setup(b => b.BatchUpdateBlocksAsync(doc.Id, It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()))
+            .ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("changed"));
+        var r = await Call(Fn(h.Tools(doc, true), "import_latex"),
+            ("text", "\\documentclass[12pt]{article}\n\\begin{document}\n\\section{One}\nText.\n\\end{document}"));
+        r.GetProperty("error").GetString().Should().Contain("changed while importing").And.Contain("Nothing was changed");
+        updates.Should().BeEmpty("the page setup is written only after the blocks succeed");
+    }
+
+    [Fact]
+    public async Task A_page_setup_failure_after_the_blocks_is_reported_as_partial()
+    {
+        var (h, doc, batch, _) = Setup();
+        h.Documents.Setup(d => d.UpdateDocumentAsync(doc.Id, "u1", It.IsAny<UpdateDocumentDto>()))
+            .ThrowsAsync(new InvalidOperationException("db down"));
+        var r = await Call(Fn(h.Tools(doc, true), "import_latex"),
+            ("text", "\\documentclass[12pt]{article}\n\\begin{document}\n\\section{One}\nText.\n\\end{document}"));
+        r.GetProperty("partial").GetBoolean().Should().BeTrue();
+        r.GetProperty("error").GetString().Should().Contain("blocks were imported").And.Contain("page setup could not be applied");
+        batch.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Append_keeps_a_block_the_author_saved_after_the_turn_started()
+    {
+        var a = Guid.NewGuid();
+        var (h, doc, batch, _) = Setup(Block(a));
+        var savedMeanwhile = Guid.NewGuid();
+        var fresh = Doc(Block(a), Block(savedMeanwhile)) with { Id = doc.Id, Version = 7 };
+        h.Documents.Setup(d => d.GetDocumentAsync(doc.Id, "u1")).ReturnsAsync(fresh);
+        int? expected = null;
+        h.Blocks.Setup(b => b.BatchUpdateBlocksAsync(doc.Id, It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()))
+            .Callback<Guid, List<BatchUpdateBlockDto>, int?>((_, l, v) => { batch.Clear(); batch.AddRange(l); expected = v; })
+            .ReturnsAsync(() => new BatchUpdateResultDto(new List<BlockDto>(), 8));
+
+        await Call(Fn(h.Tools(doc, true), "import_latex"),
+            ("text", "\\documentclass{article}\n\\begin{document}\n\\section{More}\nText.\n\\end{document}"), ("replace", false));
+
+        batch.Select(b => b.Id).Should().Contain(savedMeanwhile, "a block saved meanwhile is not deleted by an append");
+        expected.Should().Be(7, "the write is guarded by the version that was read");
     }
 }
