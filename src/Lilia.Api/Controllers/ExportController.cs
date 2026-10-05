@@ -137,9 +137,15 @@ public class ExportController : ControllerBase
     /// <summary>
     /// Export document as a PDF file. Optional engine query param:
     /// "auto" (default — Typst with pdflatex fallback), "typst", or "pdflatex".
+    /// <c>look</c> (a theme id) and <c>printSafe=true</c> (white paper, dark grounds to their light
+    /// pair) change the look of this export only; the document keeps its own.
     /// </summary>
     [HttpGet("pdf")]
-    public async Task<IActionResult> ExportPdf(Guid docId, [FromQuery] string engine = "auto")
+    public async Task<IActionResult> ExportPdf(
+        Guid docId,
+        [FromQuery] string engine = "auto",
+        [FromQuery] string? look = null,
+        [FromQuery] bool printSafe = false)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -149,11 +155,15 @@ public class ExportController : ControllerBase
         if (document == null)
             return NotFound();
 
-        _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId} (engine={Engine})", docId, userId, engine);
+        if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeAvailability.WhyUnavailable(look) is { } whyNot)
+            return BadRequest(new { message = whyNot, error = "invalid_look" });
+
+        _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId} (engine={Engine}, look={Look}, printSafe={PrintSafe})",
+            docId, userId, engine, look ?? "document", printSafe);
 
         try
         {
-            var (pdfBytes, engineUsed) = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine);
+            var (pdfBytes, engineUsed) = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine, look, printSafe);
             if (pdfBytes == null || pdfBytes.Length < 100 || !pdfBytes.AsSpan(0, 4).SequenceEqual("%PDF"u8))
             {
                 _logger.LogError("[Export] PDF for document {DocId} is empty or invalid ({Length} bytes) — tolerant compile produced no output", docId, pdfBytes?.Length ?? 0);
