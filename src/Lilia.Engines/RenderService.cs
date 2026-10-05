@@ -1075,6 +1075,15 @@ public partial class RenderService : IRenderService
 
         latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
 
+        // The document theme, as the full-document path writes it. Left out (not failed) when this
+        // server cannot compile it: validation should not mark every block for a font problem.
+        var validationTheme = LaTeXPreambleBuilder.BuildThemeLine(
+            doc, doc.Blocks?.OrderBy(b => b.SortOrder), use: LaTeXPreambleBuilder.ThemeUse.Validation);
+        if (!string.IsNullOrEmpty(validationTheme))
+        {
+            latex.Append(validationTheme);
+        }
+
         // User-authored macros/environments — emitted after the standard
         // packages (so they can build on them) and before \begin{document},
         // mirroring the exporter. RenderToLatexAsync omits this today; per-block
@@ -1193,6 +1202,15 @@ public partial class RenderService : IRenderService
 
         // Theorem environments
         latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
+
+        // The document theme (Document settings → Look): one managed line, just before the custom
+        // preamble so the author's settings win. Empty for Classic and for classes that set their
+        // own look; throws ThemeUnavailableException when this server lacks the theme's fonts.
+        var themeLine = LaTeXPreambleBuilder.BuildThemeLine(doc, doc.Blocks);
+        if (!string.IsNullOrEmpty(themeLine))
+        {
+            latex.Append(themeLine);
+        }
 
         // User-authored macros/environments — emitted after the standard
         // packages (so they can build on them) and before \begin{document},
@@ -2046,6 +2064,7 @@ public partial class RenderService : IRenderService
                 // \arraystretch goes OUTSIDE: inside longtable it would sit in
                 // the alignment body, where a declaration is not a row.
                 sb.AppendLine(@"{\renewcommand{\arraystretch}{1.3}");
+                if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
                 sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
 
                 // Caption and label must share ONE row, terminated by a single
@@ -2073,6 +2092,7 @@ public partial class RenderService : IRenderService
                 sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
                 if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
                 if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
+                if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
                 sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
                 sb.AppendLine(@"\toprule");
             }
@@ -2116,7 +2136,9 @@ public partial class RenderService : IRenderService
                     headerCells.Add("");
                     colIdx++;
                 }
-                sb.AppendLine(string.Join(" & ", headerCells) + @" \\");
+                // \liliaHeadRow lets a document theme style the header row (lilia-theme.sty).
+                // The cells keep their \textbf, so without a theme the table is as before.
+                sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\");
                 sb.AppendLine(@"\midrule");
                 currentRowIndex++;
             }

@@ -19,6 +19,10 @@ public sealed record DocumentLook(string Theme, string Paper, IReadOnlyDictionar
     /// <summary>Export only, never stored: white paper and dark grounds swapped to their light pair.</summary>
     public bool PrintSafe { get; init; }
 
+    /// <summary>A stored look that changes the PDF: not Classic, on a class that does not lock it.</summary>
+    public static bool IsThemed(string? storedLook, string? documentClass) =>
+        !Parse(storedLook).IsClassic && ThemeLock.Reason(documentClass) is null;
+
     public bool IsClassic => string.Equals(Theme, ThemeCatalog.Classic, StringComparison.Ordinal);
 
     /// <summary>Read the stored value. Anything unreadable is Classic: a bad row never breaks a compile.</summary>

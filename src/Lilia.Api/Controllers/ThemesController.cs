@@ -17,6 +17,14 @@ public class ThemesController : ControllerBase
     [HttpGet]
     public IActionResult List() => Ok(ThemeCatalog.All.Select(ToDto));
 
+    /// <summary>
+    /// The package itself, for Copy LaTeX ("Needs lilia-theme.sty: Download it"). The .zip export
+    /// already carries it.
+    /// </summary>
+    [HttpGet("lilia-theme.sty")]
+    public IActionResult Package() =>
+        File(System.Text.Encoding.UTF8.GetBytes(ThemeCatalog.StySource), "application/x-tex", ThemeCatalog.StyFileName);
+
     internal static ThemeDto ToDto(ThemeDescriptor t) => new(
         t.Id, t.Name, t.For, ThemeAvailability.IsAvailable(t.Id), t.Status,
         t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault);

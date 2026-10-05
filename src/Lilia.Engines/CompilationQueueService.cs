@@ -224,6 +224,8 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
             var pdfPath = Path.Combine(tmpDir, "document.pdf");
             var logPath = Path.Combine(tmpDir, "document.log");
             await File.WriteAllTextAsync(texPath, request.Latex, request.CancellationToken);
+            // A themed document loads lilia-theme.sty from beside it.
+            Themes.ThemeCatalog.StageIfUsed(request.Latex, tmpDir);
 
             switch (request.Type)
             {

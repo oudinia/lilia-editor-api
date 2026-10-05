@@ -308,7 +308,7 @@ public class DocumentExportService : IDocumentExportService
         {
             if (string.IsNullOrEmpty(entry.Name)) continue;
             if (!entry.FullName.EndsWith(".tex") && !entry.FullName.EndsWith(".bib")
-                && !entry.FullName.EndsWith(".bst")) continue;
+                && !entry.FullName.EndsWith(".bst") && !entry.FullName.EndsWith(".sty")) continue;
             using var entryReader = new System.IO.StreamReader(entry.Open());
             files.Add((entry.FullName, await entryReader.ReadToEndAsync()));
         }

@@ -526,6 +526,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var logPath = Path.Combine(tmpDir, "document.log");
                 Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
                 await File.WriteAllTextAsync(texPath, latex);
+                Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
 
                 // BuildPdflatexArgs works for lualatex/xelatex too — same
                 // arg shape (`-interaction`, `-output-directory`, halt mode).
@@ -727,6 +728,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(content);
                 await File.WriteAllTextAsync(full, content);
             }
+            foreach (var (_, content) in files) Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(content, tmpDir);
 
             // Pass 1: pdflatex emits {mainStem}.aux with \citation/\bibdata/\bibstyle.
             // nonstopmode (no -halt-on-error) so a missing \includegraphics asset
@@ -784,6 +786,9 @@ public class LaTeXRenderService : ILaTeXRenderService
             var logPath = Path.Combine(tmpDir, "document.log");
             Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
                 await File.WriteAllTextAsync(texPath, latex);
+            // A themed document loads lilia-theme.sty from beside it (an exported project has
+            // already put its own copy there).
+            Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
 
             // Run the chosen engine twice (for references). pdflatex is the
             // default; xelatex / lualatex take the same arg shape for our

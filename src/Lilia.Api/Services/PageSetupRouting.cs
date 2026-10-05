@@ -35,6 +35,8 @@ public static class PageSetupRouting
         var cls = d.LatexDocumentClass?.Trim();
         if (!string.IsNullOrEmpty(cls) && !string.Equals(cls, "article", StringComparison.OrdinalIgnoreCase)) reasons.Add($"document class {cls}");
         if (!string.IsNullOrWhiteSpace(d.LatexDocumentClassOptions)) reasons.Add("class options");
+        // A document theme is a LaTeX package (lilia-theme.sty); Typst has no twin yet.
+        if (Lilia.Engines.Themes.DocumentLook.IsThemed(d.Look, d.LatexDocumentClass)) reasons.Add("theme");
         return reasons.Count == 0 ? null : string.Join(", ", reasons.Distinct());
     }
 }

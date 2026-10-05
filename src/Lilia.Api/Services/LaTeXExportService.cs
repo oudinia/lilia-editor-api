@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Core.Blocks;
 using Lilia.Engines;
+using Lilia.Engines.Themes;
 
 namespace Lilia.Api.Services;
 
@@ -84,7 +85,7 @@ public class LaTeXExportService : ILaTeXExportService
         if (options.Arxiv && !IsBiblatex(options) && bibEntries.Count > 0 && _renderService != null)
         {
             var texFiles = projectFiles
-                .Where(f => f.Path.EndsWith(".tex") || f.Path.EndsWith(".bib") || f.Path.EndsWith(".bst"))
+                .Where(f => f.Path.EndsWith(".tex") || f.Path.EndsWith(".bib") || f.Path.EndsWith(".bst") || f.Path.EndsWith(".sty"))
                 .Select(f => (f.Path, f.Content))
                 .ToList();
             var bbl = await _renderService.GenerateBblAsync(texFiles);
@@ -142,6 +143,9 @@ public class LaTeXExportService : ILaTeXExportService
             _ =>
                 GenerateSingleFile(doc, blocks, bibEntries, options)
         };
+        // A themed project carries its package, so it compiles as downloaded (Overleaf included).
+        if (files.Any(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) && ThemeCatalog.UsesThemePackage(f.Content)))
+            files.Add(new ProjectFile(ThemeCatalog.StyFileName, ThemeCatalog.StySource));
         return ApplyCitationBackend(files, options);
     }
 
@@ -157,10 +161,15 @@ public class LaTeXExportService : ILaTeXExportService
         var sb = new StringBuilder();
         var usesNatbib = DocumentUsesNatbib(blocks);
 
+        // The body's blocks, worked out before the preamble: the theme line's Index pins are
+        // numbered by the headings the body will actually contain.
+        var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography" && b.Type != "title").ToList();
+        mainBlocks = StripDuplicateTitleHeading(doc.Title, mainBlocks);
+
         // Preamble embedded in main.tex
         sb.AppendLine(BuildDocumentClassDirective(doc, options));
         sb.AppendLine();
-        sb.Append(GeneratePackageLines(doc, options, usesNatbib));
+        sb.Append(GeneratePackageLines(doc, options, usesNatbib, mainBlocks));
         sb.AppendLine();
 
         // Document info
@@ -189,9 +198,6 @@ public class LaTeXExportService : ILaTeXExportService
         // imports often promote \title{X} into a top-level heading
         // block whose text matches doc.Title; combined with \maketitle
         // above, the user sees the title twice.
-        var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography" && b.Type != "title").ToList();
-        mainBlocks = StripDuplicateTitleHeading(doc.Title, mainBlocks);
-
         // Balanced-columns body wrapper (multicol). Empty for non-balanced
         // docs — the twocolumn class option handles those upstream.
         var bodyOpener = LaTeXPreambleBuilder.BuildBodyOpener(doc);
@@ -305,7 +311,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine(@"\end{document}");
 
         files.Add(new ProjectFile("main.tex", main.ToString()));
-        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options, usesNatbib)));
+        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options, usesNatbib, blocks)));
 
         if (bibEntries.Count > 0)
             files.Add(new ProjectFile("references.bib", GenerateBibTeXFile(bibEntries)));
@@ -397,7 +403,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine(@"\end{document}");
 
         files.Add(new ProjectFile("main.tex", main.ToString()));
-        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options, usesNatbib)));
+        files.Add(new ProjectFile("preamble.tex", GeneratePreambleFile(doc, options, usesNatbib, blocks)));
 
         if (bibEntries.Count > 0)
             files.Add(new ProjectFile("references.bib", GenerateBibTeXFile(bibEntries)));
@@ -534,16 +540,18 @@ public class LaTeXExportService : ILaTeXExportService
         }
     }
 
-    private string GeneratePreambleFile(Document doc, LaTeXExportOptions options, bool usesNatbib = false)
+    private string GeneratePreambleFile(Document doc, LaTeXExportOptions options, bool usesNatbib = false,
+        IEnumerable<Block>? bodyBlocks = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("% Preamble file - included by main.tex");
         sb.AppendLine();
-        sb.Append(GeneratePackageLines(doc, options, usesNatbib));
+        sb.Append(GeneratePackageLines(doc, options, usesNatbib, bodyBlocks));
         return sb.ToString();
     }
 
-    private string GeneratePackageLines(Document doc, LaTeXExportOptions options, bool usesNatbib = false)
+    private string GeneratePackageLines(Document doc, LaTeXExportOptions options, bool usesNatbib = false,
+        IEnumerable<Block>? bodyBlocks = null)
     {
         var sb = new StringBuilder();
 
@@ -626,6 +634,19 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine();
             sb.Append(layout);
+        }
+
+        // The document theme (Document settings → Look): one managed line just before the custom
+        // preamble, so the author's settings win. Written as stored for a download (it compiles
+        // wherever the theme's fonts are, Overleaf included); a compile here (the PDF export)
+        // asks for ThemeUse.Compile and fails on a theme this server cannot print.
+        var themeLine = LaTeXPreambleBuilder.BuildThemeLine(
+            doc, bodyBlocks ?? doc.Blocks?.OrderBy(b => b.SortOrder), options.LookOverride,
+            options.CompileHere ? LaTeXPreambleBuilder.ThemeUse.Compile : LaTeXPreambleBuilder.ThemeUse.Export);
+        if (!string.IsNullOrEmpty(themeLine))
+        {
+            sb.AppendLine();
+            sb.Append(themeLine);
         }
 
         // User-authored custom preamble (macros / environments) — emitted last,
@@ -1291,6 +1312,7 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         var tableEnv = longTable ? "longtable" : "tabular";
+        if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
         if (longTable)
         {
             sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
@@ -1305,10 +1327,11 @@ public class LaTeXExportService : ILaTeXExportService
             var headerCells = headers.EnumerateArray()
                 .Select(h => $@"\textbf{{{EscapeLatex(TableCellText(h))}}}")
                 .ToList();
-            sb.AppendLine(string.Join(" & ", headerCells) + @" \\");
+            // \liliaHeadRow: a document theme styles the header row; the cells keep \textbf.
+            sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\");
             sb.AppendLine(@"\midrule");
             // longtable: repeat the header on every page, then mark the body.
-            if (longTable) { sb.AppendLine(@"\endfirsthead"); sb.AppendLine(string.Join(" & ", headerCells) + @" \\"); sb.AppendLine(@"\midrule"); sb.AppendLine(@"\endhead"); }
+            if (longTable) { sb.AppendLine(@"\endfirsthead"); sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\"); sb.AppendLine(@"\midrule"); sb.AppendLine(@"\endhead"); }
         }
 
         for (int r = 0; r < rowList.Count; r++)

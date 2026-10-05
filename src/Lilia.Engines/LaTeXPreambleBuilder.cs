@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Lilia.Core.Entities;
 using Lilia.Engines;
+using Lilia.Engines.Themes;
 
 namespace Lilia.Engines;
 
@@ -498,6 +499,106 @@ public static class LaTeXPreambleBuilder
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>How the theme line treats a theme this server cannot compile.</summary>
+    public enum ThemeUse
+    {
+        /// <summary>A compile (preview, PDF): an unavailable theme fails with a message, never a substitute face.</summary>
+        Compile,
+        /// <summary>A .tex / .zip download, compiled elsewhere (Overleaf): the line is written as stored.</summary>
+        Export,
+        /// <summary>Per-block validation context: an unavailable theme is left out rather than failing every block.</summary>
+        Validation,
+    }
+
+    /// <summary>Classes whose top numbered level is \chapter (Index colours chapters there).</summary>
+    private static readonly HashSet<string> ChapterTopClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "report", "book", "memoir", "scrbook", "scrreprt", "amsbook",
+    };
+
+    /// <summary>
+    /// The document theme's managed preamble line (Document settings → Look), or an empty string
+    /// for Classic and for a class that sets its own look. Callers emit it just BEFORE the custom
+    /// preamble, so the author's own settings win.
+    ///
+    /// <code>
+    /// % Document theme (Document settings → Look)
+    /// \usepackage[theme=index, paper=theme]{lilia-theme}
+    /// \liliaPinColour{3}{7}
+    /// </code>
+    ///
+    /// <para>Index pins are stored per heading block; each is written as the number that heading
+    /// has now (its position among the numbered top-level headings), so a pin follows its heading
+    /// when headings move. Lilia writes a level-1 heading as \section in every class, so pins are
+    /// written only where \section is the top level; under report and book the top level is
+    /// \chapter, which Lilia's blocks never produce.</para>
+    /// </summary>
+    /// <param name="bodyBlocks">The blocks the body will contain, in order.</param>
+    /// <param name="lookOverride">An export's look (Export PDF: Look ▾ / Print-safe); null uses the stored one.</param>
+    public static string BuildThemeLine(
+        Document doc,
+        IEnumerable<Block>? bodyBlocks,
+        DocumentLook? lookOverride = null,
+        ThemeUse use = ThemeUse.Compile)
+    {
+        var look = lookOverride ?? DocumentLook.Parse(doc.Look);
+        if (look.IsClassic) return string.Empty;
+        if (ThemeLock.Reason(doc.LatexDocumentClass) is not null) return string.Empty;
+        if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme) is { } why)
+        {
+            if (use == ThemeUse.Validation) return string.Empty;
+            throw new ThemeUnavailableException(why);
+        }
+
+        var options = new List<string> { $"theme={look.Theme}", $"paper={look.Paper}" };
+        if (look.PrintSafe) options.Add("printsafe");
+        if (OwnsPageFoot(doc)) options.Add("foottab=false");
+
+        var sb = new StringBuilder();
+        sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
+        sb.AppendLine($"\\usepackage[{string.Join(", ", options)}]{{{ThemeCatalog.PackageName}}}");
+
+        if (look.Pins.Count > 0 && look.Theme == "index" && !ChapterTopClasses.Contains(ResolveClassName(doc)))
+        {
+            var number = 0;
+            foreach (var block in bodyBlocks ?? Enumerable.Empty<Block>())
+            {
+                if (!IsNumberedTopHeading(block)) continue;
+                number++;
+                if (look.Pins.TryGetValue(block.Id.ToString(), out var k))
+                    sb.AppendLine($"\\liliaPinColour{{{number}}}{{{k}}}");
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The author set the running header/footer or turned page numbers off: the theme then
+    /// leaves the page style alone instead of drawing its foot tab over their choice.
+    /// </summary>
+    private static bool OwnsPageFoot(Document doc) =>
+        string.Equals(doc.PageNumbering?.Trim(), "none", StringComparison.OrdinalIgnoreCase)
+        || new[] { doc.HeaderText, doc.FooterText, doc.HeaderLeft, doc.HeaderCenter, doc.HeaderRight,
+                   doc.FooterLeft, doc.FooterCenter, doc.FooterRight }.Any(v => !string.IsNullOrWhiteSpace(v));
+
+    /// <summary>A heading block that renders as a numbered \section (level 1, not numbered:false).</summary>
+    private static bool IsNumberedTopHeading(Block block)
+    {
+        if (!string.Equals(block.Type, "heading", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(block.Type, "header", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            var c = block.Content.RootElement;
+            var level = c.TryGetProperty("level", out var l) && l.ValueKind == JsonValueKind.Number && l.TryGetInt32(out var lv) ? lv : 1;
+            var numbered = !c.TryGetProperty("numbered", out var n) || n.ValueKind != JsonValueKind.False;
+            return level <= 1 && numbered;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

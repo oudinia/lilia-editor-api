@@ -52,4 +52,19 @@ public class LaTeXExportOptions
     /// choice. Bound from <c>?citationBackend=biblatex</c>.
     /// </summary>
     public string CitationBackend { get; set; } = "natbib";
+
+    /// <summary>
+    /// The look for this export only (Export PDF: Look ▾ and Print-safe); null uses the
+    /// document's own. Set by the PDF route from <c>?look=</c> / <c>?printSafe=</c>, never bound
+    /// from this type's query string.
+    /// </summary>
+    [Microsoft.AspNetCore.Mvc.ModelBinding.BindNever]
+    public Lilia.Engines.Themes.DocumentLook? LookOverride { get; set; }
+
+    /// <summary>
+    /// The project is compiled on this server (the PDF export), so a theme it cannot print fails
+    /// the export instead of being written for compiling elsewhere.
+    /// </summary>
+    [Microsoft.AspNetCore.Mvc.ModelBinding.BindNever]
+    public bool CompileHere { get; set; }
 }
