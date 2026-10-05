@@ -63,8 +63,9 @@ public class DocumentHintsAuthzTests : FourCallersTestBase
         var s = await SeedSharedDocumentAsync();
         var finding = await SeedFindingAsync(s.DocumentId);
         using var e = As(EditorId);
-        (await e.PostAsync($"{Base(s)}/compute", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        // Dismiss first: compute clears the pending findings, including the one we seeded.
         (await e.PostAsync($"{Base(s)}/{finding}/dismiss", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await e.PostAsync($"{Base(s)}/compute", null)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
