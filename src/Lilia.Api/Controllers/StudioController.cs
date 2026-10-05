@@ -9,6 +9,8 @@ namespace Lilia.Api.Controllers;
 [ApiController]
 [Route("api/studio/{docId:guid}")]
 [Authorize]
+// Every route is under {docId}: read for GET, write for the rest (A1, 3 Oct 2026).
+[Lilia.Api.Filters.RequireDocumentAccess]
 public class StudioController : ControllerBase
 {
     private readonly IStudioService _studioService;
@@ -162,6 +164,7 @@ public class StudioController : ControllerBase
     }
 
     [HttpPost("block/{blockId:guid}/preview")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]   // renders, saves nothing
     public async Task<IActionResult> RenderBlockPreview(Guid docId, Guid blockId, [FromBody] RenderBlockPreviewDto dto)
     {
         var rendered = await _studioService.RenderBlockPreviewAsync(docId, blockId, dto.Format);
