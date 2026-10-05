@@ -43,9 +43,11 @@ public static class TexProcessRunner
         var args = arguments;
         if (!string.IsNullOrEmpty(runAs) && isRoot)
         {
-            var (uid, gid) = runAs.Contains(':') ? (runAs.Split(':')[0], runAs.Split(':')[1]) : (runAs, runAs);
+            var (uid, gid) = ResolveRunAs(runAs);
             file = "setpriv";
-            args = $"--reuid={uid} --regid={gid} --clear-groups -- {command} {arguments}";
+            // --no-new-privs: the engine (and anything it starts) can never gain privileges back.
+            // --inh-caps=-all: no inheritable capabilities survive the switch.
+            args = $"--reuid={uid} --regid={gid} --clear-groups --no-new-privs --inh-caps=-all -- {command} {arguments}";
         }
 
         var psi = new ProcessStartInfo
@@ -71,6 +73,30 @@ public static class TexProcessRunner
         foreach (var keep in new[] { "TEXMFHOME", "TEXMFDIST", "TEXMFLOCAL", "TEXMFSYSVAR", "TEXMFSYSCONFIG", "TEXINPUTS", "TEXFONTS", "TEXMFCNF" })
             if (Environment.GetEnvironmentVariable(keep) is { Length: > 0 } v) psi.Environment[keep] = v;
         return psi;
+    }
+
+    /// <summary>
+    /// "uid:gid" as given, or a user name resolved to its uid and primary gid from the passwd file.
+    /// The first version used the user name as the group too, and Debian and Ubuntu have no group
+    /// called "nobody" (it is "nogroup", gid 65534), so <c>LILIA_TEX_RUN_AS=nobody</c> made setpriv,
+    /// and so every compile, fail (5 Oct review). A name that cannot be resolved is kept as the user
+    /// with the nobody group (65534), which exists on every Linux.
+    /// </summary>
+    public static (string Uid, string Gid) ResolveRunAs(string runAs, string passwdPath = "/etc/passwd")
+    {
+        var parts = runAs.Split(':');
+        if (parts.Length >= 2 && parts[0].Length > 0 && parts[1].Length > 0) return (parts[0], parts[1]);
+        var user = parts[0];
+        try
+        {
+            foreach (var line in File.ReadLines(passwdPath))
+            {
+                var f = line.Split(':');
+                if (f.Length >= 4 && (f[0] == user || f[2] == user)) return (f[2], f[3]);
+            }
+        }
+        catch { /* unreadable passwd: fall through */ }
+        return (user, "65534");
     }
 
     public static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
