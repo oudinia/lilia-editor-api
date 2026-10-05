@@ -1214,7 +1214,7 @@ public partial class RenderService : IRenderService
         // Leaving it out made pdflatex warn "No \author given" on every
         // document without one, so validation never came back clean and the
         // rail's Validate dot lit for a warning the author never caused.
-        latex.AppendLine($@"\author{{{FormatTitleMetaLatex(authorText ?? "")}}}");
+        latex.AppendLine($@"\author{{{AuthorLatex.For(authorText, FormatTitleMetaLatex)}}}");
         // Empty date → LaTeX default (\today). Explicit value is formatted
         // so a user-typed \today still works.
         if (!string.IsNullOrWhiteSpace(dateText))

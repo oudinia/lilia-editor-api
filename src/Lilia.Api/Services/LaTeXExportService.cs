@@ -674,7 +674,7 @@ public class LaTeXExportService : ILaTeXExportService
             if (!string.IsNullOrWhiteSpace(d)) date = FormatTitleMetaLatex(d!);
         }
         sb.AppendLine($@"\title{{{FormatTitleMetaLatex(title)}}}");
-        sb.AppendLine($@"\author{{{FormatTitleMetaLatex(author)}}}");
+        sb.AppendLine($@"\author{{{Lilia.Engines.AuthorLatex.For(author, FormatTitleMetaLatex)}}}");
         sb.AppendLine($@"\date{{{date}}}");
     }
 
