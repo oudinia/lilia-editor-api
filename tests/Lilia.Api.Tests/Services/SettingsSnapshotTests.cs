@@ -98,4 +98,40 @@ public class SettingsSnapshotTests
         a.HeaderCenter = "different";
         VersionSnapshot.Fingerprint(Snap(a)).Should().NotBe(fa);
     }
+
+    // ── review of 5 Oct: import_latex writes the package list ────────────
+
+    [Fact]
+    public void Undo_puts_the_package_list_back()
+    {
+        var doc = Styled();
+        doc.LatexPackages = "[{\"name\":\"siunitx\"}]";
+        var before = Snap(doc);
+        doc.LatexPackages = "[{\"name\":\"tikz\"},{\"name\":\"pgfplots\"}]";   // what an import wrote
+        VersionSnapshot.ApplySettings(before, doc);
+        doc.LatexPackages.Should().Be("[{\"name\":\"siunitx\"}]");
+    }
+
+    [Fact]
+    public void Undo_removes_a_package_list_that_did_not_exist_before()
+    {
+        var doc = new Document { Id = Guid.NewGuid(), OwnerId = "u", Title = "T" };
+        var before = Snap(doc);
+        doc.LatexPackages = "[{\"name\":\"tikz\"}]";
+        VersionSnapshot.ApplySettings(before, doc);
+        doc.LatexPackages.Should().BeNull();
+    }
+
+    [Fact]
+    public void An_old_snapshot_without_the_package_list_leaves_todays_packages_alone()
+    {
+        var doc = Styled();
+        var now = Snap(doc);
+        var oldJson = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(now.GetRawText())!;
+        oldJson.Remove("latexPackages");
+        var old = JsonSerializer.SerializeToElement(oldJson);
+        doc.LatexPackages = "[{\"name\":\"tikz\"}]";
+        VersionSnapshot.ApplySettings(old, doc);
+        doc.LatexPackages.Should().Be("[{\"name\":\"tikz\"}]");
+    }
 }

@@ -86,6 +86,8 @@ public static class VersionSnapshot
         "columnGap", "headerLeft", "headerCenter", "headerRight",
         "footerLeft", "footerCenter", "footerRight",
         "lineSpacing", "paragraphIndent", "paginationPolicy",
+        // The \usepackage list: import_latex writes it, so Undo has to put it back (5 Oct review).
+        "latexPackages",
     ];
 
     /// <summary>Keys added after schema 2. A snapshot that lacks one, and a
@@ -95,6 +97,7 @@ public static class VersionSnapshot
         "columnGap", "headerLeft", "headerCenter", "headerRight",
         "footerLeft", "footerCenter", "footerRight",
         "lineSpacing", "paragraphIndent", "paginationPolicy",
+        "latexPackages",
     };
 
     public static object Build(
@@ -123,6 +126,7 @@ public static class VersionSnapshot
             latexDocumentClass = document.LatexDocumentClass,
             latexDocumentClassOptions = document.LatexDocumentClassOptions,
             customPreamble = document.CustomPreamble,
+            latexPackages = document.LatexPackages,
             latexEngine = document.LatexEngine,
             columnGap = document.ColumnGap,
             headerLeft = document.HeaderLeft,
@@ -252,6 +256,7 @@ public static class VersionSnapshot
         if (Has(snapshot, "latexDocumentClass")) document.LatexDocumentClass = ReadString(snapshot, "latexDocumentClass");
         if (Has(snapshot, "latexDocumentClassOptions")) document.LatexDocumentClassOptions = ReadString(snapshot, "latexDocumentClassOptions");
         if (Has(snapshot, "customPreamble")) document.CustomPreamble = ReadString(snapshot, "customPreamble");
+        if (Has(snapshot, "latexPackages")) document.LatexPackages = ReadString(snapshot, "latexPackages");
 
         document.LatexEngine = ReadString(snapshot, "latexEngine") ?? document.LatexEngine;
 
