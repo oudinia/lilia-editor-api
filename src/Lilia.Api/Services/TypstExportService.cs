@@ -150,7 +150,9 @@ public class TypstExportService : ITypstExportService
         // The previous comment here claimed production had "Linux Libertine
         // installed via the Dockerfile". It does not: the Dockerfile installs
         // fonts-liberation, an unrelated family. See MapFontList.
-        sb.AppendLine($"#set text(font: ({MapFontList(doc.FontFamily)}), size: 11pt)");
+        // The document's own size (the default is 12pt). This was 11pt for every document, so the
+        // preview and the LaTeX PDF of the same document set text at different sizes (5 Oct review).
+        sb.AppendLine($"#set text(font: ({MapFontList(doc.FontFamily)}), size: {TypstFontSize(doc.FontSize)}pt)");
         sb.AppendLine($"#set par(justify: true)");
         // Number what the PDF numbers, so a reference has a number to print:
         // sections and display equations, as pdflatex does. Tables carry their
@@ -1594,6 +1596,9 @@ public class TypstExportService : ITypstExportService
         if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }
+
+    /// <summary>The document's font size for Typst: 8 to 24 pt, else the LaTeX default of 12.</summary>
+    internal static int TypstFontSize(int size) => size is >= 8 and <= 24 ? size : 12;
 
     internal static string EscapeInline(string text) => EscapeTypstInline(text);
 
