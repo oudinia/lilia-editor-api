@@ -185,4 +185,23 @@ Hello $\R$.
         var r = Run(Head + "\\fancyfoot[L]{Draft}\n" + Body);
         r.NotApplied.Should().Contain(n => n.Contains("does not print the automatic page number"));
     }
+
+    [Fact]
+    public void A_thesis_that_switches_to_arabic_is_arabic()
+    {
+        var r = Run("\\documentclass{report}\n\\begin{document}\n\\pagenumbering{roman}\nFront.\n\\pagenumbering{arabic}\nBody.\n\\end{document}\n");
+        r.Settings.PageNumbering.Should().Be("arabic");
+    }
+
+    [Theory]
+    [InlineData("2", "\\linespread{2}")]
+    [InlineData("1.5", "\\linespread{1.5}")]
+    [InlineData("1.3", "\\linespread{1.3}")]
+    public void A_linespread_comes_back_as_the_same_linespread(string factor, string expected)
+    {
+        var r = Run("\\documentclass{article}\n\\linespread{" + factor + "}\n\\begin{document}\nText.\n\\end{document}\n");
+        var doc = new Lilia.Core.Entities.Document { Id = Guid.NewGuid(), OwnerId = "u", Title = "T", LineSpacing = r.Settings.LineSpacing };
+        var preamble = Lilia.Engines.LaTeXPreambleBuilder.BuildLayoutPreamble(doc);
+        preamble.Should().Contain(expected).And.NotContain("doublespacing").And.NotContain("onehalfspacing");
+    }
 }

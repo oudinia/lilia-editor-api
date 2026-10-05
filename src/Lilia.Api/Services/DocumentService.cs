@@ -617,7 +617,8 @@ public class DocumentService : IDocumentService
             var sides = dto.Sides ?? existing.Sides;
             var titlePage = dto.TitlePage ?? existing.TitlePage;
             var orientation = dto.Orientation ?? existing.Orientation;
-            document.LatexDocumentClassOptions = BuildClassOptionsString(sides, titlePage, orientation);
+            document.LatexDocumentClassOptions = BuildClassOptionsString(sides, titlePage, orientation,
+                keep: document.LatexDocumentClassOptions);
             // The preamble builder also reads the structured column, so keep the
             // two in step. The popover only ever wrote the options blob, which
             // left a document that was once landscape landscape for good.
@@ -1135,9 +1136,19 @@ public class DocumentService : IDocumentService
     /// options the popover (LILIA-122) and create dialog (LILIA-123) send.
     /// Shared by Create + Update paths so both routes write the same string.
     /// </summary>
-    private static string? BuildClassOptionsString(string? sides, bool titlePage, string? orientation)
+    private static readonly HashSet<string> OwnedClassOptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "twoside", "oneside", "titlepage", "notitlepage", "landscape", "portrait",
+    };
+
+    private static string? BuildClassOptionsString(string? sides, bool titlePage, string? orientation, string? keep = null)
     {
         var tokens = new List<string>();
+        // Options this method does not own (fleqn, draft, leqno, openany, ...) stay. Rebuilding from the three
+        // owned ones alone dropped them whenever orientation changed, which Ask Lilia's settings tool now
+        // does (5 Oct review).
+        if (!string.IsNullOrWhiteSpace(keep))
+            tokens.AddRange(keep.Split(',').Select(t => t.Trim()).Where(t => t.Length > 0 && !OwnedClassOptions.Contains(t)));
         if (string.Equals(sides, "two", StringComparison.OrdinalIgnoreCase))
             tokens.Add("twoside");
         if (titlePage)

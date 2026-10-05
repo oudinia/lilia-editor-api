@@ -354,11 +354,13 @@ public static class LaTeXPreambleBuilder
         if (lineSpacing.HasValue && Math.Abs(lineSpacing.Value - 1.0) > 0.001)
         {
             sb.AppendLine("% Line spacing");
-            if (Math.Abs(lineSpacing.Value - 1.5) < 0.01)
+            // Exactly 1.5 and 2 (what the settings dialog sends) mean setspace's spacings; any other value,
+            // including a \linespread factor the importer nudged off them, is written as \linespread.
+            if (Math.Abs(lineSpacing.Value - 1.5) < 1e-9)
             {
                 sb.AppendLine("\\onehalfspacing");
             }
-            else if (Math.Abs(lineSpacing.Value - 2.0) < 0.01)
+            else if (Math.Abs(lineSpacing.Value - 2.0) < 1e-9)
             {
                 sb.AppendLine("\\doublespacing");
             }

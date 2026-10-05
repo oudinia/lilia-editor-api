@@ -50,6 +50,15 @@ public class AskLiliaSettingsToolTests
     }
 
     [Fact]
+    public async Task An_older_document_landscape_only_in_its_class_options_reads_as_landscape()
+    {
+        var (h, doc) = Setup();
+        doc = doc with { Orientation = null, LatexDocumentClassOptions = "twoside,landscape" };
+        var r = await Call(Fn(h.Tools(doc, false), "get_document_settings"));
+        r.GetProperty("orientation").GetString().Should().Be("landscape");
+    }
+
+    [Fact]
     public async Task Get_returns_the_stored_settings()
     {
         var (h, doc) = Setup();

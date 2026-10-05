@@ -139,7 +139,11 @@ public static class LatexPageSetupExtractor
         if (spacing is null)
         {
             var ls = Regex.Match(pre, @"\\linespread\s*\{\s*([0-9.]+)\s*\}");
-            if (ls.Success && double.TryParse(ls.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var lv)) spacing = lv;
+            if (ls.Success && double.TryParse(ls.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var lv))
+                // lineSpacing 1.5 and 2 mean setspace's \onehalfspacing and \doublespacing (about 1.25 and 1.67 as
+                // a \linespread factor), so \linespread{2} stored as 2 came back much tighter. A factor that lands
+                // on those two values is nudged off them, and the builder writes it back as \linespread{2}.
+                spacing = Math.Abs(lv - 1.5) < 1e-9 || Math.Abs(lv - 2.0) < 1e-9 ? lv + 1e-6 : lv;
         }
         if (spacing is { } sp) Set("lineSpacing", i => i with { LineSpacing = sp }, sp.ToString(CultureInfo.InvariantCulture));
 
@@ -157,7 +161,9 @@ public static class LatexPageSetupExtractor
             notes.Add("parskip (paragraph spacing instead of indent) is not supported");
 
         // ── page numbering ─────────────────────────────────────────────────
-        var pn = Regex.Match(text, @"\\pagenumbering\s*\{\s*([A-Za-z]+)\s*\}");
+        // The LAST \pagenumbering: a thesis numbers its front matter in roman and switches to arabic for the
+        // body, and the body is what the document is. The first match made the whole thesis roman (5 Oct review).
+        var pn = Regex.Matches(text, @"\\pagenumbering\s*\{\s*([A-Za-z]+)\s*\}").LastOrDefault() ?? Match.Empty;
         if (pn.Success)
         {
             var kind = pn.Groups[1].Value;
