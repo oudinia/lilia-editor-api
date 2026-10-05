@@ -513,10 +513,7 @@ public static class LaTeXPreambleBuilder
     }
 
     /// <summary>Classes that define \chapter, where the package on its own would colour chapters.</summary>
-    private static readonly HashSet<string> ChapterTopClasses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "report", "book", "memoir", "scrbook", "scrreprt", "amsbook",
-    };
+    private static readonly IReadOnlySet<string> ChapterTopClasses = Lilia.Core.Models.HeadingCommands.ChapterClasses;
 
     /// <summary>
     /// The document theme's managed preamble line (Document settings → Look), or an empty string
@@ -529,15 +526,14 @@ public static class LaTeXPreambleBuilder
     /// \liliaPinColour{3}{7}
     /// </code>
     ///
-    /// <para>Index colours "the top numbered heading the document actually prints". Lilia writes a
-    /// level-1 heading as \section in every class (the LaTeX import maps nothing to \chapter), so in
-    /// a class that has \chapter the line says <c>top=section</c>, unless the body really prints
-    /// chapters: an embed block (raw LaTeX, the only path that can) containing \chapter. Then it
-    /// says <c>top=chapter</c>.</para>
+    /// <para>Index colours "the top numbered heading the document actually prints". In a class that
+    /// has \chapter a level-1 heading prints as \chapter (HeadingCommands), so the line says
+    /// <c>top=chapter</c> when there is one (or an embed block prints its own \chapter), and
+    /// <c>top=section</c> otherwise.</para>
     ///
     /// <para>Index pins are stored per heading block; each is written as the number that heading
     /// has now (its position among the numbered level-1 headings), so a pin follows its heading
-    /// when headings move. Under <c>top=chapter</c> the level-1 headings are not the coloured level,
+    /// when headings move. When an embed prints its own \chapter the count would be out of step,
     /// so no pin is written.</para>
     /// </summary>
     /// <param name="bodyBlocks">The blocks the body will contain, in order.</param>
@@ -561,10 +557,12 @@ public static class LaTeXPreambleBuilder
         if (look.PrintSafe) options.Add("printsafe");
         if (OwnsPageFoot(doc)) options.Add("foottab=false");
         var blocks = (bodyBlocks ?? Enumerable.Empty<Block>()).ToList();
-        var chapterTop = false;
+        // Pins are numbered by the level-1 headings; an embed that prints its own \chapter would put
+        // the count out of step, so then no pin is written.
+        var rawChapters = blocks.Any(PrintsChapter);
         if (ChapterTopClasses.Contains(ResolveClassName(doc)))
         {
-            chapterTop = blocks.Any(PrintsChapter);
+            var chapterTop = rawChapters || blocks.Any(IsNumberedTopHeading);
             options.Add(chapterTop ? "top=chapter" : "top=section");
         }
 
@@ -572,7 +570,7 @@ public static class LaTeXPreambleBuilder
         sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
         sb.AppendLine($"\\usepackage[{string.Join(", ", options)}]{{{ThemeCatalog.PackageName}}}");
 
-        if (look.Pins.Count > 0 && look.Theme == "index" && !chapterTop)
+        if (look.Pins.Count > 0 && look.Theme == "index" && !rawChapters)
         {
             var number = 0;
             foreach (var block in blocks)

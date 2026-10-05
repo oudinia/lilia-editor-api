@@ -149,6 +149,13 @@ public class LaTeXExportService : ILaTeXExportService
         return ApplyCitationBackend(files, options);
     }
 
+    // The class the headings print for: in a class with \chapter a level-1 heading is a chapter
+    // (HeadingCommands). Set once per export; the service is scoped, one document at a time.
+    private string _headingClass = "article";
+
+    private void UseHeadingClass(Document doc, LaTeXExportOptions options) =>
+        _headingClass = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
+
     // ── Single-file structure ──────────────────────────────────────────
 
     private List<ProjectFile> GenerateSingleFile(
@@ -157,6 +164,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        UseHeadingClass(doc, options);
         var files = new List<ProjectFile>();
         var sb = new StringBuilder();
         var usesNatbib = DocumentUsesNatbib(blocks);
@@ -244,6 +252,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        UseHeadingClass(doc, options);
         var files = new List<ProjectFile>();
         var chapters = GroupBlocksByHeading(blocks);
         var chapterFilenames = new List<string>();
@@ -329,6 +338,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        UseHeadingClass(doc, options);
         var files = new List<ProjectFile>();
         var chapters = GroupBlocksByHeading(blocks);
         var chapterInputPaths = new List<string>();
@@ -952,8 +962,8 @@ public class LaTeXExportService : ILaTeXExportService
     {
         var text = GetText(content);
         var level = content.TryGetProperty("level", out var l) ? l.GetInt32() : 1;
-        var commands = new[] { "section", "subsection", "subsubsection", "paragraph", "subparagraph" };
-        var command = commands[Math.Min(level - 1, 4)];
+        // In a class with \chapter, level 1 is a chapter (see HeadingCommands).
+        var command = Lilia.Core.Models.HeadingCommands.For(level, _headingClass);
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{Lilia.Engines.LabelKey.Safe(label)}}}" : "";
 

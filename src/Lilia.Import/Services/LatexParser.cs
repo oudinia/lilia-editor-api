@@ -1278,11 +1278,12 @@ public class LatexParser : ILatexParser
             // Find the next structural element
             var matches = new List<(Match match, string type)>();
 
-            // Sections — \section / \subsection / \subsubsection / \paragraph / \subparagraph (P1-1)
+            // Sections — \chapter / \section / \subsection / \subsubsection / \paragraph / \subparagraph (P1-1).
+            // Their levels depend on the class: in a report or book \chapter is level 1 (HeadingCommands).
             // Section title allows one level of nested braces so cases
             // like \section{The \texttt{deploy} command} capture the
             // full title instead of truncating at the first `}`.
-            var sectionMatch = Regex.Match(remaining, @"\\(section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
+            var sectionMatch = Regex.Match(remaining, @"\\(chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
             if (sectionMatch.Success)
             {
                 CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");
@@ -1556,17 +1557,14 @@ public class LatexParser : ILatexParser
                     var sectionLabel = Regex.Match(afterSection, @"^\s*\\label\{([^}]+)\}");
                     if (sectionLabel.Success) consumedAfterMatch = sectionLabel.Length;
                     var sectionTitle = NormaliseInlineCommands(firstMatch.match.Groups[2].Value);
-                    var level = sectionType switch
-                    {
-                        "section"       => 1,
-                        "subsection"    => 2,
-                        "subsubsection" => 3,
-                        "paragraph"     => 4,
-                        "subparagraph"  => 5,
-                        _ => 1
-                    };
+                    var documentClass = document.Metadata.DocumentClass;
+                    var level = Lilia.Core.Models.HeadingCommands.LevelOf(sectionType, documentClass);
+                    // A chapter class has one more level (\chapter on top), so its deepest command
+                    // (\subparagraph, level 6) still passes the article-sized limit.
+                    var maxLevel = options.MaxHeadingLevelForSection
+                        + (Lilia.Core.Models.HeadingCommands.HasChapters(documentClass) ? 1 : 0);
 
-                    if (level >= options.MinHeadingLevelForSection && level <= options.MaxHeadingLevelForSection)
+                    if (level >= options.MinHeadingLevelForSection && level <= maxLevel)
                     {
                         document.Elements.Add(new ImportHeading
                         {
