@@ -80,7 +80,10 @@ public class DocumentThemeCompileTests
     {
         var tex = Latex(Doc(cls, theme), SampleBlocks());
         if (theme == "classic") tex.Should().NotContain("lilia-theme");
-        else tex.Should().Contain($"\\usepackage[theme={theme}, paper=theme]{{lilia-theme}}");
+        else tex.Should().Contain(cls == "article"
+            ? $"\\usepackage[theme={theme}, paper=theme]{{lilia-theme}}"
+            // Lilia prints level-1 headings as \section in every class, so that is the top level.
+            : $"\\usepackage[theme={theme}, paper=theme, top=section]{{lilia-theme}}");
 
         var pdf = await Compile(tex, engine);
 
@@ -132,6 +135,79 @@ public class DocumentThemeCompileTests
 
         var pdf = await Compile(tex, "pdflatex");
         (await Tool("pdftotext", pdf, "-")).Should().Contain("Fizzing yak");
+    }
+
+    [Theory]
+    [InlineData("report")]
+    [InlineData("book")]
+    public async Task Index_colours_the_level_1_headings_of_a_report_or_book_and_honours_a_pin(string cls)
+    {
+        // Three level-1 headings (printed as \section) and a pin on the third: 1 takes the first
+        // colour, 2 the second, 3 the pinned eighth. The colours are read from the PDF's content
+        // streams, so this checks what prints, not what the source says.
+        var blocks = new List<Block>
+        {
+            B("heading", new { text = "Vectors", level = 1 }),
+            B("paragraph", new { text = "Quartz zebra paragraph." }),
+            B("heading", new { text = "Matrices", level = 1 }),
+            B("paragraph", new { text = "Jovial wombat paragraph." }),
+            B("heading", new { text = "Eigenvalues", level = 1 }),
+            B("paragraph", new { text = "Fizzing yak paragraph." }),
+        };
+        var doc = Doc(cls, "index");
+        doc.Look = JsonSerializer.Serialize(new { theme = "index", paper = "theme", pins = new Dictionary<string, int> { [blocks[4].Id.ToString()] = 7 } });
+
+        var tex = Latex(doc, blocks);
+        tex.Should().Contain("top=section").And.Contain(@"\liliaPinColour{3}{7}");
+
+        var pdf = await Compile(tex, "pdflatex");
+
+        var text = await Tool("pdftotext", pdf, "-");
+        text.Should().Contain("Vectors").And.Contain("Matrices").And.Contain("Eigenvalues").And.Contain("Fizzing yak");
+
+        var colours = FillColours(pdf);
+        colours.Should().Contain(c => Near(c, "#4A5FA3"), "heading 1 takes the first colour");
+        colours.Should().Contain(c => Near(c, "#A86F00"), "heading 2 takes the second");
+        colours.Should().Contain(c => Near(c, "#2E6E9E"), "heading 3 is pinned to the eighth");
+        colours.Should().NotContain(c => Near(c, "#B8303A"), "the pin replaces the third colour, which nothing else uses");
+    }
+
+    /// <summary>Every non-stroking RGB colour (<c>r g b rg</c>) set in the PDF's content streams.</summary>
+    private static List<(double R, double G, double B)> FillColours(byte[] pdf)
+    {
+        var found = new List<(double, double, double)>();
+        var raw = System.Text.Encoding.Latin1.GetString(pdf);
+        var streams = System.Text.RegularExpressions.Regex.Matches(raw, @"stream\r?\n");
+        foreach (System.Text.RegularExpressions.Match m in streams)
+        {
+            var start = m.Index + m.Length;
+            var end = raw.IndexOf("endstream", start, StringComparison.Ordinal);
+            if (end < 0) continue;
+            string content;
+            try
+            {
+                using var input = new MemoryStream(pdf, start, end - start);
+                using var z = new System.IO.Compression.ZLibStream(input, System.IO.Compression.CompressionMode.Decompress);
+                using var reader = new StreamReader(z, System.Text.Encoding.Latin1);
+                content = reader.ReadToEnd();
+            }
+            catch
+            {
+                content = raw[start..end];
+            }
+            foreach (System.Text.RegularExpressions.Match c in System.Text.RegularExpressions.Regex.Matches(
+                         content, @"(?<![\d.])(\d*\.?\d+) (\d*\.?\d+) (\d*\.?\d+) rg\b"))
+                found.Add((double.Parse(c.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture),
+                           double.Parse(c.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture),
+                           double.Parse(c.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        return found;
+    }
+
+    private static bool Near((double R, double G, double B) c, string hex)
+    {
+        double Ch(int i) => Convert.ToInt32(hex.Substring(1 + 2 * i, 2), 16) / 255.0;
+        return Math.Abs(c.R - Ch(0)) < 0.004 && Math.Abs(c.G - Ch(1)) < 0.004 && Math.Abs(c.B - Ch(2)) < 0.004;
     }
 
     [Fact]

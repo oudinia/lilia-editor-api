@@ -512,7 +512,7 @@ public static class LaTeXPreambleBuilder
         Validation,
     }
 
-    /// <summary>Classes whose top numbered level is \chapter (Index colours chapters there).</summary>
+    /// <summary>Classes that define \chapter, where the package on its own would colour chapters.</summary>
     private static readonly HashSet<string> ChapterTopClasses = new(StringComparer.OrdinalIgnoreCase)
     {
         "report", "book", "memoir", "scrbook", "scrreprt", "amsbook",
@@ -529,11 +529,16 @@ public static class LaTeXPreambleBuilder
     /// \liliaPinColour{3}{7}
     /// </code>
     ///
+    /// <para>Index colours "the top numbered heading the document actually prints". Lilia writes a
+    /// level-1 heading as \section in every class (the LaTeX import maps nothing to \chapter), so in
+    /// a class that has \chapter the line says <c>top=section</c>, unless the body really prints
+    /// chapters: an embed block (raw LaTeX, the only path that can) containing \chapter. Then it
+    /// says <c>top=chapter</c>.</para>
+    ///
     /// <para>Index pins are stored per heading block; each is written as the number that heading
-    /// has now (its position among the numbered top-level headings), so a pin follows its heading
-    /// when headings move. Lilia writes a level-1 heading as \section in every class, so pins are
-    /// written only where \section is the top level; under report and book the top level is
-    /// \chapter, which Lilia's blocks never produce.</para>
+    /// has now (its position among the numbered level-1 headings), so a pin follows its heading
+    /// when headings move. Under <c>top=chapter</c> the level-1 headings are not the coloured level,
+    /// so no pin is written.</para>
     /// </summary>
     /// <param name="bodyBlocks">The blocks the body will contain, in order.</param>
     /// <param name="lookOverride">An export's look (Export PDF: Look ▾ / Print-safe); null uses the stored one.</param>
@@ -555,15 +560,22 @@ public static class LaTeXPreambleBuilder
         var options = new List<string> { $"theme={look.Theme}", $"paper={look.Paper}" };
         if (look.PrintSafe) options.Add("printsafe");
         if (OwnsPageFoot(doc)) options.Add("foottab=false");
+        var blocks = (bodyBlocks ?? Enumerable.Empty<Block>()).ToList();
+        var chapterTop = false;
+        if (ChapterTopClasses.Contains(ResolveClassName(doc)))
+        {
+            chapterTop = blocks.Any(PrintsChapter);
+            options.Add(chapterTop ? "top=chapter" : "top=section");
+        }
 
         var sb = new StringBuilder();
         sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
         sb.AppendLine($"\\usepackage[{string.Join(", ", options)}]{{{ThemeCatalog.PackageName}}}");
 
-        if (look.Pins.Count > 0 && look.Theme == "index" && !ChapterTopClasses.Contains(ResolveClassName(doc)))
+        if (look.Pins.Count > 0 && look.Theme == "index" && !chapterTop)
         {
             var number = 0;
-            foreach (var block in bodyBlocks ?? Enumerable.Empty<Block>())
+            foreach (var block in blocks)
             {
                 if (!IsNumberedTopHeading(block)) continue;
                 number++;
@@ -582,6 +594,27 @@ public static class LaTeXPreambleBuilder
         string.Equals(doc.PageNumbering?.Trim(), "none", StringComparison.OrdinalIgnoreCase)
         || new[] { doc.HeaderText, doc.FooterText, doc.HeaderLeft, doc.HeaderCenter, doc.HeaderRight,
                    doc.FooterLeft, doc.FooterCenter, doc.FooterRight }.Any(v => !string.IsNullOrWhiteSpace(v));
+
+    private static readonly System.Text.RegularExpressions.Regex ChapterCommand =
+        new(@"\\chapter(?![A-Za-z@])", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>An embed block (raw LaTeX, emitted as written) whose code prints a \chapter.</summary>
+    private static bool PrintsChapter(Block block)
+    {
+        if (!string.Equals(block.Type, "embed", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            var c = block.Content.RootElement;
+            var code = c.TryGetProperty("code", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            if (string.IsNullOrEmpty(code)) return false;
+            var uncommented = System.Text.RegularExpressions.Regex.Replace(code, @"(?<!\\)%[^\r\n]*", "");
+            return ChapterCommand.IsMatch(uncommented);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>A heading block that renders as a numbered \section (level 1, not numbered:false).</summary>
     private static bool IsNumberedTopHeading(Block block)

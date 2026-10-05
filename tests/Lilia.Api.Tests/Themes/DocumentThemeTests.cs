@@ -303,12 +303,34 @@ public class DocumentThemeTests : IDisposable
         LaTeXPreambleBuilder.BuildThemeLine(doc, [two, one, three]).Should().Contain(@"\liliaPinColour{1}{5}");
     }
 
+    [Theory]
+    [InlineData("report")]
+    [InlineData("book")]
+    public void A_chapter_class_whose_level_1_headings_print_as_sections_colours_sections(string cls)
+    {
+        // Lilia writes a level-1 heading as \section in every class: that is the top numbered
+        // heading the document prints, so the pin maps to its section number.
+        var two = Heading("Two");
+        var doc = Doc($$$"""{"theme":"index","pins":{"{{{two.Id}}}":5}}""", cls: cls);
+        var line = LaTeXPreambleBuilder.BuildThemeLine(doc, [Heading("One"), two]);
+        line.Should().Contain(@"\usepackage[theme=index, paper=theme, top=section]{lilia-theme}");
+        line.Should().Contain(@"\liliaPinColour{2}{5}");
+    }
+
     [Fact]
-    public void Pins_are_not_written_where_the_top_level_is_chapter()
+    public void Only_a_body_that_prints_chapter_makes_chapter_the_top_level()
     {
         var two = Heading("Two");
-        var doc = Doc($$$"""{"theme":"index","pins":{"{{{two.Id}}}":5}}""", cls: "report");
-        LaTeXPreambleBuilder.BuildThemeLine(doc, [Heading("One"), two]).Should().NotContain(@"\liliaPinColour");
+        var doc = Doc($$$"""{"theme":"index","pins":{"{{{two.Id}}}":5}}""", cls: "book");
+        var chapter = B("embed", """{"code":"\\chapter{Raw chapter}"}""");
+        var commented = B("embed", """{"code":"% \\chapter{not printed}\n\\section*{x}"}""");
+
+        LaTeXPreambleBuilder.BuildThemeLine(doc, [commented, Heading("One"), two]).Should().Contain("top=section");
+        var line = LaTeXPreambleBuilder.BuildThemeLine(doc, [chapter, Heading("One"), two]);
+        line.Should().Contain("top=chapter");
+        line.Should().NotContain(@"\liliaPinColour", "level-1 headings are not the coloured level there");
+        // article has no \chapter: nothing to say.
+        LaTeXPreambleBuilder.BuildThemeLine(Doc("""{"theme":"index"}"""), [chapter]).Should().NotContain("top=");
     }
 
     [Fact]
