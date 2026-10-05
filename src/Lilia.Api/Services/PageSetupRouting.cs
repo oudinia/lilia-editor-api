@@ -26,7 +26,7 @@ public static class PageSetupRouting
         if (string.Equals(d.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
             || (d.LatexDocumentClassOptions ?? "").Contains("landscape", StringComparison.OrdinalIgnoreCase)) reasons.Add("landscape");
         if (d.Columns > 1) reasons.Add("columns");
-        if (d.LineSpacing is not null) reasons.Add("line spacing");
+        if (d.LineSpacing is { } ls && Math.Abs(ls - 1.0) > 0.001) reasons.Add("line spacing");   // 1.0 is single spacing: nothing to honour
         if (!string.IsNullOrWhiteSpace(d.ParagraphIndent)) reasons.Add("paragraph indent");
         if (d.PageNumbering is { } pn && !string.Equals(pn.Trim(), "arabic", StringComparison.OrdinalIgnoreCase) && pn.Trim().Length > 0) reasons.Add("page numbering");
         if (new[] { d.HeaderText, d.FooterText, d.HeaderLeft, d.HeaderCenter, d.HeaderRight, d.FooterLeft, d.FooterCenter, d.FooterRight }

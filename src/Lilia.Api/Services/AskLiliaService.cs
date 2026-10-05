@@ -845,33 +845,49 @@ public sealed class AskLiliaService : IAskLiliaService
 
             var applied = new List<string>();
             var notApplied = new List<string>();
+
+            // The page setup to write, worked out before anything changes. With replace, every layout
+            // field the file does not set goes back to the default: the document becomes the file's,
+            // not the file's settings on top of the old layout (5 Oct review).
+            UpdateDocumentDto? settings = null;
             if (replace)
             {
                 var ex = LatexPageSetupExtractor.Extract(source, parsed.Metadata);
                 applied.AddRange(ex.Applied);
                 notApplied.AddRange(ex.NotApplied);
                 var check = DocumentSettingsValidator.Validate(ex.Settings);
-                var dto = (check.Update ?? throw new InvalidOperationException("extracted settings failed validation"))
-                    with
-                    {
-                        LatexDocumentClass = ex.DocumentClass,
-                        DocumentCategory = CategoryFromClass(ex.DocumentClass),
-                        LatexPackages = ex.PackagesJson,
-                        Sides = ex.Sides,
-                        TitlePage = ex.TitlePage ? true : null,
-                    };
-                var updated = await _documentService.UpdateDocumentAsync(docId, userId, dto);
-                if (updated is null) return new { error = "document not found or no write access" };
-                live.Dto = updated.Blocks is { Count: > 0 } ? updated : updated with { Blocks = live.Dto.Blocks };
-                markMetaChanged();
+                var dto = check.Update ?? throw new InvalidOperationException("extracted settings failed validation");
+                settings = dto with
+                {
+                    LatexDocumentClass = ex.DocumentClass,
+                    DocumentCategory = CategoryFromClass(ex.DocumentClass),
+                    LatexPackages = ex.PackagesJson,
+                    Sides = ex.Sides,
+                    TitlePage = ex.TitlePage ? true : null,
+                    Columns = dto.Columns ?? 1,
+                    Orientation = dto.Orientation ?? "portrait",
+                    LineSpacing = dto.LineSpacing ?? 1.0,
+                    MarginTop = dto.MarginTop ?? "", MarginBottom = dto.MarginBottom ?? "",
+                    MarginLeft = dto.MarginLeft ?? "", MarginRight = dto.MarginRight ?? "",
+                    ParagraphIndent = dto.ParagraphIndent ?? "",
+                    PageNumbering = dto.PageNumbering ?? "",
+                    HeaderText = dto.HeaderText ?? "", FooterText = dto.FooterText ?? "",
+                    HeaderLeft = dto.HeaderLeft ?? "", HeaderCenter = dto.HeaderCenter ?? "", HeaderRight = dto.HeaderRight ?? "",
+                    FooterLeft = dto.FooterLeft ?? "", FooterCenter = dto.FooterCenter ?? "", FooterRight = dto.FooterRight ?? "",
+                    CustomPreamble = dto.CustomPreamble ?? "",
+                };
             }
             else
             {
                 notApplied.Add("replace=false appends the blocks only; the document's page setup was left as it was");
             }
 
-            var doc = live.Dto;
-            var existing = doc.Blocks ?? new List<BlockDto>();
+            // Read the document as it is NOW, not as it was when this turn started: the author may have
+            // saved meanwhile, and the batch below replaces the whole block list. Its version guards the
+            // write: if the document changes between this read and the write, nothing is written.
+            var fresh = await _documentService.GetDocumentAsync(docId, userId)
+                ?? throw new InvalidOperationException("document not found or no access");
+            var existing = fresh.Blocks ?? new List<BlockDto>();
             var existingTitle = existing.FirstOrDefault(b =>
                 string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
             var batch = new List<BatchUpdateBlockDto>();
@@ -895,15 +911,48 @@ public sealed class AskLiliaService : IAskLiliaService
                 batch.Add(new BatchUpdateBlockDto(Guid.NewGuid(), type,
                     JsonSerializer.SerializeToElement(content), sort++, null, 0));
 
-            var result = await _blockService.BatchUpdateBlocksAsync(docId, batch);
-            if (doc.Blocks is not null)
+            // Blocks first, in one transaction with the version check; then the page setup. If the blocks
+            // fail nothing has changed. If the page setup fails after them, say exactly that.
+            BatchUpdateResultDto result;
+            try
             {
-                doc.Blocks.Clear();
-                doc.Blocks.AddRange(result.Blocks);
+                result = await _blockService.BatchUpdateBlocksAsync(docId, batch, fresh.Version);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+            {
+                return new { error = "The document changed while importing (the author saved). Nothing was changed; call import_latex again." };
+            }
+            if (live.Dto.Blocks is not null)
+            {
+                live.Dto.Blocks.Clear();
+                live.Dto.Blocks.AddRange(result.Blocks);
             }
             foreach (var b in result.Blocks) changed.Add(b.Id.ToString());
             await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
                 new { op = "replace", count = result.Blocks.Count, title = parsed.Title });
+
+            if (settings is not null)
+            {
+                try
+                {
+                    var updated = await _documentService.UpdateDocumentAsync(docId, userId, settings);
+                    if (updated is null) throw new InvalidOperationException("no write access");
+                    live.Dto = updated with { Blocks = live.Dto.Blocks };
+                    markMetaChanged();
+                }
+                catch (Exception settingsEx)
+                {
+                    _logger.LogError(settingsEx, "[AskLilia] import_latex page setup failed after the blocks for {DocId}", docId);
+                    return new
+                    {
+                        ok = false,
+                        partial = true,
+                        error = "The blocks were imported, but the page setup could not be applied: " + settingsEx.Message
+                                + ". Tell the author; Undo AI changes restores the document as it was before the import.",
+                        importedBlocks = mapped.Count,
+                    };
+                }
+            }
 
             _logger.LogInformation(
                 "[AskLilia] import_latex doc={DocId} replace={Replace} blocks={Count} applied={Applied} notApplied={NotApplied}",

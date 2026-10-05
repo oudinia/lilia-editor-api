@@ -78,4 +78,11 @@ public class PageSetupRoutingTests
         o.FontSize.Should().BeNull();
         o.PaperSize.Should().BeNull();
     }
+
+    [Fact]
+    public void Single_line_spacing_is_not_page_setup()
+    {
+        var d = Plain(); d.LineSpacing = 1.0;   // what import_latex's replace writes as "the default"
+        PageSetupRouting.WhyLatex(d).Should().BeNull();
+    }
 }
