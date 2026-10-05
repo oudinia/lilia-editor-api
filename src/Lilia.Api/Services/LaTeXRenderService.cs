@@ -310,6 +310,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var texPath = Path.Combine(tmpDir, "formula.tex");
                 var dviPath = Path.Combine(tmpDir, "formula.dvi");
                 var svgPath = Path.Combine(tmpDir, "formula.svg");
+                Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(fullSource);
                 await File.WriteAllTextAsync(texPath, fullSource);
 
                 // Step 1: latex -> DVI (faster than pdflatex for single formulas)
@@ -523,6 +524,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             {
                 var texPath = Path.Combine(tmpDir, "document.tex");
                 var logPath = Path.Combine(tmpDir, "document.log");
+                Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
                 await File.WriteAllTextAsync(texPath, latex);
 
                 // BuildPdflatexArgs works for lualatex/xelatex too — same
@@ -722,6 +724,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var full = Path.Combine(tmpDir, rel);
                 var dir = Path.GetDirectoryName(full);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(content);
                 await File.WriteAllTextAsync(full, content);
             }
 
@@ -779,7 +782,8 @@ public class LaTeXRenderService : ILaTeXRenderService
             var texPath = Path.Combine(tmpDir, "document.tex");
             var pdfPath = Path.Combine(tmpDir, "document.pdf");
             var logPath = Path.Combine(tmpDir, "document.log");
-            await File.WriteAllTextAsync(texPath, latex);
+            Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
+                await File.WriteAllTextAsync(texPath, latex);
 
             // Run the chosen engine twice (for references). pdflatex is the
             // default; xelatex / lualatex take the same arg shape for our
@@ -874,44 +878,8 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
     }
 
-    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
-        string command, string arguments, string workingDir, int timeoutSeconds)
-    {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = command,
-                Arguments = arguments,
-                WorkingDirectory = workingDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            }
-        };
-
-        var stdoutBuilder = new StringBuilder();
-        var stderrBuilder = new StringBuilder();
-
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) stdoutBuilder.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderrBuilder.AppendLine(e.Data); };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(true);
-            throw new TimeoutException($"Process timed out after {timeoutSeconds}s");
-        }
-
-        return (process.ExitCode, stdoutBuilder.ToString(), stderrBuilder.ToString());
-    }
+    // One hardened launcher for every TeX process: shell escape off, scrubbed environment, optional other user.
+    private static Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
+        string command, string arguments, string workingDir, int timeoutSeconds) =>
+        Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds);
 }

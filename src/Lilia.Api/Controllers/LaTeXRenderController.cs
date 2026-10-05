@@ -292,6 +292,9 @@ public class LaTeXRenderController : ControllerBase
     /// Render arbitrary LaTeX source to PDF.
     /// </summary>
     [HttpPost("render")]
+    // Arbitrary source from the caller, tied to no document. Nothing in the web app or the e2e suite
+    // calls it (5 Oct 2026), so it is for admins until the user decides whether it should exist (A6).
+    [Authorize(Policy = Lilia.Api.Security.AdminPolicy.Name)]
     public async Task<IActionResult> RenderRawLatex([FromBody] RenderLatexRequest request)
     {
         try
