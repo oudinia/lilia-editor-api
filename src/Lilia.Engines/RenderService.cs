@@ -1345,7 +1345,7 @@ public partial class RenderService : IRenderService
 
             return block.Type.ToLowerInvariant() switch
             {
-                "heading" or "header" => RenderHeadingToLatex(content),
+                "heading" or "header" => RenderHeadingToLatex(content, block.Document?.LatexDocumentClass),
                 "paragraph" => RenderParagraphToLatex(content),
                 "equation" => RenderEquationToLatex(content),
                 "figure" or "image" => RenderFigureToLatex(content),
@@ -1382,22 +1382,13 @@ public partial class RenderService : IRenderService
         }
     }
 
-    private string RenderHeadingToLatex(JsonElement content)
+    private string RenderHeadingToLatex(JsonElement content, string? documentClass)
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         var level = content.TryGetProperty("level", out var l) ? l.GetInt32() : 1;
 
-        var command = level switch
-        {
-            1 => "section",
-            2 => "subsection",
-            3 => "subsubsection",
-            4 => "paragraph",
-            // LaTeX has nothing below \subparagraph: a deeper level stays at the
-            // deepest command rather than jumping back up to \section.
-            >= 5 => "subparagraph",
-            _ => "section"
-        };
+        // In a class with \chapter, level 1 is a chapter (see HeadingCommands).
+        var command = Lilia.Core.Models.HeadingCommands.For(level, documentClass);
 
         // numbered=false → starred form (\section*{}). Suppresses
         // numbering AND the TOC entry. Default true preserves

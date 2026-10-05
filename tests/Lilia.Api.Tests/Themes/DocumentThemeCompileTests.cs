@@ -82,8 +82,8 @@ public class DocumentThemeCompileTests
         if (theme == "classic") tex.Should().NotContain("lilia-theme");
         else tex.Should().Contain(cls == "article"
             ? $"\\usepackage[theme={theme}, paper=theme]{{lilia-theme}}"
-            // Lilia prints level-1 headings as \section in every class, so that is the top level.
-            : $"\\usepackage[theme={theme}, paper=theme, top=section]{{lilia-theme}}");
+            // In report and book a level-1 heading prints as \chapter, the top level.
+            : $"\\usepackage[theme={theme}, paper=theme, top=chapter]{{lilia-theme}}");
 
         var pdf = await Compile(tex, engine);
 
@@ -142,7 +142,7 @@ public class DocumentThemeCompileTests
     [InlineData("book")]
     public async Task Index_colours_the_level_1_headings_of_a_report_or_book_and_honours_a_pin(string cls)
     {
-        // Three level-1 headings (printed as \section) and a pin on the third: 1 takes the first
+        // Three level-1 headings (printed as \chapter) and a pin on the third: 1 takes the first
         // colour, 2 the second, 3 the pinned eighth. The colours are read from the PDF's content
         // streams, so this checks what prints, not what the source says.
         var blocks = new List<Block>
@@ -158,7 +158,7 @@ public class DocumentThemeCompileTests
         doc.Look = JsonSerializer.Serialize(new { theme = "index", paper = "theme", pins = new Dictionary<string, int> { [blocks[4].Id.ToString()] = 7 } });
 
         var tex = Latex(doc, blocks);
-        tex.Should().Contain("top=section").And.Contain(@"\liliaPinColour{3}{7}");
+        tex.Should().Contain("top=chapter").And.Contain(@"\liliaPinColour{3}{7}");
 
         var pdf = await Compile(tex, "pdflatex");
 

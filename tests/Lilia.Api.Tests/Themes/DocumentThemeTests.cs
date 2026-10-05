@@ -314,29 +314,37 @@ public class DocumentThemeTests : IDisposable
     [Theory]
     [InlineData("report")]
     [InlineData("book")]
-    public void A_chapter_class_whose_level_1_headings_print_as_sections_colours_sections(string cls)
+    public void A_chapter_class_colours_its_chapters_the_level_1_headings(string cls)
     {
-        // Lilia writes a level-1 heading as \section in every class: that is the top numbered
-        // heading the document prints, so the pin maps to its section number.
+        // In a class with \chapter a level-1 heading prints as \chapter (HeadingCommands): that is
+        // the top numbered heading, so the pin maps to its chapter number.
         var two = Heading("Two");
         var doc = Doc($$$"""{"theme":"index","pins":{"{{{two.Id}}}":5}}""", cls: cls);
         var line = LaTeXPreambleBuilder.BuildThemeLine(doc, [Heading("One"), two]);
-        line.Should().Contain(@"\usepackage[theme=index, paper=theme, top=section]{lilia-theme}");
+        line.Should().Contain(@"\usepackage[theme=index, paper=theme, top=chapter]{lilia-theme}");
         line.Should().Contain(@"\liliaPinColour{2}{5}");
     }
 
     [Fact]
-    public void Only_a_body_that_prints_chapter_makes_chapter_the_top_level()
+    public void A_chapter_class_without_level_1_headings_colours_its_sections()
+    {
+        var doc = Doc("""{"theme":"index"}""", cls: "report");
+        var sectionOnly = B("heading", """{"text":"Only a section","level":2}""");
+        LaTeXPreambleBuilder.BuildThemeLine(doc, [sectionOnly]).Should().Contain("top=section");
+    }
+
+    [Fact]
+    public void An_embed_that_prints_its_own_chapter_keeps_pins_out_of_step_so_none_is_written()
     {
         var two = Heading("Two");
         var doc = Doc($$$"""{"theme":"index","pins":{"{{{two.Id}}}":5}}""", cls: "book");
         var chapter = B("embed", """{"code":"\\chapter{Raw chapter}"}""");
         var commented = B("embed", """{"code":"% \\chapter{not printed}\n\\section*{x}"}""");
 
-        LaTeXPreambleBuilder.BuildThemeLine(doc, [commented, Heading("One"), two]).Should().Contain("top=section");
+        LaTeXPreambleBuilder.BuildThemeLine(doc, [commented, Heading("One"), two]).Should().Contain(@"\liliaPinColour{2}{5}");
         var line = LaTeXPreambleBuilder.BuildThemeLine(doc, [chapter, Heading("One"), two]);
         line.Should().Contain("top=chapter");
-        line.Should().NotContain(@"\liliaPinColour", "level-1 headings are not the coloured level there");
+        line.Should().NotContain(@"\liliaPinColour", "the raw chapter puts the count out of step");
         // article has no \chapter: nothing to say.
         LaTeXPreambleBuilder.BuildThemeLine(Doc("""{"theme":"index"}"""), [chapter]).Should().NotContain("top=");
     }
