@@ -146,4 +146,22 @@ public class TypstTitleAuthorsTests
             "#align(center)[\n  #text(size: 1.6em, weight: \"bold\")[A Paper]\n  #v(0.6em)\n  Ada Lovelace\n" +
             "  #v(0.4em)\n  May 2026\n]\n#v(1.2em)\n\n");
     }
+
+    // ── review of 5 Oct: "//" is a Typst comment ─────────────────────────
+
+    [Fact]
+    public void A_double_slash_in_an_author_line_does_not_break_the_compile()
+    {
+        var (text, error) = CompileToText(Build(@"Jane \\ Dept. A // B \and John"));
+        text.Should().NotBeNull($"the document must compile ({error})");
+        text!.Should().Contain("Dept. A // B");
+    }
+
+    [Fact]
+    public void A_url_still_reads_as_a_url()
+    {
+        var (text, error) = CompileToText(Build(@"Jane \\ https://example.org/lab \and John"));
+        text.Should().NotBeNull($"the document must compile ({error})");
+        text!.Should().Contain("https://example.org/lab");
+    }
 }

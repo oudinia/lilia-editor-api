@@ -1603,8 +1603,17 @@ public class TypstExportService : ITypstExportService
         // Typst syntax-significant chars in markup mode. Placeholder
         // markers ( ) pass through untouched.
         var sb = new StringBuilder(text.Length);
-        foreach (var c in text)
+        for (var i = 0; i < text.Length; i++)
         {
+            var c = text[i];
+            // "//" starts a comment in Typst markup and swallowed the rest of the line, closing
+            // brackets included ("Dept. A // B" in an author cell stopped the compile). "://" is a
+            // link, which Typst reads first, so a URL keeps working.
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '/' && (i == 0 || text[i - 1] != ':'))
+            {
+                sb.Append("\\/");
+                continue;
+            }
             switch (c)
             {
                 case '*':
