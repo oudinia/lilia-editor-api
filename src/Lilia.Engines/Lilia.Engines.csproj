@@ -11,6 +11,10 @@
     <!-- The self-contained maths renderer the HTML export inlines. Generated
          by ops/build-katex-asset.py; regenerate after a KaTeX upgrade. -->
     <EmbeddedResource Include="Assets\katex-inline.html" />
+    <!-- Document themes: the descriptors (GET /api/themes, the preamble builder, the tests)
+         and the LaTeX package staged into every compile that loads it. -->
+    <EmbeddedResource Include="Themes\themes.json" LogicalName="Lilia.Engines.Themes.themes.json" />
+    <EmbeddedResource Include="Themes\lilia-theme.sty" LogicalName="Lilia.Engines.Themes.lilia-theme.sty" />
   </ItemGroup>
 
   <ItemGroup>

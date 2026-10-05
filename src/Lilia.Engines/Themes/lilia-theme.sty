@@ -1,0 +1,403 @@
+%% lilia-theme.sty -- Lilia document themes.
+%%
+%% One line in the preamble, managed by Document settings -> Look:
+%%   \usepackage[theme=index, paper=theme]{lilia-theme}
+%%
+%% Plain LaTeX: it runs under pdfLaTeX and LuaLaTeX, on Lilia's server and on
+%% Overleaf, and it loads its faces only through the TeX font packages
+%% (montserrat, sourceserifpro), never through font file paths.
+%%
+%% Options
+%%   theme     = classic | cerulean | index   (carnet, gazette, exposition: planned)
+%%   paper     = theme | white                (the phase-1 themes all print on white)
+%%   printsafe = true | false                 (white paper, dark grounds to their light pair)
+%%   foottab   = true | false                 (the page number in a rounded foot tab)
+%%   top       = auto | section | chapter     (the level that takes Index colours;
+%%                                              auto: \chapter when the class has it)
+%%
+%% Commands
+%%   \liliaHeadRow          at the start of a table's header row (Lilia's exporter
+%%                          writes it). Without this package it is defined empty
+%%                          by the table itself, so a copied table still compiles.
+%%   \liliaTableHead{text}  a header cell in the theme's header face.
+%%   \liliaPinColour{n}{k}  Index: top-level heading n takes sequence colour k (0-7).
+%%                          Unpinned headings fill the sequence in order, skipping
+%%                          the colours taken by pins.
+%%
+%% The author's preamble wins: Lilia writes this line before the custom
+%% preamble, so anything set there overrides the theme.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{lilia-theme}[2026/10/05 v0.1 Lilia document themes]
+
+\RequirePackage{kvoptions}
+\SetupKeyvalOptions{family=lilia,prefix=lilia@opt@}
+\DeclareStringOption[classic]{theme}
+\DeclareStringOption[theme]{paper}
+\DeclareStringOption[auto]{top}
+\DeclareBoolOption{printsafe}
+\DeclareBoolOption[true]{foottab}
+\ProcessKeyvalOptions*
+
+% Both macros exist whatever the theme, so Lilia's table LaTeX and pin lines
+% always compile. Classic leaves them doing nothing.
+\providecommand\liliaHeadRow{}
+\providecommand\liliaTableHead[1]{#1}
+\providecommand\liliaPinColour[2]{}
+
+\def\lilia@theme@classic{classic}
+\def\lilia@theme@cerulean{cerulean}
+\def\lilia@theme@index{index}
+\def\lilia@theme@carnet{carnet}
+\def\lilia@theme@gazette{gazette}
+\def\lilia@theme@exposition{exposition}
+\edef\lilia@theme{\lilia@opt@theme}
+
+% Classic is today's look: it loads nothing and changes nothing.
+\ifx\lilia@theme\lilia@theme@classic
+  \expandafter\endinput
+\fi
+
+\newif\iflilia@known
+\newif\iflilia@planned
+\ifx\lilia@theme\lilia@theme@cerulean \lilia@knowntrue \fi
+\ifx\lilia@theme\lilia@theme@index \lilia@knowntrue \fi
+\iflilia@known\else
+  \ifx\lilia@theme\lilia@theme@carnet \lilia@plannedtrue \fi
+  \ifx\lilia@theme\lilia@theme@gazette \lilia@plannedtrue \fi
+  \ifx\lilia@theme\lilia@theme@exposition \lilia@plannedtrue \fi
+  \iflilia@planned
+    \PackageError{lilia-theme}{Theme `\lilia@theme' is planned but not built yet}%
+      {Use theme=classic, theme=cerulean or theme=index.}%
+  \else
+    \PackageError{lilia-theme}{Unknown theme `\lilia@theme'}%
+      {The themes are classic, cerulean and index.}%
+  \fi
+  \expandafter\endinput
+\fi
+
+% ---------------------------------------------------------------------------
+% Faces. A missing font package is an error that stops the run: a theme never
+% prints in a substitute face.
+% ---------------------------------------------------------------------------
+\newcommand\lilia@needfont[2][]{%
+  \IfFileExists{#2.sty}%
+    {\RequirePackage[#1]{#2}}%
+    {\PackageError{lilia-theme}%
+      {Theme `\lilia@theme' needs the font package #2, which is not installed}%
+      {Install #2 (TeX Live: tlmgr install #2) or choose theme=classic.
+       The theme never falls back to another face, so the run stops here.}%
+     \csname @@end\endcsname}}
+
+\lilia@needfont[type1]{sourceserifpro}% the body face, \rmdefault (Type 1 under every engine)
+\lilia@needfont{montserrat}%     the structure face: \sfdefault
+
+\RequirePackage{xcolor}
+\RequirePackage{ragged2e}
+\RequirePackage{titlesec}
+\RequirePackage{fancyhdr}
+\RequirePackage{tikz}
+
+% ---------------------------------------------------------------------------
+% Colours. Body ink is at least 7:1 on the paper; every Index colour is at
+% least 4.5:1 on white.
+% ---------------------------------------------------------------------------
+\definecolor{lilia@paper}{HTML}{FFFFFF}
+\definecolor{lilia@seq0}{HTML}{4A5FA3}
+\definecolor{lilia@seq1}{HTML}{A86F00}
+\definecolor{lilia@seq2}{HTML}{B8303A}
+\definecolor{lilia@seq3}{HTML}{3A3836}
+\definecolor{lilia@seq4}{HTML}{C14E12}
+\definecolor{lilia@seq5}{HTML}{66701A}
+\definecolor{lilia@seq6}{HTML}{6E2430}
+\definecolor{lilia@seq7}{HTML}{2E6E9E}
+
+\newif\iflilia@index
+\ifx\lilia@theme\lilia@theme@cerulean
+  \definecolor{lilia@ink}{HTML}{22262B}      % 15.6:1
+  \definecolor{lilia@meta}{HTML}{4A5560}
+  \definecolor{lilia@kicker}{HTML}{0A76A4}
+  \definecolor{lilia@title}{HTML}{22262B}    % chapter titles
+  \definecolor{lilia@sec}{HTML}{08597F}      % headings, 7.4:1
+  \definecolor{lilia@rule}{HTML}{0A76A4}
+  \definecolor{lilia@tab}{HTML}{0A76A4}
+  \definecolor{lilia@tabink}{HTML}{FFFFFF}
+  \definecolor{lilia@foot}{HTML}{08597F}
+  \definecolor{lilia@footink}{HTML}{FFFFFF}
+  \definecolor{lilia@link}{HTML}{08597F}
+  \colorlet{lilia@chapter}{lilia@sec}
+\else
+  \lilia@indextrue
+  \definecolor{lilia@ink}{HTML}{2F2E2C}      % 13.9:1
+  \definecolor{lilia@meta}{HTML}{5B6E9E}
+  \definecolor{lilia@kicker}{HTML}{5B6E9E}
+  \definecolor{lilia@tabink}{HTML}{FFFFFF}
+  \definecolor{lilia@foot}{HTML}{2F2E2C}
+  \definecolor{lilia@footink}{HTML}{FFFFFF}
+  \definecolor{lilia@link}{HTML}{4A5FA3}
+  % Before the first numbered top-level heading, and under unnumbered ones
+  % (front matter, bibliography), everything stays in neutral ink.
+  \colorlet{lilia@chapter}{lilia@ink}
+\fi
+\colorlet{lilia@neutral}{lilia@ink}
+
+% Paper. The built themes all print on white, so nothing is painted; the
+% option is read so that a planned theme can paint its own.
+\def\lilia@paper@white{white}
+\edef\lilia@paper{\lilia@opt@paper}
+\iflilia@opt@printsafe \let\lilia@paper\lilia@paper@white \fi
+
+% Body: ink colour, ragged right with hyphenation.
+\AtBeginDocument{%
+  \color{lilia@ink}%
+  \let\default@color\current@color
+  \setlength\RaggedRightParindent{\parindent}%
+  \RaggedRight}
+
+% ---------------------------------------------------------------------------
+% Index: which colour a top-level heading takes.
+% ---------------------------------------------------------------------------
+\newcount\lilia@n
+\newcount\lilia@u
+\newcount\lilia@k
+\newcount\lilia@navail
+\newcount\lilia@tocn
+\newif\iflilia@appendix
+\newif\iflilia@tocappendix
+\newif\iflilia@toctop
+
+\renewcommand\liliaPinColour[2]{%
+  \expandafter\xdef\csname lilia@pin@\number#1\endcsname{\number#2}%
+  \expandafter\gdef\csname lilia@taken@\number#2\endcsname{}}
+
+% The colours left to unpinned headings, in sequence order.
+\def\lilia@buildavail{%
+  \global\lilia@navail=\z@
+  \lilia@k=\z@
+  \loop
+    \expandafter\ifx\csname lilia@taken@\the\lilia@k\endcsname\relax
+      \expandafter\xdef\csname lilia@avail@\the\lilia@navail\endcsname{\the\lilia@k}%
+      \global\advance\lilia@navail\@ne
+    \fi
+    \advance\lilia@k\@ne
+  \ifnum\lilia@k<8 \repeat
+  \ifnum\lilia@navail=\z@ % every colour pinned: unpinned headings reuse the whole sequence
+    \lilia@k=\z@
+    \loop
+      \expandafter\xdef\csname lilia@avail@\the\lilia@k\endcsname{\the\lilia@k}%
+      \advance\lilia@k\@ne
+    \ifnum\lilia@k<8 \repeat
+    \global\lilia@navail=8
+  \fi}
+\AtBeginDocument{\lilia@buildavail}
+
+% \lilia@colourof{n}{appendix: 0|1}{colour name}: the n-th numbered top-level
+% heading's colour. Stateless (a function of n), so it may run any number of
+% times. Appendices restart the plain sequence and take no pins.
+\def\lilia@colourof#1#2#3{%
+  \lilia@n=#1\relax
+  \ifnum#2=\@ne
+    \lilia@k=\lilia@n \advance\lilia@k\m@ne
+    \lilia@u=\lilia@k \divide\lilia@u 8 \multiply\lilia@u 8
+    \advance\lilia@k-\lilia@u
+  \else
+    \expandafter\ifx\csname lilia@pin@\the\lilia@n\endcsname\relax
+      \lilia@u=\z@ \lilia@k=\z@
+      \ifnum\lilia@n>\z@
+        \loop
+          \advance\lilia@k\@ne
+          \expandafter\ifx\csname lilia@pin@\the\lilia@k\endcsname\relax
+            \advance\lilia@u\@ne
+          \fi
+        \ifnum\lilia@k<\lilia@n \repeat
+      \fi
+      \advance\lilia@u\m@ne
+      \ifnum\lilia@u<\z@ \lilia@u=\z@ \fi
+      \lilia@k=\lilia@u \divide\lilia@k\lilia@navail \multiply\lilia@k\lilia@navail
+      \advance\lilia@u-\lilia@k
+      \lilia@k=\csname lilia@avail@\the\lilia@u\endcsname\relax
+    \else
+      \lilia@k=\csname lilia@pin@\the\lilia@n\endcsname\relax
+    \fi
+  \fi
+  \xglobal\colorlet{#3}{lilia@seq\the\lilia@k}}
+
+% The top level: \chapter where the class has one, else \section. \part never
+% takes a colour.
+\def\lilia@top@chapter{chapter}
+\def\lilia@top@section{section}
+\edef\lilia@top{\lilia@opt@top}
+\ifx\lilia@top\lilia@top@chapter\else\ifx\lilia@top\lilia@top@section\else
+  \ifdefined\chapter \let\lilia@top\lilia@top@chapter \else \let\lilia@top\lilia@top@section \fi
+\fi\fi
+
+\def\lilia@curlabel{}
+\def\lilia@curtitle{}
+
+% Run by the top-level heading's format: the counter has been stepped.
+\def\lilia@settop{%
+  \iflilia@index
+    \lilia@colourof{\value{\lilia@top}}{\iflilia@appendix 1\else 0\fi}{lilia@chapter}%
+  \fi
+  \xdef\lilia@curlabel{\csname the\lilia@top\endcsname}}
+\def\lilia@setneutral{%
+  \iflilia@index \xglobal\colorlet{lilia@chapter}{lilia@neutral}\fi
+  \gdef\lilia@curlabel{}\gdef\lilia@curtitle{}}
+\def\lilia@keeptitle#1{\gdef\lilia@curtitle{#1}#1}
+
+\ifdefined\appendix
+  \g@addto@macro\appendix{%
+    \global\lilia@appendixtrue
+    \addtocontents{toc}{\protect\csname lilia@tocappendix\protect\endcsname}}
+\fi
+\def\lilia@tocappendix{\global\lilia@tocappendixtrue\global\lilia@tocn=\z@}
+
+% ---------------------------------------------------------------------------
+% Tabs: a rounded pill with white ink. Colour is never the only signal: a tab
+% always carries its number or name.
+% ---------------------------------------------------------------------------
+\newcommand\lilia@tab[2][lilia@chapter]{%
+  \tikz[baseline=(liliatab.base)]
+    \node[fill=#1,text=lilia@tabink,rounded corners=2.5pt,inner xsep=5pt,
+          inner ysep=2.5pt,font=\normalfont\sffamily\bfseries\small](liliatab){\strut #2};}
+\newcommand\lilia@foottab[1]{%
+  \tikz[baseline=(liliapage.base)]
+    \node[fill=lilia@foot,text=lilia@footink,rounded corners=3pt,inner xsep=6pt,
+          inner ysep=2.5pt,minimum width=2.4em,font=\normalfont\sffamily\bfseries\footnotesize](liliapage){\strut #1};}
+
+% ---------------------------------------------------------------------------
+% Headings (titlesec). Montserrat for structure; Index headings and boxes take
+% the chapter colour, Cerulean's take its blue. Unnumbered headings stay in
+% neutral ink and do not use a colour.
+% ---------------------------------------------------------------------------
+\iflilia@index
+  \def\lilia@lowcolour{lilia@chapter}
+  \def\lilia@topcolour{lilia@chapter}
+  \def\lilia@plaincolour{lilia@neutral}
+\else
+  \def\lilia@lowcolour{lilia@sec}
+  \def\lilia@topcolour{lilia@title}
+  \def\lilia@plaincolour{lilia@sec}
+\fi
+
+\ifx\lilia@top\lilia@top@chapter
+  \titleformat{\chapter}[display]
+    {\lilia@settop\normalfont\sffamily\bfseries\color{\lilia@topcolour}}
+    {\iflilia@index\lilia@tab{\MakeUppercase{\chaptertitlename}~\thechapter}%
+     \else\lilia@tab[lilia@tab]{\MakeUppercase{\chaptertitlename}~\thechapter}\fi}
+    {12pt}{\Huge\lilia@keeptitle}
+  \titleformat{name=\chapter,numberless}[display]
+    {\lilia@setneutral\normalfont\sffamily\bfseries\color{lilia@neutral}}
+    {}{0pt}{\Huge}
+  \titlespacing*{\chapter}{0pt}{0pt}{28pt}
+  \titleformat{\section}
+    {\normalfont\sffamily\bfseries\Large\color{\lilia@lowcolour}}
+    {\thesection}{0.75em}{}
+  \titleformat{name=\section,numberless}
+    {\normalfont\sffamily\bfseries\Large\color{\lilia@lowcolour}}
+    {}{0pt}{}
+\else
+  \titleformat{\section}
+    {\lilia@settop\normalfont\sffamily\bfseries\Large\color{\lilia@lowcolour}}
+    {\iflilia@index\lilia@tab{\thesection}\else\textcolor{lilia@kicker}{\thesection}\fi}
+    {0.6em}{\lilia@keeptitle}
+  \titleformat{name=\section,numberless}
+    {\lilia@setneutral\normalfont\sffamily\bfseries\Large\color{\lilia@plaincolour}}
+    {}{0pt}{}
+\fi
+\titleformat{\subsection}
+  {\normalfont\sffamily\bfseries\large\color{\lilia@lowcolour}}
+  {\thesubsection}{0.75em}{}
+\titleformat{\subsubsection}
+  {\normalfont\sffamily\bfseries\normalsize\color{\lilia@lowcolour}}
+  {\thesubsubsection}{0.75em}{}
+\titleformat{\paragraph}[runin]
+  {\normalfont\sffamily\bfseries\normalsize}
+  {\theparagraph}{0.5em}{}
+\titlespacing*{\paragraph}{0pt}{3.25ex plus 1ex minus .2ex}{1em}
+
+% ---------------------------------------------------------------------------
+% Contents: an Index chapter's row takes its colour, number included.
+% ---------------------------------------------------------------------------
+\def\lilia@toptoc#1#2{%
+  \global\lilia@toctoptrue\lilia@ltop{#1}{#2}\global\lilia@toctopfalse}
+\def\lilia@tocnumberline{%
+  \iflilia@toctop
+    \global\advance\lilia@tocn\@ne
+    \lilia@colourof{\lilia@tocn}{\iflilia@tocappendix 1\else 0\fi}{lilia@toc}%
+    \color{lilia@toc}%
+    \global\lilia@toctopfalse
+  \fi
+  \lilia@numberline}
+\iflilia@index
+  \AtBeginDocument{%
+    \expandafter\let\expandafter\lilia@ltop\csname l@\lilia@top\endcsname
+    \expandafter\let\csname l@\lilia@top\endcsname\lilia@toptoc
+    \let\lilia@numberline\numberline
+    \let\numberline\lilia@tocnumberline}
+\fi
+
+% ---------------------------------------------------------------------------
+% Page style: the page number in a rounded foot tab; Index adds the running
+% foot (chapter number and name, in the chapter colour).
+% ---------------------------------------------------------------------------
+\def\lilia@runningfoot{%
+  \iflilia@index
+    {\normalfont\sffamily\bfseries\footnotesize\color{lilia@chapter}%
+     \lilia@curlabel\ifx\lilia@curlabel\@empty\else\hspace{0.6em}\fi
+     \lilia@curtitle}%
+  \fi}
+\iflilia@opt@foottab
+  \fancypagestyle{lilia}{%
+    \fancyhf{}%
+    \renewcommand\headrulewidth{0pt}%
+    \renewcommand\footrulewidth{0pt}%
+    \fancyfoot[RO,LE]{\lilia@foottab{\thepage}}%
+    \fancyfoot[LO,RE]{\lilia@runningfoot}}
+  \fancypagestyle{plain}{%
+    \fancyhf{}%
+    \renewcommand\headrulewidth{0pt}%
+    \renewcommand\footrulewidth{0pt}%
+    \fancyfoot[RO,LE]{\lilia@foottab{\thepage}}}
+  \pagestyle{lilia}
+\fi
+
+% ---------------------------------------------------------------------------
+% Tables (Ruled): the header row in the structure face, the top rule and the
+% caption label in the theme colour. The table's LaTeX never changes.
+% ---------------------------------------------------------------------------
+\renewcommand\liliaTableHead[1]{{\normalfont\sffamily\bfseries #1}}
+\let\lilia@cellhook\@empty
+\def\lilia@headcell{\sffamily}
+\renewcommand\liliaHeadRow{\noalign{\global\let\lilia@cellhook\lilia@headcell}}
+% The kernel's table hooks (LaTeX 2025 and later). Without them the header row
+% keeps the body face: nothing breaks.
+\AddToHook{tbl/cell/begin}{\lilia@cellhook}
+\AddToHook{tbl/row/end}{\global\let\lilia@cellhook\@empty}
+
+\iflilia@index
+  \def\lilia@rulecolour{lilia@chapter}
+  \def\lilia@labelcolour{lilia@chapter}
+  % Internal links (contents, cross-references) stay in ink: in Index, colour
+  % means "which chapter", nothing else.
+  \def\lilia@linkcolour{lilia@neutral}
+\else
+  \def\lilia@linkcolour{lilia@link}
+  \def\lilia@rulecolour{lilia@rule}
+  \def\lilia@labelcolour{lilia@sec}
+\fi
+\AtBeginDocument{%
+  \ifdefined\@BTrule
+    \def\toprule{\noalign{\ifnum0=`}\fi
+      \@aboverulesep=\abovetopsep
+      \global\@belowrulesep=\belowrulesep
+      \global\@thisruleclass=\@ne
+      \def\CT@arc@{\color{\lilia@rulecolour}}%
+      \@ifnextchar[{\@BTrule}{\@BTrule[\heavyrulewidth]}}%
+  \fi
+  \@ifpackageloaded{caption}{%
+    \DeclareCaptionFont{lilialabel}{\sffamily\bfseries\color{\lilia@labelcolour}}%
+    \captionsetup{labelfont=lilialabel}}{}%
+  \@ifpackageloaded{hyperref}{%
+    \hypersetup{linkcolor=\lilia@linkcolour,citecolor=lilia@link,urlcolor=lilia@link}}{}}
+
+\endinput
