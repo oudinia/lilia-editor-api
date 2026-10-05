@@ -49,7 +49,7 @@ public class LatexRenderAuthzTests : FourCallersTestBase
     }
 
     [Fact]
-    public async Task A_stranger_is_refused_on_every_block_route_and_so_is_an_unknown_block()
+    public async Task A_stranger_is_refused_on_every_block_route_and_an_unknown_block_is_a_404()
     {
         var s = await SeedSharedDocumentAsync();
         using var c = As(StrangerId);
@@ -57,7 +57,7 @@ public class LatexRenderAuthzTests : FourCallersTestBase
             (await Call(c, route)).StatusCode.Should().Be(HttpStatusCode.Forbidden, route);
 
         foreach (var route in BlockRoutes(s))
-            (await Call(c, route.Replace(s.BlockId.ToString(), Guid.NewGuid().ToString()))).StatusCode.Should().Be(HttpStatusCode.Forbidden, "unknown block: " + route);
+            (await Call(c, route.Replace(s.BlockId.ToString(), Guid.NewGuid().ToString()))).StatusCode.Should().Be(HttpStatusCode.NotFound, "unknown block: " + route);
     }
 
     [Theory]

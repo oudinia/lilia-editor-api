@@ -62,11 +62,11 @@ public sealed class RequireDocumentAccessAttribute : Attribute, IAsyncAuthorizat
         else if (values.TryGetValue("blockId", out var blk) && Guid.TryParse(blk?.ToString(), out var blockId))
         {
             // A route that names only a block: the access that matters is the one on its document.
-            // An unknown block is refused the same way as a forbidden one, so a stranger cannot tell
-            // which block ids exist.
+            // An unknown block stays a 404, as these routes always answered; block ids are random
+            // guids, so telling "unknown" from "not yours" gives away next to nothing.
             var db = http.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
             var owning = await db.Blocks.AsNoTracking().Where(x => x.Id == blockId).Select(x => (Guid?)x.DocumentId).FirstOrDefaultAsync(http.RequestAborted);
-            if (owning is null) { context.Result = new ForbidResult(); return; }
+            if (owning is null) { context.Result = new NotFoundResult(); return; }
             documentId = owning.Value;
         }
         else

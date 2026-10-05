@@ -23,18 +23,24 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
 
     // ── Helpers ──────────────────────────────────────────────────────
 
+    // The document's owner: these routes check who is asking (authz audit A3, 3 Oct 2026). The tests
+    // used to seed a document for a random user and validate it as someone else, which only worked
+    // because the route did not look.
+    private HttpClient? _owner;
+    private HttpClient Caller => _owner ?? Client;
+
     private record ValidationResponse(bool Valid, string? Error, string[]? Warnings, Guid? BlockId);
 
     private async Task<ValidationResponse> ValidateBlock(Guid blockId)
     {
-        var response = await Client.PostAsync($"/api/latex/block/{blockId}/validate", null);
+        var response = await Caller.PostAsync($"/api/latex/block/{blockId}/validate", null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         return (await response.Content.ReadFromJsonAsync<ValidationResponse>())!;
     }
 
     private async Task<ValidationResponse> ValidateDocument(Guid documentId)
     {
-        var response = await Client.PostAsync($"/api/latex/{documentId}/validate", null);
+        var response = await Caller.PostAsync($"/api/latex/{documentId}/validate", null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         return (await response.Content.ReadFromJsonAsync<ValidationResponse>())!;
     }
@@ -44,6 +50,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         var uid = UserId + Guid.NewGuid().ToString("N")[..8];
         await SeedUserAsync(uid);
         var doc = await SeedDocumentAsync(uid, title);
+        _owner = CreateClientAs(uid);
         return (doc, uid);
     }
 
