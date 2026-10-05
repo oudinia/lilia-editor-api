@@ -72,7 +72,8 @@
     \PackageError{lilia-theme}{Unknown theme `\lilia@theme'}%
       {The themes are classic, cerulean and index.}%
   \fi
-  \expandafter\endinput
+  % Stop rather than print the document in a look nobody chose.
+  \csname @@end\endcsname
 \fi
 
 % ---------------------------------------------------------------------------
