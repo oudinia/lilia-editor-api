@@ -103,7 +103,7 @@ public class TypstRenderService : ITypstRenderService
 
         // Page setup
         sb.AppendLine("#set page(paper: \"a4\", margin: 2.5cm)");
-        sb.AppendLine("#set text(size: 11pt)");
+        sb.AppendLine($"#set text(size: {TypstExportService.TypstFontSize(doc.FontSize)}pt)");   // the document's size, not 11pt for all
         sb.AppendLine("#set par(justify: true)");
         sb.AppendLine();
 

@@ -103,7 +103,16 @@ public class PreviewRenderService : IPreviewRenderService
             .CountAsync(b => b.DocumentId == documentId, ct);
         var typstFirst = blockCount <= DefaultTypstFirstMaxBlocks;
 
-        if (!typstFirst)
+        // Typst ignores most page setup (margins, columns, headers, ...): a document that sets any of it
+        // goes to LaTeX, which honours it. See PageSetupRouting.
+        var setupDoc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        var whyLatex = setupDoc is null ? null : PageSetupRouting.WhyLatex(setupDoc);
+        if (typstFirst && whyLatex is not null)
+        {
+            typstFirst = false;
+            _logger.LogInformation("[Preview] {DocId} sets {Setup}, which Typst ignores; going to LaTeX", documentId, whyLatex);
+        }
+        else if (!typstFirst)
         {
             _logger.LogInformation(
                 "[Preview] {Blocks} blocks is over the {Max}-block threshold — going straight to " +

@@ -21,8 +21,11 @@ public interface ILaTeXExportService
 public class LaTeXExportOptions
 {
     public string DocumentClass { get; set; } = "article";
-    public string FontSize { get; set; } = "11pt";
-    public string PaperSize { get; set; } = "a4paper";
+    // Null: the document's own font size and paper. These defaulted to "11pt" and "a4paper", which the
+    // preamble builder applied OVER the document, and the web app never sends them, so every .tex/.zip
+    // download and every LaTeX PDF export was 11pt A4 (5 Oct review). Set them only to override.
+    public string? FontSize { get; set; }
+    public string? PaperSize { get; set; }
     public string Structure { get; set; } = "single";
     public string MultiFileLayout { get; set; } = "flat";
     public bool IncludePhysics { get; set; } = true;

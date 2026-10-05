@@ -137,6 +137,14 @@ public class DocumentExportService : IDocumentExportService
         var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex"
                          || documentEngine is "xelatex" or "lualatex";
 
+        // And a document whose page setup Typst would ignore (PageSetupRouting), unless the caller asked
+        // for Typst by name.
+        if (!wantsLatex && hint != "typst")
+        {
+            var setupDoc = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId);
+            if (setupDoc is not null && PageSetupRouting.WhyLatex(setupDoc) is not null) wantsLatex = true;
+        }
+
         if (!wantsLatex)
         {
             // Phase 2 step 9 — Typst-first preview path. Sub-second compile
@@ -169,8 +177,7 @@ public class DocumentExportService : IDocumentExportService
             // every image in the document.
             IncludeImages = true,
             DocumentClass = "article",
-            FontSize = "11pt",
-            PaperSize = "a4paper",
+            // No FontSize / PaperSize: the document's own (they overrode it, so every LaTeX PDF was 11pt A4).
         };
         var projectStream = await _latexExportService.ExportToZipAsync(documentId, opts);
         using var archive = new System.IO.Compression.ZipArchive(projectStream, System.IO.Compression.ZipArchiveMode.Read);
