@@ -164,4 +164,12 @@ public class TypstTitleAuthorsTests
         text.Should().NotBeNull($"the document must compile ({error})");
         text!.Should().Contain("https://example.org/lab");
     }
+
+    [Fact]
+    public void Accented_and_bold_names_print_as_written()
+    {
+        var (text, error) = CompileToText(Build("Kurt G\\\"odel \\and \\textbf{Paul Erd\\H{o}s}"));
+        text.Should().NotBeNull($"the document must compile ({error})");
+        text!.Should().Contain("Kurt Gödel").And.Contain("Paul Erdős");
+    }
 }

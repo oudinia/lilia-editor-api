@@ -66,7 +66,8 @@ public class TitleAuthorsTests
     public void Three_authors_and_unknown_commands()
     {
         var a = TitleAuthors.Parse(@"A \and \textbf{X} B \\ \small Lab \and C\\Uni\\City");
-        a.Select(x => x.Name).Should().Equal("A", "B", "C");
+        // \textbf{X} prints X: its text is kept (5 Oct review); \small, which has no argument, is dropped.
+        a.Select(x => x.Name).Should().Equal("A", "X B", "C");
         a[1].Lines.Should().Equal("Lab");
         a[2].Lines.Should().Equal("Uni", "City");
     }
@@ -92,5 +93,39 @@ public class TitleAuthorsTests
         var a = TitleAuthors.Parse(@"A\thanks{x}\thanks{y} \and B\thanks{z}");
         a[0].NoteSymbols.Should().Equal("*", "†");
         a[1].NoteSymbols.Should().Equal("‡");
+    }
+
+    // ── review of 5 Oct: accents and formatting ──────────────────────────
+
+    [Theory]
+    [InlineData("Kurt G\\\"odel", "Kurt Gödel")]
+    [InlineData(@"Paul Erd\H{o}s", "Paul Erdős")]
+    [InlineData(@"Jos\'e", "José")]
+    [InlineData(@"Jos\'{e} Mar\'ia", "José María")]
+    [InlineData(@"Fran\c{c}ois", "François")]
+    [InlineData(@"Anton\'{\i}n Dvo\v{r}\'ak", "Antonín Dvořák")]
+    [InlineData(@"Stra\ss{}e", "Straße")]
+    [InlineData(@"S\o ren", "Søren")]
+    [InlineData(@"\L{}ukasiewicz", "Łukasiewicz")]
+    [InlineData(@"\textbf{Jane Doe}", "Jane Doe")]
+    [InlineData(@"\textsc{Bob} Smith", "Bob Smith")]
+    [InlineData(@"Ada \emph{Lovelace}", "Ada Lovelace")]
+    public void Accents_special_letters_and_formatting_give_the_visible_name(string latex, string name) =>
+        TitleAuthors.Parse(latex).Single().Name.Should().Be(name);
+
+    [Fact]
+    public void A_bold_name_keeps_its_column_and_its_affiliation_stays_a_line()
+    {
+        var a = TitleAuthors.Parse(@"\textbf{Jane Doe}\\Uni A \and \textsc{Bob}");
+        a.Should().HaveCount(2);
+        a[0].Name.Should().Be("Jane Doe");
+        a[0].Lines.Should().Equal("Uni A");
+        a[1].Name.Should().Be("Bob");
+    }
+
+    [Fact]
+    public void A_command_that_is_not_text_is_still_dropped()
+    {
+        TitleAuthors.Parse(@"Jane Doe\orcidlink{0000-0001-2345-6789}").Single().Name.Should().Be("Jane Doe");
     }
 }
