@@ -63,4 +63,25 @@ public class HeadingLatexLabelTests
     [InlineData(9, "subparagraph")]
     public void Levels_map_to_the_sectioning_commands(int level, string command) =>
         Emit($$"""{"text":"T","level":{{level}}}""").Should().Be($@"\{command}{{T}}");
+
+    // ── review of 5 Oct: a label is LaTeX syntax ─────────────────────────
+
+    [Fact]
+    public void Characters_LaTeX_reads_as_syntax_are_replaced_in_a_heading_label() =>
+        Emit("""{"text":"Results","level":1,"label":"sec:50% #1 }x"}""").Should().Be(@"\section{Results}\label{sec:50- -1 -x}");
+
+    [Theory]
+    [InlineData("sec:intro", "sec:intro")]
+    [InlineData("  sec:a b ", "sec:a b")]
+    [InlineData(@"a\b{c}~d^e&f$g", "a-b-c--d-e-f-g")]
+    [InlineData(null, "")]
+    public void Safe_keeps_ordinary_labels_and_replaces_syntax(string? input, string expected) =>
+        Lilia.Engines.LabelKey.Safe(input).Should().Be(expected);
+
+    [Fact]
+    public void The_reference_key_matches_the_label_after_cleaning()
+    {
+        Lilia.Engines.LabelKey.Effective("equation", "main%1").Should().Be("eq:main-1");
+        Lilia.Engines.LabelKey.Effective("table", "tab:a#b").Should().Be("tab:a-b");
+    }
 }

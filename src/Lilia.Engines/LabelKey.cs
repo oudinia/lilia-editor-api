@@ -36,9 +36,19 @@ public static class LabelKey
     /// </summary>
     public static string Effective(string blockType, string? label)
     {
-        var l = label?.Trim() ?? "";
+        var l = Safe(label);
         if (l.Length == 0) return "";
         if (l.Contains(':')) return l;
         return BarePrefix.TryGetValue(blockType, out var prefix) ? $"{prefix}:{l}" : l;
     }
+
+    /// <summary>
+    /// A label as it can appear inside <c>\label{}</c> and <c>\ref{}</c>. The characters LaTeX reads
+    /// as syntax there (<c>%</c> starts a comment, <c>#</c> is a parameter, braces, backslash, and
+    /// <c>~ ^ &amp; $</c>) became a compile error or swallowed the rest of the line; each becomes
+    /// <c>-</c>. Everything else, colons and spaces included, is kept as written. Applied on both
+    /// sides (the label and every reference), so a key still resolves.
+    /// </summary>
+    public static string Safe(string? label) =>
+        System.Text.RegularExpressions.Regex.Replace(label?.Trim() ?? "", @"[%#{}\\~^&$]", "-");
 }

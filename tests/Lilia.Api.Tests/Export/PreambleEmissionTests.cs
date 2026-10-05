@@ -228,6 +228,33 @@ public class PreambleEmissionTests
         preamble.Should().NotContain("\\thepage");
     }
 
+    // ── review of 5 Oct: two font choices were never emitted ─────────────
+
+    [Fact]
+    public void Sans_serif_switches_the_body_to_Helvetica()
+    {
+        var preamble = BuildPreamble(NewDoc(d => d.FontFamily = "sans-serif"));
+        preamble.Should().Contain("\\usepackage[scaled=0.92]{helvet}");
+        preamble.Should().Contain("\\renewcommand{\\familydefault}{\\sfdefault}");
+    }
+
+    [Fact]
+    public void Monospace_switches_the_body_to_Courier()
+    {
+        var preamble = BuildPreamble(NewDoc(d => d.FontFamily = "monospace"));
+        preamble.Should().Contain("\\usepackage{courier}");
+        preamble.Should().Contain("\\renewcommand{\\familydefault}{\\ttdefault}");
+    }
+
+    [Theory]
+    [InlineData("serif")]
+    [InlineData(null)]
+    public void Serif_or_nothing_leaves_the_default(string? family)
+    {
+        var preamble = BuildPreamble(NewDoc(d => d.FontFamily = family));
+        preamble.Should().NotContain("familydefault").And.NotContain("helvet").And.NotContain("courier");
+    }
+
     [Fact]
     public void FooterText_emits_rfoot()
     {

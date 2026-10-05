@@ -478,6 +478,22 @@ public static class LaTeXPreambleBuilder
             sb.AppendLine($"% Font family ({doc.FontFamily})");
             sb.AppendLine($"\\usepackage{{{pkg}}}");
         }
+        else if (string.Equals(doc.FontFamily?.Trim(), "sans-serif", StringComparison.OrdinalIgnoreCase))
+        {
+            // The settings dialog offers "Sans Serif (Helvetica-like)" and Ask Lilia's validator accepts it,
+            // but nothing was emitted, so the PDF stayed serif (5 Oct review). helvet (psnfss) is the
+            // Helvetica clone in every TeX Live; scaled to sit with Latin Modern math.
+            sb.AppendLine("% Font family (sans-serif)");
+            sb.AppendLine("\\usepackage[scaled=0.92]{helvet}");
+            sb.AppendLine("\\renewcommand{\\familydefault}{\\sfdefault}");
+        }
+        else if (string.Equals(doc.FontFamily?.Trim(), "monospace", StringComparison.OrdinalIgnoreCase))
+        {
+            // "Monospace (Courier-like)": same gap as sans-serif.
+            sb.AppendLine("% Font family (monospace)");
+            sb.AppendLine("\\usepackage{courier}");
+            sb.AppendLine("\\renewcommand{\\familydefault}{\\ttdefault}");
+        }
 
         return sb.ToString();
     }
