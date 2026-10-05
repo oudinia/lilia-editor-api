@@ -16,6 +16,10 @@ namespace Lilia.Api.Controllers;
 [ApiController]
 [Route("api/documents/{documentId:guid}/hints")]
 [Authorize]
+// A4: every route names a document. Read for the list, write for compute, ai-augment, apply,
+// dismiss and category. Compute and ai-augment ran for a stranger; ai-augment sends the
+// document's text to the model, so the check must come first.
+[Lilia.Api.Filters.RequireDocumentAccess]
 public class DocumentHintsController : ControllerBase
 {
     private readonly IImportHintService _hintService;
@@ -65,12 +69,8 @@ public class DocumentHintsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        // Access check piggy-backs on IImportHintService.ListForDocumentAsync
-        // (which also returns empty on forbidden). Explicit pre-check below.
-        var findings = await _hintService.ListForDocumentAsync(documentId, userId);
-        if (findings == null)
-            return Forbid();
-
+        // Who may call this is decided by [RequireDocumentAccess] (write) before we get here. The
+        // old check below it never fired: the list is empty, not null, when forbidden.
         var result = await _aiAugmenter.AugmentAsync(documentId, userId);
         return Ok(result);
     }
@@ -80,6 +80,10 @@ public class DocumentHintsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        // The route's document was checked by the filter; the finding must be that document's, or a
+        // writer on one document could resolve another document's findings.
+        if (!await _context.ImportStructuralFindings.AsNoTracking().AnyAsync(f => f.Id == findingId && f.DocumentId == documentId))
+            return NotFound();
         return await _hintService.ApplyAsync(findingId, userId) ? Ok() : NotFound();
     }
 
@@ -88,6 +92,10 @@ public class DocumentHintsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        // The route's document was checked by the filter; the finding must be that document's, or a
+        // writer on one document could resolve another document's findings.
+        if (!await _context.ImportStructuralFindings.AsNoTracking().AnyAsync(f => f.Id == findingId && f.DocumentId == documentId))
+            return NotFound();
         return await _hintService.DismissAsync(findingId, userId) ? Ok() : NotFound();
     }
 
