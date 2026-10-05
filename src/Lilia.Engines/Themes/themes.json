@@ -42,25 +42,25 @@
       "id": "carnet",
       "name": "Carnet",
       "for": "Essays, humanities, long reading on screen",
-      "status": "planned",
+      "status": "ready",
       "fonts": { "heading": "EB Garamond", "body": "EB Garamond", "headingCss": "'EB Garamond', serif", "bodyCss": "'EB Garamond', serif" },
       "colours": { "paper": "#F4EFE4", "ink": "#2B2724", "accent": "#9A3F1C", "heading": "#9A3F1C", "kicker": "#9A3F1C" },
       "printSafe": { "paper": "#FFFFFF", "ink": "#2B2724" },
       "sequence": null,
       "tablesDefault": "ruled",
-      "texFiles": ["ebgaramond.sty"]
+      "texFiles": ["ebgaramond.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
     {
       "id": "gazette",
       "name": "Gazette",
       "for": "Newsletters, posters, outreach, never a paper",
-      "status": "planned",
+      "status": "ready",
       "fonts": { "heading": "Josefin Sans", "body": "Montserrat", "headingCss": "'Josefin Sans', sans-serif", "bodyCss": "'Montserrat', sans-serif" },
       "colours": { "paper": "#F3D54E", "ink": "#2A2926", "accent": "#B8303A", "heading": "#2A2926", "kicker": "#2A2926" },
       "printSafe": { "paper": "#FFFFFF", "ink": "#2A2926" },
       "sequence": null,
       "tablesDefault": "header",
-      "texFiles": ["josefin.sty", "montserrat.sty", "pdfrender.sty"]
+      "texFiles": ["josefin.sty", "montserrat.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
     },
     {
       "id": "exposition",

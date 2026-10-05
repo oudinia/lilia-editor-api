@@ -216,7 +216,7 @@ public class DocumentThemeCompileTests
         // Only reachable by hand (PUT and the export refuse it), but the package must not quietly
         // print something else.
         var tex = Latex(Doc("article", "classic"), SampleBlocks())
-            .Replace(@"\begin{document}", "\\usepackage[theme=carnet]{lilia-theme}\n\\begin{document}");
+            .Replace(@"\begin{document}", "\\usepackage[theme=exposition]{lilia-theme}\n\\begin{document}");
         var act = () => Compile(tex, "pdflatex");
         await act.Should().ThrowAsync<InvalidOperationException>();
     }

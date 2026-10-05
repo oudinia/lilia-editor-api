@@ -69,12 +69,15 @@ public class DocumentThemesApiTests : IntegrationTestBase
         var cerulean = themes.EnumerateArray().Single(t => t.GetProperty("id").GetString() == "cerulean");
         cerulean.GetProperty("sequence").ValueKind.Should().Be(JsonValueKind.Null, "sequence is written as null, not left out");
 
-        foreach (var planned in new[] { "carnet", "gazette", "exposition" })
+        foreach (var built in new[] { "carnet", "gazette" })
         {
-            var t = themes.EnumerateArray().Single(x => x.GetProperty("id").GetString() == planned);
-            t.GetProperty("available").GetBoolean().Should().BeFalse();
-            t.GetProperty("status").GetString().Should().Be("planned");
+            var t = themes.EnumerateArray().Single(x => x.GetProperty("id").GetString() == built);
+            t.GetProperty("status").GetString().Should().Be("ready");
+            t.GetProperty("available").GetBoolean().Should().BeTrue("this machine has ebgaramond, josefin and montserrat");
         }
+        var exposition = themes.EnumerateArray().Single(x => x.GetProperty("id").GetString() == "exposition");
+        exposition.GetProperty("available").GetBoolean().Should().BeFalse();
+        exposition.GetProperty("status").GetString().Should().Be("planned");
     }
 
     [Fact]
@@ -116,7 +119,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
     [InlineData("""{"theme":"neon"}""", "Valid values: classic, cerulean, index")]
     [InlineData("""{"theme":"index","paper":"cream"}""", "Valid values: theme, white")]
     [InlineData("""{"theme":"index","pins":{"b1":9}}""", "from 0 to 7")]
-    [InlineData("""{"theme":"carnet"}""", "planned")]
+    [InlineData("""{"theme":"exposition"}""", "planned")]
     public async Task Put_refuses_an_invalid_look_with_400_and_the_valid_values(string look, string named)
     {
         var id = await SeedNotesAsync();
@@ -169,7 +172,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
 
         var unknown = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=neon");
         unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var planned = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=gazette");
+        var planned = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=exposition");
         planned.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 

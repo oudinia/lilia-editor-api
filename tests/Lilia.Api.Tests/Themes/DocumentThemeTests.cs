@@ -52,12 +52,13 @@ public class DocumentThemeTests : IDisposable
     // ── themes.json: the contract the web builds against ─────────────────
 
     [Fact]
-    public void Six_themes_in_the_contracts_order_with_three_planned()
+    public void Six_themes_in_the_contracts_order_with_only_exposition_planned()
     {
         ThemeCatalog.Ids.Should().Equal("classic", "cerulean", "index", "carnet", "gazette", "exposition");
-        ThemeCatalog.All.Where(t => t.Status == "planned").Select(t => t.Id)
-            .Should().BeEquivalentTo("carnet", "gazette", "exposition");
-        ThemeCatalog.All.Where(t => t.IsBuilt).Select(t => t.Id).Should().BeEquivalentTo("classic", "cerulean", "index");
+        // Exposition is for beamer, which locks the look: a separate decision.
+        ThemeCatalog.All.Where(t => t.Status == "planned").Select(t => t.Id).Should().BeEquivalentTo("exposition");
+        ThemeCatalog.All.Where(t => t.IsBuilt).Select(t => t.Id)
+            .Should().BeEquivalentTo("classic", "cerulean", "index", "carnet", "gazette");
     }
 
     [Fact]
@@ -220,7 +221,7 @@ public class DocumentThemeTests : IDisposable
     [Fact]
     public void Put_refuses_a_planned_theme_and_one_whose_fonts_are_missing()
     {
-        var planned = () => DocumentService.ResolveLookUpdate(Put("""{"theme":"carnet"}"""), "article");
+        var planned = () => DocumentService.ResolveLookUpdate(Put("""{"theme":"exposition"}"""), "article");
         planned.Should().Throw<DocumentLookException>().WithMessage("*planned*Available themes: classic, cerulean, index.");
 
         ThemeAvailability.OverrideForTests(id => id != "index");
