@@ -934,7 +934,7 @@ public class LaTeXExportService : ILaTeXExportService
         var commands = new[] { "section", "subsection", "subsubsection", "paragraph", "subparagraph" };
         var command = commands[Math.Min(level - 1, 4)];
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{label}}}" : "";
+        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{Lilia.Engines.LabelKey.Safe(label)}}}" : "";
 
         // Starred form: `numbered: false` emits \section*{} which
         // suppresses both the auto-number and the TOC entry. Matches
@@ -1822,7 +1822,7 @@ public class LaTeXExportService : ILaTeXExportService
             m => Ph($@"\textit{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 5. References: @ref{label} → \ref{label}
-        result = Regex.Replace(result, @"@ref\{([^}]+)\}", m => Ph($@"\ref{{{m.Groups[1].Value}}}"));
+        result = Regex.Replace(result, @"@ref\{([^}]+)\}", m => Ph($@"\ref{{{Lilia.Engines.LabelKey.Safe(m.Groups[1].Value)}}}"));
 
         // 6. Citations: @cite{key} → \cite{key}
         result = Regex.Replace(result, @"@cite\{([^}]+)\}", m => Ph($@"\cite{{{m.Groups[1].Value}}}"));

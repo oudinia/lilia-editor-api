@@ -1410,7 +1410,7 @@ public partial class RenderService : IRenderService
         var label = content.TryGetProperty("label", out var lbl) && lbl.ValueKind == JsonValueKind.String ? lbl.GetString() : null;
         if (string.IsNullOrWhiteSpace(label))
             label = content.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
-        var labelPart = string.IsNullOrWhiteSpace(label) ? "" : $@"\label{{{label!.Trim()}}}";
+        var labelPart = string.IsNullOrWhiteSpace(label) ? "" : $@"\label{{{LabelKey.Safe(label)}}}";
 
         return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}{labelPart}";
     }
