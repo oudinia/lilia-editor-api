@@ -786,7 +786,11 @@ public sealed class AskLiliaService : IAskLiliaService
     private static Dictionary<string, object?> SettingsView(Lilia.Core.DTOs.DocumentDto d) => new()
     {
         ["paperSize"] = d.PaperSize,
-        ["orientation"] = d.Orientation ?? "portrait",
+        // Older documents made landscape by the class popover hold it only in the options blob; they
+        // compile landscape, so they are landscape (5 Oct review).
+        ["orientation"] = string.Equals(d.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
+            || (d.LatexDocumentClassOptions ?? "").Split(',').Any(t => string.Equals(t.Trim(), "landscape", StringComparison.OrdinalIgnoreCase))
+            ? "landscape" : "portrait",
         ["marginTop"] = d.MarginTop,
         ["marginBottom"] = d.MarginBottom,
         ["marginLeft"] = d.MarginLeft,
