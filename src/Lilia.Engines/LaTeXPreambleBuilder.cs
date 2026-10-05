@@ -611,7 +611,7 @@ public static class LaTeXPreambleBuilder
         new(@"\\chapter(?![A-Za-z@])", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>An embed block (raw LaTeX, emitted as written) whose code prints a \chapter.</summary>
-    private static bool PrintsChapter(Block block)
+    internal static bool PrintsChapter(Block block)
     {
         if (!string.Equals(block.Type, "embed", StringComparison.OrdinalIgnoreCase)) return false;
         try
@@ -629,7 +629,7 @@ public static class LaTeXPreambleBuilder
     }
 
     /// <summary>A heading block that renders as a numbered \section (level 1, not numbered:false).</summary>
-    private static bool IsNumberedTopHeading(Block block)
+    internal static bool IsNumberedTopHeading(Block block)
     {
         if (!string.Equals(block.Type, "heading", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(block.Type, "header", StringComparison.OrdinalIgnoreCase)) return false;

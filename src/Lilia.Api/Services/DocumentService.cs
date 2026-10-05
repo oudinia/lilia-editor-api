@@ -245,7 +245,8 @@ public class DocumentService : IDocumentService
                 d.ValidationErrorCount,
                 d.ValidationWarningCount,
                 d.ValidationCheckedAt,
-                d.AiSummary
+                d.AiSummary,
+                ReadLook(d.Look)
             );
         }).ToList();
 
@@ -1400,7 +1401,7 @@ public class DocumentService : IDocumentService
     }
 
     /// <summary>The stored look as JSON for the DTO; null (Classic) when unset or unreadable.</summary>
-    private static JsonElement? ReadLook(string? stored)
+    internal static JsonElement? ReadLook(string? stored)
     {
         if (string.IsNullOrWhiteSpace(stored)) return null;
         try
