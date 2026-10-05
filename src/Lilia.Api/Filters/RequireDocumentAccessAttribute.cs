@@ -2,12 +2,13 @@ using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Filters;
 
 /// <summary>
 /// The caller must be allowed to use the document named in the route
-/// (<c>{docId}</c> or <c>{documentId}</c>). Put it on a controller, and on an action to
+/// (<c>{docId}</c> or <c>{documentId}</c>; or the document of <c>{blockId}</c>). Put it on a controller, and on an action to
 /// override the default for that action.
 ///
 /// <para>Default permission by method: GET, HEAD and OPTIONS need <c>read</c>; anything else
@@ -53,10 +54,25 @@ public sealed class RequireDocumentAccessAttribute : Attribute, IAsyncAuthorizat
 
         var values = context.RouteData.Values;
         var raw = values.TryGetValue("docId", out var a) ? a : values.TryGetValue("documentId", out var b) ? b : null;
-        if (raw is null || !Guid.TryParse(raw.ToString(), out var documentId))
+        Guid documentId;
+        if (raw is not null && Guid.TryParse(raw.ToString(), out var fromRoute))
         {
-            // No document id in this route: a programming error (the attribute is on the wrong
-            // route), not something to let through.
+            documentId = fromRoute;
+        }
+        else if (values.TryGetValue("blockId", out var blk) && Guid.TryParse(blk?.ToString(), out var blockId))
+        {
+            // A route that names only a block: the access that matters is the one on its document.
+            // An unknown block stays a 404, as these routes always answered; block ids are random
+            // guids, so telling "unknown" from "not yours" gives away next to nothing.
+            var db = http.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+            var owning = await db.Blocks.AsNoTracking().Where(x => x.Id == blockId).Select(x => (Guid?)x.DocumentId).FirstOrDefaultAsync(http.RequestAborted);
+            if (owning is null) { context.Result = new NotFoundResult(); return; }
+            documentId = owning.Value;
+        }
+        else
+        {
+            // No document or block id in this route: a programming error (the attribute is on the
+            // wrong route), not something to let through.
             context.Result = new ObjectResult(new { message = "document id missing from the route" }) { StatusCode = 500 };
             return;
         }

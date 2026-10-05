@@ -70,6 +70,7 @@ public class LaTeXRenderController : ControllerBase
     /// Render a full document's LaTeX to PDF.
     /// </summary>
     [HttpPost("{documentId:guid}/pdf")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> RenderDocumentPdf(Guid documentId)
     {
         try
@@ -108,6 +109,7 @@ public class LaTeXRenderController : ControllerBase
     /// absent block is "unknown", never "page 0".</para>
     /// </summary>
     [HttpGet("{documentId:guid}/page-map")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> GetPageMap(Guid documentId)
     {
         try
@@ -148,6 +150,7 @@ public class LaTeXRenderController : ControllerBase
     /// not compile. The response says so rather than silently doing nothing.</para>
     /// </summary>
     [HttpPost("{documentId:guid}/pdf/auto-fit")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> RenderDocumentPdfAutoFit(Guid documentId)
     {
         try
@@ -235,6 +238,7 @@ public class LaTeXRenderController : ControllerBase
     /// Render a full document's LaTeX to PNG preview.
     /// </summary>
     [HttpPost("{documentId:guid}/png")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> RenderDocumentPng(Guid documentId, [FromQuery] int dpi = 150)
     {
         try
@@ -259,6 +263,7 @@ public class LaTeXRenderController : ControllerBase
     /// Render a single block's LaTeX to PNG.
     /// </summary>
     [HttpPost("block/{blockId:guid}/png")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> RenderBlockPng(Guid blockId, [FromQuery] int dpi = 150)
     {
         try
@@ -370,6 +375,7 @@ public class LaTeXRenderController : ControllerBase
     /// Validate a single block's LaTeX.
     /// </summary>
     [HttpPost("block/{blockId:guid}/validate")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> ValidateBlock(Guid blockId)
     {
         var block = await GetBlockAsync(blockId);
@@ -540,6 +546,7 @@ public class LaTeXRenderController : ControllerBase
     /// indicator.
     /// </summary>
     [HttpGet("{documentId:guid}/validation-rollup")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> GetValidationRollup(Guid documentId)
     {
         var rollup = await _validationCache.GetDocumentRollupAsync(documentId);
@@ -553,6 +560,7 @@ public class LaTeXRenderController : ControllerBase
     /// warning. Scoped to the authenticated user's docs.
     /// </summary>
     [HttpGet("{documentId:guid}/validation-errors")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> ListValidationErrors(Guid documentId, CancellationToken ct)
     {
         var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
@@ -581,6 +589,7 @@ public class LaTeXRenderController : ControllerBase
     /// authoritative pdflatex results (two-tier #63).
     /// </summary>
     [HttpPost("block/{blockId:guid}/validate-typst")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> RecordTypstValidation(Guid blockId, [FromBody] RecordTypstValidationRequest req)
     {
         var block = await GetBlockAsync(blockId);
@@ -612,6 +621,7 @@ public class LaTeXRenderController : ControllerBase
     /// Validate an entire document's LaTeX + check bibliography references.
     /// </summary>
     [HttpPost("{documentId:guid}/validate")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> ValidateDocument(Guid documentId)
     {
         try

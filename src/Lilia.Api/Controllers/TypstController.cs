@@ -53,6 +53,7 @@ public class TypstController : ControllerBase
     /// Export a document as Typst source (.typ file).
     /// </summary>
     [HttpGet("/api/documents/{documentId:guid}/export/typst")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]   // A2: it answered any signed-in user with the document's source
     public async Task<IActionResult> ExportDocumentTypst(Guid documentId)
     {
         try
