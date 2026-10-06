@@ -40,6 +40,7 @@ cat > "$PREAMBLE_DIR/lilia-preamble.tex" << 'PREAMBLE'
 \usepackage{multirow}
 \usepackage{tabularx}
 \usepackage{longtable}
+\usepackage{threeparttablex}
 
 % Lists
 \usepackage{enumitem}

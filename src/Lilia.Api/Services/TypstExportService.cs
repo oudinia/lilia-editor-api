@@ -201,9 +201,14 @@ public class TypstExportService : ITypstExportService
             var key = AttachableLabel(block, rendered);
             if (key is not null && defined.TryGetValue(key, out var target) && !attached.ContainsKey(key))
             {
-                rendered = $"{rendered} <{key}>";
+                // Right after the element it names: at the block's label slot when it has one
+                // (a table with notes under it, or a long one in its own scope), else at the end.
+                rendered = rendered.Contains(LabelSlot, StringComparison.Ordinal)
+                    ? rendered.Replace(LabelSlot, $" <{key}>", StringComparison.Ordinal)
+                    : $"{rendered} <{key}>";
                 attached[key] = target;
             }
+            rendered = rendered.Replace(LabelSlot, "", StringComparison.Ordinal);
 
             var blockCols = blockToCols.TryGetValue(block.Id, out var n) ? n : defaultCols;
 
@@ -277,6 +282,13 @@ public class TypstExportService : ITypstExportService
     /// is a plain block here; an equation* — is left unlabelled, and a
     /// reference to it prints the pending slot rather than a wrong number.
     /// </summary>
+    /// <summary>
+    /// Where a block's label goes when it is not the end of the block's Typst: a table's notes
+    /// follow its figure, and a long table's figure sits in a scope of its own. Removed when
+    /// there is no label.
+    /// </summary>
+    internal const string LabelSlot = "\u0002label\u0002";
+
     private static string? AttachableLabel(Block block, string rendered)
     {
         if (rendered.StartsWith("//", StringComparison.Ordinal)) return null;   // a placeholder comment
@@ -290,7 +302,7 @@ public class TypstExportService : ITypstExportService
             "heading" => numbered,
             "equation" => numbered && rendered.StartsWith("$ ", StringComparison.Ordinal),
             "figure" => rendered.StartsWith("#figure(", StringComparison.Ordinal),
-            "table" => rendered.StartsWith("#figure(", StringComparison.Ordinal),
+            "table" => rendered.StartsWith("#figure(", StringComparison.Ordinal) || rendered.Contains(LabelSlot, StringComparison.Ordinal),
             _ => false,
         };
         if (!eligible) return null;
@@ -623,6 +635,10 @@ public class TypstExportService : ITypstExportService
         // the best value in bold, and a decimal column right-aligned — Typst has no siunitx, so
         // right alignment is the nearest it gets to lining up the decimal points.
         var plan = TableColumnFormat.Plan(content, colCount, headers.Count > 0);
+        // The rest of 2g (TableLayout): a group header row, note marks with the notes under the
+        // table, a rule before each row group, and a long table that breaks across pages.
+        var layout = TableLayout.Read(content, colCount, headers.Count > 0);
+        string Note(int r, int c) => layout.MarkAt(r, c) is { } m ? $"#super[{m}]" : "";
 
         var sb = new StringBuilder();
         sb.AppendLine($"#table(");
@@ -633,9 +649,25 @@ public class TypstExportService : ITypstExportService
 
         if (headers.Count > 0)
         {
-            var headerCells = headers.Select((x, i) => plan.HeaderText(i, TableCellText(x)))
-                .Select(x => x.Length == 0 ? "[]" : $"[#strong[{FormatInline(x)}]]");
-            sb.AppendLine($"  table.header({string.Join(", ", headerCells)}),");
+            var headerCells = headers.Select((x, i) => (Text: plan.HeaderText(i, TableCellText(x)), Note: Note(-1, i)))
+                .Select(x => x.Text.Length == 0 ? "[]" : $"[#strong[{FormatInline(x.Text)}]{x.Note}]");
+            // A group header: a row of spanning cells above the header, a short rule under each.
+            var groupRow = "";
+            if (layout.Groups.Count > 0)
+            {
+                var g = new List<string>();
+                var col = 0;
+                foreach (var grp in layout.Groups)
+                {
+                    for (; col < grp.Start; col++) g.Add("[]");
+                    g.Add($"table.cell(colspan: {grp.Span})[#strong[{FormatInline(grp.Label)}]]");
+                    col += grp.Span;
+                }
+                for (; col < colCount; col++) g.Add("[]");
+                var rules = layout.Groups.Select(grp => $"table.hline(start: {grp.Start}, end: {grp.Start + grp.Span}, stroke: 0.5pt)");
+                groupRow = string.Join(", ", g) + ", " + string.Join(", ", rules) + ", ";
+            }
+            sb.AppendLine($"  table.header({groupRow}{string.Join(", ", headerCells)}),");
         }
 
         // Imported tables mark their first row as the header instead (hasHeader),
@@ -643,9 +675,13 @@ public class TypstExportService : ITypstExportService
         var firstRowIsHeader = headers.Count == 0
             && content.TryGetProperty("hasHeader", out var hh) && hh.ValueKind == JsonValueKind.True;
 
+        var bodyIndex = 0;
         for (int r = 0; r < rows.Count; r++)
         {
             if (rows[r].ValueKind != JsonValueKind.Array) continue;
+            var bi = bodyIndex++;
+            // A row group starts here: a rule above it.
+            if (layout.StartsGroup(bi)) sb.AppendLine("  table.hline(stroke: 0.5pt),");
             var cells = rows[r].EnumerateArray().ToList();
             var toks = new List<string>();
             // Every grid column once, as LaTeX does: a short row is padded, or
@@ -656,7 +692,7 @@ public class TypstExportService : ITypstExportService
                 var cell = c < cells.Count ? cells[c] : default;
                 var text = plan.BodyText(c, cell.ValueKind == JsonValueKind.Undefined ? "" : TableCellText(cell));
                 var (cs, rs) = cell.ValueKind == JsonValueKind.Undefined ? (1, 1) : TableCellSpan(cell);
-                var body = plan.IsBest(c, text) ? $"[#strong[{FormatInline(text)}]]" : $"[{FormatInline(text)}]";
+                var body = plan.IsBest(c, text) ? $"[#strong[{FormatInline(text)}]{Note(bi, c)}]" : $"[{FormatInline(text)}{Note(bi, c)}]";
                 toks.Add(cs > 1 || rs > 1
                     ? $"table.cell({SpanArgs(Math.Min(cs, colCount - c), Math.Min(rs, rows.Count - r))}){body}"
                     : body);
@@ -665,6 +701,19 @@ public class TypstExportService : ITypstExportService
             sb.AppendLine(firstRowIsHeader && r == 0 ? $"  table.header({line})," : $"  {line},");
         }
         sb.Append(")");
+
+        // Notes print under the table, smaller, each after its mark.
+        var notes = layout.HasNotes
+            ? "\n#block(above: 0.6em)[#set text(size: 0.85em)\n"
+              + string.Join(" \\\n", layout.Notes.Select(n => $"#super[{n.Mark}] {FormatInline(n.Text)}")) + "]"
+            : "";
+        // A long table breaks across pages; its header repeats (table.header does by default).
+        // A figure does not break unless told to.
+        string Long(string table) => layout.IsLong
+            ? $"#[\n#show figure: set block(breakable: true)\n{table}\n]"
+            : table;
+        // The label follows the figure itself, wherever the notes and the scope put it.
+        var slot = layout.HasNotes || layout.IsLong ? LabelSlot : "";
 
         // A captioned table is a numbered float in the LaTeX export
         // (\begin{table} … \caption), so here it is a figure: numbered
@@ -675,8 +724,8 @@ public class TypstExportService : ITypstExportService
         if (!string.IsNullOrWhiteSpace(caption))
             // Inside figure( … ) Typst is in code mode, where the table is
             // written without its leading '#'.
-            return $"#figure(\n{sb.ToString().TrimStart('#')},\n  caption: [{FormatInline(caption)}],\n)";
-        return sb.ToString();
+            return Long($"#figure(\n{sb.ToString().TrimStart('#')},\n  caption: [{FormatInline(caption)}],\n){slot}") + notes;
+        return sb.ToString() + notes;
     }
 
     /// <summary>A column's Typst alignment: decimal columns right, the rest as stored.</summary>

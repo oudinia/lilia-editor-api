@@ -264,6 +264,18 @@ public class ImportTable : ImportElement
     /// (spans all columns — maps to LaTeX \begin{table*}).
     /// </summary>
     public string Span { get; set; } = "column";
+
+    /// <summary>
+    /// A group header row above the header (Lilia's 2g): <c>\multicolumn</c> labels over
+    /// columns, each with a trimmed <c>\cmidrule</c>. Start is the 0-based grid column.
+    /// </summary>
+    public List<(int Start, int Span, string Label)> HeaderGroups { get; set; } = [];
+
+    /// <summary>Body rows (0-based, header excluded) that a <c>\midrule</c> starts a group at.</summary>
+    public List<int> RowGroupStarts { get; set; } = [];
+
+    /// <summary>The notes under the table (<c>tablenotes</c>), by mark.</summary>
+    public Dictionary<string, string> Notes { get; set; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -290,6 +302,9 @@ public class ImportTableCell
     /// Row span (for merged cells).
     /// </summary>
     public int RowSpan { get; set; } = 1;
+
+    /// <summary>The <c>\tnote</c> mark the cell carried, if any.</summary>
+    public string? NoteMark { get; set; }
 }
 
 /// <summary>

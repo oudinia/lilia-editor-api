@@ -609,6 +609,10 @@ public class LaTeXRenderService : ILaTeXRenderService
                         .Where(w => !w.Contains("Rerun to get"))
                         .Where(w => !w.Contains("Rerun LaTeX"))
                         .Where(w => !w.Contains("Label(s) may have changed"))
+                        // longtable's own rerun notice: column widths settle on a
+                        // second pass, which the single validation pass never runs.
+                        // Every long table (over 40 rows, 2g) would report it.
+                        .Where(w => !w.Contains("Column widths have changed"))
                         // Same class, and missed until 2026-09-09: on a single
                         // pass EVERY citation and cross-reference is undefined,
                         // because the .aux that defines them is only written by

@@ -158,8 +158,15 @@ public class LaTeXExportService : ILaTeXExportService
     // (HeadingCommands). Set once per export; the service is scoped, one document at a time.
     private string _headingClass = "article";
 
-    private void UseHeadingClass(Document doc, LaTeXExportOptions options) =>
+    // Whether a long table may be a longtable: not in a multi-column document, where longtable
+    // is a hard error (RenderService.SupportsLongtable). Set with the heading class.
+    private bool _longtableAllowed = true;
+
+    private void UseHeadingClass(Document doc, LaTeXExportOptions options)
+    {
         _headingClass = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
+        _longtableAllowed = RenderService.SupportsLongtable(doc);
+    }
 
     // ── Single-file structure ──────────────────────────────────────────
 
@@ -1253,12 +1260,15 @@ public class LaTeXExportService : ILaTeXExportService
         var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
         var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "table*" : "table";
 
-        // longtable: page-breaking tables. When set, swap tabular for the
-        // longtable environment (already in the preamble) and repeat the
-        // header on each page. longtable IS its own float, so we do NOT wrap it
-        // in table/table* — its \caption goes inside the environment.
-        var longTable = (content.TryGetProperty("longTable", out var ltA) && ltA.ValueKind == JsonValueKind.True)
-            || (content.TryGetProperty("longtable", out var ltB) && ltB.ValueKind == JsonValueKind.True);
+        // The rest of the table's meaning (2g): group headers, notes, row groups, and
+        // whether it is long. See TableLayout (shared with the preview's emitter).
+        var layout = TableLayout.Read(content, colCount, hasHeaders);
+
+        // longtable: page-breaking tables, for a table marked longTable or over 40 body rows
+        // (TableLayout.IsLong), and only in a single-column document — longtable fails in two
+        // columns. The header repeats on each page. longtable IS its own float, so we do NOT
+        // wrap it in table/table* — its \caption goes inside the environment.
+        var longTable = layout.IsLong && _longtableAllowed;
 
         var captionLine = !string.IsNullOrEmpty(caption)
             ? (!string.IsNullOrEmpty(shortCaption)
@@ -1305,8 +1315,9 @@ public class LaTeXExportService : ILaTeXExportService
             }
         }
 
-        // Emit a single body row (grid-aware).
-        string EmitRow(int r, List<JsonElement> cells)
+        // Emit a single body row (grid-aware). `bi` is the row's index among the body rows,
+        // which is how notes and row groups name it.
+        string EmitRow(int r, int bi, List<JsonElement> cells)
         {
             var toks = new List<string>();
             int c = 0;
@@ -1317,7 +1328,7 @@ public class LaTeXExportService : ILaTeXExportService
                 {
                     // A cell's text is read as the preview reads it (LatexText.EscapeCell): the
                     // author's \textbf and $…$ survive, everything else is escaped.
-                    var inner = LatexText.EscapeCell(plan.BodyText(c, o.Text));
+                    var inner = layout.WithNote(bi, c, LatexText.EscapeCell(plan.BodyText(c, o.Text)));
                     if (o.Rs > 1) inner = $@"\multirow{{{o.Rs}}}{{*}}{{{inner}}}";
                     toks.Add(o.Cs > 1 ? $@"\multicolumn{{{o.Cs}}}{{{align}}}{{{inner}}}" : plan.Protect(c, inner));
                     c += Math.Max(1, o.Cs);
@@ -1336,8 +1347,10 @@ public class LaTeXExportService : ILaTeXExportService
                 else
                 {
                     var text = plan.BodyText(c, c < cells.Count ? TableCellText(cells[c]) : "");
-                    var cell = plan.DecimalNumber(c, text)
-                        ?? plan.Protect(c, plan.BoldBest(c, text, LatexText.EscapeCell(text)));
+                    var number = plan.DecimalNumber(c, text);
+                    var cell = number is not null
+                        ? layout.NumberWithNote(bi, c, number)
+                        : plan.Protect(c, layout.WithNote(bi, c, plan.BoldBest(c, text, LatexText.EscapeCell(text))));
                     // A cell starting with '[' straight after \\ or a rule reads as that
                     // command's optional argument; an empty group ends the scan (as the preview).
                     if (cell.StartsWith("[", StringComparison.Ordinal)) cell = "{}" + cell;
@@ -1346,6 +1359,22 @@ public class LaTeXExportService : ILaTeXExportService
                 }
             }
             return string.Join(" & ", toks) + @" \\";
+        }
+
+        // The header rows, kept as text: a longtable writes them twice.
+        var headRows = "";
+        if (hasHeaders)
+        {
+            // An S column reads its header as a number unless it is braced.
+            var headerCells = headers.EnumerateArray()
+                .Select((h, i) => plan.Protect(i, LatexText.TableHead(layout.WithNote(-1, i, LatexText.HeaderCell(plan.HeaderText(i, TableCellText(h)))))))
+                .ToList();
+            // A group header row above it, with a trimmed rule under each group.
+            var groupLines = layout.GroupHeaderLines(colCount, l => LatexText.TableHead(LatexText.HeaderCell(l)));
+            // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
+            // cells; the cells keep \textbf.
+            headRows = (groupLines is null ? "" : groupLines + "\n")
+                + LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\";
         }
 
         var tableEnv = longTable ? "longtable" : "tabular";
@@ -1357,34 +1386,63 @@ public class LaTeXExportService : ILaTeXExportService
         if (rowList.Count(r => r.ValueKind == JsonValueKind.Array) < LatexText.BandMinBodyRows) sb.AppendLine(LatexText.FewRows);
         if (longTable)
         {
+            // Notes under a longtable: threeparttablex collects them first and prints them in
+            // the last foot.
+            if (layout.HasNotes)
+            {
+                sb.AppendLine(@"\begin{ThreePartTable}");
+                sb.AppendLine(layout.LongNotesList());
+            }
             sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
-            // longtable's \caption lives inside the env and ends the line.
-            if (!string.IsNullOrEmpty(captionLine)) sb.AppendLine(captionLine + @" \\");
+            // longtable's \caption lives inside the env and ends the line; the header repeats on
+            // every page under "(continued)".
+            var captionRow = !string.IsNullOrEmpty(captionLine) ? captionLine + @" \\"
+                : !string.IsNullOrEmpty(labelPart) ? labelPart + @" \\" : "";
+            sb.AppendLine(TableLayout.LongTableHead(captionRow, !string.IsNullOrEmpty(captionLine), headRows));
+            if (layout.HasNotes)
+            {
+                sb.AppendLine(@"\bottomrule");
+                sb.AppendLine(@"\insertTableNotes");
+                sb.AppendLine(@"\endlastfoot");
+            }
         }
-        else sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
-        sb.AppendLine(@"\toprule");
-
-        if (hasHeaders)
+        else
         {
-            // An S column reads its header as a number unless it is braced.
-            var headerCells = headers.EnumerateArray()
-                .Select((h, i) => plan.Protect(i, LatexText.TableHead(LatexText.HeaderCell(plan.HeaderText(i, TableCellText(h))))))
-                .ToList();
-            // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
-            // cells; the cells keep \textbf.
-            sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\");
-            sb.AppendLine(@"\midrule");
-            // longtable: repeat the header on every page, then mark the body.
-            if (longTable) { sb.AppendLine(@"\endfirsthead"); sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\"); sb.AppendLine(@"\midrule"); sb.AppendLine(@"\endhead"); }
+            // Notes print under the table, not at the page foot: threeparttable.
+            if (layout.HasNotes) sb.AppendLine(@"\begin{threeparttable}");
+            sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
+            sb.AppendLine(@"\toprule");
+            if (headRows.Length > 0)
+            {
+                sb.AppendLine(headRows);
+                sb.AppendLine(@"\midrule");
+            }
         }
 
+        var body = 0;
         for (int r = 0; r < rowList.Count; r++)
             if (rowList[r].ValueKind == JsonValueKind.Array)
-                sb.AppendLine(EmitRow(r, rowList[r].EnumerateArray().ToList()));
+            {
+                var bi = body++;
+                // A row group starts here: a rule before it, after which a Banded paper restarts
+                // its stripes (lilia-theme.sty).
+                if (layout.StartsGroup(bi)) sb.AppendLine(@"\midrule");
+                sb.AppendLine(EmitRow(r, bi, rowList[r].EnumerateArray().ToList()));
+            }
 
-        sb.AppendLine(@"\bottomrule");
+        // With notes under a longtable the bottom rule is in the last foot, above them.
+        if (!(longTable && layout.HasNotes)) sb.AppendLine(@"\bottomrule");
         sb.AppendLine($@"\end{{{tableEnv}}}");
-        if (longTable) return sb.ToString().TrimEnd();
+        if (longTable)
+        {
+            if (layout.HasNotes) sb.AppendLine(@"\end{ThreePartTable}");
+            return sb.ToString().TrimEnd();
+        }
+        if (layout.HasNotes)
+        {
+            sb.AppendLine(layout.NotesList());
+            sb.AppendLine(@"\end{threeparttable}");
+        }
         sb.Append($@"\end{{{env}}}");
         return sb.ToString();
     }

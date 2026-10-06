@@ -1407,15 +1407,16 @@ public class ConvertController : ControllerBase
                         blocks.Add(new LatexBlockDto("code", new { code = cb.Text, language = cb.Language ?? "" }));
                         break;
                     case ImportTable t:
-                        var headers = t.HasHeaderRow && t.Rows.Count > 0
-                            ? t.Rows[0].Select(c => c.Text).ToList()
-                            : t.Rows.FirstOrDefault()?.Select(c => c.Text).ToList() ?? [];
-                        var rows = t.HasHeaderRow && t.Rows.Count > 1
-                            ? t.Rows.Skip(1).Select(r => r.Select(c => c.Text).ToList()).ToList()
-                            : t.Rows.Count > 1
-                                ? t.Rows.Skip(1).Select(r => r.Select(c => c.Text).ToList()).ToList()
-                                : [];
-                        blocks.Add(new LatexBlockDto("table", new { headers, rows, span = t.Span }));
+                        // A cell with a note is {content, note}; group headers and row groups
+                        // come along when the table has them (ImportTableLayout).
+                        var headers = t.Rows.Count > 0 ? ImportTableLayout.Row(t, t.Rows[0]) : [];
+                        var rows = t.Rows.Count > 1
+                            ? t.Rows.Skip(1).Select(r => ImportTableLayout.Row(t, r)).ToArray()
+                            : [];
+                        blocks.Add(new LatexBlockDto("table", ImportTableLayout.WithLayout(t, new Dictionary<string, object>
+                        {
+                            ["headers"] = headers, ["rows"] = rows, ["span"] = t.Span,
+                        })));
                         break;
                     case ImportImage img:
                         // P0-4: propagate the actual filename to the editor block so the user
