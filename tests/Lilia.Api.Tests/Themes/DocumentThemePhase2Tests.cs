@@ -261,12 +261,14 @@ public class DocumentThemePhase2Tests : IDisposable
     public void Header_cells_are_wrapped_their_bold_kept_and_the_wrapper_falls_back_to_the_cell()
     {
         var tex = Export(Doc(null), Table(5));
-        tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & \liliaTableHead{\textbf{Acc}} \\");
+        // Acc holds nothing but numbers, so it is an siunitx S column (2g), whose text — the
+        // header — is braced; the wrapper is the same inside the braces.
+        tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & {\liliaTableHead{\textbf{Acc}}} \\");
         tex.Should().Contain(@"\providecommand{\liliaTableHead}[1]{#1}");
         tex.Should().NotContain(@"\liliaFewRows", "five body rows can be banded");
 
         var preview = new RenderService(null!, NullLogger<RenderService>.Instance).RenderBlockToLatex(Table(5));
-        preview.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & \liliaTableHead{\textbf{Acc}} \\");
+        preview.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & {\liliaTableHead{\textbf{Acc}}} \\");
         preview.Should().Contain(@"\providecommand{\liliaTableHead}[1]{#1}").And.NotContain(@"\liliaFewRows");
     }
 

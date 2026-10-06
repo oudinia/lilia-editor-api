@@ -619,13 +619,21 @@ public class TypstExportService : ITypstExportService
             }
         }
 
+        // The table's own meaning (2g), as the LaTeX exporters read it: the unit in the header,
+        // the best value in bold, and a decimal column right-aligned — Typst has no siunitx, so
+        // right alignment is the nearest it gets to lining up the decimal points.
+        var plan = TableColumnFormat.Plan(content, colCount, headers.Count > 0);
+
         var sb = new StringBuilder();
         sb.AppendLine($"#table(");
         sb.AppendLine($"  columns: {colCount},");
+        // Only written when a column is decimal, so a table without one is as it was.
+        if (plan.AnyDecimal)
+            sb.AppendLine($"  align: ({string.Join(", ", Enumerable.Range(0, colCount).Select(c => TypstAlign(content, plan, c)))}),");
 
         if (headers.Count > 0)
         {
-            var headerCells = headers.Select(x => TableCellText(x))
+            var headerCells = headers.Select((x, i) => plan.HeaderText(i, TableCellText(x)))
                 .Select(x => x.Length == 0 ? "[]" : $"[#strong[{FormatInline(x)}]]");
             sb.AppendLine($"  table.header({string.Join(", ", headerCells)}),");
         }
@@ -646,9 +654,9 @@ public class TypstExportService : ITypstExportService
             {
                 if (covered.Contains((r, c))) continue;
                 var cell = c < cells.Count ? cells[c] : default;
-                var text = cell.ValueKind == JsonValueKind.Undefined ? "" : TableCellText(cell);
+                var text = plan.BodyText(c, cell.ValueKind == JsonValueKind.Undefined ? "" : TableCellText(cell));
                 var (cs, rs) = cell.ValueKind == JsonValueKind.Undefined ? (1, 1) : TableCellSpan(cell);
-                var body = $"[{FormatInline(text)}]";
+                var body = plan.IsBest(c, text) ? $"[#strong[{FormatInline(text)}]]" : $"[{FormatInline(text)}]";
                 toks.Add(cs > 1 || rs > 1
                     ? $"table.cell({SpanArgs(Math.Min(cs, colCount - c), Math.Min(rs, rows.Count - r))}){body}"
                     : body);
@@ -669,6 +677,17 @@ public class TypstExportService : ITypstExportService
             // written without its leading '#'.
             return $"#figure(\n{sb.ToString().TrimStart('#')},\n  caption: [{FormatInline(caption)}],\n)";
         return sb.ToString();
+    }
+
+    /// <summary>A column's Typst alignment: decimal columns right, the rest as stored.</summary>
+    private static string TypstAlign(JsonElement content, TableColumnFormat.TablePlan plan, int c)
+    {
+        if (plan.IsDecimal(c)) return "right";
+        var raw = content.TryGetProperty("columnAlign", out var a) && a.ValueKind == JsonValueKind.Array
+            && c < a.GetArrayLength() && a[c].ValueKind == JsonValueKind.String
+            ? (a[c].GetString() ?? "").Trim().ToLowerInvariant()
+            : "";
+        return raw switch { "c" or "center" => "center", "r" or "right" => "right", _ => "left" };
     }
 
     private static string SpanArgs(int colspan, int rowspan) =>

@@ -1180,7 +1180,7 @@ public class LaTeXExportService : ILaTeXExportService
     /// for any column not covered by either array, so partial schemas
     /// degrade safely.
     /// </summary>
-    private static string BuildColumnSpec(JsonElement content, int colCount)
+    private static string[] BuildColumnSpec(JsonElement content, int colCount)
     {
         string[] aligns = Array.Empty<string>();
         if (content.TryGetProperty("columnAlign", out var alignEl) && alignEl.ValueKind == JsonValueKind.Array)
@@ -1197,30 +1197,31 @@ public class LaTeXExportService : ILaTeXExportService
                 .ToArray();
         }
 
-        var sb = new StringBuilder();
+        var letters = new string[colCount];
         for (int i = 0; i < colCount; i++)
         {
             var raw = (i < aligns.Length ? aligns[i] : "l").Trim().ToLowerInvariant();
             // Normalise: anything other than the supported set falls back
-            // to 'l'. Prevents user-typed garbage breaking pdflatex.
+            // to 'l'. Prevents user-typed garbage breaking pdflatex. A decimal
+            // column ("decimal") becomes an S column through TableColumnFormat.
             switch (raw)
             {
                 case "c":
                 case "r":
-                    sb.Append(raw);
+                    letters[i] = raw;
                     break;
                 case "p":
                 case "m":
                 case "b":
                     var w = i < widths.Length ? widths[i] : "";
-                    sb.Append(string.IsNullOrWhiteSpace(w) ? "l" : $"{raw}{{{w}}}");
+                    letters[i] = string.IsNullOrWhiteSpace(w) ? "l" : $"{raw}{{{w}}}";
                     break;
                 default:
-                    sb.Append('l');
+                    letters[i] = "l";
                     break;
             }
         }
-        return sb.ToString();
+        return letters;
     }
 
     private string RenderTable(JsonElement content)
@@ -1241,7 +1242,10 @@ public class LaTeXExportService : ILaTeXExportService
         // Per-column alignment: read columnAlign + optional columnWidth
         // from the block content. Pre-fix this rendered every column as
         // 'l' regardless of what the schema said.
-        var colSpec = BuildColumnSpec(content, colCount);
+        // The table's own meaning (2g): decimal alignment as an siunitx S column, the unit in
+        // the header, the best value in bold. Shared with the preview's emitter.
+        var plan = TableColumnFormat.Plan(content, colCount, hasHeaders);
+        var colSpec = plan.ApplyToSpec(BuildColumnSpec(content, colCount));
 
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
         var shortCaption = content.TryGetProperty("shortCaption", out var sc) && sc.ValueKind == JsonValueKind.String
@@ -1314,9 +1318,9 @@ public class LaTeXExportService : ILaTeXExportService
                 var align = c < colAligns.Length ? colAligns[c] : "l";
                 if (origins.TryGetValue((r, c), out var o))
                 {
-                    var inner = EscapeLatex(o.Text);
+                    var inner = EscapeLatex(plan.BodyText(c, o.Text));
                     if (o.Rs > 1) inner = $@"\multirow{{{o.Rs}}}{{*}}{{{inner}}}";
-                    toks.Add(o.Cs > 1 ? $@"\multicolumn{{{o.Cs}}}{{{align}}}{{{inner}}}" : inner);
+                    toks.Add(o.Cs > 1 ? $@"\multicolumn{{{o.Cs}}}{{{align}}}{{{inner}}}" : plan.Protect(c, inner));
                     c += Math.Max(1, o.Cs);
                 }
                 else if (contLeft.TryGetValue((r, c), out var cw))
@@ -1332,8 +1336,9 @@ public class LaTeXExportService : ILaTeXExportService
                 }
                 else
                 {
-                    var text = c < cells.Count ? TableCellText(cells[c]) : "";
-                    toks.Add(EscapeLatex(text));
+                    var text = plan.BodyText(c, c < cells.Count ? TableCellText(cells[c]) : "");
+                    toks.Add(plan.DecimalNumber(c, text)
+                        ?? plan.Protect(c, plan.BoldBest(c, text, EscapeLatex(text))));
                     c += 1;
                 }
             }
@@ -1358,8 +1363,9 @@ public class LaTeXExportService : ILaTeXExportService
 
         if (hasHeaders)
         {
+            // An S column reads its header as a number unless it is braced.
             var headerCells = headers.EnumerateArray()
-                .Select(h => LatexText.TableHead($@"\textbf{{{EscapeLatex(TableCellText(h))}}}"))
+                .Select((h, i) => plan.Protect(i, LatexText.TableHead($@"\textbf{{{EscapeLatex(plan.HeaderText(i, TableCellText(h)))}}}")))
                 .ToList();
             // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
             // cells; the cells keep \textbf.
