@@ -52,12 +52,13 @@ public class DocumentThemeTests : IDisposable
     // ── themes.json: the contract the web builds against ─────────────────
 
     [Fact]
-    public void Six_themes_in_the_contracts_order_with_three_planned()
+    public void Six_themes_in_the_contracts_order_with_only_exposition_planned()
     {
         ThemeCatalog.Ids.Should().Equal("classic", "cerulean", "index", "carnet", "gazette", "exposition");
-        ThemeCatalog.All.Where(t => t.Status == "planned").Select(t => t.Id)
-            .Should().BeEquivalentTo("carnet", "gazette", "exposition");
-        ThemeCatalog.All.Where(t => t.IsBuilt).Select(t => t.Id).Should().BeEquivalentTo("classic", "cerulean", "index");
+        // Exposition is for beamer, which locks the look: a separate decision.
+        ThemeCatalog.All.Where(t => t.Status == "planned").Select(t => t.Id).Should().BeEquivalentTo("exposition");
+        ThemeCatalog.All.Where(t => t.IsBuilt).Select(t => t.Id)
+            .Should().BeEquivalentTo("classic", "cerulean", "index", "carnet", "gazette");
     }
 
     [Fact]
@@ -159,7 +160,8 @@ public class DocumentThemeTests : IDisposable
     [InlineData("""{"theme":"index","pins":{"b1":-1}}""", "from 0 to 7")]
     [InlineData("""{"theme":"index","pins":{"b1":"red"}}""", "from 0 to 7")]
     [InlineData("""{"theme":"index","pins":[1,2]}""", "must be an object")]
-    [InlineData("""{"theme":"index","tables":"banded"}""", "Valid keys: theme, paper, pins")]
+    [InlineData("""{"theme":"index","width":"full"}""", "Valid keys: theme, paper, pins, tables")]
+    [InlineData("""{"theme":"index","tables":"banded"}""", "look.tables must be an object")]
     [InlineData("""["index"]""", "look must be an object")]
     public void An_invalid_look_is_refused_with_the_valid_values(string json, string named)
     {
@@ -220,7 +222,7 @@ public class DocumentThemeTests : IDisposable
     [Fact]
     public void Put_refuses_a_planned_theme_and_one_whose_fonts_are_missing()
     {
-        var planned = () => DocumentService.ResolveLookUpdate(Put("""{"theme":"carnet"}"""), "article");
+        var planned = () => DocumentService.ResolveLookUpdate(Put("""{"theme":"exposition"}"""), "article");
         planned.Should().Throw<DocumentLookException>().WithMessage("*planned*Available themes: classic, cerulean, index.");
 
         ThemeAvailability.OverrideForTests(id => id != "index");
@@ -400,8 +402,10 @@ public class DocumentThemeTests : IDisposable
         var table = B("table", """{"caption":"R","headers":["Model","Acc"],"rows":[["A","1"]]}""");
         var tex = Export(Doc(null), table);
 
-        tex.Should().Contain(@"\liliaHeadRow \textbf{Model} & \textbf{Acc} \\");
-        tex.Should().Contain(@"\providecommand{\liliaHeadRow}{}" + Environment.NewLine + @"\begin{tabular}");
+        tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & \liliaTableHead{\textbf{Acc}} \\");
+        tex.Should().Contain(string.Join(Environment.NewLine,
+            @"\providecommand{\liliaHeadRow}{}", @"\providecommand{\liliaTableHead}[1]{#1}",
+            @"\providecommand{\liliaFewRows}{}\liliaFewRows", @"\begin{tabular}"));
     }
 
     [Fact]

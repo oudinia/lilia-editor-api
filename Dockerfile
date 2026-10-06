@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Document themes (lilia-theme.sty, Document settings -> Look). Cerulean and Index set their type in
-# Montserrat over Source Serif; Carnet and Gazette (planned) add EB Garamond and Josefin. Debian and
+# Montserrat over Source Serif; Carnet and Gazette add EB Garamond and Josefin. Debian and
 # Ubuntu ship these only inside texlive-fonts-extra (over a gigabyte), so just these TeX Live
 # packages are fetched from the TeX Live repository and unpacked into TEXMFLOCAL: the four font
 # packages, mweights (which they load) and ly1 (montserrat loads the LY1 encoding). Their Type 1

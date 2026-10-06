@@ -647,7 +647,8 @@ public class TeamService : ITeamService
                 dl.Label.Name,
                 dl.Label.Color,
                 dl.Label.CreatedAt
-            )).ToList()
+            )).ToList(),
+            Look: DocumentService.ReadLook(d.Look)
         )).ToList();
     }
 

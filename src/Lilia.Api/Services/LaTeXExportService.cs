@@ -171,8 +171,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // The body's blocks, worked out before the preamble: the theme line's Index pins are
         // numbered by the headings the body will actually contain.
-        var mainBlocks = blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography" && b.Type != "title").ToList();
-        mainBlocks = StripDuplicateTitleHeading(doc.Title, mainBlocks);
+        var mainBlocks = BodyBlocks(doc.Title, blocks);
 
         // Preamble embedded in main.tex
         sb.AppendLine(BuildDocumentClassDirective(doc, options));
@@ -738,6 +737,16 @@ public class LaTeXExportService : ILaTeXExportService
         return result;
     }
 
+    /// <summary>
+    /// The blocks the body prints, in order: no title, abstract or bibliography block (the
+    /// preamble and \maketitle carry those), and no leading heading that repeats the title.
+    /// The theme line numbers Index pins by these, and the editor's section chips
+    /// (<see cref="Lilia.Engines.Themes.ThemeSections"/>) count the same headings.
+    /// </summary>
+    public static List<Block> BodyBlocks(string? title, IEnumerable<Block> orderedBlocks) =>
+        StripDuplicateTitleHeading(title,
+            orderedBlocks.Where(b => b.Type != "abstract" && b.Type != "bibliography" && b.Type != "title").ToList());
+
     private static List<Block> StripDuplicateTitleHeading(string? title, List<Block> blocks)
     {
         if (string.IsNullOrWhiteSpace(title) || blocks.Count == 0) return blocks;
@@ -828,6 +837,8 @@ public class LaTeXExportService : ILaTeXExportService
                 "footnote" => RenderFootnote(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
+                // The Appendix back-matter block starts the appendices (see RenderService).
+                "backMatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
                 _ => RenderUnknownBlock(block),
             };
         }
@@ -1322,7 +1333,12 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         var tableEnv = longTable ? "longtable" : "tabular";
-        if (hasHeaders) sb.AppendLine(LatexText.HeadRowFallback);
+        if (hasHeaders)
+        {
+            sb.AppendLine(LatexText.HeadRowFallback);
+            sb.AppendLine(LatexText.TableHeadFallback);
+        }
+        if (rowList.Count(r => r.ValueKind == JsonValueKind.Array) < LatexText.BandMinBodyRows) sb.AppendLine(LatexText.FewRows);
         if (longTable)
         {
             sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
@@ -1335,9 +1351,10 @@ public class LaTeXExportService : ILaTeXExportService
         if (hasHeaders)
         {
             var headerCells = headers.EnumerateArray()
-                .Select(h => $@"\textbf{{{EscapeLatex(TableCellText(h))}}}")
+                .Select(h => LatexText.TableHead($@"\textbf{{{EscapeLatex(TableCellText(h))}}}"))
                 .ToList();
-            // \liliaHeadRow: a document theme styles the header row; the cells keep \textbf.
+            // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
+            // cells; the cells keep \textbf.
             sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\");
             sb.AppendLine(@"\midrule");
             // longtable: repeat the header on every page, then mark the body.

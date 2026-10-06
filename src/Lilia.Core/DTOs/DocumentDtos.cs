@@ -32,7 +32,10 @@ public record DocumentListDto(
     int ValidationErrorCount = 0,
     int ValidationWarningCount = 0,
     DateTime? ValidationCheckedAt = null,
-    string? AiSummary = null
+    string? AiSummary = null,
+    // Document theme (Look), the same shape as on the document: { theme, paper, pins, tables? },
+    // null when unset (Classic). The card thumbnail is drawn from it (design 2c). Always written.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] JsonElement? Look = null
 );
 
 public record OutlineItemDto(
@@ -108,7 +111,7 @@ public record DocumentDto(
     string? FooterLeft = null,
     string? FooterCenter = null,
     string? FooterRight = null,
-    // Document theme (Look): { theme, paper, pins }, null when unset (Classic). Always written,
+    // Document theme (Look): { theme, paper, pins, tables? }, null when unset (Classic). Always written,
     // null included, whatever the serializer's null handling.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] JsonElement? Look = null,
     // Non-null when the class sets its own look (publisher, CV, beamer): the sentence the
@@ -177,7 +180,9 @@ public record UpdateDocumentDto(
     string? FooterCenter = null,
     string? FooterRight = null,
     // Document theme: { "theme": "classic"|"cerulean"|"index"|…, "paper": "theme"|"white",
-    // "pins": { "<headingBlockId>": 0..7 } }. Null leaves it alone; theme "classic" clears it.
+    // "pins": { "<headingBlockId>": 0..7 }, "tables": { "style": "ruled"|"banded"|"header",
+    // "density": "normal"|"compact", "caption": "above"|"below" } (tables and each key optional) }.
+    // Null leaves it alone; theme "classic" without tables clears it.
     // Validated (400 listing the valid values) by DocumentLook.Validate.
     JsonElement? Look = null
 );

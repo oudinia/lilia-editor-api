@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
+using Lilia.Engines.Themes;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -309,12 +310,70 @@ public class TablesController : ControllerBase
         // like the papers the caller cannot see.
         var copies = await _db.Tables.CountAsync(x => x.CopiedFrom == id);
 
+        // Each visible paper's look and the section the table sits in (design 2b), worked out
+        // here from that paper's headings, never stored. Only papers the caller may read.
+        var visible = links.Where(l => l.Visible).ToList();
+        var places = await SectionPlacesAsync(visible.Select(l => (l.DocumentId, l.BlockId)).ToList());
+
         return Ok(new TableUsageResponse(
             links.Count,
-            links.Where(l => l.Visible)
-                 .Select(l => new TableUsageDto(l.DocumentId, l.Title, l.BlockId))
+            visible
+                 .Select(l =>
+                 {
+                     var (look, place) = places.TryGetValue((l.DocumentId, l.BlockId), out var p) ? p : (null, SectionPlace.None);
+                     return new TableUsageDto(l.DocumentId, l.Title, l.BlockId,
+                         DocumentService.ReadLook(look), place.Number, place.Colour);
+                 })
                  .ToList(),
             copies));
+    }
+
+    /// <summary>
+    /// For each (document, table block): the document's stored look and the block's place among
+    /// its top numbered headings (<see cref="ThemeSections"/>), counted over the body the export
+    /// prints. Two queries per call, whatever the number of papers: every block's type and order,
+    /// and the content of the blocks that can number (headings and raw LaTeX embeds).
+    /// </summary>
+    private async Task<Dictionary<(Guid DocumentId, Guid? BlockId), (string? Look, SectionPlace Place)>> SectionPlacesAsync(
+        List<(Guid DocumentId, Guid? BlockId)> links)
+    {
+        var result = new Dictionary<(Guid, Guid?), (string?, SectionPlace)>();
+        if (links.Count == 0) return result;
+        var docIds = links.Select(l => l.DocumentId).Distinct().ToList();
+
+        var docs = await _db.Documents.AsNoTracking()
+            .Where(d => docIds.Contains(d.Id))
+            .Select(d => new { d.Id, d.Title, d.Look, d.LatexDocumentClass })
+            .ToDictionaryAsync(d => d.Id);
+        var outline = await _db.Blocks.AsNoTracking()
+            .Where(b => docIds.Contains(b.DocumentId))
+            .Select(b => new { b.Id, b.DocumentId, b.Type, b.SortOrder })
+            .ToListAsync();
+        var contents = await _db.Blocks.AsNoTracking()
+            .Where(b => docIds.Contains(b.DocumentId)
+                        && (b.Type == "heading" || b.Type == "header" || b.Type == "embed"))
+            .Select(b => new { b.Id, b.Content })
+            .ToDictionaryAsync(b => b.Id, b => b.Content);
+
+        foreach (var group in outline.GroupBy(b => b.DocumentId))
+        {
+            if (!docs.TryGetValue(group.Key, out var doc)) continue;
+            var blocks = group.OrderBy(b => b.SortOrder).Select(b => new Block
+            {
+                Id = b.Id, DocumentId = b.DocumentId, Type = b.Type, SortOrder = b.SortOrder,
+                Content = contents.TryGetValue(b.Id, out var c) ? c : JsonDocument.Parse("{}"),
+            });
+            var body = LaTeXExportService.BodyBlocks(doc.Title, blocks);
+            var placesInDoc = ThemeSections.Places(body, doc.LatexDocumentClass, doc.Look);
+            foreach (var link in links.Where(l => l.DocumentId == group.Key))
+            {
+                var place = link.BlockId is { } blockId && placesInDoc.TryGetValue(blockId, out var p) ? p : SectionPlace.None;
+                result[link] = (doc.Look, place);
+            }
+        }
+        foreach (var link in links.Where(l => !result.ContainsKey(l)))
+            result[link] = (docs.TryGetValue(link.DocumentId, out var doc) ? doc.Look : null, SectionPlace.None);
+        return result;
     }
 
     /// <summary>Attach this table to a document, by reference.</summary>
@@ -392,7 +451,23 @@ public record TrashedTableDto(
     /// <summary>How many papers still link it; they keep their own copy of the content.</summary>
     int DocumentCount);
 
-public record TableUsageDto(Guid DocumentId, string DocumentTitle, Guid? BlockId);
+/// <summary>One paper a table is used in.</summary>
+/// <param name="Look">That paper's look, the same shape as on the document; null is Classic.</param>
+/// <param name="SectionNumber">The number of the top numbered heading the table block sits under
+/// (the chapter in report and book, the section in article; an appendix's letter, "A"), as the PDF
+/// prints it; null before the first one, under an unnumbered one, or without a block.</param>
+/// <param name="SectionColour">That heading's Index colour, <c>#RRGGBB</c> (pins and the appendix
+/// restart applied, as lilia-theme.sty computes it); null unless the paper's theme is Index.</param>
+public record TableUsageDto(
+    Guid DocumentId,
+    string DocumentTitle,
+    Guid? BlockId,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    JsonElement? Look = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    string? SectionNumber = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    string? SectionColour = null);
 
 /// <summary>
 /// Where a table is used. <paramref name="Total"/> counts every document;
