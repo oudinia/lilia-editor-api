@@ -1,0 +1,146 @@
+%% beamerthemeLiliaExposition.sty: Lilia's Exposition document theme, for beamer.
+%%
+%% Design: Olivia, 6 Oct 2026 (lilia-docs design-handoffs/2026-10-05-document-themes,
+%% REPLY-2026-10-06-to-lilia.md). A room with a projector: burgundy ground, cream text,
+%% gold structure; Josefin Sans titles, Montserrat body.
+%%
+%% Loaded by one managed line, before the author's custom preamble so the author wins:
+%%   \usetheme{LiliaExposition}            or   \usetheme[printsafe]{LiliaExposition}
+%% printsafe: cream paper with burgundy ink, for handouts.
+%%
+%% Fonts come only through the TeX font packages (no fontspec), so pdfLaTeX, LuaLaTeX and
+%% Overleaf all work. A missing font package stops the run: a theme never prints in a
+%% substitute face.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{beamerthemeLiliaExposition}[2026/10/06 Lilia Exposition beamer theme]
+
+\newif\iflilia@expo@printsafe
+\DeclareOptionBeamer{printsafe}{\lilia@expo@printsafetrue}
+\ProcessOptionsBeamer
+
+\mode<presentation>
+
+% ── Fonts ──────────────────────────────────────────────────────────────────
+\IfFileExists{montserrat.sty}{}{\PackageError{beamerthemeLiliaExposition}
+  {The montserrat font package is not installed}{Exposition needs montserrat and josefin.}}
+\IfFileExists{josefin.sty}{}{\PackageError{beamerthemeLiliaExposition}
+  {The josefin font package is not installed}{Exposition needs montserrat and josefin.}}
+% Josefin first: it claims \sfdefault on load, and Montserrat, loaded after, takes it back
+% as the body face. Titles name Josefin's family directly.
+\RequirePackage{josefin}
+\RequirePackage[defaultfam,tabular,lining]{montserrat}
+\renewcommand{\familydefault}{\sfdefault}
+\newcommand\lilia@expo@titleface{\fontfamily{JosefinSans-LF}\selectfont}
+
+\usefonttheme{professionalfonts}
+\setbeamerfont{frametitle}{family=\lilia@expo@titleface,series=\bfseries,size=\Large}
+\setbeamerfont{title}{family=\lilia@expo@titleface,series=\bfseries,size=\huge}
+\setbeamerfont{subtitle}{family=\lilia@expo@titleface,size=\large}
+\setbeamerfont{section in toc}{family=\lilia@expo@titleface,series=\bfseries}
+\setbeamerfont{block title}{series=\bfseries,size=\normalsize}
+\setbeamerfont{kicker}{size=\scriptsize,series=\bfseries}
+\setbeamerfont{page number in head/foot}{size=\scriptsize,series=\bfseries}
+
+% ── Colour ─────────────────────────────────────────────────────────────────
+% Cream on burgundy 11.9:1, gold on burgundy 8.4:1; on the 12 % block tint 8.7:1 and 6.1:1.
+\definecolor{lilia@expo@burgundy}{HTML}{4A1B22}
+\definecolor{lilia@expo@cream}{HTML}{F3E9DC}
+\definecolor{lilia@expo@gold}{HTML}{EBC155}
+\definecolor{lilia@expo@tint}{HTML}{5E3438}
+
+\iflilia@expo@printsafe
+  % Handouts: cream paper, burgundy ink and structure; gold would not hold on cream.
+  \colorlet{lilia@expo@ground}{lilia@expo@cream}
+  \colorlet{lilia@expo@ink}{lilia@expo@burgundy}
+  \colorlet{lilia@expo@structure}{lilia@expo@burgundy}
+  \colorlet{lilia@expo@blockbg}{lilia@expo@burgundy!8!lilia@expo@cream}
+  \colorlet{lilia@expo@tabfill}{lilia@expo@burgundy}
+  \colorlet{lilia@expo@tabink}{lilia@expo@cream}
+\else
+  \colorlet{lilia@expo@ground}{lilia@expo@burgundy}
+  \colorlet{lilia@expo@ink}{lilia@expo@cream}
+  \colorlet{lilia@expo@structure}{lilia@expo@gold}
+  \colorlet{lilia@expo@blockbg}{lilia@expo@tint}
+  \colorlet{lilia@expo@tabfill}{lilia@expo@gold}
+  \colorlet{lilia@expo@tabink}{lilia@expo@burgundy}
+\fi
+
+\setbeamercolor{normal text}{fg=lilia@expo@ink,bg=lilia@expo@ground}
+\setbeamercolor{background canvas}{bg=lilia@expo@ground}
+\setbeamercolor{structure}{fg=lilia@expo@structure}
+\setbeamercolor{frametitle}{fg=lilia@expo@structure,bg=}
+\setbeamercolor{title}{fg=lilia@expo@structure}
+\setbeamercolor{subtitle}{fg=lilia@expo@ink}
+\setbeamercolor{author}{fg=lilia@expo@ink}
+\setbeamercolor{date}{fg=lilia@expo@ink}
+\setbeamercolor{institute}{fg=lilia@expo@ink}
+\setbeamercolor{alerted text}{fg=lilia@expo@structure}
+\setbeamercolor{example text}{fg=lilia@expo@structure}
+\setbeamercolor{block title}{fg=lilia@expo@structure,bg=lilia@expo@blockbg}
+\setbeamercolor{block body}{fg=lilia@expo@ink,bg=lilia@expo@blockbg}
+\setbeamercolor{block title alerted}{fg=lilia@expo@structure,bg=lilia@expo@blockbg}
+\setbeamercolor{block body alerted}{fg=lilia@expo@ink,bg=lilia@expo@blockbg}
+\setbeamercolor{block title example}{fg=lilia@expo@structure,bg=lilia@expo@blockbg}
+\setbeamercolor{block body example}{fg=lilia@expo@ink,bg=lilia@expo@blockbg}
+\setbeamercolor{item}{fg=lilia@expo@structure}
+\setbeamercolor{section in toc}{fg=lilia@expo@ink}
+\setbeamercolor{kicker}{fg=lilia@expo@tabink,bg=lilia@expo@tabfill}
+\setbeamercolor{page tab}{fg=lilia@expo@tabink,bg=lilia@expo@tabfill}
+
+% ── Inner: flat blocks (no shadows, no gradient corners), plain items ──────
+\setbeamertemplate{blocks}[default]
+\setbeamertemplate{itemize items}[circle]
+\setbeamertemplate{enumerate items}[default]
+\setbeamertemplate{section in toc}[sections numbered]
+\setbeamertemplate{navigation symbols}{}
+
+\setbeamertemplate{block begin}{%
+  \par\vskip\medskipamount
+  \begin{beamercolorbox}[sep=0.6em,leftskip=0pt,rightskip=0pt,vmode]{block body}%
+    \ifx\insertblocktitle\@empty\else
+      {\usebeamerfont*{block title}\usebeamercolor[fg]{block title}\insertblocktitle\par}\vskip0.3em
+    \fi
+    \usebeamerfont{block body}}
+\setbeamertemplate{block end}{\end{beamercolorbox}\vskip\smallskipamount}
+\setbeamertemplate{block alerted begin}{\usebeamertemplate{block begin}}
+\setbeamertemplate{block alerted end}{\usebeamertemplate{block end}}
+\setbeamertemplate{block example begin}{\usebeamertemplate{block begin}}
+\setbeamertemplate{block example end}{\usebeamertemplate{block end}}
+
+\setbeamertemplate{title page}{%
+  \vfill
+  {\usebeamerfont{title}\usebeamercolor[fg]{title}\inserttitle\par}
+  \ifx\insertsubtitle\@empty\else\vskip0.4em{\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\insertsubtitle\par}\fi
+  \vskip1.2em
+  {\usebeamerfont{author}\usebeamercolor[fg]{author}\insertauthor\par}
+  \vskip0.3em
+  {\usebeamerfont{date}\usebeamercolor[fg]{date}\insertdate\par}
+  \vfill}
+
+% ── Outer: the kicker tab top-left (section · frame), the page in a foot tab ─
+\newcommand\lilia@expo@tab[1]{%
+  \begingroup\setlength{\fboxsep}{0pt}%
+  \tikz[baseline=(t.base)]\node[fill=lilia@expo@tabfill,text=lilia@expo@tabink,rounded corners=2.5pt,
+    inner xsep=5pt,inner ysep=3pt](t){#1};%
+  \endgroup}
+\RequirePackage{tikz}
+
+\setbeamertemplate{headline}{%
+  \vskip6pt
+  \hskip1em{\usebeamerfont{kicker}%
+    % Before the first section (the title frame) the kicker stays empty: the foot tab already
+    % carries the page.
+    \ifx\insertsectionhead\@empty
+    \else
+      \lilia@expo@tab{\insertsectionnumber\,·\,\insertframenumber}\hskip0.5em
+      {\usebeamercolor[fg]{normal text}\insertsectionhead}%
+    \fi}%
+  \vskip2pt}
+\setbeamertemplate{frametitle}{%
+  \vskip2pt{\usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}\insertframetitle\par}%
+  \ifx\insertframesubtitle\@empty\else{\usebeamerfont{framesubtitle}\usebeamercolor[fg]{normal text}\insertframesubtitle\par}\fi
+  \vskip4pt}
+\setbeamertemplate{footline}{%
+  \hfill{\usebeamerfont{page number in head/foot}\lilia@expo@tab{\insertframenumber}}\hskip1em\vskip6pt}
+
+\mode<all>

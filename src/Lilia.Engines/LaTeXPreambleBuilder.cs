@@ -538,6 +538,12 @@ public static class LaTeXPreambleBuilder
     /// has now (its position among the numbered level-1 headings), so a pin follows its heading
     /// when headings move. When an embed prints its own \chapter the count would be out of step,
     /// so no pin is written.</para>
+    ///
+    /// <para>A beamer document takes Classic, which writes nothing (beamer's default look), or
+    /// Exposition, a beamer theme: <c>\usetheme{LiliaExposition}</c>, or
+    /// <c>\usetheme[printsafe]{LiliaExposition}</c> on white paper or for a print-safe export. The
+    /// table settings are ignored there. A theme the class cannot use (left over from a class
+    /// change) prints as Classic: <see cref="DocumentLook.ForClass"/>.</para>
     /// </summary>
     /// <param name="bodyBlocks">The blocks the body will contain, in order.</param>
     /// <param name="lookOverride">An export's look (Export PDF: Look ▾ / Print-safe); null uses the stored one.</param>
@@ -547,10 +553,11 @@ public static class LaTeXPreambleBuilder
         DocumentLook? lookOverride = null,
         ThemeUse use = ThemeUse.Compile)
     {
-        var look = lookOverride ?? DocumentLook.Parse(doc.Look);
-        if (!look.LoadsPackage) return string.Empty;
         // Under a class that sets its own look nothing is written: tables stay ruled.
         if (ThemeLock.Reason(doc.LatexDocumentClass) is not null) return string.Empty;
+        var look = (lookOverride ?? DocumentLook.Parse(doc.Look)).ForClass(doc.LatexDocumentClass);
+        if (ThemeLock.IsBeamer(doc.LatexDocumentClass)) return BuildBeamerThemeLine(look, use);
+        if (!look.LoadsPackage) return string.Empty;
         if (look.IsClassic)
         {
             // Classic with a table setting: the package's table part only (Classic loads nothing else).
@@ -598,6 +605,27 @@ public static class LaTeXPreambleBuilder
                     sb.AppendLine($"\\liliaPinColour{{{number}}}{{{k}}}");
             }
         }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// A beamer deck's managed line: nothing for Classic (beamer's own look), one
+    /// <c>\usetheme</c> for Exposition. Table settings do not apply to beamer.
+    /// </summary>
+    private static string BuildBeamerThemeLine(DocumentLook look, ThemeUse use)
+    {
+        if (look.Theme != ThemeCatalog.Exposition) return string.Empty;
+        if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme) is { } why)
+        {
+            if (use == ThemeUse.Validation) return string.Empty;
+            throw new ThemeUnavailableException(why);
+        }
+        var printSafe = look.PrintSafe || look.Paper == DocumentLook.PaperWhite;
+        var sb = new StringBuilder();
+        sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
+        sb.AppendLine(printSafe
+            ? $"\\usetheme[printsafe]{{{ThemeCatalog.ExpositionBeamerTheme}}}"
+            : $"\\usetheme{{{ThemeCatalog.ExpositionBeamerTheme}}}");
         return sb.ToString();
     }
 

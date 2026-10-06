@@ -50,10 +50,23 @@ public sealed record DocumentLook(string Theme, string Paper, IReadOnlyDictionar
 
     /// <summary>
     /// A stored look that changes the PDF: a theme, or Classic with a table setting other than
-    /// today's, on a class that does not lock the look.
+    /// today's, on a class that does not lock the look; on beamer, Exposition (beamer ignores the
+    /// table settings). A theme the class cannot use is Classic here, as it is in the LaTeX.
     /// </summary>
-    public static bool IsThemed(string? storedLook, string? documentClass) =>
-        Parse(storedLook).LoadsPackage && ThemeLock.Reason(documentClass) is null;
+    public static bool IsThemed(string? storedLook, string? documentClass)
+    {
+        if (ThemeLock.Reason(documentClass) is not null) return false;
+        var look = Parse(storedLook).ForClass(documentClass);
+        return ThemeLock.IsBeamer(documentClass) ? !look.IsClassic : look.LoadsPackage;
+    }
+
+    /// <summary>
+    /// The look as this class prints it: a theme the class cannot use (Exposition on article, a
+    /// document theme on beamer, after a class change) falls back to Classic, keeping the table
+    /// settings. The stored look is not touched, so switching the class back restores it.
+    /// </summary>
+    public DocumentLook ForClass(string? documentClass) =>
+        IsClassic || ThemeLock.Allows(documentClass, Theme) ? this : this with { Theme = ThemeCatalog.Classic };
 
     public bool IsClassic => string.Equals(Theme, ThemeCatalog.Classic, StringComparison.Ordinal);
 

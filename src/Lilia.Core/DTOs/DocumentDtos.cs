@@ -114,9 +114,13 @@ public record DocumentDto(
     // Document theme (Look): { theme, paper, pins, tables? }, null when unset (Classic). Always written,
     // null included, whatever the serializer's null handling.
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] JsonElement? Look = null,
-    // Non-null when the class sets its own look (publisher, CV, beamer): the sentence the
-    // editor shows, "IEEEtran sets its own look, so themes are off for this document."
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? LookLocked = null
+    // Non-null when the class sets its own look (publisher, CV): the sentence the editor shows,
+    // "IEEEtran sets its own look, so themes are off for this document." Null for beamer.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? LookLocked = null,
+    // The theme ids this document may use, in catalog order: beamer → ["classic","exposition"],
+    // a locked class → ["classic"], any other class → every theme but exposition. A stored
+    // look.theme outside this list (left by a class change) prints as Classic.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? LookThemes = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as

@@ -143,9 +143,14 @@ public class LaTeXExportService : ILaTeXExportService
             _ =>
                 GenerateSingleFile(doc, blocks, bibEntries, options)
         };
-        // A themed project carries its package, so it compiles as downloaded (Overleaf included).
-        if (files.Any(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) && ThemeCatalog.UsesThemePackage(f.Content)))
-            files.Add(new ProjectFile(ThemeCatalog.StyFileName, ThemeCatalog.StySource));
+        // A themed project carries its package (lilia-theme.sty, or beamerthemeLiliaExposition.sty
+        // for an Exposition deck), so it compiles as downloaded (Overleaf included).
+        var themeFiles = files.Where(f => f.Path.EndsWith(".tex", StringComparison.Ordinal))
+            .SelectMany(f => ThemeCatalog.FilesUsedBy(f.Content))
+            .DistinctBy(f => f.FileName)
+            .ToList();
+        foreach (var (name, source) in themeFiles)
+            files.Add(new ProjectFile(name, source));
         return ApplyCitationBackend(files, options);
     }
 
@@ -612,7 +617,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // Shared theorem environments
         sb.AppendLine();
-        sb.Append(LaTeXPreamble.TheoremEnvironments);
+        sb.Append(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
 
         // Optional domain-specific packages
         if (options.IncludePhysics)
@@ -835,6 +840,9 @@ public class LaTeXExportService : ILaTeXExportService
                 // footnotes exported without them, silently, in both the .tex
                 // and the PDF built from it.
                 "footnote" => RenderFootnote(content),
+                // A beamer frame, as the preview writes it. Slides were dropped here as
+                // unsupported, so an exported deck (and its PDF) had no frames.
+                "slide" => Lilia.Engines.SlideLatex.Frame(content, EscapeLatex, FormatInlineContent),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
                 // The Appendix back-matter block starts the appendices (see RenderService).

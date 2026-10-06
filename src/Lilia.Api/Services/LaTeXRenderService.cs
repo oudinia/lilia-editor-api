@@ -786,8 +786,8 @@ public class LaTeXRenderService : ILaTeXRenderService
             var logPath = Path.Combine(tmpDir, "document.log");
             Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
                 await File.WriteAllTextAsync(texPath, latex);
-            // A themed document loads lilia-theme.sty from beside it (an exported project has
-            // already put its own copy there).
+            // A themed document loads lilia-theme.sty, an Exposition deck beamerthemeLiliaExposition.sty,
+            // from beside it (an exported project has already put its own copy there).
             Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
 
             // Run the chosen engine twice (for references). pdflatex is the

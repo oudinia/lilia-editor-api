@@ -25,9 +25,17 @@ public class ThemesController : ControllerBase
     public IActionResult Package() =>
         File(System.Text.Encoding.UTF8.GetBytes(ThemeCatalog.StySource), "application/x-tex", ThemeCatalog.StyFileName);
 
+    /// <summary>
+    /// Exposition, the beamer theme (<c>\usetheme{LiliaExposition}</c>), for Copy LaTeX on a beamer
+    /// deck. The .zip export already carries it.
+    /// </summary>
+    [HttpGet(ThemeCatalog.ExpositionStyFileName)]
+    public IActionResult ExpositionPackage() =>
+        File(System.Text.Encoding.UTF8.GetBytes(ThemeCatalog.ExpositionStySource), "application/x-tex", ThemeCatalog.ExpositionStyFileName);
+
     internal static ThemeDto ToDto(ThemeDescriptor t) => new(
         t.Id, t.Name, t.For, ThemeAvailability.IsAvailable(t.Id), t.Status,
-        t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault, t.Table);
+        t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault, t.Table, t.Classes);
 }
 
 public sealed record ThemeDto(
@@ -45,4 +53,8 @@ public sealed record ThemeDto(
     // The table styles' colours (Look → Tables), on the theme's paper and on white, for the
     // editor's Preview as; null for a planned theme.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
-    ThemeTable? Table = null);
+    ThemeTable? Table = null,
+    // The classes the theme is for: ["beamer"] for Exposition, null for a document theme (any
+    // class; of those a beamer deck takes Classic only). The document's lookThemes is the list to use.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    IReadOnlyList<string>? Classes = null);

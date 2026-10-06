@@ -343,7 +343,7 @@ public class DocumentThemeCompileTests
     }
 
     /// <summary>Every non-stroking RGB colour (<c>r g b rg</c>) set in the PDF's content streams.</summary>
-    private static List<(double R, double G, double B)> FillColours(byte[] pdf)
+    internal static List<(double R, double G, double B)> FillColours(byte[] pdf)
     {
         var found = new List<(double, double, double)>();
         var raw = System.Text.Encoding.Latin1.GetString(pdf);
@@ -374,17 +374,18 @@ public class DocumentThemeCompileTests
         return found;
     }
 
-    private static bool Near((double R, double G, double B) c, string hex)
+    internal static bool Near((double R, double G, double B) c, string hex)
     {
         double Ch(int i) => Convert.ToInt32(hex.Substring(1 + 2 * i, 2), 16) / 255.0;
         return Math.Abs(c.R - Ch(0)) < 0.004 && Math.Abs(c.G - Ch(1)) < 0.004 && Math.Abs(c.B - Ch(2)) < 0.004;
     }
 
     [Fact]
-    public async Task A_planned_theme_named_directly_stops_the_compile()
+    public async Task Exposition_named_in_lilia_theme_stops_the_compile()
     {
-        // Only reachable by hand (PUT and the export refuse it), but the package must not quietly
-        // print something else.
+        // Exposition is a beamer theme (\usetheme{LiliaExposition}), not a lilia-theme option. Only
+        // reachable by hand (PUT and the export refuse it on article), but the package must not
+        // quietly print something else.
         var tex = Latex(Doc("article", "classic"), SampleBlocks())
             .Replace(@"\begin{document}", "\\usepackage[theme=exposition]{lilia-theme}\n\\begin{document}");
         var act = () => Compile(tex, "pdflatex");
@@ -392,7 +393,7 @@ public class DocumentThemeCompileTests
     }
 
     /// <summary>Run a poppler tool on the PDF and return its standard output.</summary>
-    private static async Task<string> Tool(string tool, byte[] pdf, string? output = null)
+    internal static async Task<string> Tool(string tool, byte[] pdf, string? output = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"lilia-theme-{Guid.NewGuid():N}.pdf");
         await File.WriteAllBytesAsync(path, pdf);
