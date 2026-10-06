@@ -58,4 +58,34 @@ public static class SlideLatex
         sb.Append("\\end{frame}");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// In a beamer deck a footnote block belongs to the slide before it: left between frames,
+    /// beamer gave it a page of its own (6 Oct 2026). Moves each such footnote inside the nearest
+    /// preceding frame, just before its \end{frame}, and empties its own chunk. A footnote before
+    /// the first slide stays where it is.
+    /// </summary>
+    /// <param name="types">The block types, in order.</param>
+    /// <param name="rendered">Each block's LaTeX, in the same order; changed in place.</param>
+    public static void AttachFootnotes(IReadOnlyList<string> types, IList<string> rendered)
+    {
+        var lastFrame = -1;
+        for (var i = 0; i < rendered.Count && i < types.Count; i++)
+        {
+            if (string.Equals(types[i], "footnote", StringComparison.OrdinalIgnoreCase))
+            {
+                if (lastFrame < 0 || string.IsNullOrWhiteSpace(rendered[i])) continue;
+                var frame = rendered[lastFrame];
+                var end = frame.LastIndexOf("\\end{frame}", StringComparison.Ordinal);
+                if (end < 0) continue;
+                rendered[lastFrame] = frame[..end] + rendered[i].Trim() + "\n" + frame[end..];
+                rendered[i] = "";
+            }
+            else if (string.Equals(types[i], "slide", StringComparison.OrdinalIgnoreCase)
+                     && rendered[i].Contains("\\end{frame}", StringComparison.Ordinal))
+            {
+                lastFrame = i;
+            }
+        }
+    }
 }

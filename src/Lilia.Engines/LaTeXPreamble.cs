@@ -186,6 +186,22 @@ public static partial class LaTeXPreamble
 \usepackage{natbib}
 ";
 
+    /// <summary>
+    /// <paramref name="packages"/> (<see cref="Packages"/> or <see cref="ValidationPackages"/>) for a
+    /// document class. Beamer leaves setspace out: setspace rewrites the footnote machinery beamer
+    /// relies on, and a slide's \footnote printed its mark but never its text (6 Oct 2026). Line
+    /// spacing on a deck is written as \linespread instead (LaTeXPreambleBuilder).
+    /// </summary>
+    public static string ForClass(string packages, string? className) =>
+        IsBeamer(className)
+            ? packages.Replace("\\usepackage{setspace}\n",
+                "% setspace is left out for beamer: it breaks beamer's footnotes.\n")
+            : packages;
+
+    /// <summary>True for beamer (and the beamer-based classes Lilia treats as decks).</summary>
+    public static bool IsBeamer(string? className) =>
+        string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase);
+
     public const string Packages = @"% Encoding & fonts
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}

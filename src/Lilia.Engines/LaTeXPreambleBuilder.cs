@@ -357,13 +357,16 @@ public static class LaTeXPreambleBuilder
             sb.AppendLine("% Line spacing");
             // Exactly 1.5 and 2 (what the settings dialog sends) mean setspace's spacings; any other value,
             // including a \linespread factor the importer nudged off them, is written as \linespread.
+            // A beamer deck has no setspace (it breaks beamer's footnotes, LaTeXPreamble.ForClass), so
+            // its one-and-a-half and double spacing are setspace's 10 pt factors as \\linespread.
+            var deck = LaTeXPreamble.IsBeamer(ResolveClassName(doc));
             if (Math.Abs(lineSpacing.Value - 1.5) < 1e-9)
             {
-                sb.AppendLine("\\onehalfspacing");
+                sb.AppendLine(deck ? "\\linespread{1.25}" : "\\onehalfspacing");
             }
             else if (Math.Abs(lineSpacing.Value - 2.0) < 1e-9)
             {
-                sb.AppendLine("\\doublespacing");
+                sb.AppendLine(deck ? "\\linespread{1.667}" : "\\doublespacing");
             }
             else
             {
