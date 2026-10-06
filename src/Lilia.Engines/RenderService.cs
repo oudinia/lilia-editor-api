@@ -1051,7 +1051,7 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
-        latex.AppendLine(LaTeXPreamble.Packages);
+        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc)));
 
         var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
         if (!string.IsNullOrEmpty(engineAddendum))
@@ -1156,6 +1156,9 @@ public partial class RenderService : IRenderService
         var renderedBlocks = doc.Blocks
             .Select(b => RenderBlockToLatex(b, canUseLongtable && longtableBlocks!.Contains(b.Id)))
             .ToList();
+        // A deck's footnote blocks go inside the slide before them (SlideLatex.AttachFootnotes).
+        if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
+            SlideLatex.AttachFootnotes(doc.Blocks.Select(b => b.Type).ToList(), renderedBlocks);
         var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
         var detectedEngine = EngineDetector.DetectDocument(renderedBlocks, importedPkgs);
         var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
@@ -1180,7 +1183,7 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
-        latex.AppendLine(LaTeXPreamble.Packages);
+        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc)));
         // Engine-specific addendum — fontspec for lua/xelatex. Pdflatex
         // gets nothing extra (existing inputenc/fontenc/lmodern stack).
         var engineAddendum = LaTeXPreamble.EngineAddendum(engine);

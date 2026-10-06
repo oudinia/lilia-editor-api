@@ -590,7 +590,7 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         // Use the shared preamble — same 31 packages as validation
-        sb.Append(LaTeXPreamble.Packages);
+        sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
         sb.AppendLine();
 
         // Shims so journal-class-specific commands in imported bodies
@@ -794,14 +794,11 @@ public class LaTeXExportService : ILaTeXExportService
 
     private string BlocksToLatex(List<Block> blocks)
     {
-        var parts = new List<string>();
-        foreach (var block in blocks)
-        {
-            var rendered = RenderBlock(block);
-            if (!string.IsNullOrEmpty(rendered))
-                parts.Add(rendered);
-        }
-        return string.Join("\n\n", parts);
+        var rendered = blocks.Select(RenderBlock).ToList();
+        // A deck's footnote blocks go inside the slide before them (SlideLatex.AttachFootnotes).
+        if (LaTeXPreamble.IsBeamer(_headingClass))
+            SlideLatex.AttachFootnotes(blocks.Select(b => b.Type).ToList(), rendered);
+        return string.Join("\n\n", rendered.Where(r => !string.IsNullOrEmpty(r)));
     }
 
     private string RenderBlock(Block block)
