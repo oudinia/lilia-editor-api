@@ -147,14 +147,16 @@ public static class LatexText
 
         while (i < text.Length)
         {
-            // \textbf{…} — the command survives; its contents are still user text.
+            // \textbf{…} — the command survives; its contents are still user text, read the
+            // same way (so maths inside bold stays maths). The argument runs to ITS closing
+            // brace, not the first one: \textbf{a{b}c} is one bold run.
             if (string.CompareOrdinal(text, i, Bold, 0, Bold.Length) == 0)
             {
-                var close = text.IndexOf('}', i + Bold.Length);
+                var close = ClosingBrace(text, i + Bold.Length - 1);
                 if (close >= 0)
                 {
                     sb.Append(Bold)
-                      .Append(Escape(text[(i + Bold.Length)..close]))
+                      .Append(EscapeCell(text[(i + Bold.Length)..close]))
                       .Append('}');
                     i = close + 1;
                     continue;
@@ -162,12 +164,14 @@ public static class LatexText
             }
 
             // $…$ — math is passed through untouched. Escaping inside it would
-            // defeat the point, and an unbalanced or invalid expression is caught
-            // by verification rather than silently rewritten here.
+            // defeat the point, and an invalid expression is caught by verification
+            // rather than silently rewritten here. A run that could leave maths — break
+            // the table's row or cell, define or read anything — is not maths: its $ is
+            // printed as a dollar and the rest escaped (see IsInlineMath).
             if (text[i] == '$')
             {
                 var close = text.IndexOf('$', i + 1);
-                if (close >= 0)
+                if (close >= 0 && IsInlineMath(text[(i + 1)..close]))
                 {
                     sb.Append(text, i, close - i + 1);
                     i = close + 1;
@@ -180,6 +184,83 @@ public static class LatexText
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// A header cell as the table emitters write it: escaped as a cell, then bolded once — not
+    /// around a cell the author already bolded, and not around maths, which <c>\textbf</c> does
+    /// not reach. Shared by the preview's emitter and the export's, so the two print one header.
+    /// </summary>
+    public static string HeaderCell(string? text)
+    {
+        var escaped = EscapeCell(text);
+        return IsWhollyBold(escaped) || IsWhollyMaths(escaped)
+            ? escaped
+            : $@"\textbf{{{escaped}}}";
+    }
+
+    // Control words a maths run in a table cell has no use for, and which could take the source
+    // out of maths: environments, definitions, file and terminal I/O, category codes, building a
+    // command name, and the alignment's own row and rule commands. TexSourceGuard still scans
+    // the whole document; this keeps a cell from being a way to write LaTeX that is not maths.
+    private static readonly HashSet<string> NotInCellMaths = new(StringComparer.Ordinal)
+    {
+        "begin", "end", "input", "include", "InputIfFileExists", "def", "gdef", "edef", "xdef", "let",
+        "futurelet", "newcommand", "renewcommand", "providecommand", "DeclareRobustCommand",
+        "catcode", "csname", "endcsname", "expandafter", "afterassignment", "aftergroup",
+        "write", "read", "readline", "openin", "openout", "closein", "closeout", "immediate",
+        "special", "directlua", "latelua", "luaexec", "scantokens", "usepackage", "RequirePackage",
+        "makeatletter", "makeatother", "everypar", "everymath", "everydisplay", "everycr", "output",
+        "cr", "crcr", "noalign", "omit", "span", "hline", "cline", "multicolumn", "tabularnewline",
+        "newline", "par", "uppercase", "lowercase", "jobname", "string", "meaning", "detokenize",
+    };
+
+    /// <summary>
+    /// Whether the text between two <c>$</c> in a cell is maths that stays maths: braces
+    /// balanced, no <c>&amp;</c>, <c>#</c>, <c>%</c> or <c>\\</c> (a cell, a parameter, a comment
+    /// that eats the row's end, a row break), and none of <see cref="NotInCellMaths"/>.
+    /// </summary>
+    public static bool IsInlineMath(string inner)
+    {
+        if (string.IsNullOrWhiteSpace(inner)) return false;
+        var depth = 0;
+        for (var i = 0; i < inner.Length; i++)
+        {
+            var ch = inner[i];
+            if (ch == '\\')
+            {
+                if (i + 1 >= inner.Length) return false;
+                var next = inner[i + 1];
+                if (char.IsLetter(next))
+                {
+                    var j = i + 1;
+                    while (j < inner.Length && char.IsLetter(inner[j])) j++;
+                    if (NotInCellMaths.Contains(inner[(i + 1)..j])) return false;
+                    i = j - 1;
+                    continue;
+                }
+                if (next == '\\') return false;     // a row break
+                i++;                                // \{ \} \, \; \! \% \& \#: one symbol
+                continue;
+            }
+            if (ch is '&' or '#' or '%') return false;
+            if (ch == '{') depth++;
+            else if (ch == '}' && --depth < 0) return false;
+        }
+        return depth == 0;
+    }
+
+    /// <summary>The index of the brace closing the one at <paramref name="open"/>, or -1.</summary>
+    private static int ClosingBrace(string s, int open)
+    {
+        var depth = 0;
+        for (var i = open; i < s.Length; i++)
+        {
+            if (s[i] == '\\') { i++; continue; }      // an escaped brace is literal
+            if (s[i] == '{') depth++;
+            else if (s[i] == '}' && --depth == 0) return i;
+        }
+        return -1;
     }
 
     private static void AppendEscaped(StringBuilder sb, char c)

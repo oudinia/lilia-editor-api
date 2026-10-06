@@ -1315,7 +1315,9 @@ public class LaTeXExportService : ILaTeXExportService
                 var align = c < colAligns.Length ? colAligns[c] : "l";
                 if (origins.TryGetValue((r, c), out var o))
                 {
-                    var inner = EscapeLatex(plan.BodyText(c, o.Text));
+                    // A cell's text is read as the preview reads it (LatexText.EscapeCell): the
+                    // author's \textbf and $…$ survive, everything else is escaped.
+                    var inner = LatexText.EscapeCell(plan.BodyText(c, o.Text));
                     if (o.Rs > 1) inner = $@"\multirow{{{o.Rs}}}{{*}}{{{inner}}}";
                     toks.Add(o.Cs > 1 ? $@"\multicolumn{{{o.Cs}}}{{{align}}}{{{inner}}}" : plan.Protect(c, inner));
                     c += Math.Max(1, o.Cs);
@@ -1334,8 +1336,12 @@ public class LaTeXExportService : ILaTeXExportService
                 else
                 {
                     var text = plan.BodyText(c, c < cells.Count ? TableCellText(cells[c]) : "");
-                    toks.Add(plan.DecimalNumber(c, text)
-                        ?? plan.Protect(c, plan.BoldBest(c, text, EscapeLatex(text))));
+                    var cell = plan.DecimalNumber(c, text)
+                        ?? plan.Protect(c, plan.BoldBest(c, text, LatexText.EscapeCell(text)));
+                    // A cell starting with '[' straight after \\ or a rule reads as that
+                    // command's optional argument; an empty group ends the scan (as the preview).
+                    if (cell.StartsWith("[", StringComparison.Ordinal)) cell = "{}" + cell;
+                    toks.Add(cell);
                     c += 1;
                 }
             }
@@ -1362,7 +1368,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             // An S column reads its header as a number unless it is braced.
             var headerCells = headers.EnumerateArray()
-                .Select((h, i) => plan.Protect(i, LatexText.TableHead($@"\textbf{{{EscapeLatex(plan.HeaderText(i, TableCellText(h)))}}}")))
+                .Select((h, i) => plan.Protect(i, LatexText.TableHead(LatexText.HeaderCell(plan.HeaderText(i, TableCellText(h))))))
                 .ToList();
             // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
             // cells; the cells keep \textbf.
