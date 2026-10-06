@@ -143,8 +143,8 @@ public class LaTeXExportService : ILaTeXExportService
             _ =>
                 GenerateSingleFile(doc, blocks, bibEntries, options)
         };
-        // A themed project carries its package (lilia-theme.sty, or beamerthemeLiliaExposition.sty
-        // for an Exposition deck), so it compiles as downloaded (Overleaf included).
+        // A themed project carries its package (lilia-theme.sty, or a deck's beamertheme….sty), so
+        // it compiles as downloaded (Overleaf included).
         var themeFiles = files.Where(f => f.Path.EndsWith(".tex", StringComparison.Ordinal))
             .SelectMany(f => ThemeCatalog.FilesUsedBy(f.Content))
             .DistinctBy(f => f.FileName)

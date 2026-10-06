@@ -539,11 +539,13 @@ public static class LaTeXPreambleBuilder
     /// when headings move. When an embed prints its own \chapter the count would be out of step,
     /// so no pin is written.</para>
     ///
-    /// <para>A beamer document takes Classic, which writes nothing (beamer's default look), or
-    /// Exposition, a beamer theme: <c>\usetheme{LiliaExposition}</c>, or
-    /// <c>\usetheme[printsafe]{LiliaExposition}</c> on white paper or for a print-safe export. The
-    /// table settings are ignored there. A theme the class cannot use (left over from a class
-    /// change) prints as Classic: <see cref="DocumentLook.ForClass"/>.</para>
+    /// <para>A beamer document takes Classic, which writes nothing (beamer's default look), or a
+    /// theme's beamer version: <c>\usetheme{LiliaCerulean}</c>, <c>\usetheme{LiliaIndex}</c>,
+    /// <c>\usetheme{LiliaExposition}</c>, with <c>[printsafe]</c> on white paper or for a print-safe
+    /// export. Index's pins follow as on any paper, numbered by the deck's sections
+    /// (<c>\liliaPinColour{2}{7}</c>). The table settings are ignored there. A theme the class
+    /// cannot use (left over from a class change) prints as Classic:
+    /// <see cref="DocumentLook.ForClass"/>.</para>
     /// </summary>
     /// <param name="bodyBlocks">The blocks the body will contain, in order.</param>
     /// <param name="lookOverride">An export's look (Export PDF: Look ▾ / Print-safe); null uses the stored one.</param>
@@ -556,7 +558,7 @@ public static class LaTeXPreambleBuilder
         // Under a class that sets its own look nothing is written: tables stay ruled.
         if (ThemeLock.Reason(doc.LatexDocumentClass) is not null) return string.Empty;
         var look = (lookOverride ?? DocumentLook.Parse(doc.Look)).ForClass(doc.LatexDocumentClass);
-        if (ThemeLock.IsBeamer(doc.LatexDocumentClass)) return BuildBeamerThemeLine(look, use);
+        if (ThemeLock.IsBeamer(doc.LatexDocumentClass)) return BuildBeamerThemeLine(look, bodyBlocks, use);
         if (!look.LoadsPackage) return string.Empty;
         if (look.IsClassic)
         {
@@ -591,31 +593,39 @@ public static class LaTeXPreambleBuilder
         sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
         sb.AppendLine($"\\usepackage[{string.Join(", ", options)}]{{{ThemeCatalog.PackageName}}}");
 
-        if (look.Pins.Count > 0 && look.Theme == "index" && !rawChapters)
-        {
-            var number = 0;
-            foreach (var block in blocks)
-            {
-                // Appendices take the plain sequence and their counter restarts, so a pin past
-                // this point would name a main chapter's number.
-                if (Themes.ThemeSections.StartsAppendix(block)) break;
-                if (!IsNumberedTopHeading(block)) continue;
-                number++;
-                if (look.Pins.TryGetValue(block.Id.ToString(), out var k))
-                    sb.AppendLine($"\\liliaPinColour{{{number}}}{{{k}}}");
-            }
-        }
+        if (!rawChapters) AppendPins(sb, look, blocks);
         return sb.ToString();
     }
 
     /// <summary>
-    /// A beamer deck's managed line: nothing for Classic (beamer's own look), one
-    /// <c>\usetheme</c> for Exposition. Table settings do not apply to beamer.
+    /// Index's pins, one <c>\liliaPinColour{n}{k}</c> per pinned heading, n being its number among
+    /// the numbered level-1 headings (\chapter or \section in a document, \section in a deck).
     /// </summary>
-    private static string BuildBeamerThemeLine(DocumentLook look, ThemeUse use)
+    private static void AppendPins(StringBuilder sb, DocumentLook look, IReadOnlyList<Block> blocks)
     {
-        if (look.Theme != ThemeCatalog.Exposition) return string.Empty;
-        if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme) is { } why)
+        if (look.Pins.Count == 0 || look.Theme != ThemeCatalog.Index) return;
+        var number = 0;
+        foreach (var block in blocks)
+        {
+            // Appendices take the plain sequence and their counter restarts, so a pin past
+            // this point would name a main chapter's number.
+            if (Themes.ThemeSections.StartsAppendix(block)) break;
+            if (!IsNumberedTopHeading(block)) continue;
+            number++;
+            if (look.Pins.TryGetValue(block.Id.ToString(), out var k))
+                sb.AppendLine($"\\liliaPinColour{{{number}}}{{{k}}}");
+        }
+    }
+
+    /// <summary>
+    /// A beamer deck's managed line: nothing for Classic (beamer's own look), one
+    /// <c>\usetheme</c> for a theme's beamer version (Cerulean, Index, Exposition), then Index's
+    /// pins. Table settings do not apply to beamer.
+    /// </summary>
+    private static string BuildBeamerThemeLine(DocumentLook look, IEnumerable<Block>? bodyBlocks, ThemeUse use)
+    {
+        if (ThemeCatalog.Find(look.Theme) is not { Beamer: { } beamer }) return string.Empty;
+        if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme, ThemeLock.Beamer) is { } why)
         {
             if (use == ThemeUse.Validation) return string.Empty;
             throw new ThemeUnavailableException(why);
@@ -623,9 +633,8 @@ public static class LaTeXPreambleBuilder
         var printSafe = look.PrintSafe || look.Paper == DocumentLook.PaperWhite;
         var sb = new StringBuilder();
         sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
-        sb.AppendLine(printSafe
-            ? $"\\usetheme[printsafe]{{{ThemeCatalog.ExpositionBeamerTheme}}}"
-            : $"\\usetheme{{{ThemeCatalog.ExpositionBeamerTheme}}}");
+        sb.AppendLine(printSafe ? $"\\usetheme[printsafe]{{{beamer.Theme}}}" : $"\\usetheme{{{beamer.Theme}}}");
+        AppendPins(sb, look, (bodyBlocks ?? Enumerable.Empty<Block>()).ToList());
         return sb.ToString();
     }
 

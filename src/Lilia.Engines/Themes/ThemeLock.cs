@@ -8,9 +8,9 @@ namespace Lilia.Engines.Themes;
 /// the CV classes (their whole point is a fixed design). Their only theme is Classic.</para>
 ///
 /// <para>Beamer is not locked (Olivia, 6 Oct 2026): a beamer document takes Classic (beamer's own
-/// default) or a beamer theme, today Exposition, loaded with <c>\usetheme</c>. The document
-/// themes built in <c>lilia-theme.sty</c> are for every other class, and a beamer theme is for
-/// beamer only.</para>
+/// default) or a theme with a beamer version, loaded with <c>\usetheme</c>: Cerulean, Index
+/// (the light decks) and Exposition. The document themes built in <c>lilia-theme.sty</c> are for
+/// every other class, and Exposition, a beamer-only theme, is for beamer only.</para>
 ///
 /// <para>A class change is never refused for the look: the stored look is kept and a theme the
 /// new class cannot use falls back to Classic when the LaTeX is written
@@ -23,8 +23,17 @@ public static class ThemeLock
     /// <summary>PUT refuses Exposition on a class that is not beamer with this sentence.</summary>
     public const string ExpositionNeedsBeamer = "Exposition is a beamer theme: switch the class to beamer to use it.";
 
-    /// <summary>PUT refuses a document theme on a beamer document with this sentence.</summary>
-    public const string BeamerTakesClassicOrExposition = "Beamer decks take Classic or Exposition.";
+    /// <summary>
+    /// PUT refuses a theme without a beamer version on a beamer document with this sentence:
+    /// <c>"Beamer decks take Classic, Cerulean, Index or Exposition."</c>
+    /// </summary>
+    public static string BeamerDeckThemes => _beamerDeckThemes.Value;
+
+    private static readonly Lazy<string> _beamerDeckThemes = new(() =>
+    {
+        var names = ThemesFor(Beamer).Select(id => ThemeCatalog.Find(id)!.Name).ToList();
+        return $"Beamer decks take {string.Join(", ", names.SkipLast(1))} or {names[^1]}.";
+    });
 
     private static readonly HashSet<string> Locked = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -60,16 +69,17 @@ public static class ThemeLock
 
     /// <summary>
     /// The theme ids this class may use, in catalog order (<c>lookThemes</c> on the document):
-    /// a locked class takes Classic only; beamer takes Classic and the beamer themes
-    /// (<c>["classic","exposition"]</c>); every other class takes every theme but the beamer ones.
-    /// Availability on this server is a separate question (<c>available</c> on GET /api/themes).
+    /// a locked class takes Classic only; beamer takes Classic and the themes with a beamer version
+    /// (<c>["classic","cerulean","index","exposition"]</c>); every other class takes every theme but
+    /// the beamer-only one. Availability on this server is a separate question (<c>available</c> on
+    /// GET /api/themes).
     /// </summary>
     public static IReadOnlyList<string> ThemesFor(string? documentClass)
     {
         if (Reason(documentClass) is not null) return new[] { ThemeCatalog.Classic };
         var beamer = IsBeamer(documentClass);
         return ThemeCatalog.All
-            .Where(t => t.Id == ThemeCatalog.Classic || t.IsBeamerTheme == beamer)
+            .Where(t => t.Id == ThemeCatalog.Classic || (beamer ? t.HasBeamerVersion : !t.IsBeamerTheme))
             .Select(t => t.Id)
             .ToList();
     }
@@ -80,14 +90,14 @@ public static class ThemeLock
 
     /// <summary>
     /// Why this class may not use this theme, or null when it may: the lock's reason for a locked
-    /// class, <see cref="ExpositionNeedsBeamer"/> for a beamer theme elsewhere,
-    /// <see cref="BeamerTakesClassicOrExposition"/> for a document theme on beamer.
+    /// class, <see cref="ExpositionNeedsBeamer"/> for the beamer-only theme elsewhere,
+    /// <see cref="BeamerDeckThemes"/> for a theme without a beamer version on beamer.
     /// </summary>
     public static string? WhyNot(string? documentClass, string? themeId)
     {
         var theme = ThemeCatalog.Find(themeId);
         if (theme is null || Allows(documentClass, theme.Id)) return null;
         if (Reason(documentClass) is { } locked) return locked;
-        return theme.IsBeamerTheme ? ExpositionNeedsBeamer : BeamerTakesClassicOrExposition;
+        return theme.IsBeamerTheme ? ExpositionNeedsBeamer : BeamerDeckThemes;
     }
 }
