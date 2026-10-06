@@ -786,7 +786,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             var logPath = Path.Combine(tmpDir, "document.log");
             Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
                 await File.WriteAllTextAsync(texPath, latex);
-            // A themed document loads lilia-theme.sty, an Exposition deck beamerthemeLiliaExposition.sty,
+            // A themed document loads lilia-theme.sty, a themed deck its beamertheme….sty (LiliaIndex …),
             // from beside it (an exported project has already put its own copy there).
             Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
 

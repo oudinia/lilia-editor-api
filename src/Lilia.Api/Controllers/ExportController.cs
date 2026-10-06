@@ -155,9 +155,9 @@ public class ExportController : ControllerBase
         if (document == null)
             return NotFound();
 
-        if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeAvailability.WhyUnavailable(look) is { } whyNot)
+        if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeAvailability.WhyUnavailable(look, document.LatexDocumentClass) is { } whyNot)
             return BadRequest(new { message = whyNot, error = "invalid_look" });
-        // A theme this class cannot use (Exposition on article, a document theme on beamer) is
+        // A theme this class cannot use (Exposition on article, Carnet or Gazette on beamer) is
         // refused as PUT refuses it, never printed as Classic in its place.
         if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeLock.WhyNot(document.LatexDocumentClass, look) is { } wrongClass)
             return BadRequest(new { message = wrongClass, error = "invalid_look" });

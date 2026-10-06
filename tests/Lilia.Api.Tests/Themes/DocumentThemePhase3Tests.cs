@@ -63,8 +63,8 @@ public class DocumentThemePhase3Tests : IDisposable
     // ── lookThemes: which themes a class may use ─────────────────────────
 
     [Theory]
-    [InlineData("beamer", new[] { "classic", "exposition" })]
-    [InlineData("Beamer", new[] { "classic", "exposition" })]
+    [InlineData("beamer", new[] { "classic", "cerulean", "index", "exposition" })]
+    [InlineData("Beamer", new[] { "classic", "cerulean", "index", "exposition" })]
     [InlineData("article", new[] { "classic", "cerulean", "index", "carnet", "gazette" })]
     [InlineData("report", new[] { "classic", "cerulean", "index", "carnet", "gazette" })]
     [InlineData(null, new[] { "classic", "cerulean", "index", "carnet", "gazette" })]
@@ -78,7 +78,7 @@ public class DocumentThemePhase3Tests : IDisposable
     public void Look_themes_do_not_depend_on_what_this_server_has()
     {
         ThemeAvailability.OverrideForTests(_ => false);
-        ThemeLock.ThemesFor("beamer").Should().Equal("classic", "exposition");
+        ThemeLock.ThemesFor("beamer").Should().Equal("classic", "cerulean", "index", "exposition");
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class DocumentThemePhase3Tests : IDisposable
             LookLocked: ThemeLock.Reason("beamer"), LookThemes: ThemeLock.ThemesFor("beamer"));
         var json = JsonDocument.Parse(JsonSerializer.Serialize(dto, new JsonSerializerOptions(JsonSerializerDefaults.Web))).RootElement;
         json.GetProperty("lookLocked").ValueKind.Should().Be(JsonValueKind.Null);
-        json.GetProperty("lookThemes").EnumerateArray().Select(e => e.GetString()).Should().Equal("classic", "exposition");
+        json.GetProperty("lookThemes").EnumerateArray().Select(e => e.GetString()).Should().Equal("classic", "cerulean", "index", "exposition");
     }
 
     [Fact]
@@ -146,14 +146,12 @@ public class DocumentThemePhase3Tests : IDisposable
     }
 
     [Theory]
-    [InlineData("cerulean")]
-    [InlineData("index")]
     [InlineData("carnet")]
     [InlineData("gazette")]
-    public void Put_refuses_a_document_theme_on_beamer(string theme)
+    public void Put_refuses_a_theme_without_a_beamer_version_on_beamer(string theme)
     {
         var act = () => DocumentService.ResolveLookUpdate(Put($$"""{"theme":"{{theme}}"}"""), "beamer");
-        act.Should().Throw<DocumentLookException>().WithMessage("Beamer decks take Classic or Exposition.");
+        act.Should().Throw<DocumentLookException>().WithMessage("Beamer decks take Classic, Cerulean, Index or Exposition.");
     }
 
     [Fact]
@@ -289,12 +287,12 @@ public class DocumentThemePhase3Tests : IDisposable
     [Fact]
     public void A_document_theme_left_on_a_deck_prints_as_classic_and_comes_back_on_article()
     {
-        var doc = Doc("""{"theme":"index","paper":"theme","pins":{},"tables":{"style":"banded"}}""");
+        var doc = Doc("""{"theme":"carnet","paper":"theme","pins":{},"tables":{"style":"banded"}}""");
         Export(doc, Slide("One", "Body")).Should().NotContain("{lilia-theme}").And.NotContain("LiliaExposition");
         DocumentLook.IsThemed(doc.Look, "beamer").Should().BeFalse();
 
         doc.LatexDocumentClass = "article";
-        Export(doc, Table()).Should().Contain(@"\usepackage[theme=index, paper=theme, tables=banded]{lilia-theme}");
+        Export(doc, Table()).Should().Contain(@"\usepackage[theme=carnet, paper=theme, tables=banded]{lilia-theme}");
     }
 
     [Fact]

@@ -647,8 +647,8 @@ public class DocumentService : IDocumentService
     /// table settings clears the column. Anything else must be a known, available theme (or
     /// Classic with table settings) that the class may use (<see cref="ThemeLock.ThemesFor"/>,
     /// the document's <c>lookThemes</c>); otherwise <see cref="DocumentLookException"/> (400) says
-    /// what is valid. A beamer document takes Classic or Exposition, and Exposition is for beamer
-    /// only. A PUT that changes the class without a look is never refused: the stored look is
+    /// what is valid. A beamer document takes Classic or a theme with a beamer version (Cerulean,
+    /// Index, Exposition), and Exposition is for beamer only. A PUT that changes the class without a look is never refused: the stored look is
     /// kept and a theme the new class cannot use prints as Classic (DocumentLook.ForClass).
     /// </summary>
     internal static (bool Apply, string? Stored) ResolveLookUpdate(UpdateDocumentDto dto, string? documentClass)
@@ -666,7 +666,7 @@ public class DocumentService : IDocumentService
         }
         if (ThemeLock.WhyNot(documentClass, look.Theme) is { } wrongClass) throw new DocumentLookException(wrongClass);
         if (look.IsClassic) return (true, look.ToStorage());
-        if (ThemeAvailability.WhyUnavailable(look.Theme) is { } why) throw new DocumentLookException(why);
+        if (ThemeAvailability.WhyUnavailable(look.Theme, documentClass) is { } why) throw new DocumentLookException(why);
         return (true, look.ToStorage());
     }
 

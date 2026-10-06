@@ -26,12 +26,15 @@ public class ThemesController : ControllerBase
         File(System.Text.Encoding.UTF8.GetBytes(ThemeCatalog.StySource), "application/x-tex", ThemeCatalog.StyFileName);
 
     /// <summary>
-    /// Exposition, the beamer theme (<c>\usetheme{LiliaExposition}</c>), for Copy LaTeX on a beamer
-    /// deck. The .zip export already carries it.
+    /// A theme's beamer version (<c>beamerthemeLiliaCerulean.sty</c>, <c>beamerthemeLiliaIndex.sty</c>,
+    /// <c>beamerthemeLiliaExposition.sty</c>), for Copy LaTeX on a beamer deck. The .zip export
+    /// already carries it.
     /// </summary>
-    [HttpGet(ThemeCatalog.ExpositionStyFileName)]
-    public IActionResult ExpositionPackage() =>
-        File(System.Text.Encoding.UTF8.GetBytes(ThemeCatalog.ExpositionStySource), "application/x-tex", ThemeCatalog.ExpositionStyFileName);
+    [HttpGet("beamerthemeLilia{name}.sty")]
+    public IActionResult BeamerPackage(string name) =>
+        ThemeCatalog.FindBeamerSty($"beamerthemeLilia{name}.sty") is { Beamer: { } beamer }
+            ? File(System.Text.Encoding.UTF8.GetBytes(ThemeCatalog.BeamerStySource(beamer)), "application/x-tex", beamer.StyFileName)
+            : NotFound();
 
     internal static ThemeDto ToDto(ThemeDescriptor t) => new(
         t.Id, t.Name, t.For, ThemeAvailability.IsAvailable(t.Id), t.Status,
@@ -54,7 +57,8 @@ public sealed record ThemeDto(
     // editor's Preview as; null for a planned theme.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     ThemeTable? Table = null,
-    // The classes the theme is for: ["beamer"] for Exposition, null for a document theme (any
-    // class; of those a beamer deck takes Classic only). The document's lookThemes is the list to use.
+    // The classes the theme is for: ["beamer"] for Exposition, null for the others (every class
+    // they have a version for: beamer too for Cerulean and Index). The document's lookThemes is the
+    // list to use.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     IReadOnlyList<string>? Classes = null);

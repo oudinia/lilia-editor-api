@@ -15,8 +15,10 @@
          and the LaTeX package staged into every compile that loads it. -->
     <EmbeddedResource Include="Themes\themes.json" LogicalName="Lilia.Engines.Themes.themes.json" />
     <EmbeddedResource Include="Themes\lilia-theme.sty" LogicalName="Lilia.Engines.Themes.lilia-theme.sty" />
-    <!-- Exposition, the beamer theme (\usetheme{LiliaExposition}), staged the same way. -->
+    <!-- The beamer themes (\usetheme{LiliaExposition}, LiliaCerulean, LiliaIndex), staged the same way. -->
     <EmbeddedResource Include="Themes\beamerthemeLiliaExposition.sty" LogicalName="Lilia.Engines.Themes.beamerthemeLiliaExposition.sty" />
+    <EmbeddedResource Include="Themes\beamerthemeLiliaCerulean.sty" LogicalName="Lilia.Engines.Themes.beamerthemeLiliaCerulean.sty" />
+    <EmbeddedResource Include="Themes\beamerthemeLiliaIndex.sty" LogicalName="Lilia.Engines.Themes.beamerthemeLiliaIndex.sty" />
   </ItemGroup>
 
   <ItemGroup>

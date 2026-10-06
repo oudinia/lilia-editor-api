@@ -1,0 +1,412 @@
+%% beamerthemeLiliaIndex.sty: Lilia's Index document theme, for beamer.
+%%
+%% Design: Olivia, 6 Oct 2026 (lilia-docs design-handoffs/2026-10-05-document-themes,
+%% REPLY-2026-10-06c-to-lilia.md). A light deck for lecture series: white ground, and each
+%% \section takes the next colour of the Index sequence, as a document's top headings do. The
+%% colour shows in the frame title, the kicker tab, the block title bars, the left half of the
+%% foot and a thin section bar at the very top. Montserrat throughout (titles 800, uppercase),
+%% Source Serif italic for quotations and definitions.
+%%
+%% Loaded by one managed line, before the author's custom preamble so the author wins:
+%%   \usetheme{LiliaIndex}            or   \usetheme[printsafe]{LiliaIndex}
+%%   \liliaPinColour{n}{k}            (Lilia writes one per pinned section: section n takes
+%%                                     sequence colour k, 0-7)
+%% printsafe: section divider frames (when the author turns them on) are white with a 6 mm bar in
+%% the section colour; tabs and block bars keep their fills.
+%%
+%% Fonts come only through the TeX font packages (no fontspec), so pdfLaTeX, LuaLaTeX and
+%% Overleaf all work. A missing font package stops the run: a theme never prints in a
+%% substitute face.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{beamerthemeLiliaIndex}[2026/10/06 Lilia Index beamer theme]
+
+\newif\iflilia@ix@printsafe
+\DeclareOptionBeamer{printsafe}{\lilia@ix@printsafetrue}
+\ProcessOptionsBeamer
+
+\mode<presentation>
+
+% ── Fonts ──────────────────────────────────────────────────────────────────
+\IfFileExists{montserrat.sty}{}{\PackageError{beamerthemeLiliaIndex}
+  {The montserrat font package is not installed}{Index needs montserrat and sourceserifpro.}}
+\IfFileExists{sourceserifpro.sty}{}{\PackageError{beamerthemeLiliaIndex}
+  {The sourceserifpro font package is not installed}{Index needs montserrat and sourceserifpro.}}
+% Source Serif is \rmdefault (Type 1 under every engine), kept for quotations and definitions;
+% Montserrat is \sfdefault and the body, in its 500 weight; titles are its 800.
+\RequirePackage[type1]{sourceserifpro}
+\RequirePackage[medium,bold,tabular,lining]{montserrat}
+\renewcommand{\familydefault}{\sfdefault}
+% The body's weight is Montserrat's medium (\mdseries@sf); switching to the serif or the
+% typewriter face maps it back to their own regular weight.
+\renewcommand*{\seriesdefault}{\mdseries@sf}
+\newcommand\lilia@ix@heavy{\fontseries{extrabold}\selectfont}
+\newcommand\lilia@ix@serif{\fontfamily{\rmdefault}\fontseries{m}\itshape\selectfont}
+
+% Sizes for projection: body at least 14 pt, frame titles 20 pt, nothing the theme sets below
+% 10 pt. A deck whose class size is below 14 pt takes the 14 pt scale (beamer's own 14pt option).
+\ifdim\f@size pt<14pt
+  \renewcommand\normalsize{\@setfontsize\normalsize\@xivpt{17}%
+    \abovedisplayskip 14\p@ \@plus3\p@ \@minus7\p@ \abovedisplayshortskip \z@ \@plus4\p@
+    \belowdisplayshortskip 7\p@ \@plus4\p@ \@minus3\p@ \belowdisplayskip \abovedisplayskip}
+  \renewcommand\small{\@setfontsize\small\@xiipt{14}}
+  \renewcommand\footnotesize{\@setfontsize\footnotesize\@xpt\@xiipt}
+  \renewcommand\scriptsize{\@setfontsize\scriptsize\@viiipt{9.5}}
+  \renewcommand\large{\@setfontsize\large\@xviipt{22}}
+  \renewcommand\Large{\@setfontsize\Large\@xxpt{25}}
+  \renewcommand\LARGE{\@setfontsize\LARGE\@xxvpt{30}}
+  \renewcommand\huge{\@setfontsize\huge{29.86}{35}}
+  \renewcommand\Huge{\@setfontsize\Huge{35.83}{40}}
+  \normalsize
+\fi
+
+\usefonttheme{professionalfonts}
+\setbeamerfont{frametitle}{series=\lilia@ix@heavy,size=\fontsize{20}{24}}
+\setbeamerfont{framesubtitle}{series=\mdseries,size=\normalsize}
+\setbeamerfont{title}{series=\lilia@ix@heavy,size=\LARGE}
+\setbeamerfont{subtitle}{series=\mdseries,size=\large}
+\setbeamerfont{author}{size=\normalsize}
+\setbeamerfont{date}{size=\footnotesize}
+\setbeamerfont{institute}{size=\footnotesize}
+\setbeamerfont{section in toc}{series=\bfseries}
+\setbeamerfont{block title}{series=\bfseries,size=\normalsize}
+\setbeamerfont{block body}{size=\normalsize}
+\setbeamerfont{kicker}{size=\footnotesize,series=\lilia@ix@heavy}
+\setbeamerfont{page number in head/foot}{size=\footnotesize,series=\lilia@ix@heavy}
+\setbeamerfont{section page}{series=\lilia@ix@heavy,size=\LARGE}
+\setbeamerfont{footnote}{size=\footnotesize}
+\setbeamerfont{footnote mark}{size=\footnotesize}
+
+% ── Colour ─────────────────────────────────────────────────────────────────
+% White on the sequence: 6.1, 5.1 (gold, the lowest), 6.0, 11.7, 5.2, 5.4, 10.7, 5.5 : 1.
+% Body #2F2E2C on white 13.6:1.
+\definecolor{lilia@seq0}{HTML}{4A5FA3}
+\definecolor{lilia@seq1}{HTML}{996300}
+\definecolor{lilia@seq2}{HTML}{B8303A}
+\definecolor{lilia@seq3}{HTML}{3A3836}
+\definecolor{lilia@seq4}{HTML}{B84A10}
+\definecolor{lilia@seq5}{HTML}{66701A}
+\definecolor{lilia@seq6}{HTML}{6E2430}
+\definecolor{lilia@seq7}{HTML}{2E6E9E}
+\definecolor{lilia@ix@ink}{HTML}{2F2E2C}
+\definecolor{lilia@ix@meta}{HTML}{5B6E9E}
+% Starred sections, and frames before the first \section: neutral charcoal.
+\definecolor{lilia@ix@neutral}{HTML}{3A3836}
+% The foot tab: charcoal, as in documents.
+\definecolor{lilia@ix@foot}{HTML}{2F2E2C}
+% alertblock and exampleblock keep red and green in every section.
+\definecolor{lilia@ix@danger}{HTML}{C4314B}
+\definecolor{lilia@ix@success}{HTML}{107C41}
+% The current section's colour (lilia@ix@sec) changes at every \section.
+\colorlet{lilia@ix@sec}{lilia@ix@neutral}
+
+\setbeamercolor{normal text}{fg=lilia@ix@ink,bg=white}
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{structure}{fg=lilia@ix@sec}
+\setbeamercolor{frametitle}{fg=lilia@ix@sec,bg=}
+\setbeamercolor{framesubtitle}{fg=lilia@ix@ink}
+\setbeamercolor{title}{fg=lilia@ix@neutral}
+\setbeamercolor{subtitle}{fg=lilia@ix@ink}
+\setbeamercolor{author}{fg=lilia@ix@ink}
+\setbeamercolor{date}{fg=lilia@ix@ink}
+\setbeamercolor{institute}{fg=lilia@ix@ink}
+\setbeamercolor{alerted text}{fg=lilia@ix@danger}
+\setbeamercolor{example text}{fg=lilia@ix@success}
+\setbeamercolor{block title}{fg=white,bg=lilia@ix@sec}
+\setbeamercolor{block body}{fg=lilia@ix@ink}
+\setbeamercolor{block title alerted}{fg=white,bg=lilia@ix@danger}
+\setbeamercolor{block body alerted}{fg=lilia@ix@ink}
+\setbeamercolor{block title example}{fg=white,bg=lilia@ix@success}
+\setbeamercolor{block body example}{fg=lilia@ix@ink}
+\setbeamercolor{item}{fg=lilia@ix@sec}
+\setbeamercolor{subsection in toc}{fg=lilia@ix@ink}
+\setbeamercolor{kicker}{fg=lilia@ix@ink}
+\setbeamercolor{footnote}{fg=lilia@ix@ink}
+\setbeamercolor{footnote mark}{fg=lilia@ix@sec}
+
+% ── Which colour a section takes (lilia-theme.sty's \lilia@colourof, for \section) ──────
+\newcount\lilia@ix@cn
+\newcount\lilia@ix@cu
+\newcount\lilia@ix@ck
+\newcount\lilia@ix@navail
+
+\newcommand\liliaPinColour[2]{%
+  \expandafter\xdef\csname lilia@ix@pin@\number#1\endcsname{\number#2}%
+  \expandafter\gdef\csname lilia@ix@taken@\number#2\endcsname{}}
+
+% The colours left to unpinned sections, in sequence order.
+\def\lilia@ix@buildavail{%
+  \global\lilia@ix@navail=\z@
+  \lilia@ix@ck=\z@
+  \loop
+    \expandafter\ifx\csname lilia@ix@taken@\the\lilia@ix@ck\endcsname\relax
+      \expandafter\xdef\csname lilia@ix@avail@\the\lilia@ix@navail\endcsname{\the\lilia@ix@ck}%
+      \global\advance\lilia@ix@navail\@ne
+    \fi
+    \advance\lilia@ix@ck\@ne
+  \ifnum\lilia@ix@ck<8 \repeat
+  \ifnum\lilia@ix@navail=\z@ % every colour pinned: unpinned sections reuse the whole sequence
+    \lilia@ix@ck=\z@
+    \loop
+      \expandafter\xdef\csname lilia@ix@avail@\the\lilia@ix@ck\endcsname{\the\lilia@ix@ck}%
+      \advance\lilia@ix@ck\@ne
+    \ifnum\lilia@ix@ck<8 \repeat
+    \global\lilia@ix@navail=8
+  \fi}
+\AtBeginDocument{\lilia@ix@buildavail}
+
+% \lilia@ix@colourof{n}{appendix: 0|1}{colour name}: the n-th numbered section's colour.
+% Stateless (a function of n), so the section bar and the contents can ask for any section.
+% Appendix sections restart the plain sequence and take no pins.
+\def\lilia@ix@colourof#1#2#3{%
+  \lilia@ix@cn=#1\relax
+  \ifnum#2=\@ne
+    \lilia@ix@ck=\lilia@ix@cn \advance\lilia@ix@ck\m@ne
+    \lilia@ix@cu=\lilia@ix@ck \divide\lilia@ix@cu 8 \multiply\lilia@ix@cu 8
+    \advance\lilia@ix@ck-\lilia@ix@cu
+  \else
+    \expandafter\ifx\csname lilia@ix@pin@\the\lilia@ix@cn\endcsname\relax
+      \lilia@ix@cu=\z@ \lilia@ix@ck=\z@
+      \ifnum\lilia@ix@cn>\z@
+        \loop
+          \advance\lilia@ix@ck\@ne
+          \expandafter\ifx\csname lilia@ix@pin@\the\lilia@ix@ck\endcsname\relax
+            \advance\lilia@ix@cu\@ne
+          \fi
+        \ifnum\lilia@ix@ck<\lilia@ix@cn \repeat
+      \fi
+      \advance\lilia@ix@cu\m@ne
+      \ifnum\lilia@ix@cu<\z@ \lilia@ix@cu=\z@ \fi
+      \lilia@ix@ck=\lilia@ix@cu \divide\lilia@ix@ck\lilia@ix@navail \multiply\lilia@ix@ck\lilia@ix@navail
+      \advance\lilia@ix@cu-\lilia@ix@ck
+      \lilia@ix@ck=\csname lilia@ix@avail@\the\lilia@ix@cu\endcsname\relax
+    \else
+      \lilia@ix@ck=\csname lilia@ix@pin@\the\lilia@ix@cn\endcsname\relax
+    \fi
+  \fi
+  \xglobal\colorlet{#3}{lilia@seq\the\lilia@ix@ck}}
+
+% ── The current section, as Lilia numbers it ───────────────────────────────
+% Numbered sections 1, 2 … take the sequence (pins first); after \appendix they are lettered
+% A, B … and restart the plain sequence. A starred section has no number and is neutral, like
+% the frames before the first \section and after a \part.
+\newcount\lilia@ix@main   % numbered sections so far, before \appendix
+\newcount\lilia@ix@app    % numbered sections so far, after \appendix
+\newcount\lilia@ix@cur    % the current section's place in the section bar (0: none)
+\def\lilia@ix@label{}
+\def\lilia@ix@name{}
+\long\def\lilia@ix@setsection#1#2{%
+  \ifblank{#2}%
+    {\gdef\lilia@ix@label{}\global\lilia@ix@cur\z@
+     \xglobal\colorlet{lilia@ix@sec}{lilia@ix@neutral}}%
+    {\ifbeamer@inappendix
+       \global\advance\lilia@ix@app\@ne \global\lilia@ix@cur\lilia@ix@app
+       \xdef\lilia@ix@label{\@Alph\lilia@ix@app}%
+       \lilia@ix@colourof{\lilia@ix@app}{1}{lilia@ix@sec}%
+     \else
+       \global\advance\lilia@ix@main\@ne \global\lilia@ix@cur\lilia@ix@main
+       \xdef\lilia@ix@label{\the\lilia@ix@main}%
+       \lilia@ix@colourof{\lilia@ix@main}{0}{lilia@ix@sec}%
+     \fi}%
+  \gdef\lilia@ix@name{#1}}
+\let\lilia@ix@beamersection\beamer@section
+\long\def\beamer@section[#1]#2{\lilia@ix@setsection{#1}{#2}\lilia@ix@beamersection[{#1}]{#2}}
+\let\lilia@ix@beamerpart\beamer@part
+\long\def\beamer@part[#1]#2{%
+  \gdef\lilia@ix@label{}\gdef\lilia@ix@name{}\global\lilia@ix@cur\z@
+  \xglobal\colorlet{lilia@ix@sec}{lilia@ix@neutral}%
+  \lilia@ix@beamerpart[{#1}]{#2}}
+
+% How many numbered sections the deck has, before and after \appendix (from the last run).
+\def\lilia@ix@mainsections{0}
+\def\lilia@ix@appsections{0}
+\AtEndDocument{\immediate\write\@mainaux{%
+  \gdef\string\lilia@ix@mainsections{\the\lilia@ix@main}%
+  \gdef\string\lilia@ix@appsections{\the\lilia@ix@app}}}
+
+% ── Inner ──────────────────────────────────────────────────────────────────
+\setbeamertemplate{blocks}[default]
+\setbeamertemplate{itemize items}[circle]
+\setbeamertemplate{enumerate items}[default]
+\setbeamertemplate{subsection in toc}[default]
+\setbeamertemplate{navigation symbols}{}
+
+% Quotations and definitions keep the documents' reading voice: Source Serif, italic.
+\def\lilia@ix@bodyface{}
+\AtBeginEnvironment{quote}{\lilia@ix@serif}
+\AtBeginEnvironment{quotation}{\lilia@ix@serif}
+\AtBeginEnvironment{definition}{\def\lilia@ix@bodyface{\lilia@ix@serif}}
+
+% Blocks: a title bar filled with the section colour (white text), the body on its 8 % tint.
+% alertblock and exampleblock keep red and green in every section.
+\newbox\lilia@ix@titlebox
+\newbox\lilia@ix@bodybox
+\newlength\lilia@ix@pad
+\setlength\lilia@ix@pad{0.5em}
+% #1: the bar's colour.
+\newcommand\lilia@ix@blockbegin[1]{%
+  \par\vskip\smallskipamount
+  \def\lilia@ix@bar{#1}%
+  \setbox\lilia@ix@titlebox\vbox{\color@begingroup
+    \ifx\insertblocktitle\@empty\else
+      \hsize\linewidth \parskip\z@
+      \setlength\fboxsep{0pt}%
+      \noindent\colorbox{#1}{\parbox{\linewidth}{%
+        \vskip\dimexpr\lilia@ix@pad-2pt\relax
+        \leftskip\lilia@ix@pad \rightskip=\dimexpr\lilia@ix@pad\relax plus 1fil
+        \usebeamerfont*{block title}\color{white}\strut\insertblocktitle\strut\par
+        \vskip\dimexpr\lilia@ix@pad-3pt\relax}}%
+    \fi\color@endgroup}%
+  % \color@begingroup keeps the block's colours inside the box (a colour set in a \setbox
+  % would otherwise be restored after it, on the page, and leak into the next frames).
+  \setbox\lilia@ix@bodybox\vbox\bgroup\color@begingroup
+    \hsize\dimexpr\linewidth-2\lilia@ix@pad\relax \linewidth\hsize \textwidth\hsize
+    \usebeamercolor[fg]{block body}\usebeamerfont{block body}\lilia@ix@bodyface}
+\newcommand\lilia@ix@blockend{%
+  \par\color@endgroup\egroup
+  \begingroup\setlength\fboxsep{\lilia@ix@pad}%
+    \noindent\vbox{\offinterlineskip
+      \box\lilia@ix@titlebox
+      \hbox{\colorbox{\lilia@ix@bar!8!white}{\box\lilia@ix@bodybox}}}\par
+  \endgroup
+  \vskip\smallskipamount}
+\setbeamertemplate{block begin}{\lilia@ix@blockbegin{lilia@ix@sec}}
+\setbeamertemplate{block end}{\lilia@ix@blockend}
+\setbeamertemplate{block alerted begin}{\lilia@ix@blockbegin{lilia@ix@danger}}
+\setbeamertemplate{block alerted end}{\lilia@ix@blockend}
+\setbeamertemplate{block example begin}{\lilia@ix@blockbegin{lilia@ix@success}}
+\setbeamertemplate{block example end}{\lilia@ix@blockend}
+
+% Tabs: a rounded pill. #1: fill, #2: ink, #3: text.
+\RequirePackage{tikz}
+\newcommand\lilia@ix@tab[3]{%
+  \tikz[baseline=(t.base)]\node[fill=#1,text=#2,rounded corners=2.5pt,
+    inner xsep=5pt,inner ysep=2.5pt](t){\strut#3};}
+
+% The contents (only where the author writes \tableofcontents; the theme never adds one): each
+% section's row in its colour, its number in a tab, as in a document's contents.
+\def\lilia@ix@tocentry{%
+  \edef\lilia@ix@tocn{\inserttocsectionnumber}%
+  \ifx\lilia@ix@tocn\@empty
+    \colorlet{lilia@ix@toc}{lilia@ix@neutral}\def\lilia@ix@toclabel{}%
+  \else
+    \ifbeamer@inappendix
+      \lilia@ix@ck=\numexpr\lilia@ix@tocn-\lilia@ix@mainsections\relax
+      \ifnum\lilia@ix@ck<\@ne \lilia@ix@ck=\@ne \fi
+      \edef\lilia@ix@toclabel{\@Alph\lilia@ix@ck}%
+      \lilia@ix@colourof{\lilia@ix@ck}{1}{lilia@ix@toc}%
+    \else
+      \let\lilia@ix@toclabel\lilia@ix@tocn
+      \lilia@ix@colourof{\lilia@ix@tocn}{0}{lilia@ix@toc}%
+    \fi
+  \fi
+  \leavevmode
+  {\usebeamerfont{kicker}\ifx\lilia@ix@toclabel\@empty\else
+    \lilia@ix@tab{lilia@ix@toc}{white}{\lilia@ix@toclabel}\hskip0.6em\fi}%
+  {\usebeamerfont{section in toc}\color{lilia@ix@toc}\inserttocsection}\par}
+\setbeamertemplate{section in toc}{\lilia@ix@tocentry}
+
+% Section divider frames (beamer's \AtBeginSection): off by default. When the author turns them
+% on (\AtBeginSection[]{\begin{frame}\sectionpage\end{frame}}), the frame is full-bleed in the
+% section colour with the number and name in white; print-safe, white with a 6 mm bar in the
+% section colour at the left edge. The section page raises a flag that the background, the
+% headline and the footline, drawn when the page is shipped out, read.
+\newif\iflilia@ix@divider
+\setbeamertemplate{section page}{%
+  \global\lilia@ix@dividertrue
+  \vfill
+  \iflilia@ix@printsafe\def\lilia@ix@dividerink{lilia@ix@sec}\else\def\lilia@ix@dividerink{white}\fi
+  {\raggedright\color{\lilia@ix@dividerink}%
+    \ifx\lilia@ix@label\@empty\else
+      {\lilia@ix@heavy\fontsize{40}{44}\selectfont\lilia@ix@label\par}\vskip0.3em
+    \fi
+    {\usebeamerfont{section page}\MakeUppercase{\lilia@ix@name}\par}}%
+  \vfill}
+
+\setbeamertemplate{title page}{%
+  \vfill
+  {\usebeamerfont{title}\usebeamercolor[fg]{title}\raggedright\MakeUppercase{\inserttitle}\par}
+  \ifx\insertsubtitle\@empty\else\vskip0.4em{\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\raggedright\insertsubtitle\par}\fi
+  \vskip1.2em
+  {\usebeamerfont{author}\usebeamercolor[fg]{author}\insertauthor\par}
+  \ifx\insertinstitute\@empty\else\vskip0.2em{\usebeamerfont{institute}\usebeamercolor[fg]{institute}\insertinstitute\par}\fi
+  \vskip0.3em
+  {\usebeamerfont{date}\usebeamercolor[fg]{date}\insertdate\par}
+  \vfill}
+
+\setbeamertemplate{background canvas}{%
+  \iflilia@ix@divider
+    \iflilia@ix@printsafe
+      \color{lilia@ix@sec}\vrule width6mm height\paperheight
+    \else
+      \color{lilia@ix@sec}\vrule width\paperwidth height\paperheight
+    \fi
+  \fi}
+
+% ── Outer: the section bar at the very top, the kicker tab (section · frame) in the section
+% colour, the title in it; the foot: the section's name left, the page in a charcoal tab ────
+\newcount\lilia@ix@i
+\newcount\lilia@ix@segs
+\newdimen\lilia@ix@segw
+\def\lilia@ix@barheight{3pt}
+% One segment per numbered section of the current part (before or after \appendix), each in its
+% colour: the current one full, the others at 30 %.
+\def\lilia@ix@sectionbar{%
+  \ifbeamer@inappendix \lilia@ix@segs=\lilia@ix@appsections\relax
+  \else \lilia@ix@segs=\lilia@ix@mainsections\relax \fi
+  \hbox to\paperwidth{%
+    \ifnum\lilia@ix@segs>\z@
+      \lilia@ix@segw=\dimexpr(\paperwidth-\lilia@ix@segs pt+1pt)/\lilia@ix@segs\relax
+      \lilia@ix@i=\z@
+      \@whilenum\lilia@ix@i<\lilia@ix@segs\do{%
+        \advance\lilia@ix@i\@ne
+        \lilia@ix@colourof{\lilia@ix@i}{\ifbeamer@inappendix 1\else 0\fi}{lilia@ix@seg}%
+        \ifnum\lilia@ix@i=\lilia@ix@cur
+          {\color{lilia@ix@seg}\vrule width\lilia@ix@segw height\lilia@ix@barheight depth\z@}%
+        \else
+          {\color{lilia@ix@seg!30!white}\vrule width\lilia@ix@segw height\lilia@ix@barheight depth\z@}%
+        \fi
+        \ifnum\lilia@ix@i<\lilia@ix@segs\hskip1pt\fi}%
+    \fi
+    \hss}}
+
+\newbox\lilia@ix@headbox
+\setbeamertemplate{headline}{%
+  \setbox\lilia@ix@headbox\vbox{%
+    \lilia@ix@sectionbar
+    \vskip5pt
+    \hskip1em{\usebeamerfont{kicker}%
+      % Before the first section (the title frame, the contents) the kicker stays empty: the
+      % foot tab already carries the page.
+      \ifx\lilia@ix@name\@empty
+      \else
+        \lilia@ix@tab{lilia@ix@sec}{white}{%
+          \ifx\lilia@ix@label\@empty\else\lilia@ix@label\,·\,\fi\insertframenumber}\hskip0.5em
+        {\usebeamercolor[fg]{kicker}\MakeUppercase{\lilia@ix@name}}%
+      \fi}%
+    \vskip2pt}%
+  % A divider is full-bleed: nothing in the head, which keeps its height (beamer measured it
+  % before the frame's body raised the flag, and placed the page by it).
+  \iflilia@ix@divider \setbox\lilia@ix@headbox\vbox to\ht\lilia@ix@headbox{\vfil}\fi
+  \box\lilia@ix@headbox}
+\setbeamertemplate{frametitle}{%
+  \vskip2pt
+  {\usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}\raggedright\MakeUppercase{\insertframetitle}\par}%
+  \ifx\insertframesubtitle\@empty\else
+    \vskip1pt{\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\raggedright\insertframesubtitle\par}%
+  \fi
+  \vskip4pt}
+\setbeamertemplate{footline}{%
+  \hbox to\paperwidth{%
+    \hskip1em
+    \iflilia@ix@divider\else
+      {\usebeamerfont{kicker}\color{lilia@ix@sec}%
+        \ifx\lilia@ix@name\@empty\else\MakeUppercase{\lilia@ix@name}\fi}%
+    \fi
+    \hfill{\usebeamerfont{page number in head/foot}%
+      \lilia@ix@tab{lilia@ix@foot}{white}{\insertframenumber}}%
+    \hskip1em}%
+  \vskip6pt
+  % The footline is the last thing drawn on a page: a divider's flag ends here.
+  \global\lilia@ix@dividerfalse}
+
+\mode<all>

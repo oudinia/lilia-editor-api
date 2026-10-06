@@ -19,7 +19,11 @@ public static class ThemeAvailability
     /// <summary>Start the probe early (at startup) so the first request does not pay for it.</summary>
     public static Task WarmUpAsync() => _found.Value;
 
-    public static bool IsAvailable(string? themeId)
+    /// <summary>
+    /// Whether this server can compile the theme. On a beamer deck (<paramref name="documentClass"/>
+    /// beamer) that is the theme's beamer version and its TeX files; otherwise its document version.
+    /// </summary>
+    public static bool IsAvailable(string? themeId, string? documentClass = null)
     {
         var theme = ThemeCatalog.Find(themeId);
         if (theme is null) return false;
@@ -27,15 +31,16 @@ public static class ThemeAvailability
         if (!theme.IsBuilt) return false;
         if (_override is { } o) return o(theme.Id);
         var found = _found.Value.GetAwaiter().GetResult();
-        return theme.TexFiles.All(found.Contains);
+        var files = ThemeLock.IsBeamer(documentClass) && theme.Beamer is { } beamer ? beamer.TexFiles : theme.TexFiles;
+        return files.All(found.Contains);
     }
 
-    /// <summary>Why a theme cannot be used here, or null when it can.</summary>
-    public static string? WhyUnavailable(string? themeId)
+    /// <summary>Why a theme cannot be used here (on this class, see <see cref="IsAvailable"/>), or null when it can.</summary>
+    public static string? WhyUnavailable(string? themeId, string? documentClass = null)
     {
         var theme = ThemeCatalog.Find(themeId);
         if (theme is null) return $"'{themeId}' is not a theme. Valid values: {string.Join(", ", ThemeCatalog.Ids)}.";
-        if (IsAvailable(theme.Id)) return null;
+        if (IsAvailable(theme.Id, documentClass)) return null;
         var usable = string.Join(", ", ThemeCatalog.All.Where(t => IsAvailable(t.Id)).Select(t => t.Id));
         return theme.IsBuilt
             ? $"The {theme.Name} theme's fonts are not installed on this server, so it cannot be used yet. Available themes: {usable}."
@@ -47,7 +52,8 @@ public static class ThemeAvailability
 
     private static async Task<IReadOnlySet<string>> ProbeAsync()
     {
-        var files = ThemeCatalog.All.SelectMany(t => t.TexFiles).Distinct(StringComparer.Ordinal).ToList();
+        var files = ThemeCatalog.All.SelectMany(t => t.TexFiles.Concat(t.Beamer?.TexFiles ?? []))
+            .Distinct(StringComparer.Ordinal).ToList();
         var found = new HashSet<string>(StringComparer.Ordinal);
         if (files.Count == 0) return found;
         var dir = Path.Combine(Path.GetTempPath(), $"lilia-kpse-{Guid.NewGuid():N}");

@@ -1,0 +1,247 @@
+%% beamerthemeLiliaCerulean.sty: Lilia's Cerulean document theme, for beamer.
+%%
+%% Design: Olivia, 6 Oct 2026 (lilia-docs design-handoffs/2026-10-05-document-themes,
+%% REPLY-2026-10-06c-to-lilia.md). A light deck for lectures and talks that are also handed out:
+%% white ground, cerulean structure, the title frame full-bleed #08597F; Montserrat throughout,
+%% Source Serif italic for quotations and definitions.
+%%
+%% Loaded by one managed line, before the author's custom preamble so the author wins:
+%%   \usetheme{LiliaCerulean}            or   \usetheme[printsafe]{LiliaCerulean}
+%% printsafe: the title frame's blue ground turns white with #08597F title text; every other
+%% frame is already on white.
+%%
+%% Fonts come only through the TeX font packages (no fontspec), so pdfLaTeX, LuaLaTeX and
+%% Overleaf all work. A missing font package stops the run: a theme never prints in a
+%% substitute face.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{beamerthemeLiliaCerulean}[2026/10/06 Lilia Cerulean beamer theme]
+
+\newif\iflilia@cer@printsafe
+\DeclareOptionBeamer{printsafe}{\lilia@cer@printsafetrue}
+\ProcessOptionsBeamer
+
+% Index pins mean nothing here; the command exists so a deck switched from Index still compiles.
+\providecommand\liliaPinColour[2]{}
+
+\mode<presentation>
+
+% ── Fonts ──────────────────────────────────────────────────────────────────
+\IfFileExists{montserrat.sty}{}{\PackageError{beamerthemeLiliaCerulean}
+  {The montserrat font package is not installed}{Cerulean needs montserrat and sourceserifpro.}}
+\IfFileExists{sourceserifpro.sty}{}{\PackageError{beamerthemeLiliaCerulean}
+  {The sourceserifpro font package is not installed}{Cerulean needs montserrat and sourceserifpro.}}
+% Source Serif is \rmdefault (Type 1 under every engine), kept for quotations and definitions;
+% Montserrat is \sfdefault and the body, in its 500 weight; bold is 700.
+\RequirePackage[type1]{sourceserifpro}
+\RequirePackage[medium,bold,tabular,lining]{montserrat}
+\renewcommand{\familydefault}{\sfdefault}
+% The body's weight is Montserrat's medium (\mdseries@sf); switching to the serif or the
+% typewriter face maps it back to their own regular weight.
+\renewcommand*{\seriesdefault}{\mdseries@sf}
+\newcommand\lilia@cer@serif{\fontfamily{\rmdefault}\fontseries{m}\itshape\selectfont}
+
+% Sizes for projection: body at least 14 pt, frame titles 20 pt, nothing the theme sets below
+% 10 pt. A deck whose class size is below 14 pt takes the 14 pt scale (beamer's own 14pt option).
+\ifdim\f@size pt<14pt
+  \renewcommand\normalsize{\@setfontsize\normalsize\@xivpt{17}%
+    \abovedisplayskip 14\p@ \@plus3\p@ \@minus7\p@ \abovedisplayshortskip \z@ \@plus4\p@
+    \belowdisplayshortskip 7\p@ \@plus4\p@ \@minus3\p@ \belowdisplayskip \abovedisplayskip}
+  \renewcommand\small{\@setfontsize\small\@xiipt{14}}
+  \renewcommand\footnotesize{\@setfontsize\footnotesize\@xpt\@xiipt}
+  \renewcommand\scriptsize{\@setfontsize\scriptsize\@viiipt{9.5}}
+  \renewcommand\large{\@setfontsize\large\@xviipt{22}}
+  \renewcommand\Large{\@setfontsize\Large\@xxpt{25}}
+  \renewcommand\LARGE{\@setfontsize\LARGE\@xxvpt{30}}
+  \renewcommand\huge{\@setfontsize\huge{29.86}{35}}
+  \renewcommand\Huge{\@setfontsize\Huge{35.83}{40}}
+  \normalsize
+\fi
+
+\usefonttheme{professionalfonts}
+\setbeamerfont{frametitle}{series=\bfseries,size=\fontsize{20}{24}}
+\setbeamerfont{framesubtitle}{series=\mdseries,size=\normalsize}
+\setbeamerfont{title}{series=\bfseries,size=\LARGE}
+\setbeamerfont{subtitle}{series=\mdseries,size=\large}
+\setbeamerfont{author}{size=\normalsize}
+\setbeamerfont{date}{size=\footnotesize}
+\setbeamerfont{institute}{size=\footnotesize}
+\setbeamerfont{section in toc}{series=\bfseries}
+\setbeamerfont{block title}{series=\bfseries,size=\normalsize}
+\setbeamerfont{block body}{size=\normalsize}
+\setbeamerfont{kicker}{size=\footnotesize,series=\bfseries}
+\setbeamerfont{page number in head/foot}{size=\footnotesize,series=\bfseries}
+\setbeamerfont{footnote}{size=\footnotesize}
+\setbeamerfont{footnote mark}{size=\footnotesize}
+
+% ── Colour ─────────────────────────────────────────────────────────────────
+% #08597F on white 7.6:1, white on #0A76A4 5.1:1, #22262B on white 15.2:1.
+\definecolor{lilia@cer@ink}{HTML}{22262B}
+\definecolor{lilia@cer@title}{HTML}{08597F}
+\definecolor{lilia@cer@accent}{HTML}{0A76A4}
+\definecolor{lilia@cer@meta}{HTML}{4A5560}
+\definecolor{lilia@cer@danger}{HTML}{C4314B}
+\definecolor{lilia@cer@success}{HTML}{107C41}
+\colorlet{lilia@cer@border}{lilia@cer@accent!30!white}
+\colorlet{lilia@cer@dangerborder}{lilia@cer@danger!30!white}
+\colorlet{lilia@cer@successborder}{lilia@cer@success!30!white}
+
+\setbeamercolor{normal text}{fg=lilia@cer@ink,bg=white}
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{structure}{fg=lilia@cer@title}
+\setbeamercolor{frametitle}{fg=lilia@cer@title,bg=}
+\setbeamercolor{framesubtitle}{fg=lilia@cer@meta}
+\iflilia@cer@printsafe
+  \setbeamercolor{title}{fg=lilia@cer@title}
+  \setbeamercolor{subtitle}{fg=lilia@cer@ink}
+  \setbeamercolor{title page ink}{fg=lilia@cer@ink}
+\else
+  \setbeamercolor{title}{fg=white}
+  \setbeamercolor{subtitle}{fg=white}
+  \setbeamercolor{title page ink}{fg=white}
+\fi
+\setbeamercolor{alerted text}{fg=lilia@cer@danger}
+\setbeamercolor{example text}{fg=lilia@cer@success}
+\setbeamercolor{block title}{fg=lilia@cer@title}
+\setbeamercolor{block body}{fg=lilia@cer@ink}
+\setbeamercolor{block title alerted}{fg=lilia@cer@danger}
+\setbeamercolor{block body alerted}{fg=lilia@cer@ink}
+\setbeamercolor{block title example}{fg=lilia@cer@success}
+\setbeamercolor{block body example}{fg=lilia@cer@ink}
+\setbeamercolor{item}{fg=lilia@cer@accent}
+\setbeamercolor{section in toc}{fg=lilia@cer@title}
+\setbeamercolor{subsection in toc}{fg=lilia@cer@ink}
+\setbeamercolor{kicker}{fg=white,bg=lilia@cer@accent}
+\setbeamercolor{page tab}{fg=white,bg=lilia@cer@title}
+\setbeamercolor{footnote}{fg=lilia@cer@ink}
+\setbeamercolor{footnote mark}{fg=lilia@cer@title}
+
+% ── Inner: blocks are white with a 1 px border at 30 %, the title bold in the block's hue, no
+% bar; plain items ───────────────────────────────────────────────────────────
+\setbeamertemplate{blocks}[default]
+\setbeamertemplate{itemize items}[circle]
+\setbeamertemplate{enumerate items}[default]
+\setbeamertemplate{section in toc}[sections numbered]
+\setbeamertemplate{subsection in toc}[default]
+\setbeamertemplate{navigation symbols}{}
+
+% Quotations and definitions keep the documents' reading voice: Source Serif, italic.
+\def\lilia@cer@bodyface{}
+\AtBeginEnvironment{quote}{\lilia@cer@serif}
+\AtBeginEnvironment{quotation}{\lilia@cer@serif}
+\AtBeginEnvironment{definition}{\def\lilia@cer@bodyface{\lilia@cer@serif}}
+
+\newbox\lilia@cer@blockbox
+\newlength\lilia@cer@pad
+\setlength\lilia@cer@pad{0.55em}
+% #1: the border colour, #2: the beamer colour of the title.
+\newcommand\lilia@cer@blockbegin[2]{%
+  \par\vskip\smallskipamount
+  \def\lilia@cer@blockborder{#1}%
+  % \color@begingroup keeps the block's colours inside the box (a colour set in a \setbox
+  % would otherwise be restored after it, on the page, and leak into the next frames).
+  \setbox\lilia@cer@blockbox\vbox\bgroup\color@begingroup
+    \hsize\dimexpr\linewidth-2\lilia@cer@pad-1.5pt\relax \linewidth\hsize \textwidth\hsize
+    \usebeamercolor[fg]{block body}%
+    \ifx\insertblocktitle\@empty\else
+      {\usebeamerfont*{block title}\usebeamercolor[fg]{#2}\insertblocktitle\par}\vskip0.25em\vskip-\parskip
+    \fi
+    \usebeamerfont{block body}\lilia@cer@bodyface}
+\newcommand\lilia@cer@blockend{%
+  \par\color@endgroup\egroup
+  \begingroup\setlength\fboxsep{\lilia@cer@pad}\setlength\fboxrule{0.75pt}%
+    \noindent\fcolorbox{\lilia@cer@blockborder}{white}{\box\lilia@cer@blockbox}\par
+  \endgroup
+  \vskip\smallskipamount}
+\setbeamertemplate{block begin}{\lilia@cer@blockbegin{lilia@cer@border}{block title}}
+\setbeamertemplate{block end}{\lilia@cer@blockend}
+\setbeamertemplate{block alerted begin}{\lilia@cer@blockbegin{lilia@cer@dangerborder}{block title alerted}}
+\setbeamertemplate{block alerted end}{\lilia@cer@blockend}
+\setbeamertemplate{block example begin}{\lilia@cer@blockbegin{lilia@cer@successborder}{block title example}}
+\setbeamertemplate{block example end}{\lilia@cer@blockend}
+
+% The title frame: full-bleed #08597F with white type (print-safe: white, #08597F title). The
+% title page raises a flag that the background canvas, drawn when the page is shipped out, reads.
+\newif\iflilia@cer@titleframe
+\setbeamertemplate{title page}{%
+  \global\lilia@cer@titleframetrue
+  \vfill
+  {\usebeamerfont{title}\usebeamercolor[fg]{title}\raggedright\inserttitle\par}
+  \ifx\insertsubtitle\@empty\else\vskip0.4em{\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\raggedright\insertsubtitle\par}\fi
+  \vskip1.2em
+  {\usebeamerfont{author}\usebeamercolor[fg]{title page ink}\insertauthor\par}
+  \ifx\insertinstitute\@empty\else\vskip0.2em{\usebeamerfont{institute}\usebeamercolor[fg]{title page ink}\insertinstitute\par}\fi
+  \vskip0.3em
+  {\usebeamerfont{date}\usebeamercolor[fg]{title page ink}\insertdate\par}
+  \vfill}
+\setbeamertemplate{background canvas}{%
+  \iflilia@cer@titleframe
+    \iflilia@cer@printsafe\else
+      \color{lilia@cer@title}\vrule width\paperwidth height\paperheight
+    \fi
+  \fi}
+
+% ── Outer: the kicker tab top-left (section · frame), the title over a cerulean hairline, the
+% page in a foot tab ─────────────────────────────────────────────────────────
+\RequirePackage{tikz}
+% #1: fill, #2: ink, #3: text.
+\newcommand\lilia@cer@tab[3]{%
+  \tikz[baseline=(t.base)]\node[fill=#1,text=#2,rounded corners=2.5pt,
+    inner xsep=5pt,inner ysep=2.5pt](t){\strut#3};}
+
+% The section as Lilia numbers it: numbered sections 1, 2 …, appendix sections A, B … (as in
+% documents); a starred section has no number.
+\newcount\lilia@cer@n
+\newcount\lilia@cer@a
+\def\lilia@cer@label{}
+\def\lilia@cer@name{}
+\let\lilia@cer@beamersection\beamer@section
+\long\def\beamer@section[#1]#2{%
+  \ifblank{#2}%
+    {\gdef\lilia@cer@label{}}%
+    {\ifbeamer@inappendix
+       \global\advance\lilia@cer@a\@ne \xdef\lilia@cer@label{\@Alph\lilia@cer@a}%
+     \else
+       \global\advance\lilia@cer@n\@ne \xdef\lilia@cer@label{\the\lilia@cer@n}%
+     \fi}%
+  \gdef\lilia@cer@name{#1}%
+  \lilia@cer@beamersection[{#1}]{#2}}
+% A part (and \appendix, which starts one) leaves the section behind, as beamer does.
+\let\lilia@cer@beamerpart\beamer@part
+\long\def\beamer@part[#1]#2{\gdef\lilia@cer@label{}\gdef\lilia@cer@name{}\lilia@cer@beamerpart[{#1}]{#2}}
+
+\setbeamertemplate{headline}{%
+  \vskip6pt
+  \hskip1em{\usebeamerfont{kicker}%
+    % Before the first section (the title frame) the kicker stays empty: the foot tab already
+    % carries the page.
+    \ifx\lilia@cer@name\@empty
+    \else
+      \lilia@cer@tab{lilia@cer@accent}{white}{%
+        \ifx\lilia@cer@label\@empty\else\lilia@cer@label\,·\,\fi\insertframenumber}\hskip0.5em
+      {\usebeamercolor[fg]{normal text}\lilia@cer@name}%
+    \fi}%
+  \vskip2pt}
+\setbeamertemplate{frametitle}{%
+  \vskip2pt
+  {\usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}\raggedright\insertframetitle\par}%
+  \ifx\insertframesubtitle\@empty\else
+    \vskip1pt{\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\raggedright\insertframesubtitle\par}%
+  \fi
+  % The 1 px cerulean hairline, the full width of the frame.
+  \nointerlineskip\vskip4pt
+  \hbox{\hskip-\beamer@leftmargin\textcolor{lilia@cer@accent}{\rule{\paperwidth}{0.75pt}}}%
+  \vskip4pt}
+\setbeamertemplate{footline}{%
+  \hfill{\usebeamerfont{page number in head/foot}%
+    \iflilia@cer@titleframe\iflilia@cer@printsafe
+      \lilia@cer@tab{lilia@cer@title}{white}{\insertframenumber}%
+    \else
+      % On the blue title frame the tab turns white so it still shows.
+      \lilia@cer@tab{white}{lilia@cer@title}{\insertframenumber}%
+    \fi\else
+      \lilia@cer@tab{lilia@cer@title}{white}{\insertframenumber}%
+    \fi}\hskip1em\vskip6pt
+  % The footline is the last thing drawn on a page: the title frame's flag ends here.
+  \global\lilia@cer@titleframefalse}
+
+\mode<all>

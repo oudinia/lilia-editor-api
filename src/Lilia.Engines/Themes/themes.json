@@ -1,5 +1,5 @@
 {
-  "comment": "Document themes: one descriptor per theme, read by GET /api/themes, by the preamble builder and by the lilia-theme.sty tests. Colours and faces from Olivia's design (design-handoffs/2026-10-05-document-themes). texFiles are what kpsewhich must find for the theme to be available on this server. table: the table styles' colours on the theme's paper (onPaper) and on white (onWhite, paper=white or print-safe): the stripe is band % of hue over the paper, the header band is head with headInk; chapter means Index's current chapter colour. classes: absent (null) means any class but beamer; [\"beamer\"] is a beamer theme (beamerthemeLiliaExposition.sty, \\usetheme), the only kind a beamer document takes besides Classic.",
+  "comment": "Document themes: one descriptor per theme, read by GET /api/themes, by the preamble builder and by the lilia-theme.sty tests. Colours and faces from Olivia's design (design-handoffs/2026-10-05-document-themes). texFiles are what kpsewhich must find for the theme to be available on this server. table: the table styles' colours on the theme's paper (onPaper) and on white (onWhite, paper=white or print-safe): the stripe is band % of hue over the paper, the header band is head with headInk; chapter means Index's current chapter colour. classes: absent (null) means every class the theme has a version for: lilia-theme.sty for any class but beamer, and beamer too when it has a beamer version; [\"beamer\"] is a theme for beamer only (Exposition). beamer: the theme's beamer version, loaded with \\usetheme{<theme>} from beamertheme<theme>.sty, and the TeX files it needs; a beamer deck takes Classic and the themes that have one.",
   "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
   "themes": [
     {
@@ -26,7 +26,8 @@
       "sequence": null,
       "tablesDefault": "ruled",
       "table": { "onPaper": {"hue": "#0A76A4", "band": 8, "head": "#0A76A4", "headInk": "#FFFFFF"}, "onWhite": {"hue": "#0A76A4", "band": 8, "head": "#0A76A4", "headInk": "#FFFFFF"} },
-      "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
+      "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"],
+      "beamer": { "theme": "LiliaCerulean", "texFiles": ["beamer.cls", "montserrat.sty", "sourceserifpro.sty", "tikz.sty"] }
     },
     {
       "id": "index",
@@ -39,7 +40,8 @@
       "sequence": ["#4A5FA3", "#996300", "#B8303A", "#3A3836", "#B84A10", "#66701A", "#6E2430", "#2E6E9E"],
       "tablesDefault": "ruled",
       "table": { "onPaper": {"hue": "chapter", "band": 6, "head": "chapter", "headInk": "#FFFFFF"}, "onWhite": {"hue": "chapter", "band": 6, "head": "chapter", "headInk": "#FFFFFF"} },
-      "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"]
+      "texFiles": ["montserrat.sty", "sourceserifpro.sty", "kvoptions.sty", "titlesec.sty", "fancyhdr.sty", "tikz.sty", "ragged2e.sty", "xcolor.sty"],
+      "beamer": { "theme": "LiliaIndex", "texFiles": ["beamer.cls", "montserrat.sty", "sourceserifpro.sty", "tikz.sty"] }
     },
     {
       "id": "carnet",
@@ -79,7 +81,8 @@
       "sequence": null,
       "tablesDefault": "header",
       "table": null,
-      "texFiles": ["beamer.cls", "montserrat.sty", "josefin.sty", "tikz.sty"]
+      "texFiles": ["beamer.cls", "montserrat.sty", "josefin.sty", "tikz.sty"],
+      "beamer": { "theme": "LiliaExposition", "texFiles": ["beamer.cls", "montserrat.sty", "josefin.sty", "tikz.sty"] }
     }
   ]
 }
