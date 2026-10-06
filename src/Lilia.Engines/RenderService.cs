@@ -949,7 +949,7 @@ public partial class RenderService : IRenderService
         "amsmath", "amssymb", "amsfonts", "amsthm", "mathtools", "mathrsfs", "cancel", "siunitx",
         "microtype", "setspace", "parskip",
         "graphicx", "float", "caption", "subcaption", "xcolor",
-        "booktabs", "multirow", "tabularx", "longtable", "array",
+        "booktabs", "multirow", "tabularx", "longtable", "array", "threeparttable", "threeparttablex",
         "enumitem", "listings",
         "algorithm", "algorithmic",
         "tcolorbox", "hyperref", "cleveref", "csquotes",
@@ -1150,11 +1150,13 @@ public partial class RenderService : IRenderService
         // packages (\usepackage{fontspec} etc.) and the explicit
         // Document.LatexEngine override. Result drives the engine-specific
         // preamble addendum below (fontspec for lua/xelatex).
-        // Only tables named by the caller become longtables, and only when the
-        // document's column layout permits it at all — see SupportsLongtable.
-        var canUseLongtable = longtableBlocks is { Count: > 0 } && SupportsLongtable(doc);
+        // A table becomes a longtable when the caller names it (the overflow loop) or when it
+        // is long by itself (TableLayout: over 40 body rows, or marked longTable) — and only
+        // when the document's column layout permits it at all — see SupportsLongtable.
+        var canUseLongtable = SupportsLongtable(doc);
         var renderedBlocks = doc.Blocks
-            .Select(b => RenderBlockToLatex(b, canUseLongtable && longtableBlocks!.Contains(b.Id)))
+            .Select(b => RenderBlockToLatex(b, canUseLongtable
+                && ((longtableBlocks?.Contains(b.Id) ?? false) || IsLongTable(b))))
             .ToList();
         // A deck's footnote blocks go inside the slide before them (SlideLatex.AttachFootnotes).
         if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
@@ -1338,7 +1340,20 @@ public partial class RenderService : IRenderService
         });
     }
 
-    public string RenderBlockToLatex(Block block) => RenderBlockToLatex(block, useLongtable: false);
+    /// <summary>
+    /// One block's LaTeX. A long table (<see cref="TableLayout.IsLong"/>) is a longtable here too,
+    /// unless the block's document is loaded and is multi-column.
+    /// </summary>
+    public string RenderBlockToLatex(Block block) =>
+        RenderBlockToLatex(block, IsLongTable(block) && (block.Document is null || SupportsLongtable(block.Document)));
+
+    /// <summary>A table block long enough to break across pages by itself (TableLayout).</summary>
+    private static bool IsLongTable(Block block)
+    {
+        if (!string.Equals(block.Type, "table", StringComparison.OrdinalIgnoreCase) || block.Content is null) return false;
+        try { return TableLayout.IsLongTable(block.Content.RootElement); }
+        catch { return false; }
+    }
 
     /// <summary>
     /// <paramref name="useLongtable"/> applies only to table blocks, and only
@@ -2034,60 +2049,21 @@ public partial class RenderService : IRenderService
                 ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}"
                 : $@"\caption{{{EscapeLatex(caption)}}}";
 
-            if (useLongtable)
-            {
-                // longtable is NOT a float — it cannot live inside \begin{table},
-                // which is the whole reason it can break across pages. So this
-                // replaces the float wrapper rather than adding an option to it,
-                // and \centering / placement have nothing to apply to.
-                //
-                // Caption and label go INSIDE the environment, terminated by \\,
-                // because there is no float to attach them to.
-                // \arraystretch goes OUTSIDE: inside longtable it would sit in
-                // the alignment body, where a declaration is not a row.
-                sb.AppendLine(@"{\renewcommand{\arraystretch}{1.3}");
-                AppendThemeMarkers(sb, hasHeaders, rowList);
-                sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
-
-                // Caption and label must share ONE row, terminated by a single
-                // \\. Emitting \label on its own line starts a second row, and
-                // the \toprule that follows is a \noalign — which lands inside
-                // that row and fails with "Misplaced \noalign". Found by
-                // compiling the emitter's real output; every unit test passed
-                // while the document did not build.
-                if (!string.IsNullOrEmpty(caption) || !string.IsNullOrEmpty(label))
-                {
-                    var captionRow = (string.IsNullOrEmpty(caption) ? "" : captionCommand)
-                                   + (string.IsNullOrEmpty(label) ? "" : $@"\label{{{label}}}");
-                    sb.AppendLine(captionRow + @"\\");
-                }
-                sb.AppendLine(@"\toprule");
-            }
-            else
-            {
-                // Tables hard-coded [htbp] and ignored `placement` entirely, so
-                // setting "here" on a table did nothing and reported nothing —
-                // while the same attribute worked on figures. Shared with the figure
-                // path via BlockBreakAttributes so the two cannot drift again.
-                sb.AppendLine($"\\begin{{table}}{BlockBreakAttributes.FloatSpecifier(content)}");
-                sb.AppendLine(@"\centering");
-                sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
-                if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
-                if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
-                AppendThemeMarkers(sb, hasHeaders, rowList);
-                sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
-                sb.AppendLine(@"\toprule");
-            }
-
+            // The rest of the table's meaning (2g): group headers, notes, row groups, and
+            // whether it is long. See TableLayout.
+            var layout = TableLayout.Read(content, colCount, hasHeaders);
             var currentRowIndex = 0;
 
-            // Header row (bold)
+            // Header row (bold), kept as text: a longtable writes it twice.
+            var headRows = "";
             if (hasHeaders)
             {
                 var headerCells = new List<string>();
                 var colIdx = 0;
+                var stored = 0;
                 foreach (var h in headers.EnumerateArray())
                 {
+                    var hi = stored++;
                     if (colIdx >= colCount) break;
                     if (coveredCells[currentRowIndex, colIdx]) { colIdx++; headerCells.Add(""); continue; }
 
@@ -2102,7 +2078,7 @@ public partial class RenderService : IRenderService
                     // Bold once, and never around maths — \textbf does not reach
                     // inside $…$, so wrapping it changes nothing and leaves a
                     // no-op in source the author reads.
-                    var rendered = LatexText.HeaderCell(cellText);
+                    var rendered = layout.WithNote(-1, hi, LatexText.HeaderCell(cellText));
 
                     // \liliaTableHead inside any \multicolumn, which must come first in its cell.
                     rendered = WrapLatexSpans(LatexText.TableHead(rendered), colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
@@ -2117,23 +2093,99 @@ public partial class RenderService : IRenderService
                     headerCells.Add("");
                     colIdx++;
                 }
+                // A group header row above it, with a trimmed rule under each group.
+                var groupLines = layout.GroupHeaderLines(colCount, l => LatexText.TableHead(LatexText.HeaderCell(l)));
                 // \liliaHeadRow lets a document theme style the header row (lilia-theme.sty).
                 // The cells keep their \textbf, so without a theme the table is as before.
-                sb.AppendLine(LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\");
-                sb.AppendLine(@"\midrule");
+                headRows = (groupLines is null ? "" : groupLines + "\n")
+                    + LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\";
                 currentRowIndex++;
+            }
+
+            if (useLongtable)
+            {
+                // longtable is NOT a float — it cannot live inside \begin{table},
+                // which is the whole reason it can break across pages. So this
+                // replaces the float wrapper rather than adding an option to it,
+                // and \centering / placement have nothing to apply to.
+                //
+                // Caption and label go INSIDE the environment, terminated by \\,
+                // because there is no float to attach them to.
+                // \arraystretch goes OUTSIDE: inside longtable it would sit in
+                // the alignment body, where a declaration is not a row.
+                sb.AppendLine(@"{\renewcommand{\arraystretch}{1.3}");
+                AppendThemeMarkers(sb, hasHeaders, rowList);
+                // Notes under a longtable: threeparttablex collects them first and prints
+                // them in the last foot.
+                if (layout.HasNotes)
+                {
+                    sb.AppendLine(@"\begin{ThreePartTable}");
+                    sb.AppendLine(layout.LongNotesList());
+                }
+                sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
+
+                // Caption and label must share ONE row, terminated by a single
+                // \\. Emitting \label on its own line starts a second row, and
+                // the \toprule that follows is a \noalign — which lands inside
+                // that row and fails with "Misplaced \noalign". Found by
+                // compiling the emitter's real output; every unit test passed
+                // while the document did not build.
+                var captionRow = "";
+                if (!string.IsNullOrEmpty(caption) || !string.IsNullOrEmpty(label))
+                {
+                    captionRow = (string.IsNullOrEmpty(caption) ? "" : captionCommand)
+                                   + (string.IsNullOrEmpty(label) ? "" : $@"\label{{{label}}}") + @"\\";
+                }
+                // The header repeats on every page, under "(continued)".
+                sb.AppendLine(TableLayout.LongTableHead(captionRow, !string.IsNullOrEmpty(caption), headRows));
+                if (layout.HasNotes)
+                {
+                    sb.AppendLine(@"\bottomrule");
+                    sb.AppendLine(@"\insertTableNotes");
+                    sb.AppendLine(@"\endlastfoot");
+                }
+            }
+            else
+            {
+                // Tables hard-coded [htbp] and ignored `placement` entirely, so
+                // setting "here" on a table did nothing and reported nothing —
+                // while the same attribute worked on figures. Shared with the figure
+                // path via BlockBreakAttributes so the two cannot drift again.
+                sb.AppendLine($"\\begin{{table}}{BlockBreakAttributes.FloatSpecifier(content)}");
+                sb.AppendLine(@"\centering");
+                sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
+                if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
+                if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
+                AppendThemeMarkers(sb, hasHeaders, rowList);
+                // Notes print under the table, not at the page foot: threeparttable.
+                if (layout.HasNotes) sb.AppendLine(@"\begin{threeparttable}");
+                sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
+                sb.AppendLine(@"\toprule");
+                if (headRows.Length > 0)
+                {
+                    sb.AppendLine(headRows);
+                    sb.AppendLine(@"\midrule");
+                }
             }
 
             // Data rows
             var isFirst = true;
+            var bodyIndex = 0;
             foreach (var row in rowList)
             {
                 if (row.ValueKind == JsonValueKind.Array)
                 {
+                    var ri = bodyIndex++;
+                    // A row group starts here: a rule before it, and a Banded paper restarts
+                    // its stripes after the rule (lilia-theme.sty). Not under a first row that
+                    // stands as the header, which has its rule already.
+                    if (layout.StartsGroup(ri) && (hasHeaders || ri > 1)) sb.AppendLine(@"\midrule");
                     var cells = new List<string>();
                     var colIdx = 0;
+                    var stored = 0;
                     foreach (var cell in row.EnumerateArray())
                     {
+                        var ci = stored++;
                         if (colIdx >= colCount) break;
                         // Skip cells covered by a previous multirow
                         while (colIdx < colCount && coveredCells[currentRowIndex, colIdx])
@@ -2148,7 +2200,9 @@ public partial class RenderService : IRenderService
                         var rowspan = GetCellIntProp(cell, "rowspan", 1);
                         var spanned = colspan > 1 || rowspan > 1;
                         var number = spanned ? null : plan.DecimalNumber(colIdx, cellText);
-                        var rendered = number ?? plan.BoldBest(colIdx, cellText, LatexText.EscapeCell(cellText));
+                        var rendered = number is not null
+                            ? layout.NumberWithNote(ri, ci, number)
+                            : layout.WithNote(ri, ci, plan.BoldBest(colIdx, cellText, LatexText.EscapeCell(cellText)));
 
                         rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
                         if (number is null) rendered = plan.Protect(colIdx, rendered);
@@ -2184,14 +2238,23 @@ public partial class RenderService : IRenderService
                 currentRowIndex++;
             }
 
-            sb.AppendLine(@"\bottomrule");
             if (useLongtable)
             {
-                sb.AppendLine(@"\end{longtable}}"); // closes the \arraystretch group
+                // With notes the bottom rule is in the last foot, above them.
+                if (!layout.HasNotes) sb.AppendLine(@"\bottomrule");
+                sb.AppendLine(@"\end{longtable}");
+                if (layout.HasNotes) sb.AppendLine(@"\end{ThreePartTable}");
+                sb.AppendLine("}"); // closes the \arraystretch group
             }
             else
             {
+                sb.AppendLine(@"\bottomrule");
                 sb.AppendLine(@"\end{tabular}");
+                if (layout.HasNotes)
+                {
+                    sb.AppendLine(layout.NotesList());
+                    sb.AppendLine(@"\end{threeparttable}");
+                }
                 sb.AppendLine(@"\end{table}");
             }
         }

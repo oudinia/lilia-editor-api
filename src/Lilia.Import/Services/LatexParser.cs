@@ -1701,6 +1701,9 @@ public class LatexParser : ILatexParser
                             table.Caption = StripInlineCommandsForPlainText(tableCaption.Value.Inner).Trim();
                         var tableLabel = Regex.Match(outside, @"\\label\{([^}]+)\}");
                         if (tableLabel.Success) table.Label = tableLabel.Groups[1].Value.Trim();
+                        // A threeparttable's notes, under the tabular.
+                        var tableNotes = Regex.Match(outside, @"\\begin\{tablenotes\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{tablenotes\}");
+                        if (tableNotes.Success) ReadTableNotes(tableNotes.Groups[1].Value, table);
                         document.Elements.Add(table);
                     }
                     else
@@ -2118,6 +2121,15 @@ public class LatexParser : ILatexParser
 
     private static string NormaliseCoverageEnvironments(string content)
     {
+        // A longtable's notes (threeparttablex, as Lilia writes them): the TableNotes collected
+        // before the longtable go into its body as \liliaTableNotes{…}, which ParseTabular reads,
+        // and the ThreePartTable wrapper goes, so neither prints as a paragraph.
+        content = Regex.Replace(
+            content,
+            @"\\begin\{ThreePartTable\}\s*\\begin\{TableNotes\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{TableNotes\}\s*(\\begin\{longtable\}(?:\[[^\]]*\])?\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})",
+            m => m.Groups[2].Value + "\\liliaTableNotes{" + m.Groups[1].Value + "}");
+        content = Regex.Replace(content, @"\\(?:begin|end)\{ThreePartTable\}", "");
+
         // tabularx — swap `\begin{tabularx}{<width>}{<colspec>}...\end{tabularx}`
         // to `\begin{tabular}{<cleaned-colspec>}...\end{tabular}`. `X`
         // columns are variable-width in tabularx; we degrade them to `l`
@@ -2474,13 +2486,32 @@ public class LatexParser : ILatexParser
     private static ImportTable ParseTabular(string tabularContent)
     {
         var table = new ImportTable();
+
+        // Lilia's own long-table and 2g markup, so a table it wrote reads back as itself: the
+        // notes a ThreePartTable carried in (see NormaliseCoverageEnvironments), the head a
+        // longtable repeats on later pages (a copy of the first), the caption row, and the
+        // last foot's \insertTableNotes.
+        var carried = Regex.Match(tabularContent, @"^\s*\\liliaTableNotes\{");
+        if (carried.Success && ExtractBraceBody(tabularContent, carried.Index + carried.Length - 1) is { } notesBody)
+        {
+            ReadTableNotes(notesBody.Content, table);
+            tabularContent = tabularContent[notesBody.EndExclusive..];
+        }
+        tabularContent = Regex.Replace(tabularContent, @"\\endfirsthead[\s\S]*?\\endhead\b", "");
+        tabularContent = Regex.Replace(tabularContent, @"\\insertTableNotes\b", "");
+
         var rows = tabularContent.Split(new[] { @"\\" }, StringSplitOptions.None);
 
         // Track \hline positions between data rows so we can guess the header row
         // (the row immediately before the second \hline boundary, when present).
-        var dataRowIndexAfterHlines = new List<int>();
         var hlineCountSoFar = 0;
         var hlineBeforeFirstData = 0;
+        // The header's rule (the first \midrule after a row), how many rows stood above it,
+        // and the rows a later \midrule (or \addlinespace) starts a group at.
+        var headRuleSeen = false;
+        var headRows = 0;
+        var groupStarts = new List<int>();
+        List<string>? firstRowRaw = null;
 
         foreach (var rowStr in rows)
         {
@@ -2489,6 +2520,27 @@ public class LatexParser : ILatexParser
             var trimmedRow = rowStr.Trim();
             if (string.IsNullOrEmpty(trimmedRow))
                 continue;
+
+            // A longtable's caption row: the caption and label, not cells.
+            var captionRow = Regex.Match(trimmedRow, @"^(?:\\(?:hline|toprule)\b\s*)*\\caption\b");
+            if (captionRow.Success)
+            {
+                var cap = MatchBalanced(trimmedRow, "caption");
+                if (cap.HasValue && string.IsNullOrEmpty(table.Caption))
+                    table.Caption = StripInlineCommandsForPlainText(cap.Value.Inner).Trim();
+                var lbl = Regex.Match(trimmedRow, @"\\label\{([^}]+)\}");
+                if (lbl.Success && string.IsNullOrEmpty(table.Label)) table.Label = lbl.Groups[1].Value.Trim();
+                continue;
+            }
+            if (Regex.IsMatch(trimmedRow, @"^\\label\{[^}]+\}$"))
+            {
+                if (string.IsNullOrEmpty(table.Label)) table.Label = Regex.Match(trimmedRow, @"\{([^}]+)\}").Groups[1].Value.Trim();
+                continue;
+            }
+
+            var rule = Regex.IsMatch(trimmedRow, @"\\midrule\b");
+            // A table without rules marks a row group with space (Lilia's Copy LaTeX), never its header.
+            var space = Regex.IsMatch(trimmedRow, @"\\addlinespace\b");
 
             // Count and strip leading horizontal-rule directives.
             // longtable directives (\endfirsthead, \endhead, \endfoot,
@@ -2501,6 +2553,12 @@ public class LatexParser : ILatexParser
                     hlineCountSoFar++;
                     return string.Empty;
                 }).Trim();
+            // \cmidrule(lr){2-3} and \addlinespace[…] are rules too; left in, they became the
+            // first cell's text.
+            stripped = Regex.Replace(stripped, @"\\cmidrule\s*(?:\([a-z]*\))?\s*\{[^}]*\}|\\addlinespace\b(?:\[[^\]]*\])?", "").Trim();
+
+            if (rule && !headRuleSeen && table.Rows.Count > 0) { headRuleSeen = true; headRows = table.Rows.Count; }
+            else if ((rule && headRuleSeen || space) && table.Rows.Count > 0 && !string.IsNullOrEmpty(stripped)) groupStarts.Add(table.Rows.Count);
 
             if (string.IsNullOrEmpty(stripped))
                 continue;
@@ -2510,6 +2568,14 @@ public class LatexParser : ILatexParser
 
             foreach (var cell in cells)
             {
+                // A note's mark: the cell keeps its text and remembers the mark. In an S column
+                // the mark is braced after the number.
+                string? mark = null;
+                var raw = Regex.Replace(cell, @"\{\\tnote\{([^}]*)\}\}|\\tnote\{([^}]*)\}", m =>
+                {
+                    mark ??= (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value).Trim();
+                    return "";
+                });
                 // Clean the cell BEFORE computing formatting spans so the
                 // raw `\textbf` / `\itshape` / `\multicolumn` markup doesn't
                 // leak into block text or downstream rendering. We lose the
@@ -2519,20 +2585,48 @@ public class LatexParser : ILatexParser
                 // `EscapeLatex` turned `\textbf{X}` into visible escaped
                 // junk, and the no-leak invariant flagged every cell as a
                 // leak.
-                var cellText = CleanCellText(cell.Trim());
+                var cellText = CleanCellText(raw.Trim());
                 row.Add(new ImportTableCell
                 {
                     Text = cellText,
-                    Formatting = ParseLatexFormatting(cellText)
+                    Formatting = ParseLatexFormatting(cellText),
+                    NoteMark = string.IsNullOrEmpty(mark) ? null : mark,
                 });
             }
 
             if (row.Count > 0)
             {
-                if (table.Rows.Count == 0) hlineBeforeFirstData = hlineCountSoFar;
+                if (table.Rows.Count == 0)
+                {
+                    hlineBeforeFirstData = hlineCountSoFar;
+                    firstRowRaw = cells.Select(c => c.Trim()).ToList();
+                }
                 table.Rows.Add(row);
             }
         }
+
+        // A group header row: the first of two or more rows above the header's rule, holding
+        // \multicolumn labels and empty cells. Its groups are kept and the row is not a cell row.
+        if (headRuleSeen && headRows >= 2 && firstRowRaw is not null
+            && firstRowRaw.Any(c => Regex.IsMatch(c, @"\\multicolumn\s*\{"))
+            && firstRowRaw.All(c => Regex.Replace(c, @"^\\liliaHeadRow\b\s*", "").Trim() is var t && (t.Length == 0 || Regex.IsMatch(t, @"^\\multicolumn\s*\{"))))
+        {
+            var col = 0;
+            foreach (var c in firstRowRaw)
+            {
+                var m = Regex.Match(Regex.Replace(c, @"^\\liliaHeadRow\b\s*", ""), @"^\\multicolumn\s*\{\s*(\d+)\s*\}");
+                var span = m.Success ? Math.Max(1, int.Parse(m.Groups[1].Value)) : 1;
+                if (m.Success)
+                    table.HeaderGroups.Add((col, span, CleanCellText(c)));
+                col += span;
+            }
+            table.Rows.RemoveAt(0);
+            groupStarts = groupStarts.Select(i => i - 1).ToList();
+            headRows--;
+        }
+        // Body rows are numbered from the first row under the header (one row when no rule marked it).
+        if (!headRuleSeen) headRows = table.Rows.Count > 1 ? 1 : 0;
+        table.RowGroupStarts = groupStarts.Select(i => i - headRows).Where(i => i > 0).Distinct().ToList();
 
         // Header heuristic: if a horizontal rule appeared before the first data row
         // AND the first row has the same column count as the rest, treat it as a header.
@@ -2541,5 +2635,20 @@ public class LatexParser : ILatexParser
             && (hlineBeforeFirstData > 0 || table.Rows.Count > 1);
 
         return table;
+    }
+
+    /// <summary>
+    /// <c>\item[a] text</c> entries of a <c>tablenotes</c> / <c>TableNotes</c> body into
+    /// <see cref="ImportTable.Notes"/>, by mark.
+    /// </summary>
+    private static void ReadTableNotes(string body, ImportTable table)
+    {
+        foreach (Match m in Regex.Matches(body, @"\\item\s*\[([^\]]*)\]\s*([\s\S]*?)(?=\\item\b|\\end\{|$)"))
+        {
+            var mark = m.Groups[1].Value.Trim();
+            var text = Regex.Replace(m.Groups[2].Value, @"\\footnotesize\b|\\small\b", "");
+            text = Regex.Replace(text, @"\s+", " ").Trim();
+            if (mark.Length > 0 && text.Length > 0) table.Notes.TryAdd(mark, text);
+        }
     }
 }

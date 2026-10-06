@@ -426,15 +426,17 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         ImportParagraph p => ("paragraph", new { text = p.Text }),
         ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
         ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
-        ImportTable t => ("table", new
+        // A cell with a note is {content, note}; group headers and row groups are written when
+        // the table has them (ImportTableLayout), so other tables import as before.
+        ImportTable t => ("table", ImportTableLayout.WithLayout(t, new Dictionary<string, object>
         {
-            headers = t.HasHeaderRow && t.Rows.Count > 0
-                ? t.Rows[0].Select(c => c.Text).ToArray()
-                : Enumerable.Range(0, t.ColumnCount).Select(i => $"Column {i + 1}").ToArray(),
-            rows = (t.HasHeaderRow ? t.Rows.Skip(1) : t.Rows).Select(r => r.Select(c => c.Text).ToArray()).ToArray(),
-            caption = t.Caption ?? "",
-            label = t.Label ?? "",
-        }),
+            ["headers"] = t.HasHeaderRow && t.Rows.Count > 0
+                ? ImportTableLayout.Row(t, t.Rows[0])
+                : Enumerable.Range(0, t.ColumnCount).Select(i => (object)$"Column {i + 1}").ToArray(),
+            ["rows"] = (t.HasHeaderRow ? t.Rows.Skip(1) : t.Rows).Select(r => ImportTableLayout.Row(t, r)).ToArray(),
+            ["caption"] = t.Caption ?? "",
+            ["label"] = t.Label ?? "",
+        })),
         ImportAbstract a => ("abstract", new { text = a.Text }),
         ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
         ImportListItem li => ("list", new { items = new[] { li.Text }, ordered = li.IsNumbered }),

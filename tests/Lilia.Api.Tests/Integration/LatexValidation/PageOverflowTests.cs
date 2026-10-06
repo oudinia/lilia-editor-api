@@ -36,20 +36,42 @@ public class PageOverflowTests : IntegrationTestBase
     public override async Task InitializeAsync() => await SeedUserAsync(_userId);
 
     /// <summary>
-    /// A4 with default margins holds roughly 45 lines of body text. 90 rows is
-    /// comfortably past that with room for the header, so the overflow does not
-    /// depend on exact font metrics.
+    /// A4 with default margins holds roughly 45 lines of body text. A table over
+    /// 40 rows is a longtable now (2g, TableLayout) and breaks across pages, so the
+    /// overflow is made the other way: 40 rows whose notes wrap to three or four
+    /// lines in a narrow paragraph column — well past a page, still a float.
     /// </summary>
-    private const int RowsThatOverflowAPage = 90;
+    private const int RowsThatOverflowAPage = 40;
 
-    private static string TallTableJson(int rows) => JsonSerializer.Serialize(new
+    private static string TallTableJson(int rows, bool wrap = true) => JsonSerializer.Serialize(new
     {
         caption = "Measurements",
         headers = new[] { "Sample", "Reading", "Notes" },
         rows = Enumerable.Range(1, rows)
-            .Select(i => new[] { $"S-{i:D3}", $"{i * 1.5:0.0}", "within tolerance" })
+            .Select(i => new[] { $"S-{i:D3}", $"{i * 1.5:0.0}", wrap ? "within tolerance after the second recalibration of the instrument" : "within tolerance" })
             .ToArray(),
+        columnAlign = new[] { "l", "l", "p" },
+        columnWidth = new[] { "", "", "2.5cm" },
     });
+
+    /// <summary>
+    /// A table of 90 short rows is a longtable (over 40 rows, 2g): it breaks across
+    /// pages, so nothing runs off the page and the check has nothing to report —
+    /// not even longtable's own "column widths have changed", a second-pass notice.
+    /// </summary>
+    [Fact]
+    public async Task A_ninety_row_table_breaks_across_pages_and_reports_nothing()
+    {
+        var client = CreateClientAs(_userId);
+        var doc = await SeedDocumentAsync(_userId, "Long table");
+        var block = await SeedBlockAsync(doc.Id, type: "table", contentJson: TallTableJson(90, wrap: false), sortOrder: 0);
+
+        var resp = await client.PostAsync($"/api/latex/block/{block.Id}/validate", null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("valid").GetBoolean().Should().BeTrue();
+        json.RootElement.GetProperty("warnings").EnumerateArray().Should().BeEmpty();
+    }
 
     [Fact]
     public async Task A_table_taller_than_the_page_is_reported_not_silently_truncated()

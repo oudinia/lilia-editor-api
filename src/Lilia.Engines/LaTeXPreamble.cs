@@ -236,6 +236,9 @@ public static partial class LaTeXPreamble
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{array}
+% threeparttablex (and threeparttable, which it loads): a table's notes print under it,
+% \tnote marks in the cells (2g); ThreePartTable carries them under a longtable.
+\usepackage{threeparttablex}
 
 % Lists
 \usepackage{enumitem}
@@ -328,6 +331,9 @@ public static partial class LaTeXPreamble
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{array}
+% threeparttablex (and threeparttable, which it loads): a table's notes print under it,
+% \tnote marks in the cells (2g); ThreePartTable carries them under a longtable.
+\usepackage{threeparttablex}
 
 % Lists
 \usepackage{enumitem}
