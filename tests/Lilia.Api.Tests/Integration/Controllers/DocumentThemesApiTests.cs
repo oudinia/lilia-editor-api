@@ -198,4 +198,129 @@ public class DocumentThemesApiTests : IntegrationTestBase
         tex.IndexOf(@"\newcommand{\R}", StringComparison.Ordinal).Should().BeGreaterThan(line);
         tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}}");
     }
+
+    // ── phase 2: table settings, the lists ───────────────────────────────
+
+    [Fact]
+    public async Task Put_stores_table_settings_and_refuses_bad_ones_with_the_valid_values()
+    {
+        var id = await SeedNotesAsync();
+
+        (await PutLookAsync(id, new { theme = "carnet", tables = new { style = "banded", caption = "below" } }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var tables = (await GetDocAsync(id)).GetProperty("look").GetProperty("tables");
+        tables.GetProperty("style").GetString().Should().Be("banded");
+        tables.GetProperty("caption").GetString().Should().Be("below");
+        tables.TryGetProperty("density", out _).Should().BeFalse("only the values set are stored");
+
+        var bad = await PutLookAsync(id, new { theme = "carnet", tables = new { style = "zebra" } });
+        bad.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await bad.Content.ReadAsStringAsync()).Should().Contain("Valid values: ruled, banded, header");
+        var unknown = await PutLookAsync(id, new { theme = "carnet", tables = new { width = "full" } });
+        unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await unknown.Content.ReadAsStringAsync()).Should().Contain("Valid keys: style, density, caption");
+
+        // Classic with a table setting is kept (it loads the package's table part).
+        (await PutLookAsync(id, new { theme = "classic", tables = new { style = "header" } })).StatusCode.Should().Be(HttpStatusCode.OK);
+        var look = (await GetDocAsync(id)).GetProperty("look");
+        look.GetProperty("theme").GetString().Should().Be("classic");
+        look.GetProperty("tables").GetProperty("style").GetString().Should().Be("header");
+        var tex = await Api.GetStringAsync($"/api/documents/{id}/export/latex?mode=tex");
+        tex.Should().Contain(@"\usepackage[theme=classic, tables=header]{lilia-theme}");
+
+        // Under a publisher class tables stay ruled.
+        var locked = await SeedNotesAsync("IEEEtran");
+        var refused = await PutLookAsync(locked, new { theme = "classic", tables = new { style = "banded" } });
+        refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Its tables stay ruled");
+    }
+
+    [Fact]
+    public async Task The_document_list_carries_each_documents_look()
+    {
+        var themed = await SeedNotesAsync();
+        var classic = await SeedNotesAsync();
+        (await PutLookAsync(themed, new { theme = "gazette" })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = JsonDocument.Parse(await Api.GetStringAsync("/api/documents?page=1&pageSize=100")).RootElement;
+        var items = list.GetProperty("items").EnumerateArray().ToList();
+        items.Single(d => d.GetProperty("id").GetGuid() == themed).GetProperty("look").GetProperty("theme").GetString().Should().Be("gazette");
+        items.Single(d => d.GetProperty("id").GetGuid() == classic).GetProperty("look").ValueKind
+            .Should().Be(JsonValueKind.Null, "null is Classic, and it is written");
+    }
+
+    [Fact]
+    public async Task Used_in_says_which_section_each_paper_holds_the_table_in()
+    {
+        var table = await Api.PostAsJsonAsync("/api/tables", new
+        {
+            caption = "Top-1", label = "tab:top1",
+            content = new { headers = new[] { "Model", "Top-1" }, rows = new[] { new[] { "ResNet", "76.1" } } },
+        });
+        table.StatusCode.Should().Be(HttpStatusCode.Created);
+        var tableId = (await table.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        const string tableJson = """{"caption":"Top-1","headers":["Model","Top-1"],"rows":[["ResNet","76.1"]]}""";
+
+        // An Index report: the table in chapter 2, pinned to the eighth colour.
+        var notes = await SeedDocumentAsync(_userId, "Lecture notes");
+        await SeedBlockAsync(notes.Id, "heading", """{"text":"Vectors","level":1}""", 0);
+        var matrices = await SeedBlockAsync(notes.Id, "heading", """{"text":"Matrices","level":1}""", 1);
+        await SeedBlockAsync(notes.Id, "heading", """{"text":"Products","level":2}""", 2);
+        var inNotes = await SeedBlockAsync(notes.Id, "table", tableJson, 3);
+
+        // A Cerulean article: the table under an unnumbered heading.
+        var essay = await SeedDocumentAsync(_userId, "Essay");
+        await SeedBlockAsync(essay.Id, "heading", """{"text":"Preface","level":1,"numbered":false}""", 0);
+        var inEssay = await SeedBlockAsync(essay.Id, "table", tableJson, 1);
+
+        // A Classic article: the table in the appendix, after the title heading the export drops.
+        var paper = await SeedDocumentAsync(_userId, "A paper");
+        await SeedBlockAsync(paper.Id, "heading", """{"text":"A paper","level":1}""", 0);
+        await SeedBlockAsync(paper.Id, "heading", """{"text":"Method","level":1}""", 1);
+        await SeedBlockAsync(paper.Id, "embed", """{"code":"\\appendix"}""", 2);
+        await SeedBlockAsync(paper.Id, "heading", """{"text":"Proofs","level":1}""", 3);
+        var inPaper = await SeedBlockAsync(paper.Id, "table", tableJson, 4);
+
+        await using (var db = CreateDbContext())
+        {
+            var row = await db.Documents.FirstAsync(d => d.Id == notes.Id);
+            row.LatexDocumentClass = "report";
+            row.Look = $$$"""{"theme":"index","paper":"theme","pins":{"{{{matrices.Id}}}":7}}""";
+            (await db.Documents.FirstAsync(d => d.Id == essay.Id)).Look = """{"theme":"cerulean","paper":"theme","pins":{}}""";
+            await db.SaveChangesAsync();
+        }
+        foreach (var (doc, block) in new[] { (notes.Id, inNotes.Id), (essay.Id, inEssay.Id), (paper.Id, inPaper.Id) })
+            (await Api.PostAsync($"/api/tables/{tableId}/documents/{doc}?blockId={block}", null))
+                .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // A paper this caller cannot read: counted, never described.
+        var stranger = $"themes-other-{Guid.NewGuid():N}"[..28];
+        await SeedUserAsync(stranger);
+        var hidden = await SeedDocumentAsync(stranger, "Someone else's");
+        await using (var db = CreateDbContext())
+        {
+            db.DocumentTables.Add(new Lilia.Core.Entities.DocumentTable { Id = Guid.NewGuid(), DocumentId = hidden.Id, TableId = tableId });
+            await db.SaveChangesAsync();
+        }
+
+        var usage = JsonDocument.Parse(await Api.GetStringAsync($"/api/tables/{tableId}/documents")).RootElement;
+        usage.GetProperty("total").GetInt32().Should().Be(4);
+        var visible = usage.GetProperty("visible").EnumerateArray().ToDictionary(v => v.GetProperty("documentId").GetGuid());
+        visible.Should().HaveCount(3).And.NotContainKey(hidden.Id);
+
+        var n = visible[notes.Id];
+        n.GetProperty("look").GetProperty("theme").GetString().Should().Be("index");
+        n.GetProperty("sectionNumber").GetString().Should().Be("2", "the table sits in chapter 2");
+        n.GetProperty("sectionColour").GetString().Should().Be("#2E6E9E", "chapter 2 is pinned to the eighth colour");
+
+        var e = visible[essay.Id];
+        e.GetProperty("look").GetProperty("theme").GetString().Should().Be("cerulean");
+        e.GetProperty("sectionNumber").ValueKind.Should().Be(JsonValueKind.Null, "under an unnumbered heading");
+        e.GetProperty("sectionColour").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var p = visible[paper.Id];
+        p.GetProperty("look").ValueKind.Should().Be(JsonValueKind.Null, "Classic");
+        p.GetProperty("sectionNumber").GetString().Should().Be("A", "appendix sections are lettered");
+        p.GetProperty("sectionColour").ValueKind.Should().Be(JsonValueKind.Null, "only Index has section colours");
+    }
 }
