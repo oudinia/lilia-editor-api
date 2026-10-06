@@ -98,6 +98,10 @@ public static class ThemeSections
                 if (level == topLevel && numbered) Numbered();
                 else if (level <= topLevel) current = SectionPlace.None;
             }
+            else if (IsAppendixBlock(block))
+            {
+                appendix = true; a = 0;
+            }
             else if (string.Equals(block.Type, "embed", StringComparison.OrdinalIgnoreCase) && EmbedCode(block) is { } code)
             {
                 foreach (Match m in EmbedCommand.Matches(code))
@@ -139,6 +143,29 @@ public static class ThemeSections
         var s = "";
         for (; n > 0; n = (n - 1) / 26) s = (char)('A' + (n - 1) % 26) + s;
         return s;
+    }
+
+    /// <summary>The block starts the appendices: the Appendix block, or an embed that prints \appendix.</summary>
+    public static bool StartsAppendix(Block block) =>
+        IsAppendixBlock(block)
+        || (string.Equals(block.Type, "embed", StringComparison.OrdinalIgnoreCase)
+            && EmbedCode(block) is { } code
+            && EmbedCommand.Matches(code).Any(m => m.Groups["cmd"].Value == "appendix"));
+
+    /// <summary>The Appendix back-matter block, which prints <c>\appendix</c>.</summary>
+    public static bool IsAppendixBlock(Block block)
+    {
+        if (!string.Equals(block.Type, "backMatter", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            return block.Content.RootElement.TryGetProperty("subType", out var t)
+                && t.ValueKind == System.Text.Json.JsonValueKind.String
+                && string.Equals(t.GetString(), "appendix", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static bool IsHeading(Block block) =>

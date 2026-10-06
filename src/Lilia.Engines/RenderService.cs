@@ -1372,6 +1372,9 @@ public partial class RenderService : IRenderService
                 "photo" => RenderPhotoToLatex(content),
                 "cvsection" => RenderCvSectionToLatex(content),
                 "cventry" => RenderCvEntryToLatex(content),
+                // The Appendix back-matter block starts the appendices: chapters or sections
+                // after it are lettered A, B… (and Index restarts its colours there).
+                "backmatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
                 _ => $"% Unknown block type: {block.Type}"
             };
         }

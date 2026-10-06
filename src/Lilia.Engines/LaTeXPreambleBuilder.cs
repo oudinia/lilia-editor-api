@@ -589,6 +589,9 @@ public static class LaTeXPreambleBuilder
             var number = 0;
             foreach (var block in blocks)
             {
+                // Appendices take the plain sequence and their counter restarts, so a pin past
+                // this point would name a main chapter's number.
+                if (Themes.ThemeSections.StartsAppendix(block)) break;
                 if (!IsNumberedTopHeading(block)) continue;
                 number++;
                 if (look.Pins.TryGetValue(block.Id.ToString(), out var k))

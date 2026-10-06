@@ -435,6 +435,46 @@ public class DocumentThemePhase2Tests : IDisposable
     }
 
     [Fact]
+    public void The_appendix_block_starts_the_appendices_like_an_embedded_appendix()
+    {
+        // Lilia's Appendix back-matter block prints \appendix, so the numbering and the Index
+        // colours restart after it exactly as after an embed that prints \appendix.
+        var one = H("One");
+        var t1 = Table(5);
+        var tA = Table(5);
+        var appendix = B("backMatter", new { subType = "appendix", text = "" });
+        var places = Places("report", """{"theme":"index"}""", one, t1, appendix, H("Proofs"), tA);
+        places[t1.Id].Should().Be(new SectionPlace("1", "#4A5FA3"));
+        places[tA.Id].Should().Be(new SectionPlace("A", "#4A5FA3"));
+    }
+
+    [Fact]
+    public void A_pin_after_the_appendix_is_not_written_so_it_cannot_colour_a_main_chapter()
+    {
+        var main = H("Main");
+        var proofs = H("Proofs");
+        var doc = Doc($$$"""{"theme":"index","pins":{"{{{main.Id}}}":3,"{{{proofs.Id}}}":5}}""", "report");
+        var appendix = B("backMatter", new { subType = "appendix", text = "" });
+        var line = LaTeXPreambleBuilder.BuildThemeLine(doc, [main, H("Second"), appendix, proofs]);
+        line.Should().Contain(@"\liliaPinColour{1}{3}");
+        line.Should().NotContain(@"{5}", "appendix A would be written as chapter 3's number");
+    }
+
+    [Fact]
+    public void The_appendix_block_prints_appendix_in_the_export_and_the_preview_and_other_back_matter_does_not()
+    {
+        var appendix = B("backMatter", new { subType = "appendix", text = "" });
+        var glossary = B("backMatter", new { subType = "glossary", text = "" });
+        var tex = new LaTeXExportService(null!, null!, NullLogger<LaTeXExportService>.Instance)
+            .BuildSingleFileLatex(Doc(null, "report"), [H("One"), appendix, H("Proofs")], [], new LaTeXExportOptions());
+        tex.Should().MatchRegex(@"\\chapter\{One\}[\s\S]*\\appendix[\s\S]*\\chapter\{Proofs\}");
+
+        var render = new RenderService(null!, NullLogger<RenderService>.Instance);
+        render.RenderBlockToLatex(appendix).Trim().Should().Be(@"\appendix");
+        render.RenderBlockToLatex(glossary).Should().NotContain(@"\appendix");
+    }
+
+    [Fact]
     public void Unpinned_chapters_skip_the_colours_pins_took()
     {
         var one = H("One");

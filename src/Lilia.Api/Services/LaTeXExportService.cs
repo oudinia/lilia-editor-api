@@ -837,6 +837,8 @@ public class LaTeXExportService : ILaTeXExportService
                 "footnote" => RenderFootnote(content),
                 "abstract" => "", // handled separately
                 "bibliography" => "", // handled via .bib file
+                // The Appendix back-matter block starts the appendices (see RenderService).
+                "backMatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
                 _ => RenderUnknownBlock(block),
             };
         }
