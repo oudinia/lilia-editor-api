@@ -2099,13 +2099,10 @@ public partial class RenderService : IRenderService
                     // \textbf{\textbf{Ours}} — which compiles and renders the
                     // same, but is not what anyone wrote, and it is the first
                     // thing they see when they read the source.
-                    var escaped = LatexText.EscapeCell(cellText);
                     // Bold once, and never around maths — \textbf does not reach
                     // inside $…$, so wrapping it changes nothing and leaves a
                     // no-op in source the author reads.
-                    var rendered = LatexText.IsWhollyBold(escaped) || LatexText.IsWhollyMaths(escaped)
-                        ? escaped
-                        : $@"\textbf{{{escaped}}}";
+                    var rendered = LatexText.HeaderCell(cellText);
 
                     // \liliaTableHead inside any \multicolumn, which must come first in its cell.
                     rendered = WrapLatexSpans(LatexText.TableHead(rendered), colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
