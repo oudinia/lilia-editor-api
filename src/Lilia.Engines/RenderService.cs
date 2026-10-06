@@ -1999,21 +1999,24 @@ public partial class RenderService : IRenderService
             // Compose the spec — paragraph cells need {width}; bare l/c/r
             // pass through. Missing widths fall back to 'l' rather than
             // emitting a malformed `p{}` that crashes pdflatex.
-            var colSpecBuilder = new StringBuilder();
+            var colLetters = new string[colCount];
             for (var i = 0; i < colCount; i++)
             {
                 var a = colAlignments[i];
                 if (a is "p" or "m" or "b")
                 {
                     var w = i < colWidths.Length ? colWidths[i] : "";
-                    colSpecBuilder.Append(string.IsNullOrWhiteSpace(w) ? "l" : $"{a}{{{w}}}");
+                    colLetters[i] = string.IsNullOrWhiteSpace(w) ? "l" : $"{a}{{{w}}}";
                 }
                 else
                 {
-                    colSpecBuilder.Append(a);
+                    colLetters[i] = a;
                 }
             }
-            var colSpec = colSpecBuilder.ToString();
+            // The table's own meaning (2g): decimal alignment as an siunitx S column, the unit
+            // in the header, the best value in bold. See TableColumnFormat.
+            var plan = TableColumnFormat.Plan(content, colCount, hasHeaders);
+            var colSpec = plan.ApplyToSpec(colLetters);
 
             // Build a rowspan tracker: coveredCells[row][col] = true if covered by a previous multirow
             var totalRows = (hasHeaders ? 1 : 0) + rowList.Count;
@@ -2085,7 +2088,7 @@ public partial class RenderService : IRenderService
                     if (colIdx >= colCount) break;
                     if (coveredCells[currentRowIndex, colIdx]) { colIdx++; headerCells.Add(""); continue; }
 
-                    var cellText = GetCellText(h);
+                    var cellText = plan.HeaderText(colIdx, GetCellText(h));
                     var colspan = GetCellIntProp(h, "colspan", 1);
                     var rowspan = GetCellIntProp(h, "rowspan", 1);
                     // Bold once. A cell the author already bolded arrives as
@@ -2103,7 +2106,8 @@ public partial class RenderService : IRenderService
 
                     // \liliaTableHead inside any \multicolumn, which must come first in its cell.
                     rendered = WrapLatexSpans(LatexText.TableHead(rendered), colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
-                    headerCells.Add(rendered);
+                    // An S column reads its header as a number unless it is braced.
+                    headerCells.Add(plan.Protect(colIdx, rendered));
                     colIdx += Math.Max(colspan, 1);
                 }
                 // Same padding as the body: a header shorter than the widest
@@ -2139,12 +2143,15 @@ public partial class RenderService : IRenderService
                         }
                         if (colIdx >= colCount) break;
 
-                        var cellText = GetCellText(cell);
+                        var cellText = plan.BodyText(colIdx, GetCellText(cell));
                         var colspan = GetCellIntProp(cell, "colspan", 1);
                         var rowspan = GetCellIntProp(cell, "rowspan", 1);
-                        var rendered = LatexText.EscapeCell(cellText);
+                        var spanned = colspan > 1 || rowspan > 1;
+                        var number = spanned ? null : plan.DecimalNumber(colIdx, cellText);
+                        var rendered = number ?? plan.BoldBest(colIdx, cellText, LatexText.EscapeCell(cellText));
 
                         rendered = WrapLatexSpans(rendered, colspan, rowspan, colAlignments[colIdx], currentRowIndex, colIdx, colCount, coveredCells);
+                        if (number is null) rendered = plan.Protect(colIdx, rendered);
                         // Guard: a cell starting with '[' immediately after a row break (\\)
                         // or a booktabs rule (\midrule/\toprule) is misparsed as an optional
                         // length argument (\\[..], \midrule[..]) → "Missing number". Lead with
@@ -2209,8 +2216,10 @@ public partial class RenderService : IRenderService
     {
         if (cell.ValueKind == JsonValueKind.String)
             return cell.GetString() ?? "";
-        if (cell.ValueKind == JsonValueKind.Object && cell.TryGetProperty("text", out var t))
-            return t.GetString() ?? "";
+        // The table tool writes {content}; imports wrote {text}. Reading only `text`
+        // printed every cell the tool had saved as empty.
+        if (cell.ValueKind == JsonValueKind.Object)
+            return TableColumnFormat.CellText(cell);
         return "";
     }
 

@@ -2348,6 +2348,15 @@ public class LatexParser : ILatexParser
         if (string.IsNullOrWhiteSpace(raw)) return raw;
         var s = CrossReference.Replace(raw, "$1");
 
+        // 0. Lilia's own table markup, so a table it wrote reads back as its cells: the header
+        //    hooks a document theme restyles (\liliaHeadRow, \liliaTableHead{…}), the braces an
+        //    siunitx S column needs around its text cells, and a percent braced after a number.
+        s = Regex.Replace(s, @"\\liliaHeadRow\b\s*", "").Trim();
+        if (s.StartsWith('{') && ExtractBraceBody(s, 0) is { } whole && whole.EndExclusive == s.Length)
+            s = whole.Content.Trim();
+        s = UnwrapBraceArgCommand(s, "liliaTableHead");
+        s = s.Replace(@"{\%}", @"\%");
+
         // 1. Standalone font shape/series/family commands — apply to
         //    following text in LaTeX, no semantic value in plain cell text.
         s = Regex.Replace(s, @"\\(itshape|bfseries|rmfamily|sffamily|ttfamily|upshape|slshape|scshape|mdseries|normalfont)\b\s*", "");
