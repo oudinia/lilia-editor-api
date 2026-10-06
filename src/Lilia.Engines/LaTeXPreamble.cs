@@ -499,6 +499,24 @@ public static partial class LaTeXPreamble
 ";
 
     /// <summary>
+    /// The theorem environments for the class actually emitted. Beamer defines theorem, lemma,
+    /// corollary, definition and example itself (styled as its blocks), so redeclaring them failed
+    /// every beamer compile with "Command \theorem already defined" before \begin{document}. In a
+    /// beamer document each is declared only where the class has not; every other class gets
+    /// <see cref="TheoremEnvironments"/> unchanged.
+    /// </summary>
+    public static string TheoremEnvironmentsFor(string? className) =>
+        string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase)
+            ? GuardedTheoremEnvironments.Value
+            : TheoremEnvironments;
+
+    private static readonly Lazy<string> GuardedTheoremEnvironments = new(() =>
+        "\\makeatletter\n"
+        + Regex.Replace(TheoremEnvironments, @"^(\\newtheorem\*?\{([^}]+)\}.*)$",
+            m => $"\\@ifundefined{{{m.Groups[2].Value}}}{{{m.Groups[1].Value}}}{{}}", RegexOptions.Multiline)
+        + "\\makeatother\n");
+
+    /// <summary>
     /// The (lowercase, unstarred) theorem environments declared in
     /// <see cref="TheoremEnvironments"/>. The canonical set a block's
     /// theoremType may map onto.

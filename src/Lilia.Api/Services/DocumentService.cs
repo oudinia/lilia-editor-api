@@ -645,8 +645,11 @@ public class DocumentService : IDocumentService
     /// <summary>
     /// Validate <see cref="UpdateDocumentDto.Look"/>. Absent or null: no change. Classic without
     /// table settings clears the column. Anything else must be a known, available theme (or
-    /// Classic with table settings) on a class that does not lock the look; otherwise
-    /// <see cref="DocumentLookException"/> (400) says what is valid.
+    /// Classic with table settings) that the class may use (<see cref="ThemeLock.ThemesFor"/>,
+    /// the document's <c>lookThemes</c>); otherwise <see cref="DocumentLookException"/> (400) says
+    /// what is valid. A beamer document takes Classic or Exposition, and Exposition is for beamer
+    /// only. A PUT that changes the class without a look is never refused: the stored look is
+    /// kept and a theme the new class cannot use prints as Classic (DocumentLook.ForClass).
     /// </summary>
     internal static (bool Apply, string? Stored) ResolveLookUpdate(UpdateDocumentDto dto, string? documentClass)
     {
@@ -661,6 +664,7 @@ public class DocumentService : IDocumentService
             if (look.IsClassic && !look.HasTableOptions) return (true, look.ToStorage());
             throw new DocumentLookException(look.IsClassic ? $"{locked} Its tables stay ruled." : locked);
         }
+        if (ThemeLock.WhyNot(documentClass, look.Theme) is { } wrongClass) throw new DocumentLookException(wrongClass);
         if (look.IsClassic) return (true, look.ToStorage());
         if (ThemeAvailability.WhyUnavailable(look.Theme) is { } why) throw new DocumentLookException(why);
         return (true, look.ToStorage());
@@ -1351,7 +1355,8 @@ public class DocumentService : IDocumentService
             FooterCenter: d.FooterCenter,
             FooterRight: d.FooterRight,
             Look: ReadLook(d.Look),
-            LookLocked: ThemeLock.Reason(d.LatexDocumentClass)
+            LookLocked: ThemeLock.Reason(d.LatexDocumentClass),
+            LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass)
         );
     }
 

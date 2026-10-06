@@ -320,7 +320,9 @@ public class DocumentThemePhase2Tests : IDisposable
     [Fact]
     public void Every_built_theme_has_table_colours()
     {
-        ThemeCatalog.All.Where(t => t.IsBuilt).Should().OnlyContain(t => t.Table != null);
+        // Beamer themes take no table settings (Look -> Tables is ignored for beamer).
+        ThemeCatalog.All.Where(t => t.IsBuilt && !t.IsBeamerTheme).Should().OnlyContain(t => t.Table != null);
+        ThemeCatalog.Find("exposition")!.Table.Should().BeNull();
     }
 
     [Theory]

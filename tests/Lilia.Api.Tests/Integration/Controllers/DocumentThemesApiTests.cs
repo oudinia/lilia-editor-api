@@ -76,8 +76,10 @@ public class DocumentThemesApiTests : IntegrationTestBase
             t.GetProperty("available").GetBoolean().Should().BeTrue("this machine has ebgaramond, josefin and montserrat");
         }
         var exposition = themes.EnumerateArray().Single(x => x.GetProperty("id").GetString() == "exposition");
-        exposition.GetProperty("available").GetBoolean().Should().BeFalse();
-        exposition.GetProperty("status").GetString().Should().Be("planned");
+        exposition.GetProperty("available").GetBoolean().Should().BeTrue("this machine has beamer, montserrat, josefin and tikz");
+        exposition.GetProperty("status").GetString().Should().Be("ready");
+        exposition.GetProperty("classes").EnumerateArray().Select(c => c.GetString()).Should().Equal("beamer");
+        index.GetProperty("classes").ValueKind.Should().Be(JsonValueKind.Null, "classes is written as null for a document theme");
     }
 
     [Fact]
@@ -85,6 +87,8 @@ public class DocumentThemesApiTests : IntegrationTestBase
     {
         var sty = await Api.GetStringAsync("/api/themes/lilia-theme.sty");
         sty.Should().Contain(@"\ProvidesPackage{lilia-theme}");
+        var expo = await Api.GetStringAsync("/api/themes/beamerthemeLiliaExposition.sty");
+        expo.Should().Contain(@"\ProvidesPackage{beamerthemeLiliaExposition}");
     }
 
     [Fact]
@@ -93,6 +97,8 @@ public class DocumentThemesApiTests : IntegrationTestBase
         var doc = await GetDocAsync(await SeedNotesAsync());
         doc.GetProperty("look").ValueKind.Should().Be(JsonValueKind.Null);
         doc.GetProperty("lookLocked").ValueKind.Should().Be(JsonValueKind.Null);
+        doc.GetProperty("lookThemes").EnumerateArray().Select(t => t.GetString())
+            .Should().Equal("classic", "cerulean", "index", "carnet", "gazette");
     }
 
     [Fact]
@@ -119,7 +125,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
     [InlineData("""{"theme":"neon"}""", "Valid values: classic, cerulean, index")]
     [InlineData("""{"theme":"index","paper":"cream"}""", "Valid values: theme, white")]
     [InlineData("""{"theme":"index","pins":{"b1":9}}""", "from 0 to 7")]
-    [InlineData("""{"theme":"exposition"}""", "planned")]
+    [InlineData("""{"theme":"exposition"}""", "Exposition is a beamer theme: switch the class to beamer to use it.")]
     public async Task Put_refuses_an_invalid_look_with_400_and_the_valid_values(string look, string named)
     {
         var id = await SeedNotesAsync();
@@ -137,8 +143,9 @@ public class DocumentThemesApiTests : IntegrationTestBase
     {
         var id = await SeedNotesAsync("IEEEtran");
 
-        (await GetDocAsync(id)).GetProperty("lookLocked").GetString()
-            .Should().Be("IEEEtran sets its own look, so themes are off for this document.");
+        var doc = await GetDocAsync(id);
+        doc.GetProperty("lookLocked").GetString().Should().Be("IEEEtran sets its own look, so themes are off for this document.");
+        doc.GetProperty("lookThemes").EnumerateArray().Select(t => t.GetString()).Should().Equal("classic");
         var refused = await PutLookAsync(id, new { theme = "cerulean" });
         refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await refused.Content.ReadAsStringAsync()).Should().Contain("IEEEtran sets its own look");
@@ -172,8 +179,9 @@ public class DocumentThemesApiTests : IntegrationTestBase
 
         var unknown = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=neon");
         unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var planned = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=exposition");
-        planned.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var beamerOnly = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=exposition");
+        beamerOnly.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await beamerOnly.Content.ReadAsStringAsync()).Should().Contain("Exposition is a beamer theme");
     }
 
     [Fact]
@@ -197,6 +205,92 @@ public class DocumentThemesApiTests : IntegrationTestBase
         line.Should().BePositive();
         tex.IndexOf(@"\newcommand{\R}", StringComparison.Ordinal).Should().BeGreaterThan(line);
         tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}}");
+    }
+
+    // ── phase 3: Exposition, the beamer theme ────────────────────────────
+
+    private async Task<Guid> SeedDeckAsync()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Neutrino oscillations");
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Mixing","level":1}""", 0);
+        await SeedBlockAsync(doc.Id, "slide", """{"title":"The mixing matrix","content":"Quartz zebra slide."}""", 1);
+        await SeedBlockAsync(doc.Id, "slide", """{"title":"Accuracy","content":"Muted owl closes the deck."}""", 2);
+        await using var db = CreateDbContext();
+        (await db.Documents.FirstAsync(d => d.Id == doc.Id)).LatexDocumentClass = "beamer";
+        await db.SaveChangesAsync();
+        return doc.Id;
+    }
+
+    [Fact]
+    public async Task A_beamer_deck_takes_classic_or_exposition()
+    {
+        var id = await SeedDeckAsync();
+
+        var doc = await GetDocAsync(id);
+        doc.GetProperty("lookLocked").ValueKind.Should().Be(JsonValueKind.Null, "the beamer lock is lifted");
+        doc.GetProperty("lookThemes").EnumerateArray().Select(t => t.GetString()).Should().Equal("classic", "exposition");
+
+        var refused = await PutLookAsync(id, new { theme = "cerulean" });
+        refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Beamer decks take Classic or Exposition.");
+
+        (await PutLookAsync(id, new { theme = "exposition" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GetDocAsync(id)).GetProperty("look").GetProperty("theme").GetString().Should().Be("exposition");
+
+        // The .zip carries the beamer theme (and not lilia-theme.sty); the .tex loads it with one line.
+        var zip = await Api.GetByteArrayAsync($"/api/documents/{id}/export/latex");
+        using (var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip)))
+        {
+            var names = archive.Entries.Select(e => e.FullName).ToList();
+            names.Should().Contain("beamerthemeLiliaExposition.sty").And.NotContain("lilia-theme.sty");
+        }
+        var tex = await Api.GetStringAsync($"/api/documents/{id}/export/latex?mode=tex");
+        tex.Should().Contain(@"\usetheme{LiliaExposition}").And.Contain(@"\begin{frame}{The mixing matrix}");
+
+        // A Classic deck's .zip carries no theme file.
+        (await PutLookAsync(id, new { theme = "classic" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        var plainZip = await Api.GetByteArrayAsync($"/api/documents/{id}/export/latex");
+        using (var archive = new System.IO.Compression.ZipArchive(new MemoryStream(plainZip)))
+            archive.Entries.Select(e => e.FullName).Should().NotContain(n => n.EndsWith(".sty"));
+    }
+
+    [Fact]
+    public async Task A_class_switch_keeps_exposition_and_prints_classic_until_switched_back()
+    {
+        var id = await SeedDeckAsync();
+        (await PutLookAsync(id, new { theme = "exposition", paper = "white" })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // To article: never refused; the look is kept, the LaTeX is Classic.
+        (await Api.PutAsJsonAsync($"/api/documents/{id}", new { documentClass = "article" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        var doc = await GetDocAsync(id);
+        doc.GetProperty("look").GetProperty("theme").GetString().Should().Be("exposition");
+        doc.GetProperty("lookThemes").EnumerateArray().Select(t => t.GetString()).Should().NotContain("exposition");
+        var tex = await Api.GetStringAsync($"/api/documents/{id}/export/latex?mode=tex");
+        tex.Should().NotContain("LiliaExposition").And.NotContain("{lilia-theme}");
+
+        // Back to beamer: Exposition again, print-safe as stored.
+        (await Api.PutAsJsonAsync($"/api/documents/{id}", new { documentClass = "beamer" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        tex = await Api.GetStringAsync($"/api/documents/{id}/export/latex?mode=tex");
+        tex.Should().Contain(@"\usetheme[printsafe]{LiliaExposition}");
+    }
+
+    [Fact]
+    public async Task The_preview_and_the_export_compile_an_exposition_deck()
+    {
+        var id = await SeedDeckAsync();
+        (await PutLookAsync(id, new { theme = "exposition" })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var preview = await Api.PostAsync($"/api/latex/{id}/pdf", null);
+        preview.StatusCode.Should().Be(HttpStatusCode.OK, await preview.Content.ReadAsStringAsync());
+        Encoding.Latin1.GetString(await preview.Content.ReadAsByteArrayAsync(), 0, 5).Should().StartWith("%PDF");
+
+        var export = await Api.GetAsync($"/api/documents/{id}/export/pdf?printSafe=true");
+        export.StatusCode.Should().Be(HttpStatusCode.OK, await export.Content.ReadAsStringAsync());
+        export.Headers.GetValues("X-Render-Engine").Single().Should().NotBe("typst");
+
+        var wrong = await Api.GetAsync($"/api/documents/{id}/export/pdf?look=index");
+        wrong.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await wrong.Content.ReadAsStringAsync()).Should().Contain("Beamer decks take Classic or Exposition.");
     }
 
     // ── phase 2: table settings, the lists ───────────────────────────────

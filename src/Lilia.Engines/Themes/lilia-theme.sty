@@ -9,7 +9,8 @@
 %% never through font file paths.
 %%
 %% Options
-%%   theme        = classic | cerulean | index | carnet | gazette   (exposition: planned)
+%%   theme        = classic | cerulean | index | carnet | gazette   (exposition is a beamer
+%%                                              theme: \usetheme{LiliaExposition})
 %%   paper        = theme | white             (Carnet's cream and Gazette's yellow are
 %%                                              screen colours: white prints them on white)
 %%   printsafe    = true | false              (white paper, dark grounds to their light pair)
@@ -78,8 +79,8 @@
 \iflilia@known\else
   \ifx\lilia@theme\lilia@theme@exposition \lilia@plannedtrue \fi
   \iflilia@planned
-    \PackageError{lilia-theme}{Theme `\lilia@theme' is planned but not built yet}%
-      {Use theme=classic, cerulean, index, carnet or gazette.}%
+    \PackageError{lilia-theme}{Theme `\lilia@theme' is a beamer theme, not a package option}%
+      {In a beamer document write \string\usetheme\string{LiliaExposition\string}; elsewhere use theme=classic, cerulean, index, carnet or gazette.}%
   \else
     \PackageError{lilia-theme}{Unknown theme `\lilia@theme'}%
       {The themes are classic, cerulean, index, carnet and gazette.}%

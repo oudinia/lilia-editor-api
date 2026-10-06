@@ -157,6 +157,10 @@ public class ExportController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeAvailability.WhyUnavailable(look) is { } whyNot)
             return BadRequest(new { message = whyNot, error = "invalid_look" });
+        // A theme this class cannot use (Exposition on article, a document theme on beamer) is
+        // refused as PUT refuses it, never printed as Classic in its place.
+        if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeLock.WhyNot(document.LatexDocumentClass, look) is { } wrongClass)
+            return BadRequest(new { message = wrongClass, error = "invalid_look" });
 
         _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId} (engine={Engine}, look={Look}, printSafe={PrintSafe})",
             docId, userId, engine, look ?? "document", printSafe);

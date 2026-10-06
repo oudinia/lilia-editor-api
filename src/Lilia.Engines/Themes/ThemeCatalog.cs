@@ -33,10 +33,17 @@ public sealed record ThemeDescriptor(
     IReadOnlyList<string>? Sequence,
     string TablesDefault,
     IReadOnlyList<string> TexFiles,
-    ThemeTable? Table = null)
+    ThemeTable? Table = null,
+    IReadOnlyList<string>? Classes = null)
 {
-    /// <summary>Built in <c>lilia-theme.sty</c>. Planned themes are listed but never compile.</summary>
+    /// <summary>
+    /// Built: in <c>lilia-theme.sty</c>, or for a beamer theme in its own
+    /// <c>beamertheme….sty</c>. Planned themes are listed but never compile.
+    /// </summary>
     public bool IsBuilt => string.Equals(Status, "ready", StringComparison.Ordinal);
+
+    /// <summary>A beamer theme (<c>classes: ["beamer"]</c>): loaded with <c>\usetheme</c>, for beamer only.</summary>
+    public bool IsBeamerTheme => Classes?.Contains(ThemeLock.Beamer, StringComparer.OrdinalIgnoreCase) == true;
 }
 
 /// <summary>
@@ -50,6 +57,11 @@ public static class ThemeCatalog
     public const string Classic = "classic";
     public const string StyFileName = "lilia-theme.sty";
     public const string PackageName = "lilia-theme";
+
+    /// <summary>Exposition, the beamer theme: <c>\usetheme{LiliaExposition}</c>.</summary>
+    public const string Exposition = "exposition";
+    public const string ExpositionBeamerTheme = "LiliaExposition";
+    public const string ExpositionStyFileName = "beamerthemeLiliaExposition.sty";
 
     /// <summary>The colours an Index paper's chapters take, in order.</summary>
     public const int SequenceLength = 8;
@@ -68,6 +80,8 @@ public static class ThemeCatalog
 
     private static readonly Lazy<string> Sty = new(() => ReadResource("Lilia.Engines.Themes.lilia-theme.sty"));
 
+    private static readonly Lazy<string> ExpositionSty = new(() => ReadResource("Lilia.Engines.Themes.beamerthemeLiliaExposition.sty"));
+
     public static IReadOnlyList<ThemeDescriptor> All => Catalog.Value.Themes;
 
     /// <summary>The Index sequence, <c>#RRGGBB</c>.</summary>
@@ -81,6 +95,9 @@ public static class ThemeCatalog
     /// <summary>The source of <c>lilia-theme.sty</c>.</summary>
     public static string StySource => Sty.Value;
 
+    /// <summary>The source of <c>beamerthemeLiliaExposition.sty</c> (Olivia's, 6 Oct 2026).</summary>
+    public static string ExpositionStySource => ExpositionSty.Value;
+
     /// <summary>
     /// Whether this LaTeX loads the theme package, so a compile has to carry the .sty beside it.
     /// </summary>
@@ -88,14 +105,33 @@ public static class ThemeCatalog
         !string.IsNullOrEmpty(latex) && latex.Contains("{" + PackageName + "}", StringComparison.Ordinal);
 
     /// <summary>
-    /// Write <c>lilia-theme.sty</c> into a compile directory when the source loads it and the
-    /// directory does not already have one (an exported project carries its own copy).
+    /// Whether this LaTeX loads the Exposition beamer theme (<c>\usetheme{LiliaExposition}</c>,
+    /// with or without <c>[printsafe]</c>), so a compile has to carry its .sty beside it.
+    /// </summary>
+    public static bool UsesExposition(string? latex) =>
+        !string.IsNullOrEmpty(latex) && latex.Contains("{" + ExpositionBeamerTheme + "}", StringComparison.Ordinal);
+
+    /// <summary>The theme files this LaTeX loads, by file name: what a compile or a .zip must carry.</summary>
+    public static IReadOnlyList<(string FileName, string Source)> FilesUsedBy(string? latex)
+    {
+        var files = new List<(string, string)>();
+        if (UsesThemePackage(latex)) files.Add((StyFileName, StySource));
+        if (UsesExposition(latex)) files.Add((ExpositionStyFileName, ExpositionStySource));
+        return files;
+    }
+
+    /// <summary>
+    /// Write the theme files (<c>lilia-theme.sty</c>, <c>beamerthemeLiliaExposition.sty</c>) into a
+    /// compile directory when the source loads them and the directory does not already have them
+    /// (an exported project carries its own copy).
     /// </summary>
     public static void StageIfUsed(string latex, string directory)
     {
-        if (!UsesThemePackage(latex)) return;
-        var path = Path.Combine(directory, StyFileName);
-        if (!File.Exists(path)) File.WriteAllText(path, StySource);
+        foreach (var (name, source) in FilesUsedBy(latex))
+        {
+            var path = Path.Combine(directory, name);
+            if (!File.Exists(path)) File.WriteAllText(path, source);
+        }
     }
 
     private static string ReadResource(string name)

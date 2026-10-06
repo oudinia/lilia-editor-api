@@ -1073,7 +1073,7 @@ public partial class RenderService : IRenderService
 
         latex.AppendLine();
 
-        latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc)));
 
         // The document theme, as the full-document path writes it. Left out (not failed) when this
         // server cannot compile it: validation should not mark every block for a font problem.
@@ -1135,6 +1135,16 @@ public partial class RenderService : IRenderService
             throw new ArgumentException("Document not found");
         }
 
+        return RenderToLatex(doc, longtableBlocks);
+    }
+
+    /// <summary>
+    /// The full document LaTeX (preview, validation context) for a document already loaded with
+    /// its blocks in order and its bibliography entries. <see cref="RenderToLatexAsync(Guid, IReadOnlySet{Guid}?)"/>
+    /// loads the document and calls this; the theme compile tests call it directly.
+    /// </summary>
+    public string RenderToLatex(Document doc, IReadOnlySet<Guid>? longtableBlocks = null)
+    {
         // Pre-render blocks so the engine detector can scan their LaTeX
         // before we build the preamble. Detector also looks at imported
         // packages (\usepackage{fontspec} etc.) and the explicit
@@ -1201,7 +1211,7 @@ public partial class RenderService : IRenderService
         latex.AppendLine();
 
         // Theorem environments
-        latex.AppendLine(LaTeXPreamble.TheoremEnvironments);
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc)));
 
         // The document theme (Document settings → Look): one managed line, just before the custom
         // preamble so the author's settings win. Empty for Classic and for classes that set their
@@ -1708,56 +1718,10 @@ public partial class RenderService : IRenderService
     private static string JsonStr(JsonElement el, string prop) =>
         el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
-    private string RenderSlideToLatex(JsonElement content)
-    {
-        // Emits a Beamer frame. Only valid when the document class is
-        // beamer — the class-aware shim chooses the class; if the user
-        // mixes slide blocks into an article doc, LaTeX will complain
-        // and the block falls through as an unsupported env. That's an
-        // acceptable v1 trade-off; full "auto-switch to beamer when
-        // >50% of blocks are slides" is a follow-on.
-        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-        var subtitle = content.TryGetProperty("subtitle", out var s) ? s.GetString() ?? "" : "";
-        var body = content.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
-        var notes = content.TryGetProperty("notes", out var n) ? n.GetString() ?? "" : "";
-        var layout = content.TryGetProperty("layout", out var l) ? l.GetString() ?? "default" : "default";
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append("\\begin{frame}");
-        if (!string.IsNullOrWhiteSpace(title))
-            sb.Append('{').Append(EscapeLatex(title)).Append('}');
-        if (!string.IsNullOrWhiteSpace(subtitle))
-            sb.Append('{').Append(EscapeLatex(subtitle)).Append('}');
-        sb.AppendLine();
-
-        var rendered = ProcessLatexText(body);
-        switch (layout)
-        {
-            case "centered":
-                sb.AppendLine("\\centering").AppendLine(rendered);
-                break;
-            case "title-only":
-                // Body suppressed for title-only slides.
-                break;
-            case "two-column":
-                // Split on the first line containing "---" (user convention).
-                var split = rendered.Split(new[] { "\n---\n" }, 2, StringSplitOptions.None);
-                sb.AppendLine("\\begin{columns}");
-                sb.AppendLine("\\column{0.5\\textwidth}").AppendLine(split[0]);
-                if (split.Length > 1)
-                    sb.AppendLine("\\column{0.5\\textwidth}").AppendLine(split[1]);
-                sb.AppendLine("\\end{columns}");
-                break;
-            default:
-                sb.AppendLine(rendered);
-                break;
-        }
-
-        if (!string.IsNullOrWhiteSpace(notes))
-            sb.Append("\\note{").Append(ProcessLatexText(notes)).AppendLine("}");
-        sb.Append("\\end{frame}");
-        return sb.ToString();
-    }
+    private string RenderSlideToLatex(JsonElement content) =>
+        // Emits a Beamer frame. Only valid when the document class is beamer; shared with the
+        // .tex/.zip and PDF export (LaTeXExportService), which used to drop slides as unsupported.
+        SlideLatex.Frame(content, EscapeLatex, ProcessLatexText);
 
     private static readonly string[] ParagraphMathEnvironments = [
         "align", "align*", "gather", "gather*", "multline", "multline*",
