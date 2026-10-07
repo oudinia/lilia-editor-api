@@ -1064,6 +1064,8 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.BeamerShims);
         latex.AppendLine(LaTeXPreamble.NewspaperShims);
         latex.AppendLine(LaTeXPreamble.CalendarShims);
+        if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
+            latex.AppendLine(FrameOverflow.Marker);
 
         var layout = LaTeXPreambleBuilder.BuildLayoutPreamble(doc);
         if (!string.IsNullOrWhiteSpace(layout))
@@ -1199,6 +1201,9 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.BeamerShims);
         latex.AppendLine(LaTeXPreamble.NewspaperShims);
         latex.AppendLine(LaTeXPreamble.CalendarShims);
+        // A deck logs each page's frame number, so validation can name a frame that doesn't fit.
+        if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
+            latex.AppendLine(FrameOverflow.Marker);
 
         // Layout settings (margins, line spacing, paragraph indent, page
         // numbering, header/footer, font family, columns) — owned by

@@ -658,7 +658,13 @@ public class LaTeXRenderService : ILaTeXRenderService
                     // how a tabular too tall to fit reports itself; it had been
                     // filtered alongside the \hbox variants, which really are
                     // cosmetic.
-                    var overflow = SummarisePageOverflow(allWarnings);
+                    //
+                    // In a deck the overflow is a frame, and the author needs to
+                    // know which one: the deck's compile logs each frame's number
+                    // (FrameOverflow.Marker), so each frame that doesn't fit is
+                    // named instead of summarised as a page.
+                    var frames = Lilia.Engines.FrameOverflow.Messages(logContent);
+                    var overflow = frames.Count > 0 ? null : SummarisePageOverflow(allWarnings);
 
                     // Silently dropped glyphs. These never reach the filter
                     // above at all: a "Missing character:" line contains none of
@@ -671,6 +677,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                     actionableWarnings =
                     [
                         .. new[] { glyphs, overflow }.Where(w => w is not null).Select(w => w!),
+                        .. frames,
                         .. actionableWarnings,
                     ];
 
