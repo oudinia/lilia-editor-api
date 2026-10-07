@@ -693,10 +693,11 @@ public class LaTeXRenderService : ILaTeXRenderService
                     // cosmetic.
                     //
                     // In a deck the overflow is a frame, and the author needs to
-                    // know which one: the deck's compile logs each frame's number
-                    // (FrameOverflow.Marker), so each frame that doesn't fit is
-                    // named instead of summarised as a page.
-                    var frames = Lilia.Engines.FrameOverflow.Messages(logContent);
+                    // know which one: the warning's line is inside the frame's
+                    // source, which gives its number (FrameOverflow), so each
+                    // frame that doesn't fit is named instead of summarised as a
+                    // page.
+                    var frames = Lilia.Engines.FrameOverflow.Messages(latex, logContent);
                     var overflow = frames.Count > 0 ? null : SummarisePageOverflow(allWarnings);
 
                     // Silently dropped glyphs. These never reach the filter

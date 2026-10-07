@@ -1068,8 +1068,6 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.BeamerShims);
         latex.AppendLine(LaTeXPreamble.NewspaperShims);
         latex.AppendLine(LaTeXPreamble.CalendarShims);
-        if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
-            latex.AppendLine(FrameOverflow.Marker);
 
         var layout = LaTeXPreambleBuilder.BuildLayoutPreamble(doc);
         if (!string.IsNullOrWhiteSpace(layout))
@@ -1160,13 +1158,19 @@ public partial class RenderService : IRenderService
         // is long by itself (TableLayout: over 40 body rows, or marked longTable) — and only
         // when the document's column layout permits it at all — see SupportsLongtable.
         var canUseLongtable = SupportsLongtable(doc);
-        var renderedBlocks = doc.Blocks
+        // In the author's order, whoever loaded the document. The validate route loads it with
+        // its blocks unordered first (EF orders an Include by key, a random Guid), and the ordered
+        // Include in RenderToLatexAsync then finds that collection already filled on the same
+        // context and leaves it as it is: the deck compiled with its slides shuffled, and a frame
+        // that didn't fit was named by a number from the shuffled deck (7 Oct 2026).
+        var blocks = (doc.Blocks ?? new List<Block>()).OrderBy(b => b.SortOrder).ToList();
+        var renderedBlocks = blocks
             .Select(b => RenderBlockToLatex(b, canUseLongtable
                 && ((longtableBlocks?.Contains(b.Id) ?? false) || IsLongTable(b))))
             .ToList();
         // A deck's footnote blocks go inside the slide before them (SlideLatex.AttachFootnotes).
         if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
-            SlideLatex.AttachFootnotes(doc.Blocks.Select(b => b.Type).ToList(), renderedBlocks);
+            SlideLatex.AttachFootnotes(blocks.Select(b => b.Type).ToList(), renderedBlocks);
         var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
         var detectedEngine = EngineDetector.DetectDocument(renderedBlocks, importedPkgs);
         var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
@@ -1209,9 +1213,6 @@ public partial class RenderService : IRenderService
         latex.AppendLine(LaTeXPreamble.BeamerShims);
         latex.AppendLine(LaTeXPreamble.NewspaperShims);
         latex.AppendLine(LaTeXPreamble.CalendarShims);
-        // A deck logs each page's frame number, so validation can name a frame that doesn't fit.
-        if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
-            latex.AppendLine(FrameOverflow.Marker);
 
         // Layout settings (margins, line spacing, paragraph indent, page
         // numbering, header/footer, font family, columns) — owned by
@@ -1234,7 +1235,7 @@ public partial class RenderService : IRenderService
         // The document theme (Document settings → Look): one managed line, just before the custom
         // preamble so the author's settings win. Empty for Classic and for classes that set their
         // own look; throws ThemeUnavailableException when this server lacks the theme's fonts.
-        var themeLine = LaTeXPreambleBuilder.BuildThemeLine(doc, doc.Blocks);
+        var themeLine = LaTeXPreambleBuilder.BuildThemeLine(doc, blocks);
         if (!string.IsNullOrEmpty(themeLine))
         {
             latex.Append(themeLine);
@@ -1287,7 +1288,7 @@ public partial class RenderService : IRenderService
 
         // Blocks — reuse the pre-rendered LaTeX from above so we don't
         // run the (potentially expensive) per-block rendering twice.
-        var blocksList = doc.Blocks.ToList();
+        var blocksList = blocks;
         for (int i = 0; i < blocksList.Count; i++)
         {
             latex.AppendLine($"% block:{blocksList[i].Id}");
