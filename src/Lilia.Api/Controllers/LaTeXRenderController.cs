@@ -765,9 +765,21 @@ public class LaTeXRenderController : ControllerBase
             // Warnings carrying no line number name nobody: several LaTeX
             // warnings genuinely have no position, and blaming whichever block
             // came last would point the author at innocent content.
+            //
+            // A deck's frame that doesn't fit names no input line: its warning
+            // ("Frame 7 doesn't fit at this theme's size…") comes from the
+            // frame markers in the log, which also say where the frame ended,
+            // so it is linked to the slide block that wrote the frame.
+            var blockIssues = valid
+                ? FrameOverflow.InDocument(latex, result.Log)
+                    .Select(f => new { blockId = f.BlockId?.ToString(), frame = f.Frame, message = FrameOverflow.Message(f.Frame) })
+                    .ToArray()
+                : [];
             var blocksWithWarnings = LatexLineMap.Parse(latex)
                 .BlocksNamedBy(allWarnings)
                 .Select(id => id.ToString())
+                .Concat(blockIssues.Where(i => i.blockId is not null).Select(i => i.blockId!))
+                .Distinct()
                 .ToArray();
 
             return Ok(new
@@ -776,6 +788,7 @@ public class LaTeXRenderController : ControllerBase
                 error,
                 warnings = allWarnings,
                 blocksWithWarnings,
+                blockIssues,
                 durationMs = result.DurationMs,
                 engine = string.IsNullOrEmpty(result.Engine) ? null : result.Engine,
                 pageCount,
@@ -858,6 +871,24 @@ public class LaTeXRenderController : ControllerBase
             var c = block.Content.RootElement;
             var level = c.TryGetProperty("level", out var l) && l.ValueKind == System.Text.Json.JsonValueKind.Number ? l.GetInt32() : 1;
             counter = level switch { 1 => "section", 2 => "subsection", _ => null };
+        }
+
+        // A deck's slide (or an embed with its own frames), validated on its own: prime the frame
+        // counter so a frame that doesn't fit is named by its number in the deck.
+        if (type is "slide" or "embed")
+        {
+            var doc = await db.Documents.AsNoTracking()
+                .Where(d => d.Id == block.DocumentId)
+                .Select(d => new { d.LatexDocumentClass, d.CustomPreamble })
+                .FirstOrDefaultAsync();
+            if (doc is not null && Lilia.Engines.Themes.ThemeLock.IsBeamer(doc.LatexDocumentClass))
+            {
+                var earlier = await db.Blocks.AsNoTracking()
+                    .Where(b => b.DocumentId == block.DocumentId && b.SortOrder < block.SortOrder)
+                    .Where(b => new[] { "slide", "embed", "heading", "header" }.Contains(b.Type.ToLower()))
+                    .ToListAsync();
+                return $"\\setcounter{{framenumber}}{{{FrameOverflow.FramesBefore(earlier, doc.CustomPreamble)}}}";
+            }
         }
 
         if (counter is null) return string.Empty;
