@@ -35,7 +35,8 @@ public interface IAskLiliaService
     Task<AskLiliaResult> AskAsync(string userId, AskLiliaRequest request, CancellationToken ct = default);
 }
 
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null);
+/// <summary><c>Figure</c>: the TikZ figure the dock is scoped to (TikZ step 3, 1c); with it the turn reads only that figure.</summary>
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null);
 
 /// <summary>A file the author attached to the message. <see cref="DataBase64"/>
 /// is the raw file bytes, base64-encoded. Images/PDFs go to the model natively;
@@ -55,7 +56,9 @@ public sealed record AskLiliaResponse(
     /// calls — the document may be only partially updated.</summary>
     bool PartialApply = false,
     /// <summary>Resolved model id used for this turn (e.g. claude-sonnet-5).</summary>
-    string? Model = null);
+    string? Model = null,
+    /// <summary>A figure turn's proposal (drawing, change, explanation, caption), compiled first.</summary>
+    TikzAskProposal? Figure = null);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
 {
@@ -63,7 +66,7 @@ public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message
     public static AskLiliaResult Ok(AskLiliaResponse r) => new(false, null, null, r);
 }
 
-public sealed class AskLiliaService : IAskLiliaService
+public sealed partial class AskLiliaService : IAskLiliaService
 {
     private readonly IChatClient _chatClient;
     private readonly IEntitlementService _entitlement;
@@ -80,6 +83,7 @@ public sealed class AskLiliaService : IAskLiliaService
     private readonly LiliaDbContext _context;
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
+    private readonly ITikzFigureService? _tikz;
     private readonly bool _useAi;
     private readonly bool _enabled;
     private readonly bool _enforceCredits;
@@ -190,8 +194,10 @@ public sealed class AskLiliaService : IAskLiliaService
         LiliaDbContext context,
         IOptions<AiOptions> options,
         IConfiguration configuration,
-        ILogger<AskLiliaService> logger)
+        ILogger<AskLiliaService> logger,
+        ITikzFigureService? tikz = null)
     {
+        _tikz = tikz;
         _chatClient = chatClient;
         _entitlement = entitlement;
         _catalog = catalog;
@@ -253,6 +259,10 @@ public sealed class AskLiliaService : IAskLiliaService
                 return AskLiliaResult.Lock("over-budget", "You've used all your AI credits for this period.");
             _logger.LogInformation("[AskLilia] User {UserId} over budget; credit enforcement off — allowing", userId);
         }
+
+        // A turn scoped to one TikZ figure reads that figure only, and compiles what it proposes.
+        if (request.Figure is not null)
+            return await AskFigureAsync(userId, request, request.Figure, ct);
 
         // ── route + prompt ────────────────────────────────────────────────
         var route = _router.Route(request.Message);
@@ -395,14 +405,7 @@ public sealed class AskLiliaService : IAskLiliaService
         }
 
         // ── model resolution (catalog default; honour a tier-allowed override) ─
-        var model = _catalog.DefaultModelId();
-        if (!string.IsNullOrWhiteSpace(request.Model))
-        {
-            var plan = await _entitlement.GetActivePlanAsync(userId, ct);
-            var slug = plan?.Slug?.ToLowerInvariant();
-            var tier = slug is "pro" or "team" ? slug : "free";
-            if (_catalog.IsAllowedFor(request.Model, tier)) model = request.Model;
-        }
+        var model = await ResolveModelAsync(userId, request.Model, ct);
 
         // ── audit → tool-use loop → meter ─────────────────────────────────
         var aiRequestId = await PersistPendingAsync(userId, PurposeFor(skill.Id), model, messages, documentId, ct);
@@ -541,25 +544,8 @@ public sealed class AskLiliaService : IAskLiliaService
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
 
-            AiArchitectBalance? balance = null;
-            var credits = 0;
-            var creditsUsed = 0;
-            try
-            {
-                credits = await _entitlement.RecordAiSpendAsync(userId, model, inputTokens, outputTokens, aiRequestId, ct);
-                if (webSearchCredits > 0)
-                {
-                    await _entitlement.RecordAiSurchargeAsync(userId, webSearchCredits, $"{webSearches} web search(es)", aiRequestId, ct);
-                    credits += webSearchCredits;
-                }
-                var creditsLeft = await _entitlement.GetAiCreditBalanceAsync(userId, ct);
-                balance = new AiArchitectBalance(AiArchitectPricing.CreditsToUsd(creditsLeft));
-                creditsUsed = await _entitlement.GetAiCreditsConsumedAsync(userId, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[AskLilia] Credit debit failed for user {UserId}", userId);
-            }
+            var (credits, balance, creditsUsed) = await MeterAsync(userId, model, inputTokens, outputTokens, aiRequestId,
+                webSearchCredits, $"{webSearches} web search(es)", ct);
 
             var anyWrite = changed.Count > 0 || metaChanged;
             var result = new AskLiliaResponse(
@@ -578,6 +564,47 @@ public sealed class AskLiliaService : IAskLiliaService
             await MarkAsync(aiRequestId, "error", Truncate(ex.Message, 500), 0, 0, (int)sw.ElapsedMilliseconds, ct);
             throw;
         }
+    }
+
+    /// <summary>The catalog's default model, or the one asked for when the caller's tier allows it.</summary>
+    private async Task<string> ResolveModelAsync(string userId, string? requested, CancellationToken ct)
+    {
+        var model = _catalog.DefaultModelId();
+        if (!string.IsNullOrWhiteSpace(requested))
+        {
+            var plan = await _entitlement.GetActivePlanAsync(userId, ct);
+            var slug = plan?.Slug?.ToLowerInvariant();
+            var tier = slug is "pro" or "team" ? slug : "free";
+            if (_catalog.IsAllowedFor(requested, tier)) model = requested;
+        }
+        return model;
+    }
+
+    /// <summary>Debit the turn's tokens (and any surcharge) and read the balance back. Best effort: the reply is what was asked for.</summary>
+    private async Task<(int Credits, AiArchitectBalance? Balance, int CreditsUsed)> MeterAsync(
+        string userId, string model, int inputTokens, int outputTokens, Guid aiRequestId,
+        int surchargeCredits, string surchargeReason, CancellationToken ct)
+    {
+        AiArchitectBalance? balance = null;
+        var credits = 0;
+        var creditsUsed = 0;
+        try
+        {
+            credits = await _entitlement.RecordAiSpendAsync(userId, model, inputTokens, outputTokens, aiRequestId, ct);
+            if (surchargeCredits > 0)
+            {
+                await _entitlement.RecordAiSurchargeAsync(userId, surchargeCredits, surchargeReason, aiRequestId, ct);
+                credits += surchargeCredits;
+            }
+            var creditsLeft = await _entitlement.GetAiCreditBalanceAsync(userId, ct);
+            balance = new AiArchitectBalance(AiArchitectPricing.CreditsToUsd(creditsLeft));
+            creditsUsed = await _entitlement.GetAiCreditsConsumedAsync(userId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AskLilia] Credit debit failed for user {UserId}", userId);
+        }
+        return (credits, balance, creditsUsed);
     }
 
     // ── KB tool-use ───────────────────────────────────────────────────────

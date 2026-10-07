@@ -77,6 +77,15 @@ public interface ITikzFigureService
     /// </summary>
     Task<TikzRenderResult> DraftAsync(Document doc, Block block, string source, string budgetKey, FigureTheme? theme = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Draw source Ask Lilia proposes (step 3, 1c), before the author sees it: a new figure has no
+    /// block yet, so none is needed. The drafts' budget and cache, the same safety; never a block's
+    /// last good drawing or validation, and never in a draft's slot (it does not cancel the author's
+    /// own draft). <paramref name="preambleAdditions"/>: TikZ setup lines the proposal would add to
+    /// the preamble (<c>\usetikzlibrary{…}</c>), compiled as if they were there.
+    /// </summary>
+    Task<TikzRenderResult> ProposalAsync(Document doc, string source, string budgetKey, FigureTheme theme, string? preambleAdditions = null, CancellationToken ct = default);
+
     /// <summary>The last SVG this block drew, or null.</summary>
     byte[]? LastGood(Guid blockId);
 
@@ -209,6 +218,30 @@ public sealed class TikzFigureService : ITikzFigureService
         {
             Drafts.TryRemove(KeyValuePair.Create(slotKey, slot));
         }
+    }
+
+    public Task<TikzRenderResult> ProposalAsync(Document doc, string source, string budgetKey, FigureTheme theme, string? preambleAdditions = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return Task.FromResult(NoSource);
+        return DrawAsync(WithPreamble(doc, preambleAdditions), source, theme, budgetKey, DraftBudget, ct);
+    }
+
+    /// <summary>The document as it would be with these lines added to its custom preamble (in memory only).</summary>
+    internal static Document WithPreamble(Document doc, string? additions)
+    {
+        if (string.IsNullOrWhiteSpace(additions)) return doc;
+        var custom = string.IsNullOrWhiteSpace(doc.CustomPreamble) ? additions.Trim() : doc.CustomPreamble.TrimEnd() + "\n" + additions.Trim();
+        return new Document
+        {
+            Id = doc.Id,
+            OwnerId = doc.OwnerId,
+            Title = doc.Title,
+            LatexEngine = doc.LatexEngine,
+            LatexPackages = doc.LatexPackages,
+            LatexDocumentClass = doc.LatexDocumentClass,
+            Look = doc.Look,
+            CustomPreamble = custom,
+        };
     }
 
     private static readonly TikzRenderResult NoSource =
