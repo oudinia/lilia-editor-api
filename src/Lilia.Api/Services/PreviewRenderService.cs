@@ -197,7 +197,7 @@ public class PreviewRenderService : IPreviewRenderService
         try
         {
             source = _typstExporter.BuildTypstDocument(doc, blocks, layoutGroups,
-                new TypstExportOptions { LocalImagePaths = staged.Paths });
+                new TypstExportOptions { LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz });
         }
         catch (Exception ex)
         {

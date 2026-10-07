@@ -1052,6 +1052,10 @@ public partial class RenderService : IRenderService
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
         latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc)));
+        // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures (TikzFigure).
+        latex.Append(TikzFigure.PackageLines(
+            (doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
+            doc.LatexPackages, doc.CustomPreamble));
 
         var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
         if (!string.IsNullOrEmpty(engineAddendum))
@@ -1188,6 +1192,10 @@ public partial class RenderService : IRenderService
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
         latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc)));
+        // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures (TikzFigure).
+        latex.Append(TikzFigure.PackageLines(
+            (doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
+            doc.LatexPackages, doc.CustomPreamble));
         // Engine-specific addendum — fontspec for lua/xelatex. Pdflatex
         // gets nothing extra (existing inputenc/fontenc/lmodern stack).
         var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
@@ -1809,6 +1817,14 @@ public partial class RenderService : IRenderService
         // Shared with the table path so the two mappings cannot drift — tables
         // used to ignore `placement` altogether. See BlockBreakAttributes.
         var floatSpec = BlockBreakAttributes.FloatSpecifier(content);
+
+        // A TikZ figure: its source goes out byte for byte (TikzFigure).
+        if (TikzFigure.IsTikz(content))
+        {
+            var tikzSpan = content.TryGetProperty("span", out var ts) && ts.ValueKind == JsonValueKind.String ? ts.GetString() : null;
+            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : EscapeLatex(caption), label,
+                string.Equals(tikzSpan, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure") + "\n";
+        }
 
         // Use a clean filename instead of the full URL for readability
         var displayPath = ExtractCleanImagePath(src);

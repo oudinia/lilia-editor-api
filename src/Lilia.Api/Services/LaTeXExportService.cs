@@ -600,6 +600,16 @@ public class LaTeXExportService : ILaTeXExportService
         sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
         sb.AppendLine();
 
+        // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures and does not load them itself.
+        var tikzPackages = TikzFigure.PackageLines(
+            (bodyBlocks ?? doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
+            doc.LatexPackages, doc.CustomPreamble);
+        if (tikzPackages.Length > 0)
+        {
+            sb.Append(tikzPackages);
+            sb.AppendLine();
+        }
+
         // Shims so journal-class-specific commands in imported bodies
         // (\begin{keywords}, \affiliation, etc.) don't abort compilation.
         sb.Append(LaTeXPreamble.JournalShims);
@@ -1112,6 +1122,11 @@ public class LaTeXExportService : ILaTeXExportService
         var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure";
 
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("figure", label)}}}" : "";
+
+        // A TikZ figure: its source goes out byte for byte (TikzFigure).
+        if (TikzFigure.IsTikz(content))
+            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : EscapeLatex(caption),
+                string.IsNullOrEmpty(label) ? "" : LabelKey.Effective("figure", label), env);
 
         // Subfigures — when the figure carries a `subfigures` array, emit a
         // subcaption layout (subcaption is in the preamble). Each panel gets an

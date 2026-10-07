@@ -446,6 +446,9 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         // at finalize. Previously src was hard-coded empty, discarding
         // the filename and producing placeholder figure blocks.
         ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
+        // A TikZ picture is a figure whose drawing is source (TikzFigure). Before the passthrough
+        // case it derives from, which would make it a code block.
+        ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
         ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
         // quote / quotation / verse and algorithm floats used to fall through to
         // the empty-paragraph default below: the parser recognised them, and the

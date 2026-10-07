@@ -131,6 +131,7 @@ public class LatexFragmentParser : ILatexFragmentParser
             alt = img.AltText ?? string.Empty,
         }),
         ImportBlockquote bq => ("blockquote", new { text = bq.Text }),
+        ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
         ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
         _ => ("paragraph", new { text = string.Empty }),
     };

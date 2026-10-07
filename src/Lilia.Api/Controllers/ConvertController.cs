@@ -1478,6 +1478,10 @@ public class ConvertController : ControllerBase
                     case ImportPageBreak:
                         blocks.Add(new LatexBlockDto("pageBreak", new { }));
                         break;
+                    case ImportTikzFigure tikz:
+                        // A TikZ picture is a figure whose drawing is source (TikzFigure).
+                        blocks.Add(new LatexBlockDto("figure", TikzFigureBlockContent.From(tikz)));
+                        break;
                     case ImportLatexPassthrough lp:
                         // Preserve raw LaTeX (TikZ, custom envs, etc.) as an embed block —
                         // the editor's escape hatch for verbatim LaTeX that survives export unchanged.

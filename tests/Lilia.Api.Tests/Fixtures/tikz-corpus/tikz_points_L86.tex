@@ -1,0 +1,41 @@
+% The Complete LaTeX Bootcamp - L86: Including points
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{lipsum}
+
+\title{Tikz}
+\author{Just Me}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\lipsum[1-2]
+
+\lipsum[3-4]
+
+\begin{figure}
+    \centering
+    \begin{tikzpicture}
+
+        \draw[->] (-0.25, 0) -- (5, 0) node[below]{$x$}; % x - axis
+        \draw[->] (0, -.25) -- (0, 5) node[left]{$y$}; % y - axis
+
+        % also: dashed, dotted, ultra thick, thin, ultra thin; they combine, e.g. [thick, dashed]
+        % the node takes the line's colour unless it gets its own (black)
+        \draw[thick, red] (0, 1) -- (3, 4) node[black, above right]{$y=f(x)=1 + x$};
+
+        \draw[thin, green] (0, 2) -- (4,2);
+
+        % (1, 2): where the two lines meet; circle (1.5pt) is the size of the point
+        \fill[blue] (1, 2) node[black, above left]{$A$} circle (1.5pt);
+
+    \end{tikzpicture}
+    \caption{Our second TikZ figure}
+    \label{fig:second_tikz}
+\end{figure}
+
+\end{document}

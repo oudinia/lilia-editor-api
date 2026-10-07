@@ -484,6 +484,24 @@ public sealed class LmlTextParser : ILmlTextParser
 
             case "figure":
             case "image":
+                // A TikZ figure: the body is the picture's source (TikzFigure). Written by
+                // the LML exporter with kind=tikz, and by Ask Lilia's figure skill as a
+                // tikzpicture under @figure, which used to land in the caption.
+                if (string.Equals(attrs.GetValueOrDefault("kind"), "tikz", StringComparison.OrdinalIgnoreCase)
+                    || Lilia.Core.Blocks.TikzFigure.FindEnvironments(body).Count > 0)
+                {
+                    var tikz = new Dictionary<string, object?>
+                    {
+                        ["kind"] = Lilia.Core.Blocks.TikzFigure.Kind,
+                        ["source"] = body.Trim('\n', '\r'),
+                        ["caption"] = attrs.GetValueOrDefault("caption") ?? "",
+                        ["label"] = attrs.GetValueOrDefault("label") ?? "",
+                    };
+                    if (attrs.GetValueOrDefault("position") is { Length: > 0 } pos) tikz["position"] = pos;
+                    if (string.Equals(attrs.GetValueOrDefault("float"), "false", StringComparison.OrdinalIgnoreCase)) tikz["float"] = false;
+                    blocks.Add(new LmlParsedBlock { Type = "figure", Content = tikz });
+                    return;
+                }
                 blocks.Add(new LmlParsedBlock
                 {
                     Type = "figure",

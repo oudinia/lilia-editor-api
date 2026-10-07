@@ -38,6 +38,17 @@ public static class BlockContentNormaliser
         JsonElement content,
         IReadOnlyDictionary<string, Capabilities.MacroDefinition>? macros = null)
     {
+        // A figure given TikZ source without saying so (Ask Lilia's add_block, an older
+        // client): it is a TikZ figure, the same shape the importer writes (TikzFigure).
+        if (blockType == "figure" && content.ValueKind == JsonValueKind.Object
+            && !content.TryGetProperty("kind", out _)
+            && TikzFigure.FindEnvironments(TikzFigure.Source(content)).Count > 0
+            && JsonNode.Parse(content.GetRawText()) is JsonObject figure)
+        {
+            figure["kind"] = TikzFigure.Kind;
+            return JsonDocument.Parse(figure.ToJsonString());
+        }
+
         if (!IsEquation(blockType) || content.ValueKind != JsonValueKind.Object)
             return Clone(content);
 

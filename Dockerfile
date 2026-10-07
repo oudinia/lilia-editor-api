@@ -24,6 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-fonts-recommended \
     texlive-science \
     texlive-plain-generic \
+    # TikZ figures: pgf/TikZ, pgfplots and tikz-cd (texlive-pictures; latex-extra pulls it in
+    # today, named here because the figures depend on it). standalone and varwidth, which each
+    # figure's own compile uses, are in texlive-latex-extra; pdftocairo, which turns that PDF
+    # into the SVG, is in poppler-utils below.
+    texlive-pictures \
     # biblatex + Biber backend (GA: the biblatex citation export) and the
     # publisher journal classes (IEEEtran, elsarticle, llncs, …) so
     # ?citationBackend=biblatex and journal-class documents also compile

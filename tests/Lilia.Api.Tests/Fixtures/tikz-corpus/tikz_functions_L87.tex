@@ -1,0 +1,38 @@
+% The Complete LaTeX Bootcamp - L87: Drawing functions
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{lipsum}
+
+\title{Tikz}
+\author{Just Me}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\lipsum[7-8]
+
+\begin{figure}
+    \centering
+    \begin{tikzpicture}
+        \draw[<->] (0,4)node[left]{$y$} -- (0,0) -- (4,0)node[below]{$x$};   % <->: an arrow at both ends
+
+        % \x is the variable; domain = start:end
+        % \draw[domain = 0:2] plot (\x,{\x^2}) node[right]{$f(x)=x^2$};
+        % \draw[domain = 0:2] plot (\x,{2});
+        % \draw[domain = 0:3] plot (\x,{\x+0.5});
+        % \draw[domain = 0:3] plot (\x,{\x+1});
+        % \draw[domain = 0:4] plot (\x,{ln(\x+1)});
+
+        % more samples, a smoother curve
+        \draw[domain = 0:4, samples = 500, red, thick, dashed] plot (\x,{\x^0.5});
+
+    \end{tikzpicture}
+    \caption{Drawing functions in TikZ}
+    \label{fig:last_lecture_of_the_section}
+\end{figure}
+
+\end{document}
