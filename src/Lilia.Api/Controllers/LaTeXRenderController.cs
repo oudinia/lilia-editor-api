@@ -790,9 +790,9 @@ public class LaTeXRenderController : ControllerBase
             // came last would point the author at innocent content.
             //
             // A deck's frame that doesn't fit names no input line: its warning
-            // ("Frame 7 doesn't fit at this theme's size…") comes from the
-            // frame markers in the log, which also say where the frame ended,
-            // so it is linked to the slide block that wrote the frame.
+            // ("Frame 7 doesn't fit at this theme's size…") is placed in the
+            // deck's source by the line beamer detected it at, so it is linked
+            // to the slide block that wrote the frame.
             var blockIssues = valid
                 ? FrameOverflow.InDocument(latex, result.Log)
                     .Select(f => new { blockId = f.BlockId?.ToString(), frame = f.Frame, message = FrameOverflow.Message(f.Frame) })
