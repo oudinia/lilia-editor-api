@@ -7,38 +7,75 @@ using System.Threading.RateLimiting;
 using Lilia.Core.Blocks;
 using Lilia.Core.Entities;
 using Lilia.Engines.TexSafety;
+using Lilia.Engines.Themes;
+using Lilia.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
 
 /// <summary>
-/// Draws a TikZ figure block as SVG (TikZ figures, step 1, 7 Oct 2026).
+/// Draws a TikZ figure block as SVG (TikZ figures, step 1, 7 Oct 2026; drafts, the precompiled
+/// format and theme colour names, step 3).
 ///
 /// <para>The picture is compiled on its own: a <c>standalone</c> document with the packages
 /// and the TikZ setup of its document, through the same safety path as every compile
 /// (<see cref="TexSourceGuard"/>, no shell escape, a scrubbed environment, the shared bound
 /// on concurrent compiles, a timeout), then the PDF is converted with <c>pdftocairo -svg</c>.</para>
 ///
-/// <para><b>Cache.</b> On disk, by sha256 of the source, the preamble it was compiled with and
-/// the engine, so the same picture in two documents with the same setup is drawn once.
-/// Compile errors are cached too (they are deterministic); timeouts are not. The cache is
-/// capped in size and pruned oldest-first. Separately, the last SVG that drew for each block
-/// is kept, so a figure the author breaks can show its last good version.</para>
+/// <para><b>Theme colours.</b> A figure naming <c>lilia-ink</c>, <c>lilia-chapter</c> … (its source or
+/// the custom preamble) is compiled with its document's theme, colours only, and this figure's
+/// chapter colour (<see cref="FigureColours.StandaloneLines"/>), so moving it to another Index
+/// chapter recolours it on the next draw. A figure naming none is drawn the same in every theme.</para>
+///
+/// <para><b>Cache.</b> On disk, by sha256 of the source, the preamble it was compiled with, the
+/// engine and, for a figure that names a theme colour, the theme, its paper and the chapter colour,
+/// so the same picture in two documents with the same setup is drawn once. Compile errors are cached
+/// too (they are deterministic); timeouts are not. Drafts share it: a draft identical to the saved
+/// source is a hit. The cache is capped in size and pruned oldest-first. Separately, the last SVG
+/// that drew for each block is kept, so a figure the author breaks can show its last good version;
+/// only the saved figure (figure.svg) updates it, never a draft.</para>
+///
+/// <para><b>Speed.</b> With pdflatex, the standalone class, the fonts, amsmath, xcolor, graphicx and
+/// the TikZ packages the picture needs (tikz, + pgfplots, + tikz-cd) are loaded once into a
+/// precompiled format (mylatexformat, <c>pdflatex -ini</c>), cached on disk by the hash of that
+/// preamble; each compile starts from it (<c>-fmt</c>) and reads only the rest. It is built in the
+/// background the first time a preamble is seen (that compile runs the normal way) and after a
+/// failure the normal compile is used. <c>Tikz:Format=false</c> turns it off.</para>
 ///
 /// <para><b>Budget.</b> A compile (a cache miss) takes one permit of a per-caller window
 /// (30 a minute by default, <c>Tikz:CompilesPerMinute</c>): a document full of new figures
-/// draws them all; a script hammering the endpoint does not get a TeX process per request.</para>
+/// draws them all; a script hammering the endpoint does not get a TeX process per request.
+/// Drafts have their own per-caller token bucket: 30 at once, refilled at 120 a minute
+/// (<c>Tikz:DraftBurst</c>, <c>Tikz:DraftsPerMinute</c>). The editor sends one 600 ms after the
+/// author stops typing, so sustained typing asks for about one a second at most; the burst
+/// covers ⌘S and quick fixes, and a cache hit costs nothing.</para>
 ///
-/// <para><b>Validation.</b> Each outcome is recorded as a block validation, so a figure that does
-/// not draw is listed among the document's issues on that block (<c>validation-errors</c>). The
-/// validator is the engine that compiled it (pdflatex unless the document names another): the
-/// table's check constraint allows engines and typst only, and it is the same verdict a per-block
-/// pdflatex validation of the figure gives. Timeouts and budget refusals are not the author's
-/// fault and are not recorded.</para>
+/// <para><b>Cancellation.</b> A draft is cancelled, and its TeX process killed, when the request is
+/// aborted (the editor drops the older request when a newer keystroke draws) and when a newer
+/// draft of the same block by the same caller arrives with a different source.</para>
+///
+/// <para><b>Validation.</b> Each outcome of the saved figure is recorded as a block validation, so a
+/// figure that does not draw is listed among the document's issues on that block
+/// (<c>validation-errors</c>). The validator is the engine that compiled it (pdflatex unless the
+/// document names another): the table's check constraint allows engines and typst only, and it is
+/// the same verdict a per-block pdflatex validation of the figure gives. Timeouts and budget
+/// refusals are not the author's fault and are not recorded. Drafts record nothing.</para>
 /// </summary>
 public interface ITikzFigureService
 {
-    /// <summary>Draw a TikZ figure block. <paramref name="budgetKey"/> names who pays for a compile (a user id).</summary>
-    Task<TikzRenderResult> RenderAsync(Document doc, Block block, string budgetKey, CancellationToken ct = default);
+    /// <summary>
+    /// Draw a TikZ figure block. <paramref name="budgetKey"/> names who pays for a compile (a user id).
+    /// <paramref name="theme"/>: the figure's theme (<see cref="TikzFigureThemes"/>); null works it out
+    /// from <c>doc.Blocks</c>.
+    /// </summary>
+    Task<TikzRenderResult> RenderAsync(Document doc, Block block, string budgetKey, CancellationToken ct = default, FigureTheme? theme = null);
+
+    /// <summary>
+    /// Draw unsaved source for a TikZ figure block (the split view). Shares the cache; never touches
+    /// the block's last good drawing or its validation. Throws <see cref="OperationCanceledException"/>
+    /// when <paramref name="ct"/> fires or a newer draft of the block replaces it.
+    /// </summary>
+    Task<TikzRenderResult> DraftAsync(Document doc, Block block, string source, string budgetKey, FigureTheme? theme = null, CancellationToken ct = default);
 
     /// <summary>The last SVG this block drew, or null.</summary>
     byte[]? LastGood(Guid blockId);
@@ -66,16 +103,34 @@ public sealed class TikzFigureService : ITikzFigureService
 {
     public const int CompileTimeoutSeconds = 20;
 
+    /// <summary>A draft longer than this is refused (413) before any work: no figure is that long.</summary>
+    public const int MaxDraftChars = 200_000;
+
+    /// <summary>The line that ends the part of the standalone preamble kept in the precompiled format.</summary>
+    internal const string EndOfDump = @"\csname endofdump\endcsname";
+
     private readonly ILaTeXRenderService _latex;
     private readonly IValidationCacheService? _validation;
     private readonly ILogger<TikzFigureService> _logger;
     private readonly string _cacheDir;
     private readonly long _cacheMaxBytes;
     private readonly int _compilesPerMinute;
+    private readonly int _draftBurst;
+    private readonly int _draftsPerMinute;
+    private readonly bool _useFormat;
 
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> Locks = new();
     private static readonly ConcurrentDictionary<int, PartitionedRateLimiter<string>> Budgets = new();
+    private static readonly ConcurrentDictionary<(int, int), PartitionedRateLimiter<string>> DraftBudgets = new();
+    private static readonly ConcurrentDictionary<string, DraftSlot> Drafts = new();
+    private static readonly ConcurrentDictionary<string, Task<bool>> FormatBuilds = new();
+    private static readonly ConcurrentDictionary<string, DateTime> FormatFailures = new();
     private static int _writesSincePrune;
+
+    /// <summary>After a failed build or a rejected format, the normal compile is used this long before trying again.</summary>
+    private static readonly TimeSpan FormatRetryAfter = TimeSpan.FromMinutes(10);
+
+    private sealed record DraftSlot(CancellationTokenSource Cts, string Key);
 
     public TikzFigureService(
         ILaTeXRenderService latex,
@@ -89,6 +144,9 @@ public sealed class TikzFigureService : ITikzFigureService
         _cacheDir = configuration["Tikz:CacheDir"] is { Length: > 0 } dir ? dir : Path.Combine(Path.GetTempPath(), "lilia-tikz-cache");
         _cacheMaxBytes = (configuration.GetValue<long?>("Tikz:CacheMaxMb") ?? 256) * 1024 * 1024;
         _compilesPerMinute = Math.Max(1, configuration.GetValue<int?>("Tikz:CompilesPerMinute") ?? 30);
+        _draftBurst = Math.Max(1, configuration.GetValue<int?>("Tikz:DraftBurst") ?? 30);
+        _draftsPerMinute = Math.Max(1, configuration.GetValue<int?>("Tikz:DraftsPerMinute") ?? 120);
+        _useFormat = configuration.GetValue<bool?>("Tikz:Format") ?? true;
     }
 
     private PartitionedRateLimiter<string> Budget => Budgets.GetOrAdd(_compilesPerMinute, permits =>
@@ -99,38 +157,80 @@ public sealed class TikzFigureService : ITikzFigureService
             QueueLimit = 0,
         })));
 
-    public async Task<TikzRenderResult> RenderAsync(Document doc, Block block, string budgetKey, CancellationToken ct = default)
-    {
-        var content = block.Content.RootElement;
-        var source = TikzFigure.Source(content);
-        if (string.IsNullOrWhiteSpace(source))
-            return new TikzRenderResult(null, new TikzRenderError("tex", "This TikZ figure has no source.", null, null, null), false);
+    private PartitionedRateLimiter<string> DraftBudget => DraftBudgets.GetOrAdd((_draftBurst, _draftsPerMinute), b =>
+        PartitionedRateLimiter.Create<string, string>(key => RateLimitPartition.GetTokenBucketLimiter(key, _ => new TokenBucketRateLimiterOptions
+        {
+            TokenLimit = b.Item1,
+            // Refilled every 5 s (a rate under 12 a minute: one token at a time).
+            ReplenishmentPeriod = b.Item2 >= 12 ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(60.0 / b.Item2),
+            TokensPerPeriod = b.Item2 >= 12 ? b.Item2 / 12 : 1,
+            AutoReplenishment = true,
+            QueueLimit = 0,
+        })));
 
-        var engine = EngineFor(doc);
-        var full = BuildStandalone(doc, source, includeCustomPreamble: true, out var sourceStartLine);
-        var key = Hash(source, full[..full.IndexOf(@"\begin{document}", StringComparison.Ordinal)], engine);
+    public async Task<TikzRenderResult> RenderAsync(Document doc, Block block, string budgetKey, CancellationToken ct = default, FigureTheme? theme = null)
+    {
+        var source = TikzFigure.Source(block.Content.RootElement);
+        if (string.IsNullOrWhiteSpace(source)) return NoSource;
+        theme ??= TikzFigureThemes.From(doc, doc.Blocks?.OrderBy(b => b.SortOrder)).For(block.Id);
+
+        var result = await DrawAsync(doc, source, theme, budgetKey, Budget, ct);
+        if (result.Error is { Kind: not "tex" }) return result;
+        await RecordAsync(doc, block, result, ct);
+        if (result.Ok) KeepLastGood(block.Id, result.Svg!);
+        return result;
+    }
+
+    public async Task<TikzRenderResult> DraftAsync(Document doc, Block block, string source, string budgetKey, FigureTheme? theme = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return NoSource;
+        theme ??= TikzFigureThemes.From(doc, doc.Blocks?.OrderBy(b => b.SortOrder)).For(block.Id);
+
+        // A newer draft of the same block by the same caller replaces this one: the older compile
+        // is killed, unless it is drawing the very same thing (then the newer one waits for it and
+        // reads the cache).
+        var (_, _, key, _) = Prepare(doc, source, theme, includeCustomPreamble: true);
+        var slotKey = budgetKey + "\u0000" + block.Id.ToString("N");
+        using var mine = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var slot = new DraftSlot(mine, key);
+        Drafts.AddOrUpdate(slotKey, slot, (_, older) =>
+        {
+            if (older.Key != key)
+            {
+                try { older.Cts.Cancel(); } catch (ObjectDisposedException) { /* it has finished */ }
+            }
+            return slot;
+        });
+        try
+        {
+            return await DrawAsync(doc, source, theme, budgetKey, DraftBudget, mine.Token);
+        }
+        finally
+        {
+            Drafts.TryRemove(KeyValuePair.Create(slotKey, slot));
+        }
+    }
+
+    private static readonly TikzRenderResult NoSource =
+        new(null, new TikzRenderError("tex", "This TikZ figure has no source.", null, null, null), false);
+
+    /// <summary>The drawing of this source in this document and theme: from the cache, or compiled.</summary>
+    private async Task<TikzRenderResult> DrawAsync(Document doc, string source, FigureTheme theme, string budgetKey,
+        PartitionedRateLimiter<string> budget, CancellationToken ct)
+    {
+        var (full, sourceStartLine, key, engine) = Prepare(doc, source, theme, includeCustomPreamble: true);
 
         var cached = ReadCache(key);
-        if (cached is not null)
-        {
-            await RecordAsync(doc, block, cached, ct);
-            if (cached.Ok) KeepLastGood(block.Id, cached.Svg!);
-            return cached with { Cached = true };
-        }
+        if (cached is not null) return cached with { Cached = true };
 
         var gate = Locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
             cached = ReadCache(key);
-            if (cached is not null)
-            {
-                await RecordAsync(doc, block, cached, ct);
-                if (cached.Ok) KeepLastGood(block.Id, cached.Svg!);
-                return cached with { Cached = true };
-            }
+            if (cached is not null) return cached with { Cached = true };
 
-            using var lease = Budget.AttemptAcquire(budgetKey);
+            using var lease = budget.AttemptAcquire(budgetKey);
             if (!lease.IsAcquired)
                 return new TikzRenderResult(null, new TikzRenderError("budget",
                     "Too many figures are being drawn right now. This isn't a problem with the figure: try again in a minute.",
@@ -142,14 +242,12 @@ public sealed class TikzFigureService : ITikzFigureService
             // draw it again with only the TikZ setup.
             if (result.Error is { Kind: "tex", Line: null } && !string.IsNullOrWhiteSpace(doc.CustomPreamble))
             {
-                var minimal = BuildStandalone(doc, source, includeCustomPreamble: false, out var minimalStart);
+                var (minimal, minimalStart, _, _) = Prepare(doc, source, theme, includeCustomPreamble: false);
                 var retry = await CompileAsync(minimal, source, minimalStart, engine, ct);
                 if (retry.Ok || retry.Error?.Line is not null) result = retry;
             }
 
             if (result.Error?.Kind != "timeout") WriteCache(key, result);
-            await RecordAsync(doc, block, result, ct);
-            if (result.Ok) KeepLastGood(block.Id, result.Svg!);
             return result;
         }
         finally
@@ -157,6 +255,23 @@ public sealed class TikzFigureService : ITikzFigureService
             gate.Release();
         }
     }
+
+    /// <summary>The standalone document, where the source starts in it, the cache key and the engine.</summary>
+    private static (string Full, int SourceStartLine, string Key, string Engine) Prepare(
+        Document doc, string source, FigureTheme theme, bool includeCustomPreamble)
+    {
+        var engine = EngineFor(doc);
+        var themed = NamesThemeColours(doc, source);
+        var full = BuildStandalone(doc, source, includeCustomPreamble, out var start, themed ? theme : null);
+        // The key is always the full document's, so the minimal retry's result is found under it.
+        var keyed = includeCustomPreamble ? full : BuildStandalone(doc, source, true, out _, themed ? theme : null);
+        var key = Hash(source, keyed[..keyed.IndexOf(@"\begin{document}", StringComparison.Ordinal)], engine, themed ? theme.Key : "");
+        return (full, start, key, engine);
+    }
+
+    /// <summary>The figure (or the TikZ setup it is compiled with) names a theme colour.</summary>
+    internal static bool NamesThemeColours(Document doc, string source) =>
+        FigureColours.Uses(source) || FigureColours.Uses(doc.CustomPreamble);
 
     public byte[]? LastGood(Guid blockId)
     {
@@ -190,8 +305,14 @@ public sealed class TikzFigureService : ITikzFigureService
     /// <summary>
     /// The standalone document for one picture. <paramref name="sourceStartLine"/> is the line
     /// the source starts on, so a TeX line number maps back into the figure's own source.
+    ///
+    /// <para>Everything before the <see cref="EndOfDump"/> line (the class, the fonts, the maths,
+    /// the colours and the TikZ packages the picture needs) is the same for every picture needing
+    /// the same packages: it is what the precompiled format holds. After it: the document's own
+    /// packages, its TikZ setup and macros, and the theme colours when the picture names them
+    /// (<paramref name="theme"/>).</para>
     /// </summary>
-    internal static string BuildStandalone(Document doc, string source, bool includeCustomPreamble, out int sourceStartLine)
+    internal static string BuildStandalone(Document doc, string source, bool includeCustomPreamble, out int sourceStartLine, FigureTheme? theme = null)
     {
         var engine = EngineFor(doc);
         var sb = new StringBuilder();
@@ -206,6 +327,11 @@ public sealed class TikzFigureService : ITikzFigureService
         sb.Append(@"\usepackage{amsmath,amssymb,amsfonts}").Append('\n');
         sb.Append(@"\usepackage{xcolor}").Append('\n');
         sb.Append(@"\usepackage{graphicx}").Append('\n');
+
+        // TikZ and what this picture needs from it, whether or not the document declared it.
+        var needed = TikzFigure.RequiredPackages(source);
+        foreach (var pkg in needed) sb.Append(@"\usepackage{").Append(pkg).Append("}\n");
+        sb.Append(EndOfDump).Append('\n');
 
         // The document's own packages (a node may use \si, \bm, a font): those a picture can use.
         var declared = new List<(string Name, string? Options)>();
@@ -230,12 +356,13 @@ public sealed class TikzFigureService : ITikzFigureService
             sb.Append($@"\IfFileExists{{{name}.sty}}{{{load}}}{{}}").Append('\n');
         }
 
-        // TikZ and what this picture needs from it, whether or not the document declared it.
-        var needed = TikzFigure.RequiredPackages(source);
-        foreach (var pkg in needed) sb.Append(@"\usepackage{").Append(pkg).Append("}\n");
         var custom = doc.CustomPreamble ?? "";
         if (needed.Contains("pgfplots") && !custom.Contains("compat", StringComparison.Ordinal))
             sb.Append(@"\pgfplotsset{compat=1.18}").Append('\n');
+
+        // The theme's colour names, and this figure's chapter colour: before the custom preamble,
+        // as the document's theme line is, so a \tikzset there can use them.
+        if (theme is not null) sb.Append(FigureColours.StandaloneLines(theme));
 
         // The document's custom preamble (its macros and its TikZ setup), or, when that does not
         // compile here, its TikZ setup alone.
@@ -260,12 +387,17 @@ public sealed class TikzFigureService : ITikzFigureService
     /// <summary>
     /// Bumped whenever how a drawing or its error is produced changes (the standalone wrapper, the SVG
     /// conversion, the error wording), so a deploy never serves results the old code made from the cache.
+    /// 3: theme colour names, the precompiled format's preamble order.
     /// </summary>
-    internal const string RendererVersion = "2";
+    internal const string RendererVersion = "3";
 
-    internal static string Hash(string source, string preamble, string engine)
+    /// <summary>
+    /// The cache key. <paramref name="themeKey"/> (<see cref="FigureTheme.Key"/>: theme, paper, chapter
+    /// colour) is given for a figure that names a theme colour, and empty otherwise.
+    /// </summary>
+    internal static string Hash(string source, string preamble, string engine, string themeKey = "")
     {
-        var bytes = Encoding.UTF8.GetBytes(RendererVersion + "\u0000" + source + "\u0000" + preamble + "\u0000" + engine);
+        var bytes = Encoding.UTF8.GetBytes(RendererVersion + "\u0000" + source + "\u0000" + preamble + "\u0000" + engine + "\u0000" + themeKey);
         return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     }
 
@@ -273,7 +405,9 @@ public sealed class TikzFigureService : ITikzFigureService
     {
         try
         {
-            var r = await _latex.CompileStandaloneSvgAsync(full, engine, CompileTimeoutSeconds, ct);
+            var format = FormatFor(full, engine);
+            var r = await _latex.CompileStandaloneSvgAsync(full, engine, CompileTimeoutSeconds, ct, format);
+            if (r.FormatRejected && format is not null) Reject(format);
             if (r.TimedOut)
                 return new TikzRenderResult(null, new TikzRenderError("timeout",
                     $"Drawing this figure took longer than {CompileTimeoutSeconds} seconds and was stopped. This isn't necessarily a problem with the figure: try again.",
@@ -285,6 +419,71 @@ public sealed class TikzFigureService : ITikzFigureService
         {
             return new TikzRenderResult(null, TikzErrors.FromGuard(ex.Message, source), false);
         }
+    }
+
+    // ── The precompiled format ──────────────────────────────────────────
+
+    /// <summary>The part of a standalone document the precompiled format holds.</summary>
+    internal static string DumpPart(string full)
+    {
+        var at = full.IndexOf(EndOfDump, StringComparison.Ordinal);
+        return at < 0 ? "" : full[..at];
+    }
+
+    internal string FormatPath(string dumpPart, string engine) =>
+        Path.Combine(_cacheDir, "fmt", "tikz-" + Hash("format", dumpPart, engine)[..24]);
+
+    /// <summary>
+    /// The format to compile this document with (a path without <c>.fmt</c>), or null: the
+    /// normal compile. A format not built yet is built in the background, once.
+    /// </summary>
+    internal string? FormatFor(string full, string engine)
+    {
+        if (!_useFormat || engine != "pdflatex") return null;
+        var dump = DumpPart(full);
+        if (dump.Length == 0) return null;
+        var path = FormatPath(dump, engine);
+        if (File.Exists(path + ".fmt")) return path;
+        if (FormatFailures.TryGetValue(path, out var failedAt) && DateTime.UtcNow - failedAt < FormatRetryAfter) return null;
+
+        FormatBuilds.GetOrAdd(path, p => Task.Run(async () =>
+        {
+            try
+            {
+                var ok = await _latex.BuildFormatAsync(dump, engine, p);
+                if (!ok) FormatFailures[p] = DateTime.UtcNow;
+                else FormatFailures.TryRemove(p, out _);
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Tikz] building the precompiled format failed");
+                FormatFailures[p] = DateTime.UtcNow;
+                return false;
+            }
+            finally
+            {
+                FormatBuilds.TryRemove(p, out _);
+            }
+        }));
+        return null;
+    }
+
+    /// <summary>Wait for the format of this document to be built (tests and warm-up). True when it is there.</summary>
+    internal async Task<bool> EnsureFormatAsync(string full, string engine)
+    {
+        if (FormatFor(full, engine) is not null) return true;
+        var path = FormatPath(DumpPart(full), engine);
+        if (FormatBuilds.TryGetValue(path, out var build)) await build;
+        return File.Exists(path + ".fmt");
+    }
+
+    /// <summary>The engine refused this format: drop it, compile the normal way for a while, then build it again.</summary>
+    private void Reject(string format)
+    {
+        _logger.LogWarning("[Tikz] the precompiled format {Format} was rejected; drawing without it", Path.GetFileName(format));
+        FormatFailures[format] = DateTime.UtcNow;
+        try { File.Delete(format + ".fmt"); } catch { /* in use or gone */ }
     }
 
     // ── Validation ──────────────────────────────────────────────────────
@@ -391,14 +590,19 @@ public sealed class TikzFigureService : ITikzFigureService
         try { File.SetLastWriteTimeUtc(path, DateTime.UtcNow); } catch { /* read-only cache: fine */ }
     }
 
-    /// <summary>Oldest first until the cache (drawings, errors and last-good copies) is under 80% of its cap.</summary>
+    /// <summary>
+    /// Oldest first until the cache (drawings, errors and last-good copies) is under 80% of its cap.
+    /// The precompiled formats (a handful, one per set of TikZ packages) are not counted or pruned.
+    /// </summary>
     internal void Prune()
     {
         try
         {
             if (!Directory.Exists(_cacheDir)) return;
+            var formats = Path.Combine(_cacheDir, "fmt") + Path.DirectorySeparatorChar;
             var files = new DirectoryInfo(_cacheDir).EnumerateFiles("*", SearchOption.AllDirectories)
                 .Where(f => !f.Name.EndsWith(".tmp", StringComparison.Ordinal))
+                .Where(f => !f.FullName.StartsWith(formats, StringComparison.Ordinal))
                 .ToList();
             var total = files.Sum(f => f.Length);
             if (total <= _cacheMaxBytes) return;
@@ -413,6 +617,67 @@ public sealed class TikzFigureService : ITikzFigureService
         {
             _logger.LogWarning(ex, "[Tikz] cache prune failed");
         }
+    }
+}
+
+/// <summary>
+/// Each TikZ figure's theme in its document (<see cref="FigureTheme"/>): the theme as printed, its
+/// paper, and the colour <c>lilia-chapter</c> takes. Only an Index document needs the blocks (the
+/// figure's chapter, worked out as the PDF does: <see cref="ThemeSections"/>).
+/// </summary>
+public sealed class TikzFigureThemes
+{
+    private readonly FigureTheme _default;
+    private readonly IReadOnlyDictionary<Guid, SectionPlace>? _places;
+    private readonly Document _doc;
+
+    private TikzFigureThemes(Document doc, IReadOnlyDictionary<Guid, SectionPlace>? places)
+    {
+        _doc = doc;
+        _places = places;
+        _default = FigureColours.For(doc, null);
+    }
+
+    public FigureTheme For(Guid blockId) =>
+        _places is not null && _places.TryGetValue(blockId, out var place) ? FigureColours.For(_doc, place) : _default;
+
+    /// <summary>Whether a figure's chapter changes its colours: Index, on a class that prints it, not a deck.</summary>
+    public static bool TracksChapters(Document doc)
+    {
+        if (ThemeLock.Reason(doc.LatexDocumentClass) is not null || ThemeLock.IsBeamer(doc.LatexDocumentClass)) return false;
+        return DocumentLook.Parse(doc.Look).ForClass(doc.LatexDocumentClass).Theme == ThemeCatalog.Index;
+    }
+
+    /// <summary>From blocks already loaded, in order (null or empty: no chapters known).</summary>
+    public static TikzFigureThemes From(Document doc, IEnumerable<Block>? orderedBlocks)
+    {
+        if (!TracksChapters(doc) || orderedBlocks is null) return new(doc, null);
+        var body = LaTeXExportService.BodyBlocks(doc.Title, orderedBlocks);
+        return new(doc, body.Count == 0 ? null : ThemeSections.Places(body, doc.LatexDocumentClass, doc.Look));
+    }
+
+    /// <summary>
+    /// From the database: for an Index document, the outline and the contents that decide the
+    /// chapters (headings, embeds, the Appendix block).
+    /// </summary>
+    public static async Task<TikzFigureThemes> LoadAsync(LiliaDbContext db, Document doc, CancellationToken ct)
+    {
+        if (!TracksChapters(doc)) return new(doc, null);
+        var outline = await db.Blocks.AsNoTracking()
+            .Where(b => b.DocumentId == doc.Id)
+            .Select(b => new { b.Id, b.DocumentId, b.Type, b.SortOrder })
+            .ToListAsync(ct);
+        var contents = await db.Blocks.AsNoTracking()
+            .Where(b => b.DocumentId == doc.Id
+                        && (b.Type == "heading" || b.Type == "header" || b.Type == "embed" || b.Type == "backMatter"))
+            .Select(b => new { b.Id, b.Content })
+            .ToDictionaryAsync(b => b.Id, b => b.Content, ct);
+        var blocks = outline.OrderBy(b => b.SortOrder).Select(b => new Block
+        {
+            Id = b.Id, DocumentId = b.DocumentId, Type = b.Type, SortOrder = b.SortOrder,
+            Content = contents.TryGetValue(b.Id, out var c) ? c : JsonDocument.Parse("{}"),
+        });
+        return From(doc, blocks);
     }
 }
 

@@ -77,6 +77,8 @@ public sealed class DocumentImageStager(
         var doc = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc is null) return images;
 
+        // Each figure's theme (Index: its chapter), for the figures that name a theme colour.
+        var themes = await TikzFigureThemes.LoadAsync(db, doc, ct);
         var paths = new Dictionary<string, string>(images.Paths, StringComparer.Ordinal);
         var files = new Dictionary<string, byte[]>(images.Files, StringComparer.Ordinal);
         var staged = new Dictionary<string, TikzStaged>(StringComparer.Ordinal);
@@ -87,7 +89,7 @@ public sealed class DocumentImageStager(
             try
             {
                 // One at a time: the service records each outcome through this scope's DbContext.
-                var result = await tikz.RenderAsync(doc, block, $"preview:{documentId}", ct);
+                var result = await tikz.RenderAsync(doc, block, $"preview:{documentId}", ct, themes.For(block.Id));
                 if (result.Svg is { } svg)
                 {
                     var local = $"figures/tikz-{TikzFigureService.Hash(source, "", "")[..16]}.svg";

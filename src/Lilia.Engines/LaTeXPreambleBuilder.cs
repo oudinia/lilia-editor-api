@@ -558,11 +558,15 @@ public static class LaTeXPreambleBuilder
         DocumentLook? lookOverride = null,
         ThemeUse use = ThemeUse.Compile)
     {
-        // Under a class that sets its own look nothing is written: tables stay ruled.
-        if (ThemeLock.Reason(doc.LatexDocumentClass) is not null) return string.Empty;
+        var blocks = (bodyBlocks ?? Enumerable.Empty<Block>()).ToList();
+        // A figure (or any source) naming a theme colour (lilia-ink, lilia-chapter …) needs them
+        // defined whatever the theme: Classic then writes its colours-only line.
+        var namesColours = Themes.FigureColours.UsedBy(doc, blocks);
+        // Under a class that sets its own look nothing else is written: tables stay ruled.
+        if (ThemeLock.Reason(doc.LatexDocumentClass) is not null) return namesColours ? ClassicColoursLine : string.Empty;
         var look = (lookOverride ?? DocumentLook.Parse(doc.Look)).ForClass(doc.LatexDocumentClass);
-        if (ThemeLock.IsBeamer(doc.LatexDocumentClass)) return BuildBeamerThemeLine(look, bodyBlocks, use);
-        if (!look.LoadsPackage) return string.Empty;
+        if (ThemeLock.IsBeamer(doc.LatexDocumentClass)) return BuildBeamerThemeLine(look, blocks, use, namesColours);
+        if (!look.LoadsPackage) return namesColours ? ClassicColoursLine : string.Empty;
         if (look.IsClassic)
         {
             // Classic with a table setting: the package's table part only (Classic loads nothing else).
@@ -573,14 +577,15 @@ public static class LaTeXPreambleBuilder
         }
         if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme) is { } why)
         {
-            if (use == ThemeUse.Validation) return string.Empty;
+            // Validation without the theme's fonts still needs the colour names a figure uses:
+            // the theme's colours alone need no font.
+            if (use == ThemeUse.Validation) return namesColours ? ColoursOnlyLine(look.Theme, look.Paper == DocumentLook.PaperWhite || look.PrintSafe) : string.Empty;
             throw new ThemeUnavailableException(why);
         }
 
         var options = new List<string> { $"theme={look.Theme}", $"paper={look.Paper}" };
         if (look.PrintSafe) options.Add("printsafe");
         if (OwnsPageFoot(doc)) options.Add("foottab=false");
-        var blocks = (bodyBlocks ?? Enumerable.Empty<Block>()).ToList();
         // Pins are numbered by the level-1 headings; an embed that prints its own \chapter would put
         // the count out of step, so then no pin is written.
         var rawChapters = blocks.Any(PrintsChapter);
@@ -625,21 +630,37 @@ public static class LaTeXPreambleBuilder
     /// <c>\usetheme</c> for a theme's beamer version (Cerulean, Index, Exposition), then Index's
     /// pins. Table settings do not apply to beamer.
     /// </summary>
-    private static string BuildBeamerThemeLine(DocumentLook look, IEnumerable<Block>? bodyBlocks, ThemeUse use)
+    private static string BuildBeamerThemeLine(DocumentLook look, IReadOnlyList<Block> bodyBlocks, ThemeUse use, bool namesColours)
     {
-        if (ThemeCatalog.Find(look.Theme) is not { Beamer: { } beamer }) return string.Empty;
+        var printSafe = look.PrintSafe || look.Paper == DocumentLook.PaperWhite;
+        if (ThemeCatalog.Find(look.Theme) is not { Beamer: { } beamer }) return namesColours ? ClassicColoursLine : string.Empty;
         if (use != ThemeUse.Export && ThemeAvailability.WhyUnavailable(look.Theme, ThemeLock.Beamer) is { } why)
         {
-            if (use == ThemeUse.Validation) return string.Empty;
+            if (use == ThemeUse.Validation) return namesColours ? ColoursOnlyLine(look.Theme, printSafe) : string.Empty;
             throw new ThemeUnavailableException(why);
         }
-        var printSafe = look.PrintSafe || look.Paper == DocumentLook.PaperWhite;
         var sb = new StringBuilder();
         sb.AppendLine("% Document theme (Document settings → Look). Before the custom preamble, so the author's settings win.");
         sb.AppendLine(printSafe ? $"\\usetheme[printsafe]{{{beamer.Theme}}}" : $"\\usetheme{{{beamer.Theme}}}");
-        AppendPins(sb, look, (bodyBlocks ?? Enumerable.Empty<Block>()).ToList());
+        AppendPins(sb, look, bodyBlocks);
+        // The beamer theme is its own .sty: the figure colour names come from lilia-theme's
+        // colours-only mode (lilia-chapter is the accent on a deck).
+        if (namesColours) sb.Append(ColoursOnlyLine(look.Theme, printSafe));
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Classic's line when a figure names a theme colour: lilia-theme defines the names in ink and
+    /// greys and loads nothing visible (TikZ figures, step 3).
+    /// </summary>
+    internal static readonly string ClassicColoursLine =
+        "% Theme colour names for figures (lilia-ink, lilia-accent …): Classic defines them in ink and greys, nothing else.\n"
+        + $"\\usepackage[theme={ThemeCatalog.Classic}]{{{ThemeCatalog.PackageName}}}\n";
+
+    /// <summary>A theme's figure colour names alone (no faces, no page style).</summary>
+    private static string ColoursOnlyLine(string theme, bool whitePaper) =>
+        "% Theme colour names for figures (lilia-ink, lilia-accent …).\n"
+        + $"\\usepackage[theme={theme}{(whitePaper ? ", paper=white" : "")}, coloursonly]{{{ThemeCatalog.PackageName}}}\n";
 
     /// <summary>
     /// The author set the running header/footer or turned page numbers off: the theme then

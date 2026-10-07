@@ -38,7 +38,8 @@ public class ThemesController : ControllerBase
 
     internal static ThemeDto ToDto(ThemeDescriptor t) => new(
         t.Id, t.Name, t.For, ThemeAvailability.IsAvailable(t.Id), t.Status,
-        t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault, t.Table, t.Classes);
+        t.Fonts, t.Colours, t.PrintSafe, t.Sequence, t.TablesDefault, t.Table, t.Classes,
+        FigureColours.Resolve(t.Id, whitePaper: false));
 }
 
 public sealed record ThemeDto(
@@ -61,4 +62,8 @@ public sealed record ThemeDto(
     // they have a version for: beamer too for Cerulean and Index). The document's lookThemes is the
     // list to use.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
-    IReadOnlyList<string>? Classes = null);
+    IReadOnlyList<string>? Classes = null,
+    // The theme colour names a TikZ figure can use (lilia-ink … lilia-seq8), resolved on the
+    // theme's own paper, lilia-chapter being the accent (an Index figure's own chapter colour is
+    // GET …/blocks/{blockId}/figure/colours). For the editor's swatches and autocomplete.
+    IReadOnlyDictionary<string, string>? TikzColours = null);

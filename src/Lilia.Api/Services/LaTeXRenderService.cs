@@ -76,12 +76,32 @@ public interface ILaTeXRenderService
     /// for a compile error: the result carries the log. Throws
     /// <see cref="Lilia.Engines.TexSafety.UnsafeLatexException"/> when the guard refuses.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="formatPath"/> (pdflatex only): a precompiled format built by
+    /// <see cref="BuildFormatAsync"/> from the part of <paramref name="latex"/> before its
+    /// <c>\csname endofdump\endcsname</c> line, which TeX then skips. When the engine rejects the
+    /// format (missing, corrupt, written by another TeX) the compile runs again without it and the
+    /// result says <see cref="StandaloneSvgResult.FormatRejected"/>. <paramref name="ct"/> kills
+    /// the TeX process.
+    /// </remarks>
     Task<StandaloneSvgResult> CompileStandaloneSvgAsync(
-        string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default);
+        string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default, string? formatPath = null);
+
+    /// <summary>
+    /// Build a precompiled format (<c>pdflatex -ini</c> with mylatexformat) from a preamble, through
+    /// the same safety path as a compile, and write it to <c><paramref name="formatPath"/>.fmt</c>.
+    /// False when it could not be built (another engine than pdflatex, mylatexformat missing, an
+    /// error): the caller compiles the normal way.
+    /// </summary>
+    Task<bool> BuildFormatAsync(string preamble, string engine, string formatPath, int timeoutSeconds = 60, CancellationToken ct = default);
 }
 
-/// <summary>An SVG, or why there is none: the TeX log, or a timeout.</summary>
-public sealed record StandaloneSvgResult(byte[]? Svg, string Log, bool TimedOut);
+/// <summary>
+/// An SVG, or why there is none: the TeX log, or a timeout. <c>UsedFormat</c>: drawn with the
+/// precompiled format; <c>FormatRejected</c>: the engine refused the format, and the result is the
+/// compile without it.
+/// </summary>
+public sealed record StandaloneSvgResult(byte[]? Svg, string Log, bool TimedOut, bool UsedFormat = false, bool FormatRejected = false);
 
 /// <summary>
 /// Full result of a LaTeX validation run — includes the parsed error for persistence/telemetry.
@@ -878,10 +898,11 @@ public class LaTeXRenderService : ILaTeXRenderService
     }
 
     public async Task<StandaloneSvgResult> CompileStandaloneSvgAsync(
-        string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default)
+        string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default, string? formatPath = null)
     {
         Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
         engine = ResolveEngine(engine);
+        var useFormat = formatPath is not null && engine == "pdflatex" && File.Exists(formatPath + ".fmt");
 
         await _semaphore.WaitAsync(ct);
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-tikz-{Guid.NewGuid():N}");
@@ -893,34 +914,103 @@ public class LaTeXRenderService : ILaTeXRenderService
             var logPath = Path.Combine(tmpDir, "figure.log");
             var svgPath = Path.Combine(tmpDir, "figure.svg");
             await File.WriteAllTextAsync(texPath, latex, ct);
+            // lilia-theme.sty, when the figure names a theme colour.
+            Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
 
+            async Task<(int Exit, string Log)> RunTex(bool withFormat)
+            {
+                var fmt = withFormat ? $"\"-fmt={formatPath}\" " : "";
+                var (exit, _, _) = await RunProcessAsync(engine,
+                    $"-interaction=nonstopmode -halt-on-error --no-shell-escape {fmt}-output-directory {tmpDir} {texPath}",
+                    tmpDir, timeoutSeconds, ct);
+                return (exit, File.Exists(logPath) ? await File.ReadAllTextAsync(logPath, ct) : "");
+            }
+
+            int exit;
+            string log;
+            var rejected = false;
+            try
+            {
+                (exit, log) = await RunTex(useFormat);
+                // A TeX error in the figure is the figure's: the same with or without the format.
+                // No error in the log (no log at all) means the engine could not use the format.
+                if (useFormat && (exit != 0 || !File.Exists(pdfPath)) && !HasTexError(log))
+                {
+                    rejected = true;
+                    useFormat = false;
+                    try { File.Delete(logPath); } catch { /* rewritten below */ }
+                    (exit, log) = await RunTex(false);
+                }
+            }
+            catch (TimeoutException)
+            {
+                return new StandaloneSvgResult(null, "", TimedOut: true, useFormat, rejected);
+            }
+
+            if (exit != 0 || !File.Exists(pdfPath))
+                return new StandaloneSvgResult(null, log, TimedOut: false, useFormat, rejected);
+
+            try
+            {
+                await RunProcessAsync("pdftocairo", $"-svg -f 1 -l 1 {pdfPath} {svgPath}", tmpDir, 15, ct);
+            }
+            catch (TimeoutException)
+            {
+                return new StandaloneSvgResult(null, log, TimedOut: true, useFormat, rejected);
+            }
+            if (!File.Exists(svgPath))
+                throw new InvalidOperationException("SVG conversion failed (is pdftocairo installed?)");
+            return new StandaloneSvgResult(await File.ReadAllBytesAsync(svgPath, ct), log, TimedOut: false, useFormat, rejected);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+            _semaphore.Release();
+        }
+    }
+
+    private static bool HasTexError(string log) =>
+        log.StartsWith("! ", StringComparison.Ordinal) || log.Contains("\n! ", StringComparison.Ordinal);
+
+    public async Task<bool> BuildFormatAsync(string preamble, string engine, string formatPath, int timeoutSeconds = 60, CancellationToken ct = default)
+    {
+        engine = ResolveEngine(engine);
+        if (engine != "pdflatex") return false;
+        Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(preamble);
+
+        await _semaphore.WaitAsync(ct);
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-fmt-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            var src = Path.Combine(tmpDir, "preamble.tex");
+            // mylatexformat dumps everything up to \endofdump (or \begin{document}).
+            await File.WriteAllTextAsync(src, preamble.TrimEnd() + "\n\\csname endofdump\\endcsname\n", ct);
             int exit;
             try
             {
                 (exit, _, _) = await RunProcessAsync(engine,
-                    $"-interaction=nonstopmode -halt-on-error --no-shell-escape -output-directory {tmpDir} {texPath}",
-                    tmpDir, timeoutSeconds);
+                    $"-ini -interaction=nonstopmode -halt-on-error --no-shell-escape -jobname=liliafmt \"&{engine}\" mylatexformat.ltx {src}",
+                    tmpDir, timeoutSeconds, ct);
             }
             catch (TimeoutException)
             {
-                return new StandaloneSvgResult(null, "", TimedOut: true);
+                _logger.LogWarning("[Tikz] building the precompiled format timed out");
+                return false;
             }
-
-            var log = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath, ct) : "";
-            if (exit != 0 || !File.Exists(pdfPath))
-                return new StandaloneSvgResult(null, log, TimedOut: false);
-
-            try
+            var built = Path.Combine(tmpDir, "liliafmt.fmt");
+            if (exit != 0 || !File.Exists(built))
             {
-                await RunProcessAsync("pdftocairo", $"-svg -f 1 -l 1 {pdfPath} {svgPath}", tmpDir, 15);
+                var log = Path.Combine(tmpDir, "liliafmt.log");
+                _logger.LogWarning("[Tikz] could not build the precompiled format (exit {Exit}): {Log}", exit,
+                    File.Exists(log) ? string.Join(" | ", (await File.ReadAllLinesAsync(log, ct)).Where(l => l.StartsWith("! ")).Take(3)) : "no log");
+                return false;
             }
-            catch (TimeoutException)
-            {
-                return new StandaloneSvgResult(null, log, TimedOut: true);
-            }
-            if (!File.Exists(svgPath))
-                throw new InvalidOperationException("SVG conversion failed (is pdftocairo installed?)");
-            return new StandaloneSvgResult(await File.ReadAllBytesAsync(svgPath, ct), log, TimedOut: false);
+            Directory.CreateDirectory(Path.GetDirectoryName(formatPath)!);
+            var tmp = formatPath + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
+            File.Copy(built, tmp, overwrite: true);
+            File.Move(tmp, formatPath + ".fmt", overwrite: true);
+            return true;
         }
         finally
         {
@@ -961,6 +1051,6 @@ public class LaTeXRenderService : ILaTeXRenderService
 
     // One hardened launcher for every TeX process: shell escape off, scrubbed environment, optional other user.
     private static Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
-        string command, string arguments, string workingDir, int timeoutSeconds) =>
-        Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds);
+        string command, string arguments, string workingDir, int timeoutSeconds, CancellationToken ct = default) =>
+        Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds, ct);
 }
