@@ -257,9 +257,15 @@ public sealed class TikzFigureService : ITikzFigureService
         _ => "pdflatex",
     };
 
+    /// <summary>
+    /// Bumped whenever how a drawing or its error is produced changes (the standalone wrapper, the SVG
+    /// conversion, the error wording), so a deploy never serves results the old code made from the cache.
+    /// </summary>
+    internal const string RendererVersion = "2";
+
     internal static string Hash(string source, string preamble, string engine)
     {
-        var bytes = Encoding.UTF8.GetBytes(source + "\u0000" + preamble + "\u0000" + engine);
+        var bytes = Encoding.UTF8.GetBytes(RendererVersion + "\u0000" + source + "\u0000" + preamble + "\u0000" + engine);
         return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     }
 
@@ -459,11 +465,23 @@ public static class TikzErrors
             && ControlSequence.Matches(consumed) is { Count: > 0 } cs)
             text = $"Undefined control sequence {cs[^1].Value}.";
 
+        // TeX often notices a missing ")" or "}" only at the blank line or the end that follows it
+        // ("Paragraph ended before … was complete", "Runaway argument"): the line it names is empty, and
+        // the author's mistake is on the last line with content before it. Point there, without a column.
+        if (text.StartsWith("Paragraph ended before", StringComparison.Ordinal)
+            || text.StartsWith("Runaway argument", StringComparison.Ordinal)
+            || text.StartsWith("File ended while scanning", StringComparison.Ordinal))
+            text = "Something isn't closed: a ')' or '}' is probably missing on this line.";
+
         string? excerpt = null;
         TikzErrorColumn? column = null;
         if (line is { } ln)
         {
-            excerpt = source.Replace("\r\n", "\n").Split('\n')[ln - 1];
+            var sourceLines = source.Replace("\r\n", "\n").Split('\n');
+            var at = ln;
+            while (at > 1 && string.IsNullOrWhiteSpace(sourceLines[at - 1])) at--;
+            if (at != ln) { line = at; consumed = null; }
+            excerpt = sourceLines[line!.Value - 1];
             if (consumed is not null) column = ColumnOf(excerpt, consumed);
         }
         return new TikzRenderError("tex", text, line, excerpt, column);

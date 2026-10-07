@@ -447,6 +447,20 @@ public class TikzFigureTests
         compiled.Text.Should().Contain("This TikZ figure doesn").And.Contain("Broken.").And.Contain("Before.");
     }
 
+    [Fact]
+    public void A_missing_bracket_noticed_at_a_blank_line_points_at_the_line_with_the_mistake()
+    {
+        // TeX names the blank line after the unclosed plot (it noticed only when the paragraph
+        // ended); the author's mistake is the line before it.
+        var source = "\\begin{tikzpicture}\n  \\draw plot (\\x,{\\x^0.5};\n\n\\end{tikzpicture}";
+        var log = "! Paragraph ended before \\tikz@plot@expression was complete.\n<to be read again>\n                   \\par\nl.3\n";
+        var e = TikzErrors.FromLog(log, source, sourceStartLine: 1);
+        e.Line.Should().Be(2);
+        e.Excerpt.Should().Contain("plot (");
+        e.Column.Should().BeNull();
+        e.Message.Should().Contain("isn't closed");
+    }
+
     // ── drawing (real compiles) ─────────────────────────────────────────
 
     internal static TikzFigureService Service(string? cacheDir = null) =>
