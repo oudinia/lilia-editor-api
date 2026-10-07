@@ -31,7 +31,9 @@ public static class PageSetupRouting
         if (d.PageNumbering is { } pn && !string.Equals(pn.Trim(), "arabic", StringComparison.OrdinalIgnoreCase) && pn.Trim().Length > 0) reasons.Add("page numbering");
         if (new[] { d.HeaderText, d.FooterText, d.HeaderLeft, d.HeaderCenter, d.HeaderRight, d.FooterLeft, d.FooterCenter, d.FooterRight }
             .Any(v => !string.IsNullOrWhiteSpace(v))) reasons.Add("header or footer");
-        if (!string.IsNullOrWhiteSpace(d.CustomPreamble)) reasons.Add("custom preamble");
+        // TikZ setup alone (\usetikzlibrary, \tikzset …) is not page setup: Typst places the
+        // figures as the SVGs the server drew with it, so it does not need LaTeX for the document.
+        if (!Lilia.Core.Blocks.TikzFigure.IsSetupOnly(d.CustomPreamble)) reasons.Add("custom preamble");
         var cls = d.LatexDocumentClass?.Trim();
         if (!string.IsNullOrEmpty(cls) && !string.Equals(cls, "article", StringComparison.OrdinalIgnoreCase)) reasons.Add($"document class {cls}");
         if (!string.IsNullOrWhiteSpace(d.LatexDocumentClassOptions)) reasons.Add("class options");

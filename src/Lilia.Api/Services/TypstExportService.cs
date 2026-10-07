@@ -50,6 +50,10 @@ public class TypstExportService : ITypstExportService
     /// </summary>
     [ThreadStatic]
     private static IReadOnlyDictionary<string, string>? LocalImagePaths;
+
+    /// <summary>The TikZ figures drawn for this build, by source (see <see cref="TypstExportOptions.TikzFigures"/>).</summary>
+    [ThreadStatic]
+    private static IReadOnlyDictionary<string, TikzStaged>? TikzFigures;
     private readonly IImportTelemetrySink _telemetry;
 
     public TypstExportService(
@@ -88,6 +92,7 @@ public class TypstExportService : ITypstExportService
         // document, so tell it here whether there is anything to cite.
         HasBibliographyEntries = doc.BibliographyEntries?.Count > 0;
         LocalImagePaths = options.LocalImagePaths;
+        TikzFigures = options.TikzFigures;
         try
         {
             return BuildTypstDocumentCore(doc, blocks, layoutGroups, options);
@@ -106,6 +111,7 @@ public class TypstExportService : ITypstExportService
     {
         HasBibliographyEntries = false;
         LocalImagePaths = null;
+        TikzFigures = null;
     }
 
     private string BuildTypstDocumentCore(
@@ -567,10 +573,13 @@ public class TypstExportService : ITypstExportService
     {
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
+        var captionPart = string.IsNullOrEmpty(caption) ? "" : $", caption: [{FormatInline(caption)}]";
+
+        if (TikzFigure.IsTikz(content))
+            return RenderTikzFigure(content, captionPart);
+
         if (string.IsNullOrEmpty(src))
             return "// [Figure without source]";
-
-        var captionPart = string.IsNullOrEmpty(caption) ? "" : $", caption: [{FormatInline(caption)}]";
 
         // Figures with external / placeholder URLs can't be resolved
         // inside Typst's sandboxed file system at compile time. Render
@@ -593,6 +602,36 @@ public class TypstExportService : ITypstExportService
         }
 
         return $"#figure(image({QuoteTypst(src)}){captionPart})";
+    }
+
+    /// <summary>
+    /// A TikZ figure: the SVG the server drew for it (staged by the caller), as a figure with its
+    /// caption, or the bare drawing for a picture that had no figure. One that does not draw is a
+    /// visible box saying why, so the rest of the document still previews.
+    /// </summary>
+    private static string RenderTikzFigure(JsonElement content, string captionPart)
+    {
+        var source = TikzFigure.Source(content);
+        var floating = TikzFigure.IsFloating(content);
+        TikzStaged? staged = null;
+        TikzFigures?.TryGetValue(source, out staged);
+
+        string drawing;
+        if (staged?.Path is { } path)
+        {
+            drawing = $"image({QuoteTypst(path)})";
+            if (!floating) return $"#{drawing}";
+        }
+        else
+        {
+            var message = staged?.Error is { } err
+                ? "This TikZ figure doesn't compile: " + err
+                : "TikZ figure (drawn in the LaTeX PDF)";
+            drawing = "rect(width: 80%, inset: 1em, fill: rgb(\"#fef2f2\"), stroke: rgb(\"#fca5a5\"), radius: 4pt)"
+                + $"[#text(size: 0.85em, fill: rgb(\"#991b1b\"))[#{QuoteTypst(message)}]]";
+            if (!floating) return $"#align(center)[#{drawing}]";
+        }
+        return $"#figure({drawing}{captionPart})";
     }
 
     private static string RenderTable(JsonElement content)
@@ -2024,4 +2063,11 @@ public class TypstExportOptions
     /// PDF exporters follow, for the same reason.</para>
     /// </summary>
     public IReadOnlyDictionary<string, string>? LocalImagePaths { get; set; }
+
+    /// <summary>
+    /// The TikZ figures drawn for this build, keyed by their source: the staged SVG's path, or
+    /// the error to show in its place (DocumentImageStager). A TikZ figure absent from it gets a
+    /// neutral placeholder.
+    /// </summary>
+    public IReadOnlyDictionary<string, TikzStaged>? TikzFigures { get; set; }
 }

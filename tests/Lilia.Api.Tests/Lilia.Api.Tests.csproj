@@ -38,6 +38,11 @@
     <None Update="Fixtures\latex-corpus\**\*.tex">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- The five TikZ files of the .tex corpus (lilia/corpus/main_tex_files/tikz_*.tex):
+         TikZ figures, step 1, must import, export, compile and draw each of them. -->
+    <None Update="Fixtures\tikz-corpus\*.tex">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Fixtures\docx-corpus\**\*.docx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

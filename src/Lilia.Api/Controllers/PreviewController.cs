@@ -373,7 +373,7 @@ public class PreviewController : ControllerBase
         var staged = await _imageStager.StageAsync(docId);
 
         var typstSource = _typstExporter.BuildTypstDocument(document, blocks, layoutGroups,
-            new TypstExportOptions { LocalImagePaths = staged.Paths });
+            new TypstExportOptions { LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz });
 
         var outputFormat = format.ToLowerInvariant() switch
         {

@@ -459,6 +459,7 @@ builder.Services.AddScoped<ILaTeXExportService, LaTeXExportService>();
 // happens in PreviewService; user picks neither.
 builder.Services.AddScoped<ITypstExportService, TypstExportService>();
 builder.Services.AddScoped<IDocumentImageStager, DocumentImageStager>();
+builder.Services.AddScoped<ITikzFigureService, TikzFigureService>();
 builder.Services.AddSingleton<ITypstCompileService, TypstCompileService>();
 builder.Services.AddScoped<IPreviewRenderService, PreviewRenderService>();
 builder.Services.AddScoped<ITypstCoverageService, TypstCoverageService>();
@@ -580,6 +581,24 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+            });
+    });
+    // Per signed-in user (the IP when there is none): for routes a document page calls many
+    // times on its own, such as one figure.svg per TikZ figure, where a per-IP limit of 10
+    // would break a figure-heavy document and one office behind one IP. The compiles behind
+    // them have their own, tighter budget (TikzFigureService).
+    options.AddPolicy("per-user", httpContext =>
+    {
+        var partitionKey = httpContext.User.FindFirst("sub")?.Value
+            ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 240,
                 Window = TimeSpan.FromMinutes(1),
             });
     });

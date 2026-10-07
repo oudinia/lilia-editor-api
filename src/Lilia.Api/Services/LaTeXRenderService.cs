@@ -68,7 +68,20 @@ public interface ILaTeXRenderService
     Task<string?> GenerateBblAsync(
         IReadOnlyList<(string Path, string Content)> files,
         string mainStem = "main", int timeoutSeconds = 60);
+
+    /// <summary>
+    /// Compile a standalone document once and convert its first page to SVG (pdftocairo):
+    /// a TikZ figure's drawing. The same safety as every compile (the source guard, no shell
+    /// escape, a scrubbed environment, the shared concurrency bound, a timeout). Never throws
+    /// for a compile error: the result carries the log. Throws
+    /// <see cref="Lilia.Engines.TexSafety.UnsafeLatexException"/> when the guard refuses.
+    /// </summary>
+    Task<StandaloneSvgResult> CompileStandaloneSvgAsync(
+        string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default);
 }
+
+/// <summary>An SVG, or why there is none: the TeX log, or a timeout.</summary>
+public sealed record StandaloneSvgResult(byte[]? Svg, string Log, bool TimedOut);
 
 /// <summary>
 /// Full result of a LaTeX validation run — includes the parsed error for persistence/telemetry.
@@ -861,6 +874,58 @@ public class LaTeXRenderService : ILaTeXRenderService
         finally
         {
             try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    public async Task<StandaloneSvgResult> CompileStandaloneSvgAsync(
+        string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default)
+    {
+        Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
+        engine = ResolveEngine(engine);
+
+        await _semaphore.WaitAsync(ct);
+        var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-tikz-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            var texPath = Path.Combine(tmpDir, "figure.tex");
+            var pdfPath = Path.Combine(tmpDir, "figure.pdf");
+            var logPath = Path.Combine(tmpDir, "figure.log");
+            var svgPath = Path.Combine(tmpDir, "figure.svg");
+            await File.WriteAllTextAsync(texPath, latex, ct);
+
+            int exit;
+            try
+            {
+                (exit, _, _) = await RunProcessAsync(engine,
+                    $"-interaction=nonstopmode -halt-on-error --no-shell-escape -output-directory {tmpDir} {texPath}",
+                    tmpDir, timeoutSeconds);
+            }
+            catch (TimeoutException)
+            {
+                return new StandaloneSvgResult(null, "", TimedOut: true);
+            }
+
+            var log = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath, ct) : "";
+            if (exit != 0 || !File.Exists(pdfPath))
+                return new StandaloneSvgResult(null, log, TimedOut: false);
+
+            try
+            {
+                await RunProcessAsync("pdftocairo", $"-svg -f 1 -l 1 {pdfPath} {svgPath}", tmpDir, 15);
+            }
+            catch (TimeoutException)
+            {
+                return new StandaloneSvgResult(null, log, TimedOut: true);
+            }
+            if (!File.Exists(svgPath))
+                throw new InvalidOperationException("SVG conversion failed (is pdftocairo installed?)");
+            return new StandaloneSvgResult(await File.ReadAllBytesAsync(svgPath, ct), log, TimedOut: false);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+            _semaphore.Release();
         }
     }
 

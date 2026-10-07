@@ -1,0 +1,33 @@
+% The Complete LaTeX Bootcamp - L84: Basic axes in Tikz
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{lipsum}
+
+\title{Tikz}
+\author{Just Me}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\lipsum[1-2]
+
+\lipsum[3-4]
+
+\begin{figure}
+    \centering
+    \begin{tikzpicture}
+
+        % a node can hold text too, e.g. node{my label}; positions combine: below right, above left
+        \draw[->] (-0.25, 0) -- (5, 0) node[below]{$x$}; % x - axis
+        \draw[->] (0, -.25) -- (0, 5) node[left]{$y$}; % y - axis
+
+    \end{tikzpicture}
+    \caption{Our second TikZ figure}
+    \label{fig:second_tikz}
+\end{figure}
+
+\end{document}

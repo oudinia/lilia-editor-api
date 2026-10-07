@@ -155,6 +155,18 @@ public partial class RenderService
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var width = content.TryGetProperty("width", out var w) && w.ValueKind == JsonValueKind.Number ? w.GetDouble().ToString("0.##") : null;
         var position = content.TryGetProperty("position", out var p) ? p.GetString() : null;
+        // A TikZ figure: its source is the body, indented, so apply_lml gives it back as it was.
+        if (Lilia.Core.Blocks.TikzFigure.IsTikz(content))
+        {
+            var tikzAttrs = BuildAttrs(
+                ("kind", "tikz"),
+                ("caption", string.IsNullOrEmpty(caption) ? null : caption),
+                ("position", position),
+                ("float", Lilia.Core.Blocks.TikzFigure.IsFloating(content) ? null : "false"),
+                ("label", label));
+            var body = string.Join("\n", Lilia.Core.Blocks.TikzFigure.Source(content).Split('\n').Select(l => "  " + l));
+            return $"@figure{tikzAttrs}\n{body}";
+        }
         var attrs = BuildAttrs(
             ("src", src),
             ("alt", string.IsNullOrEmpty(alt) ? null : alt),

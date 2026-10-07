@@ -1029,6 +1029,7 @@ public class JobService : IJobService
             // carry the \includegraphics filename so downstream asset
             // staging can rewrite it to the storage URL.
             ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
+            ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
             ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
             _ => ("paragraph", new { text = "" }),
         };

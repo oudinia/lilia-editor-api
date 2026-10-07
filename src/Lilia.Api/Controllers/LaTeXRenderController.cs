@@ -692,6 +692,29 @@ public class LaTeXRenderController : ControllerBase
                 }
             }
 
+            // A TikZ figure that does not draw is an issue on that block (the figure's own
+            // compile, through the same cache as the canvas), whatever the whole document's
+            // compile says: the author sees which figure, and on which line.
+            var tikzWarnings = new List<string>();
+            var tikzIssues = new List<object>();
+            var tikzBlockIds = new List<string>();
+            if (doc != null)
+            {
+                var tikz = HttpContext.RequestServices.GetService<ITikzFigureService>();
+                var who = User.FindFirst("sub")?.Value
+                    ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous";
+                foreach (var block in doc.Blocks.OrderBy(b => b.SortOrder)
+                             .Where(b => b.Type is "figure" or "image" && Lilia.Core.Blocks.TikzFigure.IsTikz(b.Content.RootElement)))
+                {
+                    if (tikz is null) break;
+                    var drawn = await tikz.RenderAsync(doc, block, who, HttpContext.RequestAborted);
+                    if (drawn.Error is not { Kind: "tex" } e) continue;
+                    tikzWarnings.Add($"[tikz] {TikzErrors.Describe(e)}");
+                    tikzIssues.Add(new { blockId = block.Id, kind = "tikz", message = e.Message, line = e.Line, excerpt = e.Excerpt });
+                    tikzBlockIds.Add(block.Id.ToString());
+                }
+            }
+
             var latex = await _renderService.RenderToLatexAsync(documentId);
             var result = await _latexService.ValidateAsync(latex);
             var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
@@ -716,7 +739,7 @@ public class LaTeXRenderController : ControllerBase
             }
 
             // Merge bibliography + layout + reference warnings with LaTeX warnings
-            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(refWarnings)
+            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(refWarnings).Concat(tikzWarnings)
                 .Concat(warnings).Distinct().ToArray();
 
             if (!valid || allWarnings.Length > 0)
@@ -779,6 +802,7 @@ public class LaTeXRenderController : ControllerBase
                 .BlocksNamedBy(allWarnings)
                 .Select(id => id.ToString())
                 .Concat(blockIssues.Where(i => i.blockId is not null).Select(i => i.blockId!))
+                .Concat(tikzBlockIds)
                 .Distinct()
                 .ToArray();
 
@@ -788,7 +812,12 @@ public class LaTeXRenderController : ControllerBase
                 error,
                 warnings = allWarnings,
                 blocksWithWarnings,
-                blockIssues,
+                // Issues that belong to one block: a deck's frame that doesn't fit (kind "frame") and a
+                // TikZ figure that doesn't draw (kind "tikz").
+                blockIssues = blockIssues
+                    .Select(i => (object)new { i.blockId, kind = "frame", i.frame, i.message })
+                    .Concat(tikzIssues)
+                    .ToArray(),
                 durationMs = result.DurationMs,
                 engine = string.IsNullOrEmpty(result.Engine) ? null : result.Engine,
                 pageCount,

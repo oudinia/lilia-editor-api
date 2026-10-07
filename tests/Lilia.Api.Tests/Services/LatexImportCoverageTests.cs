@@ -366,15 +366,16 @@ public class LatexImportCoverageTests
     [Fact]
     public async Task UnknownEnvironment_EmitsWarning()
     {
+        // (tikzpicture used to be the example; it is a TikZ figure now, TikzFigureImportTests.)
         var latex = """
-            \begin{tikzpicture}
-            \draw (0,0) -- (1,1);
-            \end{tikzpicture}
+            \begin{forest}
+            [VP [V] [NP]]
+            \end{forest}
             """;
         var doc = await ParseAsync(latex);
 
         doc.Warnings.Should().NotBeEmpty();
-        doc.Warnings.Should().Contain(w => w.Message.Contains("tikzpicture"));
+        doc.Warnings.Should().Contain(w => w.Message.Contains("forest"));
     }
 
     [Fact]
@@ -654,14 +655,15 @@ public class LatexImportCoverageTests
     {
         var latex = """
             \documentclass{article}
-            \usepackage{tikz}
+            \usepackage{circuitikz}
             \begin{document}
             body
             \end{document}
             """;
         var doc = await ParseAsync(latex);
 
-        doc.Warnings.Should().Contain(w => w.Message.Contains("tikz"));
+        // tikz and pgfplots no longer warn: their pictures import as TikZ figures.
+        doc.Warnings.Should().Contain(w => w.Message.Contains("circuitikz"));
     }
 
     [Fact]

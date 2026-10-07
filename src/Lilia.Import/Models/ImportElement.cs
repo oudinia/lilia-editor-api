@@ -808,6 +808,55 @@ public class ImportLatexPassthrough : ImportElement
 }
 
 /// <summary>
+/// A TikZ picture: a figure block with <c>kind: "tikz"</c> (see <see cref="Lilia.Core.Blocks.TikzFigure"/>).
+///
+/// <para>It is a passthrough too: <see cref="ImportLatexPassthrough.LatexCode"/> holds the whole
+/// figure as written, so a consumer that does not know TikZ figures (the convert tool, the DOCX
+/// converter) keeps carrying the raw LaTeX as it did before. The LaTeX import paths match this
+/// type first and build a figure block from it.</para>
+/// </summary>
+public class ImportTikzFigure : ImportLatexPassthrough
+{
+    /// <summary>The picture verbatim: the TikZ environment(s) and anything wrapping them inside the figure.</summary>
+    public string Source { get; set; } = string.Empty;
+
+    public string? Caption { get; set; }
+    public string? Label { get; set; }
+
+    /// <summary>"here" | "top" | "bottom" | "page" | "auto" (LaTeX's default, [htbp]); null prints [H].</summary>
+    public string? Placement { get; set; }
+
+    /// <summary>"left" | "right", or null for centred.</summary>
+    public string? Position { get; set; }
+
+    /// <summary>"page" for figure*, else "column".</summary>
+    public string Span { get; set; } = "column";
+
+    /// <summary>False for a picture written outside a figure: no float, caption or number.</summary>
+    public bool Floating { get; set; } = true;
+}
+
+/// <summary>Figure block content for a TikZ picture, built in one place for every import path.</summary>
+public static class TikzFigureBlockContent
+{
+    public static Dictionary<string, object?> From(ImportTikzFigure fig)
+    {
+        var content = new Dictionary<string, object?>
+        {
+            ["kind"] = Lilia.Core.Blocks.TikzFigure.Kind,
+            ["source"] = fig.Source,
+            ["caption"] = fig.Caption ?? "",
+            ["label"] = fig.Label ?? "",
+        };
+        if (!fig.Floating) content["float"] = false;
+        if (!string.IsNullOrEmpty(fig.Position)) content["position"] = fig.Position;
+        if (!string.IsNullOrEmpty(fig.Placement)) content["placement"] = fig.Placement;
+        if (fig.Span == "page") content["span"] = "page";
+        return content;
+    }
+}
+
+/// <summary>
 /// Equation block content, built in one place.
 ///
 /// <para>Four import paths turned an <see cref="ImportEquation"/> into block

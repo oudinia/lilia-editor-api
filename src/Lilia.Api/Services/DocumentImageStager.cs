@@ -37,7 +37,8 @@ public interface IDocumentImageStager
 
 public sealed record StagedImages(
     IReadOnlyDictionary<string, string> Paths,
-    IReadOnlyDictionary<string, byte[]> Files)
+    IReadOnlyDictionary<string, byte[]> Files,
+    IReadOnlyDictionary<string, TikzStaged>? Tikz = null)
 {
     public static readonly StagedImages None = new(
         new Dictionary<string, string>(), new Dictionary<string, byte[]>());
@@ -45,15 +46,70 @@ public sealed record StagedImages(
     public bool Any => Files.Count > 0;
 }
 
+/// <summary>
+/// A TikZ figure for the Typst preview, keyed by its source: the staged SVG's path inside the
+/// compile directory, or why it did not draw (shown in place of the drawing).
+/// </summary>
+public sealed record TikzStaged(string? Path, string? Error);
+
 public sealed class DocumentImageStager(
     LiliaDbContext db,
     IStorageService storage,
-    ILogger<DocumentImageStager> logger) : IDocumentImageStager
+    ILogger<DocumentImageStager> logger,
+    ITikzFigureService? tikz = null) : IDocumentImageStager
 {
     /// <summary>The upload limit an asset already passed to exist.</summary>
     private const long MaxBytes = 10L * 1024 * 1024;
 
     public async Task<StagedImages> StageAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var images = await StageImagesAsync(documentId, ct);
+        if (tikz is null) return images;
+
+        // TikZ figures: drawn server-side through the same cache as the figure.svg route,
+        // placed by Typst as SVG images, so a document with TikZ keeps the fast preview.
+        var tikzBlocks = await db.Blocks.AsNoTracking()
+            .Where(b => b.DocumentId == documentId && (b.Type == "figure" || b.Type == "image"))
+            .ToListAsync(ct);
+        tikzBlocks = tikzBlocks.Where(b => Lilia.Core.Blocks.TikzFigure.IsTikz(b.Content.RootElement)).ToList();
+        if (tikzBlocks.Count == 0) return images;
+
+        var doc = await db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (doc is null) return images;
+
+        var paths = new Dictionary<string, string>(images.Paths, StringComparer.Ordinal);
+        var files = new Dictionary<string, byte[]>(images.Files, StringComparer.Ordinal);
+        var staged = new Dictionary<string, TikzStaged>(StringComparer.Ordinal);
+        foreach (var block in tikzBlocks)
+        {
+            var source = Lilia.Core.Blocks.TikzFigure.Source(block.Content.RootElement);
+            if (staged.ContainsKey(source)) continue;
+            try
+            {
+                // One at a time: the service records each outcome through this scope's DbContext.
+                var result = await tikz.RenderAsync(doc, block, $"preview:{documentId}", ct);
+                if (result.Svg is { } svg)
+                {
+                    var local = $"figures/tikz-{TikzFigureService.Hash(source, "", "")[..16]}.svg";
+                    files[local] = svg;
+                    staged[source] = new TikzStaged(local, null);
+                }
+                else
+                {
+                    staged[source] = new TikzStaged(null, result.Error?.Message ?? "unknown error");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A figure that cannot be drawn costs that figure, not the preview.
+                logger.LogWarning(ex, "[Stage] Could not draw TikZ figure {BlockId}", block.Id);
+                staged[source] = new TikzStaged(null, "the server could not draw it");
+            }
+        }
+        return new StagedImages(paths, files, staged);
+    }
+
+    private async Task<StagedImages> StageImagesAsync(Guid documentId, CancellationToken ct)
     {
         var assets = await db.Assets.AsNoTracking()
             .Where(a => a.DocumentId == documentId)

@@ -457,6 +457,13 @@ public class LatexParser : ILatexParser
         // fontspec/unicode-math loads that would otherwise abort compilation.
         content = StripXeLuaConditionals(content);
 
+        // TikZ pictures are kept verbatim, comments and all: each is swapped for a
+        // placeholder before anything below rewrites the source (comment stripping,
+        // the \def / \newcommand strips, \( \) to $), and put back where it becomes a
+        // figure (or, anywhere else, back into whatever text it sat in). See TikzFigure.
+        var tikz = new List<string>();
+        content = StashTikz(content, tikz);
+
         // % comments are not content. Nothing removed them, so a trailing
         // "% note to self" imported as paragraph text and exported as a
         // printed "\% note to self". Verbatim-like bodies, \verb and URL
@@ -643,7 +650,9 @@ public class LatexParser : ILatexParser
         // These produce valid documents but visual output will differ from a local pdflatex run.
         var knownLimitedPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "tikz", "pgfplots", "circuitikz", "pst-plot",
+            // tikz and pgfplots are not here: a picture imports as a TikZ figure, kept
+            // verbatim and drawn by the same TeX (TikzFigure). circuitikz has its own environment.
+            "circuitikz", "pst-plot",
             "algorithmic", "algorithm2e",
             "biblatex", // we handle thebibliography but not biblatex's \printbibliography
             "listings",  // we parse lstlisting bodies but syntax-highlighting options are ignored
@@ -754,8 +763,16 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\newpage\b", "");
         documentContent = Regex.Replace(documentContent, @"\\clearpage\b", "");
 
+        // TikZ setup lines (\usetikzlibrary, \tikzset, …) are not text. The
+        // preamble extractor carries them onto the document's custom preamble.
+        documentContent = RemoveSpans(documentContent, Lilia.Core.Blocks.TikzFigure.SetupStatements(documentContent));
+
         // Parse the content
-        ParseContent(documentContent, document, options);
+        ParseContent(documentContent, document, options, tikz);
+
+        // A picture that did not become a figure (inside an equation, a table cell,
+        // a list item) goes back into that text exactly as it was written.
+        if (tikz.Count > 0) RestoreTikzInElements(document, tikz);
 
         // Walk all text-bearing elements and harvest citation keys + reference labels.
         // The editor uses these to validate "you cited X but it's not in your bibliography"
@@ -765,6 +782,180 @@ public class LatexParser : ILatexParser
         ExtractInlineReferences(document, harvestedCites, harvestedLabels);
 
         return document;
+    }
+
+    // ── TikZ pictures ────────────────────────────────────────────────────
+
+    // Private-use characters: no LaTeX source has them, no text normaliser touches them.
+    private const char TikzOpen = '\uE0F0';
+    private const char TikzClose = '\uE0F1';
+    private static readonly Regex TikzToken = new("\uE0F0(\\d+)\uE0F1", RegexOptions.Compiled);
+
+    // A picture outside a figure, with what it sits in: display math (\[ \begin{tikzcd} … \] is
+    // how commutative diagrams are written), a \resizebox / \scalebox / \adjustbox, or nothing.
+    private const string TikzTokenPattern = "\uE0F0\\d+\uE0F1";
+    private static readonly Regex BareTikzRx = new(
+        @"\\\[\s*" + TikzTokenPattern + @"\s*\\\]"
+        + @"|\$\$\s*" + TikzTokenPattern + @"\s*\$\$"
+        + @"|\\(?:resizebox\*?\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}|scalebox\s*\{[^{}]*\}(?:\s*\[[^\]]*\])?|adjustbox\s*\{[^{}]*\})\s*\{\s*" + TikzTokenPattern + @"\s*\}"
+        + "|" + TikzTokenPattern,
+        RegexOptions.Compiled);
+
+    /// <summary>Each picture in <paramref name="content"/> swapped for a numbered placeholder; the originals go in <paramref name="stash"/>.</summary>
+    internal static string StashTikz(string content, List<string> stash)
+    {
+        var spans = Lilia.Core.Blocks.TikzFigure.FindEnvironments(content);
+        if (spans.Count == 0) return content;
+        var sb = new System.Text.StringBuilder(content.Length);
+        var last = 0;
+        foreach (var (start, length) in spans)
+        {
+            sb.Append(content, last, start - last);
+            sb.Append(TikzOpen).Append(stash.Count).Append(TikzClose);
+            stash.Add(content.Substring(start, length));
+            last = start + length;
+        }
+        sb.Append(content, last, content.Length - last);
+        return sb.ToString();
+    }
+
+    internal static string RestoreTikz(string text, IReadOnlyList<string> stash) =>
+        text.IndexOf(TikzOpen) < 0
+            ? text
+            : TikzToken.Replace(text, m => int.TryParse(m.Groups[1].Value, out var n) && n < stash.Count ? stash[n] : m.Value);
+
+    private static string RemoveSpans(string text, IReadOnlyList<(int Start, int Length)> spans)
+    {
+        if (spans.Count == 0) return text;
+        var sb = new System.Text.StringBuilder(text.Length);
+        var last = 0;
+        foreach (var (start, length) in spans)
+        {
+            sb.Append(text, last, start - last);
+            last = start + length;
+        }
+        sb.Append(text, last, text.Length - last);
+        return sb.ToString();
+    }
+
+    /// <summary>The whitespace between the start of the line and <paramref name="index"/>, when there is only whitespace there.</summary>
+    private static string IndentBefore(string text, int index)
+    {
+        var lineStart = text.LastIndexOf('\n', Math.Max(0, index - 1)) + 1;
+        if (index <= 0 || lineStart > index) return "";
+        var prefix = text[lineStart..index];
+        return prefix.Trim(' ', '\t').Length == 0 ? prefix : "";
+    }
+
+    /// <summary>
+    /// A figure whose body holds a picture: the figure's own \centering, \caption and \label (at
+    /// the top level of the body, not a subfigure's) go to the block's fields; everything else,
+    /// the picture and whatever wraps it, is the source, verbatim.
+    /// </summary>
+    private static ImportTikzFigure TikzFigureFrom(string figureLatex, string body, bool starred, IReadOnlyList<string> tikz, int order)
+    {
+        string? caption = null, label = null, position = null;
+        var rest = new System.Text.StringBuilder(body.Length);
+        var depth = 0;
+        var i = 0;
+        while (i < body.Length)
+        {
+            var c = body[i];
+            if (c == '{') { depth++; rest.Append(c); i++; continue; }
+            if (c == '}') { depth--; rest.Append(c); i++; continue; }
+            if (c != '\\') { rest.Append(c); i++; continue; }
+
+            var j = i + 1;
+            while (j < body.Length && char.IsAsciiLetter(body[j])) j++;
+            var name = body[(i + 1)..j];
+            if (name.Length == 0) { rest.Append(body, i, Math.Min(2, body.Length - i)); i += 2; continue; }
+            if (name == "begin") depth++;
+            else if (name == "end") depth--;
+
+            if (depth == 0 && name is "centering" or "raggedright" or "raggedleft")
+            {
+                position = name switch { "raggedright" => "left", "raggedleft" => "right", _ => null };
+                i = j;
+                continue;
+            }
+            if (depth == 0 && name is "caption" or "label")
+            {
+                var arg = MatchBalanced(body, name, i);
+                if (arg is { } a && a.Start == i)
+                {
+                    if (name == "caption") caption ??= StripInlineCommandsForPlainText(a.Inner).Trim();
+                    else label ??= a.Inner.Trim();
+                    i = a.End;
+                    continue;
+                }
+            }
+            rest.Append(body, i, j - i);
+            i = j;
+        }
+
+        // A picture written with no alignment command sits at the left, as in the original.
+        var hadCentering = System.Text.RegularExpressions.Regex.IsMatch(body, @"\\centering\b");
+        if (position is null && !hadCentering) position = "left";
+
+        var restText = rest.ToString();
+        var firstContent = restText.TakeWhile(char.IsWhiteSpace).Count();
+        var indent = IndentBefore(restText, firstContent);
+        var source = Lilia.Core.Blocks.TikzFigure.Dedent(RestoreTikz(restText.Trim(), tikz), indent);
+
+        // No specifier, or one that is not a single clear choice: LaTeX placed it ("auto",
+        // [htbp]); absent would print [H], which the original did not ask for.
+        var spec = Regex.Match(figureLatex, @"^\\begin\{figure\*?\}\s*\[([^\]]*)\]");
+        var placement = (spec.Success ? PlacementOf(spec.Groups[1].Value) : null) ?? "auto";
+
+        return new ImportTikzFigure
+        {
+            Order = order,
+            Source = source,
+            Caption = caption,
+            Label = label,
+            Position = position,
+            Placement = placement,
+            Span = starred ? "page" : "column",
+            Floating = true,
+            LatexCode = RestoreTikz(figureLatex, tikz),
+            Description = "TikZ figure",
+        };
+    }
+
+    /// <summary>A float specifier as the block's placement; anything but a single clear choice is LaTeX's default.</summary>
+    private static string? PlacementOf(string spec) => spec.Replace("!", "").Trim() switch
+    {
+        "H" => "here",
+        "t" => "top",
+        "b" => "bottom",
+        "p" => "page",
+        _ => null,
+    };
+
+    /// <summary>Puts every leftover placeholder back into the text it sat in.</summary>
+    private static void RestoreTikzInElements(ImportDocument document, IReadOnlyList<string> tikz)
+    {
+        static void RestoreStrings(object target, IReadOnlyList<string> stash)
+        {
+            foreach (var prop in target.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                if (prop.PropertyType != typeof(string) || !prop.CanRead || !prop.CanWrite || prop.GetIndexParameters().Length > 0) continue;
+                if (prop.GetValue(target) is string v && v.IndexOf(TikzOpen) >= 0)
+                    prop.SetValue(target, RestoreTikz(v, stash));
+            }
+        }
+
+        foreach (var element in document.Elements)
+        {
+            RestoreStrings(element, tikz);
+            if (element is ImportTable table)
+                foreach (var row in table.Rows)
+                    foreach (var cell in row)
+                        RestoreStrings(cell, tikz);
+            if (element is ImportAlgorithm algorithm)
+                foreach (var line in algorithm.Lines)
+                    RestoreStrings(line, tikz);
+        }
     }
 
     // Regions where % is literal: verbatim-like environments, \verb|…| and the
@@ -1268,15 +1459,26 @@ public class LatexParser : ILatexParser
             || cmd.Equals("mintinline", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void ParseContent(string content, ImportDocument document, LatexImportOptions options)
+    private void ParseContent(string content, ImportDocument document, LatexImportOptions options, IReadOnlyList<string>? tikz = null)
     {
         var elementOrder = 0;
         var remaining = content;
+        tikz ??= Array.Empty<string>();
 
         while (!string.IsNullOrWhiteSpace(remaining))
         {
             // Find the next structural element
             var matches = new List<(Match match, string type)>();
+
+            // A TikZ picture outside a figure (its placeholder, see StashTikz), with
+            // the display math or the \resizebox it sits in. Added first so it wins
+            // a tie with the display-math matcher on \[ \begin{tikzcd} … \].
+            if (tikz.Count > 0)
+            {
+                var bareTikz = BareTikzRx.Match(remaining);
+                if (bareTikz.Success)
+                    matches.Add((bareTikz, "tikz"));
+            }
 
             // Sections — \chapter / \section / \subsection / \subsubsection / \paragraph / \subparagraph (P1-1).
             // Their levels depend on the class: in a report or book \chapter is level 1 (HeadingCommands).
@@ -1662,12 +1864,33 @@ public class LatexParser : ILatexParser
                     }
                     break;
 
+                case "tikz":
+                    {
+                        var raw = RestoreTikz(firstMatch.match.Value, tikz);
+                        var source = Lilia.Core.Blocks.TikzFigure.Dedent(raw, IndentBefore(remaining, firstMatch.match.Index));
+                        document.Elements.Add(new ImportTikzFigure
+                        {
+                            Order = elementOrder++,
+                            Source = source,
+                            Floating = false,
+                            LatexCode = source,
+                            Description = "TikZ picture",
+                        });
+                    }
+                    break;
+
                 case "figure":
                 case "figure*":
                     {
                         // Extract includegraphics filename and caption (with balanced-brace caption walker).
                         // With starred/regular handling the content is now group 2; group 1 is the "*" flag.
-                        var figContent = firstMatch.match.Groups[2].Value;
+                        // The wrapfigure / marginfigure matchers have only the body (group 1).
+                        var figContent = firstMatch.match.Groups.Count > 2 ? firstMatch.match.Groups[2].Value : firstMatch.match.Groups[1].Value;
+                        if (figContent.Contains(TikzOpen))
+                        {
+                            document.Elements.Add(TikzFigureFrom(firstMatch.match.Value, figContent, firstMatch.type == "figure*", tikz, elementOrder++));
+                            break;
+                        }
                         var graphicsMatch = Regex.Match(figContent, @"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}");
                         var captionInner = MatchBalanced(figContent, "caption");
 

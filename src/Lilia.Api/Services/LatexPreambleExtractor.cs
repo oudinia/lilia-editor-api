@@ -82,12 +82,26 @@ public static class LatexPreambleExtractor
         // parser strips those definitions from the text, so a macro defined in
         // the body used to be lost entirely — its uses were left undefined and
         // the export no longer compiled.
+        // A definition inside a TikZ picture (\def\r{2} is a common idiom) is local to the
+        // picture, which keeps it verbatim; lifted into the preamble it would redefine \r
+        // (the ring accent) for the whole document.
+        var pictures = Lilia.Core.Blocks.TikzFigure.FindEnvironments(rawLatex);
+        bool InPicture(int pos) => pictures.Any(p => pos >= p.Start && pos < p.Start + p.Length);
+
         var hits = new List<(int Pos, string Text)>();
         var seenDefinitions = new HashSet<string>(StringComparer.Ordinal);
         foreach (var re in MacroRes)
             foreach (Match m in re.Matches(rawLatex))
-                if (seenDefinitions.Add(m.Value.Trim()))
+                if (!InPicture(m.Index) && seenDefinitions.Add(m.Value.Trim()))
                     hits.Add((m.Index, m.Value.Trim()));
+        // TikZ setup (\usetikzlibrary, \tikzset, \pgfplotsset, \tikzstyle …), wherever it is
+        // outside a picture: the body parser drops it, and the pictures need it on export and
+        // in their own compile. Comment-aware, so a commented-out library stays out.
+        foreach (var (start, length) in Lilia.Core.Blocks.TikzFigure.SetupStatements(rawLatex))
+        {
+            var text = rawLatex.Substring(start, length).Trim();
+            if (seenDefinitions.Add(text)) hits.Add((start, text));
+        }
         hits.Sort((a, b) => a.Pos.CompareTo(b.Pos));
 
         string? customPreamble = null;
