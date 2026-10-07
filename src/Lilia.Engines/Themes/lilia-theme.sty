@@ -21,6 +21,15 @@
 %%                                              theme's, header for Gazette, else ruled)
 %%   tabledensity = normal | compact          (compact: \small, tighter columns and rows)
 %%   captions     = above | below             (where table captions go; above by default)
+%%   coloursonly  = true | false              (define the figure colour names below and
+%%                                              nothing else: a figure's own compile, a
+%%                                              beamer deck; exposition is allowed here)
+%%
+%% Colour names for figures (TikZ, \textcolor), defined under every theme:
+%%   lilia-ink  lilia-paper  lilia-accent  lilia-accent-soft (accent 18% on paper)
+%%   lilia-chapter (Index: the current chapter's colour, pins and appendices
+%%   included; elsewhere lilia-accent)  lilia-seq1 ... lilia-seq8 (the Index
+%%   sequence; Classic: ink and greys, so Classic stays monochrome)
 %%
 %% Commands
 %%   \liliaHeadRow          at the start of a table's header row (Lilia's exporter
@@ -34,13 +43,14 @@
 %%                          Unpinned headings fill the sequence in order, skipping
 %%                          the colours taken by pins.
 %%
-%% Classic with today's tables (ruled, normal, captions above) loads nothing.
-%% Classic with another table setting loads only the table part.
+%% Classic with today's tables (ruled, normal, captions above) loads nothing
+%% but xcolor and the colour names (Lilia writes the line only when a figure
+%% uses one). Classic with another table setting loads only the table part.
 %%
 %% The author's preamble wins: Lilia writes this line before the custom
 %% preamble, so anything set there overrides the theme.
 \NeedsTeXFormat{LaTeX2e}
-\ProvidesPackage{lilia-theme}[2026/10/06 v0.2 Lilia document themes]
+\ProvidesPackage{lilia-theme}[2026/10/07 v0.3 Lilia document themes]
 
 \RequirePackage{kvoptions}
 \SetupKeyvalOptions{family=lilia,prefix=lilia@opt@}
@@ -52,6 +62,7 @@
 \DeclareStringOption[]{tables}
 \DeclareStringOption[normal]{tabledensity}
 \DeclareStringOption[above]{captions}
+\DeclareBoolOption{coloursonly}
 \ProcessKeyvalOptions*
 
 % These macros exist whatever the theme, so Lilia's table LaTeX and pin lines
@@ -76,6 +87,7 @@
 \ifx\lilia@theme\lilia@theme@index \lilia@knowntrue \fi
 \ifx\lilia@theme\lilia@theme@carnet \lilia@knowntrue \fi
 \ifx\lilia@theme\lilia@theme@gazette \lilia@knowntrue \fi
+\iflilia@opt@coloursonly \ifx\lilia@theme\lilia@theme@exposition \lilia@knowntrue \fi\fi
 \iflilia@known\else
   \ifx\lilia@theme\lilia@theme@exposition \lilia@plannedtrue \fi
   \iflilia@planned
@@ -88,6 +100,58 @@
   % Stop rather than print the document in a look nobody chose.
   \csname @@end\endcsname
 \fi
+
+% ---------------------------------------------------------------------------
+% Colour names for figures (TikZ figures, step 3). The values are themes.json's
+% (ink, paper, accent; the print-safe pair on white paper) and Lilia's
+% FigureColours resolves the same ones for the editor's swatches.
+% ---------------------------------------------------------------------------
+\newif\iflilia@figwhite
+\def\lilia@paper@white{white}
+\edef\lilia@tmp{\lilia@opt@paper}
+\ifx\lilia@tmp\lilia@paper@white \lilia@figwhitetrue \fi
+\iflilia@opt@printsafe \lilia@figwhitetrue \fi
+\def\lilia@fig@seq{{4A5FA3}{996300}{B8303A}{3A3836}{B84A10}{66701A}{6E2430}{2E6E9E}}
+\ifx\lilia@theme\lilia@theme@cerulean
+  \def\lilia@fig@ink{22262B}\def\lilia@fig@paper{FFFFFF}\def\lilia@fig@accent{0A76A4}
+\else\ifx\lilia@theme\lilia@theme@index
+  \def\lilia@fig@ink{2F2E2C}\def\lilia@fig@paper{FFFFFF}\def\lilia@fig@accent{4A5FA3}
+\else\ifx\lilia@theme\lilia@theme@carnet
+  \def\lilia@fig@ink{2B2724}\def\lilia@fig@accent{9A3F1C}
+  \iflilia@figwhite \def\lilia@fig@paper{FFFFFF}\else \def\lilia@fig@paper{F4EFE4}\fi
+\else\ifx\lilia@theme\lilia@theme@gazette
+  \def\lilia@fig@ink{2A2926}\def\lilia@fig@accent{B8303A}
+  \iflilia@figwhite \def\lilia@fig@paper{FFFFFF}\else \def\lilia@fig@paper{F3D54E}\fi
+\else\ifx\lilia@theme\lilia@theme@exposition
+  % Burgundy ground; print-safe is cream with burgundy ink and structure.
+  \iflilia@figwhite
+    \def\lilia@fig@ink{4A1B22}\def\lilia@fig@paper{F3E9DC}\def\lilia@fig@accent{4A1B22}
+  \else
+    \def\lilia@fig@ink{F3E9DC}\def\lilia@fig@paper{4A1B22}\def\lilia@fig@accent{EBC155}
+  \fi
+\else
+  % Classic: ink and greys only.
+  \def\lilia@fig@ink{1A1A1A}\def\lilia@fig@paper{FFFFFF}\def\lilia@fig@accent{1A1A1A}
+  \def\lilia@fig@seq{{1A1A1A}{595959}{999999}{3B3B3B}{7A7A7A}{B3B3B3}{2B2B2B}{6A6A6A}}
+\fi\fi\fi\fi\fi
+\def\lilia@fig@seqdef#1#2#3#4#5#6#7#8{%
+  \definecolor{lilia-seq1}{HTML}{#1}\definecolor{lilia-seq2}{HTML}{#2}%
+  \definecolor{lilia-seq3}{HTML}{#3}\definecolor{lilia-seq4}{HTML}{#4}%
+  \definecolor{lilia-seq5}{HTML}{#5}\definecolor{lilia-seq6}{HTML}{#6}%
+  \definecolor{lilia-seq7}{HTML}{#7}\definecolor{lilia-seq8}{HTML}{#8}}
+% Run once xcolor is loaded. lilia-chapter starts as the accent; Index ties it
+% to the current chapter's colour below.
+\def\lilia@figurecolours{%
+  \definecolor{lilia-ink}{HTML}{\lilia@fig@ink}%
+  \definecolor{lilia-paper}{HTML}{\lilia@fig@paper}%
+  \definecolor{lilia-accent}{HTML}{\lilia@fig@accent}%
+  \colorlet{lilia-accent-soft}{lilia-accent!18!lilia-paper}%
+  \colorlet{lilia-chapter}{lilia-accent}%
+  \expandafter\lilia@fig@seqdef\lilia@fig@seq}
+
+% Colours only: a figure compiled on its own (Lilia sets lilia-chapter after
+% this line), or a beamer deck whose theme is its own .sty.
+\iflilia@opt@coloursonly \RequirePackage{xcolor}\lilia@figurecolours \endinput \fi
 
 % ---------------------------------------------------------------------------
 % The table settings (Look -> Tables). A bad value is an error; the table is
@@ -132,14 +196,13 @@
 % Classic with today's tables is today's look: it loads nothing.
 \newif\iflilia@plaintables
 \ifx\lilia@style\lilia@style@ruled \iflilia@compact\else\iflilia@below\else \lilia@plaintablestrue \fi\fi\fi
-\ifx\lilia@theme\lilia@theme@classic \iflilia@plaintables \endinput \fi\fi
+\ifx\lilia@theme\lilia@theme@classic \iflilia@plaintables \RequirePackage{xcolor}\lilia@figurecolours \endinput \fi\fi
 
 % ---------------------------------------------------------------------------
 % Paper. Carnet's cream and Gazette's yellow are the theme's paper; paper=white
 % and printsafe print every theme on white.
 % ---------------------------------------------------------------------------
 \newif\iflilia@whitepaper
-\def\lilia@paper@white{white}
 \edef\lilia@paper{\lilia@opt@paper}
 \iflilia@opt@printsafe \let\lilia@paper\lilia@paper@white \fi
 \ifx\lilia@paper\lilia@paper@white \lilia@whitepapertrue \fi
@@ -149,6 +212,7 @@
 \PassOptionsToPackage{table}{xcolor}
 \RequirePackage{xcolor}
 \RequirePackage{colortbl}
+\lilia@figurecolours
 \definecolor{lilia@paperc}{HTML}{FFFFFF}
 
 % ---------------------------------------------------------------------------
@@ -387,6 +451,10 @@
   \lilia@tablecolours{chapter}{6}{chapter}{FFFFFF}
 \fi\fi\fi
 \colorlet{lilia@neutral}{lilia@ink}
+% Index: lilia-chapter is the current chapter's colour (neutral ink before the
+% first numbered chapter and under unnumbered ones), kept in step by
+% \lilia@settop and \lilia@setneutral.
+\iflilia@index \colorlet{lilia-chapter}{lilia@chapter}\fi
 
 % Body: ink colour on the paper, ragged right with hyphenation.
 \AtBeginDocument{%
@@ -480,10 +548,11 @@
 \def\lilia@settop{%
   \iflilia@index
     \lilia@colourof{\value{\lilia@top}}{\iflilia@appendix 1\else 0\fi}{lilia@chapter}%
+    \xglobal\colorlet{lilia-chapter}{lilia@chapter}%
   \fi
   \xdef\lilia@curlabel{\csname the\lilia@top\endcsname}}
 \def\lilia@setneutral{%
-  \iflilia@index \xglobal\colorlet{lilia@chapter}{lilia@neutral}\fi
+  \iflilia@index \xglobal\colorlet{lilia@chapter}{lilia@neutral}\xglobal\colorlet{lilia-chapter}{lilia@neutral}\fi
   \gdef\lilia@curlabel{}\gdef\lilia@curtitle{}}
 \def\lilia@keeptitle#1{\gdef\lilia@curtitle{#1}\lilia@case{#1}}
 \def\lilia@cased#1{\lilia@case{#1}}

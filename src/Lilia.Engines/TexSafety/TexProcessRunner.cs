@@ -99,9 +99,15 @@ public static class TexProcessRunner
         return (user, "65534");
     }
 
+    /// <summary>
+    /// Run the command; a timeout kills the process tree and throws <see cref="TimeoutException"/>.
+    /// <paramref name="ct"/> (a request the caller gave up on, a newer draft) kills it too and
+    /// throws <see cref="OperationCanceledException"/>, so an abandoned compile stops using the CPU.
+    /// </summary>
     public static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
-        string command, string arguments, string workingDir, int timeoutSeconds)
+        string command, string arguments, string workingDir, int timeoutSeconds, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var runAs = RunAs;
         var isRoot = Environment.UserName == "root";
         if (!string.IsNullOrEmpty(runAs) && isRoot)
@@ -117,14 +123,16 @@ public static class TexProcessRunner
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var either = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, ct);
         try
         {
-            await process.WaitForExitAsync(cts.Token);
+            await process.WaitForExitAsync(either.Token);
         }
         catch (OperationCanceledException)
         {
-            process.Kill(true);
+            try { process.Kill(true); } catch (InvalidOperationException) { /* already gone */ }
+            if (ct.IsCancellationRequested) throw new OperationCanceledException("The caller cancelled the process.", ct);
             throw new TimeoutException($"Process timed out after {timeoutSeconds}s");
         }
 

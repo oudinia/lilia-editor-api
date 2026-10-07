@@ -27,7 +27,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # TikZ figures: pgf/TikZ, pgfplots and tikz-cd (texlive-pictures; latex-extra pulls it in
     # today, named here because the figures depend on it). standalone and varwidth, which each
     # figure's own compile uses, are in texlive-latex-extra; pdftocairo, which turns that PDF
-    # into the SVG, is in poppler-utils below.
+    # into the SVG, is in poppler-utils below. mylatexformat (texlive-latex-extra), with
+    # pdflatex -ini, builds the precompiled format each figure's compile starts from; it is
+    # written under /tmp/lilia-tikz-cache/fmt at runtime, and without it figures compile the
+    # normal way.
     texlive-pictures \
     # biblatex + Biber backend (GA: the biblatex citation export) and the
     # publisher journal classes (IEEEtran, elsarticle, llncs, …) so
