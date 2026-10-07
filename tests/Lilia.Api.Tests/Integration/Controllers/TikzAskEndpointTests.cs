@@ -146,4 +146,24 @@ public class TikzAskEndpointTests : FourCallersTestBase, IDisposable
         body.GetProperty("figure").GetProperty("kind").GetString().Should().Be("failed");
         body.GetProperty("figure").TryGetProperty("svg", out _).Should().BeFalse("only drawings that drew are shown");
     }
+
+    [Fact]
+    public async Task A_draw_that_uses_right_of_without_listing_positioning_draws_first_time()
+    {
+        var (s, _, intro) = await SeedAsync(Picture());
+        using var c = Caller(EditorId);
+        var square = Picture(@"\node (A) {$A$}; \node (B) [right=of A] {$B$}; \node (C) [below=of A] {$C$}; \node (D) [right=of C] {$D$};
+  \draw[->] (A) -- (B); \draw[->] (A) -- node[left] {$f$} (C); \draw[->] (B) -- node[right] {$g$} (D); \draw[->] (C) -- (D);");
+        _chat.Enqueue($"Here's the square.\n```tikz\n{square}\n```");
+
+        var res = await c.PostAsJsonAsync("/api/ai/ask", Ask(s.DocumentId,
+            "Draw a commutative square: A to B on top, C to D below, vertical maps f and g.", new { afterBlockId = intro, intent = "draw" }));
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
+        var f = JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement.GetProperty("figure");
+        f.GetProperty("kind").GetString().Should().Be("draw", f.ToString());
+        f.GetProperty("attempts").GetInt32().Should().Be(1);
+        f.GetProperty("preambleAdditions")[0].GetString().Should().Be(@"\usetikzlibrary{positioning}");
+        _chat.Calls.Should().HaveCount(1, "it drew without a retry");
+    }
 }

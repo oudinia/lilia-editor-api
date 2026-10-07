@@ -186,13 +186,14 @@ public static class TikzAsk
         • Change only the lines the request needs. Never reformat, re-indent, reorder or rewrap untouched lines: copy them byte for byte.
         • Keep the author's naming (node names, styles, macros) and their indentation.
         • Prefer the theme colour names (lilia-ink, lilia-accent, lilia-accent-soft, lilia-chapter, lilia-seq1…lilia-seq8) to literal colours, unless the author names a colour. Never replace a literal colour the author chose unless asked.
-        • Never add a TikZ library the figure does not need, and never one the preamble already loads. pgfplots and tikz-cd are loaded by Lilia when used: do not add \usepackage lines.
+        • Never add a TikZ library the figure does not need, and never one the preamble already loads; but DO list every library and package the figure needs that the preamble lacks (positioning for right=of A, arrows.meta for Stealth tips, calc for ($(A)!0.5!(B)$), shapes.geometric for diamond or ellipse nodes, \usepackage{tikz-cd}, \usepackage{pgfplots}).
+        • For a commutative diagram prefer the tikz-cd package (\begin{tikzcd} … \end{tikzcd}, arrows with \arrow[r, "f"]), as Lilia's own template does, over a tikzpicture of positioned nodes.
         • No \input, \include, \write, \immediate, \openout, \catcode or anything that reads or writes files.
         """;
 
     private const string Formats = """
         HOW TO ANSWER — by what the author asks:
-        • Draw, change or fix: one or two short sentences saying what you did, then the COMPLETE figure source in ONE ```tikz fenced block. The source is the picture only (\begin{tikzpicture}…\end{tikzpicture} or \begin{tikzcd}…\end{tikzcd}, and anything wrapping it): no \documentclass, no \begin{document}, no figure environment, no \caption, no \label, and no line numbers. If it needs a TikZ library the preamble does not load, add ONE ```preamble fenced block holding only those \usetikzlibrary{…} or \usepgfplotslibrary{…} lines.
+        • Draw, change or fix: one or two short sentences saying what you did, then the COMPLETE figure source in ONE ```tikz fenced block. The source is the picture only (\begin{tikzpicture}…\end{tikzpicture} or \begin{tikzcd}…\end{tikzcd}, and anything wrapping it): no \documentclass, no \begin{document}, no figure environment, no \caption, no \label, and no line numbers. If it needs a TikZ library or package the preamble does not load, add ONE ```preamble fenced block listing them explicitly, one per line: \usetikzlibrary{…}, \usepgfplotslibrary{…}, \usepackage{tikz-cd} or \usepackage{pgfplots}, and nothing else.
         • Explain: never write source. One sentence on what the figure shows, then one line per part, in source order, at most six, each starting with its lines: "[L2-4] Three nodes …" or "[L7] The composite …". Line numbers are the ones shown below.
         • Write a caption: one caption in ONE ```caption fenced block (plain text, maths in $…$), nothing else.
         • Anything else about the figure: answer briefly, without a source block unless the author asked for a change.
@@ -260,17 +261,48 @@ public static class TikzAsk
         return string.Join("\n", lines.Select((l, i) => $"{(i + 1).ToString().PadLeft(width)}| {l}"));
     }
 
-    /// <summary>What goes back to the model when its source did not draw.</summary>
-    public static string RetryMessage(TikzRenderError e) =>
-        "That did not draw. TeX says"
-        + (e.Line is { } l ? $" (line {l} of your source" + (string.IsNullOrEmpty(e.Excerpt) ? ")" : $": `{e.Excerpt.Trim()}`)") : "")
-        + $": {e.Message}\nSend the corrected COMPLETE source in one ```tikz block, with the same rules.";
+    /// <summary>What goes back to the model when its source did not draw: TeX's error, and the library that provides what TeX did not know, when it is one.</summary>
+    public static string RetryMessage(TikzRenderError e)
+    {
+        var sb = new StringBuilder("That did not draw. TeX says");
+        if (e.Line is { } l) sb.Append($" (line {l} of your source").Append(string.IsNullOrEmpty(e.Excerpt) ? ")" : $": `{e.Excerpt.Trim()}`)");
+        sb.Append(": ").Append(e.Message);
+        if (LibraryHint(e.Message) is { } hint) sb.Append("\nHint: ").Append(hint);
+        sb.Append("\nSend the corrected COMPLETE source in one ```tikz block, with the same rules, and list the libraries and packages it needs in the ```preamble block.");
+        return sb.ToString();
+    }
+
+    private static readonly (Regex Error, string Provider)[] Hints =
+    {
+        (new(@"Unknown function `of'|I do not know the key '/tikz/(?:above|below|left|right)(?: left| right)?' to which you passed '[^']*\bof\b", RegexOptions.Compiled), "positioning"),
+        (new(@"Unknown arrow tip kind '(?:Stealth|Latex|Kite|Triangle|Straight Barb|Hooks|Rays|Tee Barb|Arc Barb|Implies)|arrow tip.*(?:Stealth|Latex)", RegexOptions.Compiled), "arrows.meta"),
+        (new(@"Unknown shape `(?:diamond|ellipse|trapezium|cylinder|regular polygon|star|isosceles triangle|semicircle)'|I do not know the key '/tikz/(?:diamond|trapezium|cylinder|regular polygon|star|isosceles triangle|semicircle)'", RegexOptions.Compiled), "shapes.geometric"),
+        (new(@"I do not know the decoration|I do not know the key '/tikz/(?:decorate|decoration)|/pgf/decoration/", RegexOptions.Compiled), "decorations.pathmorphing"),
+        (new(@"Cannot parse this coordinate|\(\$", RegexOptions.Compiled), "calc"),
+        (new(@"Environment tikzcd undefined|\\arrow", RegexOptions.Compiled), "tikz-cd"),
+        (new(@"Environment axis undefined|\\addplot", RegexOptions.Compiled), "pgfplots"),
+    };
+
+    /// <summary>"`right=of A` needs the TikZ library positioning: …" for an error a library or package fixes; null otherwise.</summary>
+    public static string? LibraryHint(string? message)
+    {
+        if (string.IsNullOrEmpty(message)) return null;
+        foreach (var (error, provider) in Hints)
+        {
+            if (!error.IsMatch(message)) continue;
+            return provider is "tikz-cd" or "pgfplots"
+                ? $"that is provided by the {provider} package: list \\usepackage{{{provider}}} in the ```preamble block."
+                : $"that is provided by the TikZ library {provider}: list \\usetikzlibrary{{{provider}}} in the ```preamble block.";
+        }
+        return null;
+    }
 
     // ── Reading the reply ───────────────────────────────────────────────
 
     private static readonly Regex Fence = new(@"```[ \t]*([A-Za-z-]*)[^\n]*\n(.*?)(?:\n```|```)", RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex Chip = new(@"^\s*(?:[-*•]\s*)?\[L\s*(\d+)(?:\s*[-–—]\s*L?\s*(\d+))?\]\s*[:–—-]?\s*(.+)$", RegexOptions.Compiled);
     private static readonly Regex LibraryLine = new(@"^\\use(?:tikz|pgfplots)library\s*(?:\[[^\]]*\])?\s*\{[^{}]+\}\s*$", RegexOptions.Compiled);
+    private static readonly Regex PackageLine = new(@"^\\usepackage\s*\{\s*(tikz-cd|pgfplots)\s*\}\s*$", RegexOptions.Compiled);
     private static readonly Regex NumberPrefix = new(@"^\s*\d+\s?\|\s?", RegexOptions.Compiled);
 
     public static TikzAskReply Parse(string? reply, int sourceLineCount)
@@ -324,22 +356,71 @@ public static class TikzAsk
     }
 
     /// <summary>
-    /// The preamble lines the proposal needs: library lines only, each once, and none the preamble
-    /// already has (in any spelling of its list: <c>{arrows.meta, positioning}</c> covers both).
+    /// The preamble lines the proposal needs: TikZ/pgfplots library lines and the two TikZ
+    /// packages (<c>tikz-cd</c>, <c>pgfplots</c>), each once, and none the document already has
+    /// (a library in any spelling of its list: <c>{arrows.meta, positioning}</c> covers both; a
+    /// package in its custom preamble or its packages, <paramref name="declaredPackages"/>).
+    /// Anything else the model wrote there is dropped.
     /// </summary>
-    public static IReadOnlyList<string> PreambleAdditions(IEnumerable<string> lines, string? preamble)
+    public static IReadOnlyList<string> PreambleAdditions(IEnumerable<string> lines, string? preamble, IReadOnlySet<string>? declaredPackages = null)
     {
         var have = LibrariesIn(preamble ?? "");
+        var packages = new HashSet<string>(declaredPackages ?? (IEnumerable<string>)TikzFigure.DeclaredPackages(null, preamble), StringComparer.OrdinalIgnoreCase);
         var result = new List<string>();
         foreach (var raw in lines)
         {
             var line = raw.Trim();
+            if (PackageLine.Match(line) is { Success: true } pm)
+            {
+                if (packages.Add(pm.Groups[1].Value)) result.Add($@"\usepackage{{{pm.Groups[1].Value}}}");
+                continue;
+            }
             if (!LibraryLine.IsMatch(line)) continue;
             var libs = LibrariesIn(line);
             if (libs.Count == 0 || libs.All(have.Contains)) continue;
             result.Add(line);
             have.UnionWith(libs);
         }
+        return result;
+    }
+
+    // ── What the source needs, whatever the model said ─────────────────
+
+    private const string ArrowTips = @"(?:Stealth|Latex|Kite|Triangle|Straight Barb|Hooks|Rays|Tee Barb|Arc Barb|Implies|Classical TikZ Rightarrow|Computer Modern Rightarrow)";
+
+    private const string Shapes = @"(?:diamond|ellipse|trapezium|cylinder|regular polygon|star|isosceles triangle|semicircle)";
+
+    private static readonly (Regex Use, string Line)[] Needs =
+    {
+        // right=of A, below left=1cm of B, and the old "right of=A" (harmless with the library).
+        (new(@"\b(?:above|below|left|right)(?:\s+(?:left|right))?\s*=\s*(?:[^,\]=;{}]*?\s)?of\b|\b(?:above|below|left|right)(?:\s+(?:left|right))?\s+of\s*=", RegexOptions.Compiled), @"\usetikzlibrary{positioning}"),
+        // -{Stealth}, -Latex, {Stealth[length=3mm]}-, >={Stealth}, Latex[round].
+        // Start tips only inside options ([Stealth-, {Stealth}-): "node {Triangle} --" is text.
+        (new(@"-\{?\s*" + ArrowTips + @"\b|[\[,]\s*\{?\s*" + ArrowTips + @"\s*(?:\[[^\]]*\])?\s*\}?\s*-|>\s*=\s*\{?\s*" + ArrowTips + @"\b|\b" + ArrowTips + @"\[", RegexOptions.Compiled), @"\usetikzlibrary{arrows.meta}"),
+        // ($(A)!0.5!(B)$), ($(A) + (1,0)$).
+        (new(@"\(\s*\$", RegexOptions.Compiled), @"\usetikzlibrary{calc}"),
+        // A shape named in options or a style: [diamond, draw], shape=ellipse, {draw, cylinder}.
+        // "{ellipse}" alone is a node's text; "{ellipse, draw}" a style.
+        (new(@"[\[,=]\s*(?:shape\s*=\s*)?" + Shapes + @"\s*[,\]}]|\{\s*" + Shapes + @"\s*,", RegexOptions.Compiled), @"\usetikzlibrary{shapes.geometric}"),
+        // Braces and ticks are path replacing; snakes, zigzags, coils and the rest path morphing.
+        (new(@"decoration\s*=\s*\{?\s*(?:brace|mirror|ticks|border|waves|expanding waves)", RegexOptions.Compiled), @"\usetikzlibrary{decorations.pathreplacing}"),
+        (new(@"decoration\s*=\s*\{?\s*(?:snake|zigzag|coil|bumps|saw|random steps|bent|straight zigzag|lineto)|\bdecorate\b(?![^\]]*decoration\s*=\s*\{?\s*(?:brace|mirror|ticks|border|waves))", RegexOptions.Compiled), @"\usetikzlibrary{decorations.pathmorphing}"),
+    };
+
+    /// <summary>
+    /// The library and package lines <paramref name="source"/> needs, read from the source itself
+    /// (the model forgets them: a live draw used <c>right=of A</c> without positioning, twice).
+    /// Comments are ignored. Small on purpose: each rule is a common TikZ idiom with one provider.
+    /// </summary>
+    public static IReadOnlyList<string> DetectRequirements(string? source)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(source)) return result;
+        var code = Regex.Replace(source, @"(?<!\\)%[^\n]*", "");
+        foreach (var pkg in TikzFigure.RequiredPackages(code))
+            if (pkg != "tikz") result.Add($@"\usepackage{{{pkg}}}");
+        foreach (var (use, line) in Needs)
+            if (use.IsMatch(code) && !result.Contains(line)) result.Add(line);
         return result;
     }
 

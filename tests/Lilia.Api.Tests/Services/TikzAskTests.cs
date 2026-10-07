@@ -240,14 +240,15 @@ public class TikzAskTests
         var run = await Run(chat, compiler, ctx, messages, intent: "draw");
 
         chat.Calls.Should().HaveCount(1);
-        compiler.Seen.Should().ContainSingle().Which.Should().Be((square, @"\usetikzlibrary{positioning}"), "compiled with the line it adds, not the one the preamble has");
+        compiler.Seen.Should().ContainSingle().Which.Should().Be((square, "\\usetikzlibrary{positioning}\n\\usepackage{tikz-cd}"),
+            "compiled with the lines it adds (the one it listed, the package its source needs), not the one the preamble has");
         run.Reply.Should().Be("Here's a square with tikz-cd.");
         run.Proposal.Kind.Should().Be("draw");
         run.Proposal.Svg.Should().Be("<svg>ok</svg>");
         run.Proposal.Attempts.Should().Be(1);
         run.Proposal.LineCount.Should().Be(4);
-        run.Proposal.PreambleAdditions.Should().Equal(@"\usetikzlibrary{positioning}");
-        run.Proposal.Packages.Should().Equal("tikz-cd");
+        run.Proposal.PreambleAdditions.Should().Equal(@"\usetikzlibrary{positioning}", @"\usepackage{tikz-cd}");
+        run.Proposal.Packages.Should().BeEmpty("tikz-cd is added to the preamble, as the template does");
         run.InputTokens.Should().Be(100);
     }
 
@@ -371,5 +372,97 @@ public class TikzAskTests
     {
         TikzAsk.Proposes("explain").Should().BeFalse();
         foreach (var i in new[] { "draw", "change", "fix", "caption" }) TikzAsk.Proposes(i).Should().BeTrue();
+    }
+
+    // ── The library detector (live check, 7 Oct: right=of A without positioning, twice) ──
+
+    [Theory]
+    [InlineData(@"\node (B) [right=of A] {B};", @"\usetikzlibrary{positioning}")]
+    [InlineData(@"\node (C) [below left=1cm of A] {C};", @"\usetikzlibrary{positioning}")]
+    [InlineData(@"\node (B) [above of=A] {B};", @"\usetikzlibrary{positioning}")]
+    [InlineData(@"\draw[-{Stealth}] (A) -- (B);", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\draw[-Latex] (A) -- (B);", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\draw[{Stealth[length=3mm]}-] (A) -- (B);", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\begin{tikzpicture}[>={Stealth}]\end{tikzpicture}", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\draw ($(A)!0.5!(B)$) circle (1pt);", @"\usetikzlibrary{calc}")]
+    [InlineData(@"\node[draw, diamond] (d) {Ok?};", @"\usetikzlibrary{shapes.geometric}")]
+    [InlineData(@"\tikzset{box/.style={ellipse, draw}}", @"\usetikzlibrary{shapes.geometric}")]
+    [InlineData(@"\node[shape=cylinder] {DB};", @"\usetikzlibrary{shapes.geometric}")]
+    [InlineData(@"\draw[decorate, decoration={snake}] (0,0) -- (2,0);", @"\usetikzlibrary{decorations.pathmorphing}")]
+    [InlineData(@"\draw[decorate, decoration={brace}] (0,0) -- (2,0);", @"\usetikzlibrary{decorations.pathreplacing}")]
+    [InlineData(@"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}", @"\usepackage{tikz-cd}")]
+    [InlineData(@"\begin{tikzpicture}\begin{axis}\addplot coordinates {(0,0)};\end{axis}\end{tikzpicture}", @"\usepackage{pgfplots}")]
+    public void The_detector_reads_what_the_source_needs(string source, string line) =>
+        TikzAsk.DetectRequirements(source).Should().Contain(line);
+
+    [Theory]
+    [InlineData(@"\node (B) [right of=A] {B}; \draw[->] (A) -- (B);", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\draw[-latex] (A) -- (B);", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\draw (0,0) -- node {Triangle} (1,0);", @"\usetikzlibrary{arrows.meta}")]
+    [InlineData(@"\draw (0,0) ellipse (2 and 1); \node {ellipse};", @"\usetikzlibrary{shapes.geometric}")]
+    [InlineData(@"\draw (0,0) -- (1,1); % right=of A, ($(A)$), [diamond]", @"\usetikzlibrary{calc}")]
+    [InlineData(@"\draw (0,0) -- (1,1); % right=of A", @"\usetikzlibrary{positioning}")]
+    [InlineData(@"\node at (0,0) {left of the line};", @"\usetikzlibrary{positioning}")]
+    public void The_detector_adds_nothing_the_source_does_not_need(string source, string line) =>
+        TikzAsk.DetectRequirements(source).Should().NotContain(line);
+
+    [Fact]
+    public void What_the_document_has_is_not_added_again()
+    {
+        var needs = TikzAsk.DetectRequirements(@"\begin{tikzcd} A \arrow[r, -{Stealth}] & B \end{tikzcd} \node[right=of A] {x};");
+        TikzAsk.PreambleAdditions(needs, @"\usetikzlibrary{arrows.meta,positioning}", new HashSet<string> { "tikz-cd" })
+            .Should().BeEmpty();
+        TikzAsk.PreambleAdditions(needs, @"\usetikzlibrary{arrows.meta}", new HashSet<string>())
+            .Should().Equal(@"\usepackage{tikz-cd}", @"\usetikzlibrary{positioning}");
+        TikzAsk.PreambleAdditions(new[] { @"\usepackage{tikz-cd}", @"\usepackage{tikz-cd}" }, @"\usepackage{tikz-cd}")
+            .Should().BeEmpty("a package the custom preamble loads counts as there");
+    }
+
+    [Fact]
+    public void The_retry_carries_TeXs_error_and_the_library_that_provides_what_TeX_did_not_know()
+    {
+        var e = new TikzRenderError("tex", "Package PGF Math Error: Unknown function `of' (in 'of A').", 3, @"\node (B) [right=of A] {B};", null);
+        var retry = TikzAsk.RetryMessage(e);
+        retry.Should().Contain("line 3").And.Contain("Unknown function `of'").And.Contain(@"\usetikzlibrary{positioning}");
+        TikzAsk.LibraryHint("Unknown arrow tip kind 'Stealth'.").Should().Contain("arrows.meta");
+        TikzAsk.LibraryHint("Package pgf Error: Unknown shape `diamond' or shape `diamond' is not available.").Should().Contain("shapes.geometric");
+        TikzAsk.LibraryHint("Environment tikzcd undefined.").Should().Contain(@"\usepackage{tikz-cd}");
+        TikzAsk.LibraryHint("Missing $ inserted.").Should().BeNull();
+        TikzAsk.RetryMessage(new TikzRenderError("tex", "Missing $ inserted.", 2, null, null)).Should().NotContain("Hint");
+    }
+
+    [Fact]
+    public void The_prompt_prefers_tikz_cd_for_commutative_diagrams_and_asks_for_the_libraries()
+    {
+        var (doc, figure, _) = Document();
+        var prompt = TikzAsk.SystemPrompt(TikzAsk.Context(doc, new TikzAskFigure(BlockId: figure.ToString()), Colours)!, "draw");
+        prompt.Should().Contain("For a commutative diagram prefer the tikz-cd package")
+            .And.Contain("DO list every library and package the figure needs")
+            .And.Contain(@"\usepackage{tikz-cd}");
+    }
+
+    [Fact]
+    public async Task A_draw_using_right_of_without_the_library_draws_first_time_because_the_detector_adds_it()
+    {
+        var (ctx, messages) = Turn("", "Draw a commutative square: A to B on top, C to D below, vertical maps f and g.");
+        var square = "\\begin{tikzpicture}\n  \\node (A) {$A$};\n  \\node (B) [right=of A] {$B$};\n  \\node (C) [below=of A] {$C$};\n  \\node (D) [right=of C] {$D$};\n  \\draw[->] (A) -- (B);\n  \\draw[->] (A) -- node[left] {$f$} (C);\n  \\draw[->] (B) -- node[right] {$g$} (D);\n  \\draw[->] (C) -- (D);\n\\end{tikzpicture}";
+        var chat = new ScriptedChatClient(Fenced(square, "Here's the square."));
+        // A compiler that, like TeX, fails "=of" unless positioning is loaded.
+        var seen = new List<string?>();
+        Task<TikzRenderResult> Compile(string source, string? preamble, CancellationToken ct)
+        {
+            seen.Add(preamble);
+            return Task.FromResult(preamble?.Contains(@"\usetikzlibrary{positioning}") == true
+                ? Drew
+                : new TikzRenderResult(null, new TikzRenderError("tex", "Package PGF Math Error: Unknown function `of' (in 'of A').", 3, null, null), false));
+        }
+
+        var run = await new TikzAskRunner(chat, Compile).RunAsync(messages, new ChatOptions(), ctx, "draw", "draw", true, "", default);
+
+        chat.Calls.Should().HaveCount(1);
+        seen.Should().ContainSingle().Which.Should().Be(@"\usetikzlibrary{positioning}");
+        run.Proposal.Kind.Should().Be("draw");
+        run.Proposal.Attempts.Should().Be(1);
+        run.Proposal.PreambleAdditions.Should().Equal(@"\usetikzlibrary{positioning}");
     }
 }

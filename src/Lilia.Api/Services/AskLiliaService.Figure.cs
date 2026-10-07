@@ -69,7 +69,8 @@ public sealed partial class AskLiliaService
             var runner = new TikzAskRunner(_chatClient,
                 (source, additions, c) => _tikz.ProposalAsync(entity, source, userId, theme, additions, c));
             var options = new ChatOptions { ModelId = model, MaxOutputTokens = MaxOutputTokens };
-            var run = await runner.RunAsync(messages, options, ctx, intent, request.Message, mayWrite, entity.CustomPreamble, ct);
+            var run = await runner.RunAsync(messages, options, ctx, intent, request.Message, mayWrite, entity.CustomPreamble, ct,
+                Lilia.Core.Blocks.TikzFigure.DeclaredPackages(entity.LatexPackages, entity.CustomPreamble));
 
             await MarkAsync(aiRequestId, "success", null, run.InputTokens, run.OutputTokens, (int)sw.ElapsedMilliseconds, ct);
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, run.InputTokens, run.OutputTokens);

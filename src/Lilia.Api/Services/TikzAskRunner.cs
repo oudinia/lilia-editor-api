@@ -40,7 +40,7 @@ public sealed class TikzAskRunner
     /// <param name="mayWrite">False for a reader: answers and explanations only.</param>
     public async Task<TikzAskRun> RunAsync(
         List<ChatMessage> messages, ChatOptions options, TikzAskContext ctx, string? intent, string message,
-        bool mayWrite, string? preamble, CancellationToken ct)
+        bool mayWrite, string? preamble, CancellationToken ct, IReadOnlySet<string>? declaredPackages = null)
     {
         var lineCount = TikzAsk.SplitLines(ctx.Source).Length;
         int input = 0, output = 0, calls = 0;
@@ -85,7 +85,8 @@ public sealed class TikzAskRunner
             source = kind == "change"
                 ? TikzAsk.KeepUntouchedLines(ctx.Source, current.Source!, message)
                 : current.Source!;
-            additions = TikzAsk.PreambleAdditions(current.PreambleLines, preamble);
+            // What the model listed, and what the source shows it needs whether it listed it or not.
+            additions = TikzAsk.PreambleAdditions(current.PreambleLines.Concat(TikzAsk.DetectRequirements(source)), preamble, declaredPackages);
             var clock = Stopwatch.StartNew();
             drawn = await _compile(source, additions.Count > 0 ? string.Join("\n", additions) : null, ct);
             drawMs = clock.ElapsedMilliseconds;
@@ -97,7 +98,9 @@ public sealed class TikzAskRunner
             current = next;
         }
 
-        var packages = TikzFigure.RequiredPackages(source).Where(p => p != "tikz").ToList();
+        // Packages Lilia loads by itself, unless the proposal adds them to the preamble anyway.
+        var packages = TikzFigure.RequiredPackages(source)
+            .Where(p => p != "tikz" && !additions.Contains($@"\usepackage{{{p}}}")).ToList();
         var lines = TikzAsk.SplitLines(source!).Length;
         if (drawn is { Ok: true })
         {
