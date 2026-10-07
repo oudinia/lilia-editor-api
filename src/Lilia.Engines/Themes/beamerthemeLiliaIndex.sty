@@ -322,7 +322,12 @@
     {\usebeamerfont{section page}\MakeUppercase{\lilia@ix@name}\par}}%
   \vfill}
 
+% The title frame belongs to no section, so its title is charcoal; its section bar shows every
+% section at full colour, a preview of the deck's index (as the booklet's contents page does).
+% Raised here, read by the headline when the page is shipped out, lowered by the footline.
+\newif\iflilia@ix@titleframe
 \setbeamertemplate{title page}{%
+  \global\lilia@ix@titleframetrue
   \vfill
   {\usebeamerfont{title}\usebeamercolor[fg]{title}\raggedright\MakeUppercase{\inserttitle}\par}
   \ifx\insertsubtitle\@empty\else\vskip0.4em{\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\raggedright\insertsubtitle\par}\fi
@@ -349,7 +354,7 @@
 \newdimen\lilia@ix@segw
 \def\lilia@ix@barheight{3pt}
 % One segment per numbered section of the current part (before or after \appendix), each in its
-% colour: the current one full, the others at 30 %.
+% colour: the current one full, the others at 30 %. On the title frame, every one full.
 \def\lilia@ix@sectionbar{%
   \ifbeamer@inappendix \lilia@ix@segs=\lilia@ix@appsections\relax
   \else \lilia@ix@segs=\lilia@ix@mainsections\relax \fi
@@ -360,11 +365,10 @@
       \@whilenum\lilia@ix@i<\lilia@ix@segs\do{%
         \advance\lilia@ix@i\@ne
         \lilia@ix@colourof{\lilia@ix@i}{\ifbeamer@inappendix 1\else 0\fi}{lilia@ix@seg}%
-        \ifnum\lilia@ix@i=\lilia@ix@cur
-          {\color{lilia@ix@seg}\vrule width\lilia@ix@segw height\lilia@ix@barheight depth\z@}%
-        \else
-          {\color{lilia@ix@seg!30!white}\vrule width\lilia@ix@segw height\lilia@ix@barheight depth\z@}%
-        \fi
+        \def\lilia@ix@segtint{!30!white}%
+        \iflilia@ix@titleframe \def\lilia@ix@segtint{}\fi
+        \ifnum\lilia@ix@i=\lilia@ix@cur \def\lilia@ix@segtint{}\fi
+        {\color{lilia@ix@seg\lilia@ix@segtint}\vrule width\lilia@ix@segw height\lilia@ix@barheight depth\z@}%
         \ifnum\lilia@ix@i<\lilia@ix@segs\hskip1pt\fi}%
     \fi
     \hss}}
@@ -406,7 +410,8 @@
       \lilia@ix@tab{lilia@ix@foot}{white}{\insertframenumber}}%
     \hskip1em}%
   \vskip6pt
-  % The footline is the last thing drawn on a page: a divider's flag ends here.
-  \global\lilia@ix@dividerfalse}
+  % The footline is the last thing drawn on a page: a divider's and the title frame's flags end here.
+  \global\lilia@ix@dividerfalse
+  \global\lilia@ix@titleframefalse}
 
 \mode<all>

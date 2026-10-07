@@ -243,7 +243,41 @@ public class DocumentBeamerThemeCompileTests
         AssertPixel(await Pixel(pdf, data + 1, printSafe ? 0.01 : 0.5, 0.5), Seq[7], "the pinned section's divider");
     }
 
+    /// <summary>
+    /// Index's title frame (Olivia, 6 Oct 2026): the title stays charcoal, since no section owns
+    /// the frame, and the section bar at the top shows every section at full colour, a preview of
+    /// the deck's index as the booklet's contents page is. The next frame, still before the first
+    /// section, goes back to the 30 % tints.
+    /// </summary>
+    [Fact]
+    public async Task Index_title_frame_shows_every_section_at_full_colour()
+    {
+        var pdf = await Compile(Latex(Doc("index", "pdflatex")), "pdflatex");
+        // Three numbered sections before \appendix: the first colour, the pin (eighth), the second.
+        string[] sections = [Seq[0], Seq[7], Seq[1]];
+        for (var i = 0; i < sections.Length; i++)
+        {
+            AssertPixel(await BarPixel(pdf, 1, (i + 0.5) / sections.Length), sections[i],
+                $"the title frame's bar shows section {i + 1} at full colour");
+            AssertPixel(await BarPixel(pdf, 2, (i + 0.5) / sections.Length), Tint(sections[i], 30),
+                $"the contents frame's bar keeps section {i + 1} at 30 %");
+        }
+        Has(await PageColours(pdf, 1), Neutral).Should().BeTrue("the title is charcoal");
+    }
+
     // ── reading the PDF ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// The colour of the section bar (3 pt high at the very top) at a fraction of the page width:
+    /// the page rendered at 144 dpi, two pixels a point, read 1 pt from the top.
+    /// </summary>
+    private static async Task<string> BarPixel(byte[] pdf, int page, double x)
+    {
+        var (w, _, rgb) = await Render(pdf, page, 144);
+        var px = Math.Clamp((int)(x * w), 0, w - 1);
+        var o = 3 * (2 * w + px);
+        return $"#{rgb[o]:X2}{rgb[o + 1]:X2}{rgb[o + 2]:X2}";
+    }
 
     private static string Flat(string text) =>
         System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " "), @" ?· ?", "·");
