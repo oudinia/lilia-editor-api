@@ -103,7 +103,12 @@ public class TikzDraftEndpointTests : FourCallersTestBase
         res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
         (await res.Content.ReadAsStringAsync()).Should().Contain("<svg");
 
-        // Only the draft: a table has no figure.svg, and a paragraph still has no draft.
+        // The colours of the place the plot will go, for the dialog's series swatches.
+        var colours = await c.GetAsync(Colours(s.DocumentId, table));
+        colours.StatusCode.Should().Be(HttpStatusCode.OK);
+        JsonDocument.Parse(await colours.Content.ReadAsStringAsync()).RootElement.TryGetProperty("lilia-seq1", out _).Should().BeTrue();
+
+        // Only the draft and the colours: a table has no figure.svg, and a paragraph still has no draft.
         (await c.GetAsync(Svg(s.DocumentId, table))).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await c.PostAsJsonAsync(Draft(s.DocumentId, s.BlockId), new { source = plot })).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
