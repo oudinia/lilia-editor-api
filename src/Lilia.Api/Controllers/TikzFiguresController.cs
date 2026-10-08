@@ -84,7 +84,9 @@ public class TikzFiguresController : ControllerBase
         if (source.Length > TikzFigureService.MaxDraftChars)
             return StatusCode(StatusCodes.Status413PayloadTooLarge, new { message = "This source is too long to draw." });
 
-        var (block, notFound) = await FigureAsync(documentId, blockId, ct);
+        // A table draws too: Plot this table (step 4a) previews the plot that will follow it,
+        // before the figure exists, with the colours of the place it will go.
+        var (block, notFound) = await FigureAsync(documentId, blockId, ct, allowTable: true);
         if (block is null) return notFound!;
         var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc is null) return NotFound();
@@ -120,10 +122,11 @@ public class TikzFiguresController : ControllerBase
     }
 
     /// <summary>The block when it is a TikZ figure of this document, else the 404 to answer.</summary>
-    private async Task<(Block? Block, IActionResult? NotFound)> FigureAsync(Guid documentId, Guid blockId, CancellationToken ct)
+    private async Task<(Block? Block, IActionResult? NotFound)> FigureAsync(Guid documentId, Guid blockId, CancellationToken ct, bool allowTable = false)
     {
         var block = await _db.Blocks.AsNoTracking().FirstOrDefaultAsync(b => b.Id == blockId && b.DocumentId == documentId, ct);
         if (block is null) return (null, NotFound());
+        if (allowTable && block.Type == "table") return (block, null);
         if (block.Type is not ("figure" or "image") || !TikzFigure.IsTikz(block.Content.RootElement))
             return (null, NotFound(new { message = "This block is not a TikZ figure." }));
         return (block, null);
