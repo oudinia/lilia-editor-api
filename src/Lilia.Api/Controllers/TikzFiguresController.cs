@@ -113,7 +113,8 @@ public class TikzFiguresController : ControllerBase
     [HttpGet("figure/colours")]
     public async Task<IActionResult> GetColours(Guid documentId, Guid blockId, CancellationToken ct = default)
     {
-        var (block, notFound) = await FigureAsync(documentId, blockId, ct);
+        // A table too: the plot dialog's series swatches, for the place the plot will go (step 4a).
+        var (block, notFound) = await FigureAsync(documentId, blockId, ct, allowTable: true);
         if (block is null) return notFound!;
         var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc is null) return NotFound();
