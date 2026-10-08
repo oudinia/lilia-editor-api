@@ -90,6 +90,25 @@ public class TikzDraftEndpointTests : FourCallersTestBase
     }
 
     [Fact]
+    public async Task A_table_draws_the_plot_that_will_follow_it_before_the_figure_exists()
+    {
+        // Plot this table (step 4a): the dialog previews the plot on the table's own block id.
+        var s = await SeedSharedDocumentAsync();
+        var table = (await SeedBlockAsync(s.DocumentId, "table",
+            JsonSerializer.Serialize(new { headers = new[] { "Epoch", "Loss" }, rows = new[] { new[] { "1", "0.9" }, new[] { "2", "0.5" } } }), 1)).Id;
+        using var c = As(EditorId);
+
+        var plot = $"% {Guid.NewGuid():N}\n\\begin{{tikzpicture}}\\begin{{axis}}[width=6cm]\\addplot[color=lilia-seq1, mark=*] coordinates {{(1,0.9) (2,0.5)}};\\end{{axis}}\\end{{tikzpicture}}";
+        var res = await c.PostAsJsonAsync(Draft(s.DocumentId, table), new { source = plot });
+        res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
+        (await res.Content.ReadAsStringAsync()).Should().Contain("<svg");
+
+        // Only the draft: a table has no figure.svg, and a paragraph still has no draft.
+        (await c.GetAsync(Svg(s.DocumentId, table))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await c.PostAsJsonAsync(Draft(s.DocumentId, s.BlockId), new { source = plot })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Drafts_need_write_access_401_403_404_and_a_source()
     {
         var s = await SeedSharedDocumentAsync();
