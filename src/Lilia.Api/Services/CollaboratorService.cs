@@ -73,7 +73,7 @@ public class CollaboratorService : ICollaboratorService
         return new CollaboratorListDto(userCollaborators, groupCollaborators);
     }
 
-    public async Task<UserCollaboratorDto?> AddUserCollaboratorAsync(Guid documentId, string userId, AddUserCollaboratorDto dto)
+    public async Task<UserCollaboratorDto?> AddUserCollaboratorAsync(Guid documentId, string userId, AddUserCollaboratorDto dto, bool silent = false)
     {
         var document = await _context.Documents.FindAsync(documentId);
         if (document == null) return null;
@@ -121,44 +121,48 @@ public class CollaboratorService : ICollaboratorService
         _context.DocumentCollaborators.Add(collaborator);
         await _context.SaveChangesAsync();
 
-        // Notify the added collaborator (in-app)
-        string? inviterName = null;
-        try
+        // Undo of a removal puts someone back without a word (Olivia, 10 Oct).
+        if (!silent)
         {
-            var inviterUser = await _context.Users.FindAsync(userId);
-            inviterName = inviterUser?.Name ?? inviterUser?.Email ?? "Someone";
-            await _notificationService.CreateAsync(
-                dto.UserId,
-                "document_shared",
-                string.Format(_localizer["NotificationShared"].Value, inviterName, document.Title),
-                string.Format(_localizer["NotificationAccess"].Value, role.Name),
-                $"/document/{documentId}"
-            );
-        }
-        catch
-        {
-            // Notification failure should not block the operation
-        }
-
-        // Publish for the email handler in Features/Sharing/Handlers.
-        // Constructor-optional bus so legacy tests without DI still pass;
-        // prod always supplies one. Inviter name re-resolves inline if
-        // the in-app notification above failed to fetch it.
-        if (_bus is not null)
-        {
-            if (inviterName is null)
+            // Notify the added collaborator (in-app)
+            string? inviterName = null;
+            try
             {
-                var inviter = await _context.Users.FindAsync(userId);
-                inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
+                var inviterUser = await _context.Users.FindAsync(userId);
+                inviterName = inviterUser?.Name ?? inviterUser?.Email ?? "Someone";
+                await _notificationService.CreateAsync(
+                    dto.UserId,
+                    "document_shared",
+                    string.Format(_localizer["NotificationShared"].Value, inviterName, document.Title),
+                    string.Format(_localizer["NotificationAccess"].Value, role.Name),
+                    $"/document/{documentId}"
+                );
             }
-            await _bus.PublishAsync(new Events.Common.DocumentSharedEvent(
-                documentId,
-                document.Title,
-                userId,
-                inviterName,
-                dto.UserId,
-                targetUser.Email,
-                role.Name));
+            catch
+            {
+                // Notification failure should not block the operation
+            }
+
+            // Publish for the email handler in Features/Sharing/Handlers.
+            // Constructor-optional bus so legacy tests without DI still pass;
+            // prod always supplies one. Inviter name re-resolves inline if
+            // the in-app notification above failed to fetch it.
+            if (_bus is not null)
+            {
+                if (inviterName is null)
+                {
+                    var inviter = await _context.Users.FindAsync(userId);
+                    inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
+                }
+                await _bus.PublishAsync(new Events.Common.DocumentSharedEvent(
+                    documentId,
+                    document.Title,
+                    userId,
+                    inviterName,
+                    dto.UserId,
+                    targetUser.Email,
+                    role.Name));
+            }
         }
 
         return new UserCollaboratorDto(
@@ -291,6 +295,17 @@ public class CollaboratorService : ICollaboratorService
             documentGroup.Group.Members.Count,
             documentGroup.CreatedAt
         );
+    }
+
+    public async Task<bool> SendRemovalNoticeAsync(Guid documentId, string targetUserId, string userId, bool allowReply)
+    {
+        var document = await _context.Documents.FindAsync(documentId);
+        if (document == null || document.OwnerId != userId) return false;
+        // Undone in the meantime: they have access, so there is nothing to tell.
+        if (await _context.DocumentCollaborators.AnyAsync(dc => dc.DocumentId == documentId && dc.UserId == targetUserId)) return false;
+        if (_sharingNotifier is null) return false;
+        await _sharingNotifier.AccessRemovedAsync(documentId, targetUserId, userId, allowReply);
+        return true;
     }
 
     public async Task<bool> RemoveUserCollaboratorAsync(Guid documentId, string targetUserId, string userId, bool notify = false, bool allowReply = false)
