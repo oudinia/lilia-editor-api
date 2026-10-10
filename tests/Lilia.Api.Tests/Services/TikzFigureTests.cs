@@ -435,6 +435,7 @@ public class TikzFigureTests
         bare.Should().Contain("#image(\"figures/tikz-a.svg\")").And.NotContain("#figure(image(\"figures/tikz-a");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public void A_figure_that_does_not_draw_is_a_visible_placeholder_and_the_preview_still_compiles()
     {

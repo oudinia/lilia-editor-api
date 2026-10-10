@@ -117,6 +117,7 @@ public class TikzFigureEndpointTests : FourCallersTestBase
         (await owner.GetAsync(Route(s.DocumentId, foreign))).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(TikzFigureTests.CorpusFiles), MemberType = typeof(TikzFigureTests))]
     public async Task Each_corpus_figure_draws_through_the_endpoint(string file)
