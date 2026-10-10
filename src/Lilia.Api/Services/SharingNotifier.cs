@@ -17,7 +17,7 @@ public interface ISharingNotifier
 {
     Task InviteAcceptedAsync(Guid documentId, string inviterUserId, string acceptedUserId);
     Task RoleChangedAsync(Guid documentId, string targetUserId, string changedByUserId, string oldRole, string newRole);
-    Task AccessRemovedAsync(Guid documentId, string targetUserId, string removedByUserId);
+    Task AccessRemovedAsync(Guid documentId, string targetUserId, string removedByUserId, bool allowReply = false);
 }
 
 public sealed class SharingNotifier : ISharingNotifier
@@ -95,7 +95,7 @@ public sealed class SharingNotifier : ISharingNotifier
         }
     }
 
-    public async Task AccessRemovedAsync(Guid documentId, string targetUserId, string removedByUserId)
+    public async Task AccessRemovedAsync(Guid documentId, string targetUserId, string removedByUserId, bool allowReply = false)
     {
         try
         {
@@ -108,7 +108,7 @@ public sealed class SharingNotifier : ISharingNotifier
             await _notifications.CreateAsync(targetUserId, AccessRemoved,
                 $"{who} removed your access to \"{doc.Title}\"", null, null);
             if (!string.IsNullOrEmpty(target.Email))
-                await _email.SendAccessRemovedAsync(target.Email, who, doc.Title);
+                await _email.SendAccessRemovedAsync(target.Email, who, doc.Title, allowReply ? by?.Email : null);
         }
         catch (Exception ex)
         {
