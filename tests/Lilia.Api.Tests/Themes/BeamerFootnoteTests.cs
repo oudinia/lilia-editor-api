@@ -77,6 +77,7 @@ public class BeamerFootnoteTests
         Latex(article, "export").Should().Contain(articleLine);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [Trait("Category", "ThemeCompile")]
     [InlineData("preview", "pdflatex")]

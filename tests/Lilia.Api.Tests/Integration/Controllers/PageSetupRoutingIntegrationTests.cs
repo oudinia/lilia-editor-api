@@ -29,6 +29,7 @@ public class PageSetupRoutingIntegrationTests : FourCallersTestBase
         (await PreviewEngineAsync(s.DocumentId)).Should().Be("typst");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_document_with_margins_and_a_header_previews_with_LaTeX()
     {

@@ -423,6 +423,7 @@ public class TableLayoutCompileTests
         rowGroups = new[] { 2 },
     };
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("pdflatex")]
     [InlineData("lualatex")]
@@ -439,6 +440,7 @@ public class TableLayoutCompileTests
         }
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("pdflatex")]
     [InlineData("lualatex")]
@@ -472,6 +474,7 @@ public class TableLayoutCompileTests
             }
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Banded_stripes_restart_after_a_row_group()
     {

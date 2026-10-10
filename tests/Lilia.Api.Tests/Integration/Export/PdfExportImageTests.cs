@@ -63,6 +63,7 @@ public class PdfExportImageTests : IntegrationTestBase
 
     // ── the regression ───────────────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task AnUploadedFigureReachesThePdf()
     {
@@ -80,6 +81,7 @@ public class PdfExportImageTests : IntegrationTestBase
         Contains(pdf, "/Image").Should().BeTrue("the figure must be embedded, not described");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task AFigureWithNoImageDoesNotClaimOneIsMissing()
     {
@@ -94,6 +96,7 @@ public class PdfExportImageTests : IntegrationTestBase
         pdf.Should().NotBeEmpty();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task SeveralFiguresAllReachThePdf()
     {
@@ -130,6 +133,7 @@ public class PdfExportImageTests : IntegrationTestBase
         zip.Entries.Should().Contain(e => e.Name == "main.tex");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task AFigureBelongingToAnotherDocumentIsNotPulledIn()
     {

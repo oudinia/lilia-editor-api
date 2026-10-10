@@ -51,6 +51,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
     private Task<HttpResponseMessage> PutLookAsync(Guid id, object look) =>
         Api.PutAsJsonAsync($"/api/documents/{id}", new { look });
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Themes_lists_six_descriptors_with_availability()
     {
@@ -104,6 +105,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
             .Should().Equal("classic", "cerulean", "index", "carnet", "gazette");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Put_stores_a_look_and_classic_clears_it()
     {
@@ -154,6 +156,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
         (await refused.Content.ReadAsStringAsync()).Should().Contain("IEEEtran sets its own look");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_preview_compiles_a_themed_document_in_the_themes_faces()
     {
@@ -168,6 +171,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
         Encoding.Latin1.GetString(pdf, 0, 5).Should().StartWith("%PDF");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_export_takes_a_look_for_this_export_only()
     {
@@ -187,6 +191,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
         (await beamerOnly.Content.ReadAsStringAsync()).Should().Contain("Exposition is a beamer theme");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_zip_carries_the_package_and_the_tex_loads_it_before_the_custom_preamble()
     {
@@ -224,6 +229,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
         return doc.Id;
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_beamer_deck_takes_classic_and_the_themes_with_a_beamer_version()
     {
@@ -257,6 +263,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
             archive.Entries.Select(e => e.FullName).Should().NotContain(n => n.EndsWith(".sty"));
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_beamer_deck_takes_index_with_its_pins_and_cerulean_print_safe()
     {
@@ -284,6 +291,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
             .Should().Contain(@"\usetheme[printsafe]{LiliaCerulean}").And.NotContain("liliaPinColour");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_class_switch_keeps_exposition_and_prints_classic_until_switched_back()
     {
@@ -304,6 +312,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
         tex.Should().Contain(@"\usetheme[printsafe]{LiliaExposition}");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_preview_and_the_export_compile_an_exposition_deck()
     {
@@ -325,6 +334,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
 
     // ── phase 2: table settings, the lists ───────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Put_stores_table_settings_and_refuses_bad_ones_with_the_valid_values()
     {
@@ -359,6 +369,7 @@ public class DocumentThemesApiTests : IntegrationTestBase
         (await refused.Content.ReadAsStringAsync()).Should().Contain("Its tables stay ruled");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_document_list_carries_each_documents_look()
     {

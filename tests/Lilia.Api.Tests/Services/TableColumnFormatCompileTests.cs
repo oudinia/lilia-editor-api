@@ -35,6 +35,7 @@ public class TableColumnFormatCompileTests
     private static Task<byte[]> Compile(string tex, string engine) =>
         new LaTeXRenderService(NullLogger<LaTeXRenderService>.Instance).RenderToPdfAsync(tex, engine, timeout: 180);
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("pdflatex")]
     [InlineData("lualatex")]
@@ -68,6 +69,7 @@ public class TableColumnFormatCompileTests
             text.Should().Contain(s, $"{engine} must print {s}");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("pdflatex")]
     [InlineData("lualatex")]

@@ -11,6 +11,7 @@ public class AuthorPassThroughCompileTests : FourCallersTestBase
 {
     public AuthorPassThroughCompileTests(TestDatabaseFixture fixture) : base(fixture) { }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Author_commands_compile_and_do_not_print_as_text()
     {

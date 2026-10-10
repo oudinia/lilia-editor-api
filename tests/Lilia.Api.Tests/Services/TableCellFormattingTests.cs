@@ -173,6 +173,7 @@ public class TableCellFormattingCompileTests
         Content = JsonDocument.Parse(JsonSerializer.Serialize(content)),
     };
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_bold_cell_prints_in_a_bold_face_in_the_exported_pdf()
     {

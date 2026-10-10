@@ -86,6 +86,7 @@ public class DocumentExpositionCompileTests
         return data;
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(Matrix))]
     public async Task A_deck_of_slide_blocks_compiles_and_keeps_its_content(string writer, string theme, string engine)
@@ -119,6 +120,7 @@ public class DocumentExpositionCompileTests
         }
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("preview", "pdflatex")]
     [InlineData("export", "lualatex")]
@@ -129,6 +131,7 @@ public class DocumentExpositionCompileTests
         await AssertPrintSafe(await Compile(tex, engine));
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_print_safe_export_of_an_exposition_deck_prints_on_cream()
     {
@@ -152,6 +155,7 @@ public class DocumentExpositionCompileTests
         colours.Should().NotContain(c => Near(c, Gold), "gold does not hold on cream");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_authors_preamble_wins_over_exposition()
     {

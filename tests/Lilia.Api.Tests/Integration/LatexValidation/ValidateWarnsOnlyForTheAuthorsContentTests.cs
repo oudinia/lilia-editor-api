@@ -21,6 +21,7 @@ public class ValidateWarnsOnlyForTheAuthorsContentTests : IntegrationTestBase
 
     public ValidateWarnsOnlyForTheAuthorsContentTests(TestDatabaseFixture fixture) : base(fixture) { }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_clean_document_without_an_author_validates_without_warnings()
     {

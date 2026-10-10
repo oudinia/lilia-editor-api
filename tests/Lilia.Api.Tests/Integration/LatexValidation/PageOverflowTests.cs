@@ -59,6 +59,7 @@ public class PageOverflowTests : IntegrationTestBase
     /// pages, so nothing runs off the page and the check has nothing to report —
     /// not even longtable's own "column widths have changed", a second-pass notice.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_ninety_row_table_breaks_across_pages_and_reports_nothing()
     {
@@ -73,6 +74,7 @@ public class PageOverflowTests : IntegrationTestBase
         json.RootElement.GetProperty("warnings").EnumerateArray().Should().BeEmpty();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_table_taller_than_the_page_is_reported_not_silently_truncated()
     {
@@ -113,6 +115,7 @@ public class PageOverflowTests : IntegrationTestBase
     /// everything is as useless as one that never fires, and the per-block
     /// "compiles" indicator would never read green.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_table_that_fits_produces_no_overflow_warning()
     {

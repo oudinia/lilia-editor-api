@@ -56,6 +56,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
 
     // ── Per-Block Validation ────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_Paragraph_ReturnsValid()
     {
@@ -66,6 +67,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_HeadingLevel1_ReturnsValid()
     {
@@ -76,6 +78,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_EquationDisplay_ReturnsValid()
     {
@@ -86,6 +89,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_EquationInline_ReturnsValid()
     {
@@ -96,6 +100,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_EquationWithAlign_ReturnsValid()
     {
@@ -107,6 +112,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue("align environment should not be wrapped in $...$");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_EquationWithPlaceholder_ReturnsValid()
     {
@@ -118,6 +124,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue("\\placeholder{} should be stripped before compilation");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_TheoremDefinition_ReturnsValid()
     {
@@ -129,6 +136,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue("definition environment should be in the validation preamble");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("theorem", "theorem")]
     [InlineData("lemma", "lemma")]
@@ -148,6 +156,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue($"theorem subtype '{theoremType}' should compile");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_Code_ReturnsValid()
     {
@@ -159,6 +168,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_OrderedList_ReturnsValid()
     {
@@ -170,6 +180,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_Blockquote_ReturnsValid()
     {
@@ -181,6 +192,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_Table_ReturnsValid()
     {
@@ -192,6 +204,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_Abstract_ReturnsValid()
     {
@@ -203,6 +216,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_PageBreak_ReturnsValid()
     {
@@ -213,6 +227,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_TableOfContents_ReturnsValid()
     {
@@ -225,6 +240,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
 
     // ── Edge Cases ──────────────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_EquationWithUndefinedCommand_ReturnsInvalid()
     {
@@ -237,6 +253,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Error.Should().Contain("Undefined control sequence");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateBlock_ParagraphWithSpecialChars_ReturnsValid()
     {
@@ -257,6 +274,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
 
     // ── Document-Level Validation ───────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateDocument_MultipleBlockTypes_ReturnsValid()
     {
@@ -271,6 +289,7 @@ public class LaTeXValidationControllerTests : IntegrationTestBase
         result.Valid.Should().BeTrue("a document with mixed block types should compile");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ValidateDocument_WithAllTheoremTypes_ReturnsValid()
     {

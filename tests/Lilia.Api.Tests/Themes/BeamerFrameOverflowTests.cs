@@ -71,6 +71,7 @@ public class BeamerFrameOverflowTests
         return (latex, result);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("cerulean")]
     [InlineData("index")]
@@ -90,6 +91,7 @@ public class BeamerFrameOverflowTests
         FrameOverflow.InDocument(latex, result.Log).Should().Equal([(3, (Guid?)third.Id)]);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("cerulean")]
     [InlineData("index")]
@@ -240,6 +242,7 @@ public class BeamerFrameOverflowTests
         FrameOverflow.Frames(alone).Should().Equal(new FrameOverflow.Frame(3, 4, 6));
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public void A_deck_whose_blocks_arrive_unordered_is_written_in_the_authors_order()
     {
