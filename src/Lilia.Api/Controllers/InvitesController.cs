@@ -1,5 +1,6 @@
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
+using Lilia.Api.Services;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,9 +33,12 @@ public class InvitesController : ControllerBase
 {
     private readonly LiliaDbContext _context;
 
-    public InvitesController(LiliaDbContext context)
+    private readonly ISharingNotifier? _sharingNotifier;
+
+    public InvitesController(LiliaDbContext context, ISharingNotifier? sharingNotifier = null)
     {
         _context = context;
+        _sharingNotifier = sharingNotifier;
     }
 
     private string? GetUserId() =>
@@ -115,6 +119,9 @@ public class InvitesController : ControllerBase
 
         invite.Status = "accepted";
         await _context.SaveChangesAsync();
+        // The owner hears about it: in the app and by email (Olivia, 10 Oct).
+        if (_sharingNotifier is not null)
+            await _sharingNotifier.InviteAcceptedAsync(invite.DocumentId, invite.InvitedBy, userId);
         return Ok(new InviteAcceptResultDto(invite.DocumentId));
     }
 

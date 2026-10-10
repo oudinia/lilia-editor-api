@@ -324,6 +324,67 @@ public class EmailService : IEmailService
         """;
     }
 
+    // ── Sharing notices (Olivia, 10 Oct): two or three lines, at most one button ──
+
+    public Task SendInviteAcceptedAsync(string toEmail, string acceptedByName, string documentTitle, string sharingUrl) =>
+        SendEmailAsync(toEmail,
+            $"{acceptedByName} joined \"{documentTitle}\"",
+            NoticeHtml(
+                $"<strong>{Enc(acceptedByName)}</strong> accepted your invitation to <strong>{Enc(documentTitle)}</strong>.",
+                "They can open it now. See who has access, or change it, in Share.",
+                "Open sharing", sharingUrl,
+                "You're receiving this because you shared a document on Lilia."),
+            $"{acceptedByName} accepted your invitation to \"{documentTitle}\".\n\nOpen sharing: {sharingUrl}\n\n— Lilia");
+
+    public Task SendAccessChangedAsync(string toEmail, string changedByName, string documentTitle, string oldRole, string newRole, string documentUrl) =>
+        SendEmailAsync(toEmail,
+            $"Your access to \"{documentTitle}\" changed",
+            NoticeHtml(
+                $"<strong>{Enc(changedByName)}</strong> changed your access to <strong>{Enc(documentTitle)}</strong>.",
+                $"{Enc(oldRole)} → <strong>{Enc(newRole)}</strong>",
+                "Open document", documentUrl,
+                "You're receiving this because a document was shared with you on Lilia."),
+            $"{changedByName} changed your access to \"{documentTitle}\": {oldRole} → {newRole}.\n\nOpen document: {documentUrl}\n\n— Lilia");
+
+    public Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle) =>
+        SendEmailAsync(toEmail,
+            $"Your access to \"{documentTitle}\" was removed",
+            NoticeHtml(
+                $"<strong>{Enc(removedByName)}</strong> removed your access to <strong>{Enc(documentTitle)}</strong>.",
+                "It no longer appears in your documents. If you think this is a mistake, ask them to share it again.",
+                null, null,
+                "You're receiving this because a document was shared with you on Lilia."),
+            $"{removedByName} removed your access to \"{documentTitle}\".\n\n— Lilia");
+
+    private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
+
+    /// <summary>The sharing notices' one layout: the share email's card, a line, a second line, maybe a button.</summary>
+    private static string NoticeHtml(string lineHtml, string secondHtml, string? button, string? url, string footer) => $$"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                <tr><td style="padding:32px 32px 0;">
+                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
+                </td></tr>
+                <tr><td style="padding:24px 32px;">
+                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{lineHtml}}</p>
+                  <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#555;">{{secondHtml}}</p>
+                  {{(button is null || url is null ? "" : $"<a href=\"{Enc(url)}\" style=\"display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;\">{Enc(button)}</a>")}}
+                </td></tr>
+                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
+                  <p style="margin:0;font-size:12px;color:#999;">{{footer}}</p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+        """;
+
     public async Task SendDocumentSharedAsync(string toEmail, string? recipientName, string inviterName,
         string documentTitle, string permission, string documentUrl)
     {

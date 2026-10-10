@@ -11,8 +11,11 @@ public class UserService : IUserService
     private readonly IDocumentService _documentService;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger)
+    private readonly ISharingNotifier? _sharingNotifier;
+
+    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger, ISharingNotifier? sharingNotifier = null)
     {
+        _sharingNotifier = sharingNotifier;
         _context = context;
         _documentService = documentService;
         _logger = logger;
@@ -123,6 +126,7 @@ public class UserService : IUserService
             .Where(pi => pi.Email == email && pi.Status == "pending" && pi.ExpiresAt > DateTime.UtcNow)
             .ToListAsync();
 
+        var joined = new List<(Guid DocumentId, string Inviter)>();
         foreach (var invite in pendingInvites)
         {
             // Find the role by name
@@ -149,12 +153,17 @@ public class UserService : IUserService
             };
             _context.DocumentCollaborators.Add(collaborator);
             invite.Status = "accepted";
+            joined.Add((invite.DocumentId, invite.InvitedBy));
         }
 
         if (pendingInvites.Count > 0)
         {
             await _context.SaveChangesAsync();
         }
+        // Signing up accepted these: each owner hears about it (Olivia, 10 Oct).
+        if (_sharingNotifier is not null)
+            foreach (var (documentId, inviter) in joined)
+                await _sharingNotifier.InviteAcceptedAsync(documentId, inviter, userId);
     }
 
     public async Task<UserDto?> GetUserByEmailAsync(string email)
