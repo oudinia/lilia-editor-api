@@ -39,6 +39,13 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
           restore-keys: nuget-${{ runner.os }}-
 
+      # Typst is one static binary (the API's second engine); the same version as the VM.
+      - name: Install Typst 0.15.1
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz | tar -xJ
+          sudo mv typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+          typst --version
+
       - name: Restore
         run: dotnet restore tests/Lilia.Api.Tests
 
