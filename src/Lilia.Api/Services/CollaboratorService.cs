@@ -21,6 +21,9 @@ public class CollaboratorService : ICollaboratorService
 
     private readonly ISharingNotifier? _sharingNotifier;
 
+    /// <summary>An invite expires after 14 days (Olivia's spec, confirmed by the user, 10 Oct); it was 30.</summary>
+    public static readonly TimeSpan InviteLifetime = TimeSpan.FromDays(14);
+
     public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null, ISharingNotifier? sharingNotifier = null)
     {
         _sharingNotifier = sharingNotifier;
@@ -290,7 +293,7 @@ public class CollaboratorService : ICollaboratorService
         );
     }
 
-    public async Task<bool> RemoveUserCollaboratorAsync(Guid documentId, string targetUserId, string userId)
+    public async Task<bool> RemoveUserCollaboratorAsync(Guid documentId, string targetUserId, string userId, bool notify = false, bool allowReply = false)
     {
         var document = await _context.Documents.FindAsync(documentId);
         if (document == null || document.OwnerId != userId) return false;
@@ -302,8 +305,10 @@ public class CollaboratorService : ICollaboratorService
 
         _context.DocumentCollaborators.Remove(collaborator);
         await _context.SaveChangesAsync();
-        if (_sharingNotifier is not null)
-            await _sharingNotifier.AccessRemovedAsync(documentId, targetUserId, userId);
+        // Silent unless the owner asks (the user, 10 Oct: removing someone
+        // unwanted or harmful from a lab shouldn't tell them by default).
+        if (notify && _sharingNotifier is not null)
+            await _sharingNotifier.AccessRemovedAsync(documentId, targetUserId, userId, allowReply);
 
         return true;
     }
@@ -357,7 +362,7 @@ public class CollaboratorService : ICollaboratorService
         if (existingInvite != null)
         {
             existingInvite.Role = canonicalRole;
-            existingInvite.ExpiresAt = DateTime.UtcNow.AddDays(30);
+            existingInvite.ExpiresAt = DateTime.UtcNow.Add(InviteLifetime);
             token = existingInvite.Id;
         }
         else
@@ -371,7 +376,7 @@ public class CollaboratorService : ICollaboratorService
                 InvitedBy = inviterUserId,
                 Status = "pending",
                 CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddDays(30)
+                ExpiresAt = DateTime.UtcNow.Add(InviteLifetime)
             };
             _context.DocumentPendingInvites.Add(pendingInvite);
             token = pendingInvite.Id;

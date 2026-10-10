@@ -88,14 +88,14 @@ public class CollaboratorsController : ControllerBase
     }
 
     [HttpDelete("users/{targetUserId}")]
-    public async Task<ActionResult> RemoveUserCollaborator(Guid docId, string targetUserId)
+    public async Task<ActionResult> RemoveUserCollaborator(Guid docId, string targetUserId, [FromQuery] bool notify = false, [FromQuery] bool allowReply = false)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
-        var result = await _collaboratorService.RemoveUserCollaboratorAsync(docId, targetUserId, userId);
+        var result = await _collaboratorService.RemoveUserCollaboratorAsync(docId, targetUserId, userId, notify, allowReply);
         if (!result) return NotFound();
         return NoContent();
     }

@@ -30,5 +30,5 @@ public sealed class RecordingEmailService : IEmailService
     public Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale) => Record("magic-link", toEmail);
     public Task SendInviteAcceptedAsync(string toEmail, string acceptedByName, string documentTitle, string sharingUrl) => Record("accepted", toEmail, sharingUrl);
     public Task SendAccessChangedAsync(string toEmail, string changedByName, string documentTitle, string oldRole, string newRole, string documentUrl) => Record("role-changed", toEmail, $"{oldRole} → {newRole}");
-    public Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle) => Record("removed", toEmail);
+    public Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle, string? replyTo = null) => Record("removed", toEmail, replyTo ?? "");
 }

@@ -65,6 +65,6 @@ public interface IEmailService
     /// <summary>To a collaborator: their access changed, old and new ("Open document").</summary>
     Task SendAccessChangedAsync(string toEmail, string changedByName, string documentTitle, string oldRole, string newRole, string documentUrl);
 
-    /// <summary>To a former collaborator: their access was removed (no button).</summary>
-    Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle);
+    /// <summary>To a former collaborator: their access was removed (no button). Replies reach <paramref name="replyTo"/> when the owner allows it.</summary>
+    Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle, string? replyTo = null);
 }

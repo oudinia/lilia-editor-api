@@ -156,13 +156,17 @@ public class EmailService : IEmailService
         await SendEmailAsync(toEmail, subject, html, text);
     }
 
-    public async Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null)
+    public Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null) =>
+        SendEmailCoreAsync(to, subject, htmlBody, textBody, null);
+
+    /// <summary>Send, with an optional Reply-To (the owner, when they allow replies).</summary>
+    private async Task SendEmailCoreAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo)
     {
         var transport = (_settings.Transport ?? "resend").Trim().ToLowerInvariant();
         switch (transport)
         {
             case "smtp":
-                await SendViaSmtpAsync(to, subject, htmlBody, textBody);
+                await SendViaSmtpAsync(to, subject, htmlBody, textBody, replyTo);
                 return;
             case "noop":
                 _logger.LogInformation(
@@ -171,12 +175,12 @@ public class EmailService : IEmailService
                 return;
             case "resend":
             default:
-                await SendViaResendAsync(to, subject, htmlBody, textBody);
+                await SendViaResendAsync(to, subject, htmlBody, textBody, replyTo);
                 return;
         }
     }
 
-    private async Task SendViaResendAsync(string to, string subject, string htmlBody, string? textBody)
+    private async Task SendViaResendAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo = null)
     {
         if (string.IsNullOrEmpty(_settings.ResendApiKey))
         {
@@ -190,14 +194,15 @@ public class EmailService : IEmailService
 
         try
         {
-            var payload = new
+            var payload = new Dictionary<string, object?>
             {
-                from = $"{_settings.FromName} <{_settings.FromAddress}>",
-                to = new[] { to },
-                subject,
-                html = htmlBody,
-                text = textBody
+                ["from"] = $"{_settings.FromName} <{_settings.FromAddress}>",
+                ["to"] = new[] { to },
+                ["subject"] = subject,
+                ["html"] = htmlBody,
+                ["text"] = textBody,
             };
+            if (!string.IsNullOrEmpty(replyTo)) payload["reply_to"] = replyTo;
 
             var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -219,7 +224,7 @@ public class EmailService : IEmailService
         }
     }
 
-    private async Task SendViaSmtpAsync(string to, string subject, string htmlBody, string? textBody)
+    private async Task SendViaSmtpAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo = null)
     {
         // MailKit's SmtpClient is the standard MimeKit-backed SMTP path.
         // For Mailpit (the intended dev target), there's no auth and no
@@ -229,6 +234,7 @@ public class EmailService : IEmailService
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(_settings.FromName, _settings.FromAddress));
         message.To.Add(MailboxAddress.Parse(to));
+        if (!string.IsNullOrEmpty(replyTo)) message.ReplyTo.Add(MailboxAddress.Parse(replyTo));
         message.Subject = subject;
         var bodyBuilder = new BodyBuilder { HtmlBody = htmlBody };
         if (!string.IsNullOrEmpty(textBody)) bodyBuilder.TextBody = textBody;
@@ -346,15 +352,18 @@ public class EmailService : IEmailService
                 "You're receiving this because a document was shared with you on Lilia."),
             $"{changedByName} changed your access to \"{documentTitle}\": {oldRole} → {newRole}.\n\nOpen document: {documentUrl}\n\n— Lilia");
 
-    public Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle) =>
-        SendEmailAsync(toEmail,
+    public Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle, string? replyTo = null) =>
+        SendEmailCoreAsync(toEmail,
             $"Your access to \"{documentTitle}\" was removed",
             NoticeHtml(
                 $"<strong>{Enc(removedByName)}</strong> removed your access to <strong>{Enc(documentTitle)}</strong>.",
-                "It no longer appears in your documents. If you think this is a mistake, ask them to share it again.",
+                replyTo is null
+                    ? "It no longer appears in your documents."
+                    : $"It no longer appears in your documents. You can reply to this email to reach {Enc(removedByName)}.",
                 null, null,
                 "You're receiving this because a document was shared with you on Lilia."),
-            $"{removedByName} removed your access to \"{documentTitle}\".\n\n— Lilia");
+            $"{removedByName} removed your access to \"{documentTitle}\".\n\n— Lilia",
+            replyTo);
 
     private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
 

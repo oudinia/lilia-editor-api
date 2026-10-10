@@ -136,16 +136,48 @@ public class SharingEmailsTests : IntegrationTestBase
         (await _owner.PutAsJsonAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader", new { role = "editor" })).EnsureSuccessStatusCode();
         // Setting the same role again tells nobody anything.
         (await _owner.PutAsJsonAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader", new { role = "editor" })).EnsureSuccessStatusCode();
+        // Removal says nothing unless the owner asks (the user, 10 Oct).
         (await _owner.DeleteAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader")).EnsureSuccessStatusCode();
 
         var notes = await NotesFor("share-reader");
-        notes.Select(n => n.Type).Should().Equal("document_shared", "role_changed", "access_removed");
+        notes.Select(n => n.Type).Should().Equal("document_shared", "role_changed");
         notes[1].Message.Should().Be("Can view → Can edit");
-        notes[2].Link.Should().BeNull();
-        notes[2].Title.Should().Be("Ada Owner removed your access to \"Heat transport\"");
 
-        var mail = await MailTo("share-reader@lilia.test", 3);
-        mail.Select(m => m.Kind).Should().Equal("shared", "role-changed", "removed");
+        var mail = await MailTo("share-reader@lilia.test", 2);
+        mail.Select(m => m.Kind).Should().Equal("shared", "role-changed");
         mail[1].Detail.Should().Be("Can view → Can edit");
+    }
+
+    [Fact]
+    public async Task A_removal_the_owner_chooses_to_announce_reaches_the_person_and_replies_go_to_the_owner_if_allowed()
+    {
+        await SeedUserAsync("share-owner", "share-owner@lilia.test", "Ada Owner");
+        await SeedUserAsync("share-reader", "share-reader@lilia.test", "Ben Reader");
+        await SeedUserAsync("share-other", "share-other@lilia.test", "Cy Other");
+        var doc = await SeedDocumentAsync("share-owner", "Heat transport");
+        foreach (var who in new[] { "share-reader", "share-other" })
+            (await _owner.PostAsJsonAsync($"/api/documents/{doc.Id}/collaborators/invite", new { email = $"{who}@lilia.test", role = "viewer" })).EnsureSuccessStatusCode();
+
+        (await _owner.DeleteAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader?notify=true&allowReply=true")).EnsureSuccessStatusCode();
+        (await _owner.DeleteAsync($"/api/documents/{doc.Id}/collaborators/users/share-other?notify=true")).EnsureSuccessStatusCode();
+
+        var notes = await NotesFor("share-reader");
+        notes.Last().Type.Should().Be("access_removed");
+        notes.Last().Link.Should().BeNull();
+        notes.Last().Title.Should().Be("Ada Owner removed your access to \"Heat transport\"");
+
+        (await MailTo("share-reader@lilia.test", 2)).Last().Should().Be(new RecordingEmailService.Sent("removed", "share-reader@lilia.test", "share-owner@lilia.test"));
+        (await MailTo("share-other@lilia.test", 2)).Last().Should().Be(new RecordingEmailService.Sent("removed", "share-other@lilia.test", ""));
+    }
+
+    [Fact]
+    public async Task An_invite_expires_after_14_days()
+    {
+        await SeedUserAsync("share-owner", "share-owner@lilia.test", "Ada Owner");
+        var doc = await SeedDocumentAsync("share-owner", "Heat transport");
+        (await _owner.PostAsJsonAsync($"/api/documents/{doc.Id}/collaborators/invite", new { email = "later@lilia.test", role = "viewer" })).EnsureSuccessStatusCode();
+        await using var db = CreateDbContext();
+        var invite = await db.DocumentPendingInvites.SingleAsync(p => p.DocumentId == doc.Id);
+        (invite.ExpiresAt - invite.CreatedAt).TotalDays.Should().BeApproximately(14, 0.01);
     }
 }
