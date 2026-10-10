@@ -32,8 +32,12 @@ public static class LaTeXErrorParser
     {
         if (string.IsNullOrWhiteSpace(logOrStderr)) return null;
 
-        // Grab the first 2 000 chars — error is always near the top
-        var log = logOrStderr.Length > 2000 ? logOrStderr[..2000] : logOrStderr;
+        // 2 000 chars from the first "!" line, where TeX reports the error. Not from
+        // the top: a whole document's log opens with pages of package loading, and
+        // the error (with its "l.N" line) sat beyond the window (10 Oct).
+        var bang = logOrStderr.StartsWith('!') ? 0 : logOrStderr.IndexOf("\n!", StringComparison.Ordinal) + 1;
+        var from = logOrStderr[Math.Max(0, bang)..];
+        var log = from.Length > 2000 ? from[..2000] : from;
 
         // Extract line number (first l.N occurrence)
         int? lineNumber = null;

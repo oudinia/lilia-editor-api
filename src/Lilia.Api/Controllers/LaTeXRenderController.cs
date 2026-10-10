@@ -640,6 +640,9 @@ public class LaTeXRenderController : ControllerBase
             var bibWarnings = new List<string>();
             var layoutWarnings = new List<string>();
             var refWarnings = new List<string>();
+            // Every issue with the block it belongs to, where that is known: the
+            // phone's Check document lists them and taps through to the block.
+            var issues = new List<ValidationIssue>();
             if (doc != null)
             {
                 var bibKeys = doc.BibliographyEntries.Select(e => e.CiteKey).ToHashSet();
@@ -660,7 +663,10 @@ public class LaTeXRenderController : ControllerBase
                         foreach (var key in keys)
                         {
                             if (!bibKeys.Contains(key))
+                            {
                                 bibWarnings.Add($"Missing bibliography entry: \\cite{{{key}}}");
+                                issues.Add(new ValidationIssue("warning", "citation", $"Missing bibliography entry: \\cite{{{key}}}", block.Id.ToString()));
+                            }
                         }
                     }
                 }
@@ -680,13 +686,17 @@ public class LaTeXRenderController : ControllerBase
                             if (string.Equals(span, "column", StringComparison.OrdinalIgnoreCase))
                             {
                                 layoutWarnings.Add($"[layout] {type} block may not fit a single column — consider setting span to page.");
+                                issues.Add(new ValidationIssue("warning", "layout", $"This {type} may not fit a single column — consider setting span to page.", block.Id.ToString()));
                             }
                         }
                         else if (type == "code")
                         {
                             var code = c.TryGetProperty("code", out var cd) ? cd.GetString() ?? "" : "";
                             if (code.Split('\n').Any(line => line.Length > 80))
+                            {
                                 layoutWarnings.Add($"[layout] code block has lines >80 chars — will overflow in multi-column layout.");
+                                issues.Add(new ValidationIssue("warning", "layout", "Code lines over 80 characters will overflow a column.", block.Id.ToString()));
+                            }
                         }
                     }
                 }
@@ -711,6 +721,7 @@ public class LaTeXRenderController : ControllerBase
                     if (drawn.Error is not { Kind: "tex" } e) continue;
                     tikzWarnings.Add($"[tikz] {TikzErrors.Describe(e)}");
                     tikzIssues.Add(new { blockId = block.Id, kind = "tikz", message = e.Message, line = e.Line, excerpt = e.Excerpt });
+                    issues.Add(new ValidationIssue("warning", "tikz", $"The figure does not draw: {TikzErrors.Describe(e)}", block.Id.ToString()));
                     tikzBlockIds.Add(block.Id.ToString());
                 }
             }
@@ -731,10 +742,17 @@ public class LaTeXRenderController : ControllerBase
             {
                 foreach (var problem in ReferenceIndex.Build(doc.Blocks).Problems)
                 {
+                    var first = problem.BlockIds.Count > 0 ? problem.BlockIds[0].ToString() : null;
                     if (problem.Kind == "dangling")
+                    {
                         refWarnings.Add($"Reference to a label nothing defines: \\ref{{{problem.Key}}}");
+                        issues.Add(new ValidationIssue("warning", "reference", $"Reference to a label nothing defines: \\ref{{{problem.Key}}}", first));
+                    }
                     else if (problem.Kind == "duplicate")
+                    {
                         refWarnings.Add($"Label defined {problem.BlockIds.Count} times, LaTeX keeps the last: {problem.Key}");
+                        issues.Add(new ValidationIssue("warning", "reference", $"Label defined {problem.BlockIds.Count} times, LaTeX keeps the last: {problem.Key}", first));
+                    }
                 }
             }
 
@@ -798,7 +816,25 @@ public class LaTeXRenderController : ControllerBase
                     .Select(f => new { blockId = f.BlockId?.ToString(), frame = f.Frame, message = FrameOverflow.Message(f.Frame) })
                     .ToArray()
                 : [];
-            var blocksWithWarnings = LatexLineMap.Parse(latex)
+            var lineMap = LatexLineMap.Parse(latex);
+            // The block the compile error stops in, from its "l.N" line: the phone's
+            // Check document taps through to it (Olivia, 10 Oct). Null when the log
+            // names no line, or the line is in the preamble, before any block.
+            var errorBlockId = !valid && result.ParsedError?.LineNumber is int errLine
+                ? lineMap.BlockAt(errLine)?.ToString()
+                : null;
+            foreach (var w in warnings.Distinct())
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(w, @"on input line (\d+)");
+                var at = m.Success && int.TryParse(m.Groups[1].Value, out var ln) ? lineMap.BlockAt(ln)?.ToString() : null;
+                issues.Add(new ValidationIssue("warning", "latex", w, at));
+            }
+            foreach (var f in blockIssues.Where(i => i.blockId is not null))
+                issues.Add(new ValidationIssue("warning", "frame", f.message, f.blockId));
+            if (!valid)
+                issues.Insert(0, new ValidationIssue("error", "compile", FirstErrorLine(error), errorBlockId));
+
+            var blocksWithWarnings = lineMap
                 .BlocksNamedBy(allWarnings)
                 .Select(id => id.ToString())
                 .Concat(blockIssues.Where(i => i.blockId is not null).Select(i => i.blockId!))
@@ -810,6 +846,8 @@ public class LaTeXRenderController : ControllerBase
             {
                 valid,
                 error,
+                errorBlockId,
+                issues = issues.Distinct().ToArray(),
                 warnings = allWarnings,
                 blocksWithWarnings,
                 // Issues that belong to one block: a deck's frame that doesn't fit (kind "frame") and a
@@ -828,6 +866,17 @@ public class LaTeXRenderController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>One issue from a document check: error or warning, what kind, and its block when known.</summary>
+    private sealed record ValidationIssue(string Severity, string Kind, string Message, string? BlockId);
+
+    /// <summary>The "! …" line of a LaTeX failure, without the "LaTeX compilation failed:" wrapper.</summary>
+    public static string FirstErrorLine(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return "The document does not compile.";
+        var bang = error.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("! ") && !l.Contains("==> Fatal error"));
+        return bang is null ? error.Split('\n')[0].Trim() : bang[2..].Trim();
     }
 
     private async Task<Lilia.Core.Entities.Block?> GetBlockAsync(Guid blockId)
