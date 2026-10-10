@@ -146,6 +146,7 @@ public class ChapterHeadingTests
         headings.Should().Equal((1, "Limits"), (2, "Epsilon and delta"));
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [Trait("Category", "LatexCompile")]
     [InlineData("report")]

@@ -19,6 +19,9 @@ namespace Lilia.Api.Tests.Services;
 /// Run: dotnet test --filter "Category=LatexIntegration"
 /// </summary>
 [Trait("Category", "LatexIntegration")]
+// The TeX image (texlive-test.Dockerfile, built on lilia-texlive) exists only on
+// the VM: the daily real-LaTeX run covers these, CI does not (10 Oct).
+[Trait("Category", "RequiresTeX")]
 public class LatexIntegrationTests : IAsyncLifetime
 {
     private readonly RenderService _renderService;

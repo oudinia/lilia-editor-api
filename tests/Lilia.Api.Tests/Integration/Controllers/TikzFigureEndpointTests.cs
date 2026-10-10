@@ -30,6 +30,7 @@ public class TikzFigureEndpointTests : FourCallersTestBase
 
     private static string Route(Guid doc, Guid block, string query = "") => $"/api/documents/{doc}/blocks/{block}/figure.svg{query}";
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task It_returns_the_svg_and_the_second_call_comes_from_the_cache()
     {
@@ -54,6 +55,7 @@ public class TikzFigureEndpointTests : FourCallersTestBase
         last.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_compile_error_is_422_with_the_line_in_the_figures_source()
     {
@@ -115,6 +117,7 @@ public class TikzFigureEndpointTests : FourCallersTestBase
         (await owner.GetAsync(Route(s.DocumentId, foreign))).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(TikzFigureTests.CorpusFiles), MemberType = typeof(TikzFigureTests))]
     public async Task Each_corpus_figure_draws_through_the_endpoint(string file)

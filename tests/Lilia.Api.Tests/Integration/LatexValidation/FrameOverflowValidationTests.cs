@@ -46,6 +46,7 @@ public class FrameOverflowValidationTests : IntegrationTestBase
     private static string[] Strings(JsonElement root, string name) =>
         root.GetProperty(name).EnumerateArray().Select(x => x.GetString() ?? "").ToArray();
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_document_pass_lists_the_frame_on_its_slide_block_and_so_does_the_block()
     {
@@ -72,6 +73,7 @@ public class FrameOverflowValidationTests : IntegrationTestBase
             .And.NotContain(w => w.StartsWith("Content is too tall for the page", StringComparison.Ordinal));
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_deck_that_fits_reports_no_frame()
     {

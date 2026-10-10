@@ -418,6 +418,7 @@ public class TikzFigureTests
 
     private const string Src = @"\begin{tikzpicture}\draw (0,0)--(1,1);\end{tikzpicture}";
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Typst_places_the_drawn_svg_with_its_caption()
     {
@@ -434,6 +435,7 @@ public class TikzFigureTests
         bare.Should().Contain("#image(\"figures/tikz-a.svg\")").And.NotContain("#figure(image(\"figures/tikz-a");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public void A_figure_that_does_not_draw_is_a_visible_placeholder_and_the_preview_still_compiles()
     {
@@ -480,6 +482,7 @@ public class TikzFigureTests
         return r.Svg!;
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(CorpusFiles))]
     public async Task Each_corpus_file_imports_exports_compiles_and_draws(string file)
@@ -508,6 +511,7 @@ public class TikzFigureTests
         svg.Should().Contain("<svg").And.Contain("</svg>");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_compile_error_names_the_line_in_the_figures_own_source_and_the_bad_part()
     {
@@ -525,6 +529,7 @@ public class TikzFigureTests
         r.Error.Excerpt!.Substring(r.Error.Column!.Start, r.Error.Column.End - r.Error.Column.Start).Should().Be(@"\nosuchmacro");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_second_drawing_comes_from_the_cache_and_the_last_good_one_is_kept()
     {

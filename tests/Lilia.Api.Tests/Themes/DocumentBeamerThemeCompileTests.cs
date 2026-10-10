@@ -118,6 +118,7 @@ public class DocumentBeamerThemeCompileTests
         return data;
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(Matrix))]
     public async Task A_deck_compiles_in_its_faces_and_colours(string theme, string engine, bool printSafe)
@@ -196,6 +197,7 @@ public class DocumentBeamerThemeCompileTests
         FillColours(pdf).Should().NotContain(c => Near(c, Seq[2]), "the pin replaces the third colour, which nothing uses");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_deck_without_a_quotation_or_definition_has_no_serif_face()
     {
@@ -204,6 +206,7 @@ public class DocumentBeamerThemeCompileTests
         fonts.Should().Contain("Montserrat").And.NotContain("SourceSerif");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("cerulean")]
     [InlineData("index")]
@@ -215,6 +218,7 @@ public class DocumentBeamerThemeCompileTests
         text.Should().Contain("Quartz zebra").And.Contain("Velvet heron");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -249,6 +253,7 @@ public class DocumentBeamerThemeCompileTests
     /// the deck's index as the booklet's contents page is. The next frame, still before the first
     /// section, goes back to the 30 % tints.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Index_title_frame_shows_every_section_at_full_colour()
     {

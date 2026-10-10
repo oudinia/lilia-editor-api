@@ -75,6 +75,7 @@ public class DocumentThemeCompileTests
         return data;
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(Matrix))]
     public async Task A_sample_document_compiles_and_keeps_its_content(string cls, string theme, string engine)
@@ -114,6 +115,7 @@ public class DocumentThemeCompileTests
         }
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("carnet", "pdflatex")]
     [InlineData("gazette", "lualatex")]
@@ -175,6 +177,7 @@ public class DocumentThemeCompileTests
         { "gazette", "white", "#F3D54E", 50, "#FFFFFF" },
     };
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(BandedCases))]
     public async Task Banded_stripes_a_five_row_table_and_leaves_a_three_row_table_plain(string theme, string paper, string hue, int percent, string paperColour)
@@ -209,6 +212,7 @@ public class DocumentThemeCompileTests
         { "gazette", "white", "#F3D54E", "#2A2926" },
     };
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(HeaderCases))]
     public async Task Header_band_fills_the_header_row_with_readable_ink(string theme, string paper, string fill, string ink)
@@ -227,6 +231,7 @@ public class DocumentThemeCompileTests
         }
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Ruled_has_no_fill_and_no_white_text()
     {
@@ -236,6 +241,7 @@ public class DocumentThemeCompileTests
         colours.Should().NotContain(c => Near(c, "#FFFFFF"), "no header band, and a white paper is never painted");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("banded")]
     [InlineData("header")]
@@ -247,6 +253,7 @@ public class DocumentThemeCompileTests
         if (style == "header") colours.Should().Contain(c => Near(c, "#FFFFFF"), "white header text");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("pdflatex")]
     [InlineData("lualatex")]
@@ -272,6 +279,7 @@ public class DocumentThemeCompileTests
             "captions go above by default");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("pdflatex")]
     [InlineData("lualatex")]
@@ -292,6 +300,7 @@ public class DocumentThemeCompileTests
         (await Tool("pdftotext", pdf, "-")).Should().Contain("Diagonalisation").And.Contain("Fizzing yak");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Index_pins_and_print_safe_compile()
     {
@@ -307,6 +316,7 @@ public class DocumentThemeCompileTests
         (await Tool("pdftotext", pdf, "-")).Should().Contain("Fizzing yak");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [InlineData("report")]
     [InlineData("book")]
@@ -380,6 +390,7 @@ public class DocumentThemeCompileTests
         return Math.Abs(c.R - Ch(0)) < 0.004 && Math.Abs(c.G - Ch(1)) < 0.004 && Math.Abs(c.B - Ch(2)) < 0.004;
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Exposition_named_in_lilia_theme_stops_the_compile()
     {

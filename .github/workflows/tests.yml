@@ -1,0 +1,60 @@
+name: Tests
+
+# The API's tests on every PR (10 Oct 2026). Until now CI only checked EF
+# migrations, so a failing test reached main unseen (#213: a security test that
+# guards document routes). Integration tests start their own Postgres with
+# Testcontainers (Docker is on the runner).
+#
+# Tests tagged Category=RequiresTeX compile real LaTeX; the runner has no TeX
+# Live, and a full TeX Live is ~5 GB. They stay in the local full run.
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.*'
+      - '.github/workflows/tests.yml'
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # Typst is one static binary (the API's second engine); the same version as the VM.
+      - name: Install Typst 0.15.1
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz | tar -xJ
+          sudo mv typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+          typst --version
+
+      # The Typst tests read their PDFs back with pdftotext.
+      - name: Install poppler-utils
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+
+      - name: Restore
+        run: dotnet restore tests/Lilia.Api.Tests
+
+      - name: Build
+        run: dotnet build tests/Lilia.Api.Tests --no-restore --verbosity quiet
+
+      - name: Test (everything but RequiresTeX)
+        run: dotnet test tests/Lilia.Api.Tests --no-build --filter "Category!=RequiresTeX" --logger "console;verbosity=minimal"

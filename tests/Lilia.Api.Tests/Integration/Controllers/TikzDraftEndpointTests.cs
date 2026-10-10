@@ -30,6 +30,7 @@ public class TikzDraftEndpointTests : FourCallersTestBase
     private static string Svg(Guid doc, Guid block, string query = "") => $"/api/documents/{doc}/blocks/{block}/figure.svg{query}";
     private static string Colours(Guid doc, Guid block) => $"/api/documents/{doc}/blocks/{block}/figure/colours";
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_draft_draws_with_the_time_it_took_and_the_same_draft_comes_from_the_cache()
     {
@@ -56,6 +57,7 @@ public class TikzDraftEndpointTests : FourCallersTestBase
         savedAsDraft.Headers.GetValues("X-Lilia-Cache").Single().Should().Be("hit");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_draft_that_does_not_draw_is_422_with_the_line_and_leaves_the_last_good_drawing()
     {
@@ -89,6 +91,7 @@ public class TikzDraftEndpointTests : FourCallersTestBase
         issues.EnumerateArray().Should().NotContain(i => i.GetProperty("blockId").GetGuid() == block && i.GetProperty("status").GetString() == "error");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_table_draws_the_plot_that_will_follow_it_before_the_figure_exists()
     {
@@ -169,6 +172,7 @@ public class TikzDraftEndpointTests : FourCallersTestBase
         await db.SaveChangesAsync();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_colours_follow_the_figures_Index_chapter_and_the_drawing_follows_them()
     {

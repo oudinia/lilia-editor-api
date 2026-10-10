@@ -115,6 +115,7 @@ public class TikzStep3Tests
 
     // ── The managed line ────────────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public void Classic_writes_its_colours_only_line_only_when_a_figure_names_a_colour()
     {
@@ -159,6 +160,7 @@ public class TikzStep3Tests
 
     public static TheoryData<string> Themes() => new() { "classic", "cerulean", "index", "carnet", "gazette" };
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(Themes))]
     public async Task Every_name_draws_in_the_themes_colours_in_the_figures_own_compile(string theme)
@@ -177,6 +179,7 @@ public class TikzStep3Tests
             colours.Should().OnlyContain(c => Math.Abs(c.R - c.G) < 0.002 && Math.Abs(c.G - c.B) < 0.002, "Classic stays monochrome");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Theory]
     [MemberData(nameof(Themes))]
     public async Task Every_name_compiles_in_the_full_document_and_literal_colours_never_change(string theme)
@@ -224,6 +227,7 @@ public class TikzStep3Tests
         return (doc, blocks, [f1, f2, f3]);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Two_figures_in_different_Index_chapters_draw_in_their_chapters_colours_pins_and_appendix_included()
     {
@@ -285,6 +289,7 @@ public class TikzStep3Tests
         red.Key.Should().Contain("index").And.Contain("#4A5FA3");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Moving_a_figure_to_another_chapter_redraws_it_and_moving_it_back_is_a_cache_hit()
     {
@@ -302,6 +307,7 @@ public class TikzStep3Tests
 
     // ── Drafts ──────────────────────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_draft_shares_the_cache_and_never_touches_the_last_good_drawing()
     {
@@ -338,6 +344,7 @@ public class TikzStep3Tests
     private static string Heavy() =>
         "\\begin{tikzpicture} % " + Unique + "\n\\begin{axis}\\addplot[samples=4000,domain=0:10]{sin(deg(x))*exp(-x/5)};\\end{axis}\n\\end{tikzpicture}";
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task An_aborted_draft_kills_its_compile_and_caches_nothing()
     {
@@ -358,6 +365,7 @@ public class TikzStep3Tests
         try { Directory.Delete(dir, true); } catch { }
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_newer_draft_of_the_same_figure_cancels_the_older_one()
     {
@@ -378,6 +386,7 @@ public class TikzStep3Tests
         (await mine).Ok.Should().BeTrue();
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Drafts_have_their_own_budget()
     {
@@ -408,6 +417,7 @@ public class TikzStep3Tests
 
     // ── The precompiled format ──────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_format_draws_the_same_picture_and_reports_the_same_error_line()
     {
@@ -439,6 +449,7 @@ public class TikzStep3Tests
         Directory.Delete(Path.GetDirectoryName(fmt)!, true);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_bad_format_falls_back_to_the_normal_compile_and_a_failed_build_says_so()
     {
@@ -472,6 +483,7 @@ public class TikzStep3Tests
         Directory.Delete(dir, true);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_service_builds_the_format_once_and_draws_with_it()
     {

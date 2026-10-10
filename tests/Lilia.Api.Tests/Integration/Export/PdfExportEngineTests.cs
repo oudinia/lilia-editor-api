@@ -82,6 +82,7 @@ public class PdfExportEngineTests : IntegrationTestBase
         ShouldBeAPdf(pdf);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task AskingForPdflatexExplicitlyGetsPdfTeX()
     {
@@ -91,6 +92,7 @@ public class PdfExportEngineTests : IntegrationTestBase
         Contains(pdf, "pdfTeX").Should().BeTrue("pdfTeX writes its name into the PDF");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ADocumentSetToLualatexIsCompiledByLuaTeX()
     {
@@ -106,6 +108,7 @@ public class PdfExportEngineTests : IntegrationTestBase
         Contains(pdf, "pdfTeX").Should().BeFalse("and must not have been given pdflatex instead");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task ADocumentSetToXelatexIsNotCompiledByTheOthers()
     {
@@ -123,6 +126,7 @@ public class PdfExportEngineTests : IntegrationTestBase
 
     // ── the query parameter ──────────────────────────────────────────────
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task AnExplicitEngineOverridesTheDocumentsSetting()
     {
@@ -134,6 +138,7 @@ public class PdfExportEngineTests : IntegrationTestBase
         Contains(pdf, "LuaTeX").Should().BeTrue("the caller asked for lualatex explicitly");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task AnExplicitEngineDoesNotDetourThroughTypst()
     {

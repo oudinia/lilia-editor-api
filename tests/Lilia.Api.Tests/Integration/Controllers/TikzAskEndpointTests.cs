@@ -98,6 +98,7 @@ public class TikzAskEndpointTests : FourCallersTestBase, IDisposable
         f.GetProperty("lines")[0].GetProperty("from").GetInt32().Should().Be(2);
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task An_editors_draw_is_compiled_and_comes_back_drawn_with_only_the_figures_context_sent()
     {
@@ -120,6 +121,7 @@ public class TikzAskEndpointTests : FourCallersTestBase, IDisposable
         system.Should().NotContain("Private text", "not the whole document").And.NotContain("Authz paper");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_change_that_does_not_draw_is_retried_with_TeXs_error_and_two_failures_name_the_line()
     {
@@ -147,6 +149,7 @@ public class TikzAskEndpointTests : FourCallersTestBase, IDisposable
         body.GetProperty("figure").TryGetProperty("svg", out _).Should().BeFalse("only drawings that drew are shown");
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_draw_that_uses_right_of_without_listing_positioning_draws_first_time()
     {

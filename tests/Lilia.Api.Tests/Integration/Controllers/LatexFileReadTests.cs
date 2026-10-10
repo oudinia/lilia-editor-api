@@ -95,6 +95,7 @@ public class LatexFileReadTests : FourCallersTestBase
         await AssertCompileIsRefusedAsync(await EmittedLatexAsync(s.DocumentId));
     }
 
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task An_ordinary_document_still_compiles_through_the_LaTeX_service()
     {

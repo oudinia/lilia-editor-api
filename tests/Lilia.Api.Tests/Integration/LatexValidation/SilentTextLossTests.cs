@@ -41,6 +41,7 @@ public class SilentTextLossTests : IntegrationTestBase
     /// engine up. Pick a serif face, type an accented name or a Greek letter it
     /// lacks, and the text vanishes with a green tick beside it.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Dropped_glyphs_are_reported_even_though_the_compile_succeeds()
     {
@@ -93,6 +94,7 @@ public class SilentTextLossTests : IntegrationTestBase
     /// useless as one that never fires — the per-block "compiles" indicator
     /// would never read green and authors would learn to ignore it.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Ordinary_prose_produces_no_dropped_glyph_warning()
     {

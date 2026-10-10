@@ -65,6 +65,7 @@ public class LatexValidationPerfTests : IntegrationTestBase
     /// via the per-block endpoint on a cold cache, then again on a warm
     /// cache. Logs per-call durations and p50/p95 for each pass.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task BlockValidate_ColdVsWarm_LogsDurations()
     {
@@ -104,6 +105,7 @@ public class LatexValidationPerfTests : IntegrationTestBase
     /// insert helper races on a shared Npgsql connection, this is where
     /// it breaks.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task BlockValidate_Parallel_NoConnectionBusyUnderLoad()
     {
@@ -141,6 +143,7 @@ public class LatexValidationPerfTests : IntegrationTestBase
     /// Whole-document validate + rollup endpoint. Times both and checks
     /// that the rollup counts agree with the per-block validation results.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task DocumentValidate_AndRollup_AreConsistent()
     {
@@ -209,6 +212,7 @@ public class LatexValidationPerfTests : IntegrationTestBase
     /// must coexist with the pdflatex result for the same block + content
     /// hash, and the errors listing must surface both.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task Typst_ResultRecorded_AppearsAlongsidePdflatex()
     {
@@ -250,6 +254,7 @@ public class LatexValidationPerfTests : IntegrationTestBase
     /// validate call to miss the DB cache (different content hash), so
     /// users never see a stale verdict after an edit.
     /// </summary>
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task EditingBlock_InvalidatesValidationCache()
     {

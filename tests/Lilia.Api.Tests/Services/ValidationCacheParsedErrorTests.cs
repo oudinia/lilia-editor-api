@@ -12,6 +12,7 @@ namespace Lilia.Api.Tests.Services;
 /// </summary>
 public class ValidationCacheParsedErrorTests
 {
+    [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task The_second_check_keeps_the_line_of_the_error()
     {
