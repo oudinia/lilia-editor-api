@@ -15,6 +15,10 @@ namespace Lilia.Infrastructure.Data.Seeds;
 /// from <c>Program.cs</c> startup right after the EF migrations apply.
 /// To re-curate a starter doc, soft-delete the old row by hand and
 /// rename it here so the next startup writes the new one.
+///
+/// One re-curation runs by itself: a starter that still opens with its name
+/// as a level-1 heading (before 10 Oct 2026) is retired and seeded again
+/// with a Title block, so the title is centred like LaTeX's \maketitle.
 /// </summary>
 public static class StarterDocumentSeeder
 {
@@ -42,16 +46,32 @@ public static class StarterDocumentSeeder
         var seeds = new[] { Article(), Book(), Report(), Cv() };
         foreach (var seed in seeds)
         {
+            var order = 0;
+            foreach (var b in seed.Blocks.OrderBy(b => b.SortOrder)) b.SortOrder = order++;
             var existing = await context.Documents
+                .Include(d => d.Blocks)
                 .FirstOrDefaultAsync(d =>
                     d.OwnerId == SampleUserId &&
                     d.Title == seed.Title &&
                     d.IsStarter &&
                     d.DeletedAt == null, ct);
-            if (existing is not null) continue;
+            if (existing is not null)
+            {
+                if (!OpensWithHeadingTitle(existing)) continue;
+                existing.DeletedAt = DateTime.UtcNow;
+            }
             context.Documents.Add(seed);
         }
         await context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>The old starters: the document's name as its first block, a level-1 heading.</summary>
+    public static bool OpensWithHeadingTitle(Document doc)
+    {
+        var first = doc.Blocks.OrderBy(b => b.SortOrder).FirstOrDefault();
+        return first is { Type: "heading" }
+            && first.Content.RootElement.TryGetProperty("text", out var t)
+            && t.GetString() == doc.Title;
     }
 
     // ── Doc factories ────────────────────────────────────────────────
@@ -73,7 +93,7 @@ public static class StarterDocumentSeeder
         UpdatedAt = DateTime.UtcNow,
         Blocks =
         {
-            Heading(0, 1, "Sample Article"),
+            Title(0, "Sample Article", "Anonymous Author"),
             Abstract(1, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. This abstract summarises the motivation, approach, and key results of the study in three or four sentences. Replace the lorem text with your own one-paragraph synopsis."),
             Heading(2, 2, "1. Introduction"),
             Paragraph(3, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."),
@@ -108,8 +128,7 @@ public static class StarterDocumentSeeder
         UpdatedAt = DateTime.UtcNow,
         Blocks =
         {
-            Heading(0, 1, "Sample Book"),
-            Paragraph(1, "By Anonymous Author"),
+            Title(0, "Sample Book", "Anonymous Author"),
             PageBreak(2),
             Heading(3, 1, "Preface"),
             Paragraph(4, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. This preface introduces the book's scope, intended audience, and the journey readers can expect over the chapters that follow."),
@@ -146,9 +165,7 @@ public static class StarterDocumentSeeder
         UpdatedAt = DateTime.UtcNow,
         Blocks =
         {
-            Heading(0, 1, "Sample Report"),
-            Paragraph(1, "Prepared by: Anonymous Author"),
-            Paragraph(2, "Date: \\today"),
+            Title(0, "Sample Report", "Anonymous Author"),
             PageBreak(3),
             Heading(4, 1, "Executive Summary"),
             Paragraph(5, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. This executive summary distils the report's findings into one paragraph for stakeholders who only have time for the headline takeaway."),
@@ -204,6 +221,10 @@ public static class StarterDocumentSeeder
     };
 
     // ── Block helpers ────────────────────────────────────────────────
+
+    /// <summary>The Title block (LaTeX \maketitle): title, author, today's date.</summary>
+    private static Block Title(int order, string title, string author) => MakeBlock(
+        "title", order, $$"""{"title": {{JsonEncode(title)}}, "author": {{JsonEncode(author)}}, "dateMode": "today", "date": ""}""");
 
     private static Block Heading(int order, int level, string text) => MakeBlock(
         "heading", order, $$"""{"text": {{JsonEncode(text)}}, "level": {{level}}}""");
