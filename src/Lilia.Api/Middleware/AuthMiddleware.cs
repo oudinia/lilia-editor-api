@@ -27,13 +27,16 @@ public class DevelopmentAuthMiddleware
     {
         _next = next;
         _logger = logger;
-        var authAuthority = configuration["Auth:Authority"];
         var explicitlyDisabled = configuration.GetValue<bool>("Auth:DevelopmentAuth:Disabled");
-        _enabled = env.IsDevelopment() && string.IsNullOrEmpty(authAuthority) && !explicitlyDisabled;
+        _enabled = IsEnabled(configuration, env.IsDevelopment());
 
         if (_enabled)
         {
             _logger.LogWarning("DevelopmentAuthMiddleware is ENABLED - Auth:Authority is not configured");
+        }
+        else if (!explicitlyDisabled && env.IsDevelopment() && !string.IsNullOrEmpty(configuration["Stytch:ProjectId"]))
+        {
+            _logger.LogInformation("DevelopmentAuthMiddleware is DISABLED - Stytch sign-in is configured (set Auth:DevelopmentAuth:Enabled=true on a test stack)");
         }
         else if (explicitlyDisabled)
         {
@@ -43,6 +46,25 @@ public class DevelopmentAuthMiddleware
         {
             _logger.LogInformation("DevelopmentAuthMiddleware is DISABLED - Auth provider is configured");
         }
+    }
+
+    /// <summary>
+    /// Whether requests without a token are signed in as a development user.
+    ///
+    /// <para>Never when real sign-in (Stytch) is configured, unless a test stack
+    /// asks for it with <c>Auth:DevelopmentAuth:Enabled=true</c>. On 10 Oct 2026
+    /// the production API, run in Development and reachable through
+    /// editor.liliaeditor.com, served anyone's unsigned request as the owner's
+    /// account, because only <c>Auth:Authority</c> (unused since Stytch) turned
+    /// this off.</para>
+    /// </summary>
+    public static bool IsEnabled(IConfiguration configuration, bool isDevelopment)
+    {
+        if (!isDevelopment) return false;
+        if (configuration.GetValue<bool>("Auth:DevelopmentAuth:Disabled")) return false;
+        if (!string.IsNullOrEmpty(configuration["Auth:Authority"])) return false;
+        var realSignIn = !string.IsNullOrEmpty(configuration["Stytch:ProjectId"]);
+        return !realSignIn || configuration.GetValue<bool>("Auth:DevelopmentAuth:Enabled");
     }
 
     public async Task InvokeAsync(HttpContext context)
