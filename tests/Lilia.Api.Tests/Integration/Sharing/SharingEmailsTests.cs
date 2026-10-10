@@ -180,4 +180,32 @@ public class SharingEmailsTests : IntegrationTestBase
         var invite = await db.DocumentPendingInvites.SingleAsync(p => p.DocumentId == doc.Id);
         (invite.ExpiresAt - invite.CreatedAt).TotalDays.Should().BeApproximately(14, 0.01);
     }
+
+    [Fact]
+    public async Task Undo_restores_silently_and_the_held_notice_goes_only_to_someone_still_removed()
+    {
+        await SeedUserAsync("share-owner", "share-owner@lilia.test", "Ada Owner");
+        await SeedUserAsync("share-reader", "share-reader@lilia.test", "Ben Reader");
+        await SeedUserAsync("share-other", "share-other@lilia.test", "Cy Other");
+        var doc = await SeedDocumentAsync("share-owner", "Heat transport");
+        foreach (var who in new[] { "share-reader", "share-other" })
+            (await _owner.PostAsJsonAsync($"/api/documents/{doc.Id}/collaborators/invite", new { email = $"{who}@lilia.test", role = "editor" })).EnsureSuccessStatusCode();
+
+        // Ben: removed, then Undo within the window. Back as an editor, told nothing.
+        (await _owner.DeleteAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader")).EnsureSuccessStatusCode();
+        (await _owner.PostAsJsonAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader/restore", new { role = "editor" })).EnsureSuccessStatusCode();
+        // The held notice, if it fires anyway, finds him back and sends nothing.
+        (await _owner.PostAsync($"/api/documents/{doc.Id}/collaborators/users/share-reader/removal-notice", null)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Cy: removed with "Tell Cy" and "Let them reply": the notice goes after the window.
+        (await _owner.DeleteAsync($"/api/documents/{doc.Id}/collaborators/users/share-other")).EnsureSuccessStatusCode();
+        (await _owner.PostAsync($"/api/documents/{doc.Id}/collaborators/users/share-other/removal-notice?allowReply=true", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db = CreateDbContext();
+        (await db.DocumentCollaborators.Include(c => c.Role).Where(c => c.DocumentId == doc.Id && c.UserId == "share-reader").Select(c => c.Role.Name).SingleAsync()).Should().Be("editor");
+        (await NotesFor("share-reader")).Select(n => n.Type).Should().Equal("document_shared");
+        (await MailTo("share-reader@lilia.test", 1)).Select(m => m.Kind).Should().Equal("shared");
+        (await NotesFor("share-other")).Select(n => n.Type).Should().Equal("document_shared", "access_removed");
+        (await MailTo("share-other@lilia.test", 2)).Last().Should().Be(new RecordingEmailService.Sent("removed", "share-other@lilia.test", "share-owner@lilia.test"));
+    }
 }

@@ -61,6 +61,36 @@ public class CollaboratorsController : ControllerBase
         return Ok(collaborator);
     }
 
+    /// <summary>Undo a removal: back with the role they had, without a notification or email.</summary>
+    [HttpPost("users/{targetUserId}/restore")]
+    public async Task<ActionResult<UserCollaboratorDto>> RestoreUserCollaborator(Guid docId, string targetUserId, [FromBody] UpdateCollaboratorRoleDto dto)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+            return Forbid();
+
+        var collaborator = await _collaboratorService.AddUserCollaboratorAsync(docId, userId, new AddUserCollaboratorDto(targetUserId, dto.Role), silent: true);
+        if (collaborator == null) return NotFound();
+        return Ok(collaborator);
+    }
+
+    /// <summary>
+    /// After the Undo window: tell the removed person, if the owner chose to.
+    /// The app removes at once and calls this six seconds later, so an undone
+    /// removal never notifies anyone (Olivia, 10 Oct).
+    /// </summary>
+    [HttpPost("users/{targetUserId}/removal-notice")]
+    public async Task<ActionResult> SendRemovalNotice(Guid docId, string targetUserId, [FromQuery] bool allowReply = false)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+            return Forbid();
+
+        return await _collaboratorService.SendRemovalNoticeAsync(docId, targetUserId, userId, allowReply) ? NoContent() : Conflict();
+    }
+
     [HttpPut("users/{targetUserId}")]
     public async Task<ActionResult<UserCollaboratorDto>> UpdateUserCollaboratorRole(Guid docId, string targetUserId, [FromBody] UpdateCollaboratorRoleDto dto)
     {
