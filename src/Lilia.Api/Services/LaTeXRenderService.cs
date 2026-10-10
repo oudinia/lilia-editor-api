@@ -540,7 +540,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         if (_validationCache.TryGetValue(hash, out var cached))
         {
             _logger.LogDebug("Validation cache hit for hash {Hash} ({Engine})", hash[..12], resolvedEngine);
-            return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, cached.DurationMs, cached.Engine, cached.Log);
+            return FromCache(cached);
         }
 
         await _semaphore.WaitAsync();
@@ -548,7 +548,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
             if (_validationCache.TryGetValue(hash, out cached))
-                return new LatexValidationResult(cached.Valid, cached.Error, cached.Warnings, null, cached.DurationMs, cached.Engine, cached.Log);
+                return FromCache(cached);
 
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
             Directory.CreateDirectory(tmpDir);
@@ -734,6 +734,16 @@ public class LaTeXRenderService : ILaTeXRenderService
             _semaphore.Release();
         }
     }
+
+    /// <summary>
+    /// A cached result, with its parsed error read again from the cached log: a hit
+    /// used to carry no parsed error, so the second check of a broken document lost
+    /// the block its error stops in (10 Oct).
+    /// </summary>
+    private static LatexValidationResult FromCache((bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs, DateTime CachedAt) cached) =>
+        new(cached.Valid, cached.Error, cached.Warnings,
+            cached.Valid ? null : LaTeXErrorParser.Parse(cached.Log),
+            cached.DurationMs, cached.Engine, cached.Log);
 
     private static void CacheValidationResult(string hash, (bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs) result)
     {
