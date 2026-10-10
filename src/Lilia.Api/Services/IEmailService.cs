@@ -58,4 +58,13 @@ public interface IEmailService
     /// link over password. URL lands on <c>/auth/callback</c>.
     /// </summary>
     Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale);
+
+    /// <summary>To the owner: someone accepted their invitation ("Open sharing").</summary>
+    Task SendInviteAcceptedAsync(string toEmail, string acceptedByName, string documentTitle, string sharingUrl);
+
+    /// <summary>To a collaborator: their access changed, old and new ("Open document").</summary>
+    Task SendAccessChangedAsync(string toEmail, string changedByName, string documentTitle, string oldRole, string newRole, string documentUrl);
+
+    /// <summary>To a former collaborator: their access was removed (no button).</summary>
+    Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle);
 }

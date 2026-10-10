@@ -19,8 +19,11 @@ public class CollaboratorService : ICollaboratorService
     private readonly ILogger<CollaboratorService> _logger;
     private readonly Wolverine.IMessageBus? _bus;
 
-    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null)
+    private readonly ISharingNotifier? _sharingNotifier;
+
+    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null, ISharingNotifier? sharingNotifier = null)
     {
+        _sharingNotifier = sharingNotifier;
         _context = context;
         _emailService = emailService;
         _emailSettings = emailSettings;
@@ -232,6 +235,7 @@ public class CollaboratorService : ICollaboratorService
 
         var collaborator = await _context.DocumentCollaborators
             .Include(dc => dc.User)
+            .Include(dc => dc.Role)
             .FirstOrDefaultAsync(dc => dc.DocumentId == documentId && dc.UserId == targetUserId);
 
         if (collaborator == null) return null;
@@ -239,8 +243,11 @@ public class CollaboratorService : ICollaboratorService
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
+        var oldRole = collaborator.Role?.Name ?? "";
         collaborator.RoleId = role.Id;
         await _context.SaveChangesAsync();
+        if (_sharingNotifier is not null)
+            await _sharingNotifier.RoleChangedAsync(documentId, targetUserId, userId, oldRole, role.Name);
 
         return new UserCollaboratorDto(
             collaborator.Id,
@@ -295,6 +302,8 @@ public class CollaboratorService : ICollaboratorService
 
         _context.DocumentCollaborators.Remove(collaborator);
         await _context.SaveChangesAsync();
+        if (_sharingNotifier is not null)
+            await _sharingNotifier.AccessRemovedAsync(documentId, targetUserId, userId);
 
         return true;
     }
@@ -401,17 +410,18 @@ public class CollaboratorService : ICollaboratorService
         if (result == null)
             return new InviteResultDto(false, true, dto.Email, _localizer["FailedToAddCollaborator"].Value);
 
-        var emailSent = true;
-        try
+        // They have access now, so the invite is accepted: it no longer counts
+        // as pending on the owner's Sharing page. One email, not two: adding the
+        // collaborator publishes DocumentSharedEvent, whose handler sends
+        // "… shared … with you" (10 Oct: an existing user got that AND
+        // "… invited you to …" for the same share).
+        var acceptedNow = await _context.DocumentPendingInvites.FindAsync(token);
+        if (acceptedNow != null)
         {
-            await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, inviteUrl);
-        }
-        catch (Exception ex)
-        {
-            emailSent = false;
-            _logger.LogError(ex, "Failed to send invite email to {Email} for document {DocumentId}", dto.Email, documentId);
+            acceptedNow.Status = "accepted";
+            await _context.SaveChangesAsync();
         }
 
-        return new InviteResultDto(true, true, dto.Email, emailSent ? null : "Collaborator added but email delivery failed. Check server logs — likely the Resend API key is not set.");
+        return new InviteResultDto(true, true, dto.Email, null);
     }
 }
