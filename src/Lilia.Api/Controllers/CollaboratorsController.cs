@@ -63,6 +63,7 @@ public class CollaboratorsController : ControllerBase
 
     /// <summary>Undo a removal: back with the role they had, without a notification or email.</summary>
     [HttpPost("users/{targetUserId}/restore")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Manage)]
     public async Task<ActionResult<UserCollaboratorDto>> RestoreUserCollaborator(Guid docId, string targetUserId, [FromBody] UpdateCollaboratorRoleDto dto)
     {
         var userId = GetUserId();
@@ -81,6 +82,7 @@ public class CollaboratorsController : ControllerBase
     /// removal never notifies anyone (Olivia, 10 Oct).
     /// </summary>
     [HttpPost("users/{targetUserId}/removal-notice")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Manage)]
     public async Task<ActionResult> SendRemovalNotice(Guid docId, string targetUserId, [FromQuery] bool allowReply = false)
     {
         var userId = GetUserId();
