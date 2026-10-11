@@ -12,6 +12,7 @@
 set -u
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$HOME/.local/bin:$PATH"
+export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"  # dotnet-ef finds the runtime by it
 LOG_DIR=${CI_LOG_DIR:-/tmp/claude-1001/ci-local}
 mkdir -p "$LOG_DIR"
 BRANCH=api-$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
