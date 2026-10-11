@@ -32,4 +32,35 @@ public class AskSuggestionRoutingTests
     {
         _router.Route(suggestion).SkillId.Should().Be(skill);
     }
+
+    /// <summary>The same suggestions in French and Spanish (web: mobile and editor locales).</summary>
+    [Theory]
+    [InlineData("Rédige un plan : des sections d’une ligne chacune", "lilia-document-architect")]
+    [InlineData("Cite un article à partir de son DOI ou de son identifiant arXiv", "lilia-citations")]
+    [InlineData("Pourquoi ça ne compile pas ? Corrige cette erreur", "lilia-compile-doctor")]
+    [InlineData("Écris l’équation de…", "lilia-equation")]
+    [InlineData("Transforme ces données en tableau booktabs", "lilia-table")]
+    [InlineData("Dessine un diagramme TikZ de…", "lilia-figure")]
+    [InlineData("Améliore le paragraphe sélectionné", "lilia-polish")]
+    [InlineData("Mets en forme pour IEEE, sur deux colonnes", "lilia-journal")]
+    [InlineData("Explique ce document en cinq lignes", "lilia-tutor")]
+    [InlineData("Explique le résultat principal simplement", "lilia-tutor")]
+    [InlineData("Que dit chaque équation ?", "lilia-tutor")]
+    [InlineData("Explique sur quelles sources il s’appuie", "lilia-tutor")]
+    [InlineData("Redacta un esquema: secciones de una línea cada una", "lilia-document-architect")]
+    [InlineData("Cita un artículo a partir de su DOI o su id de arXiv", "lilia-citations")]
+    [InlineData("¿Por qué no compila? Corrige este error", "lilia-compile-doctor")]
+    [InlineData("Escribe la ecuación de…", "lilia-equation")]
+    [InlineData("Convierte estos datos en una tabla booktabs", "lilia-table")]
+    [InlineData("Dibuja un diagrama TikZ de…", "lilia-figure")]
+    [InlineData("Mejora el párrafo seleccionado", "lilia-polish")]
+    [InlineData("Formato para IEEE, a dos columnas", "lilia-journal")]
+    [InlineData("Explica este documento en cinco líneas", "lilia-tutor")]
+    [InlineData("Explica el resultado principal en palabras sencillas", "lilia-tutor")]
+    [InlineData("¿Qué dice cada ecuación?", "lilia-tutor")]
+    [InlineData("Explica en qué fuentes se apoya", "lilia-tutor")]
+    public void Each_translated_suggestion_reaches_its_skill(string suggestion, string skill)
+    {
+        _router.Route(suggestion).SkillId.Should().Be(skill);
+    }
 }
