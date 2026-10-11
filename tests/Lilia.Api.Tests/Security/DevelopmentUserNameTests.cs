@@ -60,4 +60,13 @@ public class DevelopmentUserNameTests
         user!.Identity?.IsAuthenticated.Should().NotBe(true);
         user.FindFirst("sub").Should().BeNull();
     }
+
+    [Fact]
+    public async Task A_test_person_can_carry_any_address()
+    {
+        var user = await Run(r => { r.Headers["X-Development-User-Id"] = "friend"; r.Headers["X-Development-User-Email"] = "friend@gmail.com"; });
+        user!.FindFirst("email")!.Value.Should().Be("friend@gmail.com");
+        var junk = await Run(r => { r.Headers["X-Development-User-Id"] = "x"; r.Headers["X-Development-User-Email"] = "not an address"; });
+        junk!.FindFirst("email")!.Value.Should().Be("x@dev.liliaeditor.com");
+    }
 }
