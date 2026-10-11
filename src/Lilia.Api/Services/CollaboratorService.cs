@@ -444,4 +444,39 @@ public class CollaboratorService : ICollaboratorService
 
         return new InviteResultDto(true, true, dto.Email, null);
     }
+
+    public async Task<List<PendingInviteDto>> GetPendingInvitesAsync(Guid documentId)
+    {
+        var now = DateTime.UtcNow;
+        var rows = await _context.DocumentPendingInvites.AsNoTracking()
+            .Where(p => p.DocumentId == documentId && p.Status == "pending")
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync();
+        // The last send is when the current lifetime started (never before the first).
+        return rows.Select(p =>
+        {
+            var sent = p.ExpiresAt - InviteLifetime;
+            return new PendingInviteDto(p.Id, p.Email, p.Role, p.ExpiresAt < now ? "expired" : "pending",
+                p.CreatedAt, sent < p.CreatedAt ? p.CreatedAt : sent, p.ExpiresAt);
+        }).ToList();
+    }
+
+    public async Task<InviteResultDto?> ResendInviteAsync(Guid documentId, Guid inviteId, string userId)
+    {
+        var invite = await _context.DocumentPendingInvites.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == inviteId && p.DocumentId == documentId && p.Status == "pending");
+        if (invite == null) return null;
+        // The invite path refreshes the same row (same link) and sends the email again.
+        return await InviteByEmailAsync(documentId, userId, new InviteCollaboratorDto(invite.Email, invite.Role));
+    }
+
+    public async Task<bool> CancelInviteAsync(Guid documentId, Guid inviteId)
+    {
+        var invite = await _context.DocumentPendingInvites
+            .FirstOrDefaultAsync(p => p.Id == inviteId && p.DocumentId == documentId && p.Status == "pending");
+        if (invite == null) return false;
+        invite.Status = "cancelled";
+        await _context.SaveChangesAsync();
+        return true;
+    }
 }
