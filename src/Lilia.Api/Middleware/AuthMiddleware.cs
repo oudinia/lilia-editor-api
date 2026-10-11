@@ -67,6 +67,9 @@ public class DevelopmentAuthMiddleware
         return !realSignIn || configuration.GetValue<bool>("Auth:DevelopmentAuth:Enabled");
     }
 
+    private static bool IsPlainEmail(string? s) =>
+        !string.IsNullOrEmpty(s) && s.Length <= 200 && System.Text.RegularExpressions.Regex.IsMatch(s, @"^[^\s@]+@[^\s@]+\.[^\s@]+$");
+
     public async Task InvokeAsync(HttpContext context)
     {
         if (_enabled && !context.Request.Headers.ContainsKey("Authorization"))
@@ -76,7 +79,12 @@ public class DevelopmentAuthMiddleware
             // Allow callers to override the dev user via header (useful for test tools)
             var userId = context.Request.Headers["X-Development-User-Id"].FirstOrDefault()
                       ?? DevUserId;
-            var userEmail = userId == DevUserId ? DevUserEmail : $"{userId}@dev.liliaeditor.com";
+            // Any address for a test person (the test copy's "Sign in as… Other", 11 Oct), so an
+            // invitation sent to friend@gmail.com matches the person signing in as it.
+            var emailHeader = context.Request.Headers["X-Development-User-Email"].FirstOrDefault()?.Trim();
+            var userEmail = userId == DevUserId ? DevUserEmail
+                          : IsPlainEmail(emailHeader) ? emailHeader!
+                          : $"{userId}@dev.liliaeditor.com";
             // A display name for test people (the test copy's "Sign in as…", 11 Oct).
             var nameHeader = context.Request.Headers["X-Development-User-Name"].FirstOrDefault()?.Trim();
             var userName  = userId == DevUserId ? DevUserName
