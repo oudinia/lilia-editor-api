@@ -16,7 +16,7 @@ keywords: getting started first paper new document begin write figure citation c
 2. The document opens beside **Ask Lilia**. Click in the page and write. Each paragraph, heading or list is a **block**. In an empty line, type **/** to add a heading, an equation, a figure or a table.
    ![The block menu after typing /](/help/img/getting-started/en-2.png)
 3. Add a figure: **/** → *Figure*, upload your image, then write its caption under it.
-4. Cite a paper: open **Ask Lilia** (on the right) and ask *"Cite a paper from its DOI or arXiv id"* with the DOI. Lilia gives you the reference and the citation to apply.
+4. Cite a paper: in **Ask Lilia** (the conversation beside the document) ask *"Cite a paper from its DOI or arXiv id"* with the DOI. Lilia gives you the reference and the citation to apply.
 5. Check it: in the rail on the left, click the shield (**Validate**), then **Validate now**. If it lists errors, see *Check that it compiles and fix errors*.
    ![The Validate panel](/help/img/getting-started/en-3.png)
 6. Download it: **Export** (top bar) → **PDF**.
