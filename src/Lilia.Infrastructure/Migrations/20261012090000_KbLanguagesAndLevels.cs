@@ -1,5 +1,3 @@
-using Lilia.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -18,8 +16,6 @@ namespace Lilia.Infrastructure.Migrations
     ///
     /// Raw SQL like <c>AddKnowledgeBase</c>: the table stays out of the EF model.
     /// </summary>
-    [DbContext(typeof(LiliaDbContext))]
-    [Migration("20261012090000_KbLanguagesAndLevels")]
     public partial class KbLanguagesAndLevels : Migration
     {
         /// <inheritdoc />
