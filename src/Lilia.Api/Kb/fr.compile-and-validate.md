@@ -11,7 +11,7 @@ keywords: compiler erreur valider validation vérifier avertissements corriger p
 # Vérifier que le document compile et corriger les erreurs
 
 ## Étapes {#steps}
-1. Dans le rail de droite de l’éditeur, ouvrez **Valider** et cliquez sur **Valider maintenant** (ou **Relancer la validation** si elle a déjà tourné).
+1. Dans le rail à gauche de l’éditeur, cliquez sur le bouclier (**Valider**), puis sur **Valider maintenant** (ou **Relancer la validation** si elle a déjà tourné).
    ![Valider maintenant dans le panneau Valider](/help/img/compile-and-validate/fr-1.png)
 2. Lisez le résultat : les **erreurs** empêchent le PDF ; les **avertissements** le laissent se construire mais méritent un coup d’œil. Chacun indique le bloc d’où il vient quand c’est possible.
 3. Corriger une erreur : sélectionnez son bloc, puis demandez à **Demander à Lilia** *« Pourquoi ça ne compile pas ? Corrige cette erreur »* et appliquez ce qu’il propose.

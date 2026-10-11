@@ -11,7 +11,7 @@ keywords: compilar error validar validación comprobar avisos corregir problemas
 # Comprueba que compila y corrige los errores
 
 ## Pasos {#steps}
-1. En el carril derecho del editor, abre **Validar** y haz clic en **Validar ahora** (o **Volver a validar** si ya se ejecutó).
+1. En el carril izquierdo del editor, haz clic en el escudo (**Validar**) y luego en **Validar ahora** (o **Volver a validar** si ya se ejecutó).
    ![Validar ahora en el panel Validar](/help/img/compile-and-validate/es-1.png)
 2. Lee el resultado: los **errores** impiden el PDF; los **avisos** dejan que se genere, pero conviene revisarlos. Cada uno indica el bloque del que viene cuando es posible.
 3. Corregir un error: selecciona su bloque y pide en **Preguntar a Lilia** *«¿Por qué no compila? Corrige este error»*; aplica lo que proponga.

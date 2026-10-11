@@ -13,11 +13,11 @@ keywords: commencer premier article nouveau document débuter écrire figure cit
 ## Étapes {#steps}
 1. Sur l’**Accueil**, cliquez sur **Nouvel article** (ou dans **Documents**, sur **Nouveau**). Choisissez **Document vierge**, donnez-lui un titre et créez-le.
    ![Le choix d’un nouveau document](/help/img/getting-started/fr-1.png)
-2. Cliquez dans la page et écrivez. Chaque paragraphe, titre ou liste est un **bloc**. Sur une ligne vide, tapez **/** pour ajouter un titre, une équation, une figure ou un tableau.
+2. Le document s’ouvre à côté de **Demander à Lilia**. Cliquez dans la page et écrivez. Chaque paragraphe, titre ou liste est un **bloc**. Sur une ligne vide, tapez **/** pour ajouter un titre, une équation, une figure ou un tableau.
    ![Le menu des blocs après /](/help/img/getting-started/fr-2.png)
 3. Ajouter une figure : **/** → *Figure*, téléversez votre image, puis écrivez sa légende en dessous.
 4. Citer un article : ouvrez **Demander à Lilia** (à droite) et demandez *« Cite un article à partir de son DOI ou de son identifiant arXiv »* avec le DOI. Lilia vous donne la référence et la citation à appliquer.
-5. Le vérifier : dans le rail de droite, ouvrez **Valider** et cliquez sur **Valider maintenant**. S’il affiche des erreurs, voyez *Vérifier que le document compile et corriger les erreurs*.
+5. Le vérifier : dans le rail à gauche, cliquez sur le bouclier (**Valider**), puis sur **Valider maintenant**. S’il affiche des erreurs, voyez *Vérifier que le document compile et corriger les erreurs*.
    ![Le panneau Valider](/help/img/getting-started/fr-3.png)
 6. Le télécharger : **Exporter** (barre du haut) → **PDF**.
 
