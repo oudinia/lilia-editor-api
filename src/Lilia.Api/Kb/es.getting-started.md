@@ -16,7 +16,7 @@ keywords: empezar primer artículo nuevo documento comenzar escribir figura cita
 2. El documento se abre junto a **Preguntar a Lilia**. Haz clic en la página y escribe. Cada párrafo, título o lista es un **bloque**. En una línea vacía, escribe **/** para añadir un título, una ecuación, una figura o una tabla.
    ![El menú de bloques tras /](/help/img/getting-started/es-2.png)
 3. Añadir una figura: **/** → *Figura*, sube tu imagen y escribe su leyenda debajo.
-4. Citar un artículo: abre **Preguntar a Lilia** (a la derecha) y pide *«Cita un artículo a partir de su DOI o su id de arXiv»* con el DOI. Lilia te da la referencia y la cita para aplicarlas.
+4. Citar un artículo: en **Preguntar a Lilia** (la conversación junto al documento), pide *«Cita un artículo a partir de su DOI o su id de arXiv»* con el DOI. Lilia te da la referencia y la cita para aplicarlas.
 5. Revisarlo: en el carril de la izquierda, haz clic en el escudo (**Validar**) y luego en **Validar ahora**. Si muestra errores, consulta *Comprueba que compila y corrige los errores*.
    ![El panel Validar](/help/img/getting-started/es-3.png)
 6. Descargarlo: **Exportar** (barra superior) → **PDF**.
