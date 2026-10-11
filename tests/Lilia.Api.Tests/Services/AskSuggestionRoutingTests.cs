@@ -63,4 +63,35 @@ public class AskSuggestionRoutingTests
     {
         _router.Route(suggestion).SkillId.Should().Be(skill);
     }
+
+    /// <summary>Questions about the app itself reach the tutor and its step-by-step guide.</summary>
+    [Theory]
+    [InlineData("How do I switch to dark mode?")]
+    [InlineData("Where is the language setting?")]
+    [InlineData("How do I share this with a colleague?")]
+    [InlineData("How do I validate my document?")]
+    [InlineData("Which themes do you offer?")]
+    [InlineData("Où sont les paramètres du thème ?")]
+    [InlineData("Comment faire pour partager ce document ?")]
+    [InlineData("¿Dónde está el modo oscuro?")]
+    [InlineData("¿Cómo cambio el idioma?")]
+    public void App_questions_reach_the_tutor(string question)
+    {
+        _router.Route(question).SkillId.Should().Be("lilia-tutor");
+    }
+
+    [Fact]
+    public void The_tutor_knows_the_app_step_by_step()
+    {
+        var guide = AiSkillGuidance.Get("lilia-tutor");
+        guide.Should().Contain("Lilia, step by step");
+        foreach (var fact in new[] { "Validate now", "Cerulean", "Exposition", "Light style", "Español", "Anyone with the link", "⌘K", "Save a version" })
+            guide.Should().Contain(fact);
+    }
+
+    [Fact]
+    public void Ask_Lilia_replies_in_the_authors_language()
+    {
+        AskLiliaService.LanguageNote.Should().Contain("French").And.Contain("Spanish").And.Contain("Keep LaTeX");
+    }
 }

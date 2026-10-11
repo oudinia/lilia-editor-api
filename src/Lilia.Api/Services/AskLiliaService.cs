@@ -168,6 +168,14 @@ public sealed partial class AskLiliaService : IAskLiliaService
         Skip the tools for pure generation (e.g. "write this equation") where no docs are needed.
         """;
 
+    /// <summary>The interface speaks English, French and Spanish (11 Oct); so does Ask Lilia.</summary>
+    internal const string LanguageNote = """
+        LANGUAGE — reply in the language of the author's latest message (English, French or Spanish;
+        any other language the author writes in too). Keep LaTeX, LML, BibTeX, code and cite keys exactly
+        as they are; translate only the prose around them. Name buttons and menus as the interface shows
+        them in that language when you know the words, otherwise in English.
+        """;
+
     private const string WebSearchNote = """
         WEB SEARCH — you can search the live web to ground factual claims, find current
         data, and locate primary sources. Use it when the author asks for facts, figures,
@@ -274,7 +282,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
         var systemSb = new StringBuilder()
             .AppendLine(ProficiencyGuidance.For(level)).AppendLine()
             .AppendLine(string.IsNullOrEmpty(guidance) ? $"You are the {skill.Name} skill for Lilia. {skill.WhenToUse}" : guidance)
-            .AppendLine().AppendLine(OutputNote);
+            .AppendLine().AppendLine(OutputNote)
+            .AppendLine().AppendLine(LanguageNote);
         if (webSearch)
             systemSb.AppendLine().AppendLine(WebSearchNote);
 
