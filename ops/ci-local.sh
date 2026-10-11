@@ -26,6 +26,13 @@ tests() {
   # The summary line is the verdict (a pipe's exit code has lied before).
   local summary
   summary=$(grep -E "^(Passed|Failed)! " "$log" | tail -1)
+  # An aborted run (a crashed or hung test host) still prints "Passed!" for the
+  # tests that ran before it died (11 Oct: 4,371 of 4,560, Failed: 0). Not a pass.
+  if grep -qE "Test Run Aborted|test run was aborted" "$log"; then
+    echo "FAIL tests $((SECONDS - t))s  ABORTED after: ${summary#*- }  ($log)"
+    grep -E "aborted|Blame|hang" "$log" | head -5 | sed 's/^/     /'
+    return 1
+  fi
   if [[ "$summary" == Passed!*"Failed:     0,"* ]]; then
     echo "pass tests $((SECONDS - t))s  ${summary#*- }"
   else
