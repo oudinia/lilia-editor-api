@@ -730,24 +730,24 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 ([System.ComponentModel.Description("Block type: paragraph, heading, equation, theorem, code, list, table, figure, abstract, blockquote, personalInfo, cvSection, cvEntry, photo. (Document title → set_title. CV person header → personalInfo, not heading.)")] string type,
                  [System.ComponentModel.Description("JSON content matching the type. Examples: {\"text\":\"…\"}; {\"text\":\"…\",\"level\":1}; {\"latex\":\"…\"}; a TikZ figure {\"kind\":\"tikz\",\"source\":\"\\\\begin{tikzpicture}…\\\\end{tikzpicture}\",\"caption\":\"…\",\"label\":\"fig:…\"}; personalInfo {\"name\",\"headline\",\"email\",\"phones\":[{\"number\"}],\"homepage\",\"location\",\"socials\":[],\"extra\"}; cvSection {\"title\"}; cvEntry {\"period\",\"role\",\"org\",\"location\",\"description\",\"tech\":[]}.")] string content,
                  [System.ComponentModel.Description("Insert after this block id; omit to append at the end.")] string? afterId = null)
-                    => AddBlockAsync(live.Dto, docGuid, type, content, afterId, changed),
+                    => ClearOnFailedSave(() => AddBlockAsync(live.Dto, docGuid, type, content, afterId, changed)),
                 name: "add_block",
                 description: "Add a new block to the open document (small targeted inserts only). Returns the new block id. On CVs prefer personalInfo/cvSection/cvEntry."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to edit.")] string blockId,
                  [System.ComponentModel.Description("New JSON content object for the block.")] string content,
                  [System.ComponentModel.Description("Optional new block type.")] string? type = null)
-                    => EditBlockAsync(live.Dto, docGuid, blockId, content, type, changed),
+                    => ClearOnFailedSave(() => EditBlockAsync(live.Dto, docGuid, blockId, content, type, changed)),
                 name: "edit_block",
                 description: "Replace a block's content (and optionally its type) by id. Small targeted edits only."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The block id to remove.")] string blockId)
-                    => RemoveBlockAsync(live.Dto, docGuid, blockId, changed),
+                    => ClearOnFailedSave(() => RemoveBlockAsync(live.Dto, docGuid, blockId, changed)),
                 name: "remove_block",
                 description: "Delete a block by id."));
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("All block ids in the desired final order.")] string[] blockIds)
-                    => ReorderBlocksAsync(live.Dto, docGuid, blockIds, changed),
+                    => ClearOnFailedSave(() => ReorderBlocksAsync(live.Dto, docGuid, blockIds, changed)),
                 name: "reorder_blocks",
                 description: "Reorder the document's blocks to this exact id order."));
             tools.Add(AIFunctionFactory.Create(
@@ -1328,6 +1328,25 @@ public sealed partial class AskLiliaService : IAskLiliaService
     // ── Write tool implementations — go through the access-checked block
     // service (same path the editor uses); mirror the change into the in-memory
     // doc so later read tools stay consistent; flag that the doc changed.
+    /// <summary>
+    /// A block tool whose save failed leaves its half-done changes queued in the
+    /// request's context, and every later save in the request (the next tool,
+    /// the AI spend record) tried them again and failed too (11 Oct). Clear them,
+    /// then let the error reach the model as before.
+    /// </summary>
+    private async Task<object> ClearOnFailedSave(Func<Task<object>> tool)
+    {
+        try
+        {
+            return await tool();
+        }
+        catch (DbUpdateException)
+        {
+            _context.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
     private async Task<object> AddBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string type, string contentJson, string? afterId, List<string> changed)
     {
         int? sortOrder = null;

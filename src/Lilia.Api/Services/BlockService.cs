@@ -70,7 +70,7 @@ public class BlockService : IBlockService
 
     public async Task<BlockDto> CreateBlockAsync(Guid documentId, CreateBlockDto dto)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await FreshDocumentAsync(documentId);
         if (document == null)
             throw new ArgumentException("Document not found");
 
@@ -156,7 +156,7 @@ public class BlockService : IBlockService
         block.UpdatedAt = DateTime.UtcNow;
 
         // Update document timestamp
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await FreshDocumentAsync(documentId);
         if (document != null)
         {
             document.UpdatedAt = DateTime.UtcNow;
@@ -185,7 +185,7 @@ public class BlockService : IBlockService
         _context.Blocks.Remove(block);
 
         // Update document timestamp and version (see BumpVersion).
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await FreshDocumentAsync(documentId);
         if (document != null) { document.UpdatedAt = DateTime.UtcNow; BumpVersion(document); }
 
         await _context.SaveChangesAsync();
@@ -281,7 +281,7 @@ public class BlockService : IBlockService
         // with the client's expected version means a stale cross-device
         // write throws DbUpdateConcurrencyException — the whole batch
         // (blocks included) then rolls back.
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await FreshDocumentAsync(documentId);
         if (document != null)
         {
             document.UpdatedAt = DateTime.UtcNow;
@@ -331,7 +331,7 @@ public class BlockService : IBlockService
         }
 
         // Update document timestamp and version (see BumpVersion).
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await FreshDocumentAsync(documentId);
         if (document != null) { document.UpdatedAt = DateTime.UtcNow; BumpVersion(document); }
 
         await _context.SaveChangesAsync();
@@ -642,6 +642,22 @@ WHERE b.document_id = @doc AND b.id = ANY(@ids) AND b.type = 'heading';";
     // invisible to it: its next save — no 409, no rebase — deleted a block
     // created here or overwrote an edit made here.
     private static void BumpVersion(Document document) => document.Version += 1;
+
+    /// <summary>
+    /// The document as it is now. A long request (Ask Lilia editing through
+    /// several tool calls) keeps the document it loaded first; meanwhile an
+    /// auto-version snapshot or another writer moves its Version, and every
+    /// later save failed the concurrency check (11 Oct: on a phone, Lilia said
+    /// "add_block keeps failing with a concurrency error" and nothing changed).
+    /// A short request is unaffected: nothing is tracked yet, so this is a Find.
+    /// </summary>
+    private async Task<Document?> FreshDocumentAsync(Guid documentId)
+    {
+        var tracked = _context.ChangeTracker.Entries<Document>().FirstOrDefault(e => e.Entity.Id == documentId);
+        if (tracked is null) return await _context.Documents.FindAsync(documentId);
+        await tracked.ReloadAsync();
+        return tracked.State == EntityState.Detached ? null : tracked.Entity;
+    }
 
     private async Task TouchDocumentSqlAsync(Guid documentId)
     {
