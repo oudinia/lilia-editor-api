@@ -29,3 +29,4 @@ scripts/backup-db.env
 # TUG font catalogue scraper local cache (not committed to repo)
 data/.tug-cache/
 data/.tug-scrape-warnings.log
+TestResults/
