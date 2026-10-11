@@ -69,6 +69,8 @@
     <EmbeddedResource Include="AiSkills\**\*.md">
       <LogicalName>AiSkills.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <!-- Translations are named fr.<slug>.md / es.<slug>.md, never <slug>.fr.md: MSBuild reads a
+         culture suffix as a satellite resource and moves the file out of this assembly. -->
     <EmbeddedResource Include="Kb\**\*.md">
       <LogicalName>Kb.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>

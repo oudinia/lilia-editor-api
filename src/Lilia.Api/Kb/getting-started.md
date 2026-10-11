@@ -1,23 +1,35 @@
 ---
 slug: getting-started
-title: Getting started in Lilia
-summary: Start a document, add blocks, compile — the five-minute path from blank page to a real LaTeX paper.
+lang: en
+title: Write your first paper
+summary: From a blank page to a PDF — create a document, write, add a figure and a citation, check it, download it.
 skill: lilia-tutor
 audience: beginner
 tags: [basics, onboarding, getting-started]
-keywords: getting started begin new document first paper blocks compile export onboarding tutorial how to start
+keywords: getting started first paper new document begin write figure citation check pdf download beginner start tutorial
 ---
-# Getting started in Lilia
+# Write your first paper
 
-**The path.** Lilia is a LaTeX-first editor with a Word-like feel: you write in **blocks**, and it compiles to real LaTeX you can submit.
+## Steps {#steps}
+1. On **Home**, click **New paper** (or in **Documents**, click **New**). Choose **Blank document**, give it a title, and create it.
+   ![The New document chooser](/help/img/getting-started/en-1.png)
+2. Click in the page and write. Each paragraph, heading or list is a **block**. In an empty line, type **/** to add a heading, an equation, a figure or a table.
+   ![The block menu after typing /](/help/img/getting-started/en-2.png)
+3. Add a figure: **/** → *Figure*, upload your image, then write its caption under it.
+4. Cite a paper: open **Ask Lilia** (on the right) and ask *"Cite a paper from its DOI or arXiv id"* with the DOI. Lilia gives you the reference and the citation to apply.
+5. Check it: in the right-hand rail, open **Validate** and click **Validate now**. If it lists errors, see *Check that it compiles and fix errors*.
+   ![The Validate panel](/help/img/getting-started/en-3.png)
+6. Download it: **Export** (top bar) → **PDF**.
 
-**Five steps.**
-1. **New document** — start blank or from a template.
-2. **Add structure** — press `+` (or `/` in an empty paragraph) to insert a `@heading`, then `@paragraph`. Type normally.
-3. **Add the academic pieces** — an `@equation` for math, a `@figure` for plots, a `@table` for data, a `@bibliography` for references. Give the ones you'll reference a `label`.
-4. **Bring material in** — paste a DOI for a citation, paste data for a table or chart, or import a `.docx` (see the tools).
-5. **Compile** — Lilia validates as you go and builds a PDF; fix the first error if one appears.
+Your work saves as you type. To keep a named copy of this moment, hover the save indicator and click **Save a version** (⌘S / Ctrl+S).
 
-**Stuck?** Ask Lilia in plain language ("how do I cite a paper?", "make a table from this data") — it points you to the right block or tool.
+## What this means {#beginner}
+- Lilia writes **LaTeX** for you: the language most journals and universities use to typeset papers. You write as in a word processor; Lilia turns it into a properly typeset PDF.
+- A **block** is one piece of your paper: a paragraph, a heading, an equation, a figure. You can move it, change its type or delete it on its own.
+- **Validate** means: Lilia builds the PDF and tells you if anything stops it. Errors are normal while writing, and each one points to the block to fix.
+- Stuck? Ask Lilia in your own words, in English, French or Spanish.
 
-**Next step.** Insert a `@heading`, write one paragraph, and compile. Related: blocks-and-lml, ask-lilia, the `lilia-tutor` skill.
+## For LaTeX users {#expert}
+- Each block becomes LaTeX: heading → `\section`, equation → `equation`/`align`, figure → `figure` with `\includegraphics` and `\caption`, citation → `\citep`/`\citet` (natbib + BibTeX).
+- The document class and its options are in the stamp under the title (*Type & class*, *Class options*, *Layout*, *Look*). Lilia manages the preamble; the **?** button in the top bar opens the command palette (*LaTeX packages*, *Paste LaTeX*).
+- **Settings → Editor defaults → LaTeX-native editing** shows commands and source while you write. **Export → LaTeX** gives one `.tex` or a `.zip` project (flat or Overleaf-style).

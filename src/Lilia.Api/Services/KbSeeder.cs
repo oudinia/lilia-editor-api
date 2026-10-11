@@ -56,11 +56,12 @@ public sealed class KbSeeder : IKbSeeder
     private async Task UpsertAsync(Article a, CancellationToken ct) =>
         await _db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO kb_articles
-                (slug, title, summary, body, tool_slug, skill_id, audience, tags, keywords, sort_order, enabled, updated_at)
+                (slug, lang, title, summary, body, steps, beginner, expert, tool_slug, skill_id, audience, tags, keywords, sort_order, enabled, updated_at)
             VALUES
-                ({a.Slug}, {a.Title}, {a.Summary}, {a.Body}, {a.ToolSlug}, {a.SkillId}, {a.Audience}, {a.Tags}, {a.Keywords}, {a.SortOrder}, true, now())
-            ON CONFLICT (slug) DO UPDATE SET
+                ({a.Slug}, {a.Lang}, {a.Title}, {a.Summary}, {a.Body}, {a.Steps}, {a.Beginner}, {a.Expert}, {a.ToolSlug}, {a.SkillId}, {a.Audience}, {a.Tags}, {a.Keywords}, {a.SortOrder}, true, now())
+            ON CONFLICT (slug, lang) DO UPDATE SET
                 title = EXCLUDED.title, summary = EXCLUDED.summary, body = EXCLUDED.body,
+                steps = EXCLUDED.steps, beginner = EXCLUDED.beginner, expert = EXCLUDED.expert,
                 tool_slug = EXCLUDED.tool_slug, skill_id = EXCLUDED.skill_id, audience = EXCLUDED.audience,
                 tags = EXCLUDED.tags, keywords = EXCLUDED.keywords, sort_order = EXCLUDED.sort_order,
                 enabled = true, updated_at = now()
@@ -87,7 +88,7 @@ public sealed class KbSeeder : IKbSeeder
         var body = bodyStart < 0 ? "" : md[(bodyStart + 1)..].Trim();
 
         string? slug = null, title = null, summary = null, tool = null, skill = null,
-            audience = "all", keywords = "";
+            audience = "all", keywords = "", lang = "en";
         var tags = Array.Empty<string>();
 
         foreach (var raw in header.Split('\n'))
@@ -100,6 +101,7 @@ public sealed class KbSeeder : IKbSeeder
             switch (key)
             {
                 case "slug": slug = val; break;
+                case "lang": lang = val.ToLowerInvariant() is "fr" or "es" ? val.ToLowerInvariant() : "en"; break;
                 case "title": title = Unquote(val); break;
                 case "summary": summary = Unquote(val); break;
                 case "tool": tool = EmptyToNull(val); break;
@@ -111,8 +113,36 @@ public sealed class KbSeeder : IKbSeeder
         }
 
         if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(title)) return null;
-        return new Article(slug!, title!, summary ?? "", body, tool, skill,
-            NormalizeAudience(audience), tags, keywords);
+        var (clean, levels) = SplitLevels(body);
+        return new Article(slug!, title!, summary ?? "", clean, tool, skill,
+            NormalizeAudience(audience), tags, keywords)
+        {
+            Lang = lang,
+            Steps = levels.GetValueOrDefault("steps", ""),
+            Beginner = levels.GetValueOrDefault("beginner", ""),
+            Expert = levels.GetValueOrDefault("expert", ""),
+        };
+    }
+
+    /// <summary>
+    /// An article's level sections, marked by their headings: <c>## Steps {#steps}</c>,
+    /// <c>## What this means {#beginner}</c>, <c>## For LaTeX users {#expert}</c> (the words
+    /// follow the article's language; the marker does not). Returns the body without the
+    /// markers, and each section's text up to the next level heading.
+    /// </summary>
+    internal static (string Body, Dictionary<string, string> Levels) SplitLevels(string body)
+    {
+        var levels = new Dictionary<string, string>();
+        var marker = new System.Text.RegularExpressions.Regex(@"^##\s+(.+?)\s*\{#(steps|beginner|expert)\}\s*$", System.Text.RegularExpressions.RegexOptions.Multiline);
+        var matches = marker.Matches(body);
+        for (var i = 0; i < matches.Count; i++)
+        {
+            var start = matches[i].Index + matches[i].Length;
+            var end = i + 1 < matches.Count ? matches[i + 1].Index : body.Length;
+            levels[matches[i].Groups[2].Value] = body[start..end].Trim();
+        }
+        var clean = marker.Replace(body, m => $"## {m.Groups[1].Value}");
+        return (clean, levels);
     }
 
     private static string NormalizeAudience(string a) =>
@@ -141,5 +171,9 @@ public sealed class KbSeeder : IKbSeeder
         string? ToolSlug, string? SkillId, string Audience, string[] Tags, string Keywords)
     {
         public int SortOrder => 0;
+        public string Lang { get; init; } = "en";
+        public string Steps { get; init; } = "";
+        public string Beginner { get; init; } = "";
+        public string Expert { get; init; } = "";
     }
 }
