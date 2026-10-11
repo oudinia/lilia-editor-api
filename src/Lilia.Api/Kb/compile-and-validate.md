@@ -11,7 +11,7 @@ keywords: compile error validate validation check warnings fix issues latex miss
 # Check that it compiles and fix errors
 
 ## Steps {#steps}
-1. In the editor's right-hand rail, open **Validate** and click **Validate now** (or **Re-run validation** if it has run before).
+1. In the rail on the editor's left, click the shield (**Validate**), then **Validate now** (or **Re-run validation** if it has run before).
    ![Validate now in the Validate panel](/help/img/compile-and-validate/en-1.png)
 2. Read the result: **errors** stop the PDF; **warnings** let it build but deserve a look. Each one names the block it comes from when it can.
 3. Fix an error: select its block, then ask **Ask Lilia** *"Why won't this compile? Fix this error"* and apply what it proposes.

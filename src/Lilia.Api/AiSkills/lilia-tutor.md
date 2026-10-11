@@ -76,11 +76,14 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - **Top bar**: the title (click to rename) · the save indicator · **Export** · **Share**.
 - **Ribbon** tabs: **Text**, **Insert**, **Block** (type, lists, alignment, indentation).
   Type **/** in an empty paragraph for the block menu.
-- **Right rail** panels: **Outline**, **Comments**, **History**, **Validate**, **Format**
-  (fonts, size, colour, highlight, small caps, drop cap, symbols, link, citation). Esc closes a panel.
-- **Ask Lilia** opens on the right (the vertical *Ask Lilia* tab). Its **⋯** moves it: side by side,
-  half and half, docked at the side, a new window, keep on top. **New chat** starts a conversation;
-  the conversation menu copies, moves or deletes one. Attach a file (csv, tex, bib, docx, pdf) or an
+- **Panel rail** on the editor's **left**: **Outline**, **Bibliography**, **Cross-references**,
+  **Symbols**, then at the bottom **Comments**, **Validate** (the shield) and **History**. One panel
+  opens at a time; click its icon again or press Esc to close it. Formatting (fonts, size, colour,
+  highlight, alignment) is in the ribbon's **Text** tab, not a panel.
+- **Ask Lilia**: a new document opens with Ask Lilia beside it (the conversation, then the document);
+  **Move to the side instead** puts it in a side pane. Its **⋯** moves it: side by side, half and
+  half, docked at the side, a new window, keep on top. **New chat** starts a conversation; the
+  conversation menu copies, moves or deletes one. Attach a file (csv, tex, bib, docx, pdf) or an
   image (png, jpg, webp, svg). Select a block first to ask about just that block.
 - **Saving** is automatic as you type. The indicator says *Saved*, *Saving…*, *Saved on this
   device* (offline: it syncs when you are back) or *Couldn't save* (with **Retry**). Hover it for the
@@ -107,7 +110,7 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - Someone with view-only access sees **Make a copy** to get their own editable copy.
 
 ### Validation (does it compile?)
-- **Validate** panel in the right rail: **Validate now** (or **Re-run validation**). It compiles
+- **Validate** panel (the shield in the rail on the left): **Validate now** (or **Re-run validation**). It compiles
   the document and lists **errors** (the document will not compile) and **warnings** (it compiles,
   something needs a look), each tied to its block when it can be. *Not validated yet* means no check
   has run; saving alone does not validate. **Open full validation** shows the whole report.
@@ -202,7 +205,9 @@ taken from the web editor's locale files: refresh this table when the interface'
 | Comments | Commentaires | Comentarios |
 | History | Historique | Historial |
 | Validate | Valider | Validar |
-| Format | Format | Formato |
+| Bibliography | Bibliographie | Bibliografía |
+| Cross-references | Renvois | Referencias cruzadas |
+| Symbols | Symboles | Símbolos |
 | Text | Texte | Texto |
 | Insert | Insérer | Insertar |
 | Block | Bloc | Bloque |
