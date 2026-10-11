@@ -77,7 +77,11 @@ public class DevelopmentAuthMiddleware
             var userId = context.Request.Headers["X-Development-User-Id"].FirstOrDefault()
                       ?? DevUserId;
             var userEmail = userId == DevUserId ? DevUserEmail : $"{userId}@dev.liliaeditor.com";
-            var userName  = userId == DevUserId ? DevUserName  : $"Dev User ({userId})";
+            // A display name for test people (the test copy's "Sign in as…", 11 Oct).
+            var nameHeader = context.Request.Headers["X-Development-User-Name"].FirstOrDefault()?.Trim();
+            var userName  = userId == DevUserId ? DevUserName
+                          : !string.IsNullOrEmpty(nameHeader) && nameHeader.Length <= 80 ? nameHeader
+                          : $"Dev User ({userId})";
 
             var claims = new[]
             {
