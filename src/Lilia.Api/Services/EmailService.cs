@@ -25,6 +25,13 @@ public class EmailSettings
     public string FromName { get; set; } = "Lilia";
     public string BaseUrl { get; set; } = "https://editor.liliaeditor.com";
 
+    /// <summary>
+    /// A second address for the same app (the test copy: http://localhost:3003, for the
+    /// VM's own browser). When set, every email lists its links on this address too,
+    /// under the usual ones (the user, 11 Oct). Unset in production.
+    /// </summary>
+    public string? AlsoBaseUrl { get; set; }
+
     // ── SMTP transport (Mailpit / dev) ────────────────────────────────
     public string SmtpHost { get; set; } = "localhost";
     public int SmtpPort { get; set; } = 1025;
@@ -162,6 +169,11 @@ public class EmailService : IEmailService
     /// <summary>Send, with an optional Reply-To (the owner, when they allow replies).</summary>
     private async Task SendEmailCoreAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo)
     {
+        if (!string.IsNullOrWhiteSpace(_settings.AlsoBaseUrl))
+        {
+            htmlBody = WithAlsoLinksHtml(htmlBody, _settings.BaseUrl, _settings.AlsoBaseUrl!);
+            if (textBody != null) textBody = WithAlsoLinksText(textBody, _settings.BaseUrl, _settings.AlsoBaseUrl!);
+        }
         var transport = (_settings.Transport ?? "resend").Trim().ToLowerInvariant();
         switch (transport)
         {
@@ -178,6 +190,45 @@ public class EmailService : IEmailService
                 await SendViaResendAsync(to, subject, htmlBody, textBody, replyTo);
                 return;
         }
+    }
+
+    private static List<string> LinksOn(string body, string baseUrl, string pattern)
+    {
+        var b = baseUrl.TrimEnd('/');
+        return System.Text.RegularExpressions.Regex.Matches(body, pattern)
+            .Select(m => m.Groups[1].Value)
+            .Where(u => u.StartsWith(b, StringComparison.OrdinalIgnoreCase))
+            .Distinct()
+            .ToList();
+    }
+
+    /// <summary>Lists each link of the email again on the second address, under the email.</summary>
+    public static string WithAlsoLinksHtml(string html, string baseUrl, string alsoBaseUrl)
+    {
+        var b = baseUrl.TrimEnd('/');
+        var also = alsoBaseUrl.TrimEnd('/');
+        var links = LinksOn(html, b, "href=\"([^\"]+)\"");
+        if (links.Count == 0) return html;
+        var host = new Uri(also).Authority;
+        var items = string.Join("<br>", links.Select(u =>
+        {
+            var alt = also + u[b.Length..];
+            var enc = System.Net.WebUtility.HtmlEncode(alt);
+            return $"<a href=\"{enc}\" style=\"color:#0868A0\">{enc}</a>";
+        }));
+        var block = $"<div style=\"margin-top:20px;padding-top:12px;border-top:1px solid #d3d9e1;font:12px/1.5 -apple-system,Segoe UI,sans-serif;color:#56616e\">Same links on {System.Net.WebUtility.HtmlEncode(host)}:<br>{items}</div>";
+        var at = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+        return at >= 0 ? html.Insert(at, block) : html + block;
+    }
+
+    public static string WithAlsoLinksText(string text, string baseUrl, string alsoBaseUrl)
+    {
+        var b = baseUrl.TrimEnd('/');
+        var also = alsoBaseUrl.TrimEnd('/');
+        var links = LinksOn(text, b, "(https?://[^\\s)\\]>\"]+)");
+        if (links.Count == 0) return text;
+        var host = new Uri(also).Authority;
+        return text + $"\n\nSame links on {host}:\n" + string.Join("\n", links.Select(u => also + u[b.Length..]));
     }
 
     private async Task SendViaResendAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo = null)
