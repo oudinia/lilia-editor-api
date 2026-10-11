@@ -84,6 +84,16 @@ public class InvitesController : ControllerBase
         var invite = await _context.DocumentPendingInvites
             .FirstOrDefaultAsync(i => i.Id == token);
         if (invite == null) return NotFound();
+        // Only a live invitation lets someone in: not a cancelled or declined
+        // one, and not an accepted one after the owner removed that person.
+        if (invite.Status != "pending")
+        {
+            var stillIn = invite.Status == "accepted" && await _context.DocumentCollaborators
+                .AnyAsync(c => c.DocumentId == invite.DocumentId && c.UserId == userId);
+            return stillIn
+                ? Ok(new InviteAcceptResultDto(invite.DocumentId))
+                : Conflict(new { error = "This invite is no longer valid." });
+        }
         if (invite.ExpiresAt < DateTime.UtcNow)
             return Conflict(new { error = "This invite has expired." });
 

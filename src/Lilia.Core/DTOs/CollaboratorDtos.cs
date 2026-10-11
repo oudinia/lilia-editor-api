@@ -45,6 +45,21 @@ public record InviteCollaboratorDto(
     string Role
 );
 
+/// <summary>
+/// An invitation not yet accepted, for the share drawer (Olivia, 10 Oct, §c):
+/// <c>pending</c>, or <c>expired</c> once <see cref="ExpiresAt"/> has passed.
+/// <see cref="SentAt"/> is the last send; a resend moves it and the expiry.
+/// </summary>
+public record PendingInviteDto(
+    Guid Id,
+    string Email,
+    string Role,
+    string Status,
+    DateTime InvitedAt,
+    DateTime SentAt,
+    DateTime ExpiresAt
+);
+
 public record InviteResultDto(
     bool Success,
     bool UserFound,

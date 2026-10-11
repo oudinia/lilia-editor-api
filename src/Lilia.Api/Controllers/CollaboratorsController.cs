@@ -156,4 +156,43 @@ public class CollaboratorsController : ControllerBase
         var result = await _collaboratorService.InviteByEmailAsync(docId, userId, dto);
         return Ok(result);
     }
+
+    /// <summary>Invitations not yet accepted, pending or expired: the share drawer's Pending rows.</summary>
+    [HttpGet("invites")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Manage)]
+    public async Task<ActionResult<List<PendingInviteDto>>> GetPendingInvites(Guid docId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+            return Forbid();
+
+        return Ok(await _collaboratorService.GetPendingInvitesAsync(docId));
+    }
+
+    [HttpPost("invites/{inviteId:guid}/resend")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Manage)]
+    public async Task<ActionResult<InviteResultDto>> ResendInvite(Guid docId, Guid inviteId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+            return Forbid();
+
+        var result = await _collaboratorService.ResendInviteAsync(docId, inviteId, userId);
+        if (result == null) return NotFound();
+        return Ok(result);
+    }
+
+    [HttpDelete("invites/{inviteId:guid}")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Manage)]
+    public async Task<ActionResult> CancelInvite(Guid docId, Guid inviteId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+            return Forbid();
+
+        return await _collaboratorService.CancelInviteAsync(docId, inviteId) ? NoContent() : NotFound();
+    }
 }

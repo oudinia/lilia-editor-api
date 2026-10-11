@@ -16,6 +16,8 @@ public sealed class RecordingEmailService : IEmailService
         return Task.CompletedTask;
     }
 
+    public void Clear() => Outbox.Clear();
+
     public IReadOnlyList<Sent> To(string email) => Outbox.Where(s => string.Equals(s.To, email, StringComparison.OrdinalIgnoreCase)).ToList();
 
     public Task SendDocumentInviteAsync(string toEmail, string inviterName, string documentTitle, string role, string documentUrl) => Record("invite", toEmail, documentUrl);

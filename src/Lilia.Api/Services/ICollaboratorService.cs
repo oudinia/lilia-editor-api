@@ -17,4 +17,11 @@ public interface ICollaboratorService
     Task<bool> RemoveUserCollaboratorAsync(Guid documentId, string targetUserId, string userId, bool notify = false, bool allowReply = false);
     Task<bool> RemoveGroupCollaboratorAsync(Guid documentId, Guid groupId, string userId);
     Task<InviteResultDto> InviteByEmailAsync(Guid documentId, string inviterUserId, InviteCollaboratorDto dto);
+
+    /// <summary>The document's invitations not yet accepted, pending or expired, oldest first.</summary>
+    Task<List<PendingInviteDto>> GetPendingInvitesAsync(Guid documentId);
+    /// <summary>Sends a pending or expired invitation again, for another 14 days. Null when there is no such invitation.</summary>
+    Task<InviteResultDto?> ResendInviteAsync(Guid documentId, Guid inviteId, string userId);
+    /// <summary>Withdraws an invitation; its link stops working. False when there is no such invitation.</summary>
+    Task<bool> CancelInviteAsync(Guid documentId, Guid inviteId);
 }
