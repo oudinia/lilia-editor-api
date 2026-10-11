@@ -29,19 +29,19 @@ public sealed class KbController : ControllerBase
     /// <summary>Full-text search — the AI's discovery entry point. Ranked by relevance.</summary>
     [HttpGet("search")]
     public async Task<IReadOnlyList<KbArticleSummary>> Search(
-        [FromQuery] string q, [FromQuery] int limit = 8, CancellationToken ct = default)
-        => await _kb.SearchAsync(q ?? string.Empty, limit, ct);
+        [FromQuery] string q, [FromQuery] int limit = 8, [FromQuery] string? lang = null, CancellationToken ct = default)
+        => await _kb.SearchAsync(q ?? string.Empty, limit, lang ?? "en", ct);
 
     /// <summary>Articles for one tool (e.g. <c>doi-to-bibtex</c>).</summary>
     [HttpGet("tool/{toolSlug}")]
     public async Task<IReadOnlyList<KbArticleSummary>> ForTool(string toolSlug, CancellationToken ct = default)
         => await _kb.ForToolAsync(toolSlug, ct);
 
-    /// <summary>One full article (with body) by slug.</summary>
+    /// <summary>One full article (body and its levels) by slug, in <c>lang</c> (en, fr, es) or English.</summary>
     [HttpGet("{slug}")]
-    public async Task<ActionResult<KbArticleDetail>> Get(string slug, CancellationToken ct = default)
+    public async Task<ActionResult<KbArticleDetail>> Get(string slug, [FromQuery] string? lang = null, CancellationToken ct = default)
     {
-        var article = await _kb.GetAsync(slug, ct);
+        var article = await _kb.GetAsync(slug, lang ?? "en", ct);
         return article is null ? NotFound() : Ok(article);
     }
 }

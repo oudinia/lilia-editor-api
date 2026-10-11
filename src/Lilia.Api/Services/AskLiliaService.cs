@@ -36,7 +36,7 @@ public interface IAskLiliaService
 }
 
 /// <summary><c>Figure</c>: the TikZ figure the dock is scoped to (TikZ step 3, 1c); with it the turn reads only that figure.</summary>
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null, string? Language = null);
 
 /// <summary>A file the author attached to the message. <see cref="DataBase64"/>
 /// is the raw file bytes, base64-encoded. Images/PDFs go to the model natively;
@@ -160,7 +160,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
 
         KNOWLEDGE BASE — you have two tools over Lilia's help catalog:
         • search_kb(query): find the right help article by intent (returns slug, title, summary, href);
-        • get_kb(slug): read one article's full body.
+        • get_kb(slug): read one article, in the author's language and at their level (its steps,
+          plus "forThisAuthor": plain-word explanations for a beginner, the LaTeX for an advanced author).
         Use them when the author asks how/where/what, or when you point them to a tool or feature —
         ground your answer in what the tools return and cite the article by title and its href
         (e.g. "see Data → LaTeX table — /help/latex-table"). Do NOT invent article slugs, hrefs, or
@@ -434,7 +435,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 try { undoVersionId = (await _versionService.CreateVersionAsync(documentId!.Value, userId, new Lilia.Core.DTOs.CreateVersionDto("Before Ask Lilia edit"))).Id; }
                 catch (Exception ex) { _logger.LogWarning(ex, "[AskLilia] undo snapshot failed for {DocId}", documentId); }
             }
-            var tools = BuildKbTools(ct);
+            var tools = BuildKbTools(KbLanguage.Normalize(request.Language), level, ct);
             if (document is not null)
             {
                 var liveDoc = new LiveDocument(document);
@@ -620,23 +621,23 @@ public sealed partial class AskLiliaService : IAskLiliaService
     // The two knowledge-base tools handed to the model. AIFunctionFactory builds
     // each tool's JSON schema from the delegate signature + [Description]; the
     // delegate body is the execution, so InvokeKbToolAsync dispatches by name.
-    private IList<AITool> BuildKbTools(CancellationToken ct) =>
+    private IList<AITool> BuildKbTools(string lang, Proficiency level, CancellationToken ct) =>
     [
         AIFunctionFactory.Create(
             ([Description("What the author wants to do or know, in their own words (e.g. 'make a table from csv', 'cite a doi').")] string query)
-                => SearchKbAsync(query, ct),
+                => SearchKbAsync(query, lang, ct),
             name: "search_kb",
             description: "Search the Lilia knowledge base for help articles by intent. Returns up to a few matches as {slug, title, summary, toolSlug, skillId, href}. Use it to find the right doc to ground your answer and cite."),
         AIFunctionFactory.Create(
             ([Description("The article slug returned by search_kb, e.g. 'latex-table'.")] string slug)
-                => GetKbAsync(slug, ct),
+                => GetKbAsync(slug, lang, level, ct),
             name: "get_kb",
-            description: "Fetch one Lilia knowledge-base article's full body by slug. Use after search_kb when you need the step-by-step detail."),
+            description: "Fetch one Lilia knowledge-base article by slug, in the author's language and at their level: its steps, plus 'what this means' for a beginner or the LaTeX underneath for an advanced author. Use after search_kb when you need the step-by-step detail."),
     ];
 
-    private async Task<object> SearchKbAsync(string query, CancellationToken ct)
+    private async Task<object> SearchKbAsync(string query, string lang, CancellationToken ct)
     {
-        var hits = await _kb.SearchAsync(query ?? string.Empty, 6, ct);
+        var hits = await _kb.SearchAsync(query ?? string.Empty, 6, lang, ct);
         return new
         {
             results = hits.Select(a => new
@@ -647,12 +648,38 @@ public sealed partial class AskLiliaService : IAskLiliaService
         };
     }
 
-    private async Task<object> GetKbAsync(string slug, CancellationToken ct)
+    private async Task<object> GetKbAsync(string slug, string lang, Proficiency level, CancellationToken ct)
     {
-        var a = string.IsNullOrWhiteSpace(slug) ? null : await _kb.GetAsync(slug, ct);
+        var a = string.IsNullOrWhiteSpace(slug) ? null : await _kb.GetAsync(slug, lang, ct);
         return a is null
             ? new { error = $"No article '{slug}'. Call search_kb first." }
-            : (object)new { a.Slug, a.Title, a.Body, a.ToolSlug, a.SkillId, href = $"/help/{a.Slug}" };
+            : KbForLevel(a, level);
+    }
+
+    /// <summary>
+    /// What Ask Lilia reads of an article: its steps, and the layer for the author's level —
+    /// "what this means" for a beginner, the LaTeX underneath for an advanced author. An
+    /// article without level sections (the older ones) is its whole body.
+    /// </summary>
+    internal static object KbForLevel(KbArticleDetail a, Proficiency level)
+    {
+        var href = $"/help/{a.Slug}";
+        if (string.IsNullOrWhiteSpace(a.Steps))
+            return new { a.Slug, a.Title, a.Lang, a.Body, a.ToolSlug, a.SkillId, href };
+        var extra = level switch
+        {
+            Proficiency.Beginner => a.Beginner,
+            Proficiency.Advanced => a.Expert,
+            _ => "",
+        };
+        return new
+        {
+            a.Slug, a.Title, a.Lang, a.Summary,
+            steps = a.Steps,
+            forThisAuthor = extra,
+            level = level.ToString().ToLowerInvariant(),
+            a.ToolSlug, a.SkillId, href,
+        };
     }
 
     /// <summary>
