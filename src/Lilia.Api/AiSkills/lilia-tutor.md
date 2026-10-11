@@ -169,6 +169,106 @@ phone goes through Ask Lilia; the full editor is for a computer or a large table
 ⌘K / Ctrl+K the Lilia menu · ⌘S / Ctrl+S save a version · Ctrl+B / I / U bold, italic, underline ·
 Ctrl+Z / Ctrl+Y undo, redo · **/** in an empty paragraph for blocks · Esc closes a panel or dialog.
 
+### Interface names in French and Spanish
+When you answer in French or Spanish, name what the user sees with these words (the interface's own,
+taken from the web editor's locale files: refresh this table when the interface's words change).
+
+| English | Français | Español |
+|---|---|---|
+| Documents | Documents | Documentos |
+| Tables | Tableaux | Tablas |
+| References | Références | Referencias |
+| Equations | Équations | Ecuaciones |
+| Templates | Modèles | Plantillas |
+| Snippets | Extraits | Fragmentos |
+| Import / Export | Import / Export | Importar / Exportar |
+| Settings | Paramètres | Ajustes |
+| Trash | Corbeille | Papelera |
+| Home | Accueil | Inicio |
+| Lilia menu | Menu Lilia | Menú de Lilia |
+| Continue | Continuer | Continuar |
+| Mine | Les miens | Míos |
+| Shared with me | Partagés avec moi | Compartidos conmigo |
+| Has issues | Avec problèmes | Con problemas |
+| Fix issues | Corriger | Corregir |
+| Rename | Renommer | Cambiar nombre |
+| Duplicate | Dupliquer | Duplicar |
+| Move to Trash | Mettre à la corbeille | Mover a la papelera |
+| Remove from my documents | Retirer de mes documents | Quitar de mis documentos |
+| Export | Exporter | Exportar |
+| All formats… | Tous les formats… | Todos los formatos… |
+| Make a copy | Faire une copie | Hacer una copia |
+| Outline | Plan | Esquema |
+| Comments | Commentaires | Comentarios |
+| History | Historique | Historial |
+| Validate | Valider | Validar |
+| Format | Format | Formato |
+| Text | Texte | Texto |
+| Insert | Insérer | Insertar |
+| Block | Bloc | Bloque |
+| Save a version… | Enregistrer une version… | Guardar una versión… |
+| Style | Style | Estilo |
+| Retry | Réessayer | Reintentar |
+| Validate now | Valider maintenant | Validar ahora |
+| Re-run validation | Relancer la validation | Volver a validar |
+| Open full validation | Ouvrir la validation complète | Abrir la validación completa |
+| Not validated yet | Pas encore validé | Aún sin validar |
+| Ask Lilia | Demander à Lilia | Preguntar a Lilia |
+| New chat | Nouvelle discussion | Nueva conversación |
+| Edit this document | Modifier ce document | Editar este documento |
+| Apply to document | Appliquer au document | Aplicar al documento |
+| Undo AI changes | Annuler les modifications de l’IA | Deshacer los cambios de la IA |
+| Type & class | Type et classe | Tipo y clase |
+| Class options | Options de classe | Opciones de clase |
+| Layout | Mise en page | Diseño |
+| Look | Style | Estilo |
+| Document theme | Thème du document | Tema del documento |
+| Paper | Papier | Papel |
+| Theme's paper | Papier du thème | Papel del tema |
+| White always | Toujours blanc | Siempre blanco |
+| Section colours | Couleurs des sections | Colores de las secciones |
+| Table style | Style des tableaux | Estilo de las tablas |
+| Invite people | Inviter des personnes | Invitar a personas |
+| Can view | Peut lire | Puede ver |
+| Can edit | Peut modifier | Puede editar |
+| Team access | Accès d’équipe | Acceso de equipo |
+| Anyone with the link | Toute personne disposant du lien | Cualquiera con el enlace |
+| Regenerate | Régénérer | Regenerar |
+| Revoke | Révoquer | Revocar |
+| Resend | Renvoyer | Reenviar |
+| Copy invite link | Copier le lien d’invitation | Copiar enlace de invitación |
+| Remove from doc | Retirer du document | Quitar del documento |
+| Done | Terminé | Hecho |
+| Account | Compte | Cuenta |
+| Billing & plan | Facturation et offre | Facturación y plan |
+| Appearance | Apparence | Apariencia |
+| Notifications | Notifications | Notificaciones |
+| Security | Sécurité | Seguridad |
+| Editor defaults | Préférences de l’éditeur | Preferencias del editor |
+| Theme | Thème | Tema |
+| System | Système | Sistema |
+| Light | Clair | Claro |
+| Dark | Sombre | Oscuro |
+| Accent | Accent | Acento |
+| Cerulean | Céruléen | Cerúleo |
+| Plum | Prune | Ciruela |
+| Ink | Encre | Tinta |
+| Light style (trying out) | Style clair (à l’essai) | Estilo claro (en prueba) |
+| Language | Langue | Idioma |
+| Personality | Personnalité | Personalidad |
+| Reduce motion | Réduire les animations | Reducir el movimiento |
+| LaTeX-native editing | Édition LaTeX native | Edición LaTeX nativa |
+| Clear cache & reload | Vider le cache et recharger | Borrar caché y recargar |
+| Save changes | Enregistrer | Guardar cambios |
+| Theme & accent… | Thème et accent… | Tema y acento… |
+| Log out | Se déconnecter | Cerrar sesión |
+| Check document | Vérifier le document | Revisar el documento |
+| Page & settings… | Page et réglages… | Página y ajustes… |
+| Look… | Apparence… | Aspecto… |
+| Document details | Détails du document | Detalles del documento |
+| View LaTeX | Voir le LaTeX | Ver LaTeX |
+| Ask Lilia to fix | Demander à Lilia de corriger | Pedir a Lilia que lo corrija |
+
 ## How to respond
 
 1. **Answer the question** in 1–3 sentences, in Lilia terms.

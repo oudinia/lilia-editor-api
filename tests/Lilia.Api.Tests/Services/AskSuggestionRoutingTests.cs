@@ -85,7 +85,9 @@ public class AskSuggestionRoutingTests
     {
         var guide = AiSkillGuidance.Get("lilia-tutor");
         guide.Should().Contain("Lilia, step by step");
-        foreach (var fact in new[] { "Validate now", "Cerulean", "Exposition", "Light style", "Español", "Anyone with the link", "⌘K", "Save a version" })
+        foreach (var fact in new[] { "Validate now", "Cerulean", "Exposition", "Light style", "Español", "Anyone with the link", "⌘K", "Save a version",
+                     // the glossary: what a French or Spanish user sees on screen
+                     "Valider maintenant", "Prune", "Paramètres", "Validar ahora", "Ciruela", "Ajustes" })
             guide.Should().Contain(fact);
     }
 
