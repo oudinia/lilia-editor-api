@@ -45,6 +45,12 @@ public class PreferencesController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
+        if (dto.AskLevel != null && AskLevels.Normalize(dto.AskLevel) == null)
+        {
+            ModelState.AddModelError("askLevel", "Ask Lilia's level must be \"beginner\", \"intermediate\" or \"advanced\".");
+            return ValidationProblem(ModelState);
+        }
+
         if (dto.PinnedTools != null && PreferencesService.ValidatePinnedTools(dto.PinnedTools) is { } error)
             return BadRequest(new { message = error });
 
