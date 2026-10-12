@@ -12,11 +12,13 @@ namespace Lilia.Api.Hubs;
 public class DocumentHub : Hub
 {
     private readonly IPresenceService _presence;
+    private readonly IDocumentService _documents;
     private readonly ILogger<DocumentHub> _logger;
 
-    public DocumentHub(IPresenceService presence, ILogger<DocumentHub> logger)
+    public DocumentHub(IPresenceService presence, IDocumentService documents, ILogger<DocumentHub> logger)
     {
         _presence = presence;
+        _documents = documents;
         _logger = logger;
     }
 
@@ -25,6 +27,13 @@ public class DocumentHub : Hub
     /// </summary>
     public async Task JoinDocument(string documentId, string displayName, string? avatarUrl)
     {
+        // The room carries the document's live changes (Ask Lilia, apps over MCP): only someone
+        // who may read the document joins it. It took anyone signed in before (12 Oct).
+        var userId = Context.User?.FindFirst("sub")?.Value
+            ?? Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId is null || !Guid.TryParse(documentId, out var docId)
+            || !await _documents.HasAccessAsync(docId, userId, Lilia.Core.Entities.Permissions.Read))
+            throw new HubException("You cannot open this document.");
         var groupName = $"doc-{documentId}";
         await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
 

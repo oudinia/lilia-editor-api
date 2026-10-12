@@ -42,7 +42,9 @@ public static class McpOAuth
     {
         ["resource"] = PublicOrigin(config) + Endpoint,
         ["authorization_servers"] = AuthorizationServer(config) is { } a ? new[] { a } : Array.Empty<string>(),
-        ["scopes_supported"] = new[] { "openid", "email", "profile" },
+        // documents:read / documents:write: Stytch RBAC custom scopes (the consent page asks
+        // whether to allow edits; a token without documents:write only reads).
+        ["scopes_supported"] = new[] { "openid", "email", "profile", "offline_access", "documents:read", LiliaMcpWriteTools.WriteScope },
         ["bearer_methods_supported"] = new[] { "header" },
         ["resource_name"] = "Lilia",
         ["resource_documentation"] = PublicOrigin(config) + "/help",

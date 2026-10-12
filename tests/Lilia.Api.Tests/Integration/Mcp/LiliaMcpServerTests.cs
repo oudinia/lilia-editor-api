@@ -62,14 +62,19 @@ public class LiliaMcpServerTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task It_lists_the_read_tools_and_every_one_is_read_only()
+    public async Task It_lists_the_tools_and_the_read_ones_say_so()
     {
         await SeedUserAsync("mcp_lister");
         var (status, body) = await RpcAsync(CreateClientAs("mcp_lister"), "tools/list");
         status.Should().Be(HttpStatusCode.OK);
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-        tools.Select(t => t.GetProperty("name").GetString()).Should().BeEquivalentTo(ReadTools);
-        tools.Should().OnlyContain(t => t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean());
+        var read = tools.Where(t => ReadTools.Contains(t.GetProperty("name").GetString())).ToList();
+        read.Should().HaveCount(ReadTools.Length);
+        read.Should().OnlyContain(t => t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean());
+        // Step 3's edit tools are listed too, and say they write.
+        tools.Select(t => t.GetProperty("name").GetString()).Should().Contain(new[] { "add_block", "edit_block", "remove_block", "apply_lml" });
+        foreach (var t in tools.Where(t => !ReadTools.Contains(t.GetProperty("name").GetString())))
+            (t.GetProperty("annotations").TryGetProperty("readOnlyHint", out var ro) && ro.GetBoolean()).Should().BeFalse();
     }
 
     [Fact]

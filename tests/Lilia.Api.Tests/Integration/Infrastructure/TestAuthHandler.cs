@@ -60,6 +60,8 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
         // A Stytch Connected Apps token (MCP sign-in) names the app it was issued to.
         if (Request.Headers["X-Test-ClientId"].FirstOrDefault() is { Length: > 0 } clientId)
             claims.Add(new Claim("client_id", clientId));
+        if (Request.Headers["X-Test-Scope"].FirstOrDefault() is { Length: > 0 } scope)
+            claims.Add(new Claim("scope", scope));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
