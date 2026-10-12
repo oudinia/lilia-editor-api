@@ -3061,8 +3061,9 @@ public partial class RenderService : IRenderService
         // Step 4: Convert newlines to paragraph breaks
         result = Regex.Replace(result, @"\r?\n", "\n\n");
 
-        // Step 5: Restore protected regions
-        for (int i = 0; i < commandRegions.Count; i++)
+        // Step 5: Restore protected regions. Newest first: a region can hold an earlier one —
+        // a tie protected before \parencite[p.~12]{…} was, sits inside it.
+        for (int i = commandRegions.Count - 1; i >= 0; i--)
             result = result.Replace($"\x00CMD{i}\x00", commandRegions[i]);
         for (int i = 0; i < mathRegions.Count; i++)
             result = result.Replace($"\x00MATH{i}\x00", mathRegions[i]);
