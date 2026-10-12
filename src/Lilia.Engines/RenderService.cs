@@ -2135,7 +2135,7 @@ public partial class RenderService : IRenderService
                 ? sc.GetString() ?? ""
                 : "";
             var captionCommand = !string.IsNullOrEmpty(shortCaption)
-                ? $@"\caption[{{{InlineArgument(shortCaption)}}}]{{{InlineArgument(caption)}}}"
+                ? $@"\caption[{OptionalArgument(InlineArgument(shortCaption))}]{{{InlineArgument(caption)}}}"
                 : $@"\caption{{{InlineArgument(caption)}}}";
 
             // The rest of the table's meaning (2g): group headers, notes, row groups, and
@@ -2686,7 +2686,7 @@ public partial class RenderService : IRenderService
         var envName = theoremType == "proof"
             ? "proof"
             : (numbered ? theoremType : $"{theoremType}*");
-        var titleOption = !string.IsNullOrEmpty(title) ? $"[{{{InlineArgument(title)}}}]" : "";
+        var titleOption = !string.IsNullOrEmpty(title) ? $"[{OptionalArgument(InlineArgument(title))}]" : "";
 
         var sb = new StringBuilder();
         sb.AppendLine($@"\begin{{{envName}}}{titleOption}");
@@ -2873,10 +2873,13 @@ public partial class RenderService : IRenderService
     /// <summary>
     /// Text in a command's argument — a caption, a theorem title: maths and inline marks as in a
     /// paragraph, kept on one line. They were plain-escaped, so $x^2$ printed as text (MCP-14/60).
-    /// Callers brace an optional argument, so a ] in it can't end it early.
+    /// An optional argument goes through <see cref="OptionalArgument"/>, so a ] can't end it early.
     /// </summary>
     private string InlineArgument(string? text) =>
         ProcessLatexText(Regex.Replace(text ?? "", @"\s*\r?\n\s*", " ")).Trim();
+
+    /// <summary>An optional argument's text, braced when it holds a ] that would end it early (MCP-60).</summary>
+    public static string OptionalArgument(string latex) => latex.Contains(']') ? "{" + latex + "}" : latex;
 
     private string ProcessLatexText(string text)
     {

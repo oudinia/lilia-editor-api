@@ -81,7 +81,7 @@ public class InlineTextTests
         Render("theorem", new { theoremType = "theorem", title = @"Completeness of $C[0,1]$", text = "The space is complete." })
             .Should().Contain(@"[{Completeness of $C[0,1]$}]");
         var exported = Export(Doc(B("theorem", new { theoremType = "theorem", title = @"Computing $\sqrt{2}$", text = "x" })));
-        exported.Should().Contain(@"[{Computing $\sqrt{2}$}]");
+        exported.Should().Contain(@"[Computing $\sqrt{2}$]");
     }
 
     // ── MCP-15 ──────────────────────────────────────────────────────────

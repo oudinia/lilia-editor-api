@@ -1297,7 +1297,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         var captionLine = !string.IsNullOrEmpty(caption)
             ? (!string.IsNullOrEmpty(shortCaption)
-                ? $@"\caption[{{{InlineArgument(shortCaption)}}}]{{{InlineArgument(caption)}}}{labelPart}"
+                ? $@"\caption[{RenderService.OptionalArgument(InlineArgument(shortCaption))}]{{{InlineArgument(caption)}}}{labelPart}"
                 : $@"\caption{{{InlineArgument(caption)}}}{labelPart}")
             : "";
 
@@ -1790,7 +1790,7 @@ public class LaTeXExportService : ILaTeXExportService
         if (theoremType == "proof")
             return $@"\begin{{proof}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{proof}";
 
-        var titlePart = !string.IsNullOrEmpty(title) ? $"[{{{InlineArgument(title)}}}]" : "";
+        var titlePart = !string.IsNullOrEmpty(title) ? $"[{RenderService.OptionalArgument(InlineArgument(title))}]" : "";
         return $@"\begin{{{theoremType}}}{titlePart}{labelPart}" + "\n" + FormatInlineContent(text) + "\n" + $@"\end{{{theoremType}}}";
     }
 
