@@ -66,4 +66,27 @@ public class SettingsDialogSaveTests : IntegrationTestBase
         (back.LatexDocumentClassOptions ?? "").Should().NotContain("landscape");
         back.HeaderLeft.Should().Be("Lecture 3");
     }
+
+    // MCP-75: "" clears a text setting, and it is stored as null — the one value for unset.
+    [Fact]
+    public async Task A_blank_text_setting_is_stored_as_null()
+    {
+        await SeedUserAsync(OwnerId);
+        var doc = await SeedDocumentAsync(OwnerId, "Margins");
+        await using (var seed = CreateDbContext())
+        {
+            var d = await seed.Documents.FirstAsync(x => x.Id == doc.Id);
+            d.MarginTop = "2cm"; d.CustomPreamble = "\\newcommand{\\R}{x}"; d.HeaderLeft = "L";
+            await seed.SaveChangesAsync();
+        }
+
+        (await Client.PutAsJsonAsync($"/api/documents/{doc.Id}", new { marginTop = "", customPreamble = "  ", headerLeft = "" }))
+            .EnsureSuccessStatusCode();
+
+        await using var db = CreateDbContext();
+        var saved = await db.Documents.AsNoTracking().FirstAsync(x => x.Id == doc.Id);
+        saved.MarginTop.Should().BeNull();
+        saved.CustomPreamble.Should().BeNull();
+        saved.HeaderLeft.Should().BeNull();
+    }
 }

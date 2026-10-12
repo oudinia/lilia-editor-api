@@ -539,6 +539,10 @@ public class DocumentService : IDocumentService
         return (await GetDocumentAsync(document.Id, userId))!;
     }
 
+    // A blank text setting clears it; stored as null, the one value for "unset". Margins read "" from
+    // some writers and null from others (MCP-75), which every reader then had to treat alike.
+    private static string? Unset(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
     public async Task<DocumentDto?> UpdateDocumentAsync(Guid id, string userId, UpdateDocumentDto dto)
     {
         var document = await _context.Documents.FindAsync(id);
@@ -567,24 +571,24 @@ public class DocumentService : IDocumentService
         if (dto.ColumnSeparator != null) document.ColumnSeparator = dto.ColumnSeparator;
         if (dto.ColumnGap.HasValue) document.ColumnGap = dto.ColumnGap.Value;
         if (dto.LatexDocumentClass != null) document.LatexDocumentClass = dto.LatexDocumentClass;
-        if (dto.LatexDocumentClassOptions != null) document.LatexDocumentClassOptions = dto.LatexDocumentClassOptions;
+        if (dto.LatexDocumentClassOptions != null) document.LatexDocumentClassOptions = Unset(dto.LatexDocumentClassOptions);
         if (dto.LatexPackages != null) document.LatexPackages = dto.LatexPackages;
-        if (dto.CustomPreamble != null) document.CustomPreamble = dto.CustomPreamble;
+        if (dto.CustomPreamble != null) document.CustomPreamble = Unset(dto.CustomPreamble);
         if (dto.BalancedColumns.HasValue) document.BalancedColumns = dto.BalancedColumns.Value;
-        if (dto.MarginTop != null) document.MarginTop = dto.MarginTop;
-        if (dto.MarginBottom != null) document.MarginBottom = dto.MarginBottom;
-        if (dto.MarginLeft != null) document.MarginLeft = dto.MarginLeft;
-        if (dto.MarginRight != null) document.MarginRight = dto.MarginRight;
-        if (dto.HeaderText != null) document.HeaderText = dto.HeaderText;
-        if (dto.FooterText != null) document.FooterText = dto.FooterText;
-        if (dto.HeaderLeft != null) document.HeaderLeft = dto.HeaderLeft;
-        if (dto.HeaderCenter != null) document.HeaderCenter = dto.HeaderCenter;
-        if (dto.HeaderRight != null) document.HeaderRight = dto.HeaderRight;
-        if (dto.FooterLeft != null) document.FooterLeft = dto.FooterLeft;
-        if (dto.FooterCenter != null) document.FooterCenter = dto.FooterCenter;
-        if (dto.FooterRight != null) document.FooterRight = dto.FooterRight;
+        if (dto.MarginTop != null) document.MarginTop = Unset(dto.MarginTop);
+        if (dto.MarginBottom != null) document.MarginBottom = Unset(dto.MarginBottom);
+        if (dto.MarginLeft != null) document.MarginLeft = Unset(dto.MarginLeft);
+        if (dto.MarginRight != null) document.MarginRight = Unset(dto.MarginRight);
+        if (dto.HeaderText != null) document.HeaderText = Unset(dto.HeaderText);
+        if (dto.FooterText != null) document.FooterText = Unset(dto.FooterText);
+        if (dto.HeaderLeft != null) document.HeaderLeft = Unset(dto.HeaderLeft);
+        if (dto.HeaderCenter != null) document.HeaderCenter = Unset(dto.HeaderCenter);
+        if (dto.HeaderRight != null) document.HeaderRight = Unset(dto.HeaderRight);
+        if (dto.FooterLeft != null) document.FooterLeft = Unset(dto.FooterLeft);
+        if (dto.FooterCenter != null) document.FooterCenter = Unset(dto.FooterCenter);
+        if (dto.FooterRight != null) document.FooterRight = Unset(dto.FooterRight);
         if (dto.LineSpacing.HasValue) document.LineSpacing = dto.LineSpacing.Value;
-        if (dto.ParagraphIndent != null) document.ParagraphIndent = dto.ParagraphIndent;
+        if (dto.ParagraphIndent != null) document.ParagraphIndent = Unset(dto.ParagraphIndent);
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
         if (!string.IsNullOrWhiteSpace(dto.PaginationPolicy))
         {
