@@ -2764,6 +2764,12 @@ public partial class RenderService : IRenderService
         // protect markdown-converted commands the next step is about to produce.
         // Order in the alternation list — citations, refs, hyperref, chem, siunitx, misc.
         var commandRegions = new List<string>();
+        // Lilia's own shorthands first: Kind~(label), @ref{label}, @cite{key} (CrossRefSyntax).
+        result = CrossRefSyntax.Resolve(result, piece =>
+        {
+            commandRegions.Add(piece);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
         const string protectedCommands =
             // Citations (natbib + biblatex flavors)
             "cite|citep|citet|citealp|citealt|parencite|textcite|footcite|autocite|nocite|" +

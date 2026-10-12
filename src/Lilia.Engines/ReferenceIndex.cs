@@ -143,6 +143,10 @@ public static class ReferenceIndex
                     block.Id,
                     m.Value[0] == '@' ? "at" : form));
             }
+            // Kind~(label), the form Lilia's help teaches: a use like any other, so a label nothing
+            // defines is reported (12 Oct: it compiled silently and printed as typed).
+            foreach (Match m in CrossRefSyntax.KindParen.Matches(root.GetRawText()))
+                uses.Add(new ReferenceUse(m.Groups["key"].Value.Trim(), block.Id, "kind"));
         }
 
         return new ReferenceReport(targets, uses, Problems(targets, uses));
