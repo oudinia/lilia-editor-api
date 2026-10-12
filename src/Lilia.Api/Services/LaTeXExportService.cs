@@ -600,6 +600,16 @@ public class LaTeXExportService : ILaTeXExportService
         sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
         sb.AppendLine();
 
+        // Chinese, Japanese or Korean text: compiled with xelatex (MCP-26, EngineDetector reads
+        // the xeCJK line), so the file says so for whoever compiles it next.
+        var bodyForCjk = bodyBlocks ?? doc.Blocks ?? new List<Block>();
+        if (CjkText.Contains(doc.Title) || bodyForCjk.Any(b => CjkText.Contains(b.Content.RootElement)))
+        {
+            sb.AppendLine("% Chinese / Japanese / Korean text: compile with xelatex.");
+            sb.Append(LaTeXPreamble.EngineAddendum(LatexEngine.Xelatex, cjk: true));
+            sb.AppendLine();
+        }
+
         // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures and does not load them itself.
         var tikzPackages = TikzFigure.PackageLines(
             (bodyBlocks ?? doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
@@ -688,7 +698,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine();
             sb.AppendLine("% Custom preamble (author-defined macros)");
-            sb.AppendLine(doc.CustomPreamble.Trim());
+            sb.AppendLine(LaTeXPreamble.CustomPreambleForEmit(doc.CustomPreamble));
         }
 
         return sb.ToString();
@@ -1507,9 +1517,12 @@ public class LaTeXExportService : ILaTeXExportService
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
         var rawLanguage = content.TryGetProperty("language", out var l) ? l.GetString() : null;
         var language = LaTeXPreamble.NormalizeListingsLanguage(rawLanguage);
-        var opening = string.IsNullOrEmpty(language)
+        (code, var escapeOption) = ListingText.Escape(code);
+        var options = new[] { string.IsNullOrEmpty(language) ? null : $"language={language}", escapeOption }
+            .Where(o => o is not null).ToList();
+        var opening = options.Count == 0
             ? @"\begin{lstlisting}"
-            : $@"\begin{{lstlisting}}[language={language}]";
+            : $@"\begin{{lstlisting}}[{string.Join(", ", options)}]";
         return opening + "\n" + code + "\n" + @"\end{lstlisting}";
     }
 

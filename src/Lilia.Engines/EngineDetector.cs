@@ -56,6 +56,11 @@ public static class EngineDetector
         @"\\(directlua|luaexec|luadirect)\b",
         RegexOptions.Compiled);
 
+    // XeTeX-only packages.
+    private static readonly Regex XeOnly = new(
+        @"\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*(?<![A-Za-z-])xeCJK(?![A-Za-z-])[^}]*\}",
+        RegexOptions.Compiled);
+
     // fontspec-family — works on lualatex AND xelatex. Lualatex is our
     // chosen modern engine, so map these to Lualatex (tier 2).
     private static readonly Regex Fontspec = new(
@@ -89,7 +94,11 @@ public static class EngineDetector
     {
         if (string.IsNullOrEmpty(latex)) return LatexEngine.Pdflatex;
         if (LuaOnly.IsMatch(latex)) return LatexEngine.Lualatex;
+        // xeCJK runs only on XeTeX, so it outranks the fontspec rule below.
+        if (XeOnly.IsMatch(latex)) return LatexEngine.Xelatex;
         if (Fontspec.IsMatch(latex) || FontPackages.IsMatch(latex)) return LatexEngine.Lualatex;
+        // Chinese, Japanese or Korean text: pdflatex has no fonts for it here (CjkText).
+        if (CjkText.Contains(latex)) return LatexEngine.Xelatex;
         return LatexEngine.Pdflatex;
     }
 
