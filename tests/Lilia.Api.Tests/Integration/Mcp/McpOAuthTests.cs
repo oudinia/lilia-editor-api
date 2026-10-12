@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -49,6 +50,23 @@ public class McpOAuthTests : IntegrationTestBase
         var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement;
         doc.GetProperty("resource").GetString().Should().EndWith("/api/mcp");
         doc.GetProperty("authorization_servers")[0].GetString().Should().StartWith("https://").And.Contain("stytch");
+    }
+
+    [Fact]
+    public void The_resource_is_the_public_address_not_the_machines()
+    {
+        // Production's Email:BaseUrl was the machine's address (12 Oct); apps compare the
+        // resource with the URL they connected to.
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:BaseUrl"] = "http://vmi3078948.contaboserver.net:3001",
+                ["Mcp:PublicOrigin"] = "https://editor.liliaeditor.com",
+            })
+            .Build();
+        var json = JsonSerializer.Serialize(Lilia.Api.Mcp.McpOAuth.Metadata(config));
+        JsonDocument.Parse(json).RootElement.GetProperty("resource").GetString()
+            .Should().Be("https://editor.liliaeditor.com/api/mcp");
     }
 
     [Fact]

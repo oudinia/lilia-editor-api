@@ -26,6 +26,11 @@ public static class McpOAuth
     /// <summary>RFC 9728's well-known path for the resource <c>…/api/mcp</c>.</summary>
     public const string MetadataPath = "/.well-known/oauth-protected-resource/api/mcp";
 
+    /// <summary>
+    /// The address apps use to reach this server. Apps check that the metadata's resource is the
+    /// URL they connected to, so it is set on its own: production's Email:BaseUrl is the machine's
+    /// address (12 Oct), and the test copy sets https://test.liliaeditor.com.
+    /// </summary>
     private static string PublicOrigin(IConfiguration config) =>
         (config["Mcp:PublicOrigin"] ?? config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/');
 
