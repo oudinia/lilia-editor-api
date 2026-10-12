@@ -1961,11 +1961,9 @@ public class LaTeXExportService : ILaTeXExportService
             @"(?<![A-Za-z0-9\\])_([^_]+)_(?![A-Za-z0-9])",
             m => Ph($@"\textit{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
-        // 5. References: @ref{label} → \ref{label}
-        result = Regex.Replace(result, @"@ref\{([^}]+)\}", m => Ph($@"\ref{{{Lilia.Engines.LabelKey.Safe(m.Groups[1].Value)}}}"));
-
-        // 6. Citations: @cite{key} → \cite{key}
-        result = Regex.Replace(result, @"@cite\{([^}]+)\}", m => Ph($@"\cite{{{m.Groups[1].Value}}}"));
+        // 5–6. Lilia's shorthands: Kind~(label), @ref{label}, @cite{key} — the same rules as the
+        // compile emitter (Lilia.Engines.CrossRefSyntax), so an export reads like the PDF.
+        result = Lilia.Engines.CrossRefSyntax.Resolve(result, Ph);
 
         // 7. Escape remaining plain text
         result = EscapeLatex(result);
