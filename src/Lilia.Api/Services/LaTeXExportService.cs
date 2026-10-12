@@ -203,7 +203,7 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine();
 
         // Abstract (if exists)
-        var abstractBlock = blocks.FirstOrDefault(b => b.Type == "abstract");
+        var abstractBlock = LeadAbstract(blocks);
         if (abstractBlock != null)
         {
             var text = GetContentText(abstractBlock);
@@ -293,7 +293,7 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine();
 
         // Abstract
-        var abstractBlock = blocks.FirstOrDefault(b => b.Type == "abstract");
+        var abstractBlock = LeadAbstract(blocks);
         if (abstractBlock != null)
         {
             var text = GetContentText(abstractBlock);
@@ -355,7 +355,7 @@ public class LaTeXExportService : ILaTeXExportService
         var chapterInputPaths = new List<string>();
 
         // Abstract as frontmatter
-        var abstractBlock = blocks.FirstOrDefault(b => b.Type == "abstract");
+        var abstractBlock = LeadAbstract(blocks);
         if (abstractBlock != null)
         {
             var text = GetContentText(abstractBlock);
@@ -775,9 +775,20 @@ public class LaTeXExportService : ILaTeXExportService
     /// The theme line numbers Index pins by these, and the editor's section chips
     /// (<see cref="Lilia.Engines.Themes.ThemeSections"/>) count the same headings.
     /// </summary>
-    public static List<Block> BodyBlocks(string? title, IEnumerable<Block> orderedBlocks) =>
-        StripDuplicateTitleHeading(title,
-            orderedBlocks.Where(b => b.Type != "abstract" && b.Type != "bibliography" && b.Type != "title").ToList());
+    public static List<Block> BodyBlocks(string? title, IEnumerable<Block> orderedBlocks)
+    {
+        var all = orderedBlocks.ToList();
+        var lead = LeadAbstract(all);
+        return StripDuplicateTitleHeading(title,
+            all.Where(b => !ReferenceEquals(b, lead) && b.Type != "bibliography" && b.Type != "title").ToList());
+    }
+
+    /// <summary>
+    /// The abstract printed after \maketitle: the first one. Any other stays in the body where the
+    /// author put it — a second abstract (a translation, say) was dropped from every export
+    /// while the check printed it (MCP-39).
+    /// </summary>
+    private static Block? LeadAbstract(IEnumerable<Block> blocks) => blocks.FirstOrDefault(b => b.Type == "abstract");
 
     private static List<Block> StripDuplicateTitleHeading(string? title, List<Block> blocks)
     {
@@ -867,7 +878,8 @@ public class LaTeXExportService : ILaTeXExportService
                 // A beamer frame, as the preview writes it. Slides were dropped here as
                 // unsupported, so an exported deck (and its PDF) had no frames.
                 "slide" => Lilia.Engines.SlideLatex.Frame(content, EscapeLatex, FormatInlineContent),
-                "abstract" => "", // handled separately
+                // The first abstract is printed after \maketitle and never reaches here (LeadAbstract).
+                "abstract" => $"\\begin{{abstract}}\n{FormatInlineContent(GetText(content))}\n\\end{{abstract}}",
                 "bibliography" => "", // handled via .bib file
                 // The Appendix back-matter block starts the appendices (see RenderService).
                 "backMatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
@@ -1987,6 +1999,11 @@ public class LaTeXExportService : ILaTeXExportService
         result = Lilia.Engines.DocumentFence.Neutralize(result, Ph);
 
         // 7. Escape remaining plain text; a ~ between two characters stays a tie (MCP-67).
+        // MCP-09: LaTeX the author typed in prose stays LaTeX, as the check emitter keeps it —
+        // commands, control symbols and braces pass; the text between them is still escaped.
+        // \emph{…}, \ce{…}, \SI{…}{…} printed as \textbackslash{}emph… in every export.
+        result = Regex.Replace(result, @"\\(?:[A-Za-z]+\*?|[%&#_{}$,;:! \\])|[{}]", m => Ph(m.Value));
+
         result = Lilia.Engines.TieSyntax.Protect(result, Ph);
         result = EscapeLatex(result);
 
@@ -2041,6 +2058,7 @@ public class LaTeXExportService : ILaTeXExportService
 
     private static List<List<Block>> GroupBlocksByHeading(List<Block> blocks)
     {
+        var lead = LeadAbstract(blocks);
         var chapters = new List<List<Block>>();
         var currentChapter = new List<Block>();
 
@@ -2065,7 +2083,7 @@ public class LaTeXExportService : ILaTeXExportService
                 }
             }
 
-            if (block.Type != "abstract" && block.Type != "bibliography")
+            if (!ReferenceEquals(block, lead) && block.Type != "bibliography")
                 currentChapter.Add(block);
         }
 
@@ -2075,7 +2093,7 @@ public class LaTeXExportService : ILaTeXExportService
         // If no headings, put all blocks in one chapter
         if (chapters.Count == 0 && blocks.Count > 0)
         {
-            chapters.Add(blocks.Where(b => b.Type != "abstract" && b.Type != "bibliography").ToList());
+            chapters.Add(blocks.Where(b => !ReferenceEquals(b, lead) && b.Type != "bibliography").ToList());
         }
 
         return chapters;
