@@ -85,6 +85,9 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   half, docked at the side, a new window, keep on top. **New chat** starts a conversation; the
   conversation menu copies, moves or deletes one. Attach a file (csv, tex, bib, docx, pdf) or an
   image (png, jpg, webp, svg). Select a block first to ask about just that block.
+  **How Ask Lilia explains** (Simple · Standard · For LaTeX users): asked once (*How familiar are
+  you with LaTeX?*, Skip means Simple); changed with **Answers: … ▾** under the message box or in
+  **Settings → Ask Lilia and help → How Lilia explains things**. Help pages start at that level.
 - **Saving** is automatic as you type. The indicator says *Saved*, *Saving…*, *Saved on this
   device* (offline: it syncs when you are back) or *Couldn't save* (with **Retry**). Hover it for the
   card: **Save a version… (⌘S / Ctrl+S)**, **History**, and **Style: Pro / Fun** (Fun adds a small
@@ -147,6 +150,7 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. Sections:
     canvas), **Paper** (warm greys), **Before Crisp** (the earlier light). Dark is not affected.
   - **Language**: English, Français, Español (the page reloads in that language).
   - **Personality**: Pro or Fun (the save moment). **Reduce motion**.
+- **Ask Lilia and help**: **How Lilia explains things**: Simple, Standard or For LaTeX users.
 - **Editor defaults**: default font, size and paper for new documents, auto-save and its interval,
   **LaTeX-native editing** (show LaTeX commands and source), and **Reset to defaults**.
 - **Security**: password, two-factor authentication, and **Clear cache & reload** (fetches the
@@ -186,6 +190,9 @@ taken from the web editor's locale files: refresh this table when the interface'
 | Snippets | Extraits | Fragmentos |
 | Import / Export | Import / Export | Importar / Exportar |
 | Settings | Paramètres | Ajustes |
+| Ask Lilia and help | Demander à Lilia et aide | Preguntar a Lilia y ayuda |
+| How Lilia explains things | Comment Lilia explique les choses | Cómo explica Lilia las cosas |
+| Simple · Standard · For LaTeX users | Simple · Standard · Pour les utilisateurs de LaTeX | Sencillo · Estándar · Para usuarios de LaTeX |
 | Trash | Corbeille | Papelera |
 | Home | Accueil | Inicio |
 | Lilia menu | Menu Lilia | Menú de Lilia |
