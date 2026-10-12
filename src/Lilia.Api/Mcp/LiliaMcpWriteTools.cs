@@ -146,6 +146,7 @@ public sealed class LiliaMcpWriteTools(
         [Description("article, report or book. Default article.")] string? kind = null)
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        if (UnsafeIn(new object?[] { title, lml }) is { } refused) return new { error = refused, category = "refused" };
         var category = (kind ?? "article").Trim().ToLowerInvariant() switch
         {
             "report" => "report",
@@ -204,9 +205,25 @@ public sealed class LiliaMcpWriteTools(
 
     // ── one write ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// MCP-45: what the compile would refuse (\write18, \input{/etc/…}, \directlua…) is refused when
+    /// it is written, with the guard's own message, instead of being stored and failing every check.
+    /// </summary>
+    internal static string? UnsafeIn(IEnumerable<object?> values)
+    {
+        foreach (var v in values)
+        {
+            var text = v switch { string s => s, JsonElement e => e.ToString(), _ => null };
+            if (text is not null && Lilia.Engines.TexSafety.TexSourceGuard.Violation(text) is { } why)
+                return $"Lilia refuses this LaTeX: {why} Nothing was changed.";
+        }
+        return null;
+    }
+
     private async Task<object> WriteAsync(string documentId, string tool, Dictionary<string, object?> args)
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        if (UnsafeIn(args.Values) is { } refused) return new { error = refused, category = "refused" };
         var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
         if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
         if (!AskLiliaService.MayEditWithAi(true, doc))

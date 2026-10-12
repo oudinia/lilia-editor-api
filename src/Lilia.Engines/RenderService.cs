@@ -2770,6 +2770,12 @@ public partial class RenderService : IRenderService
             commandRegions.Add(piece);
             return $"\x00CMD{commandRegions.Count - 1}\x00";
         });
+        // \end{document} typed in text would end the PDF there (MCP-52): print it instead.
+        result = DocumentFence.Neutralize(result, piece =>
+        {
+            commandRegions.Add(piece);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
         const string protectedCommands =
             // Citations (natbib + biblatex flavors)
             "cite|citep|citet|citealp|citealt|parencite|textcite|footcite|autocite|nocite|" +
