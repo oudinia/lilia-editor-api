@@ -49,7 +49,7 @@ public class CrossRefSyntaxTests
     public void At_ref_from_the_cross_references_panel_becomes_a_reference()
     {
         Render("As shown in @ref{fig:arch} and @ref{eq:loss}.")
-            .Should().Contain(@"\ref{fig:arch}").And.Contain(@"\eqref{eq:loss}").And.NotContain("@ref");
+            .Should().Contain(@"\ref{fig:arch}").And.Contain(@"\ref{eq:loss}").And.NotContain("@ref");
     }
 
     [Fact]

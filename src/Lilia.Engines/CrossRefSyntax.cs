@@ -11,7 +11,7 @@ namespace Lilia.Engines;
 ///   (<c>Equation~(eq:loss)</c>, <c>Figure~(fig:arch)</c>, <c>Theorem~(thm:main)</c>). Becomes
 ///   <c>Kind~\eqref{…}</c> for an equation (prints "Equation (3)") and <c>Kind~\ref{…}</c> otherwise.
 ///   Only a label with a prefix (<c>eq:</c>, <c>fig:</c>…) counts, so "approx~(3 items)" stays text.</item>
-/// <item><c>@ref{label}</c>: what the editor's Cross-references panel inserts.</item>
+/// <item><c>@ref{label}</c>: what the editor's Cross-references panel inserts. Always <c>\ref</c>.</item>
 /// <item><c>@cite{key}</c>: Lilia's citation shorthand (LML, AI skills).</item>
 /// </list>
 ///
@@ -44,7 +44,8 @@ public static class CrossRefSyntax
     {
         if (string.IsNullOrEmpty(text) || (text.IndexOf('@') < 0 && text.IndexOf('~') < 0)) return text;
         var result = KindParen.Replace(text, m => m.Groups["kind"].Value + protect("~" + RefCommand(m.Groups["key"].Value)));
-        result = AtRef.Replace(result, m => protect(RefCommand(m.Groups["key"].Value)));
+        // @ref is a plain \ref whatever the label, as the .tex export always made it.
+        result = AtRef.Replace(result, m => protect($"\\ref{{{LabelKey.Safe(m.Groups["key"].Value)}}}"));
         result = AtCite.Replace(result, m => protect($"\\cite{{{CiteKeys(m.Groups["keys"].Value)}}}"));
         return result;
     }
