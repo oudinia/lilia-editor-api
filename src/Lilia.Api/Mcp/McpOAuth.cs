@@ -31,7 +31,7 @@ public static class McpOAuth
     /// URL they connected to, so it is set on its own: production's Email:BaseUrl is the machine's
     /// address (12 Oct), and the test copy sets https://test.liliaeditor.com.
     /// </summary>
-    private static string PublicOrigin(IConfiguration config) =>
+    public static string PublicOrigin(IConfiguration config) =>
         (config["Mcp:PublicOrigin"] ?? config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/');
 
     /// <summary>The Stytch project domain that issues the tokens (no trailing slash).</summary>

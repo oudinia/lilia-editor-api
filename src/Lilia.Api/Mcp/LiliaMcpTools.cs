@@ -47,7 +47,8 @@ public sealed class LiliaMcpTools(
         ?? http.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         ?? throw new UnauthorizedAccessException("Not signed in.");
 
-    private string EditorUrl(Guid id) => $"{(config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/')}/d/{id}";
+    // The public address, not Email:BaseUrl: on production that is the machine's (12 Oct).
+    private string EditorUrl(Guid id) => $"{McpOAuth.PublicOrigin(config)}/d/{id}";
 
     private async Task<Lilia.Core.DTOs.DocumentDto?> OpenAsync(string documentId) =>
         Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
@@ -126,7 +127,10 @@ public sealed class LiliaMcpTools(
             var source = await render.RenderToLatexAsync(d.Id);
             var result = await latex.ValidateAsync(source);
             var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == d.Id).ToListAsync();
+            // As the editor's Validate: a label nothing defines, or one defined twice. "Unused" is
+            // left out there on purpose (a label not referenced yet is a draft, not a mistake).
             var references = Lilia.Engines.ReferenceIndex.Build(blocks).Problems
+                .Where(p => p.Kind is "dangling" or "duplicate")
                 .Select(p => new { kind = p.Kind, label = p.Key, blockIds = p.BlockIds });
             return new
             {
@@ -169,8 +173,20 @@ public sealed class LiliaMcpTools(
         if (a is null) return new { error = $"No help article '{slug}'. Call search_help first." };
         var saved = level ?? await db.UserPreferences.AsNoTracking()
             .Where(p => p.UserId == UserId).Select(p => p.AskLevel).FirstOrDefaultAsync();
-        return new { article = AskLiliaService.KbForLevel(a, ProficiencyGuidance.Parse(saved ?? AskLevels.Beginner)), url = HelpUrl(a.Slug) };
+        var origin = McpOAuth.PublicOrigin(config);
+        var leveled = a with
+        {
+            Body = AbsoluteLinks(a.Body, origin),
+            Steps = AbsoluteLinks(a.Steps, origin),
+            Beginner = AbsoluteLinks(a.Beginner, origin),
+            Expert = AbsoluteLinks(a.Expert, origin),
+        };
+        return new { article = AskLiliaService.KbForLevel(leveled, ProficiencyGuidance.Parse(saved ?? AskLevels.Beginner)), url = HelpUrl(a.Slug) };
     }
 
-    private string HelpUrl(string slug) => $"{(config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/')}/help/{slug}";
+    private string HelpUrl(string slug) => $"{McpOAuth.PublicOrigin(config)}/help/{slug}";
+
+    /// <summary>The articles' pictures and links are site paths (/help/img/…); outside apps need the address.</summary>
+    internal static string AbsoluteLinks(string markdown, string origin) =>
+        string.IsNullOrEmpty(markdown) ? markdown : markdown.Replace("](/", $"]({origin}/");
 }

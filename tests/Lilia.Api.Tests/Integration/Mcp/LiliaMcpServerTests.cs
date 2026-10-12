@@ -3,7 +3,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Lilia.Api.Services;
 using Lilia.Api.Tests.Integration.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Lilia.Api.Tests.Integration.Mcp;
@@ -110,5 +112,29 @@ public class LiliaMcpServerTests : IntegrationTestBase
             var r = await CallAsync(mallory, tool, new { documentId = doc.Id.ToString() });
             r.GetProperty("error").GetString().Should().Contain("No document", $"{tool} must not open it");
         }
+    }
+
+    [Fact]
+    public async Task Links_use_the_public_address()
+    {
+        // The tools built links from Email:BaseUrl, the machine's address on production (12 Oct).
+        await SeedUserAsync("mcp_links");
+        var doc = await SeedDocumentAsync("mcp_links", "Linked");
+        var list = await CallAsync(CreateClientAs("mcp_links"), "list_documents", new { });
+        var url = list.GetProperty("documents").EnumerateArray().First(d => d.GetProperty("id").GetGuid() == doc.Id)
+            .GetProperty("url").GetString();
+        url.Should().Be($"https://editor.liliaeditor.com/d/{doc.Id}");
+    }
+
+    [Fact]
+    public async Task A_help_article_comes_with_full_picture_addresses()
+    {
+        using (var scope = Fixture.Factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<IKbSeeder>().PreloadAsync();
+        await SeedUserAsync("mcp_help");
+        var r = await CallAsync(CreateClientAs("mcp_help"), "get_help", new { slug = "sharing", lang = "fr" });
+        r.GetProperty("url").GetString().Should().Be("https://editor.liliaeditor.com/help/sharing");
+        var steps = r.GetProperty("article").GetProperty("steps").GetString();
+        steps.Should().Contain("](https://editor.liliaeditor.com/help/img/sharing/fr-1.png)").And.NotContain("](/help");
     }
 }
