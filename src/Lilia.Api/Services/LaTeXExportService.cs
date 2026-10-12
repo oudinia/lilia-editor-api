@@ -1964,6 +1964,8 @@ public class LaTeXExportService : ILaTeXExportService
         // 5–6. Lilia's shorthands: Kind~(label), @ref{label}, @cite{key} — the same rules as the
         // compile emitter (Lilia.Engines.CrossRefSyntax), so an export reads like the PDF.
         result = Lilia.Engines.CrossRefSyntax.Resolve(result, Ph);
+        // \end{document} typed in text would end the export there (MCP-52): print it instead.
+        result = Lilia.Engines.DocumentFence.Neutralize(result, Ph);
 
         // 7. Escape remaining plain text
         result = EscapeLatex(result);

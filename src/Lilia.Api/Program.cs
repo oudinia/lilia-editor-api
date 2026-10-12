@@ -599,6 +599,22 @@ builder.Services.AddRateLimiter(options =>
     // times on its own, such as one figure.svg per TikZ figure, where a per-IP limit of 10
     // would break a figure-heavy document and one office behind one IP. The compiles behind
     // them have their own, tighter budget (TikzFigureService).
+    // The MCP connector: per signed-in user (an app's token names the author), 60 calls a minute.
+    // A tool loop that goes wrong is stopped; normal use (a few calls per request) never notices.
+    options.AddPolicy("mcp", httpContext =>
+    {
+        var partitionKey = httpContext.User.FindFirst("sub")?.Value
+            ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue("Mcp:CallsPerMinute", 60),
+                Window = TimeSpan.FromMinutes(1),
+            });
+    });
     options.AddPolicy("per-user", httpContext =>
     {
         var partitionKey = httpContext.User.FindFirst("sub")?.Value
@@ -954,7 +970,6 @@ app.Use(async (context, next) =>
 });
 
 app.UseCors();
-app.UseRateLimiter();
 
 app.UseMcpChallenge();
 app.UseAuthentication();
@@ -964,6 +979,10 @@ app.UseAuthentication();
 app.UseDevelopmentAuth();
 // A connected app's token (MCP sign-in) is good at /api/mcp only.
 app.UseConnectedAppBoundary();
+// After sign-in, so "per-user" and "mcp" partition by the signed-in user. It ran before
+// authentication: every per-user limit was really per IP, and every MCP app (one IP range for
+// all of Claude's users) would have shared one budget (12 Oct, MCP hardening T0).
+app.UseRateLimiter();
 
 // M2M auth - map client_credentials tokens (no sub claim) to a service account user.
 app.UseM2MAuth();
@@ -974,7 +993,7 @@ app.UseAuthorization();
 app.UseUserSync();
 
 app.MapControllers();
-app.MapMcp("/api/mcp").RequireAuthorization();
+app.MapMcp("/api/mcp").RequireAuthorization().RequireRateLimiting("mcp");
 app.MapMcpMetadata();
 
 // Map SignalR hubs

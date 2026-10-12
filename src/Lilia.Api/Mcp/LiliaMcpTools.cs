@@ -152,10 +152,20 @@ public sealed class LiliaMcpTools(
                 url = EditorUrl(d.Id),
             };
         }
+        // MCP-45: say what happened. A refusal repeats, so "try again" was wrong for it.
+        catch (Lilia.Engines.TexSafety.UnsafeLatexException ex)
+        {
+            return new { compiles = false, category = "refused", error = $"Lilia refuses to compile this LaTeX: {ex.Message}" };
+        }
+        catch (Exception ex) when (ex is TimeoutException or TaskCanceledException or OperationCanceledException)
+        {
+            logger.LogWarning(ex, "[Mcp] check_document timed out for {DocId}", d.Id);
+            return new { compiles = false, category = "timeout", error = "The compile took too long and was stopped. A loop or a very heavy figure is the usual cause." };
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[Mcp] check_document failed for {DocId}", d.Id);
-            return new { error = "Lilia could not compile this document right now. Try again, or use Validate in the editor." };
+            return new { category = "error", error = $"Lilia could not compile this document: {ex.Message}" };
         }
     }
 
