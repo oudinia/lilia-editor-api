@@ -840,7 +840,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                  [Description("Running footer, left slot. Plain text.")] string? footerLeft = null,
                  [Description("Running footer, centre slot. Plain text.")] string? footerCenter = null,
                  [Description("Running footer, right slot. Plain text.")] string? footerRight = null,
-                 [Description("ADVANCED: raw LaTeX added to the preamble (\\newcommand, \\DeclareMathOperator, \\newenvironment). Replaces the whole current preamble, so read it with get_document_settings first and include what should stay. Emitted verbatim after Lilia's packages; a mistake here can break compilation.")] string? customPreamble = null)
+                 [Description("ADVANCED: raw LaTeX added to the preamble (\\newcommand, \\DeclareMathOperator, \\newenvironment). Lilia's own preamble and packages always stay; this replaces only the previous custom preamble, so read that with get_document_settings first and include what should stay. Emitted verbatim after Lilia's packages, before the title; a mistake here can break compilation.")] string? customPreamble = null)
                     => SetDocumentSettingsAsync(live, docGuid, userId, markMetaChanged,
                         new DocumentSettingsValidator.Input(paperSize, orientation, marginTop, marginBottom, marginLeft, marginRight,
                             columns, columnGap, columnSeparator, balancedColumns, fontFamily, fontSize, lineSpacing, paragraphIndent,
@@ -1690,6 +1690,14 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 Type = dto.Type,
                 Content = System.Text.Json.JsonDocument.Parse(dto.Content.GetRawText()),
                 SortOrder = dto.SortOrder,
+                // MCP-66: a block renders under its document's class (a heading is \chapter in a
+                // book, \section in an article); without it the block view disagreed with the PDF.
+                Document = new Lilia.Core.Entities.Document
+                {
+                    Id = docGuid,
+                    LatexDocumentClass = document.LatexDocumentClass,
+                    DocumentCategory = document.DocumentCategory,
+                },
             };
 
             return new

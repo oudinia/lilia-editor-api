@@ -75,10 +75,18 @@ public sealed class LiliaMcpWriteTools(
         "disconnect Lilia in the app (for Claude: Settings → Connectors) and connect again: Lilia will ask " +
         "whether to allow edits.";
 
+    /// <summary>The block types an agent writes (the invoice and CV types exist too, for those documents).</summary>
+    internal static readonly string[] AgentBlockTypes =
+    [
+        "paragraph", "heading", "equation", "theorem", "list", "table", "figure", "code", "blockquote",
+        "abstract", "algorithm", "callout", "footnote", "embed", "bibliography", "pagebreak", "columnbreak",
+        "tableofcontents", "frontMatter", "backMatter", "personalInfo", "cvSection", "cvEntry",
+    ];
+
     // ── the tools ─────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "add_block", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Add a block to a document (small, targeted inserts). Returns the new block id. Types: paragraph, heading, equation, theorem, code, list, table, figure, abstract, blockquote; on a CV personalInfo, cvSection, cvEntry. The open editor shows the change at once; the reply gives the version to restore to undo it.")]
+    [Description("Add a block to a document (small, targeted inserts). Returns the new block id. The open editor shows the change at once; the reply gives the version to restore to undo it. An unknown type is refused. Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?}; figure {src, caption?, label?, width 0-1} or TikZ {kind:\"tikz\", source, caption?, label?}; code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {title?, lines or code, caption?, label?}; callout {text, title?, variant?}; footnote {text}; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}. Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation.")]
     public Task<object> AddBlock(
         [Description("The document id.")] string documentId,
         [Description("Block type, e.g. paragraph, heading, equation.")] string type,
@@ -87,13 +95,43 @@ public sealed class LiliaMcpWriteTools(
         WriteAsync(documentId, "add_block", new() { ["type"] = type, ["content"] = content, ["afterId"] = afterId });
 
     [McpServerTool(Name = "edit_block", Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Replace one block's content (and optionally its type) by id. Read it first with get_block.")]
+    [Description("Replace one block's content (and optionally its type) by id. Read it first with get_block. The content replaces the old one entirely: when changing the type, give the new type's fields. Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?}; figure {src, caption?, label?, width 0-1} or TikZ {kind:\"tikz\", source, caption?, label?}; code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {title?, lines or code, caption?, label?}; callout {text, title?, variant?}; footnote {text}; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}. Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation.")]
     public Task<object> EditBlock(
         [Description("The document id.")] string documentId,
         [Description("The block id (from get_outline).")] string blockId,
         [Description("The new JSON content for the block.")] string content,
         [Description("Optional new block type.")] string? type = null) =>
-        WriteAsync(documentId, "edit_block", new() { ["blockId"] = blockId, ["content"] = content, ["type"] = type });
+        WriteAsync(documentId, "edit_block", new() { ["blockId"] = blockId, ["content"] = MapForType(content, type), ["type"] = type });
+
+    /// <summary>
+    /// MCP-50: a type change with content in the old shape — paragraph → equation sent
+    /// {"text":"E=mc^2"} and printed "% Empty equation"; equation → paragraph sent {"latex":…} and
+    /// printed nothing. The field moves across: text → latex for an equation, latex → $…$ text for a
+    /// text block. Content already in the new shape is left alone.
+    /// </summary>
+    internal static string MapForType(string content, string? newType)
+    {
+        if (string.IsNullOrWhiteSpace(newType)) return content;
+        System.Text.Json.Nodes.JsonObject? node;
+        try { node = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject; }
+        catch (JsonException) { return content; }
+        if (node is null) return content;
+        string? Str(string key) => node[key] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+        var type = newType.Trim().ToLowerInvariant();
+        if (type == "equation" && string.IsNullOrWhiteSpace(Str("latex")) && Str("text") is { Length: > 0 } text)
+        {
+            node["latex"] = text.Trim().Trim('$').Trim();
+            node.Remove("text");
+        }
+        else if (type is "paragraph" or "heading" or "abstract" or "blockquote" or "theorem" or "footnote"
+                 && string.IsNullOrWhiteSpace(Str("text")) && Str("latex") is { Length: > 0 } latex)
+        {
+            node["text"] = $"${latex.Trim()}$";
+            node.Remove("latex");
+        }
+        else return content;
+        return node.ToJsonString();
+    }
 
     [McpServerTool(Name = "remove_block", Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Delete one block by id. The version saved before the change can restore it.")]
@@ -127,7 +165,7 @@ public sealed class LiliaMcpWriteTools(
         WriteAsync(documentId, "apply_lml", new() { ["lml"] = lml, ["title"] = title });
 
     [McpServerTool(Name = "set_document_settings", Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), customPreamble (replaces the whole preamble: read it first with get_document_settings). Invalid values change nothing and list the valid ones.")]
+    [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
     public Task<object> SetDocumentSettings(
         [Description("The document id.")] string documentId,
         [Description("The fields to change, e.g. {\"fontSize\":12,\"marginLeft\":\"2cm\"}.")] JsonElement settings)
@@ -161,7 +199,8 @@ public sealed class LiliaMcpWriteTools(
         });
         object? body = null;
         if (!string.IsNullOrWhiteSpace(lml))
-            body = await WriteAsync(doc.Id.ToString(), "apply_lml", new() { ["lml"] = lml });
+            // MCP-02: the title given here stays; apply_lml would otherwise take the first heading.
+            body = await WriteAsync(doc.Id.ToString(), "apply_lml", new() { ["lml"] = lml, ["title"] = doc.Title });
         return new { id = doc.Id, title = doc.Title, kind = category, body, url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}" };
     }
 
@@ -224,6 +263,10 @@ public sealed class LiliaMcpWriteTools(
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
         if (UnsafeIn(args.Values) is { } refused) return new { error = refused, category = "refused" };
+        // MCP-29 / 42: an unknown block type was stored and printed "% Unknown block type".
+        if (args.TryGetValue("type", out var t) && t is string typeName && !string.IsNullOrWhiteSpace(typeName)
+            && !Lilia.Core.Entities.BlockTypes.All.Contains(typeName.Trim(), StringComparer.OrdinalIgnoreCase))
+            return new { error = $"Lilia has no block type '{typeName}'. Use one of: {string.Join(", ", AgentBlockTypes)}.", category = "invalid" };
         var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
         if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
         if (!AskLiliaService.MayEditWithAi(true, doc))
