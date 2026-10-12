@@ -751,7 +751,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 description: "Search the open document's text; returns matching blocks as {id, type, snippet}."),
             AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Block id from get_outline/search_document. Omit for the whole document.")] string? blockId = null)
-                    => LiliaLatexAsync(live.Dto, docGuid, blockId),
+                    => LiliaLatexAsync(_renderService, _logger, live.Dto, docGuid, blockId),
                 name: "get_lilia_latex",
                 description:
                     "Return the LaTeX that LILIA ITSELF emits for one block or the whole document — "
@@ -865,7 +865,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
 
     // A dictionary, not an anonymous type: the tool serializer drops null
     // properties, and "this setting is at the class default" must be visible.
-    private static Dictionary<string, object?> SettingsView(Lilia.Core.DTOs.DocumentDto d) => new()
+    internal static Dictionary<string, object?> SettingsView(Lilia.Core.DTOs.DocumentDto d) => new()
     {
         ["paperSize"] = d.PaperSize,
         // Older documents made landscape by the class popover hold it only in the options blob; they
@@ -1532,7 +1532,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
             || string.Equals(cls, "curriculum", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static object DocOutline(Lilia.Core.DTOs.DocumentDto document)
+    internal static object DocOutline(Lilia.Core.DTOs.DocumentDto document)
     {
         var blocks = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).OrderBy(b => b.SortOrder).ToList();
         return new
@@ -1575,7 +1575,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         return "(personalInfo)";
     }
 
-    private static object DocBlock(Lilia.Core.DTOs.DocumentDto document, string blockId)
+    internal static object DocBlock(Lilia.Core.DTOs.DocumentDto document, string blockId)
     {
         if (!Guid.TryParse(blockId, out var id)) return BlockIdError(document, blockId, parsed: false);
         var b = (document.Blocks ?? new List<Lilia.Core.DTOs.BlockDto>()).FirstOrDefault(x => x.Id == id);
@@ -1645,7 +1645,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// distinguish the two, rather than presenting a guess with the same
     /// confidence as ground truth.</para>
     /// </summary>
-    private async Task<object> LiliaLatexAsync(
+    internal static async Task<object> LiliaLatexAsync(
+        Lilia.Engines.IRenderService renderService, ILogger logger,
         Lilia.Core.DTOs.DocumentDto document, Guid docGuid, string? blockId)
     {
         const string provenance =
@@ -1656,7 +1657,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         {
             if (string.IsNullOrWhiteSpace(blockId))
             {
-                var full = await _renderService.RenderToLatexAsync(docGuid);
+                var full = await renderService.RenderToLatexAsync(docGuid);
                 return new
                 {
                     source = "lilia-emitter",
@@ -1690,7 +1691,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 scope = "block",
                 blockId = dto.Id,
                 type = dto.Type,
-                latex = _renderService.RenderBlockToLatex(block),
+                latex = renderService.RenderBlockToLatex(block),
                 note = provenance
                     + " A title block is empty here by design: its \\title/\\author/\\date live in "
                     + "the preamble, not the body.",
@@ -1698,13 +1699,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[AskLilia] get_lilia_latex failed for {DocId} block {BlockId}",
+            logger.LogWarning(ex, "[AskLilia] get_lilia_latex failed for {DocId} block {BlockId}",
                 docGuid, blockId);
             return new { error = "could not render this document's LaTeX" };
         }
     }
 
-    private static object DocSearch(Lilia.Core.DTOs.DocumentDto document, string query)
+    internal static object DocSearch(Lilia.Core.DTOs.DocumentDto document, string query)
     {
         var q = (query ?? string.Empty).Trim();
         if (q.Length == 0) return new { matches = Array.Empty<object>() };
