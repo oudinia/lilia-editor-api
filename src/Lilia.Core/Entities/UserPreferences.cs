@@ -36,10 +36,35 @@ public class UserPreferences
     public bool PreviewEnabled { get; set; } = true;
     /// <summary>How the editor's "saved" moment looks: "pro" (default) or "fun". See <see cref="Personalities"/>.</summary>
     public string Personality { get; set; } = Personalities.Pro;
+    /// <summary>
+    /// How Ask Lilia explains: "beginner", "intermediate" or "advanced" (see <see cref="AskLevels"/>).
+    /// Null until the author answers the one-time question; Ask Lilia treats null as beginner.
+    /// </summary>
+    public string? AskLevel { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
     public virtual User User { get; set; } = null!;
+}
+
+/// <summary>
+/// The values of <see cref="UserPreferences.AskLevel"/> (the user, 12 Oct: ask once, save it on the
+/// account, skipping means beginner). The help pages' Simple · Standard · For LaTeX users.
+/// </summary>
+public static class AskLevels
+{
+    public const string Beginner = "beginner";
+    public const string Intermediate = "intermediate";
+    public const string Advanced = "advanced";
+    public const int MaxLength = 16;
+
+    public static string? Normalize(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        Beginner or "new" => Beginner,
+        Intermediate or "some" => Intermediate,
+        Advanced or "pro" => Advanced,
+        _ => null,
+    };
 }
 
 /// <summary>

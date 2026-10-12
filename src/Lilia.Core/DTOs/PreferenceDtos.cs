@@ -15,7 +15,9 @@ public record UserPreferencesDto(
     DateTime UpdatedAt,
     // The Lilia menu's pinned tools, in the user's order. Null until first set;
     // empty means "pinned nothing". Never also present in KeyboardShortcuts.
-    string[]? PinnedTools = null
+    string[]? PinnedTools = null,
+    // How Ask Lilia explains (beginner | intermediate | advanced); null until asked.
+    string? AskLevel = null
 );
 
 public record UpdatePreferencesDto(
@@ -28,7 +30,9 @@ public record UpdatePreferencesDto(
     string? Personality = null,
     // When non-null, replaces the stored list: at most 12 distinct tool keys,
     // each ^[a-z][a-z-]{0,31}$. Empty is valid.
-    string[]? PinnedTools = null
+    string[]? PinnedTools = null,
+    // beginner | intermediate | advanced; omitted leaves it as it is.
+    string? AskLevel = null
 );
 
 public record UpdateKeyboardShortcutsDto(

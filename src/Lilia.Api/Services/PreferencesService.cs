@@ -120,6 +120,11 @@ public partial class PreferencesService : IPreferencesService
             preferences.Personality = Personalities.Normalize(dto.Personality)
                 ?? throw new ArgumentException($"Unknown personality '{dto.Personality}'.", nameof(dto));
         }
+        if (dto.AskLevel != null)
+        {
+            preferences.AskLevel = AskLevels.Normalize(dto.AskLevel)
+                ?? throw new ArgumentException($"Unknown Ask Lilia level '{dto.AskLevel}'.", nameof(dto));
+        }
         if (dto.PinnedTools != null)
         {
             var error = ValidatePinnedTools(dto.PinnedTools);
@@ -214,7 +219,8 @@ public partial class PreferencesService : IPreferencesService
             p.Personality,
             shortcuts,
             p.UpdatedAt,
-            pinned
+            pinned,
+            p.AskLevel
         );
     }
 }

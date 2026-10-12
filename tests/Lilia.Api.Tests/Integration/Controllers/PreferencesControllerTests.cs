@@ -67,6 +67,34 @@ public class PreferencesControllerTests : IntegrationTestBase
         prefs.DefaultFontFamily.Should().Be("monospace");
     }
 
+    // Ask Lilia's level (the user, 12 Oct): asked once, saved on the account; null until then.
+    [Fact]
+    public async Task AskLevel_IsNull_UntilAnswered_ThenSavedLowercase()
+    {
+        await SeedUserAsync(UserId);
+
+        var fresh = await Client.GetFromJsonAsync<UserPreferencesDto>("/api/preferences");
+        fresh!.AskLevel.Should().BeNull("a new account has not been asked yet");
+
+        var put = await Client.PutAsJsonAsync("/api/preferences", new { askLevel = "Advanced" });
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+        var prefs = await Client.GetFromJsonAsync<UserPreferencesDto>("/api/preferences");
+        prefs!.AskLevel.Should().Be("advanced");
+
+        await Client.PutAsJsonAsync("/api/preferences", new { theme = "dark" });
+        (await Client.GetFromJsonAsync<UserPreferencesDto>("/api/preferences"))!.AskLevel.Should().Be("advanced", "other updates leave it");
+    }
+
+    [Fact]
+    public async Task AskLevel_Returns400_ForAnUnknownLevel()
+    {
+        await SeedUserAsync(UserId);
+        var put = await Client.PutAsJsonAsync("/api/preferences", new { askLevel = "wizard" });
+        put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await put.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("askLevel");
+    }
+
     // Personality: how the editor's "saved" moment looks. "pro" by default.
     [Fact]
     public async Task GetPreferences_PersonalityIsPro_ForAFreshUser()

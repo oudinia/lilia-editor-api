@@ -276,7 +276,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         // ── route + prompt ────────────────────────────────────────────────
         var route = _router.Route(request.Message);
         var skill = _router.Get(route.SkillId);
-        var level = ProficiencyGuidance.Parse(request.Proficiency);
+        var level = ProficiencyGuidance.Parse(request.Proficiency ?? await AccountAskLevelAsync(userId, ct));
         var webSearch = WebSearchEnabledFor(skill.Id);
 
         var guidance = AiSkillGuidance.Get(skill.Id);
@@ -615,6 +615,25 @@ public sealed partial class AskLiliaService : IAskLiliaService
             _logger.LogWarning(ex, "[AskLilia] Credit debit failed for user {UserId}", userId);
         }
         return (credits, balance, creditsUsed);
+    }
+
+    /// <summary>
+    /// The level saved on the author's account when the request doesn't name one (the user,
+    /// 12 Oct: ask once, save it on the account; never asked or skipped means beginner).
+    /// </summary>
+    internal async Task<string> AccountAskLevelAsync(string userId, CancellationToken ct)
+    {
+        try
+        {
+            var saved = await _context.UserPreferences.AsNoTracking()
+                .Where(p => p.UserId == userId).Select(p => p.AskLevel).FirstOrDefaultAsync(ct);
+            return saved ?? AskLevels.Beginner;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AskLilia] could not read the ask level for {UserId}", userId);
+            return AskLevels.Beginner;
+        }
     }
 
     // ── KB tool-use ───────────────────────────────────────────────────────

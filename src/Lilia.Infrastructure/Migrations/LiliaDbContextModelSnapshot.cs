@@ -7352,6 +7352,11 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("user_id");
 
+                    b.Property<string>("AskLevel")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("ask_level");
+
                     b.Property<bool>("AutoSaveEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
