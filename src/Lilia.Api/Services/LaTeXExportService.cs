@@ -1967,7 +1967,8 @@ public class LaTeXExportService : ILaTeXExportService
         // \end{document} typed in text would end the export there (MCP-52): print it instead.
         result = Lilia.Engines.DocumentFence.Neutralize(result, Ph);
 
-        // 7. Escape remaining plain text
+        // 7. Escape remaining plain text; a ~ between two characters stays a tie (MCP-67).
+        result = Lilia.Engines.TieSyntax.Protect(result, Ph);
         result = EscapeLatex(result);
 
         // 8. Restore placeholders

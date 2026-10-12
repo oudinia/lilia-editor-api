@@ -2889,6 +2889,13 @@ public partial class RenderService : IRenderService
             commandRegions.Add(piece);
             return $"\x00CMD{commandRegions.Count - 1}\x00";
         });
+        // MCP-67: a ~ between two characters is a tie (Theorem~\ref{…}); only a lone ~ is printed.
+        // Here, before \ref and the rest become placeholders (TieSyntax explains why).
+        result = TieSyntax.Protect(result, piece =>
+        {
+            commandRegions.Add(piece);
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
+        });
         // \end{document} typed in text would end the PDF there (MCP-52): print it instead.
         result = DocumentFence.Neutralize(result, piece =>
         {
