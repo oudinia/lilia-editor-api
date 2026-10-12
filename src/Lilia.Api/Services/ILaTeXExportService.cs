@@ -28,7 +28,9 @@ public class LaTeXExportOptions
     public string? PaperSize { get; set; }
     public string Structure { get; set; } = "single";
     public string MultiFileLayout { get; set; } = "flat";
-    public bool IncludePhysics { get; set; } = true;
+    // Off by default: physics redefines siunitx's \qty, which Lilia's shared preamble loads, and
+    // the check emitter never loads physics (MCP-09; LaTeXPreamble explains the choice).
+    public bool IncludePhysics { get; set; }
     public bool IncludeChemistry { get; set; }
     public string BibliographyStyle { get; set; } = "plain";
     public double LineSpacing { get; set; } = 1.0;
