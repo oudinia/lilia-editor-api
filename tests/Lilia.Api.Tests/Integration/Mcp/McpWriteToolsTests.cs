@@ -73,15 +73,30 @@ public class McpWriteToolsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task An_app_connected_for_reading_only_is_told_to_reconnect()
+    public async Task For_now_an_app_edits_without_the_write_scope()
     {
-        await SeedUserAsync("mcpw_reader_app");
-        var doc = await SeedDocumentAsync("mcpw_reader_app");
-        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Keep me."}""", 0);
-        var r = await CallAsync(App("mcpw_reader_app", "openid email profile"), "remove_block",
-            new { documentId = doc.Id.ToString(), blockId = Guid.NewGuid().ToString() });
-        r.GetProperty("error").GetString().Should().Contain("connect again");
-        (await BlockCountAsync(doc.Id)).Should().Be(1);
+        // The user, 12 Oct: "for now, let's give the mcp write capability also".
+        await SeedUserAsync("mcpw_no_scope");
+        var doc = await SeedDocumentAsync("mcpw_no_scope");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body."}""", 0);
+        var r = await CallAsync(App("mcpw_no_scope", "openid email profile"), "add_block",
+            new { documentId = doc.Id.ToString(), type = "paragraph", content = """{"text":"From an app."}""" });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        (await BlockCountAsync(doc.Id)).Should().Be(2);
+    }
+
+    [Fact]
+    public void With_the_scope_required_an_app_connected_for_reading_only_may_not_write()
+    {
+        System.Security.Claims.ClaimsPrincipal App(string scope) => new(new System.Security.Claims.ClaimsIdentity(new[]
+        {
+            new System.Security.Claims.Claim("sub", "u"),
+            new System.Security.Claims.Claim("client_id", "connected-app-test-claude"),
+            new System.Security.Claims.Claim("scope", scope),
+        }, "Test"));
+        Lilia.Api.Mcp.LiliaMcpWriteTools.AppMayWrite(App("openid email"), requireScope: true).Should().BeFalse();
+        Lilia.Api.Mcp.LiliaMcpWriteTools.AppMayWrite(App("openid documents:write"), requireScope: true).Should().BeTrue();
+        Lilia.Api.Mcp.LiliaMcpWriteTools.AppMayWrite(App("openid email"), requireScope: false).Should().BeTrue();
     }
 
     [Fact]

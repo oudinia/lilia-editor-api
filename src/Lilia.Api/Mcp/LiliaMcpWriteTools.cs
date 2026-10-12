@@ -18,9 +18,9 @@ namespace Lilia.Api.Mcp;
 /// <list type="bullet">
 /// <item><b>Same writes as Ask Lilia.</b> Each tool runs Ask Lilia's own edit tool
 ///   (<see cref="AskLiliaService.BuildDocumentTools"/>): same validation, same saving.</item>
-/// <item><b>Who may write.</b> The author must be the owner or an editor, and an app's token must
-///   carry <see cref="WriteScope"/>: the author allowed edits on the consent page. A connection made
-///   before edits existed keeps reading and is told to reconnect.</item>
+/// <item><b>Who may write.</b> The author must be the owner or an editor. With
+///   <c>Mcp:RequireWriteScope</c> on, an app's token must also carry <see cref="WriteScope"/> (the
+///   author allowed edits on the consent page); it is off for now.</item>
 /// <item><b>Undo.</b> Before an app's first change to a document (again after
 ///   <see cref="UndoWindow"/> without changes), a version is saved; every reply gives its id.</item>
 /// <item><b>Live.</b> The open editor hears <c>DocumentChangedExternally</c> on the document's
@@ -58,9 +58,16 @@ public sealed class LiliaMcpWriteTools(
         return raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
     }
 
-    /// <summary>Lilia's own sign-in may write; an app only with <see cref="WriteScope"/>.</summary>
-    internal static bool AppMayWrite(System.Security.Claims.ClaimsPrincipal? user) =>
-        Scopes(user) is not { } scopes || scopes.Contains(WriteScope);
+    /// <summary>
+    /// Lilia's own sign-in may write. An app may write too, unless <c>Mcp:RequireWriteScope</c> is
+    /// on: then only with <see cref="WriteScope"/> (the author allowed edits on the consent page).
+    /// Off for now (the user, 12 Oct: "for now, let's give the mcp write capability also"): the
+    /// Stytch RBAC scopes are not set up yet, and the consent page says the app can edit.
+    /// </summary>
+    internal static bool AppMayWrite(System.Security.Claims.ClaimsPrincipal? user, bool requireScope) =>
+        !requireScope || Scopes(user) is not { } scopes || scopes.Contains(WriteScope);
+
+    public static bool RequireWriteScope(IConfiguration config) => config.GetValue<bool>("Mcp:RequireWriteScope");
 
     private const string ReconnectMessage =
         "This app was connected to Lilia before it could edit, so it may only read. To let it edit, " +
@@ -134,7 +141,7 @@ public sealed class LiliaMcpWriteTools(
 
     private async Task<object> WriteAsync(string documentId, string tool, Dictionary<string, object?> args)
     {
-        if (!AppMayWrite(User)) return new { error = ReconnectMessage };
+        if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
         var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
         if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
         if (!AskLiliaService.MayEditWithAi(true, doc))
