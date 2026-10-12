@@ -24,7 +24,7 @@ keywords: block lml paste paragraph heading equation figure table theorem abstra
   \mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda \lVert W \rVert_2^2
 ```
 
-**Inline marks** (inside any text): `**bold**`, `*italic*`, `__underline__`, `~~strike~~`, `==highlight==`, `^superscript^`, `%%subscript%%`, maths as `$…$`, `\(…\)` or `\[…\]`. Refer to a labelled block with `Theorem~(thm:main)` or `Equation~(eq:loss)` (Lilia writes `\ref` / `\eqref` and numbers it), cite with `@cite{key}`. In a quoted attribute (`caption="…"`) a backslash stays as written; only `\"` and `\\` are escapes. In a table, `\|` is a literal bar.
+**Inline marks** (inside any text): `**bold**`, `*italic*`, `__underline__`, `~~strike~~`, `==highlight==`, `^superscript^`, `%%subscript%%`, maths as `$…$`, `\(…\)` or `\[…\]`. Refer to a labelled block with `Theorem~(thm:main)` or `Equation~(eq:loss)` (Lilia writes `\ref` / `\eqref` and numbers it), cite with `@cite{key}`. In a quoted attribute (`caption="…"`) a backslash stays as written; only `\"` and `\\` are escapes. In a table, `\|` is a literal bar. Marks and maths work in table cells, captions and theorem titles too. A Markdown heading can carry its label: `# Results {#sec:results}`. A `$` followed by an amount (`$5`) is a price, not maths.
 
 **Why blocks.** Each block knows its type, so Lilia can validate it, renumber cross-references, and emit correct LaTeX — you focus on content, not boilerplate.
 
