@@ -60,13 +60,21 @@ public class CrossRefSyntaxTests
     }
 
     [Theory]
-    [InlineData("about~(3 items)")]
-    [InlineData("a~b")]
-    public void A_tilde_that_is_not_a_reference_stays_as_typed(string text)
+    [InlineData("about~(3 items)", "about~(3 items)")]
+    [InlineData("a~b", "a~b")]
+    [InlineData(@"Theorem~\ref{thm:a}", @"Theorem~\ref{thm:a}")]
+    [InlineData("Dr.~Smith", "Dr.~Smith")]
+    public void A_tilde_between_two_characters_is_a_tie(string text, string expected)
     {
-        // Only a prefixed label (eq:, fig:…) is a reference; anything else keeps today's behaviour.
-        Render(text).Should().Contain(@"\textasciitilde{}");
+        // MCP-67: LaTeX's non-breaking space, as authors mean it. Only a prefixed label is a reference.
+        Render(text).Should().Contain(expected).And.NotContain("textasciitilde");
     }
+
+    [Theory]
+    [InlineData("about ~5 minutes")]
+    [InlineData("a ~ b")]
+    public void A_lone_tilde_is_printed(string text) =>
+        Render(text).Should().Contain(@"\textasciitilde{}");
 
     [Fact]
     public void Raw_latex_references_still_pass_through()
