@@ -1609,7 +1609,7 @@ public partial class RenderService : IRenderService
         sb.AppendLine(@"\begin{algorithm}[H]");
         var displayCaption = !string.IsNullOrEmpty(caption) ? caption : title;
         if (!string.IsNullOrEmpty(displayCaption))
-            sb.AppendLine($@"\caption{{{EscapeLatex(displayCaption)}}}");
+            sb.AppendLine($@"\caption{{{InlineArgument(displayCaption)}}}");
         if (!string.IsNullOrEmpty(label))
             sb.AppendLine($@"\label{{{label}}}");
         sb.AppendLine(lineNumbers ? @"\begin{algorithmic}[1]" : @"\begin{algorithmic}");
@@ -1892,7 +1892,7 @@ public partial class RenderService : IRenderService
         if (TikzFigure.IsTikz(content))
         {
             var tikzSpan = content.TryGetProperty("span", out var ts) && ts.ValueKind == JsonValueKind.String ? ts.GetString() : null;
-            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : EscapeLatex(caption), label,
+            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : InlineArgument(caption), label,
                 string.Equals(tikzSpan, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure") + "\n";
         }
 
@@ -1933,7 +1933,7 @@ public partial class RenderService : IRenderService
                 else
                     sb.AppendLine(@"% [subfigure placeholder — no image uploaded]");
                 if (!string.IsNullOrEmpty(subCaption))
-                    sb.AppendLine($@"\caption{{{EscapeLatex(subCaption)}}}");
+                    sb.AppendLine($@"\caption{{{InlineArgument(subCaption)}}}");
                 if (!string.IsNullOrEmpty(subLabel))
                     sb.AppendLine($@"\label{{{subLabel}}}");
                 sb.AppendLine(@"\end{subfigure}");
@@ -1941,7 +1941,7 @@ public partial class RenderService : IRenderService
             }
 
             if (!string.IsNullOrEmpty(caption))
-                sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+                sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}");
             if (!string.IsNullOrEmpty(label))
                 sb.AppendLine($@"\label{{{label}}}");
             sb.AppendLine(@"\end{figure}");
@@ -1956,7 +1956,7 @@ public partial class RenderService : IRenderService
                 sb.AppendLine(@"% [figure placeholder — no image uploaded]");
             if (!string.IsNullOrEmpty(caption))
             {
-                sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}");
+                sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}");
             }
             if (!string.IsNullOrEmpty(label))
             {
@@ -2135,8 +2135,8 @@ public partial class RenderService : IRenderService
                 ? sc.GetString() ?? ""
                 : "";
             var captionCommand = !string.IsNullOrEmpty(shortCaption)
-                ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}"
-                : $@"\caption{{{EscapeLatex(caption)}}}";
+                ? $@"\caption[{OptionalArgument(InlineArgument(shortCaption))}]{{{InlineArgument(caption)}}}"
+                : $@"\caption{{{InlineArgument(caption)}}}";
 
             // The rest of the table's meaning (2g): group headers, notes, row groups, and
             // whether it is long. See TableLayout.
@@ -2440,7 +2440,7 @@ public partial class RenderService : IRenderService
         if (escapeOption is not null)
             options.Add(escapeOption);
         if (!string.IsNullOrEmpty(caption))
-            options.Add($"caption={{{EscapeLatex(caption)}}}");
+            options.Add($"caption={{{InlineArgument(caption)}}}");
         // MCP-19: the label, so \ref to a listing resolves (it was dropped).
         var codeLabel = LabelKey.Effective("code",
             content.TryGetProperty("label", out var cl) && cl.ValueKind == JsonValueKind.String ? cl.GetString() : null);
@@ -2686,7 +2686,7 @@ public partial class RenderService : IRenderService
         var envName = theoremType == "proof"
             ? "proof"
             : (numbered ? theoremType : $"{theoremType}*");
-        var titleOption = !string.IsNullOrEmpty(title) ? $"[{EscapeLatex(title)}]" : "";
+        var titleOption = !string.IsNullOrEmpty(title) ? $"[{OptionalArgument(InlineArgument(title))}]" : "";
 
         var sb = new StringBuilder();
         sb.AppendLine($@"\begin{{{envName}}}{titleOption}");
@@ -2870,6 +2870,17 @@ public partial class RenderService : IRenderService
         return result;
     }
 
+    /// <summary>
+    /// Text in a command's argument — a caption, a theorem title: maths and inline marks as in a
+    /// paragraph, kept on one line. They were plain-escaped, so $x^2$ printed as text (MCP-14/60).
+    /// An optional argument goes through <see cref="OptionalArgument"/>, so a ] can't end it early.
+    /// </summary>
+    private string InlineArgument(string? text) =>
+        ProcessLatexText(Regex.Replace(text ?? "", @"\s*\r?\n\s*", " ")).Trim();
+
+    /// <summary>An optional argument's text, braced when it holds a ] that would end it early (MCP-60).</summary>
+    public static string OptionalArgument(string latex) => latex.Contains(']') ? "{" + latex + "}" : latex;
+
     private string ProcessLatexText(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -2879,6 +2890,11 @@ public partial class RenderService : IRenderService
         // Step 1: Extract and protect math regions and LaTeX commands from escaping.
         // Replace $...$ and $$...$$ with placeholders to avoid mangling them.
         var mathRegions = new List<string>();
+        // MCP-16: a price ($5, $10) is not the start of a formula.
+        result = CurrencyDollar.Protect(result, sign => {
+            mathRegions.Add(sign);
+            return $"\x00MATH{mathRegions.Count - 1}\x00";
+        });
         // MCP-11: \[…\] and \(…\) are maths too. Unprotected, the inline marks and the escape pass
         // ran inside them: \(e^{i\pi}+1=0\) … \(a^2\) became one "superscript" (Missing $), and
         // \[ a_1 \] printed a\_1.
