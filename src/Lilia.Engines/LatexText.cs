@@ -141,24 +141,55 @@ public static class LatexText
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
 
-        const string Bold = "\\textbf{";
         var sb = new StringBuilder(text.Length + 8);
         var i = 0;
 
         while (i < text.Length)
         {
-            // \textbf{…} — the command survives; its contents are still user text, read the
-            // same way (so maths inside bold stays maths). The argument runs to ITS closing
-            // brace, not the first one: \textbf{a{b}c} is one bold run.
-            if (string.CompareOrdinal(text, i, Bold, 0, Bold.Length) == 0)
+            // \textbf{…} and the other text marks — the command survives; its contents are
+            // still user text, read the same way (so maths inside bold stays maths). The argument
+            // runs to ITS closing brace, not the first one: \textbf{a{b}c} is one bold run.
+            var mark = CellMarks.FirstOrDefault(m => string.CompareOrdinal(text, i, m, 0, m.Length) == 0);
+            if (mark is not null)
             {
-                var close = ClosingBrace(text, i + Bold.Length - 1);
+                var close = ClosingBrace(text, i + mark.Length - 1);
                 if (close >= 0)
                 {
-                    sb.Append(Bold)
-                      .Append(EscapeCell(text[(i + Bold.Length)..close]))
+                    sb.Append(mark)
+                      .Append(EscapeCell(text[(i + mark.Length)..close]))
                       .Append('}');
                     i = close + 1;
+                    continue;
+                }
+            }
+
+            // MCP-15: the inline marks a paragraph reads — **bold**, *italic*, `code` — and \(…\)
+            // maths. They printed literally (or as \textbackslash{}) in a cell.
+            if (MarkdownRun(text, i, "**") is { } bold)
+            {
+                sb.Append(@"\textbf{").Append(EscapeCell(bold.Inner)).Append('}');
+                i = bold.End;
+                continue;
+            }
+            if (text[i] == '*' && MarkdownRun(text, i, "*") is { } italic)
+            {
+                sb.Append(@"\textit{").Append(EscapeCell(italic.Inner)).Append('}');
+                i = italic.End;
+                continue;
+            }
+            if (text[i] == '`' && MarkdownRun(text, i, "`") is { } code)
+            {
+                sb.Append(@"\texttt{").Append(EscapeCell(code.Inner)).Append('}');
+                i = code.End;
+                continue;
+            }
+            if (string.CompareOrdinal(text, i, @"\(", 0, 2) == 0)
+            {
+                var close = text.IndexOf(@"\)", i + 2, StringComparison.Ordinal);
+                if (close >= 0 && IsInlineMath(text[(i + 2)..close]))
+                {
+                    sb.Append('$').Append(text, i + 2, close - i - 2).Append('$');
+                    i = close + 2;
                     continue;
                 }
             }
@@ -184,6 +215,28 @@ public static class LatexText
         }
 
         return sb.ToString();
+    }
+
+    // Text-mark commands kept in a cell, with their argument read as cell text.
+    private static readonly string[] CellMarks = [@"\textbf{", @"\textit{", @"\emph{", @"\underline{", @"\texttt{"];
+
+    /// <summary>A <c>**…**</c>, <c>*…*</c> or <c>`…`</c> run opening at <paramref name="at"/>, as a paragraph reads one.</summary>
+    private static (string Inner, int End)? MarkdownRun(string text, int at, string fence)
+    {
+        if (string.CompareOrdinal(text, at, fence, 0, fence.Length) != 0) return null;
+        // At a word's edge, as in Markdown: 2*3*4 is arithmetic, not italic.
+        if (at > 0 && char.IsLetterOrDigit(text[at - 1])) return null;
+        var start = at + fence.Length;
+        if (start >= text.Length || char.IsWhiteSpace(text[start])) return null;
+        // A single * is italic only when it is not half of a **.
+        if (fence == "*" && text[start] == '*') return null;
+        var close = text.IndexOf(fence, start, StringComparison.Ordinal);
+        while (fence == "*" && close >= 0 && close + 1 < text.Length && text[close + 1] == '*')
+            close = text.IndexOf(fence, close + 2, StringComparison.Ordinal);
+        if (close <= start || char.IsWhiteSpace(text[close - 1])) return null;
+        var end = close + fence.Length;
+        if (end < text.Length && char.IsLetterOrDigit(text[end])) return null;
+        return (text[start..close], end);
     }
 
     /// <summary>

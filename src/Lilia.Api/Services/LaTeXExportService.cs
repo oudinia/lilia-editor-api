@@ -1135,7 +1135,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // A TikZ figure: its source goes out byte for byte (TikzFigure).
         if (TikzFigure.IsTikz(content))
-            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : EscapeLatex(caption),
+            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : InlineArgument(caption),
                 string.IsNullOrEmpty(label) ? "" : LabelKey.Effective("figure", label), env);
 
         // Subfigures — when the figure carries a `subfigures` array, emit a
@@ -1169,7 +1169,7 @@ public class LaTeXExportService : ILaTeXExportService
                 if (i < panels.Count - 1) fsb.AppendLine(@"\hfill");
             }
             if (!string.IsNullOrEmpty(caption))
-                fsb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
+                fsb.AppendLine($@"\caption{{{InlineArgument(caption)}}}{labelPart}");
             else if (!string.IsNullOrEmpty(labelPart))
                 fsb.AppendLine(labelPart);
             fsb.Append($@"\end{{{env}}}");
@@ -1193,7 +1193,7 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine(@"% [figure placeholder — no image uploaded]");
         }
         if (!string.IsNullOrEmpty(caption))
-            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
+            sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}{labelPart}");
         else if (!string.IsNullOrEmpty(labelPart))
             sb.AppendLine(labelPart);
         sb.Append($@"\end{{{env}}}");
@@ -1297,8 +1297,8 @@ public class LaTeXExportService : ILaTeXExportService
 
         var captionLine = !string.IsNullOrEmpty(caption)
             ? (!string.IsNullOrEmpty(shortCaption)
-                ? $@"\caption[{EscapeLatex(shortCaption)}]{{{EscapeLatex(caption)}}}{labelPart}"
-                : $@"\caption{{{EscapeLatex(caption)}}}{labelPart}")
+                ? $@"\caption[{{{InlineArgument(shortCaption)}}}]{{{InlineArgument(caption)}}}{labelPart}"
+                : $@"\caption{{{InlineArgument(caption)}}}{labelPart}")
             : "";
 
         var sb = new StringBuilder();
@@ -1675,6 +1675,10 @@ public class LaTeXExportService : ILaTeXExportService
         return $@"\begin{{tcolorbox}}[{titlePart}{colorPart}]" + "\n" + FormatInlineContent(text) + "\n" + @"\end{tcolorbox}";
     }
 
+    /// <summary>A caption or theorem title: maths and marks as in a paragraph, on one line (MCP-14/60).</summary>
+    private string InlineArgument(string? text) =>
+        FormatInlineContent(Regex.Replace(text ?? "", @"\s*\r?\n\s*", " ")).Trim();
+
     private string RenderBlockquote(JsonElement content)
     {
         var text = GetText(content);
@@ -1762,7 +1766,7 @@ public class LaTeXExportService : ILaTeXExportService
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{algorithm}[H]");
         if (!string.IsNullOrEmpty(caption))
-            sb.AppendLine($@"\caption{{{EscapeLatex(caption)}}}{labelPart}");
+            sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}{labelPart}");
         else if (!string.IsNullOrEmpty(labelPart))
             sb.AppendLine(labelPart);
         sb.AppendLine(@"\begin{algorithmic}[1]");
@@ -1786,7 +1790,7 @@ public class LaTeXExportService : ILaTeXExportService
         if (theoremType == "proof")
             return $@"\begin{{proof}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{proof}";
 
-        var titlePart = !string.IsNullOrEmpty(title) ? $"[{EscapeLatex(title)}]" : "";
+        var titlePart = !string.IsNullOrEmpty(title) ? $"[{{{InlineArgument(title)}}}]" : "";
         return $@"\begin{{{theoremType}}}{titlePart}{labelPart}" + "\n" + FormatInlineContent(text) + "\n" + $@"\end{{{theoremType}}}";
     }
 
@@ -1825,6 +1829,8 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         var result = text;
+        // MCP-16: a price ($5, $10) is not the start of a formula (CurrencyDollar).
+        result = Lilia.Engines.CurrencyDollar.Protect(result, Ph);
 
         // 1a. Display math: $$x^2$$ → pass through as-is. MUST run
         // before single-$ rule so the outer pair isn't mistaken for

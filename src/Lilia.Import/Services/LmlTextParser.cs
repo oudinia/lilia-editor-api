@@ -113,9 +113,11 @@ public sealed class LmlTextParser : ILmlTextParser
             {
                 var level = mdHeading.Groups[1].Value.Length;
                 var text = mdHeading.Groups[2].Value.Trim();
-                // strip optional {#id}
-                text = Regex.Replace(text, @"\s*\{#[\w-]+\}\s*$", "");
-                blocks.Add(MakeHeading(text, level));
+                // An optional {#id} is the heading's label (MCP-25: sec:md has a colon, which the
+                // old pattern didn't take, so it printed in the title and refs to it dangled).
+                var anchor = Regex.Match(text, @"\s*\{#([^\s{}]+)\}\s*$");
+                if (anchor.Success) text = text[..anchor.Index];
+                blocks.Add(MakeHeading(text, level, anchor.Success ? anchor.Groups[1].Value : null));
                 if (title is null && level == 1) title = text;
                 i++;
                 continue;
