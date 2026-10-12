@@ -70,6 +70,12 @@ builder.Host.UseWolverine(opts =>
 {
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
 
+    // One node, no leader election: no Postgres advisory lock to release at shutdown. The test
+    // host sets it — its teardown hung on that release and aborted the suite (12 Oct, a dump
+    // showed AdvisoryLock.ReleaseLockAsync → NpgsqlConnection.CloseAsync waiting forever).
+    if (builder.Configuration.GetValue<bool>("Wolverine:Solo"))
+        opts.Durability.Mode = Wolverine.DurabilityMode.Solo;
+
     // Compilation telemetry runs on its own buffered local queue so a slow or
     // failing write can never back up onto a request thread. It replaces a
     // `_ = Task.Run(...)` in LaTeXRenderController that opened a hand-rolled DI
