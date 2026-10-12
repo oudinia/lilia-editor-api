@@ -220,6 +220,8 @@ public class DocumentExportService : IDocumentExportService
         // relying on fontspec or a system font. An explicit ?engine= wins; every
         // other hint ("auto", "typst") falls back to the document's own setting.
         var engine = hint is "xelatex" or "lualatex" or "pdflatex" ? hint : documentEngine;
+        // …except Chinese, Japanese or Korean text, which the exporter sets with xeCJK: XeTeX only (MCP-26).
+        if (EngineDetector.Detect(latex) == LatexEngine.Xelatex) engine = "xelatex";
 
         var (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
             latex, timeout: 60, engine: engine,

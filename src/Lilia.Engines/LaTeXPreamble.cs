@@ -80,7 +80,7 @@ public static partial class LaTeXPreamble
         // skipped when we are the ones loading it.
         foreach (var engine in new[] { LatexEngine.Xelatex, LatexEngine.Lualatex })
         {
-            CollectPackageNames(EngineAddendum(engine), names);
+            CollectPackageNames(EngineAddendum(engine, cjk: true), names);
         }
 
         return names;
@@ -127,13 +127,63 @@ public static partial class LaTeXPreamble
     /// inputenc/fontenc/lmodern pull in — both load orders are
     /// safe with lua/xelatex (the package itself defends).
     /// </summary>
-    public static string EngineAddendum(LatexEngine engine) => engine switch
+    public static string EngineAddendum(LatexEngine engine, bool cjk = false) => engine switch
     {
         LatexEngine.Lualatex or LatexEngine.Xelatex => @"% Engine: lua/xelatex — load fontspec so \setmainfont{…} works.
 \usepackage{fontspec}
-",
+" + (cjk ? CjkAddendum(engine) : ""),
         _ => "",
     };
+
+    // Packages that redefine what Lilia's algorithm blocks are built on (the algorithm +
+    // algorithmic pair loaded in Packages): loading one aborted every compile, with or without
+    // an algorithm block (MCP-44, "Command \algorithmic already defined").
+    private static readonly HashSet<string> ClashingCustomPackages = new(StringComparer.Ordinal)
+    {
+        "algpseudocode", "algorithmicx", "algcompatible", "algpascal", "algc", "algorithm2e",
+    };
+
+    private static readonly Regex CustomUsePackage = new(
+        @"\\usepackage\s*(\[[^\]]*\])?\s*\{([^}]*)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The author's custom preamble as emitted: a <c>\usepackage</c> of a package that clashes with
+    /// Lilia's own is left out, with a comment saying why, and the rest is kept verbatim.
+    /// </summary>
+    public static string CustomPreambleForEmit(string? custom)
+    {
+        if (string.IsNullOrWhiteSpace(custom)) return "";
+        return CustomUsePackage.Replace(custom.Trim(), m =>
+        {
+            var names = m.Groups[2].Value.Split(',').Select(n => n.Trim()).Where(n => n.Length > 0).ToList();
+            var clashing = names.Where(ClashingCustomPackages.Contains).ToList();
+            if (clashing.Count == 0) return m.Value;
+            var note = $"% [lilia] left out {string.Join(", ", clashing)}: it clashes with the algorithm and algorithmic packages Lilia's algorithm blocks use.";
+            var kept = names.Where(n => !ClashingCustomPackages.Contains(n)).ToList();
+            return kept.Count == 0 ? note : $"\\usepackage{m.Groups[1].Value}{{{string.Join(",", kept)}}} {note}";
+        });
+    }
+
+    /// <summary>
+    /// Chinese, Japanese and Korean text (<see cref="CjkText"/>): xeCJK over Fandol under xelatex,
+    /// luatexja under lualatex. Fandol covers Chinese and kana; Hangul would need a Korean font
+    /// this server doesn't have, and prints blank rather than failing.
+    /// </summary>
+    // xeCJK reads these punctuation characters as it loads; one the Unicode shims made active (·,
+    // or — and … from the catalog) stops it with "Missing \endcsname". Their category codes are set
+    // aside for the load and put back after, so the shims keep their meaning.
+    private static readonly string[] XeCjkPunct =
+        ["00B7", "2013", "2014", "2025", "2026", "2027", "2E3A", "3002", "30FB", "FF01", "FF0E", "FF1F", "FF65"];
+
+    private static readonly string XeCjkLoad =
+        "\\edef\\liliaCatcodes{" + string.Concat(XeCjkPunct.Select(h => $"\\catcode\"{h}=\\the\\catcode\"{h}\\relax")) + "}\n"
+        + string.Concat(XeCjkPunct.Select(h => $"\\catcode\"{h}=12 ")) + "\n"
+        + "\\usepackage{xeCJK}\n\\liliaCatcodes\n";
+
+    public static string CjkAddendum(LatexEngine engine) => engine == LatexEngine.Lualatex
+        ? "\\usepackage{luatexja-fontspec}\n"
+        : XeCjkLoad + "\\setCJKmainfont{FandolSong-Regular.otf}[BoldFont=FandolSong-Bold.otf]\n"
+          + "\\setCJKsansfont{FandolHei-Regular.otf}[BoldFont=FandolHei-Bold.otf]\n\\setCJKmonofont{FandolSong-Regular.otf}\n";
 
     /// <summary>
     /// All packages needed by the Lilia block system.
@@ -250,13 +300,17 @@ public static partial class LaTeXPreamble
 
 % Code
 \usepackage{listings}
+% listings ships no JavaScript; js / ts code blocks map to this one (MCP-17).
+\lstdefinelanguage{JavaScript}{
+  morekeywords={async,await,break,case,catch,class,const,continue,debugger,default,delete,do,else,export,extends,false,finally,for,function,if,import,in,instanceof,let,new,null,of,return,static,super,switch,this,throw,true,try,typeof,undefined,var,void,while,with,yield},
+  sensitive=true, morecomment=[l]{//}, morecomment=[s]{/*}{*/},
+  morestring=[b]', morestring=[b]"", morestring=[b]`}
 
 % Algorithms & pseudocode
-% NOTE: we bundle algorithm + algorithmic (the legacy interface) only. Alternatives
-% that users can load themselves in their own preamble:
-%   - algpseudocode / algorithmicx (redefines \begin{algorithmic} — conflicts with ours)
-%   - algorithm2e (floats compete with the algorithm package's floats — conflicts)
-% Both would produce silent rendering bugs if bundled alongside our defaults.
+% NOTE: we bundle algorithm + algorithmic (the legacy interface) only. The alternatives
+% clash with it, so a custom preamble that loads one has it left out (CustomPreambleForEmit):
+%   - algpseudocode / algorithmicx (redefines \begin{algorithmic})
+%   - algorithm2e (floats compete with the algorithm package's floats)
 \usepackage{algorithm}
 \usepackage{algorithmic}
 
@@ -345,13 +399,17 @@ public static partial class LaTeXPreamble
 
 % Code
 \usepackage{listings}
+% listings ships no JavaScript; js / ts code blocks map to this one (MCP-17).
+\lstdefinelanguage{JavaScript}{
+  morekeywords={async,await,break,case,catch,class,const,continue,debugger,default,delete,do,else,export,extends,false,finally,for,function,if,import,in,instanceof,let,new,null,of,return,static,super,switch,this,throw,true,try,typeof,undefined,var,void,while,with,yield},
+  sensitive=true, morecomment=[l]{//}, morecomment=[s]{/*}{*/},
+  morestring=[b]', morestring=[b]"", morestring=[b]`}
 
 % Algorithms & pseudocode
-% NOTE: we bundle algorithm + algorithmic (the legacy interface) only. Alternatives
-% that users can load themselves in their own preamble:
-%   - algpseudocode / algorithmicx (redefines \begin{algorithmic} — conflicts with ours)
-%   - algorithm2e (floats compete with the algorithm package's floats — conflicts)
-% Both would produce silent rendering bugs if bundled alongside our defaults.
+% NOTE: we bundle algorithm + algorithmic (the legacy interface) only. The alternatives
+% clash with it, so a custom preamble that loads one has it left out (CustomPreambleForEmit):
+%   - algpseudocode / algorithmicx (redefines \begin{algorithmic})
+%   - algorithm2e (floats compete with the algorithm package's floats)
 \usepackage{algorithm}
 \usepackage{algorithmic}
 
@@ -439,6 +497,22 @@ public static partial class LaTeXPreamble
 \newunicodechar{Φ}{\ensuremath{\Phi}}
 \newunicodechar{Ψ}{\ensuremath{\Psi}}
 \newunicodechar{Ω}{\ensuremath{\Omega}}
+% Greek uppercase that looks Latin (MCP-26: a capital Ε failed the compile)
+\newunicodechar{Α}{\ensuremath{\mathrm{A}}}
+\newunicodechar{Β}{\ensuremath{\mathrm{B}}}
+\newunicodechar{Ε}{\ensuremath{\mathrm{E}}}
+\newunicodechar{Ζ}{\ensuremath{\mathrm{Z}}}
+\newunicodechar{Η}{\ensuremath{\mathrm{H}}}
+\newunicodechar{Ι}{\ensuremath{\mathrm{I}}}
+\newunicodechar{Κ}{\ensuremath{\mathrm{K}}}
+\newunicodechar{Μ}{\ensuremath{\mathrm{M}}}
+\newunicodechar{Ν}{\ensuremath{\mathrm{N}}}
+\newunicodechar{Ο}{\ensuremath{\mathrm{O}}}
+\newunicodechar{Ρ}{\ensuremath{\mathrm{P}}}
+\newunicodechar{Τ}{\ensuremath{\mathrm{T}}}
+\newunicodechar{Χ}{\ensuremath{\mathrm{X}}}
+\newunicodechar{Υ}{\ensuremath{\Upsilon}}
+\newunicodechar{ϱ}{\ensuremath{\varrho}}
 % Superscripts
 \newunicodechar{⁰}{\ensuremath{^0}}
 \newunicodechar{¹}{\ensuremath{^1}}
@@ -757,7 +831,7 @@ public static partial class LaTeXPreamble
     {
         return $@"\documentclass{{article}}
 {ValidationPackages}
-{EngineAddendum(engine)}{TheoremEnvironments}
+{EngineAddendum(engine, CjkText.Contains(latexFragment))}{TheoremEnvironments}
 \begin{{document}}
 {latexFragment}
 \end{{document}}";

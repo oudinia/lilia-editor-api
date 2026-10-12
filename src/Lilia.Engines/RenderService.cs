@@ -1057,7 +1057,8 @@ public partial class RenderService : IRenderService
             (doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
             doc.LatexPackages, doc.CustomPreamble));
 
-        var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
+        var engineAddendum = LaTeXPreamble.EngineAddendum(engine, CjkText.Contains(doc.Title)
+            || (doc.Blocks ?? new List<Block>()).Any(b => CjkText.Contains(b.Content.RootElement)));
         if (!string.IsNullOrEmpty(engineAddendum))
         {
             latex.AppendLine(engineAddendum);
@@ -1094,7 +1095,7 @@ public partial class RenderService : IRenderService
         // validation needs it so blocks using custom macros don't false-error.
         if (!string.IsNullOrWhiteSpace(doc.CustomPreamble))
         {
-            latex.AppendLine(doc.CustomPreamble.Trim());
+            latex.AppendLine(LaTeXPreamble.CustomPreambleForEmit(doc.CustomPreamble));
         }
 
         return latex.ToString();
@@ -1172,7 +1173,9 @@ public partial class RenderService : IRenderService
         if (LaTeXPreamble.IsBeamer(LaTeXPreambleBuilder.ResolveClassName(doc)))
             SlideLatex.AttachFootnotes(blocks.Select(b => b.Type).ToList(), renderedBlocks);
         var importedPkgs = BuildImportedPackageLinesFromDoc(doc);
+        var hasCjk = CjkText.Contains(doc.Title) || renderedBlocks.Any(CjkText.Contains);
         var detectedEngine = EngineDetector.DetectDocument(renderedBlocks, importedPkgs);
+        if (hasCjk && detectedEngine < LatexEngine.Xelatex) detectedEngine = LatexEngine.Xelatex;
         var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
         var engine = detectedEngine > explicitEngine ? detectedEngine : explicitEngine;
 
@@ -1202,7 +1205,7 @@ public partial class RenderService : IRenderService
             doc.LatexPackages, doc.CustomPreamble));
         // Engine-specific addendum — fontspec for lua/xelatex. Pdflatex
         // gets nothing extra (existing inputenc/fontenc/lmodern stack).
-        var engineAddendum = LaTeXPreamble.EngineAddendum(engine);
+        var engineAddendum = LaTeXPreamble.EngineAddendum(engine, hasCjk);
         if (!string.IsNullOrEmpty(engineAddendum))
         {
             latex.AppendLine(engineAddendum);
@@ -1248,7 +1251,7 @@ public partial class RenderService : IRenderService
         // export yet fails the full-doc preview compile.
         if (!string.IsNullOrWhiteSpace(doc.CustomPreamble))
         {
-            latex.AppendLine(doc.CustomPreamble.Trim());
+            latex.AppendLine(LaTeXPreamble.CustomPreambleForEmit(doc.CustomPreamble));
         }
 
         // Title metadata — sourced from a Title block if the document has one
@@ -2421,6 +2424,9 @@ public partial class RenderService : IRenderService
         var options = new List<string>();
         if (!string.IsNullOrEmpty(language))
             options.Add($"language={language}");
+        (code, var escapeOption) = ListingText.Escape(code);
+        if (escapeOption is not null)
+            options.Add(escapeOption);
         if (!string.IsNullOrEmpty(caption))
             options.Add($"caption={{{EscapeLatex(caption)}}}");
         // MCP-19: the label, so \ref to a listing resolves (it was dropped).
