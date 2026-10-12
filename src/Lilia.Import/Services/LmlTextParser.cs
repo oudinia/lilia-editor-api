@@ -30,6 +30,7 @@ public sealed class LmlTextParser : ILmlTextParser
 
     private static readonly HashSet<string> KnownTypes = new(StringComparer.OrdinalIgnoreCase)
     {
+        "algorithm", "footnote", "callout", "embed",
         "heading", "paragraph", "blockquote", "equation", "theorem",
         "abstract", "bibliography", "figure", "table", "code", "list",
         "toc", "pagebreak", "columnbreak", "document",
@@ -317,7 +318,15 @@ public sealed class LmlTextParser : ILmlTextParser
                 // Support "@heading[level=1] Title" where title was inline only
                 if (string.IsNullOrEmpty(text) && attrs.TryGetValue("_positional0", out var pos))
                     text = NormalizeProse(pos);
-                blocks.Add(MakeHeading(text, level, attrs.GetValueOrDefault("id") ?? attrs.GetValueOrDefault("label")));
+                var heading = MakeHeading(text, level, attrs.GetValueOrDefault("id") ?? attrs.GetValueOrDefault("label"));
+                // MCP-64: numbered=false (an unnumbered heading) was dropped; JSON took it, LML didn't.
+                if (attrs.TryGetValue("numbered", out var num) && bool.TryParse(num, out var isNumbered) && !isNumbered)
+                    heading = new LmlParsedBlock
+                    {
+                        Type = heading.Type,
+                        Content = MergeContent(heading.Content, new Dictionary<string, object?> { ["numbered"] = false }),
+                    };
+                blocks.Add(heading);
                 if (title is null && level == 1 && !string.IsNullOrWhiteSpace(text))
                     title = text;
                 return;
@@ -546,6 +555,44 @@ public sealed class LmlTextParser : ILmlTextParser
                 return;
             }
 
+            // MCP-49: four types the editor and emitter support that LML couldn't write (they became
+            // raw paragraphs: an @algorithm broke the compile, the others printed their own markup).
+            case "algorithm":
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "algorithm",
+                    Content = new
+                    {
+                        title = attrs.GetValueOrDefault("title") ?? "",
+                        caption = attrs.GetValueOrDefault("caption") ?? "",
+                        label = attrs.GetValueOrDefault("label") ?? attrs.GetValueOrDefault("id") ?? "",
+                        lineNumbers = attrs.TryGetValue("lineNumbers", out var ln) && bool.TryParse(ln, out var lnOn) && lnOn,
+                        code = KeepLines(body),
+                    },
+                });
+                return;
+
+            case "footnote":
+                blocks.Add(new LmlParsedBlock { Type = "footnote", Content = new { text = NormalizeProse(body) } });
+                return;
+
+            case "callout":
+                blocks.Add(new LmlParsedBlock
+                {
+                    Type = "callout",
+                    Content = new
+                    {
+                        text = NormalizeProse(body),
+                        title = attrs.GetValueOrDefault("title") ?? "",
+                        variant = attrs.GetValueOrDefault("variant") ?? attrs.GetValueOrDefault("_positional0") ?? "info",
+                    },
+                });
+                return;
+
+            case "embed":
+                blocks.Add(new LmlParsedBlock { Type = "embed", Content = new { code = KeepLines(body) } });
+                return;
+
             case "toc":
             case "tableofcontents":
                 blocks.Add(new LmlParsedBlock { Type = "tableofcontents", Content = new { } });
@@ -687,6 +734,15 @@ public sealed class LmlTextParser : ILmlTextParser
                 });
                 return;
         }
+    }
+
+    /// <summary>An anonymous content object with extra fields, as a dictionary.</summary>
+    private static Dictionary<string, object?> MergeContent(object content, Dictionary<string, object?> extra)
+    {
+        var merged = System.Text.Json.JsonSerializer.SerializeToElement(content).EnumerateObject()
+            .ToDictionary(p => p.Name, p => (object?)p.Value.Clone());
+        foreach (var (k, v) in extra) merged[k] = v;
+        return merged;
     }
 
     private static LmlParsedBlock MakeHeading(string text, int level, string? id = null)
