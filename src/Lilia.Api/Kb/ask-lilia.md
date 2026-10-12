@@ -1,24 +1,29 @@
 ---
 slug: ask-lilia
-title: Ask Lilia (the AI assistant)
-summary: One natural-language front door that routes your request to the right skill — architect, cite, fix, polish, format.
+lang: en
+title: Ask Lilia to write, fix or explain
+summary: Ask in your own words; let Lilia edit the document, apply or undo its changes, attach files, and keep conversations.
 skill: lilia-tutor
 audience: all
-tags: [ai, ask-lilia, skills]
-keywords: ask lilia ai assistant skill route architect citations compile polish journal proficiency beginner advanced help
+tags: [ai, ask lilia, assistant, edit, explain]
+keywords: ask lilia ai assistant chat help write draft fix explain apply undo changes edit document attach file image conversation new chat
 ---
-# Ask Lilia (the AI assistant)
+# Ask Lilia to write, fix or explain
 
-**What it is.** "Ask Lilia" is a single AI front door. Type what you want in plain language and Lilia routes it to the right skill, then runs it through the governed path (your AI budget/credits, audited).
+## Steps {#steps}
+1. In a document, Ask Lilia is the conversation beside the page. Type what you want in your own words and send (or pick one of the suggestions).
+   ![Ask Lilia beside the document](/help/img/ask-lilia/en-1.png)
+2. To let it change the document, keep **Edit this document** ticked. Lilia replies with what it will change: click **Apply to document**.
+3. Not what you wanted? **Undo AI changes** puts the document back as it was before that edit.
+4. About one part only? Select that block first; your question is about it.
+5. Attach a file (csv, tex, bib, docx, pdf) or an image with the paperclip and picture buttons.
+6. **New chat** starts a fresh conversation; earlier ones stay in the conversation menu.
 
-**What it can do.** The skill family covers: drafting/architecting a paper, finding and formatting citations, fixing a compile or validation error, writing an equation, building a table or figure, polishing prose, and formatting for a venue.
+## What this means {#beginner}
+- Ask anything, in English, French or Spanish: how to do something in Lilia, why the document won't compile, how to write an equation, to draft a section or tidy a paragraph.
+- Lilia proposes, you decide: nothing changes until you apply, and you can undo.
+- It never invents references or results; when it needs a fact from you, it says so.
 
-**How to ask.** Just describe the goal:
-- *"cite the transformer paper"* → Citations (returns BibTeX + how to cite it).
-- *"why won't this compile? Missing $ inserted"* → Compile Doctor (the one-line cause + fix).
-- *"draft a paper on diffusion models"* → Document Architect.
-- *"tighten this paragraph"* → Polish.
-
-**Proficiency.** Tell Lilia your level — beginner, intermediate, or advanced — and answers adjust: beginners get the concept and the next step; advanced gets just the artifact. You can override per message ("explain more" / "just the code").
-
-**Tips.** Lead with the goal and any context (the selected text, the error). The artifact (LML/BibTeX/LaTeX) comes back in a code block you can copy or apply. Related: blocks-and-lml, the `lilia-tutor` skill.
+## For LaTeX users {#expert}
+- Requests are routed to a skill (citations, compile doctor, equation, table, figure, polish, journal, tutor, architect); replies carry LML, BibTeX or LaTeX in fenced blocks you can copy.
+- In a document, Ask Lilia reads it through tools (outline, a block, search, the LaTeX Lilia emits, the page settings) and says whether LaTeX it shows is Lilia's output or standard LaTeX.
