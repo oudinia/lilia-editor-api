@@ -160,7 +160,7 @@ public sealed class LiliaMcpTools(
     }
 
     [McpServerTool(Name = "export_document", ReadOnly = true, Idempotent = false, OpenWorld = false)]
-    [Description("A download link for the document as pdf, tex (one LaTeX file), zip (an Overleaf-style LaTeX project) or docx (Word). The file is not returned here: give the author the link (valid 15 minutes) to click. Read access is enough.")]
+    [Description("A download link for the document as pdf, tex (one LaTeX file; alias latex), zip (an Overleaf-style LaTeX project) or docx (Word; alias word). The file is not returned here: give the author the link (valid 15 minutes) to click. The reply also says whether the document last compiled (lastCheck); for a pdf, run check_document first if it never has. Read access is enough.")]
     public async Task<object> ExportDocument(
         [Description("The document id.")] string documentId,
         [Description("pdf (default), tex, zip or docx.")] string? format = null)
@@ -171,15 +171,32 @@ public sealed class LiliaMcpTools(
         if (f is "word") f = "docx";
         if (!ConnectorTransfers.ExportFormats.Contains(f))
             return new { error = $"Unknown format '{format}'. Choose one of: {string.Join(", ", ConnectorTransfers.ExportFormats)}." };
-        var (token, expires) = transfers.IssueExport(UserId, d.Id, f);
-        return new
+        try
         {
-            url = $"{McpOAuth.PublicOrigin(config)}/api/connector/files/{token}",
-            format = f,
-            title = d.Title,
-            expiresAt = expires,
-            note = "Give the author this link to download the file. It works for 15 minutes; ask again for a new one.",
-        };
+            var (token, expires) = transfers.IssueExport(UserId, d.Id, f);
+            // MCP-72: say what is known about compiling, so a pdf link to a broken document isn't a surprise.
+            var v = await db.Documents.AsNoTracking().Where(x => x.Id == d.Id)
+                .Select(x => new { x.ValidationCheckedAt, x.ValidationErrorCount, x.ValidationWarningCount })
+                .FirstOrDefaultAsync();
+            object lastCheck = v?.ValidationCheckedAt is null
+                ? new { checkedAt = (DateTime?)null, note = "Never checked. Call check_document to know whether it compiles." }
+                : new { checkedAt = v.ValidationCheckedAt, errors = v.ValidationErrorCount, warnings = v.ValidationWarningCount };
+            return new
+            {
+                url = $"{McpOAuth.PublicOrigin(config)}/api/connector/files/{Uri.EscapeDataString(token)}",
+                format = f,
+                title = d.Title,
+                expiresAt = expires,
+                lastCheck,
+                note = "Give the author this link to download the file. It works for 15 minutes; ask again for a new one.",
+            };
+        }
+        catch (Exception ex)
+        {
+            // MCP-73: a message, not "An error occurred invoking 'export_document'".
+            logger.LogWarning(ex, "[Mcp] export_document failed for {DocId}", d.Id);
+            return new { error = $"Lilia could not make the download link: {ex.Message}" };
+        }
     }
 
     [McpServerTool(Name = "search_help", ReadOnly = true, Idempotent = true, OpenWorld = false)]

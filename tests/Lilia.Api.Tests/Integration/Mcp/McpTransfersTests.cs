@@ -48,6 +48,7 @@ public class McpTransfersTests : IntegrationTestBase
         var r = await CallAsync(CreateClientAs("mcpx_owner"), "export_document", new { documentId = doc.Id.ToString(), format = "tex" });
         var url = r.GetProperty("url").GetString()!;
         url.Should().StartWith("https://editor.liliaeditor.com/api/connector/files/");
+        r.GetProperty("lastCheck").GetProperty("note").GetString().Should().Contain("check_document");
 
         var res = await CreateAnonymousClient().GetAsync(PathOf(url));
         res.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -58,7 +59,10 @@ public class McpTransfersTests : IntegrationTestBase
     [Fact]
     public async Task A_made_up_link_and_someone_elses_document_get_nothing()
     {
-        (await CreateAnonymousClient().GetAsync($"/api/connector/files/{new string('a', 48)}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var made = await CreateAnonymousClient().GetAsync($"/api/connector/files/{new string('a', 48)}");
+        made.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        // Opened in a browser, often a phone: a sentence, not JSON.
+        made.Content.Headers.ContentType!.MediaType.Should().Be("text/plain");
         await SeedUserAsync("mcpx_alice");
         await SeedUserAsync("mcpx_mallory");
         var doc = await SeedDocumentAsync("mcpx_alice");

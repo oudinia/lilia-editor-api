@@ -36,9 +36,9 @@ public class ConnectorFilesController(
     public async Task<IActionResult> Download(string token)
     {
         if (transfers.Export(token) is not { } t)
-            return NotFound(new { error = "This download link has expired. Ask for a new one." });
+            return Explain(404, "This download link has expired or is not valid. Ask the app for a new one.");
         var doc = await documents.GetDocumentAsync(t.DocumentId, t.UserId);
-        if (doc is null) return NotFound(new { error = "This document is no longer available." });
+        if (doc is null) return Explain(404, "This document is no longer available.");
         var name = FileName(doc.Title);
         logger.LogInformation("[Connector] {Format} download of {DocId} for {UserId}", t.Format, t.DocumentId, t.UserId);
         try
@@ -48,7 +48,7 @@ public class ConnectorFilesController(
                 case "pdf":
                     var (pdf, _) = await exports.ExportToPdfWithEngineAsync(t.DocumentId, "auto");
                     if (pdf is null || pdf.Length < 100 || !pdf.AsSpan(0, 4).SequenceEqual("%PDF"u8))
-                        return StatusCode(500, new { error = "The document did not produce a PDF. Check it with check_document." });
+                        return Explain(422, "Lilia could not make a PDF of this document: it does not compile. Open it in Lilia and run Validate, or ask the app to check it.");
                     return File(pdf, "application/pdf", $"{name}.pdf");
                 case "docx":
                     return File(await exports.ExportToDocxAsync(t.DocumentId),
@@ -69,7 +69,7 @@ public class ConnectorFilesController(
         catch (Exception ex)
         {
             logger.LogError(ex, "[Connector] {Format} export of {DocId} failed", t.Format, t.DocumentId);
-            return StatusCode(500, new { error = "Lilia could not produce this file. Try again, or export from the editor." });
+            return Explain(500, "Lilia could not produce this file. Try again, or export it from the editor.");
         }
     }
 
@@ -119,6 +119,12 @@ public class ConnectorFilesController(
             return BadRequest(new { error = $"Lilia could not import this file: {t.Error}" });
         }
     }
+
+    /// <summary>
+    /// The link is opened in a browser, often on a phone: a plain sentence reads better than JSON.
+    /// </summary>
+    private ContentResult Explain(int status, string message) =>
+        new() { StatusCode = status, ContentType = "text/plain; charset=utf-8", Content = message };
 
     private static string FileName(string? title)
     {
