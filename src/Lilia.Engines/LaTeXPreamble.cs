@@ -780,6 +780,12 @@ public static partial class LaTeXPreamble
 \@ifundefined{affiliations}{\newenvironment{affiliations}{}{}}{}
 \@ifundefined{methods}{\newenvironment{methods}{\section*{Methods}}{}}{}
 \@ifundefined{highlights}{\newenvironment{highlights}{\paragraph*{Highlights}}{}}{}
+% book has no abstract environment (MCP-68: a thesis's first block stopped the compile).
+\@ifundefined{abstractname}{\newcommand{\abstractname}{Abstract}}{}
+\@ifundefined{abstract}{\newenvironment{abstract}{\@ifundefined{chapter}{\section*{\abstractname}}{\chapter*{\abstractname}}}{}}{}
+% Lilia's column break: multicol's where it is loaded, the next column under twocolumn, and
+% nothing in one column, where \columnbreak alone was undefined (MCP-24).
+\providecommand{\liliaColumnBreak}{\ifdefined\columnbreak\columnbreak\else\if@twocolumn\newpage\fi\fi}
 \makeatother
 ";
 

@@ -735,7 +735,7 @@ public class LaTeXExportService : ILaTeXExportService
             // (bare EscapeLatex turns \and / \today into \textbackslash{}).
             if (!string.IsNullOrWhiteSpace(d)) date = FormatTitleMetaLatex(d!);
         }
-        sb.AppendLine($@"\title{{{FormatTitleMetaLatex(title)}}}");
+        sb.AppendLine($@"\title{{{FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title))}}}");
         sb.AppendLine($@"\author{{{Lilia.Engines.AuthorLatex.For(author, FormatTitleMetaLatex)}}}");
         sb.AppendLine($@"\date{{{date}}}");
     }
@@ -850,7 +850,7 @@ public class LaTeXExportService : ILaTeXExportService
                 // and the all-lowercase forms legacy / imported data uses.
                 "tableOfContents" or "tableofcontents" or "toc" => @"\tableofcontents" + "\n" + @"\newpage",
                 "pageBreak" or "pagebreak" or "page_break" => @"\newpage",
-                "columnBreak" or "columnbreak" or "column_break" => @"\columnbreak",
+                "columnBreak" or "columnbreak" or "column_break" => @"\liliaColumnBreak",
                 "columnLayout" => RenderColumnLayout(content),
                 "personalInfo" => RenderPersonalInfo(content),
                 "photo" => RenderPhoto(content),
@@ -1185,7 +1185,7 @@ public class LaTeXExportService : ILaTeXExportService
             // Wrap in IfFileExists so a missing asset renders as a labelled
             // placeholder frame instead of aborting compilation with pdftex.def.
             sb.AppendLine($@"\IfFileExists{{figures/{filename}}}{{%");
-            sb.AppendLine($@"  \includegraphics[width=0.8\textwidth]{{figures/{filename}}}%");
+            sb.AppendLine($@"  \includegraphics[width={FigureWidth.Latex(content)}]{{figures/{filename}}}%");
             sb.AppendLine($@"}}{{\fbox{{\parbox{{0.7\textwidth}}{{\centering\small\textit{{[Missing figure: {EscapeLatex(filename)}]}}}}}}}}");
         }
         else
@@ -1692,10 +1692,10 @@ public class LaTeXExportService : ILaTeXExportService
             {
                 var lines = (text ?? "").Split('\n');
                 var body = string.Join(" \\\\\n", lines.Select(l => FormatInlineContent(l)));
-                return $@"\begin{{verse}}" + "\n" + body + "\n" + @"\end{verse}";
+                return $@"\begin{{verse}}" + "\n" + body + RenderService.AttributionLine(FormatInlineContent(attribution)) + "\n" + @"\end{verse}";
             }
             default:
-                return $@"\begin{{quote}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{quote}";
+                return $@"\begin{{quote}}" + "\n" + FormatInlineContent(text) + RenderService.AttributionLine(FormatInlineContent(attribution)) + "\n" + @"\end{quote}";
         }
     }
 

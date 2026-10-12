@@ -286,7 +286,8 @@ public partial class RenderService : IRenderService
         var containsParagraphEnv = ParagraphMathEnvironments.Any(env =>
             latex.Contains($"\\begin{{{env}}}"));
 
-        if (displayMode || containsParagraphEnv)
+        var needsHost = latex.Contains(@"\begin{split}", StringComparison.Ordinal);
+        if (displayMode || containsParagraphEnv || needsHost)
         {
             return $"<div class=\"equation display-math\" data-latex=\"{escaped}\">$${escaped}$$</div>";
         }
@@ -298,7 +299,6 @@ public partial class RenderService : IRenderService
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var alt = content.TryGetProperty("alt", out var a) ? a.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
-        var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
         var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
         var placement = content.TryGetProperty("placement", out var pl) ? pl.GetString() ?? "auto" : "auto";
 
@@ -306,7 +306,7 @@ public partial class RenderService : IRenderService
         var altEscaped = WebUtility.HtmlEncode(alt);
         var captionEscaped = WebUtility.HtmlEncode(caption);
 
-        var widthPercent = (int)(width * 100);
+        var widthPercent = (int)(FigureWidth.Fraction(content) * 100);
         var textAlign = position switch
         {
             "left" => "left",
@@ -1118,7 +1118,7 @@ public partial class RenderService : IRenderService
     /// columns.</para>
     /// </summary>
     public static bool SupportsLongtable(Document doc) =>
-        doc.Columns < 2 && !doc.BalancedColumns;
+        doc.Columns < 2 && !LaTeXPreambleBuilder.UsesMulticols(doc);
 
     public async Task<string> RenderToLatexAsync(Guid documentId) =>
         await RenderToLatexAsync(documentId, longtableBlocks: null);
@@ -1259,7 +1259,7 @@ public partial class RenderService : IRenderService
         // FormatTitleMetaLatex preserves \and / \thanks{…} / \today tokens
         // that bare EscapeLatex would mangle into \textbackslash{}.
         var (titleText, authorText, dateText) = ResolveTitleMeta(doc);
-        latex.AppendLine($@"\title{{{FormatTitleMetaLatex(titleText)}}}");
+        latex.AppendLine($@"\title{{{FormatTitleMetaLatex(TitleWithoutAnd(titleText))}}}");
         // Always written, empty when there is none — as the export does.
         // Leaving it out made pdflatex warn "No \author given" on every
         // document without one, so validation never came back clean and the
@@ -1338,7 +1338,7 @@ public partial class RenderService : IRenderService
             // MCP-40: inside balanced multicols LaTeX drops floats outright ("Floats and marginpars
             // not allowed inside multicols"): the table and its label vanished, check clean. There
             // they are placed exactly where they are written ([H], float package).
-            latex.AppendLine(doc.BalancedColumns ? InMulticols(renderedBlocks[i]) : renderedBlocks[i]);
+            latex.AppendLine(LaTeXPreambleBuilder.UsesMulticols(doc) ? InMulticols(renderedBlocks[i]) : renderedBlocks[i]);
             if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
         }
 
@@ -1437,7 +1437,7 @@ public partial class RenderService : IRenderService
                 // the preamble + \maketitle; it renders nothing in the body.
                 "title" => "",
                 "tableofcontents" => @"\tableofcontents",
-                "columnbreak" => @"\columnbreak",
+                "columnbreak" => @"\liliaColumnBreak",
                 "columnlayout" => RenderColumnLayoutToLatex(content),
                 "pagebreak" or "divider" => @"\newpage",
                 "bibliography" => "", // handled separately via BibliographyEntries
@@ -1552,6 +1552,13 @@ public partial class RenderService : IRenderService
     /// <c>\thanks{…}</c>. Bare <see cref="EscapeLatex"/> turns those into
     /// visible backslash text in the PDF.
     /// </summary>
+    /// <summary>
+    /// <c>\and</c> separates authors; in the title it broke the compile ("Misplaced \crcr",
+    /// MCP-51), so there it is the word. Shared with the exporter.
+    /// </summary>
+    public static string TitleWithoutAnd(string? title) =>
+        Regex.Replace(title ?? "", @"\s*\\and\b\s*", " and ");
+
     internal static string FormatTitleMetaLatex(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -1656,7 +1663,8 @@ public partial class RenderService : IRenderService
             "statement" => string.IsNullOrWhiteSpace(text) ? @"\STATE" : $@"\STATE {text}",
             "return"    => string.IsNullOrWhiteSpace(text) ? @"\RETURN" : $@"\RETURN {text}",
             "print"     => $@"\PRINT {text}",
-            "comment"   => $@"\COMMENT{Brace(text)}",
+            // On a line of its own: right after \IF{…} a bare \COMMENT broke the compile (MCP-22).
+            "comment"   => $@"\STATE \COMMENT{Brace(text)}",
             "if"        => $@"\IF{Brace(text)}",
             "elsif"     => $@"\ELSIF{Brace(text)}",
             "else"      => @"\ELSE",
@@ -1795,8 +1803,10 @@ public partial class RenderService : IRenderService
 
     private static readonly string[] ParagraphMathEnvironments = [
         "align", "align*", "gather", "gather*", "multline", "multline*",
-        "flalign", "flalign*", "alignat", "alignat*", "split",
+        "flalign", "flalign*", "alignat", "alignat*",
     ];
+    // split is not one of them: it needs a host equation, and printed bare it stopped the
+    // compile ("\begin{split} won't work here", MCP-23).
 
     private string RenderEquationToLatex(JsonElement content)
     {
@@ -1822,7 +1832,8 @@ public partial class RenderService : IRenderService
         var containsParagraphEnv = ParagraphMathEnvironments.Any(env =>
             latex.Contains($"\\begin{{{env}}}"));
 
-        if (displayMode || containsParagraphEnv)
+        var needsHost = latex.Contains(@"\begin{split}", StringComparison.Ordinal);
+        if (displayMode || containsParagraphEnv || needsHost)
         {
             // If it already contains a math environment, handle numbering
             if (containsParagraphEnv)
@@ -1855,7 +1866,11 @@ public partial class RenderService : IRenderService
                 return latex;
             }
 
-            var eqEnv = numbered ? "equation" : "equation*";
+            // A bare alignment body (a &= b \\ c &= d): align, as the exporter does (MCP-23).
+            // In equation* its & stopped the compile ("Misplaced alignment tab character &").
+            var eqEnv = EquationContent.HasTopLevelAlignment(latex)
+                ? (numbered ? "align" : "align*")
+                : (numbered ? "equation" : "equation*");
             return $@"\begin{{{eqEnv}}}
 {labelLine}{latex}
 \end{{{eqEnv}}}";
@@ -1868,7 +1883,6 @@ public partial class RenderService : IRenderService
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
-        var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
         var position = content.TryGetProperty("position", out var p) ? p.GetString() ?? "center" : "center";
         // Shared with the table path so the two mappings cannot drift — tables
         // used to ignore `placement` altogether. See BlockBreakAttributes.
@@ -1885,8 +1899,6 @@ public partial class RenderService : IRenderService
         // Use a clean filename instead of the full URL for readability
         var displayPath = ExtractCleanImagePath(src);
 
-        // Format width with invariant culture to avoid comma decimal separators
-        var widthStr = width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
 
         var alignCommand = position switch
         {
@@ -1939,7 +1951,7 @@ public partial class RenderService : IRenderService
             sb.AppendLine($@"\begin{{figure}}{floatSpec}");
             sb.AppendLine(alignCommand);
             if (!string.IsNullOrEmpty(src))
-                sb.AppendLine($@"\includegraphics[width={widthStr}\textwidth]{{{displayPath}}}");
+                sb.AppendLine($@"\includegraphics[width={FigureWidth.Latex(content)}]{{{displayPath}}}");
             else
                 sb.AppendLine(@"% [figure placeholder — no image uploaded]");
             if (!string.IsNullOrEmpty(caption))
@@ -2640,15 +2652,22 @@ public partial class RenderService : IRenderService
                 var lines = text.Split('\n');
                 var body = string.Join(" \\\\\n", lines.Select(l => ProcessLatexText(l).TrimEnd()));
                 return $@"\begin{{verse}}
-{body}
+{body}{AttributionLine(ProcessLatexText(attribution).TrimEnd())}
 \end{{verse}}";
             }
             default:
                 return $@"\begin{{quote}}
-{ProcessLatexText(text)}
+{ProcessLatexText(text)}{AttributionLine(ProcessLatexText(attribution).TrimEnd())}
 \end{{quote}}";
         }
     }
+
+    /// <summary>
+    /// A quote's source, right-aligned under it (MCP-21: only the epigraph printed it). Shared
+    /// with the exporter.
+    /// </summary>
+    public static string AttributionLine(string formatted) =>
+        string.IsNullOrWhiteSpace(formatted) ? "" : "\n\\par\\nopagebreak\\raggedleft--- " + formatted;
 
     private string RenderTheoremToLatex(JsonElement content)
     {
