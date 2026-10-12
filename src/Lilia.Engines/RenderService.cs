@@ -1767,6 +1767,11 @@ public partial class RenderService : IRenderService
         var displayMode = ResolveDisplayMode(content);
 
         var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
+        // MCP-03: the label, keyed as the exporter and the reference index key it (LabelKey).
+        // It was never printed here, so every reference to an equation read "??" with a clean check.
+        var labelKey = LabelKey.Effective("equation",
+            content.TryGetProperty("label", out var lab) && lab.ValueKind == JsonValueKind.String ? lab.GetString() : null);
+        var labelLine = numbered && labelKey.Length > 0 ? $"\\label{{{labelKey}}}\n" : "";
 
         // Strip MathLive placeholder artifacts
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
@@ -1797,12 +1802,24 @@ public partial class RenderService : IRenderService
                     }
                     return result;
                 }
+                // The label goes just inside the first environment, unless the source has its own.
+                if (labelLine.Length > 0 && !latex.Contains(@"\label{"))
+                {
+                    var open = ParagraphMathEnvironments
+                        .Select(env => (env, at: latex.IndexOf($"\\begin{{{env}}}", StringComparison.Ordinal)))
+                        .Where(x => x.at >= 0).OrderBy(x => x.at).FirstOrDefault();
+                    if (open.env is not null)
+                    {
+                        var insertAt = open.at + $"\\begin{{{open.env}}}".Length;
+                        return latex[..insertAt] + "\n" + labelLine.TrimEnd('\n') + latex[insertAt..];
+                    }
+                }
                 return latex;
             }
 
             var eqEnv = numbered ? "equation" : "equation*";
             return $@"\begin{{{eqEnv}}}
-{latex}
+{labelLine}{latex}
 \end{{{eqEnv}}}";
         }
         return $"${latex}$";
@@ -2371,6 +2388,11 @@ public partial class RenderService : IRenderService
             options.Add($"language={language}");
         if (!string.IsNullOrEmpty(caption))
             options.Add($"caption={{{EscapeLatex(caption)}}}");
+        // MCP-19: the label, so \ref to a listing resolves (it was dropped).
+        var codeLabel = LabelKey.Effective("code",
+            content.TryGetProperty("label", out var cl) && cl.ValueKind == JsonValueKind.String ? cl.GetString() : null);
+        if (codeLabel.Length > 0)
+            options.Add($"label={{{codeLabel}}}");
         if (lineNumbers)
             options.Add("numbers=left");
         if (highlightLines.Count > 0)

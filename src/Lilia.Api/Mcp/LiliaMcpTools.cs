@@ -126,29 +126,49 @@ public sealed class LiliaMcpTools(
         await OpenAsync(documentId) is { } d ? AskLiliaService.SettingsView(d) : NoDocument(documentId);
 
     [McpServerTool(Name = "check_document", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Compile the document now with Lilia's LaTeX and say whether it compiles: the error (with its category) if not, the LaTeX warnings, and references to labels nothing defines. Takes a few seconds. It does not change the document or its saved validation.")]
+    [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), and printsCorrectly. Takes a few seconds. It does not change the document or its saved validation.")]
     public async Task<object> CheckDocument([Description("The document id.")] string documentId)
     {
         if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
         try
         {
             var source = await render.RenderToLatexAsync(d.Id);
-            var result = await latex.ValidateAsync(source);
-            var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == d.Id).ToListAsync();
-            // As the editor's Validate: a label nothing defines, or one defined twice. "Unused" is
-            // left out there on purpose (a label not referenced yet is a draft, not a mistake).
-            var references = Lilia.Engines.ReferenceIndex.Build(blocks).Problems
-                .Where(p => p.Kind is "dangling" or "duplicate")
-                .Select(p => new { kind = p.Kind, label = p.Key, blockIds = p.BlockIds });
+            // MCP-08: compile with the engine the emitted LaTeX needs (it loads fontspec for
+            // xelatex/lualatex), or the document's own; validation was hard-wired to pdflatex.
+            var engine = EngineFor(source, d.LatexEngine);
+            var result = await latex.ValidateAsync(source, engine);
+            // T1 (MCP-27/61, MCP-08): judge references and citations from the LaTeX actually emitted,
+            // not the stored fields. A label the emitter never printed made "??" under a clean check,
+            // and a one-pass compile can't report undefined references itself.
+            var audit = new Lilia.Engines.EmittedLatexAudit(source);
+            var references = audit.DanglingReferences
+                .GroupBy(r => r.Key)
+                .Select(g => new { kind = "dangling", label = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct() })
+                .Cast<object>()
+                .Concat(audit.DuplicateLabels.Select(l => (object)new { kind = "duplicate", label = l }))
+                .ToList();
+            var citations = audit.MissingCitations
+                .GroupBy(c => c.Key)
+                .Select(g => new { kind = "missing", key = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct() })
+                .ToList();
+            // MCP-37: the block the compile error is in (the source carries a % block:{id} marker per block).
+            var errorBlockId = result.ParsedError?.LineNumber is int line ? audit.BlockAtLine(line) : null;
             return new
             {
                 compiles = result.Valid,
+                engine,
+                printsCorrectly = result.Valid && references.Count == 0 && citations.Count == 0,
                 error = result.Error,
                 errorCategory = result.ParsedError?.Category,
+                errorBlockId,
                 warnings = result.Warnings.Take(20),
                 warningCount = result.Warnings.Length,
                 references,
+                citations,
                 durationMs = result.DurationMs,
+                note = references.Count + citations.Count > 0
+                    ? "It compiles, but references or citations above will print as ?? or ? in the PDF."
+                    : null,
                 url = EditorUrl(d.Id),
             };
         }
@@ -167,6 +187,16 @@ public sealed class LiliaMcpTools(
             logger.LogWarning(ex, "[Mcp] check_document failed for {DocId}", d.Id);
             return new { category = "error", error = $"Lilia could not compile this document: {ex.Message}" };
         }
+    }
+
+    internal static string EngineFor(string source, string? documentEngine)
+    {
+        var chosen = (documentEngine ?? "").Trim().ToLowerInvariant();
+        var needsUnicodeEngine = source.Contains(@"\usepackage{fontspec}", StringComparison.Ordinal)
+            || source.Contains(@"\usepackage{unicode-math}", StringComparison.Ordinal)
+            || source.Contains(@"\usepackage[", StringComparison.Ordinal) && source.Contains("]{fontspec}", StringComparison.Ordinal);
+        if (chosen is "xelatex" or "lualatex") return chosen;
+        return needsUnicodeEngine ? "xelatex" : "pdflatex";
     }
 
     [McpServerTool(Name = "export_document", ReadOnly = true, Idempotent = false, OpenWorld = false)]

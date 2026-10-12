@@ -65,6 +65,18 @@ public static class LaTeXErrorParser
             return new ParsedLatexError("undefined_control_sequence", token, lineNumber, errorRaw);
         }
 
+        // MCP-37: three causes that came out as syntax_error or a bare package_error, each with
+        // a different fix. Before the package rule, which would catch the first two.
+        var uni = System.Text.RegularExpressions.Regex.Match(log, @"Unicode character (\S+)(?: \(U\+([0-9A-Fa-f]+)\))?\s*\r?\n?.*?not set up for use with LaTeX", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (uni.Success)
+            return new ParsedLatexError("unicode_character", uni.Groups[2].Success ? $"U+{uni.Groups[2].Value}" : uni.Groups[1].Value, lineNumber, errorRaw);
+        if (log.Contains("fontspec", StringComparison.Ordinal)
+            && (log.Contains("requires either XeTeX or LuaTeX", StringComparison.Ordinal) || log.Contains("Fatal Package fontspec Error", StringComparison.Ordinal)))
+            return new ParsedLatexError("needs_xelatex", "fontspec", lineNumber, errorRaw);
+        var defined = System.Text.RegularExpressions.Regex.Match(log, @"(?:Command|Environment) (\\?\S+?) already defined");
+        if (defined.Success)
+            return new ParsedLatexError("already_defined", defined.Groups[1].Value, lineNumber, errorRaw);
+
         // Package error
         var pkgMatch = PackageErrorRe.Match(log);
         if (pkgMatch.Success)
