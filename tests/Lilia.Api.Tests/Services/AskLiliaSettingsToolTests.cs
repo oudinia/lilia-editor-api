@@ -58,6 +58,17 @@ public class AskLiliaSettingsToolTests
         r.GetProperty("orientation").GetString().Should().Be("landscape");
     }
 
+    // MCP-75: an older document's "" reads as null, like every other unset value.
+    [Fact]
+    public async Task A_blank_stored_value_reads_as_unset()
+    {
+        var (h, doc) = Setup();
+        doc = doc with { MarginLeft = "", CustomPreamble = "" };
+        var r = await Call(Fn(h.Tools(doc, false), "get_document_settings"));
+        r.GetProperty("marginLeft").ValueKind.Should().Be(JsonValueKind.Null);
+        r.GetProperty("customPreamble").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
     [Fact]
     public async Task Get_returns_the_stored_settings()
     {

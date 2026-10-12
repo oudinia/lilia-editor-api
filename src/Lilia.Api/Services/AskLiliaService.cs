@@ -873,10 +873,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
         ["orientation"] = string.Equals(d.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
             || (d.LatexDocumentClassOptions ?? "").Split(',').Any(t => string.Equals(t.Trim(), "landscape", StringComparison.OrdinalIgnoreCase))
             ? "landscape" : "portrait",
-        ["marginTop"] = d.MarginTop,
-        ["marginBottom"] = d.MarginBottom,
-        ["marginLeft"] = d.MarginLeft,
-        ["marginRight"] = d.MarginRight,
+        ["marginTop"] = Unset(d.MarginTop),
+        ["marginBottom"] = Unset(d.MarginBottom),
+        ["marginLeft"] = Unset(d.MarginLeft),
+        ["marginRight"] = Unset(d.MarginRight),
         ["columns"] = d.Columns,
         ["columnGap"] = d.ColumnGap,
         ["columnSeparator"] = d.ColumnSeparator,
@@ -884,19 +884,22 @@ public sealed partial class AskLiliaService : IAskLiliaService
         ["fontFamily"] = d.FontFamily,
         ["fontSize"] = d.FontSize,
         ["lineSpacing"] = d.LineSpacing,
-        ["paragraphIndent"] = d.ParagraphIndent,
+        ["paragraphIndent"] = Unset(d.ParagraphIndent),
         ["pageNumbering"] = d.PageNumbering,
-        ["headerLeft"] = d.HeaderLeft,
-        ["headerCenter"] = d.HeaderCenter,
-        ["headerRight"] = d.HeaderRight,
-        ["footerLeft"] = d.FooterLeft,
-        ["footerCenter"] = d.FooterCenter,
-        ["footerRight"] = d.FooterRight,
-        ["legacyHeaderText"] = d.HeaderText,
-        ["legacyFooterText"] = d.FooterText,
-        ["customPreamble"] = d.CustomPreamble,
+        ["headerLeft"] = Unset(d.HeaderLeft),
+        ["headerCenter"] = Unset(d.HeaderCenter),
+        ["headerRight"] = Unset(d.HeaderRight),
+        ["footerLeft"] = Unset(d.FooterLeft),
+        ["footerCenter"] = Unset(d.FooterCenter),
+        ["footerRight"] = Unset(d.FooterRight),
+        ["legacyHeaderText"] = Unset(d.HeaderText),
+        ["legacyFooterText"] = Unset(d.FooterText),
+        ["customPreamble"] = Unset(d.CustomPreamble),
         ["note"] = "null = class default. Header/footer slots are plain text. Legacy header/footer text is used only while all six slots are empty.",
     };
+
+    // One value for "unset" (MCP-75): rows written before the change may still hold "".
+    private static string? Unset(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private const int MaxImportLatexChars = 100_000;
 
