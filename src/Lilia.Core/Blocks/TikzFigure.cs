@@ -100,7 +100,19 @@ public static class TikzFigure
     {
         var floatSpecifier = FloatSpecifier(content);
         var source = Source(content);
-        if (!IsFloating(content)) return source;
+        if (!IsFloating(content))
+        {
+            // MCP-20: not floating (float:false, or no caption) but captioned or labelled — keep both,
+            // in place: \captionof numbers it like a figure, so its label resolves. Both were dropped.
+            if (string.IsNullOrEmpty(captionLatex) && string.IsNullOrEmpty(labelLatex)) return source;
+            var inPlace = new StringBuilder();
+            inPlace.Append(@"\begin{center}").Append('\n').Append(source).Append('\n');
+            inPlace.Append(@"\captionof{figure}{").Append(captionLatex).Append("}\n");
+            if (!string.IsNullOrEmpty(labelLatex))
+                inPlace.Append(@"\label{").Append(labelLatex).Append("}\n");
+            inPlace.Append(@"\end{center}");
+            return inPlace.ToString();
+        }
 
         var position = content.TryGetProperty("position", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
         var align = position switch
