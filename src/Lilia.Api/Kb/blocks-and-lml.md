@@ -9,7 +9,7 @@ keywords: block lml paste paragraph heading equation figure table theorem abstra
 ---
 # Blocks and LML
 
-**The model.** A Lilia document is a sequence of **typed blocks** — `@heading`, `@paragraph`, `@equation`, `@figure`, `@table`, `@theorem`, `@code`, `@abstract`, `@list`, `@blockquote`, `@bibliography`, `@toc`. You edit them Word-style, but they compile to real LaTeX.
+**The model.** A Lilia document is a sequence of **typed blocks** — `@heading`, `@paragraph`, `@equation`, `@figure`, `@table`, `@theorem`, `@code`, `@abstract`, `@list`, `@blockquote`, `@bibliography`, `@toc`, `@algorithm`, `@callout`, `@footnote`, `@embed` (raw LaTeX). You edit them Word-style, but they compile to real LaTeX.
 
 **LML** is the text form of those blocks: a `@blocktype[attrs]` line followed by 2-space-indented content. You can paste LML into Lilia and it parses into editable blocks — handy for moving content in quickly.
 
@@ -23,6 +23,8 @@ keywords: block lml paste paragraph heading equation figure table theorem abstra
 @equation[mode=display, label="eq:loss"]
   \mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda \lVert W \rVert_2^2
 ```
+
+**Inline marks** (inside any text): `**bold**`, `*italic*`, `__underline__`, `~~strike~~`, `==highlight==`, `^superscript^`, `%%subscript%%`, maths as `$…$`, `\(…\)` or `\[…\]`. Refer to a labelled block with `Theorem~(thm:main)` or `Equation~(eq:loss)` (Lilia writes `\ref` / `\eqref` and numbers it), cite with `@cite{key}`. In a quoted attribute (`caption="…"`) a backslash stays as written; only `\"` and `\\` are escapes. In a table, `\|` is a literal bar.
 
 **Why blocks.** Each block knows its type, so Lilia can validate it, renumber cross-references, and emit correct LaTeX — you focus on content, not boilerplate.
 
