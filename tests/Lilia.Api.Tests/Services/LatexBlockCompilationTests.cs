@@ -533,7 +533,7 @@ public class LatexBlockCompilationTests
     {
         var block = CreateBlock("columnBreak", "{}");
         var latex = _sut.RenderBlockToLatex(block);
-        latex.Should().Contain("\\columnbreak");
+        latex.Should().Contain("\\liliaColumnBreak");
     }
 
     [Fact]

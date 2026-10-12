@@ -595,7 +595,7 @@ public class RenderServiceTests
         var result = sut.RenderBlockToLatex(block);
 
         // Assert
-        result.Should().Be(@"\columnbreak");
+        result.Should().Be(@"\liliaColumnBreak");
     }
 
     [Fact]

@@ -273,7 +273,7 @@ public class BlockEnrichmentTests
         var block = CreateBlock("figure", """{"src":"img.png","alt":"","caption":"","width":0.6}""");
         var result = _sut.RenderBlockToLatex(block);
 
-        result.Should().Contain(@"width=0.6\textwidth");
+        result.Should().Contain(@"width=0.6\linewidth");
     }
 
     [Fact]
@@ -282,7 +282,7 @@ public class BlockEnrichmentTests
         var block = CreateBlock("figure", """{"src":"img.png","alt":"","caption":""}""");
         var result = _sut.RenderBlockToLatex(block);
 
-        result.Should().Contain(@"width=0.8\textwidth");
+        result.Should().Contain(@"width=0.8\linewidth");
     }
 
     #endregion

@@ -24,6 +24,13 @@ namespace Lilia.Engines;
 public static class LaTeXPreambleBuilder
 {
     /// <summary>
+    /// Columns through multicol rather than the <c>twocolumn</c> class option: when the author asks
+    /// for balanced columns, and for three or more, which <c>twocolumn</c> can't do (MCP-43: three
+    /// columns printed as two, without a word).
+    /// </summary>
+    public static bool UsesMulticols(Document doc) => doc.BalancedColumns || doc.Columns >= 3;
+
+    /// <summary>
     /// Classes the DO App Platform container reliably provides. Anything
     /// outside this list (mnras, aastex, pnas, IEEEtran, etc.) requires a
     /// .cls we don't ship, so we fall back to article and rely on shim
@@ -154,7 +161,7 @@ public static class LaTeXPreambleBuilder
 
         // BuildClassDirective adds `twocolumn` for Columns >= 2 unless multicol
         // owns the flow, so mirror that here rather than reading the option only.
-        if (HasOption("twocolumn") || (doc.Columns >= 2 && !doc.BalancedColumns)) return true;
+        if (HasOption("twocolumn") || (doc.Columns >= 2 && !UsesMulticols(doc))) return true;
         if (HasOption("twoside")) return true;
         if (HasOption("oneside")) return false;
         return TwoSideByDefaultClasses.Contains(className);
@@ -250,7 +257,7 @@ public static class LaTeXPreambleBuilder
         // (added below in BuildLayoutPreamble) which is incompatible
         // with the twocolumn class option.
         if (doc.Columns >= 2
-            && !doc.BalancedColumns
+            && !UsesMulticols(doc)
             && !classOpts.Any(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase)))
         {
             classOpts.Add("twocolumn");
@@ -258,7 +265,7 @@ public static class LaTeXPreambleBuilder
 
         // If balanced columns is on but stored options forced "twocolumn"
         // back in, strip it — multicol owns column flow in that mode.
-        if (doc.BalancedColumns)
+        if (UsesMulticols(doc))
         {
             classOpts.RemoveAll(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase));
         }
@@ -410,7 +417,7 @@ public static class LaTeXPreambleBuilder
 
         // Balanced columns require multicol; the body wrapper is added
         // by BuildBodyOpener/Closer, but the package itself loads here.
-        if (doc.BalancedColumns)
+        if (UsesMulticols(doc))
         {
             sb.AppendLine("\\usepackage{multicol}");
         }
@@ -717,10 +724,10 @@ public static class LaTeXPreambleBuilder
     /// </summary>
     public static string BuildBodyOpener(Document doc)
     {
-        if (doc.BalancedColumns)
+        if (UsesMulticols(doc))
         {
             var n = Math.Max(2, doc.Columns);
-            return $"\\begin{{multicols}}{{{n}}}";
+            return $"\\begin{{{MulticolsEnv(doc)}}}{{{n}}}";
         }
         return string.Empty;
     }
@@ -730,7 +737,10 @@ public static class LaTeXPreambleBuilder
     /// just before \end{document} when balanced multicols are active.
     /// </summary>
     public static string BuildBodyCloser(Document doc) =>
-        doc.BalancedColumns ? "\\end{multicols}" : string.Empty;
+        UsesMulticols(doc) ? $"\\end{{{MulticolsEnv(doc)}}}" : string.Empty;
+
+    // multicols balances the last page; multicols* fills columns in turn, as twocolumn does.
+    private static string MulticolsEnv(Document doc) => doc.BalancedColumns ? "multicols" : "multicols*";
 
     /// <summary>
     /// Convenience: build everything in one call for callers that just
