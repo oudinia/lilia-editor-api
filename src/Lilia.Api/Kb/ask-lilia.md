@@ -18,6 +18,7 @@ keywords: ask lilia ai assistant chat help write draft fix explain apply undo ch
 4. About one part only? Select that block first; your question is about it.
 5. Attach a file (csv, tex, bib, docx, pdf) or an image with the paperclip and picture buttons.
 6. **New chat** starts a fresh conversation; earlier ones stay in the conversation menu.
+7. How Lilia explains things: the first time, it asks *How familiar are you with LaTeX?* (or Skip). Change it later with **Answers: … ▾** under the message box, or in **Settings → Ask Lilia and help**: **Simple**, **Standard** or **For LaTeX users**.
 
 ## What this means {#beginner}
 - Ask anything, in English, French or Spanish: how to do something in Lilia, why the document won't compile, how to write an equation, to draft a section or tidy a paragraph.
