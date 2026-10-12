@@ -37,6 +37,7 @@ public sealed class LiliaMcpWriteTools(
     IMemoryCache cache,
     IHttpClientFactory httpFactory,
     IConfiguration config,
+    ConnectorTransfers transfers,
     ILogger<LiliaMcpWriteTools> logger)
 {
     public const string WriteScope = "documents:write";
@@ -161,6 +162,44 @@ public sealed class LiliaMcpWriteTools(
         if (!string.IsNullOrWhiteSpace(lml))
             body = await WriteAsync(doc.Id.ToString(), "apply_lml", new() { ["lml"] = lml });
         return new { id = doc.Id, title = doc.Title, kind = category, body, url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}" };
+    }
+
+    [McpServerTool(Name = "start_import", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Import a file (.tex, .docx or .lml) as a new Lilia document, without the file passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes.")]
+    public async Task<object> StartImport()
+    {
+        if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        var (token, ticket) = transfers.IssueImport(UserId, await AppNameAsync());
+        return new
+        {
+            importId = token,
+            url = $"{McpOAuth.PublicOrigin(config)}/connect/import/{token}",
+            accepts = new[] { ".tex", ".docx", ".lml" },
+            expiresAt = ticket.ExpiresAt,
+            note = "Give the author this link to drop the file. When they say it's done, call import_status with the importId.",
+        };
+    }
+
+    [McpServerTool(Name = "import_status", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Where an import started with start_import is: waiting (no file dropped yet), done (with the new document's id) or failed (with the reason).")]
+    public object ImportStatus([Description("The importId from start_import.")] string importId)
+    {
+        if (transfers.Import(importId?.Trim() ?? "", UserId) is not { } t)
+            return new { error = "No such import: it may have expired (30 minutes). Call start_import again." };
+        return new
+        {
+            status = t.Status,
+            documentId = t.DocumentId,
+            title = t.Title,
+            error = t.Error,
+            url = t.DocumentId is { } id ? $"{McpOAuth.PublicOrigin(config)}/d/{id}" : null,
+            next = t.Status switch
+            {
+                "done" => "Read it with get_outline, or check it compiles with check_document.",
+                "failed" => "Tell the author why; they can try another file with a new start_import.",
+                _ => "The author hasn't dropped the file yet.",
+            },
+        };
     }
 
     // ── one write ─────────────────────────────────────────────────────────

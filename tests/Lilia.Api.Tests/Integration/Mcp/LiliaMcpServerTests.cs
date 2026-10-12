@@ -24,6 +24,8 @@ public class LiliaMcpServerTests : IntegrationTestBase
     [
         "list_documents", "get_outline", "get_block", "search_document", "get_lilia_latex",
         "get_document_settings", "check_document", "search_help", "get_help",
+        // Read-only too: a download link, and where an import is.
+        "export_document", "import_status",
     ];
 
     /// <summary>One JSON-RPC call; the reply may come as JSON or as one SSE "data:" line.</summary>
