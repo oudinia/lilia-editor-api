@@ -1289,6 +1289,10 @@ public partial class RenderService : IRenderService
         // Blocks — reuse the pre-rendered LaTeX from above so we don't
         // run the (potentially expensive) per-block rendering twice.
         var blocksList = blocks;
+        var bookDivisions = LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "memoir" or "scrbook"
+            && blocksList.Any(b => string.Equals(b.Type, "frontMatter", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(b.Type, "backMatter", StringComparison.OrdinalIgnoreCase));
+        var division = 0; // 0 none yet, 1 front, 2 main, 3 back
         for (int i = 0; i < blocksList.Count; i++)
         {
             latex.AppendLine($"% block:{blocksList[i].Id}");
@@ -1311,9 +1315,27 @@ public partial class RenderService : IRenderService
             // @pagebreak block. Applied here — around the whole block — because
             // that is the unit the intent is about: "keep THIS heading with what
             // follows", "do not split THIS table".
+            // MCP-41: a book's divisions — \frontmatter before its front matter, \mainmatter when
+            // the body starts, \backmatter before back matter that isn't an appendix.
+            if (bookDivisions)
+            {
+                var type = blocksList[i].Type ?? "";
+                var isFront = string.Equals(type, "frontMatter", StringComparison.OrdinalIgnoreCase);
+                var isBack = string.Equals(type, "backMatter", StringComparison.OrdinalIgnoreCase)
+                    && !Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(blocksList[i]);
+                var isNeutral = type.Equals("title", StringComparison.OrdinalIgnoreCase)
+                    || type.Equals("tableofcontents", StringComparison.OrdinalIgnoreCase);
+                if (isFront && division == 0) { latex.AppendLine(@"\frontmatter"); division = 1; }
+                else if (!isFront && !isBack && !isNeutral && division == 1) { latex.AppendLine(@"\mainmatter"); division = 2; }
+                else if (isBack && division < 3) { if (division == 1) latex.AppendLine(@"\mainmatter"); latex.AppendLine(@"\backmatter"); division = 3; }
+            }
+
             var breaks = BlockBreakAttributes.For(blocksList[i].Content.RootElement);
             if (breaks.Before.Length > 0) latex.AppendLine(breaks.Before);
-            latex.AppendLine(renderedBlocks[i]);
+            // MCP-40: inside balanced multicols LaTeX drops floats outright ("Floats and marginpars
+            // not allowed inside multicols"): the table and its label vanished, check clean. There
+            // they are placed exactly where they are written ([H], float package).
+            latex.AppendLine(doc.BalancedColumns ? InMulticols(renderedBlocks[i]) : renderedBlocks[i]);
             if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
         }
 
@@ -1326,11 +1348,22 @@ public partial class RenderService : IRenderService
             latex.AppendLine(bodyCloser);
         }
 
-        // Bibliography
-        if (doc.BibliographyEntries != null && doc.BibliographyEntries.Any())
+        // Bibliography: the document's entries, and the references written as text inside its
+        // bibliography blocks (MCP-04) that the table doesn't already hold.
+        var tableEntries = doc.BibliographyEntries?.ToList() ?? new List<BibliographyEntry>();
+        var known = tableEntries.Select(e => e.CiteKey).ToHashSet(StringComparer.Ordinal);
+        var textEntries = blocks
+            .Where(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(b => BibliographyText.Parse(
+                b.Content?.RootElement is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
+                    ? t.GetString() : null))
+            .Where(e => !known.Contains(e.Key))
+            .GroupBy(e => e.Key).Select(g => g.First())
+            .ToList();
+        if (tableEntries.Count > 0 || textEntries.Count > 0)
         {
             latex.AppendLine();
-            latex.AppendLine(RenderBibliographyToLatex(doc.BibliographyEntries, usesNatbib));
+            latex.AppendLine(RenderBibliographyToLatex(tableEntries, usesNatbib, textEntries));
         }
 
         latex.AppendLine(@"\end{document}");
@@ -1417,6 +1450,8 @@ public partial class RenderService : IRenderService
                 // The Appendix back-matter block starts the appendices: chapters or sections
                 // after it are lettered A, B… (and Index restarts its colours there).
                 "backmatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
+                // MCP-41: front and back matter text reached nowhere ("% Unknown block type").
+                "frontmatter" or "backmatter" => RenderMatterToLatex(content, block.Document?.LatexDocumentClass),
                 _ => $"% Unknown block type: {block.Type}"
             };
         }
@@ -2657,12 +2692,63 @@ public partial class RenderService : IRenderService
     /// writes references.bib and lets BibTeX build the labels from
     /// <c>\bibliographystyle{plainnat}</c>.</para>
     /// </summary>
+    /// <summary>
+    /// A front- or back-matter block (preface, foreword, acknowledgements, dedication, afterword…):
+    /// an unnumbered heading that still appears in the contents, then its text. A dedication is
+    /// centred, without a heading.
+    /// </summary>
+    private string RenderMatterToLatex(JsonElement content, string? documentClass)
+    {
+        string? Str(string key) => content.ValueKind == JsonValueKind.Object && content.TryGetProperty(key, out var v)
+            && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        var subType = (Str("subType") ?? Str("kind") ?? "").Trim();
+        var text = Str("text") ?? Str("content") ?? "";
+        if (string.Equals(subType, "dedication", StringComparison.OrdinalIgnoreCase))
+            return string.IsNullOrWhiteSpace(text) ? "" : $"\\begin{{center}}\\itshape\n{ProcessLatexText(text)}\n\\end{{center}}";
+        var title = Str("title") ?? (subType.ToLowerInvariant() switch
+        {
+            "" => "",
+            "acknowledgments" or "acknowledgements" => "Acknowledgements",
+            _ => char.ToUpperInvariant(subType[0]) + subType[1..],
+        });
+        var chapterClass = (documentClass ?? "").ToLowerInvariant() is "book" or "report" or "memoir" or "scrbook" or "scrreprt";
+        var sb = new StringBuilder();
+        if (title.Length > 0)
+        {
+            var escaped = EscapeLatex(title);
+            sb.AppendLine(chapterClass ? $"\\chapter*{{{escaped}}}" : $"\\section*{{{escaped}}}");
+            sb.AppendLine($"\\addcontentsline{{toc}}{{{(chapterClass ? "chapter" : "section")}}}{{{escaped}}}");
+        }
+        if (!string.IsNullOrWhiteSpace(text)) sb.AppendLine(ProcessLatexText(text));
+        return sb.ToString().TrimEnd();
+    }
+
+    private static readonly Regex FloatBegin = new(
+        @"\\begin\{(?<env>table|figure)\*?\}(?:\[[^\]]*\])?", RegexOptions.Compiled);
+    private static readonly Regex FloatEnd = new(@"\\end\{(?<env>table|figure)\*\}", RegexOptions.Compiled);
+
+    /// <summary>A block's floats made non-floating ([H]; a starred float becomes the plain one).</summary>
+    internal static string InMulticols(string blockLatex) =>
+        string.IsNullOrEmpty(blockLatex) || blockLatex.IndexOf(@"\begin{", StringComparison.Ordinal) < 0
+            ? blockLatex
+            : FloatEnd.Replace(FloatBegin.Replace(blockLatex, m => $@"\begin{{{m.Groups["env"].Value}}}[H]"), m => $@"\end{{{m.Groups["env"].Value}}}");
+
     private string RenderBibliographyToLatex(
         IEnumerable<BibliographyEntry> entries,
-        bool usesNatbib = false)
+        bool usesNatbib = false,
+        IReadOnlyList<BibliographyText.Entry>? textEntries = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine(@"\begin{thebibliography}{99}");
+
+        // References written as text in a bibliography block (MCP-04): the text as written. The
+        // natbib label follows NatbibLabel's fallback (key, n.d.): unlabelled is fatal there.
+        foreach (var t in textEntries ?? Array.Empty<BibliographyText.Entry>())
+        {
+            var key = LabelKey.Safe(t.Key);
+            sb.AppendLine(usesNatbib ? $@"\bibitem[{EscapeLatex(t.Key)}(n.d.)]{{{key}}}" : $@"\bibitem{{{key}}}");
+            sb.AppendLine(ProcessLatexText(t.Text));
+        }
 
         foreach (var entry in entries)
         {
@@ -2768,6 +2854,17 @@ public partial class RenderService : IRenderService
         // Step 1: Extract and protect math regions and LaTeX commands from escaping.
         // Replace $...$ and $$...$$ with placeholders to avoid mangling them.
         var mathRegions = new List<string>();
+        // MCP-11: \[…\] and \(…\) are maths too. Unprotected, the inline marks and the escape pass
+        // ran inside them: \(e^{i\pi}+1=0\) … \(a^2\) became one "superscript" (Missing $), and
+        // \[ a_1 \] printed a\_1.
+        result = Regex.Replace(result, @"\\\[(.+?)\\\]", m => {
+            mathRegions.Add(m.Value);
+            return $"\x00MATH{mathRegions.Count - 1}\x00";
+        }, RegexOptions.Singleline);
+        result = Regex.Replace(result, @"\\\((.+?)\\\)", m => {
+            mathRegions.Add(m.Value);
+            return $"\x00MATH{mathRegions.Count - 1}\x00";
+        }, RegexOptions.Singleline);
         result = Regex.Replace(result, @"\$\$(.+?)\$\$", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
