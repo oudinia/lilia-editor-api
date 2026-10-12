@@ -172,6 +172,15 @@ document to read, **Ask Lilia** (the bar at the bottom; tap a block to ask about
 **Document details**. The avatar has **Appearance**, **Language** and **Sign out**. Editing on a
 phone goes through Ask Lilia; the full editor is for a computer or a large tablet.
 
+### Connect Claude or another AI app
+Lilia has a connector (an MCP server) at `https://editor.liliaeditor.com/api/mcp`. In Claude:
+**Settings → Connectors → Add custom connector**, name **Lilia**, that address, then **Connect**; Lilia
+asks **Connect Claude to Lilia?** → **Allow**. Claude then reads the author's documents, checks they
+compile, reads this help and makes changes (owner or editor only; never shares or deletes). An open
+document shows Claude's change at once with **Claude changed this document · Undo** (or **Load
+changes** while typing isn't saved yet); **History** keeps **Before Claude edit** to go back. New
+abilities appear in Claude after disconnecting and connecting again. Article: connect-claude.
+
 ### Keyboard
 ⌘K / Ctrl+K the Lilia menu · ⌘S / Ctrl+S save a version · Ctrl+B / I / U bold, italic, underline ·
 Ctrl+Z / Ctrl+Y undo, redo · **/** in an empty paragraph for blocks · Esc closes a panel or dialog.
@@ -284,7 +293,8 @@ taken from the web editor's locale files: refresh this table when the interface'
 ### Help articles
 The knowledge base (search_kb / get_kb) holds the same steps per task, in the author's language and
 at their level: getting-started, compile-and-validate, sharing, sign-in, saving-and-versions, export,
-import, view-only, ask-lilia, citations, trash, phone, appearance-and-language, document-look, teams.
+import, view-only, ask-lilia, citations, trash, phone, appearance-and-language, document-look, teams,
+connect-claude.
 Prefer get_kb for a task's exact steps, and end with its link (/help/<slug>).
 
 ## How to respond

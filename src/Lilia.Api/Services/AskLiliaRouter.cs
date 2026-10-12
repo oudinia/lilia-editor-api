@@ -137,7 +137,10 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
                 "où est", "où trouver", "paramètres", "mode sombre", "mode clair", "thème", "thèmes", "langue", "partager",
                 "inviter", "exporter", "valider", "raccourci", "corbeille", "mot de passe",
                 "dónde está", "ajustes", "modo oscuro", "modo claro", "tema", "temas", "idioma", "compartir", "invitar",
-                "exportar", "validar", "atajo", "papelera", "contraseña" },
+                "exportar", "validar", "atajo", "papelera", "contraseña",
+                // outside AI apps over MCP (the connector, 12 Oct)
+                "connector", "connecteur", "conector", "mcp", "connect claude", "connecter claude", "conectar claude",
+                "chatgpt" },
             "fast", 3),
         new("lilia-document-architect", "Document Architect",
             "Design a paper/thesis/report/talk/CV as typed blocks — a real first draft.",

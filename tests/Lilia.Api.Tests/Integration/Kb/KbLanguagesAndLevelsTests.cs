@@ -39,6 +39,7 @@ public class KbLanguagesAndLevelsTests : IntegrationTestBase
     [InlineData("appearance-and-language")]
     [InlineData("document-look")]
     [InlineData("teams")]
+    [InlineData("connect-claude")]
     public async Task Each_task_article_has_three_languages_and_three_levels(string slug)
     {
         var kb = await SeededAsync();
@@ -73,6 +74,9 @@ public class KbLanguagesAndLevelsTests : IntegrationTestBase
     [InlineData("passer en mode sombre", "fr", "appearance-and-language")]
     [InlineData("exportar a word", "es", "export")]
     [InlineData("olvidé mi contraseña", "es", "sign-in")]
+    [InlineData("connect Claude to Lilia", "en", "connect-claude")]
+    [InlineData("connecter claude à lilia avec un connecteur", "fr", "connect-claude")]
+    [InlineData("conectar claude a lilia", "es", "connect-claude")]
     public async Task Search_finds_the_article_in_the_users_language(string query, string lang, string slug)
     {
         var kb = await SeededAsync();
