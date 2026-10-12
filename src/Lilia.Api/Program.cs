@@ -673,7 +673,9 @@ builder.Services.AddMcpServer(o =>
         o.ServerInstructions = Lilia.Api.Mcp.LiliaMcpTools.Instructions;
     })
     .WithHttpTransport(o => o.Stateless = true)
-    .WithTools<Lilia.Api.Mcp.LiliaMcpTools>();
+    .WithTools<Lilia.Api.Mcp.LiliaMcpTools>()
+    .WithTools<Lilia.Api.Mcp.LiliaMcpWriteTools>();
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<IKbSeeder, KbSeeder>();
 
 // Register Lilia.Import services for document conversion. DocxParser
