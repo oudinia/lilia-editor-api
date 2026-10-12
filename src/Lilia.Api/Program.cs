@@ -1,3 +1,4 @@
+using Lilia.Api.Mcp;
 using Lilia.Engines;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -304,7 +305,10 @@ if (!string.IsNullOrEmpty(stytchProjectId) && !string.IsNullOrEmpty(stytchJwksUr
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = stytchIssuer,
+                // Session tokens say stytch.com/<project>; Connected Apps tokens (MCP sign-in)
+                // say the project domain they were issued through.
+                ValidIssuers = new[] { stytchIssuer, Lilia.Api.Mcp.McpOAuth.AuthorizationServer(builder.Configuration) }
+                    .Where(i => !string.IsNullOrEmpty(i)).Select(i => i!).ToArray(),
                 ValidateAudience = true,
                 ValidAudience = stytchProjectId,
                 ValidateLifetime = true,
@@ -943,11 +947,14 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseRateLimiter();
 
+app.UseMcpChallenge();
 app.UseAuthentication();
 
 // Development auth - create a fake user when no auth token is provided.
 // Must run AFTER UseAuthentication so the Bearer handler doesn't overwrite the user.
 app.UseDevelopmentAuth();
+// A connected app's token (MCP sign-in) is good at /api/mcp only.
+app.UseConnectedAppBoundary();
 
 // M2M auth - map client_credentials tokens (no sub claim) to a service account user.
 app.UseM2MAuth();
@@ -959,6 +966,7 @@ app.UseUserSync();
 
 app.MapControllers();
 app.MapMcp("/api/mcp").RequireAuthorization();
+app.MapMcpMetadata();
 
 // Map SignalR hubs
 app.MapHub<ImportHub>("/hubs/import");

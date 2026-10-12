@@ -48,7 +48,7 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
         var email = headerEmail ?? overrideValue?.Email ?? "test@lilia.test";
         var name = headerName ?? overrideValue?.Name ?? "Test User";
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, userId),
             new Claim("sub", userId),
@@ -57,6 +57,9 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             new Claim(ClaimTypes.Name, name),
             new Claim("name", name),
         };
+        // A Stytch Connected Apps token (MCP sign-in) names the app it was issued to.
+        if (Request.Headers["X-Test-ClientId"].FirstOrDefault() is { Length: > 0 } clientId)
+            claims.Add(new Claim("client_id", clientId));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
