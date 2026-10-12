@@ -660,6 +660,16 @@ builder.Services.AddScoped<IAskLiliaService, AskLiliaService>();
 // Knowledge base — the screenshot-free, per-tool help catalog the AI points to and
 // the public site renders. Scoped (DbContext-backed); seeded from embedded Kb/*.md.
 builder.Services.AddScoped<IKbService, KbService>();
+
+// The Lilia MCP server (step 1: read-only tools), at /api/mcp. Stateless Streamable HTTP: each
+// request carries the author's sign-in, like the rest of /api.
+builder.Services.AddMcpServer(o =>
+    {
+        o.ServerInfo = new() { Name = "lilia", Title = "Lilia", Version = "1.0.0" };
+        o.ServerInstructions = Lilia.Api.Mcp.LiliaMcpTools.Instructions;
+    })
+    .WithHttpTransport(o => o.Stateless = true)
+    .WithTools<Lilia.Api.Mcp.LiliaMcpTools>();
 builder.Services.AddScoped<IKbSeeder, KbSeeder>();
 
 // Register Lilia.Import services for document conversion. DocxParser
@@ -948,6 +958,7 @@ app.UseAuthorization();
 app.UseUserSync();
 
 app.MapControllers();
+app.MapMcp("/api/mcp").RequireAuthorization();
 
 // Map SignalR hubs
 app.MapHub<ImportHub>("/hubs/import");
