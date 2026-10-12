@@ -34,10 +34,19 @@ public class TestDatabaseFixture : IAsyncLifetime
         Factory = new LiliaWebApplicationFactory(ConnectionString);
     }
 
+    /// <summary>
+    /// Teardown is bounded: a host that won't stop must not hold the run. On 12 Oct the host's
+    /// shutdown waited forever on Postgres (Wolverine releasing an advisory lock); the blame
+    /// collector killed the run after 3 minutes and every later collection was lost.
+    /// </summary>
     public async Task DisposeAsync()
     {
         if (Factory != null)
-            await Factory.DisposeAsync();
-        await _container.DisposeAsync();
+        {
+            try { await Factory.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(60)); }
+            catch (TimeoutException) { /* the container below goes away regardless */ }
+        }
+        try { await _container.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(60)); }
+        catch (TimeoutException) { }
     }
 }

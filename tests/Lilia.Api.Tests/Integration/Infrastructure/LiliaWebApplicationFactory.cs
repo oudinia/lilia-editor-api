@@ -27,6 +27,8 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:LiliaCore", _connectionString);
         builder.UseSetting("Auth:SecretKey", "test_secret_key_to_disable_dev_auth");
         builder.UseSetting("Auth:Authority", "https://test.lilia.test");
+        // One test node: no Wolverine leader election, so no advisory lock to hang on at teardown.
+        builder.UseSetting("Wolverine:Solo", "true");
         builder.UseSetting("Storage:LocalPath", Path.Combine(Path.GetTempPath(), "lilia-tests", Guid.NewGuid().ToString()));
 
         builder.ConfigureTestServices(services =>
