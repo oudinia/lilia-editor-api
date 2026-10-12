@@ -137,6 +137,32 @@ public sealed class LiliaMcpWriteTools(
         return WriteAsync(documentId, "set_document_settings", args);
     }
 
+    [McpServerTool(Name = "create_document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Create a new document owned by the author, optionally with its body written in LML (as apply_lml). Kinds: article (default), report, book. Returns its id and address; then edit it with the other tools.")]
+    public async Task<object> CreateDocument(
+        [Description("The document's title.")] string title,
+        [Description("Optional body in LML, e.g. \"@heading[level=1]\\n  Introduction\\n@paragraph\\n  Text.\".")] string? lml = null,
+        [Description("article, report or book. Default article.")] string? kind = null)
+    {
+        if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        var category = (kind ?? "article").Trim().ToLowerInvariant() switch
+        {
+            "report" => "report",
+            "book" or "thesis" => "book",
+            _ => "article",
+        };
+        var doc = await documents.CreateDocumentAsync(UserId, new Lilia.Api.Models.Documents.CreateDocumentDto
+        {
+            Title = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim(),
+            DocumentCategory = category,
+            DocumentClass = category,
+        });
+        object? body = null;
+        if (!string.IsNullOrWhiteSpace(lml))
+            body = await WriteAsync(doc.Id.ToString(), "apply_lml", new() { ["lml"] = lml });
+        return new { id = doc.Id, title = doc.Title, kind = category, body, url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}" };
+    }
+
     // ── one write ─────────────────────────────────────────────────────────
 
     private async Task<object> WriteAsync(string documentId, string tool, Dictionary<string, object?> args)

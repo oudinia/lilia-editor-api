@@ -136,4 +136,19 @@ public class McpWriteToolsTests : IntegrationTestBase
         saved.FontSize.Should().Be(12);
         saved.MarginLeft.Should().Be("2cm");
     }
+
+    [Fact]
+    public async Task An_app_creates_a_document_with_its_body()
+    {
+        await SeedUserAsync("mcpw_creator");
+        var r = await CallAsync(CreateClientAs("mcpw_creator"), "create_document",
+            new { title = "Written by an app", lml = "@heading[level=1]\n  Introduction\n@paragraph\n  A first paragraph." });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        var id = r.GetProperty("id").GetGuid();
+        r.GetProperty("url").GetString().Should().EndWith($"/d/{id}");
+        await using var db = CreateDbContext();
+        var doc = await db.Documents.AsNoTracking().FirstAsync(d => d.Id == id);
+        doc.OwnerId.Should().Be("mcpw_creator");
+        (await db.Blocks.CountAsync(b => b.DocumentId == id && b.Type == "paragraph")).Should().Be(1);
+    }
 }
