@@ -124,11 +124,17 @@ public class EmitterCoverageMatrixTests
         // five general emitters would be dead code.
         Gap(
             [
-                BlockTypes.FrontMatter, BlockTypes.BackMatter, BlockTypes.Verse,
+                BlockTypes.Verse,
                 BlockTypes.Aside, BlockTypes.Annotation, BlockTypes.Cover,
                 BlockTypes.ChapterBreak,
             ],
             AllEmitters);
+
+        // ── Front and back matter — LaTeX CLOSED 2026-10-12 (MCP-41) ──────
+        // A book written through the connector carried a preface and an afterword that
+        // never reached the PDF; the LaTeX emitter prints them now. The other emitters
+        // are still the ePub-vertical story above.
+        Gap([BlockTypes.FrontMatter, BlockTypes.BackMatter], AllEmitters.Where(e => e != Latex).ToArray());
 
         // ── Invoice verticals ─────────────────────────────────────────────
         // Same argument: the inv-* namespace is a separate pipeline with its own

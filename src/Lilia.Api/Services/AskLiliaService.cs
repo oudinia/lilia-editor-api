@@ -1506,10 +1506,17 @@ public sealed partial class AskLiliaService : IAskLiliaService
     {
         if (el.ValueKind != JsonValueKind.Object) return el;
         if (JsonNode.Parse(el.GetRawText()) is not JsonObject node) return el;
+        // MCP-10: an equation's LaTeX and a verse keep their line breaks (a % comment runs to the
+        // end of its line; a poem is its lines). Everything else is prose: soft wraps → spaces.
+        var verse = node["variant"] is JsonValue vv && vv.GetValueKind() == JsonValueKind.String
+            && string.Equals(vv.GetValue<string>(), "verse", StringComparison.OrdinalIgnoreCase);
         foreach (var key in new[] { "text", "title", "latex", "caption" })
         {
-            if (node[key] is JsonValue jv && jv.GetValueKind() == JsonValueKind.String)
-                node[key] = Lilia.Import.Services.LmlTextParser.NormalizeProse(jv.GetValue<string>());
+            if (node[key] is not JsonValue jv || jv.GetValueKind() != JsonValueKind.String) continue;
+            var value = jv.GetValue<string>();
+            node[key] = key == "latex" || (key == "text" && verse)
+                ? Lilia.Import.Services.LmlTextParser.KeepLines(value)
+                : Lilia.Import.Services.LmlTextParser.NormalizeProse(value);
         }
         return JsonSerializer.SerializeToElement(node);
     }

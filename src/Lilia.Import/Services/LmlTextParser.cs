@@ -18,12 +18,14 @@ namespace Lilia.Import.Services;
 /// </summary>
 public sealed class LmlTextParser : ILmlTextParser
 {
+    // MCP-59: an attribute group is "[" … "]" where a quoted value may hold "]" — a theorem titled
+    // "Completeness of $C[0,1]$" ended its header at the first "]" and became a paragraph of raw text.
     private static readonly Regex BlockStartRegex = new(
-        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>(?:\[[^\]]*\])+)?\s*$",
+        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>(?:\[(?:""(?:\\.|[^""\\])*""|'(?:\\.|[^'\\])*'|[^\]""'])*\])+)?\s*$",
         RegexOptions.Compiled);
 
     private static readonly Regex InlineBlockStartRegex = new(
-        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>(?:\[[^\]]*\])+)?\s+(?<rest>.+)$",
+        @"^@(?<type>[a-zA-Z][\w-]*)(?<attrs>(?:\[(?:""(?:\\.|[^""\\])*""|'(?:\\.|[^'\\])*'|[^\]""'])*\])+)?\s+(?<rest>.+)$",
         RegexOptions.Compiled);
 
     private static readonly HashSet<string> KnownTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -153,6 +155,11 @@ public sealed class LmlTextParser : ILmlTextParser
                 AppendBlock(blocks, type, attrsRaw, fullBody, warnings, ref title);
                 continue;
             }
+
+            // A header that starts like @type[ but can't be read: say so rather than silently making
+            // a paragraph of raw markup (MCP-59).
+            if (Regex.IsMatch(trimmed, @"^@[a-zA-Z][\w-]*\[") )
+                warnings.Add($"Line {i + 1}: couldn't read the attributes of \"{trimmed[..Math.Min(trimmed.Length, 60)]}\" (an unclosed [ or quote?); it was kept as text.");
 
             // Bare @type without attrs and without body markers — treat remaining
             // non-@ lines as a paragraph (or continue until next @).
@@ -329,11 +336,20 @@ public sealed class LmlTextParser : ILmlTextParser
                 blocks.Add(new LmlParsedBlock
                 {
                     Type = "blockquote",
-                    Content = new
-                    {
-                        text = NormalizeProse(body),
-                        attribution = attrs.GetValueOrDefault("attribution") ?? "",
-                    },
+                    Content = string.Equals(attrs.GetValueOrDefault("variant"), "verse", StringComparison.OrdinalIgnoreCase)
+                        ? new
+                        {
+                            // MCP-10: a poem keeps its lines.
+                            text = KeepLines(body),
+                            attribution = attrs.GetValueOrDefault("attribution") ?? "",
+                            variant = "verse",
+                        }
+                        : (object)new
+                        {
+                            text = NormalizeProse(body),
+                            attribution = attrs.GetValueOrDefault("attribution") ?? "",
+                            variant = attrs.GetValueOrDefault("variant"),
+                        },
                 });
                 return;
 
@@ -355,7 +371,7 @@ public sealed class LmlTextParser : ILmlTextParser
                     Type = "equation",
                     Content = new
                     {
-                        latex = NormalizeProse(body),
+                        latex = KeepLines(body),
                         equationMode = string.Equals(mode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : "display",
                         label,
                         numbered = !string.IsNullOrEmpty(label),
@@ -712,6 +728,22 @@ public sealed class LmlTextParser : ILmlTextParser
     }
 
     /// <summary>
+    /// A body whose line breaks mean something (MCP-10, 12 Oct): equation LaTeX, where a <c>%</c>
+    /// comment runs to the end of its line, and verse. Collapsing them lost everything after a
+    /// <c>%</c> and every verse line break. Only the LML indentation goes: the common leading
+    /// indent, trailing spaces, and blank lines at either end.
+    /// </summary>
+    public static string KeepLines(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return string.Empty;
+        var lines = body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(l => l.TrimEnd()).ToList();
+        while (lines.Count > 0 && lines[0].Length == 0) lines.RemoveAt(0);
+        while (lines.Count > 0 && lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
+        var indent = lines.Where(l => l.Length > 0).Select(l => l.Length - l.TrimStart(' ', '\t').Length).DefaultIfEmpty(0).Min();
+        return string.Join("\n", lines.Select(l => l.Length >= indent ? l[indent..] : l.TrimStart()));
+    }
+
+    /// <summary>
     /// Parse <c>[a=b, flag, title="x, y", theorem]</c> into a dictionary.
     /// Positional (unnamed) values are stored as <c>_positional0</c>, <c>_positional1</c>, …
     /// </summary>
@@ -736,8 +768,19 @@ public sealed class LmlTextParser : ILmlTextParser
         var groups = new List<string>();
         var depth = 0;
         var current = new StringBuilder();
+        char? quote = null;     // inside "…" or '…', brackets are text (MCP-59)
+        var escaped = false;
         foreach (var ch in raw)
         {
+            if (quote is not null)
+            {
+                current.Append(ch);
+                if (escaped) escaped = false;
+                else if (ch == '\\') escaped = true;
+                else if (ch == quote) quote = null;
+                continue;
+            }
+            if ((ch == '"' || ch == '\'') && depth > 0) { quote = ch; current.Append(ch); continue; }
             if (ch == '[' && depth++ == 0) continue;
             if (ch == ']' && --depth == 0) { groups.Add(current.ToString()); current.Clear(); continue; }
             current.Append(ch);
@@ -776,7 +819,8 @@ public sealed class LmlTextParser : ILmlTextParser
                 var sb = new StringBuilder();
                 while (i < inner.Length && inner[i] != q)
                 {
-                    if (inner[i] == '\\' && i + 1 < inner.Length) { i++; sb.Append(inner[i]); }
+                    // MCP-13: a backslash escapes only the quote or itself; "$\\alpha$" keeps its \\alpha.
+                    if (inner[i] == '\\' && i + 1 < inner.Length && (inner[i + 1] == q || inner[i + 1] == '\\')) { i++; sb.Append(inner[i]); }
                     else sb.Append(inner[i]);
                     i++;
                 }
@@ -804,7 +848,8 @@ public sealed class LmlTextParser : ILmlTextParser
                     var sb = new StringBuilder();
                     while (i < inner.Length && inner[i] != q)
                     {
-                        if (inner[i] == '\\' && i + 1 < inner.Length) { i++; sb.Append(inner[i]); }
+                        // MCP-13: a backslash escapes only the quote or itself; "$\\alpha$" keeps its \\alpha.
+                        if (inner[i] == '\\' && i + 1 < inner.Length && (inner[i + 1] == q || inner[i + 1] == '\\')) { i++; sb.Append(inner[i]); }
                         else sb.Append(inner[i]);
                         i++;
                     }
@@ -836,6 +881,42 @@ public sealed class LmlTextParser : ILmlTextParser
         return result;
     }
 
+    /// <summary>
+    /// The cells of one pipe-table row (MCP-12, 12 Oct: every "|" split a cell, so $\|x\|$ became
+    /// three cells and the table grew columns). A "|" is a separator only outside $…$ maths and
+    /// `code`, and not when written as \|, which stands for a literal bar.
+    /// </summary>
+    internal static string[] SplitTableCells(string line)
+    {
+        var row = line.Trim();
+        if (row.StartsWith('|')) row = row[1..];
+        if (row.EndsWith('|') && !row.EndsWith("\\|")) row = row[..^1];
+        var cells = new List<string>();
+        var cell = new StringBuilder();
+        bool inMath = false, inCode = false;
+        for (var i = 0; i < row.Length; i++)
+        {
+            var c = row[i];
+            if (c == '\\' && i + 1 < row.Length && row[i + 1] == '|' && !inMath && !inCode)
+            {
+                cell.Append('|'); i++;          // \| outside maths: a literal bar
+                continue;
+            }
+            if (c == '\\' && i + 1 < row.Length) { cell.Append(c).Append(row[i + 1]); i++; continue; }
+            if (c == '`' && !inMath) inCode = !inCode;
+            else if (c == '$' && !inCode) inMath = !inMath;
+            if (c == '|' && !inMath && !inCode)
+            {
+                cells.Add(cell.ToString().Trim());
+                cell.Clear();
+                continue;
+            }
+            cell.Append(c);
+        }
+        cells.Add(cell.ToString().Trim());
+        return cells.ToArray();
+    }
+
     private static (string[] Headers, string[][] Rows) ParseMarkdownTable(string body)
     {
         var tableLines = body.Split('\n')
@@ -846,8 +927,7 @@ public sealed class LmlTextParser : ILmlTextParser
         if (tableLines.Count == 0)
             return (Array.Empty<string>(), Array.Empty<string[]>());
 
-        static string[] SplitCells(string line) =>
-            line.Trim().Trim('|').Split('|').Select(c => c.Trim()).ToArray();
+        static string[] SplitCells(string line) => SplitTableCells(line);
 
         var allRows = new List<string[]>();
         foreach (var line in tableLines)
