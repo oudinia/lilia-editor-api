@@ -52,6 +52,23 @@ public class McpOAuthTests : IntegrationTestBase
     }
 
     [Fact]
+    public void The_resource_is_the_public_address_not_the_machines()
+    {
+        // Production's Email:BaseUrl was the machine's address (12 Oct); apps compare the
+        // resource with the URL they connected to.
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:BaseUrl"] = "http://vmi3078948.contaboserver.net:3001",
+                ["Mcp:PublicOrigin"] = "https://editor.liliaeditor.com",
+            })
+            .Build();
+        var json = JsonSerializer.Serialize(Lilia.Api.Mcp.McpOAuth.Metadata(config));
+        JsonDocument.Parse(json).RootElement.GetProperty("resource").GetString()
+            .Should().Be("https://editor.liliaeditor.com/api/mcp");
+    }
+
+    [Fact]
     public async Task A_connected_app_reaches_the_mcp_tools()
     {
         await SeedUserAsync("mcp_app_user");
