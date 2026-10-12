@@ -31,5 +31,5 @@ Your work saves as you type. To keep a named copy of this moment, hover the save
 
 ## For LaTeX users {#expert}
 - Each block becomes LaTeX: heading → `\section`, equation → `equation`/`align`, figure → `figure` with `\includegraphics` and `\caption`, citation → `\citep`/`\citet` (natbib + BibTeX).
-- The document class and its options are in the stamp under the title (*Type & class*, *Class options*, *Layout*, *Look*). Lilia manages the preamble; the **?** button in the top bar opens the command palette (*LaTeX packages*, *Paste LaTeX*).
+- The document class and its options open from the type button in the top bar, e.g. **Article ▾** (*Type & class*, *Class options*, *Layout*, *Look*). Lilia manages the preamble; the **?** button in the top bar opens the command palette (*LaTeX packages*, *Paste LaTeX*).
 - **Settings → Editor defaults → LaTeX-native editing** shows commands and source while you write. **Export → LaTeX** gives one `.tex` or a `.zip` project (flat or Overleaf-style).

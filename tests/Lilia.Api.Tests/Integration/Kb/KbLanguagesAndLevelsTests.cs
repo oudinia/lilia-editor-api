@@ -27,7 +27,19 @@ public class KbLanguagesAndLevelsTests : IntegrationTestBase
     [InlineData("getting-started")]
     [InlineData("compile-and-validate")]
     [InlineData("sharing")]
-    public async Task Each_pilot_article_has_three_languages_and_three_levels(string slug)
+    [InlineData("sign-in")]
+    [InlineData("saving-and-versions")]
+    [InlineData("export")]
+    [InlineData("import")]
+    [InlineData("view-only")]
+    [InlineData("ask-lilia")]
+    [InlineData("citations")]
+    [InlineData("trash")]
+    [InlineData("phone")]
+    [InlineData("appearance-and-language")]
+    [InlineData("document-look")]
+    [InlineData("teams")]
+    public async Task Each_task_article_has_three_languages_and_three_levels(string slug)
     {
         var kb = await SeededAsync();
         foreach (var lang in new[] { "en", "fr", "es" })
@@ -57,6 +69,10 @@ public class KbLanguagesAndLevelsTests : IntegrationTestBase
     [InlineData("pourquoi mon document ne compile pas", "fr", "compile-and-validate")]
     [InlineData("validar el documento y corregir errores", "es", "compile-and-validate")]
     [InlineData("share a document with a colleague", "en", "sharing")]
+    [InlineData("comment restaurer un document supprimé", "fr", "trash")]
+    [InlineData("passer en mode sombre", "fr", "appearance-and-language")]
+    [InlineData("exportar a word", "es", "export")]
+    [InlineData("olvidé mi contraseña", "es", "sign-in")]
     public async Task Search_finds_the_article_in_the_users_language(string query, string lang, string slug)
     {
         var kb = await SeededAsync();

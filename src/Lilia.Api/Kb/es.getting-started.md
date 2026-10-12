@@ -31,5 +31,5 @@ Tu trabajo se guarda mientras escribes. Para conservar una copia con nombre de e
 
 ## Para usuarios de LaTeX {#expert}
 - Cada bloque se convierte en LaTeX: título → `\section`, ecuación → `equation`/`align`, figura → `figure` con `\includegraphics` y `\caption`, cita → `\citep`/`\citet` (natbib + BibTeX).
-- La clase del documento y sus opciones están en la línea bajo el título (*Tipo y clase*, *Opciones de clase*, *Diseño*, *Estilo*). Lilia gestiona el preámbulo; el botón **?** de la barra superior abre la paleta de comandos (*LaTeX packages*, *Paste LaTeX*).
+- La clase del documento y sus opciones se abren desde el botón de tipo de la barra superior, por ejemplo **Artículo ▾** (*Tipo y clase*, *Opciones de clase*, *Diseño*, *Estilo*). Lilia gestiona el preámbulo; el botón **?** de la barra superior abre la paleta de comandos (*LaTeX packages*, *Paste LaTeX*).
 - **Ajustes → Preferencias del editor → Edición LaTeX nativa** muestra los comandos y el código mientras escribes. **Exportar → LaTeX** da un `.tex` o un proyecto `.zip` (plano o al estilo de Overleaf).
