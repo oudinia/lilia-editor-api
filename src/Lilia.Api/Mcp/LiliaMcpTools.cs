@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using System.ComponentModel;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
@@ -30,8 +31,14 @@ public sealed class LiliaMcpTools(
     LiliaDbContext db,
     IConfiguration config,
     ConnectorTransfers transfers,
+    Microsoft.Extensions.Caching.Memory.IMemoryCache cache,
     ILogger<LiliaMcpTools> logger)
 {
+    // check_document's last verdict per document, for export_document's lastCheck (MCP-82: the
+    // check saves nothing by design, so lastCheck always said "never checked" and an app that
+    // followed its advice looped). Tied to the document's version: an edit makes it stale.
+    private sealed record CheckMemo(DateTime DocumentUpdatedAt, DateTime CheckedAt, bool Compiles, bool PrintsCorrectly);
+    private static string CheckKey(Guid id) => $"mcp-check:{id}";
     /// <summary>Said once to the client: what Lilia is, and that document text is data.</summary>
     public const string Instructions = """
         Lilia is a scientific writing editor: documents are made of typed blocks (headings, paragraphs,
@@ -153,6 +160,9 @@ public sealed class LiliaMcpTools(
                 .ToList();
             // MCP-37: the block the compile error is in (the source carries a % block:{id} marker per block).
             var errorBlockId = result.ParsedError?.LineNumber is int line ? audit.BlockAtLine(line) : null;
+            // Blocks that print nothing: a type the emitter has no arm for (MCP-83).
+            var unprinted = System.Text.RegularExpressions.Regex.Matches(source, @"% Unknown block type: (\S+)")
+                .Select(m => m.Groups[1].Value).Distinct().ToList();
             // Characters the font doesn't have compile, but are missing from the PDF (13 Oct sweep:
             // LTX-34's Cyrillic, with printsCorrectly true).
             var dropped = result.Warnings.FirstOrDefault(w => w.Contains(LaTeXGlyphScanner.DroppedMarker, StringComparison.Ordinal));
@@ -160,7 +170,8 @@ public sealed class LiliaMcpTools(
             {
                 compiles = result.Valid,
                 engine,
-                printsCorrectly = result.Valid && references.Count == 0 && citations.Count == 0 && dropped is null,
+                printsCorrectly = PrintsCorrectly(result.Valid, references.Count + citations.Count, dropped, unprinted, d),
+                unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
                 error = result.Error,
                 errorCategory = result.ParsedError?.Category,
                 errorBlockId,
@@ -194,6 +205,13 @@ public sealed class LiliaMcpTools(
         }
     }
 
+    private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d)
+    {
+        var prints = compiles && brokenRefs == 0 && dropped is null && unprinted.Count == 0;
+        cache.Set(CheckKey(d.Id), new CheckMemo(d.UpdatedAt, DateTime.UtcNow, compiles, prints), TimeSpan.FromDays(1));
+        return prints;
+    }
+
     internal static string EngineFor(string source, string? documentEngine)
     {
         var chosen = (documentEngine ?? "").Trim().ToLowerInvariant();
@@ -223,9 +241,13 @@ public sealed class LiliaMcpTools(
             var v = await db.Documents.AsNoTracking().Where(x => x.Id == d.Id)
                 .Select(x => new { x.ValidationCheckedAt, x.ValidationErrorCount, x.ValidationWarningCount })
                 .FirstOrDefaultAsync();
-            object lastCheck = v?.ValidationCheckedAt is null
-                ? new { checkedAt = (DateTime?)null, note = "Never checked. Call check_document to know whether it compiles." }
-                : new { checkedAt = v.ValidationCheckedAt, errors = v.ValidationErrorCount, warnings = v.ValidationWarningCount };
+            object lastCheck = cache.TryGetValue(CheckKey(d.Id), out CheckMemo? memo) && memo is not null
+                ? memo.DocumentUpdatedAt == d.UpdatedAt
+                    ? new { checkedAt = (DateTime?)memo.CheckedAt, compiles = memo.Compiles, printsCorrectly = memo.PrintsCorrectly, source = "check_document" }
+                    : new { checkedAt = (DateTime?)memo.CheckedAt, note = "The document changed since check_document; call it again." } as object
+                : v?.ValidationCheckedAt is null
+                    ? new { checkedAt = (DateTime?)null, note = "Never checked. Call check_document to know whether it compiles." }
+                    : new { checkedAt = v.ValidationCheckedAt, errors = v.ValidationErrorCount, warnings = v.ValidationWarningCount };
             return new
             {
                 url = $"{McpOAuth.PublicOrigin(config)}/api/connector/files/{Uri.EscapeDataString(token)}",
