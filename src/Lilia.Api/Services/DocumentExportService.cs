@@ -70,10 +70,16 @@ public class DocumentExportService : IDocumentExportService
         if (doc == null)
             throw new KeyNotFoundException($"Document {documentId} not found");
 
+        // The file's Author is the document's own author line, never the account id: that is an
+        // internal identifier, and it travelled with every shared Word file (13 Oct sweep).
+        var titleBlock = doc.Blocks.FirstOrDefault(b => b.Type == "title");
+        var author = titleBlock is null ? null : NullIfEmpty(ProseLatex.PlainForWord(
+            Regex.Replace(GetString(titleBlock.Content.RootElement, "author"), @"\s*\\and\b\s*", ", ")));
+
         var exportDoc = new ExportDocument
         {
             Title = doc.Title,
-            Author = doc.OwnerId,
+            Author = author,
             Language = doc.Language,
             PaperSize = doc.PaperSize,
             FontFamily = doc.FontFamily,
@@ -82,7 +88,7 @@ public class DocumentExportService : IDocumentExportService
             BalancedColumns = doc.BalancedColumns,
             Metadata = new ExportMetadata
             {
-                Author = doc.OwnerId,
+                Author = author,
                 Created = doc.CreatedAt,
                 Modified = doc.UpdatedAt
             }
@@ -428,9 +434,10 @@ public class DocumentExportService : IDocumentExportService
                 Type = "title",
                 Content = new ExportBlockContent
                 {
-                    Text = GetString(content, "title"),
-                    Author = GetString(content, "author"),
-                    DateText = GetString(content, "date"),
+                    // Read as the PDF reads them: \and between authors is a comma (13 Oct sweep, LTX-56).
+                    Text = ProseLatex.PlainForWord(GetString(content, "title"), _labelNumber),
+                    Author = ProseLatex.PlainForWord(Regex.Replace(GetString(content, "author"), @"\s*\\and\b\s*", ", "), _labelNumber),
+                    DateText = ProseLatex.PlainForWord(GetString(content, "date"), _labelNumber),
                 }
             },
             _ => ConvertParagraphBlock(content) // fallback
@@ -700,7 +707,8 @@ public class DocumentExportService : IDocumentExportService
                     : header.ValueKind == JsonValueKind.Object
                         ? GetString(header, "text")
                         : "";
-                headerRow.Add(new ExportTableCell { Text = ProseLatex.PlainForWord(text, _labelNumber) });
+                // Plain text, and its runs for the writer: a header can hold maths (Spearman $\rho$).
+                headerRow.Add(new ExportTableCell { Text = ProseLatex.PlainForWord(text, _labelNumber), RichText = ParseInlineFormatting(text, _labelNumber) });
             }
 
             if (headerRow.Any(c => !string.IsNullOrWhiteSpace(c.Text)))
