@@ -131,9 +131,20 @@ public static partial class LaTeXPreamble
     {
         LatexEngine.Lualatex or LatexEngine.Xelatex => @"% Engine: lua/xelatex — load fontspec so \setmainfont{…} works.
 \usepackage{fontspec}
-" + (cjk ? CjkAddendum(engine) : ""),
+" + UnicodeFaces + (cjk ? CjkAddendum(engine) : ""),
         _ => "",
     };
+
+    /// <summary>
+    /// Under fontspec the default faces are Latin Modern, which has no Cyrillic: the text was dropped
+    /// with a "Missing character" warning (MCP-109, LTX-34). Computer Modern Unicode looks the same and
+    /// covers Latin, Cyrillic and Greek; it ships with TeX Live and is named by file, as Fandol is.
+    /// A font the author chooses (the font family setting, a custom \setmainfont) comes later and wins.
+    /// </summary>
+    public const string UnicodeFaces =
+        "\\setmainfont{cmunrm.otf}[BoldFont=cmunbx.otf,ItalicFont=cmunti.otf,BoldItalicFont=cmunbi.otf]\n"
+        + "\\setsansfont{cmunss.otf}[BoldFont=cmunsx.otf,ItalicFont=cmunsi.otf,BoldItalicFont=cmunso.otf]\n"
+        + "\\setmonofont{cmuntt.otf}[BoldFont=cmuntb.otf,ItalicFont=cmunit.otf,BoldItalicFont=cmuntx.otf]\n";
 
     // Packages that redefine what Lilia's algorithm blocks are built on (the algorithm +
     // algorithmic pair loaded in Packages): loading one aborted every compile, with or without
