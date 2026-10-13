@@ -58,7 +58,37 @@ public static class ProseLatex
     /// reading, with text marks dropped instead of written as Markdown, and a price's dollar back.
     /// </summary>
     public static string PlainForWord(string? text, Func<string, string?>? labelNumber = null) =>
-        ForWord(text, labelNumber, plain: true).Replace(PriceDollar, '$');
+        InlineMathAsText(ForWord(text, labelNumber, plain: true)).Replace(PriceDollar, '$');
+
+    private static readonly Dictionary<string, string> MathSymbols = new(StringComparer.Ordinal)
+    {
+        ["alpha"] = "α", ["beta"] = "β", ["gamma"] = "γ", ["delta"] = "δ", ["epsilon"] = "ε", ["varepsilon"] = "ε",
+        ["zeta"] = "ζ", ["eta"] = "η", ["theta"] = "θ", ["iota"] = "ι", ["kappa"] = "κ", ["lambda"] = "λ",
+        ["mu"] = "μ", ["nu"] = "ν", ["xi"] = "ξ", ["pi"] = "π", ["rho"] = "ρ", ["sigma"] = "σ", ["tau"] = "τ",
+        ["phi"] = "φ", ["varphi"] = "φ", ["chi"] = "χ", ["psi"] = "ψ", ["omega"] = "ω",
+        ["Gamma"] = "Γ", ["Delta"] = "Δ", ["Theta"] = "Θ", ["Lambda"] = "Λ", ["Pi"] = "Π", ["Sigma"] = "Σ",
+        ["Phi"] = "Φ", ["Psi"] = "Ψ", ["Omega"] = "Ω",
+        ["le"] = "≤", ["leq"] = "≤", ["ge"] = "≥", ["geq"] = "≥", ["ne"] = "≠", ["neq"] = "≠", ["approx"] = "≈",
+        ["times"] = "×", ["cdot"] = "·", ["pm"] = "±", ["infty"] = "∞", ["to"] = "→", ["in"] = "∈",
+        ["sim"] = "∼", ["partial"] = "∂", ["nabla"] = "∇", ["ell"] = "ℓ",
+    };
+
+    private const string Sup = "⁰¹²³⁴⁵⁶⁷⁸⁹", Sub = "₀₁₂₃₄₅₆₇₈₉";
+
+    /// <summary>
+    /// $\alpha = 0.05$ → α = 0.05 in a field Word shows as plain text (a caption). Only maths made of
+    /// letters, digits, simple operators, Greek and a few symbols, with single-digit indices; anything
+    /// richer is left as written rather than guessed at.
+    /// </summary>
+    private static string InlineMathAsText(string text) =>
+        text.IndexOf('$') < 0 ? text : Regex.Replace(text, @"(?<![\\$])\$(?!\$)([^$]+?)\$(?!\$)", m =>
+        {
+            var body = m.Groups[1].Value;
+            var converted = Regex.Replace(body, @"\\([A-Za-z]+)", c => MathSymbols.TryGetValue(c.Groups[1].Value, out var u) ? u : c.Value);
+            converted = Regex.Replace(converted, @"\^\{?(\d+)\}?", d => string.Concat(d.Groups[1].Value.Select(ch => Sup[ch - '0'])));
+            converted = Regex.Replace(converted, @"_\{?(\d+)\}?", d => string.Concat(d.Groups[1].Value.Select(ch => Sub[ch - '0'])));
+            return Regex.IsMatch(converted, @"[\\^_{}]") ? m.Value : converted;
+        });
 
     private static string ForWord(string? text, Func<string, string?>? labelNumber, bool plain)
     {
@@ -170,8 +200,12 @@ public static class ProseLatex
                 return DateTime.UtcNow.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
         }
         if (Words.TryGetValue(name, out var word)) return word;
-        // Anything else keeps its text and loses the command: readable, never a stray backslash.
-        return string.Concat(Enumerable.Range(0, args.Count).Select(Arg));
+        // An environment's \begin{CJK}{UTF8}{gbsn} and \end{CJK} print nothing; the text between
+        // them is read as it is.
+        if (name is "begin" or "end" or "selectlanguage" or "usepackage") return "";
+        // Anything else keeps its text — the last argument (\foreignlanguage{russian}{Привет},
+        // \textcolor{red}{x}) — and loses the command: readable, never a stray backslash.
+        return args.Count == 0 ? "" : Arg(args.Count - 1);
     }
 
     private static readonly Regex SiCommand = new(@"\\(?<c>SI|qty|si|unit|num)\s*(?:\[[^\]]*\])?\{(?<a>(?:[^{}]|\{[^{}]*\})*)\}(?:\{(?<b>(?:[^{}]|\{[^{}]*\})*)\})?", RegexOptions.Compiled);

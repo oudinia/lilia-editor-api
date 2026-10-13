@@ -99,4 +99,18 @@ public class WordProseTests
         ProseLatex.MathForWord(@"V(\ce{O2})").Should().Be(@"V(\mathrm{O_{2}})");
         ProseLatex.ForWord(@"Water is \ce{H2O}.").Should().Be("Water is H₂O.");
     }
+
+    [Theory]
+    [InlineData(@"Results for $\alpha = 0.05$ and $n^2$ samples", "Results for α = 0.05 and n² samples")]
+    [InlineData(@"Error $x_1 \le \epsilon$", "Error x₁ ≤ ε")]
+    [InlineData(@"Rate $\frac{a}{b}$", @"Rate $\frac{a}{b}$")]
+    public void Simple_maths_in_a_plain_field_reads_as_text(string text, string expected) =>
+        ProseLatex.PlainForWord(text).Should().Be(expected);
+
+    [Theory]
+    [InlineData(@"CJK: \begin{CJK}{UTF8}{gbsn}数学\end{CJK}.", "CJK: 数学.")]
+    [InlineData(@"Cyrillic: \foreignlanguage{russian}{Привет}.", "Cyrillic: Привет.")]
+    [InlineData(@"\textcolor{red}{warm}", "warm")]
+    public void An_unknown_command_keeps_its_text(string text, string expected) =>
+        ProseLatex.ForWord(text).Should().Be(expected);
 }
