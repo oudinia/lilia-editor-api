@@ -907,16 +907,10 @@ public class LaTeXExportService : ILaTeXExportService
             var content = block.Content.RootElement;
 
             // One emitter (run 2, MCP-76): every body block is rendered by the check emitter, so the
-            // export prints what check_document judged. The export keeps only what it needs to do
-            // differently: figures (files under figures/, with a placeholder when one is missing)
-            // and the bibliography (a .bib, with the text references added: WithTextEntries).
-            switch (block.Type)
-            {
-                case "figure" or "image":
-                    return RenderFigure(content);
-                case "bibliography":
-                    return "";
-            }
+            // export prints what check_document judged; figures too since run 3b (MCP-111: files
+            // under figures/ with a placeholder, FigureFile). The export keeps only the bibliography
+            // (a .bib, with the text references added: WithTextEntries).
+            if (block.Type == "bibliography") return "";
             if (_doc is not null && block.Document is null) block.Document = _doc;
             var latex = _check.RenderBlockToLatex(block, _longtableAllowed && RenderService.IsLongTable(block));
             return latex.StartsWith("% Unknown block type", StringComparison.Ordinal) ? RenderUnknownBlock(block) : latex;
@@ -954,86 +948,6 @@ public class LaTeXExportService : ILaTeXExportService
     private static string GetString(JsonElement el, string prop) =>
         el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
-
-
-
-    private string RenderFigure(JsonElement content)
-    {
-        var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
-        var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
-        var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
-        // span="page" → \begin{figure*}, which in single-column mode behaves
-        // identically to \begin{figure}, so we can emit it unconditionally.
-        var env = RenderService.IsFullWidth(content) ? "figure*" : "figure";
-
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("figure", label)}}}" : "";
-
-        // A TikZ figure: its source goes out byte for byte (TikzFigure).
-        if (TikzFigure.IsTikz(content))
-            return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : InlineArgument(caption),
-                string.IsNullOrEmpty(label) ? "" : LabelKey.Effective("figure", label), env);
-
-        // Subfigures — when the figure carries a `subfigures` array, emit a
-        // subcaption layout (subcaption is in the preamble). Each panel gets an
-        // equal share of \textwidth, mirroring the editor's own preview. The
-        // overall \caption + \label go after the panels.
-        if (content.TryGetProperty("subfigures", out var subs)
-            && subs.ValueKind == JsonValueKind.Array && subs.GetArrayLength() > 0)
-        {
-            var panels = subs.EnumerateArray().ToList();
-            var width = Math.Max(0.2, Math.Min(0.9, 0.9 / panels.Count)).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-            var fsb = new StringBuilder();
-            fsb.AppendLine($@"\begin{{{env}}}[H]");
-            fsb.AppendLine(@"\centering");
-            for (int i = 0; i < panels.Count; i++)
-            {
-                var sfSrc = panels[i].TryGetProperty("src", out var ss) ? ss.GetString() ?? "" : "";
-                var sfCap = panels[i].TryGetProperty("caption", out var scp) ? scp.GetString() ?? "" : "";
-                var sfLabel = panels[i].TryGetProperty("label", out var sl) ? sl.GetString() ?? "" : "";
-                fsb.AppendLine($@"\begin{{subfigure}}{{{width}\textwidth}}");
-                fsb.AppendLine(@"\centering");
-                if (!string.IsNullOrEmpty(sfSrc))
-                {
-                    var fn = ExtractImageFilename(sfSrc);
-                    fsb.AppendLine($@"\IfFileExists{{figures/{fn}}}{{\includegraphics[width=\textwidth]{{figures/{fn}}}}}{{\fbox{{\small\textit{{[Missing: {EscapeLatex(fn)}]}}}}}}");
-                }
-                if (!string.IsNullOrEmpty(sfCap))
-                    fsb.AppendLine($@"\caption{{{EscapeLatex(sfCap)}}}" + (!string.IsNullOrEmpty(sfLabel) ? $@"\label{{{LabelKey.Effective("figure", sfLabel)}}}" : ""));
-                fsb.AppendLine(@"\end{subfigure}");
-                // a little horizontal gap between panels (not after the last)
-                if (i < panels.Count - 1) fsb.AppendLine(@"\hfill");
-            }
-            if (!string.IsNullOrEmpty(caption))
-                fsb.AppendLine($@"\caption{{{InlineArgument(caption)}}}{labelPart}");
-            else if (!string.IsNullOrEmpty(labelPart))
-                fsb.AppendLine(labelPart);
-            fsb.Append($@"\end{{{env}}}");
-            return fsb.ToString();
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine($@"\begin{{{env}}}[H]");
-        sb.AppendLine(@"\centering");
-        if (!string.IsNullOrEmpty(src))
-        {
-            var filename = ExtractImageFilename(src);
-            // Wrap in IfFileExists so a missing asset renders as a labelled
-            // placeholder frame instead of aborting compilation with pdftex.def.
-            sb.AppendLine($@"\IfFileExists{{figures/{filename}}}{{%");
-            sb.AppendLine($@"  \includegraphics[width={FigureWidth.Latex(content)}]{{figures/{filename}}}%");
-            sb.AppendLine($@"}}{{\fbox{{\parbox{{0.7\textwidth}}{{\centering\small\textit{{[Missing figure: {EscapeLatex(filename)}]}}}}}}}}");
-        }
-        else
-        {
-            sb.AppendLine(@"% [figure placeholder — no image uploaded]");
-        }
-        if (!string.IsNullOrEmpty(caption))
-            sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}{labelPart}");
-        else if (!string.IsNullOrEmpty(labelPart))
-            sb.AppendLine(labelPart);
-        sb.Append($@"\end{{{env}}}");
-        return sb.ToString();
-    }
 
 
 
@@ -1309,28 +1223,7 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── Image filename extraction ──────────────────────────────────────
 
-    internal static string ExtractImageFilename(string src, int index = 0)
-    {
-        if (string.IsNullOrEmpty(src)) return $"image-{index}.png";
-
-        var parts = src.Split('/');
-        var filename = parts.Length > 0 ? parts[^1] : $"image-{index}";
-
-        // Remove query params and hash
-        filename = filename.Split('?')[0].Split('#')[0];
-
-        // Ensure valid image extension
-        if (!Regex.IsMatch(filename, @"\.(jpg|jpeg|png|gif|webp|svg|bmp|tiff?|pdf|eps)$", RegexOptions.IgnoreCase))
-            filename = $"image-{index}.png";
-
-        // Sanitize for LaTeX
-        filename = Regex.Replace(filename, @"\s+", "-");
-        filename = Regex.Replace(filename, @"[^a-zA-Z0-9._-]", "-");
-        filename = Regex.Replace(filename, @"-+", "-");
-        filename = filename.ToLowerInvariant();
-
-        return filename;
-    }
+    internal static string ExtractImageFilename(string src, int index = 0) => FigureFile.Name(src, index);
 
     // ── BibTeX generation ──────────────────────────────────────────────
     // Serialization moved to BibTeXSerializer so the Typst preview path
