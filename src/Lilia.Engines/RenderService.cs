@@ -1318,6 +1318,13 @@ public partial class RenderService : IRenderService
         var known = tableEntries.Select(e => e.CiteKey).ToHashSet(StringComparer.Ordinal);
         tableEntries.AddRange(BibliographyBlocks.BibTeX(blocks).Where(e => known.Add(e.CiteKey)));
         var textEntries = BibliographyBlocks.Text(blocks).Where(e => !known.Contains(e.Key)).ToList();
+        // Only what the text cites, as BibTeX prints it from the export's .bib (MCP-90); \nocite{*} lists all.
+        var cited = CitedKeys(latex.ToString());
+        if (!cited.Contains("*"))
+        {
+            tableEntries = tableEntries.Where(e => cited.Contains(e.CiteKey) || cited.Contains(LabelKey.Safe(e.CiteKey))).ToList();
+            textEntries = textEntries.Where(e => cited.Contains(e.Key) || cited.Contains(LabelKey.Safe(e.Key))).ToList();
+        }
         if (tableEntries.Count > 0 || textEntries.Count > 0)
         {
             latex.AppendLine();
@@ -1331,6 +1338,15 @@ public partial class RenderService : IRenderService
         // (the assembled preamble's), comment out the rest.
         return DedupeDocumentClass(latex.ToString());
     }
+
+    private static readonly Regex CiteCommand = new(
+        @"\\(?:no)?cite[a-zA-Z]*\*?(?:\[[^\]]*\]){0,2}\{(?<keys>[^}]*)\}", RegexOptions.Compiled);
+
+    /// <summary>The keys the emitted LaTeX cites (\cite, \citep, \citet, \nocite…).</summary>
+    internal static HashSet<string> CitedKeys(string latex) =>
+        CiteCommand.Matches(latex)
+            .SelectMany(m => m.Groups["keys"].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToHashSet(StringComparer.Ordinal);
 
     private static readonly Regex DuplicateDocClassRe =
         new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
@@ -2831,10 +2847,11 @@ public partial class RenderService : IRenderService
                     var year = data.Value.TryGetProperty("year", out var y) ? y.GetString() ?? "" : "";
                     var journal = data.Value.TryGetProperty("journal", out var j) ? j.GetString() ?? "" : "";
 
+                    // Field values are LaTeX, as BibTeX copies them (MCP-90).
                     var citation = new List<string>();
-                    if (!string.IsNullOrEmpty(author)) citation.Add(EscapeLatex(author));
-                    if (!string.IsNullOrEmpty(title)) citation.Add($"\\textit{{{EscapeLatex(title)}}}");
-                    if (!string.IsNullOrEmpty(journal)) citation.Add(EscapeLatex(journal));
+                    if (!string.IsNullOrEmpty(author)) citation.Add(BibTeXField.ToLatex(author));
+                    if (!string.IsNullOrEmpty(title)) citation.Add($"\\textit{{{BibTeXField.ToLatex(title)}}}");
+                    if (!string.IsNullOrEmpty(journal)) citation.Add(BibTeXField.ToLatex(journal));
                     if (!string.IsNullOrEmpty(year)) citation.Add($"({year})");
 
                     sb.AppendLine(string.Join(", ", citation) + ".");
@@ -2873,9 +2890,12 @@ public partial class RenderService : IRenderService
             // Malformed entry data — the fallbacks below still produce a label.
         }
 
-        if (string.IsNullOrWhiteSpace(author)) author = entry.CiteKey;
         if (string.IsNullOrWhiteSpace(year)) year = "n.d.";
-        return $"{EscapeLatex(author)}({EscapeLatex(year)})";
+        // "Knuth(1984)", "Hardy and Wright(1938)", "Fejér et al.(1900)", as plainnat labels them.
+        var shortAuthors = BibTeXField.ShortAuthors(author);
+        return string.IsNullOrWhiteSpace(shortAuthors)
+            ? $"{EscapeLatex(entry.CiteKey)}({EscapeLatex(year)})"
+            : $"{BibTeXField.ToLatex(shortAuthors)}({EscapeLatex(year)})";
     }
 
     private string EscapeLatex(string text)

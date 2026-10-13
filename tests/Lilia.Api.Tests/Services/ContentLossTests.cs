@@ -114,7 +114,9 @@ public class ContentLossTests
         var latex = RenderDoc("article",
             B("paragraph", new { text = "As in @cite{knuth1984}." }),
             B("bibliography", new { text = "@cite[knuth1984] Knuth, D. — The TeXbook\n@cite[lamport94] Lamport, L. — LaTeX" }));
-        latex.Should().Contain(@"\cite{knuth1984}").And.Contain(@"\bibitem{knuth1984}").And.Contain(@"\bibitem{lamport94}");
+        latex.Should().Contain(@"\cite{knuth1984}").And.Contain(@"\bibitem{knuth1984}");
+        // Uncited, so left out, as BibTeX leaves it out of the export (MCP-90).
+        latex.Should().NotContain(@"\bibitem{lamport94}");
         latex.Should().Contain("The TeXbook");
         new EmittedLatexAuditProbe(latex).MissingCitations.Should().BeEmpty();
     }
