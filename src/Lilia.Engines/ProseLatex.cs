@@ -156,6 +156,8 @@ public static class ProseLatex
                 return UnitText(args.FirstOrDefault() ?? "");
             case "num":
                 return Arg(0);
+            case "ce":
+                return Regex.Replace(args.FirstOrDefault() ?? "", @"(?<=[A-Za-z)])(\d+)", d => string.Concat(d.Value.Select(c => "₀₁₂₃₄₅₆₇₈₉"[c - '0'])));
             case "label" or "index" or "hspace" or "vspace" or "phantom" or "nocite":
                 return "";
             case "footnote":
@@ -178,9 +180,20 @@ public static class ProseLatex
     /// Maths for Word's equation converter, which knows no siunitx: <c>\SI{9.81}{\metre\per\second}</c>
     /// becomes <c>9.81\,\mathrm{m/s}</c>.
     /// </summary>
+    private static readonly Regex CeCommand = new(@"\\ce\{(?<f>[^{}]*)\}", RegexOptions.Compiled);
+
+    /// <summary>A formula as mhchem prints it: H2O → H₂O, SO4^2- → SO₄²⁻, in LaTeX the converter knows.</summary>
+    private static string Chem(string formula)
+    {
+        var f = Regex.Replace(formula.Trim(), @"(?<=[A-Za-z)\]])(\d+)", "_{$1}");
+        f = Regex.Replace(f, @"\^(\d*[+-])", "^{$1}");
+        return "\\mathrm{" + f.Replace(" ", "\\ ") + "}";
+    }
+
     public static string MathForWord(string? latex)
     {
         if (string.IsNullOrEmpty(latex) || latex.IndexOf('\\') < 0) return latex ?? "";
+        latex = CeCommand.Replace(latex, m => Chem(m.Groups["f"].Value));
         return SiCommand.Replace(latex, m =>
         {
             var a = m.Groups["a"].Value.Trim();

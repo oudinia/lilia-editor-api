@@ -92,4 +92,11 @@ public class WordProseTests
             .Should().NotContain(t => Regex.IsMatch(t, @"\\[A-Za-z]") || t.Contains('$'));
         Regex.Matches(xml, "<m:oMath\\b").Count.Should().BeGreaterThanOrEqualTo(6);
     }
+
+    [Fact]
+    public void Chemistry_reads_for_word()
+    {
+        ProseLatex.MathForWord(@"V(\ce{O2})").Should().Be(@"V(\mathrm{O_{2}})");
+        ProseLatex.ForWord(@"Water is \ce{H2O}.").Should().Be("Water is H₂O.");
+    }
 }
