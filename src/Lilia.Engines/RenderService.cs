@@ -1499,9 +1499,7 @@ public partial class RenderService : IRenderService
         // The exporter has always written it; this emitter, which is what the
         // preview, the PDF compile and Ask Lilia's get_lilia_latex use, dropped
         // it, so every reference to a section printed "??".
-        var label = content.TryGetProperty("label", out var lbl) && lbl.ValueKind == JsonValueKind.String ? lbl.GetString() : null;
-        if (string.IsNullOrWhiteSpace(label))
-            label = content.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+        (text, var label) = HeadingAnchor.Read(content, text);
         var labelPart = string.IsNullOrWhiteSpace(label) ? "" : $@"\label{{{LabelKey.Safe(label)}}}";
 
         return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}{labelPart}";

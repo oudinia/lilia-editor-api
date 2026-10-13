@@ -108,6 +108,9 @@ public static partial class LaTeXGlyphScanner
     /// since <see cref="EngineDetector"/> picks the engine from commands present
     /// and prose contains none.
     /// </summary>
+    /// <summary>The words that mark the warning <see cref="Describe"/> writes; check_document reads them.</summary>
+    public const string DroppedMarker = "dropped from the output";
+
     public static string? Describe(IReadOnlyList<DroppedGlyph> dropped)
     {
         if (dropped.Count == 0) return null;
@@ -118,8 +121,8 @@ public static partial class LaTeXGlyphScanner
             ? $" The font in use ({Truncate(f, 40)}) does not contain them."
             : "";
 
-        return $"{dropped.Count} character{(dropped.Count == 1 ? " was" : "s were")} dropped from the "
-             + $"output and will be missing from the PDF: {shown}{more}.{font}";
+        return $"{dropped.Count} character{(dropped.Count == 1 ? " was" : "s were")} {DroppedMarker} "
+             + $"and will be missing from the PDF: {shown}{more}.{font}";
     }
 
     private static string Truncate(string s, int max)
