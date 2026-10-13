@@ -2580,8 +2580,8 @@ public partial class RenderService : IRenderService
             {
                 descriptionText = descProp.GetString() ?? "";
             }
-            // Braced, so a ] in the term can't end the label early (MCP-33).
-            sb.AppendLine($@"\item[{{{ProcessLatexText(itemText).Trim()}}}] {ProcessLatexText(descriptionText)}");
+            // Braced when it holds a ], so the term can't end the label early (MCP-33).
+            sb.AppendLine($@"\item[{OptionalArgument(ProcessLatexText(itemText).Trim())}] {ProcessLatexText(descriptionText)}");
         }
         else
         {
