@@ -329,9 +329,31 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         await SeedBlockAsync(doc.Id, "list", """{"listType":"numbered","items":[{"text":"One"},{"text":"Two"}]}""");
         await SeedBlockAsync(doc.Id, "list", """{"kind":"numbered","items":[{"text":"Three"}]}""", 1);
 
-        var xml = XmlIn((await ExportAsync(doc.Id)).Bytes);
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var numbering = word.MainDocumentPart!.NumberingDefinitionsPart!.Numbering!;
+        var numbered = numbering.Elements<DocumentFormat.OpenXml.Wordprocessing.NumberingInstance>()
+            .Where(n => n.AbstractNumId!.Val!.Value == 1).Select(n => n.NumberID!.Value).ToHashSet();
+        var items = word.MainDocumentPart.Document.Descendants<DocumentFormat.OpenXml.Wordprocessing.NumberingId>().Select(n => n.Val!.Value).ToList();
+        items.Should().HaveCount(3).And.OnlyContain(id => numbered.Contains(id));
+        items.Distinct().Should().HaveCount(2, "each list counts from 1");
+    }
 
-        Regex.Matches(xml, "<w:numId w:val=\"2\" />").Count.Should().Be(3);
+    // MCP-99 (run 3): numbering.xml had one level, so nested lists didn't nest.
+    [Fact]
+    public async Task NestedListsNestInWord()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Nested");
+        await SeedBlockAsync(doc.Id, "list", """{"kind":"numbered","items":[{"text":"Outer","children":[{"text":"Inner"}]}]}""");
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        word.MainDocumentPart!.NumberingDefinitionsPart!.Numbering!.Elements<DocumentFormat.OpenXml.Wordprocessing.AbstractNum>()
+            .Should().OnlyContain(a => a.Elements<DocumentFormat.OpenXml.Wordprocessing.Level>().Count() == 9);
+        word.MainDocumentPart.Document.Descendants<DocumentFormat.OpenXml.Wordprocessing.NumberingLevelReference>()
+            .Select(l => l.Val!.Value).Should().Equal(0, 1);
     }
 
     // MCP-102 (run 3): footnotes printed as separate "*text" paragraphs, with no mark in the text.

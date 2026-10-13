@@ -217,29 +217,38 @@ public class DocxExportService : IDocxExportService
         var numberingPart = mainPart.AddNewPart<NumberingDefinitionsPart>();
         var numbering = new Numbering();
 
-        // Bullet list abstract numbering
+        // Nine levels each, as Word addresses them: a nested list used to fall back to level 0's
+        // bullet or number (MCP-99). Numbered levels follow LaTeX's enumerate: 1. (a) i. A.
         var bulletAbstract = new AbstractNum { AbstractNumberId = 0 };
-        var bulletLevel = new Level { LevelIndex = 0 };
-        bulletLevel.Append(new NumberingFormat { Val = NumberFormatValues.Bullet });
-        bulletLevel.Append(new LevelText { Val = "•" });
-        bulletLevel.Append(new LevelJustification { Val = LevelJustificationValues.Left });
-        var bulletPPr = new PreviousParagraphProperties();
-        bulletPPr.Append(new Indentation { Left = "720", Hanging = "360" });
-        bulletLevel.Append(bulletPPr);
-        bulletAbstract.Append(bulletLevel);
+        string[] bullets = ["•", "◦", "▪"];
+        for (var lvl = 0; lvl < 9; lvl++)
+        {
+            var level = new Level { LevelIndex = lvl };
+            level.Append(new NumberingFormat { Val = NumberFormatValues.Bullet });
+            level.Append(new LevelText { Val = bullets[lvl % bullets.Length] });
+            level.Append(new LevelJustification { Val = LevelJustificationValues.Left });
+            level.Append(new PreviousParagraphProperties(new Indentation { Left = (720 * (lvl + 1)).ToString(), Hanging = "360" }));
+            bulletAbstract.Append(level);
+        }
         numbering.Append(bulletAbstract);
 
-        // Numbered list abstract numbering
         var numberedAbstract = new AbstractNum { AbstractNumberId = 1 };
-        var numberedLevel = new Level { LevelIndex = 0 };
-        numberedLevel.Append(new NumberingFormat { Val = NumberFormatValues.Decimal });
-        numberedLevel.Append(new LevelText { Val = "%1." });
-        numberedLevel.Append(new StartNumberingValue { Val = 1 });
-        numberedLevel.Append(new LevelJustification { Val = LevelJustificationValues.Left });
-        var numberedPPr = new PreviousParagraphProperties();
-        numberedPPr.Append(new Indentation { Left = "720", Hanging = "360" });
-        numberedLevel.Append(numberedPPr);
-        numberedAbstract.Append(numberedLevel);
+        (NumberFormatValues Format, string Text)[] numbers =
+        [
+            (NumberFormatValues.Decimal, "%1."), (NumberFormatValues.LowerLetter, "(%2)"),
+            (NumberFormatValues.LowerRoman, "%3."), (NumberFormatValues.UpperLetter, "%4."),
+        ];
+        for (var lvl = 0; lvl < 9; lvl++)
+        {
+            var (format, pattern) = numbers[lvl % numbers.Length];
+            var level = new Level { LevelIndex = lvl };
+            level.Append(new StartNumberingValue { Val = 1 });
+            level.Append(new NumberingFormat { Val = format });
+            level.Append(new LevelText { Val = pattern.Replace("%" + (lvl % numbers.Length + 1), "%" + (lvl + 1)) });
+            level.Append(new LevelJustification { Val = LevelJustificationValues.Left });
+            level.Append(new PreviousParagraphProperties(new Indentation { Left = (720 * (lvl + 1)).ToString(), Hanging = "360" }));
+            numberedAbstract.Append(level);
+        }
         numbering.Append(numberedAbstract);
 
         // Numbering instances
@@ -268,7 +277,7 @@ public class DocxExportService : IDocxExportService
             "paragraph" => ConvertParagraph(block),
             "heading" => ConvertHeading(block),
             "code" => ConvertCode(block),
-            "list" => ConvertList(block),
+            "list" => ConvertList(block, mainPart),
             "table" => ConvertTable(block),
             "figure" => ConvertFigure(block, mainPart),
             "blockquote" => ConvertBlockquote(block),
@@ -473,12 +482,12 @@ public class DocxExportService : IDocxExportService
         return elements;
     }
 
-    private IEnumerable<OpenXmlElement> ConvertList(ExportBlock block)
+    private IEnumerable<OpenXmlElement> ConvertList(ExportBlock block, MainDocumentPart mainPart)
     {
         var elements = new List<OpenXmlElement>();
         var content = block.Content;
         var isOrdered = content.ListType?.ToLowerInvariant() == "ordered";
-        var numId = isOrdered ? 2 : 1;
+        var numId = isOrdered ? NewNumberedList(mainPart) : 1;
 
         // A description list: each term in bold, then its description, the following lines indented
         // (as LaTeX's description environment prints it). Its descriptions were dropped (MCP-95).
@@ -539,6 +548,22 @@ public class DocxExportService : IDocxExportService
                 AppendListItems(item.Children, numId, level + 1, into);
             }
         }
+    }
+
+    /// <summary>
+    /// Each numbered list counts from 1, as each LaTeX enumerate does: they all shared one Word
+    /// numbering, so a second list went on from the first.
+    /// </summary>
+    private static int NewNumberedList(MainDocumentPart mainPart)
+    {
+        var numbering = mainPart.NumberingDefinitionsPart?.Numbering;
+        if (numbering is null) return 2;
+        var id = numbering.Elements<NumberingInstance>().Max(n => (int)(n.NumberID?.Value ?? 0)) + 1;
+        var instance = new NumberingInstance { NumberID = id, AbstractNumId = new AbstractNumId { Val = 1 } };
+        for (var lvl = 0; lvl < 9; lvl++)
+            instance.Append(new LevelOverride(new StartOverrideNumberingValue { Val = 1 }) { LevelIndex = lvl });
+        numbering.Append(instance);
+        return id;
     }
 
     private void AppendDescriptionItems(List<ExportListItem> items, int depth, List<OpenXmlElement> into)
