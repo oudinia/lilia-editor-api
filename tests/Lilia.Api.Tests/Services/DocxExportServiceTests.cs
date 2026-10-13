@@ -415,7 +415,7 @@ public class DocxExportServiceTests
     }
 
     [Fact]
-    public async Task ExportAsync_OrderedList_UsesNumId2()
+    public async Task ExportAsync_OrderedList_UsesItsOwnNumberedInstance()
     {
         var svc = new DocxExportService();
         var doc = SingleBlock("list", new ExportBlockContent
@@ -430,7 +430,9 @@ public class DocxExportServiceTests
         var numIds = xml.Descendants(W + "numId")
             .Select(e => e.Attribute(W + "val")?.Value)
             .ToList();
-        numIds.Should().Contain("2"); // ordered list uses ID 2
+        // Each numbered list has its own instance of the numbered definition (abstract 1), so it
+        // counts from 1 (MCP-99); bullets keep instance 1.
+        numIds.Should().ContainSingle().Which.Should().NotBe("1");
     }
 
     // ── Equation: OMML path ───────────────────────────────────────────────────
