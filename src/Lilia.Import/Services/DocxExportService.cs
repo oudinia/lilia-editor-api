@@ -508,7 +508,7 @@ public class DocxExportService : IDocxExportService
 
             if (item.RichText is { Count: > 0 })
             {
-                foreach (var span in item.RichText) para.AppendChild(CreateRun(span));
+                foreach (var span in item.RichText) para.AppendChild(CreateSpanElement(span));
             }
             else
             {
@@ -651,6 +651,12 @@ public class DocxExportService : IDocxExportService
                         run.Append(new RunProperties(new Bold()));
                         run.Append(new Text(cellData.Text) { Space = SpaceProcessingModeValues.Preserve });
                         para.Append(run);
+                    }
+                    else if (cellData.RichText is { Count: > 0 })
+                    {
+                        // The cell's runs: bold, italic, its maths as Word equations. Only the plain
+                        // text was written, so \textbf{…} and $…$ showed as typed (13 Oct sweep).
+                        foreach (var span in cellData.RichText) para.AppendChild(CreateSpanElement(span));
                     }
                     else
                     {
@@ -817,6 +823,8 @@ public class DocxExportService : IDocxExportService
         {
             foreach (var span in bodySpans)
             {
+                // Maths is a Word equation, not italic LaTeX (13 Oct sweep: "g = \\SI{…}" in an abstract).
+                if (!string.IsNullOrEmpty(span.Equation)) { para.AppendChild(CreateSpanElement(span)); continue; }
                 var run = CreateRun(span);
                 // Add italic to theorem body
                 var existingProps = run.RunProperties;
@@ -1055,6 +1063,8 @@ public class DocxExportService : IDocxExportService
         {
             foreach (var span in content.RichText)
             {
+                // Maths is a Word equation, not italic LaTeX (13 Oct sweep: "g = \\SI{…}" in an abstract).
+                if (!string.IsNullOrEmpty(span.Equation)) { bodyPara.AppendChild(CreateSpanElement(span)); continue; }
                 var run = CreateRun(span);
                 var existingProps = run.RunProperties;
                 if (existingProps == null)

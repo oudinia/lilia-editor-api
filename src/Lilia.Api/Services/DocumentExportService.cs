@@ -577,7 +577,7 @@ public class DocumentExportService : IDocumentExportService
             Type = "equation",
             Content = new ExportBlockContent
             {
-                Latex = latex,
+                Latex = ProseLatex.MathForWord(latex),
                 DisplayMode = displayMode
             }
         };
@@ -1099,8 +1099,12 @@ public class DocumentExportService : IDocumentExportService
     {
         var spans = ParseMarks(ProseLatex.ForWord(text, labelNumber));
         foreach (var span in spans)
+        {
             if (span.Equation is null && span.Text.Contains(ProseLatex.PriceDollar))
                 span.Text = span.Text.Replace(ProseLatex.PriceDollar, '$');
+            if (span.Equation is not null)
+                span.Equation = ProseLatex.MathForWord(span.Equation);
+        }
         return spans;
     }
 

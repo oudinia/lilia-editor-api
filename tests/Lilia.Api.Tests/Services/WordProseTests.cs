@@ -1,4 +1,9 @@
+using System.IO.Compression;
+using System.Text.RegularExpressions;
 using FluentAssertions;
+using Lilia.Import.Converters;
+using Lilia.Import.Models;
+using Lilia.Import.Services;
 using Lilia.Api.Services;
 using Lilia.Engines;
 using Xunit;
@@ -48,4 +53,42 @@ public class WordProseTests
     [Fact]
     public void A_plain_field_drops_the_marks() =>
         ProseLatex.PlainForWord(@"Growth of \textbf{bold} at \SI{5}{\percent} for \$3", null).Should().Be("Growth of bold at 5 % for $3");
+
+    [Fact]
+    public void Siunitx_in_maths_is_spelled_for_the_equation_converter() =>
+        ProseLatex.MathForWord(@"g = \SI{9.794 \pm 0.021}{\metre\per\second\squared}").Should().Be(@"g = 9.794 \pm 0.021\,\mathrm{m/s²}");
+
+    /// <summary>The sweep's own inputs, through the real Word writer: no LaTeX left outside equations.</summary>
+    [Fact]
+    public async Task A_word_file_holds_no_latex_outside_its_equations()
+    {
+        List<ExportRichTextSpan> R(string t) => DocumentExportService.ParseInlineFormatting(t, Labels);
+        var doc = new ExportDocument { Title = "Sweep" };
+        doc.Blocks.Add(new ExportBlock { Type = "abstract", Content = new ExportBlockContent { RichText = R(@"we obtain $g = \SI{9.794 \pm 0.021}{\metre\per\second\squared}$ at $0.8\sigma$.") } });
+        doc.Blocks.Add(new ExportBlock { Type = "theorem", Content = new ExportBlockContent { Text = "Theorem 1", RichText = R(@"For all $\epsilon > 0$ it holds.") } });
+        doc.Blocks.Add(new ExportBlock { Type = "list", Content = new ExportBlockContent { Items = [new ExportListItem { Text = "x", RichText = R(@"Rate $\tau \le 1$") }] } });
+        doc.Blocks.Add(new ExportBlock
+        {
+            Type = "table",
+            Content = new ExportBlockContent
+            {
+                HasHeader = true,
+                Rows =
+                [
+                    [new ExportTableCell { Text = "Name" }, new ExportTableCell { Text = "Unit" }],
+                    [new ExportTableCell { Text = @"\textbf{End-to-end}", RichText = R(@"\textbf{End-to-end}") }, new ExportTableCell { Text = @"$\si{\second\squared\per\metre}$", RichText = R(@"$\si{\second\squared\per\metre}$") }],
+                ],
+            },
+        });
+
+        var bytes = await new DocxExportService(new LatexToOmmlConverter()).ExportAsync(doc);
+        using var zip = new ZipArchive(new MemoryStream(bytes));
+        using var reader = new StreamReader(zip.GetEntry("word/document.xml")!.Open());
+        var xml = await reader.ReadToEndAsync();
+
+        var outsideMaths = Regex.Replace(xml, @"<m:oMath\b.*?</m:oMath>", "", RegexOptions.Singleline);
+        Regex.Matches(outsideMaths, @"<w:t[^>]*>([^<]*)</w:t>").Select(m => m.Groups[1].Value)
+            .Should().NotContain(t => Regex.IsMatch(t, @"\\[A-Za-z]") || t.Contains('$'));
+        Regex.Matches(xml, "<m:oMath\\b").Count.Should().BeGreaterThanOrEqualTo(5);
+    }
 }
