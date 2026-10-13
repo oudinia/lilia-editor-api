@@ -175,4 +175,25 @@ public class ExportSweepTests
         doc.PageNumbering = "none";
         (await Compile(_render.RenderToLatex(doc))).Should().NotBeEmpty();
     }
+
+    // LTX-85 (run 2 re-test): \ce{…} in table cells printed as text, and mhchem only came from a custom preamble.
+    [Theory]
+    [InlineData(@"\ce{C7H6O3}", @"\ce{C7H6O3}")]
+    [InlineData(@"\SI{3}{\metre}", @"\SI{3}{\metre}")]
+    [InlineData(@"\ce{\input{x}}", @"\textbackslash{}")]
+    public void Chemistry_and_units_pass_in_cells(string cell, string expected) =>
+        LatexText.EscapeCell(cell).Should().Contain(expected);
+
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task Chemistry_compiles_without_a_custom_preamble()
+    {
+        var doc = Doc(null,
+            B("paragraph", new { text = @"Salicylic acid is \ce{C7H6O3}." }),
+            B("table", new { headers = new[] { "Compound", "Mass" }, rows = new[] { new[] { @"\ce{C7H6O3}", @"\SI{138.1}{\gram\per\mole}" } } }));
+        var tex = _render.RenderToLatex(doc);
+        tex.Should().Contain("{mhchem}");
+        (await Compile(tex)).Should().NotBeEmpty();
+        (await Compile(Export(doc))).Should().NotBeEmpty();
+    }
 }

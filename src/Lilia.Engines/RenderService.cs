@@ -1046,6 +1046,8 @@ public partial class RenderService : IRenderService
         // Same natbib rule as the full-document path above; here the body is
         // a fragment supplied by the caller, so the document's own blocks are
         // what we have to go on.
+        latex.Append(LaTeXPreamble.MhchemLine(
+            (doc.Blocks ?? new List<Block>()).Select(b => b.Content.RootElement.ToString()), importedPkgs, doc.CustomPreamble, doc.LatexPackages));
         if (LaTeXPreamble.UsesNatbib(
                 (doc.Blocks ?? new List<Block>()).Select(b => b.Content.RootElement.ToString())))
         {
@@ -1193,6 +1195,7 @@ public partial class RenderService : IRenderService
         // with LaTeXExportService via the shared LaTeXPreamble.UsesNatbib —
         // when these two disagreed, validation failed documents that export
         // compiled fine. Before Packages, so it precedes hyperref.
+        latex.Append(LaTeXPreamble.MhchemLine(renderedBlocks, importedPkgs, doc.CustomPreamble, doc.LatexPackages));
         var usesNatbib = LaTeXPreamble.UsesNatbib(renderedBlocks);
         if (usesNatbib)
         {

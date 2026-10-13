@@ -685,6 +685,12 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine(@"\usepackage{physics}");
         }
 
+        // mhchem when the text uses \ce (LaTeXPreamble.MhchemLine), as the check loads it.
+        if (!options.IncludeChemistry)
+            sb.Append(LaTeXPreamble.MhchemLine(
+                (bodyBlocks ?? doc.Blocks ?? new List<Block>()).Select(b => b.Content.RootElement.ToString()),
+                doc.CustomPreamble, doc.LatexPackages));
+
         if (options.IncludeChemistry)
         {
             sb.AppendLine();

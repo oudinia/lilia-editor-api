@@ -163,6 +163,29 @@ public static class LatexText
                 }
             }
 
+            // \ce{…} (mhchem) and the siunitx commands pass as written, arguments and all, when what
+            // they hold is safe in a cell (IsInlineMath's test): LTX-85's \ce{C7H6O3} printed as text.
+            var raw = RawCellCommands.FirstOrDefault(c => string.CompareOrdinal(text, i, c, 0, c.Length) == 0
+                && i + c.Length < text.Length && text[i + c.Length] == '{');
+            if (raw is not null)
+            {
+                var end = i + raw.Length;
+                var args = 0;
+                while (end < text.Length && text[end] == '{' && args < 2)
+                {
+                    var close = ClosingBrace(text, end);
+                    if (close < 0 || !IsInlineMath(text[(end + 1)..close].Length == 0 ? "x" : text[(end + 1)..close])) { end = -1; break; }
+                    end = close + 1;
+                    args++;
+                }
+                if (end > 0)
+                {
+                    sb.Append(text, i, end - i);
+                    i = end;
+                    continue;
+                }
+            }
+
             // MCP-15: the inline marks a paragraph reads — **bold**, *italic*, `code` — and \(…\)
             // maths. They printed literally (or as \textbackslash{}) in a cell.
             if (MarkdownRun(text, i, "**") is { } bold)
@@ -216,6 +239,9 @@ public static class LatexText
 
         return sb.ToString();
     }
+
+    // Commands kept in a cell exactly as written: chemistry and units.
+    private static readonly string[] RawCellCommands = [@"\ce", @"\SI", @"\si", @"\qty", @"\num", @"\unit"];
 
     // Text-mark commands kept in a cell, with their argument read as cell text.
     private static readonly string[] CellMarks = [@"\textbf{", @"\textit{", @"\emph{", @"\underline{", @"\texttt{"];
