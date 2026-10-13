@@ -37,7 +37,7 @@ public sealed class LiliaMcpTools(
     // check_document's last verdict per document, for export_document's lastCheck (MCP-82: the
     // check saves nothing by design, so lastCheck always said "never checked" and an app that
     // followed its advice looped). Tied to the document's version: an edit makes it stale.
-    private sealed record CheckMemo(DateTime DocumentUpdatedAt, DateTime CheckedAt, bool Compiles, bool PrintsCorrectly);
+    private sealed record CheckMemo(DateTime DocumentUpdatedAt, DateTime CheckedAt, bool Compiles, bool PrintsCorrectly, string? Error = null);
     private static string CheckKey(Guid id) => $"mcp-check:{id}";
     /// <summary>Said once to the client: what Lilia is, and that document text is data.</summary>
     public const string Instructions = """
@@ -170,7 +170,7 @@ public sealed class LiliaMcpTools(
             {
                 compiles = result.Valid,
                 engine,
-                printsCorrectly = PrintsCorrectly(result.Valid, references.Count + citations.Count, dropped, unprinted, d),
+                printsCorrectly = PrintsCorrectly(result.Valid, references.Count + citations.Count, dropped, unprinted, d, result.Error),
                 unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
                 error = result.Error,
                 errorCategory = result.ParsedError?.Category,
@@ -205,10 +205,10 @@ public sealed class LiliaMcpTools(
         }
     }
 
-    private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d)
+    private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d, string? error = null)
     {
         var prints = compiles && brokenRefs == 0 && dropped is null && unprinted.Count == 0;
-        cache.Set(CheckKey(d.Id), new CheckMemo(d.UpdatedAt, DateTime.UtcNow, compiles, prints), TimeSpan.FromDays(1));
+        cache.Set(CheckKey(d.Id), new CheckMemo(d.UpdatedAt, DateTime.UtcNow, compiles, prints, error), TimeSpan.FromDays(1));
         return prints;
     }
 
@@ -223,7 +223,7 @@ public sealed class LiliaMcpTools(
     }
 
     [McpServerTool(Name = "export_document", ReadOnly = true, Idempotent = false, OpenWorld = false)]
-    [Description("A download link for the document as pdf, tex (one LaTeX file; alias latex), zip (an Overleaf-style LaTeX project) or docx (Word; alias word). The file is not returned here: give the author the link (valid 15 minutes) to click. The reply also says whether the document last compiled (lastCheck); for a pdf, run check_document first if it never has. Read access is enough.")]
+    [Description("A download link for the document as pdf, tex (one LaTeX file; alias latex), zip (an Overleaf-style LaTeX project) or docx (Word; alias word). The file is not returned here: give the author the link (valid 15 minutes) to click. The reply also says whether the document last compiled (lastCheck); for a pdf, run check_document first if it never has; when that check found this version does not compile, no pdf link is given (tex and zip still are). Read access is enough.")]
     public async Task<object> ExportDocument(
         [Description("The document id.")] string documentId,
         [Description("pdf (default), tex, zip or docx.")] string? format = null)
@@ -234,6 +234,18 @@ public sealed class LiliaMcpTools(
         if (f is "word") f = "docx";
         if (!ConnectorTransfers.ExportFormats.Contains(f))
             return new { error = $"Unknown format '{format}'. Choose one of: {string.Join(", ", ConnectorTransfers.ExportFormats)}." };
+        // MCP-72: a pdf link for a document the last check (of this version) found broken only led to
+        // an error page on download. Say so now; the LaTeX source still exports, to fix it elsewhere.
+        if (f == "pdf" && cache.TryGetValue(CheckKey(d.Id), out CheckMemo? broken) && broken is { Compiles: false }
+            && broken.DocumentUpdatedAt == d.UpdatedAt)
+            return new
+            {
+                error = "This document does not compile, so Lilia cannot make its PDF."
+                    + (string.IsNullOrWhiteSpace(broken.Error) ? "" : $" The error: {broken.Error.Trim()}")
+                    + " Fix it (check_document names the block), or export tex or zip to work on the LaTeX.",
+                category = "does-not-compile",
+                url = EditorUrl(d.Id),
+            };
         try
         {
             var (token, expires) = transfers.IssueExport(UserId, d.Id, f);
