@@ -645,7 +645,16 @@ public class DocxExportService : IDocxExportService
 
                     // Cell content
                     var para = new Paragraph();
-                    if (isFirstRow && (content.HasHeader ?? false))
+                    if (isFirstRow && (content.HasHeader ?? false) && cellData.RichText is { Count: > 0 })
+                    {
+                        // Bold, with its maths as equations.
+                        foreach (var span in cellData.RichText)
+                        {
+                            if (string.IsNullOrEmpty(span.Equation)) span.Bold = true;
+                            para.AppendChild(CreateSpanElement(span));
+                        }
+                    }
+                    else if (isFirstRow && (content.HasHeader ?? false))
                     {
                         var run = new Run();
                         run.Append(new RunProperties(new Bold()));

@@ -75,12 +75,13 @@ public class WordProseTests
                 HasHeader = true,
                 Rows =
                 [
-                    [new ExportTableCell { Text = "Name" }, new ExportTableCell { Text = "Unit" }],
+                    [new ExportTableCell { Text = "Name" }, new ExportTableCell { Text = "Spearman", RichText = R(@"Spearman $\rho$") }],
                     [new ExportTableCell { Text = @"\textbf{End-to-end}", RichText = R(@"\textbf{End-to-end}") }, new ExportTableCell { Text = @"$\si{\second\squared\per\metre}$", RichText = R(@"$\si{\second\squared\per\metre}$") }],
                 ],
             },
         });
 
+        doc.Blocks.Insert(0, new ExportBlock { Type = "title", Content = new ExportBlockContent { Text = "Sweep", Author = ProseLatex.PlainForWord("R. Okafor, M. Lindqvist") } });
         var bytes = await new DocxExportService(new LatexToOmmlConverter()).ExportAsync(doc);
         using var zip = new ZipArchive(new MemoryStream(bytes));
         using var reader = new StreamReader(zip.GetEntry("word/document.xml")!.Open());
@@ -89,6 +90,6 @@ public class WordProseTests
         var outsideMaths = Regex.Replace(xml, @"<m:oMath\b.*?</m:oMath>", "", RegexOptions.Singleline);
         Regex.Matches(outsideMaths, @"<w:t[^>]*>([^<]*)</w:t>").Select(m => m.Groups[1].Value)
             .Should().NotContain(t => Regex.IsMatch(t, @"\\[A-Za-z]") || t.Contains('$'));
-        Regex.Matches(xml, "<m:oMath\\b").Count.Should().BeGreaterThanOrEqualTo(5);
+        Regex.Matches(xml, "<m:oMath\\b").Count.Should().BeGreaterThanOrEqualTo(6);
     }
 }
