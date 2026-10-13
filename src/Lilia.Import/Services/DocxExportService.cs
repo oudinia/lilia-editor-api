@@ -1058,8 +1058,11 @@ public class DocxExportService : IDocxExportService
             yield break;
         }
 
-        foreach (var entry in entries.OrderBy(e => FormatBibliographyEntry(e),
-                                               StringComparer.CurrentCultureIgnoreCase))
+        // Numbered entries keep the order their numbers give (citations print them); others sort by text.
+        var ordered = entries.All(e => e.Number is not null)
+            ? entries.OrderBy(e => e.Number)
+            : entries.OrderBy(e => FormatBibliographyEntry(e), StringComparer.CurrentCultureIgnoreCase);
+        foreach (var entry in ordered)
         {
             yield return BibliographyEntryParagraph(entry);
         }
@@ -1101,8 +1104,9 @@ public class DocxExportService : IDocxExportService
         pPr.Append(new SpacingBetweenLines { After = "120" });
         pPr.Append(new Indentation { Left = "720", Hanging = "720" });
         para.Append(pPr);
+        var label = entry.Number is int n ? $"[{n}] " : "";
         para.AppendChild(new Run(
-            new Text(FormatBibliographyEntry(entry)) { Space = SpaceProcessingModeValues.Preserve }));
+            new Text(label + FormatBibliographyEntry(entry)) { Space = SpaceProcessingModeValues.Preserve }));
         return para;
     }
 

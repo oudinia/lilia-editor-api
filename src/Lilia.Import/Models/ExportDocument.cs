@@ -449,6 +449,9 @@ public class ExportBibliographyEntry
     /// BibTeX fields.
     /// </summary>
     public Dictionary<string, string> Fields { get; set; } = [];
+
+    /// <summary>Its number in the reference list, which citations print ([1]). Null: unnumbered.</summary>
+    public int? Number { get; set; }
 }
 
 /// <summary>

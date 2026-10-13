@@ -418,6 +418,22 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         text.Should().Contain("Listing 1: Hello").And.Contain("Algorithm 1 Sort");
     }
 
+    // MCP-98 (run 3): citations printed as [key]; the bibliography as raw BibTeX markup.
+    [Fact]
+    public async Task CitationsAreNumberedAndReferencesReadAsText()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Cited");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"As in \\cite{young1936} and @cite{fejer1904}."}""");
+        await SeedBlockAsync(doc.Id, "bibliography", """{"text":"@article{fejer1904, author={Fej{\\'e}r, Lip{\\'o}t}, title={Untersuchungen {\\\"u}ber {F}ouriersche Reihen}, journal={Math. Ann.}, year={1904}, pages={51--69}}\n@article{young1936, author={Young, L. C.}, title={On $\\Delta$-sets}, year={1936}}\n@book{unused, author={Nobody}, title={Uncited}, year={2000}}"}""", 1);
+
+        var text = TextIn((await ExportAsync(doc.Id)).Bytes);
+
+        text.Should().Contain("As in [2] and [1].");
+        text.Should().Contain("[1] Fejér, Lipót").And.Contain("Untersuchungen über Fouriersche Reihen").And.Contain("pp. 51–69");
+        text.Should().Contain("[2] Young, L. C.").And.Contain("On Δ-sets");
+        text.Should().NotContain("Uncited").And.NotContain("{").And.NotContain("\\'");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {
