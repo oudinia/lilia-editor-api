@@ -171,6 +171,12 @@ public sealed class LiliaMcpTools(
                 .Select(g => new { kind = "dangling", label = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct() })
                 .Cast<object>()
                 .Concat(audit.DuplicateLabels.Select(l => (object)new { kind = "duplicate", label = l }))
+                // MCP-92: a label with no number before it; the reference prints nothing.
+                .Concat(audit.EmptyReferences.GroupBy(r => r.Key).Select(g => (object)new
+                {
+                    kind = "empty", label = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct(),
+                    note = "No numbered item (caption, numbered equation or theorem, section) comes before this label, so the reference prints nothing.",
+                }))
                 .ToList();
             var citations = audit.MissingCitations
                 .GroupBy(c => c.Key)
