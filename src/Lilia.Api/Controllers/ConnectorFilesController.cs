@@ -22,6 +22,9 @@ public class ConnectorFilesController(
     ILaTeXExportService latex,
     IJobService jobs,
     LiliaDbContext db,
+    Lilia.Api.Mcp.CheckMemoStore checks,
+    Lilia.Engines.IRenderService render,
+    ILaTeXRenderService latexRender,
     ILogger<ConnectorFilesController> logger) : ControllerBase
 {
     private string? UserId => User.FindFirst("sub")?.Value
@@ -46,6 +49,11 @@ public class ConnectorFilesController(
             switch (t.Format)
             {
                 case "pdf":
+                    // A version that doesn't compile gets no PDF (MCP-110: a link made before the check
+                    // served one, the broken command silently dropped by the lenient renderer). The
+                    // current check decides, or a strict compile when there is none (cached by source).
+                    if (await CompileErrorAsync(doc) is { } compileError)
+                        return Explain(422, $"Lilia could not make a PDF of this document: it does not compile. {compileError} Open it in Lilia and run Validate, or ask the app to check it.");
                     var (pdf, _) = await exports.ExportToPdfWithEngineAsync(t.DocumentId, "auto");
                     if (pdf is null || pdf.Length < 100 || !pdf.AsSpan(0, 4).SequenceEqual("%PDF"u8))
                         return Explain(422, "Lilia could not make a PDF of this document: it does not compile. Open it in Lilia and run Validate, or ask the app to check it.");
@@ -71,6 +79,18 @@ public class ConnectorFilesController(
             logger.LogError(ex, "[Connector] {Format} export of {DocId} failed", t.Format, t.DocumentId);
             return Explain(500, "Lilia could not produce this file. Try again, or export it from the editor.");
         }
+    }
+
+    private async Task<string?> CompileErrorAsync(Lilia.Core.DTOs.DocumentDto doc)
+    {
+        if (checks.Current(doc.Id, doc.UpdatedAt) is { } memo)
+            return memo.Compiles ? null : Trimmed(memo.Error);
+        var source = await render.RenderToLatexAsync(doc.Id);
+        var result = await latexRender.ValidateAsync(source, Lilia.Api.Mcp.LiliaMcpTools.EngineFor(source, doc.LatexEngine));
+        return result.Valid ? null : Trimmed(result.Error);
+
+        static string Trimmed(string? error) =>
+            string.IsNullOrWhiteSpace(error) ? "" : (error.Length > 300 ? error[..300] + "…" : error).Trim();
     }
 
     public sealed record ImportTicketView(string Status, string App, DateTime ExpiresAt, Guid? DocumentId, string? Title, string? Error);

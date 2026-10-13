@@ -31,14 +31,13 @@ public sealed class LiliaMcpTools(
     LiliaDbContext db,
     IConfiguration config,
     ConnectorTransfers transfers,
-    Microsoft.Extensions.Caching.Memory.IMemoryCache cache,
+    CheckMemoStore checks,
     ILogger<LiliaMcpTools> logger)
 {
     // check_document's last verdict per document, for export_document's lastCheck (MCP-82: the
     // check saves nothing by design, so lastCheck always said "never checked" and an app that
     // followed its advice looped). Tied to the document's version: an edit makes it stale.
-    private sealed record CheckMemo(DateTime DocumentUpdatedAt, DateTime CheckedAt, bool Compiles, bool PrintsCorrectly, string? Error = null);
-    private static string CheckKey(Guid id) => $"mcp-check:{id}";
+
     /// <summary>Checks still compiling, by document. An app that calls check_document and
     /// export_document together got "Never checked" from the export (MCP-88): it now waits for the check.</summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, TaskCompletionSource> ChecksRunning = new();
@@ -210,7 +209,10 @@ public sealed class LiliaMcpTools(
                 references,
                 citations,
                 durationMs = result.DurationMs,
-                note = references.Count + citations.Count > 0
+                // MCP-108: "It compiles, but…" was said of a document that doesn't compile.
+                note = !result.Valid
+                    ? "It does not compile: see error (and errorBlockId for the block)."
+                    : references.Count + citations.Count > 0
                     ? "It compiles, but references or citations above will print as ?? or ? in the PDF."
                     : dropped is not null && result.Valid
                         ? "It compiles, but some characters are missing from the PDF (see warnings)."
@@ -240,7 +242,7 @@ public sealed class LiliaMcpTools(
     private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d, string? error = null, int wideTables = 0)
     {
         var prints = compiles && brokenRefs == 0 && dropped is null && unprinted.Count == 0 && wideTables == 0;
-        cache.Set(CheckKey(d.Id), new CheckMemo(d.UpdatedAt, DateTime.UtcNow, compiles, prints, error), TimeSpan.FromDays(1));
+        checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, compiles, prints, error));
         return prints;
     }
 
@@ -271,8 +273,7 @@ public sealed class LiliaMcpTools(
             await Task.WhenAny(checking.Task, Task.Delay(TimeSpan.FromSeconds(90)));
         // MCP-72: a pdf link for a document the last check (of this version) found broken only led to
         // an error page on download. Say so now; the LaTeX source still exports, to fix it elsewhere.
-        if (f == "pdf" && cache.TryGetValue(CheckKey(d.Id), out CheckMemo? broken) && broken is { Compiles: false }
-            && broken.DocumentUpdatedAt == d.UpdatedAt)
+        if (f == "pdf" && checks.Current(d.Id, d.UpdatedAt) is { Compiles: false } broken)
             return new
             {
                 error = "This document does not compile, so Lilia cannot make its PDF."
@@ -288,7 +289,7 @@ public sealed class LiliaMcpTools(
             var v = await db.Documents.AsNoTracking().Where(x => x.Id == d.Id)
                 .Select(x => new { x.ValidationCheckedAt, x.ValidationErrorCount, x.ValidationWarningCount })
                 .FirstOrDefaultAsync();
-            object lastCheck = cache.TryGetValue(CheckKey(d.Id), out CheckMemo? memo) && memo is not null
+            object lastCheck = checks.Get(d.Id) is { } memo
                 ? memo.DocumentUpdatedAt == d.UpdatedAt
                     ? new { checkedAt = (DateTime?)memo.CheckedAt, compiles = memo.Compiles, printsCorrectly = memo.PrintsCorrectly, source = "check_document" }
                     : new { checkedAt = (DateTime?)memo.CheckedAt, note = "The document changed since check_document; call it again." } as object

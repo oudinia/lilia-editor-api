@@ -30,3 +30,6 @@ scripts/backup-db.env
 data/.tug-cache/
 data/.tug-scrape-warnings.log
 TestResults/
+
+# check_document verdicts kept across restarts (CheckMemoStore)
+App_Data/

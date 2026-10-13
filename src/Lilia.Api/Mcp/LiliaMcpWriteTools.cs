@@ -188,6 +188,22 @@ public sealed class LiliaMcpWriteTools(
     ];
     private static readonly JsonElement EmptyString = JsonDocument.Parse("\"\"").RootElement;
 
+    /// <summary>What null puts back for a setting with a fixed set of values: the class default.</summary>
+    private static readonly Dictionary<string, JsonElement> SettingDefaults = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["paperSize"] = JsonSerializer.SerializeToElement("a4"),
+        ["orientation"] = JsonSerializer.SerializeToElement("portrait"),
+        ["columns"] = JsonSerializer.SerializeToElement(1),
+        ["columnGap"] = JsonSerializer.SerializeToElement(1.5),
+        ["columnSeparator"] = JsonSerializer.SerializeToElement("none"),
+        ["balancedColumns"] = JsonSerializer.SerializeToElement(false),
+        ["fontFamily"] = JsonSerializer.SerializeToElement("serif"),
+        ["fontSize"] = JsonSerializer.SerializeToElement(11),
+        ["lineSpacing"] = JsonSerializer.SerializeToElement(1.0),
+        ["pageNumbering"] = JsonSerializer.SerializeToElement("arabic"),
+        ["headingNumbering"] = JsonSerializer.SerializeToElement("default"),
+    };
+
     [McpServerTool(Name = "set_document_settings", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headingNumbering (none|1-5: the heading levels numbered, which the table of contents lists too; default), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
     public Task<object> SetDocumentSettings(
@@ -215,6 +231,8 @@ public sealed class LiliaMcpWriteTools(
                 // null on a text setting means "unset", as get_document_settings reports it; it was a
                 // silent no-op (MCP-86). The empty string is what clears it.
                 JsonValueKind.Null when TextSettings.Contains(name) => EmptyString,
+                // A choice or a number set to null goes back to its default (MCP-113: it was ignored).
+                JsonValueKind.Null when SettingDefaults.TryGetValue(name, out var fallback) => fallback,
                 // headingNumbering: 2 failed with "could not be converted to System.String": the
                 // choices that read as numbers are text fields.
                 JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False when !NumericSettings.Contains(name) =>
