@@ -676,10 +676,13 @@ public sealed class LmlTextParser : ILmlTextParser
             case "cv-entry":
             case "cv_entry":
             {
+                // startDate/endDate stored an empty period without a word (MCP-58).
                 var period = attrs.GetValueOrDefault("period")
                     ?? attrs.GetValueOrDefault("date")
                     ?? attrs.GetValueOrDefault("dates")
-                    ?? "";
+                    ?? CvFields.PeriodOf(
+                        attrs.GetValueOrDefault("startDate") ?? attrs.GetValueOrDefault("start") ?? attrs.GetValueOrDefault("from"),
+                        attrs.GetValueOrDefault("endDate") ?? attrs.GetValueOrDefault("end") ?? attrs.GetValueOrDefault("to"));
                 var role = attrs.GetValueOrDefault("role")
                     ?? attrs.GetValueOrDefault("title")
                     ?? attrs.GetValueOrDefault("position")
@@ -689,9 +692,13 @@ public sealed class LmlTextParser : ILmlTextParser
                     ?? attrs.GetValueOrDefault("organization")
                     ?? attrs.GetValueOrDefault("company")
                     ?? attrs.GetValueOrDefault("institution")
+                    ?? attrs.GetValueOrDefault("employer")
+                    ?? attrs.GetValueOrDefault("school")
                     ?? "";
-                var location = attrs.GetValueOrDefault("location") ?? "";
+                var location = attrs.GetValueOrDefault("location") ?? attrs.GetValueOrDefault("city") ?? "";
                 var highlight = attrs.GetValueOrDefault("highlight") ?? "";
+                var tech = (attrs.GetValueOrDefault("tech") ?? "")
+                    .Split([',', ';'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 var description = string.IsNullOrWhiteSpace(body) ? "" : NormalizeProse(body);
                 blocks.Add(new LmlParsedBlock
                 {
@@ -704,7 +711,7 @@ public sealed class LmlTextParser : ILmlTextParser
                         location,
                         highlight,
                         description,
-                        tech = Array.Empty<string>(),
+                        tech,
                     },
                 });
                 return;
