@@ -147,4 +147,13 @@ public class ExportEqualsCheckTests
             .RenderToPdfAsync(_render.RenderToLatex(doc), "pdflatex", timeout: 180);
         pdf.Should().NotBeEmpty();
     }
+
+    // MCP-41 (run 2 re-test, LTX-83): the appendix block printed only \appendix.
+    [Fact]
+    public void The_appendix_prints_its_title_and_text()
+    {
+        var book = Doc("book", B("backMatter", new { subType = "appendix", title = "Derivations", text = "Proof of the bound." }));
+        foreach (var tex in new[] { _render.RenderToLatex(book), Export(book) })
+            tex.Should().Contain("\\appendix\n\\chapter{Derivations}").And.Contain("Proof of the bound.");
+    }
 }

@@ -1403,7 +1403,7 @@ public partial class RenderService : IRenderService
                 "cventry" => RenderCvEntryToLatex(content),
                 // The Appendix back-matter block starts the appendices: chapters or sections
                 // after it are lettered A, B… (and Index restarts its colours there).
-                "backmatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
+                "backmatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => RenderAppendixStartToLatex(content, block.Document?.LatexDocumentClass),
                 // MCP-41: front and back matter text reached nowhere ("% Unknown block type").
                 "frontmatter" or "backmatter" => RenderMatterToLatex(content, block.Document?.LatexDocumentClass),
                 _ => $"% Unknown block type: {block.Type}"
@@ -2650,6 +2650,20 @@ public partial class RenderService : IRenderService
     /// </summary>
     public static string AttributionLine(string formatted) =>
         string.IsNullOrWhiteSpace(formatted) ? "" : "\n\\par\\nopagebreak\\raggedleft--- " + formatted;
+
+    /// <summary>
+    /// The Appendix block starts the appendices, and prints its own title and text as the first of
+    /// them: the title and text were dropped, leaving a bare \appendix (run 2, MCP-41, LTX-83).
+    /// </summary>
+    private string RenderAppendixStartToLatex(JsonElement content, string? documentClass)
+    {
+        string? Str(string n) => content.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
+        var title = Str("title");
+        var text = Str("text");
+        if (title is null && text is null) return @"\appendix";
+        var command = Lilia.Core.Models.HeadingCommands.For(1, documentClass);
+        return @"\appendix" + "\n" + $@"\{command}{{{InlineArgument(title ?? "Appendix")}}}" + (text is null ? "" : "\n" + ProcessLatexText(text));
+    }
 
     /// <summary>
     /// A verse, an aside or an annotation — block types that came with ePub — in LaTeX: a verse with
