@@ -472,6 +472,14 @@ public class DocxExportService : IDocxExportService
         var isOrdered = content.ListType?.ToLowerInvariant() == "ordered";
         var numId = isOrdered ? 2 : 1;
 
+        // A description list: each term in bold, then its description, the following lines indented
+        // (as LaTeX's description environment prints it). Its descriptions were dropped (MCP-95).
+        if (content.ListType?.ToLowerInvariant() == "description" && content.Items != null)
+        {
+            AppendDescriptionItems(content.Items, 0, elements);
+            return elements;
+        }
+
         // Walks Children too. It used to iterate Items only, so a nested list
         // exported its top level and silently dropped everything under it --
         // the sub-points of an argument, gone, with no error anywhere.
@@ -522,6 +530,29 @@ public class DocxExportService : IDocxExportService
             {
                 AppendListItems(item.Children, numId, level + 1, into);
             }
+        }
+    }
+
+    private void AppendDescriptionItems(List<ExportListItem> items, int depth, List<OpenXmlElement> into)
+    {
+        foreach (var item in items)
+        {
+            var indent = 360 * (depth + 1);
+            var para = new Paragraph(new ParagraphProperties(
+                new Indentation { Left = indent.ToString(), Hanging = "360" }));
+            var term = item.RichText is { Count: > 0 } ? item.RichText : [new ExportRichTextSpan { Text = item.Text }];
+            foreach (var span in term)
+            {
+                if (string.IsNullOrEmpty(span.Equation)) span.Bold = true;
+                para.AppendChild(CreateSpanElement(span));
+            }
+            if (item.Description is { Count: > 0 } description)
+            {
+                para.AppendChild(new Run(new Text(" ") { Space = SpaceProcessingModeValues.Preserve }));
+                foreach (var span in description) para.AppendChild(CreateSpanElement(span));
+            }
+            into.Add(para);
+            if (item.Children is { Count: > 0 }) AppendDescriptionItems(item.Children, depth + 1, into);
         }
     }
 

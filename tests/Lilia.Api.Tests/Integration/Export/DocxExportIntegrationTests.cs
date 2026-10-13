@@ -292,6 +292,48 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         rows.Take(2).Should().OnlyContain(r => r.TableRowProperties != null, "the group row and the header repeat as header rows");
     }
 
+    // MCP-94 (run 3, LTX-71): an align* body kept only its first line.
+    [Fact]
+    public async Task AnAlignedEquationKeepsEveryLine()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Aligned");
+        await SeedBlockAsync(doc.Id, "equation", """{"latex":"a &= b \\\\ c &= d","equationMode":"align"}""");
+
+        var xml = XmlIn((await ExportAsync(doc.Id)).Bytes);
+
+        xml.Should().Contain("<m:eqArr>");
+        Regex.Matches(xml, "<m:e>").Count.Should().BeGreaterThanOrEqualTo(2);
+        Regex.Replace(xml, "<[^>]+>", "").Should().Contain("c").And.Contain("d");
+    }
+
+    // MCP-95 (run 3, LTX-75): description lists dropped every description and became bullets.
+    [Fact]
+    public async Task ADescriptionListKeepsItsDescriptions()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Terms");
+        await SeedBlockAsync(doc.Id, "list", """{"kind":"description","items":[{"text":"Kernel","description":"The function we convolve with."},{"text":"Mean","description":"An average."}]}""");
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        var xml = XmlIn(bytes);
+
+        TextIn(bytes).Should().Contain("Kernel").And.Contain("The function we convolve with.").And.Contain("An average.");
+        xml.Should().NotContain("<w:numPr>", "a description list has no bullets");
+        xml.Should().Contain("<w:b />");
+    }
+
+    // MCP-99 (run 3): listType "numbered" exported as bullets.
+    [Fact]
+    public async Task ANumberedListIsNumberedHoweverItIsWritten()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Steps");
+        await SeedBlockAsync(doc.Id, "list", """{"listType":"numbered","items":[{"text":"One"},{"text":"Two"}]}""");
+        await SeedBlockAsync(doc.Id, "list", """{"kind":"numbered","items":[{"text":"Three"}]}""", 1);
+
+        var xml = XmlIn((await ExportAsync(doc.Id)).Bytes);
+
+        Regex.Matches(xml, "<w:numId w:val=\"2\" />").Count.Should().Be(3);
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {
