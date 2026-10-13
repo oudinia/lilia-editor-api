@@ -116,6 +116,9 @@ public class ExportBlockContent
     /// </summary>
     public string? Latex { get; set; }
 
+    /// <summary>A numbered display equation's number, printed "(n)" at the right margin.</summary>
+    public string? EquationNumber { get; set; }
+
     /// <summary>
     /// Equation source, verbatim, in whatever notation <see cref="Notation"/>
     /// names. Replaces <see cref="Latex"/>, which stays readable so documents
