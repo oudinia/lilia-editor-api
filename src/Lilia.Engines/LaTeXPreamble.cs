@@ -244,10 +244,23 @@ public static partial class LaTeXPreamble
     /// mhchem, when the text uses <c>\ce{…}</c> and the author's own packages don't load it: Lilia's
     /// preamble doesn't, so <c>\ce</c> was undefined unless a custom preamble added it (LTX-85).
     /// </summary>
-    public static string MhchemLine(IEnumerable<string?> latexSources, params string?[] authorPackages) =>
-        latexSources.Any(src => !string.IsNullOrEmpty(src) && MhchemCommandRe.IsMatch(src))
-        && !authorPackages.Any(p => (p ?? "").Contains("mhchem", StringComparison.Ordinal))
-            ? "\\usepackage[version=4]{mhchem}\n" : "";
+    public static string MhchemLine(IEnumerable<string?> latexSources, params string?[] authorPackages)
+    {
+        var sources = latexSources.Where(s => !string.IsNullOrEmpty(s)).ToList();
+        var lines = sources.Any(src => MhchemCommandRe.IsMatch(src!))
+            && !authorPackages.Any(p => (p ?? "").Contains("mhchem", StringComparison.Ordinal))
+                ? "\\usepackage[version=4]{mhchem}\n" : "";
+        // Filler text: \lipsum / \blindtext in a draft (an imported template, an AI sketch) stopped the
+        // compile ("Undefined control sequence") once such text went to LaTeX (#266).
+        if (sources.Any(src => LipsumCommandRe.IsMatch(src!)) && !authorPackages.Any(p => (p ?? "").Contains("lipsum", StringComparison.Ordinal)))
+            lines += "\\usepackage{lipsum}\n";
+        if (sources.Any(src => BlindtextCommandRe.IsMatch(src!)) && !authorPackages.Any(p => (p ?? "").Contains("blindtext", StringComparison.Ordinal)))
+            lines += "\\usepackage{blindtext}\n";
+        return lines;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex LipsumCommandRe = new(@"\\lipsum\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex BlindtextCommandRe = new(@"\\(?:[Bb]lind(?:text|document)|blindlist(?:optional)?)\b", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// Emitted <i>before</i> <see cref="Packages"/> so it precedes hyperref,

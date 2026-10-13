@@ -130,12 +130,14 @@ public static class LaTeXErrorParser
         {
             if (lines[i].TrimStart().StartsWith("! Undefined control sequence"))
             {
-                // Look in the next 1-3 lines for the l.N context line
+                // TeX's context line shows what was read up to the error: the undefined command is
+                // the LAST one on it ("l.15 \textbf{x} \missing" named \textbf, MCP-37). With macro
+                // expansion the first context line is "<argument> … \missing", the same rule.
                 for (int j = i + 1; j < Math.Min(i + 4, lines.Length); j++)
                 {
-                    var m = UndefinedCsTokenRe.Match(lines[j]);
-                    if (m.Success)
-                        return "\\" + m.Groups[1].Value;
+                    var ms = UndefinedCsTokenRe.Matches(lines[j]);
+                    if (ms.Count > 0)
+                        return "\\" + ms[^1].Groups[1].Value;
                 }
             }
         }
