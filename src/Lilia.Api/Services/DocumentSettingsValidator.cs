@@ -198,4 +198,38 @@ public static class DocumentSettingsValidator
             _ => n,
         };
     }
+
+    // Paper sizes in centimetres, portrait.
+    private static readonly Dictionary<string, (double W, double H)> Paper = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["a4"] = (21.0, 29.7), ["letter"] = (21.59, 27.94), ["legal"] = (21.59, 35.56),
+        ["a5"] = (14.8, 21.0), ["executive"] = (18.42, 26.67), ["b5"] = (17.6, 25.0),
+    };
+
+    /// <summary>
+    /// Margins that leave less than 2 cm of text on the page, after this update: a5 with 10 cm left
+    /// and right was accepted and compiled with "geometry: width results in NEGATIVE" (MCP-48). A
+    /// margin left at the class default counts as 2.5 cm.
+    /// </summary>
+    public static string? TextAreaProblem(Lilia.Core.DTOs.DocumentDto current, Lilia.Core.DTOs.UpdateDocumentDto update)
+    {
+        var paper = update.PaperSize ?? current.PaperSize ?? "a4";
+        if (!Paper.TryGetValue(paper, out var size)) return null;
+        var landscape = string.Equals(update.Orientation ?? current.Orientation, "landscape", StringComparison.OrdinalIgnoreCase);
+        var (w, h) = landscape ? (size.H, size.W) : (size.W, size.H);
+        double M(string? changed, string? stored) => Cm(changed ?? stored) ?? 2.5;
+        var width = w - M(update.MarginLeft, current.MarginLeft) - M(update.MarginRight, current.MarginRight);
+        var height = h - M(update.MarginTop, current.MarginTop) - M(update.MarginBottom, current.MarginBottom);
+        if (width >= 2 && height >= 2) return null;
+        var which = width < 2 ? $"left and right margins leave {width:0.#} cm of text across" : $"top and bottom margins leave {height:0.#} cm of text down";
+        return $"On {paper}{(landscape ? " landscape" : "")} ({w:0.#} × {h:0.#} cm) the {which}; at least 2 cm is needed.";
+    }
+
+    private static double? Cm(string? length)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(length ?? "", @"^\s*([0-9]*\.?[0-9]+)\s*(cm|mm|in|pt)\s*$");
+        if (!m.Success) return null;
+        var v = double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        return m.Groups[2].Value switch { "mm" => v / 10, "in" => v * 2.54, "pt" => v * 2.54 / 72.27, _ => v };
+    }
 }

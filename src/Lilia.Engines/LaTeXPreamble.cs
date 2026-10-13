@@ -143,6 +143,8 @@ public static partial class LaTeXPreamble
         "algpseudocode", "algorithmicx", "algcompatible", "algpascal", "algc", "algorithm2e",
     };
 
+    private static readonly Regex CustomNewTheorem = new(@"\\newtheorem\*?\{([A-Za-z]+)\*?\}(?:\[[^\]]*\])?\{[^}]*\}(?:\[[^\]]*\])?", RegexOptions.Compiled);
+
     private static readonly Regex CustomUsePackage = new(
         @"\\usepackage\s*(\[[^\]]*\])?\s*\{([^}]*)\}", RegexOptions.Compiled);
 
@@ -153,6 +155,9 @@ public static partial class LaTeXPreamble
     public static string CustomPreambleForEmit(string? custom)
     {
         if (string.IsNullOrWhiteSpace(custom)) return "";
+        // A \newtheorem of a kind Lilia declares stops the compile ("already defined"): left out.
+        custom = CustomNewTheorem.Replace(custom, m => KnownTheoremEnvironments.Contains(m.Groups[1].Value)
+            ? $"% [lilia] left out \\newtheorem{{{m.Groups[1].Value}}}: Lilia declares it." : m.Value);
         return CustomUsePackage.Replace(custom.Trim(), m =>
         {
             var names = m.Groups[2].Value.Split(',').Select(n => n.Trim()).Where(n => n.Length > 0).ToList();
@@ -585,6 +590,13 @@ public static partial class LaTeXPreamble
 \newtheorem{axiom}{Axiom}
 \newtheorem{conjecture}{Conjecture}
 \newtheorem{hypothesis}{Hypothesis}
+\newtheorem{exercise}{Exercise}
+\newtheorem{problem}{Problem}
+\newtheorem{question}{Question}
+\newtheorem{observation}{Observation}
+\newtheorem{fact}{Fact}
+\newtheorem{notation}{Notation}
+\newtheorem{property}{Property}
 \newtheorem*{theorem*}{Theorem}
 \newtheorem*{lemma*}{Lemma}
 \newtheorem*{proposition*}{Proposition}
@@ -597,6 +609,13 @@ public static partial class LaTeXPreamble
 \newtheorem*{axiom*}{Axiom}
 \newtheorem*{conjecture*}{Conjecture}
 \newtheorem*{hypothesis*}{Hypothesis}
+\newtheorem*{exercise*}{Exercise}
+\newtheorem*{problem*}{Problem}
+\newtheorem*{question*}{Question}
+\newtheorem*{observation*}{Observation}
+\newtheorem*{fact*}{Fact}
+\newtheorem*{notation*}{Notation}
+\newtheorem*{property*}{Property}
 ";
 
     /// <summary>
@@ -628,6 +647,8 @@ public static partial class LaTeXPreamble
             "theorem", "lemma", "proposition", "corollary", "definition",
             "example", "remark", "claim", "assumption", "axiom",
             "conjecture", "hypothesis",
+            // MCP-30: an exercise printed as a theorem.
+            "exercise", "problem", "question", "observation", "fact", "notation", "property",
         };
 
     /// <summary>

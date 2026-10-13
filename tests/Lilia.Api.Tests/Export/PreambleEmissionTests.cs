@@ -224,8 +224,10 @@ public class PreambleEmissionTests
     [Fact]
     public void A_footer_slot_set_by_the_author_is_not_overridden_by_the_page_number()
     {
+        // The author's slot keeps its text; the page number takes a free slot (MCP-47: a footer slot
+        // used to take the page number away altogether).
         var preamble = BuildPreamble(NewDoc(d => { d.HeaderLeft = "Lecture 8"; d.FooterRight = "v1"; }));
-        preamble.Should().NotContain("\\thepage");
+        preamble.Should().Contain("\\rfoot{v1}").And.Contain("\\cfoot{\\thepage}").And.NotContain("\\rfoot{\\thepage}");
     }
 
     // ── review of 5 Oct: two font choices were never emitted ─────────────
