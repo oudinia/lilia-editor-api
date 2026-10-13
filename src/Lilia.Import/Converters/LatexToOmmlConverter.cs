@@ -55,6 +55,28 @@ public class LatexToOmmlConverter : ILatexToOmmlConverter
         [@"\ell"] = "ℓ", [@"\hbar"] = "ℏ",
         [@"\dagger"] = "†", [@"\ddagger"] = "‡",
         [@"\prime"] = "′",
+        // MCP-101 (run 3): these came out as their names ("lesssim", "dots").
+        [@"\dots"] = "…", [@"\dotsc"] = "…", [@"\dotsb"] = "⋯", [@"\dotsm"] = "⋯", [@"\dotsi"] = "⋯",
+        [@"\lesssim"] = "≲", [@"\gtrsim"] = "≳", [@"\leqslant"] = "⩽", [@"\geqslant"] = "⩾",
+        [@"\lll"] = "⋘", [@"\ggg"] = "⋙", [@"\prec"] = "≺", [@"\succ"] = "≻", [@"\preceq"] = "⪯", [@"\succeq"] = "⪰",
+        [@"\asymp"] = "≍", [@"\doteq"] = "≐", [@"\coloneqq"] = "≔", [@"\triangleq"] = "≜",
+        [@"\mid"] = "∣", [@"\nmid"] = "∤", [@"\setminus"] = "∖", [@"\smallsetminus"] = "∖",
+        [@"\wedge"] = "∧", [@"\vee"] = "∨", [@"\lnot"] = "¬", [@"\ast"] = "∗", [@"\star"] = "⋆",
+        [@"\mapsto"] = "↦", [@"\longmapsto"] = "⟼", [@"\implies"] = "⟹", [@"\impliedby"] = "⟸", [@"\iff"] = "⟺",
+        [@"\longrightarrow"] = "⟶", [@"\longleftarrow"] = "⟵", [@"\Longrightarrow"] = "⟹", [@"\Longleftarrow"] = "⟸",
+        [@"\hookrightarrow"] = "↪", [@"\rightharpoonup"] = "⇀", [@"\rightleftharpoons"] = "⇌", [@"\leftrightharpoons"] = "⇋",
+        [@"\nearrow"] = "↗", [@"\searrow"] = "↘", [@"\Uparrow"] = "⇑", [@"\Downarrow"] = "⇓", [@"\updownarrow"] = "↕",
+        [@"\top"] = "⊤", [@"\bot"] = "⊥", [@"\models"] = "⊨", [@"\vdash"] = "⊢", [@"\dashv"] = "⊣",
+        [@"\aleph"] = "ℵ", [@"\Re"] = "ℜ", [@"\Im"] = "ℑ", [@"\wp"] = "℘", [@"\imath"] = "ı", [@"\jmath"] = "ȷ",
+        [@"\triangle"] = "△", [@"\square"] = "□", [@"\Box"] = "□", [@"\diamond"] = "⋄", [@"\lozenge"] = "◊",
+        [@"\sqcup"] = "⊔", [@"\sqcap"] = "⊓", [@"\uplus"] = "⊎", [@"\odot"] = "⊙", [@"\ominus"] = "⊖",
+        [@"\subsetneq"] = "⊊", [@"\supsetneq"] = "⊋", [@"\ni"] = "∋", [@"\varnothing"] = "∅",
+        [@"\nexists"] = "∄", [@"\therefore"] = "∴", [@"\because"] = "∵", [@"\surd"] = "√", [@"\degree"] = "°",
+        [@"\langle"] = "⟨", [@"\rangle"] = "⟩", [@"\lfloor"] = "⌊", [@"\rfloor"] = "⌋", [@"\lceil"] = "⌈", [@"\rceil"] = "⌉",
+        [@"\lvert"] = "|", [@"\rvert"] = "|", [@"\vert"] = "|", [@"\lVert"] = "‖", [@"\rVert"] = "‖", [@"\Vert"] = "‖",
+        [@"\|"] = "‖", [@"\{"] = "{", [@"\}"] = "}", [@"\#"] = "#", [@"\%"] = "%", [@"\&"] = "&", [@"\_"] = "_", [@"\$"] = "$",
+        [@"\colon"] = ":", [@"\backslash"] = "\\", [@"\Upsilon"] = "Υ", [@"\hslash"] = "ℏ", [@"\complement"] = "∁",
+        [@"\sharp"] = "♯", [@"\flat"] = "♭", [@"\natural"] = "♮", [@"\checkmark"] = "✓",
     };
 
     private static readonly Dictionary<string, string> NaryOps = new(StringComparer.Ordinal)
@@ -158,6 +180,10 @@ public class LatexToOmmlConverter : ILatexToOmmlConverter
                 case '^': tokens.Add(new Token(TokKind.Caret, "^")); i++; break;
                 case '_': tokens.Add(new Token(TokKind.Underscore, "_")); i++; break;
                 case '&': tokens.Add(new Token(TokKind.Ampersand, "&")); i++; break;
+                // A comment runs to the end of its line (an escaped \% is a command, above). It was kept (MCP-101).
+                case '%':
+                    while (i < latex.Length && latex[i] != '\n') i++;
+                    break;
                 case ' ': case '\t': case '\r': case '\n': i++; break;
                 default: tokens.Add(new Token(TokKind.Char, c.ToString())); i++; break;
             }
@@ -243,6 +269,11 @@ file sealed class OmmlParser
         {
             var elem = ParseCommand();
             primary = elem != null ? [elem] : [];
+        }
+        else if (CurKind is LatexToOmmlConverter.TokKind.LeftBracket or LatexToOmmlConverter.TokKind.RightBracket)
+        {
+            // Brackets in the formula itself ([0, 1], a commutator): they were skipped (MCP-101).
+            primary = [MakeRun(Consume().Value)];
         }
         else
         {
@@ -337,7 +368,17 @@ file sealed class OmmlParser
             @"\text" or @"\mathrm" or @"\mathit" or @"\mathbf"
                         or @"\mathsf" or @"\mathtt" or @"\boldsymbol"
                         => ParseTextRun(cmd),
-            @"\mathbb"  => ParseMathBb(),
+            @"\mathbb"  => ParseStyledLetters(DoubleStruck),
+            // Script and Fraktur letters: \mathcal{L} came out as "mathcalL" (MCP-101).
+            @"\mathcal" or @"\mathscr" => ParseStyledLetters(Script),
+            @"\mathfrak" => ParseStyledLetters(Fraktur),
+            // Size commands only size the delimiter after them, which prints on its own ("big" did).
+            @"\big" or @"\Big" or @"\bigg" or @"\Bigg" or @"\bigl" or @"\bigr" or @"\Bigl" or @"\Bigr"
+                or @"\biggl" or @"\biggr" or @"\Biggl" or @"\Biggr" or @"\bigm" or @"\Bigm" or @"\middle"
+                        => null,
+            @"\displaystyle" or @"\textstyle" or @"\scriptstyle" or @"\limits" or @"\nolimits" or @"\nonumber"
+                or @"\notag" or @"\label" or @"\tag"
+                        => cmd is @"\label" or @"\tag" ? ConsumeArg() : null,
             @"\phantom" or @"\hphantom" or @"\vphantom"
                         => ConsumeArg(),
             @"\," or @"\;" or @"\:" or @"\!" or @"\>" or @"\space"
@@ -526,6 +567,23 @@ file sealed class OmmlParser
             var ch = CurKind == LatexToOmmlConverter.TokKind.Char ? Consume().Value : "?";
             return MakeRun(ch);
         }
+        // \mathrm{m\,s^{-2}} is maths set upright, not text: it printed "m\,s^{-2}" (MCP-100).
+        if (cmd != @"\text" && HoldsMaths())
+        {
+            Consume(); // {
+            var inner = ParseMathList(LatexToOmmlConverter.TokKind.RightBrace);
+            Expect(LatexToOmmlConverter.TokKind.RightBrace);
+            var style = cmd switch { @"\mathbf" or @"\boldsymbol" => "b", @"\mathit" => "i", _ => "p" };
+            var box = new XElement(_m + "box", new XElement(_m + "e", inner));
+            foreach (var r in box.Descendants(_m + "r"))
+            {
+                var props = r.Element(_m + "rPr");
+                if (props is null) { props = new XElement(_m + "rPr"); r.AddFirst(props); }
+                props.Elements(_m + "sty").Remove();
+                props.Add(new XElement(_m + "sty", new XAttribute(_m + "val", style)));
+            }
+            return box;
+        }
         Consume(); // {
         var sb = new StringBuilder();
         int depth = 1;
@@ -545,6 +603,64 @@ file sealed class OmmlParser
         var rPr = new XElement(_m + "rPr",
             new XElement(_m + "sty", new XAttribute(_m + "val", sty)));
         return new XElement(_m + "r", rPr, new XElement(_m + "t", sb.ToString()));
+    }
+
+    /// <summary>Whether the braced argument at the cursor holds maths (^, _, a command) rather than text.</summary>
+    private bool HoldsMaths()
+    {
+        var depth = 0;
+        for (var k = _pos; k < _tokens.Count; k++)
+        {
+            var t = _tokens[k];
+            if (t.Kind == LatexToOmmlConverter.TokKind.LeftBrace) depth++;
+            else if (t.Kind == LatexToOmmlConverter.TokKind.RightBrace && --depth == 0) return false;
+            else if (depth >= 1 && t.Kind is LatexToOmmlConverter.TokKind.Caret or LatexToOmmlConverter.TokKind.Underscore
+                or LatexToOmmlConverter.TokKind.Command) return true;
+            else if (t.Kind == LatexToOmmlConverter.TokKind.End) return false;
+        }
+        return false;
+    }
+
+    // Letters as Unicode's mathematical alphabets: the gaps in each block are older characters.
+    private static string DoubleStruck(char c) => c switch
+    {
+        'C' => "ℂ", 'H' => "ℍ", 'N' => "ℕ", 'P' => "ℙ", 'Q' => "ℚ", 'R' => "ℝ", 'Z' => "ℤ",
+        >= 'A' and <= 'Z' => char.ConvertFromUtf32(0x1D538 + c - 'A'),
+        >= 'a' and <= 'z' => char.ConvertFromUtf32(0x1D552 + c - 'a'),
+        >= '0' and <= '9' => char.ConvertFromUtf32(0x1D7D8 + c - '0'),
+        _ => c.ToString(),
+    };
+    private static string Script(char c) => c switch
+    {
+        'B' => "ℬ", 'E' => "ℰ", 'F' => "ℱ", 'H' => "ℋ", 'I' => "ℐ", 'L' => "ℒ", 'M' => "ℳ", 'R' => "ℛ",
+        'e' => "ℯ", 'g' => "ℊ", 'o' => "ℴ",
+        >= 'A' and <= 'Z' => char.ConvertFromUtf32(0x1D49C + c - 'A'),
+        >= 'a' and <= 'z' => char.ConvertFromUtf32(0x1D4B6 + c - 'a'),
+        _ => c.ToString(),
+    };
+    private static string Fraktur(char c) => c switch
+    {
+        'C' => "ℭ", 'H' => "ℌ", 'I' => "ℑ", 'R' => "ℜ", 'Z' => "ℨ",
+        >= 'A' and <= 'Z' => char.ConvertFromUtf32(0x1D504 + c - 'A'),
+        >= 'a' and <= 'z' => char.ConvertFromUtf32(0x1D51E + c - 'a'),
+        _ => c.ToString(),
+    };
+
+    /// <summary>\mathbb{T}, \mathcal{L}, \mathfrak{g}: each letter in its alphabet (\mathbb knew eight letters).</summary>
+    private XElement ParseStyledLetters(Func<char, string> map)
+    {
+        if (CurKind == LatexToOmmlConverter.TokKind.Char)
+            return MakeRun(string.Concat(Consume().Value.Select(map)));
+        if (CurKind != LatexToOmmlConverter.TokKind.LeftBrace) return MakeRun("?");
+        Consume();
+        var sb = new StringBuilder();
+        while (CurKind is not (LatexToOmmlConverter.TokKind.RightBrace or LatexToOmmlConverter.TokKind.End))
+        {
+            var t = Consume();
+            sb.Append(t.Kind == LatexToOmmlConverter.TokKind.Char ? string.Concat(t.Value.Select(map)) : t.Value);
+        }
+        Expect(LatexToOmmlConverter.TokKind.RightBrace);
+        return MakeRun(sb.ToString());
     }
 
     // ── \mathbb ───────────────────────────────────────────────────────────────
