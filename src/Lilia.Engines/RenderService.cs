@@ -2336,9 +2336,7 @@ public partial class RenderService : IRenderService
         rendered = AttachFootnotes(blocks, rendered);
         var latex = new StringBuilder();
         var blocksList = blocks;
-        var bookDivisions = LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "memoir" or "scrbook"
-            && blocksList.Any(b => string.Equals(b.Type, "frontMatter", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(b.Type, "backMatter", StringComparison.OrdinalIgnoreCase));
+        var bookDivisions = UsesBookDivisions(doc, blocksList);
         var division = 0; // 0 none yet, 1 front, 2 main, 3 back
         for (int i = 0; i < blocksList.Count; i++)
         {
@@ -2367,7 +2365,10 @@ public partial class RenderService : IRenderService
             if (bookDivisions)
             {
                 var type = blocksList[i].Type ?? "";
-                var isFront = string.Equals(type, "frontMatter", StringComparison.OrdinalIgnoreCase);
+                // A book's abstract is front matter (MCP-91): it opened \mainmatter, so it printed on
+                // arabic page 1 before the preface, and the export put it before \frontmatter.
+                var isFront = string.Equals(type, "frontMatter", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(type, "abstract", StringComparison.OrdinalIgnoreCase);
                 var isBack = string.Equals(type, "backMatter", StringComparison.OrdinalIgnoreCase)
                     && !Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(blocksList[i]);
                 var isNeutral = type.Equals("title", StringComparison.OrdinalIgnoreCase)
@@ -2387,6 +2388,13 @@ public partial class RenderService : IRenderService
         }
         return latex.ToString();
     }
+
+    /// <summary>A book with front or back matter blocks: its body is split by \frontmatter,
+    /// \mainmatter and \backmatter (MCP-41), and its abstract stays in the front matter (MCP-91).</summary>
+    public static bool UsesBookDivisions(Document doc, IEnumerable<Block> blocks) =>
+        LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "memoir" or "scrbook"
+        && blocks.Any(b => string.Equals(b.Type, "frontMatter", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(b.Type, "backMatter", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// A footnote block's \footnote goes at the end of the paragraph before it. Printed on its own

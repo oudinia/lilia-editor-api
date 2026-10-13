@@ -233,7 +233,9 @@ public class LaTeXExportService : ILaTeXExportService
 
         // The body's blocks, worked out before the preamble: the theme line's Index pins are
         // numbered by the headings the body will actually contain.
-        var mainBlocks = BodyBlocks(doc.Title, blocks);
+        // A book with front matter keeps its abstract in the body, among the front matter (MCP-91).
+        var abstractInBody = RenderService.UsesBookDivisions(doc, blocks);
+        var mainBlocks = BodyBlocks(doc.Title, blocks, abstractInBody);
 
         // Preamble embedded in main.tex
         sb.AppendLine(BuildDocumentClassDirective(doc, options));
@@ -253,7 +255,7 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine();
 
         // Abstract (if exists)
-        var abstractBlock = LeadAbstract(blocks);
+        var abstractBlock = abstractInBody ? null : LeadAbstract(blocks);
         if (abstractBlock != null)
         {
             var text = GetContentText(abstractBlock);
@@ -831,10 +833,10 @@ public class LaTeXExportService : ILaTeXExportService
     /// The theme line numbers Index pins by these, and the editor's section chips
     /// (<see cref="Lilia.Engines.Themes.ThemeSections"/>) count the same headings.
     /// </summary>
-    public static List<Block> BodyBlocks(string? title, IEnumerable<Block> orderedBlocks)
+    public static List<Block> BodyBlocks(string? title, IEnumerable<Block> orderedBlocks, bool abstractInBody = false)
     {
         var all = orderedBlocks.ToList();
-        var lead = LeadAbstract(all);
+        var lead = abstractInBody ? null : LeadAbstract(all);
         return StripDuplicateTitleHeading(title,
             all.Where(b => !ReferenceEquals(b, lead) && b.Type != "bibliography" && b.Type != "title").ToList());
     }
