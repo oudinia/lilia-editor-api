@@ -122,13 +122,11 @@ public class EmitterCoverageMatrixTests
         // EpubService has its own dispatch and its own output format. These
         // types never reach a general document export, so an arm in each of the
         // five general emitters would be dead code.
-        Gap(
-            [
-                BlockTypes.Verse,
-                BlockTypes.Aside, BlockTypes.Annotation, BlockTypes.Cover,
-                BlockTypes.ChapterBreak,
-            ],
-            AllEmitters);
+        Gap([BlockTypes.Cover, BlockTypes.ChapterBreak], AllEmitters);
+
+        // ── Verse, aside, annotation — LaTeX CLOSED 2026-10-13 (MCP-42) ──
+        // Accepted from LML and the editor, they printed nothing in the PDF with a clean check.
+        Gap([BlockTypes.Verse, BlockTypes.Aside, BlockTypes.Annotation], AllEmitters.Where(e => e != Latex).ToArray());
 
         // ── Front and back matter — LaTeX CLOSED 2026-10-12 (MCP-41) ──────
         // A book written through the connector carried a preface and an afterword that

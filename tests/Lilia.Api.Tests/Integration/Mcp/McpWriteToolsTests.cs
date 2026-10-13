@@ -137,6 +137,56 @@ public class McpWriteToolsTests : IntegrationTestBase
         saved.MarginLeft.Should().Be("2cm");
     }
 
+    // MCP-86: null on a text setting clears it, as get_document_settings reports unset.
+    [Fact]
+    public async Task Null_clears_a_text_setting()
+    {
+        await SeedUserAsync("mcpw_null");
+        var doc = await SeedDocumentAsync("mcpw_null");
+        var client = CreateClientAs("mcpw_null");
+        await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { marginLeft = "2cm" } });
+        var r = await CallAsync(client, "set_document_settings",
+            new { documentId = doc.Id.ToString(), settings = JsonDocument.Parse("""{"marginLeft":null}""").RootElement });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        await using var db = CreateDbContext();
+        (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id)).MarginLeft.Should().BeNull();
+    }
+
+    // MCP-82 / MCP-83: a block that prints nothing makes printsCorrectly false, and export_document
+    // reports the check that was just run instead of "never checked".
+    [Fact]
+    public async Task The_check_counts_unprinted_blocks_and_export_remembers_it()
+    {
+        await SeedUserAsync("mcpw_check");
+        var doc = await SeedDocumentAsync("mcpw_check");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body."}""", 0);
+        await SeedBlockAsync(doc.Id, "cover", """{"text":"A cover."}""", 1);
+        var client = CreateClientAs("mcpw_check");
+        var check = await CallAsync(client, "check_document", new { documentId = doc.Id.ToString() });
+        check.GetProperty("compiles").GetBoolean().Should().BeTrue(check.ToString());
+        check.GetProperty("printsCorrectly").GetBoolean().Should().BeFalse();
+        check.GetProperty("unprinted").ToString().Should().Contain("cover");
+        var export = await CallAsync(client, "export_document", new { documentId = doc.Id.ToString(), format = "tex" });
+        export.GetProperty("lastCheck").GetProperty("source").GetString().Should().Be("check_document");
+        export.GetProperty("lastCheck").GetProperty("printsCorrectly").GetBoolean().Should().BeFalse();
+    }
+
+    // MCP-85 / MCP-87: get_lilia_latex says the engine the check uses; a list's outline is its text.
+    [Fact]
+    public async Task The_engine_and_the_outline_are_told_plainly()
+    {
+        await SeedUserAsync("mcpw_engine");
+        var doc = await SeedDocumentAsync("mcpw_engine");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"数据 means data."}""", 0);
+        await SeedBlockAsync(doc.Id, "list", """{"items":["first item","second item"],"ordered":false}""", 1);
+        var client = CreateClientAs("mcpw_engine");
+        (await CallAsync(client, "get_lilia_latex", new { documentId = doc.Id.ToString() }))
+            .GetProperty("engine").GetString().Should().Be("xelatex");
+        var outline = await CallAsync(client, "get_outline", new { documentId = doc.Id.ToString() });
+        var snippet = outline.GetProperty("blocks").EnumerateArray().First(b => b.GetProperty("type").GetString() == "list").GetProperty("snippet").GetString();
+        snippet.Should().Contain("first item").And.NotStartWith("{");
+    }
+
     [Fact]
     public async Task An_app_creates_a_document_with_its_body()
     {

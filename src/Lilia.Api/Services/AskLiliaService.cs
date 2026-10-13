@@ -1672,7 +1672,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 {
                     source = "lilia-emitter",
                     scope = "document",
-                    engine = document.LatexEngine ?? "auto",
+                    // The engine this LaTeX compiles with, as check_document picks it (MCP-85: a CJK
+                    // document said pdflatex here while the check used xelatex).
+                    engine = Lilia.Api.Mcp.LiliaMcpTools.EngineFor(full, document.LatexEngine),
                     documentClass = document.LatexDocumentClass,
                     latex = full,
                     note = provenance,
@@ -1753,10 +1755,22 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private static string Snippet(System.Text.Json.JsonElement c, int max)
     {
         var t = TextOf(c);
+        // A list's items, an algorithm's lines: their text, not the raw JSON (MCP-87).
+        if (string.IsNullOrEmpty(t)) t = string.Join(" · ", Strings(c).Take(40));
         if (string.IsNullOrEmpty(t)) t = c.GetRawText();
         t = System.Text.RegularExpressions.Regex.Replace(t, "\\s+", " ").Trim();
         return t.Length > max ? t[..max] + "…" : t;
     }
+
+    private static IEnumerable<string> Strings(System.Text.Json.JsonElement e) => e.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String when !string.IsNullOrWhiteSpace(e.GetString()) => [e.GetString()!],
+        System.Text.Json.JsonValueKind.Array => e.EnumerateArray().SelectMany(Strings),
+        System.Text.Json.JsonValueKind.Object => e.EnumerateObject()
+            .Where(p => p.Name is not ("id" or "kind" or "type" or "ordered" or "listType" or "indent" or "label" or "language"))
+            .SelectMany(p => Strings(p.Value)),
+        _ => [],
+    };
 
     // Pull the provider's web-search request count out of the usage details so we
     // can account for its separate per-search cost. The exact counter key varies by

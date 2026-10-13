@@ -164,6 +164,13 @@ public sealed class LiliaMcpWriteTools(
         [Description("Optional new title.")] string? title = null) =>
         WriteAsync(documentId, "apply_lml", new() { ["lml"] = lml, ["title"] = title });
 
+    private static readonly HashSet<string> TextSettings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "marginTop", "marginBottom", "marginLeft", "marginRight", "paragraphIndent", "customPreamble",
+        "headerLeft", "headerCenter", "headerRight", "footerLeft", "footerCenter", "footerRight",
+    };
+    private static readonly JsonElement EmptyString = JsonDocument.Parse("\"\"").RootElement;
+
     [McpServerTool(Name = "set_document_settings", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
     public Task<object> SetDocumentSettings(
@@ -172,7 +179,10 @@ public sealed class LiliaMcpWriteTools(
     {
         var args = new Dictionary<string, object?>();
         if (settings.ValueKind == JsonValueKind.Object)
-            foreach (var p in settings.EnumerateObject()) args[p.Name] = p.Value;
+            foreach (var p in settings.EnumerateObject())
+                // null on a text setting means "unset", as get_document_settings reports it; it was a
+                // silent no-op (MCP-86). The empty string is what clears it.
+                args[p.Name] = p.Value.ValueKind == JsonValueKind.Null && TextSettings.Contains(p.Name) ? EmptyString : p.Value;
         return WriteAsync(documentId, "set_document_settings", args);
     }
 

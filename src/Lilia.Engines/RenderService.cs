@@ -1384,6 +1384,8 @@ public partial class RenderService : IRenderService
                 "title" => "",
                 "tableofcontents" => @"\tableofcontents",
                 "columnbreak" => @"\liliaColumnBreak",
+                // ePub block types: their text prints rather than vanishing (MCP-42, MCP-83).
+                "verse" or "aside" or "annotation" => RenderEpubTextToLatex(block.Type.ToLowerInvariant(), content),
                 "columnlayout" => RenderColumnLayoutToLatex(content),
                 "pagebreak" or "divider" => @"\newpage",
                 "bibliography" => "", // handled separately via BibliographyEntries
@@ -2611,6 +2613,23 @@ public partial class RenderService : IRenderService
     /// </summary>
     public static string AttributionLine(string formatted) =>
         string.IsNullOrWhiteSpace(formatted) ? "" : "\n\\par\\nopagebreak\\raggedleft--- " + formatted;
+
+    /// <summary>
+    /// A verse, an aside or an annotation — block types that came with ePub — in LaTeX: a verse with
+    /// its lines, an aside as a small quotation, an annotation as a small italic note. They printed
+    /// nothing, with a clean check (run 2, MCP-42 / MCP-83).
+    /// </summary>
+    private string RenderEpubTextToLatex(string type, JsonElement content)
+    {
+        var text = content.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        return type switch
+        {
+            "verse" => "\\begin{verse}\n" + string.Join(" \\\\\n", text.Split('\n').Select(l => ProcessLatexText(l).TrimEnd())) + "\n\\end{verse}",
+            "aside" => "\\begin{quote}\\small\n" + ProcessLatexText(text).TrimEnd() + "\n\\end{quote}",
+            _ => "\\par\\noindent{\\footnotesize\\itshape " + ProcessLatexText(text).Trim() + "}\\par",
+        };
+    }
 
     private string RenderTheoremToLatex(JsonElement content)
     {
