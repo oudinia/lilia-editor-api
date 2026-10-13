@@ -124,4 +124,10 @@ public class ExportSweepTests
     public void The_dropped_characters_warning_carries_its_marker() =>
         LaTeXGlyphScanner.Describe(LaTeXGlyphScanner.Scan("Missing character: There is no П (U+041F) in font lmroman10-regular!"))
             .Should().Contain(LaTeXGlyphScanner.DroppedMarker);
+
+    // MCP-84: an embed written with {"latex": …} prints, as one with {"code": …} does.
+    [Fact]
+    public void An_embed_takes_latex_as_well_as_code() =>
+        _render.RenderBlockToLatex(B("embed", new { latex = @"\begin{center}Raw\end{center}" }))
+            .Should().Contain(@"\begin{center}Raw\end{center}");
 }
