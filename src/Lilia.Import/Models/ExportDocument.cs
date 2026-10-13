@@ -46,6 +46,17 @@ public class ExportDocument
     /// </summary>
     public bool BalancedColumns { get; set; }
 
+    /// <summary>Running header and footer slots (plain text), as the LaTeX export prints them with fancyhdr.</summary>
+    public string? HeaderLeft { get; set; }
+    public string? HeaderCenter { get; set; }
+    public string? HeaderRight { get; set; }
+    public string? FooterLeft { get; set; }
+    public string? FooterCenter { get; set; }
+    public string? FooterRight { get; set; }
+
+    /// <summary>arabic (default), roman or none: the page number in the footer when no footer slot is set.</summary>
+    public string? PageNumbering { get; set; }
+
     /// <summary>
     /// Document blocks in order.
     /// </summary>
