@@ -426,12 +426,16 @@ public static class LaTeXPreambleBuilder
         // Default behaviour (null) leaves the class default in place.
         if (!string.IsNullOrWhiteSpace(doc.PageNumbering))
         {
-            var pn = doc.PageNumbering.Trim().ToLowerInvariant();
+            var raw = doc.PageNumbering.Trim();
+            var pn = raw is "Roman" or "Alph" ? raw : raw.ToLowerInvariant(); // the capitals mean I, II / A, B (MCP-47)
             if (pn == "none")
             {
+                // gobble, not only an empty style: \maketitle's first page used the plain style and
+                // printed its number anyway, and a header/footer (fancy) style overrode empty (MCP-47).
                 sb.AppendLine("\\pagestyle{empty}");
+                sb.AppendLine("\\pagenumbering{gobble}");
             }
-            else if (pn == "roman" || pn == "arabic" || pn == "alph" || pn == "Roman" || pn == "Alph")
+            else if (pn is "roman" or "arabic" or "alph" or "Roman" or "Alph")
             {
                 sb.AppendLine($"\\pagenumbering{{{pn}}}");
             }
@@ -465,6 +469,8 @@ public static class LaTeXPreambleBuilder
             sb.AppendLine("% Header / footer");
             sb.AppendLine("\\usepackage{fancyhdr}");
             sb.AppendLine("\\pagestyle{fancy}");
+            // fancyhdr asks for at least 13.6pt; at 12pt every page warned "\headheight is too small".
+            sb.AppendLine("\\setlength{\\headheight}{14.5pt}");
             sb.AppendLine("\\fancyhf{}");
             if (hL is not null) sb.AppendLine($"\\lhead{{{EscapeUserText(hL)}}}");
             if (hC is not null) sb.AppendLine($"\\chead{{{EscapeUserText(hC)}}}");
@@ -476,11 +482,16 @@ public static class LaTeXPreambleBuilder
             // alone made the numbers vanish from the foot of every page. When
             // no footer slot is set, put the page number back where the class
             // default has it (centred), unless numbering is switched off.
-            if (fL is null && fC is null && fR is null
-                && !string.Equals(doc.PageNumbering?.Trim(), "none", StringComparison.OrdinalIgnoreCase))
+            // The page number goes in the first free footer slot — centre, right, left — unless numbering
+            // is off or the author filled all three. A footer slot used to take the number away (MCP-47).
+            if (!string.Equals(doc.PageNumbering?.Trim(), "none", StringComparison.OrdinalIgnoreCase))
             {
-                sb.AppendLine("\\cfoot{\\thepage}");
+                if (fC is null) sb.AppendLine("\\cfoot{\\thepage}");
+                else if (fR is null) sb.AppendLine("\\rfoot{\\thepage}");
+                else if (fL is null) sb.AppendLine("\\lfoot{\\thepage}");
             }
+            // The title page uses the plain style: it had no header (LTX-86). Plain is now this style.
+            sb.AppendLine("\\fancypagestyle{plain}{}");
         }
 
         // Font family. Native pdflatex packages only — Georgia is

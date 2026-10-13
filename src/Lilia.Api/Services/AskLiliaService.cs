@@ -1092,6 +1092,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 return new { error = "Provide at least one setting to change. Call get_document_settings to see the current values." };
             if (!check.Ok)
                 return new { error = "No settings were changed. " + string.Join(" ", check.Errors) };
+            if (DocumentSettingsValidator.TextAreaProblem(live.Dto, check.Update!) is { } tooTight)
+                return new { error = "No settings were changed. " + tooTight };
 
             var updated = await _documentService.UpdateDocumentAsync(docId, userId, check.Update!);
             if (updated is null)
@@ -1291,13 +1293,23 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     dateMode = dm.GetString() ?? "";
             }
 
-            var resolvedTitle = !string.IsNullOrWhiteSpace(titleOverride)
-                ? titleOverride.Trim()
-                : !string.IsNullOrWhiteSpace(parsed.Title)
-                    ? parsed.Title!.Trim()
-                    : !string.IsNullOrWhiteSpace(doc.Title)
-                        ? doc.Title
-                        : "Untitled";
+            // An @title block in the LML is the title (and author, date) it asks for; it was dropped.
+            var lmlTitle = parsed.Blocks.FirstOrDefault(b => string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+            var lmlTitleEl = lmlTitle is null ? (JsonElement?)null : JsonSerializer.SerializeToElement(lmlTitle.Content);
+            string? Field(string name) => lmlTitleEl is { ValueKind: JsonValueKind.Object } t && t.TryGetProperty(name, out var v)
+                && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString()!.Trim() : null;
+            if (Field("author") is { } lmlAuthor) author = lmlAuthor;
+            if (Field("date") is { } lmlDate) { date = lmlDate; dateMode = ""; }
+
+            // The title: the call's, then the LML's own (@title, or a title: line), then the document's.
+            // The first heading only names a document that has no title (MCP-02: any LML body renamed
+            // the document to its first level-1 heading).
+            var resolvedTitle = !string.IsNullOrWhiteSpace(titleOverride) ? titleOverride.Trim()
+                : Field("title") is { } lmlTitleText ? lmlTitleText
+                : !parsed.TitleFromHeading && !string.IsNullOrWhiteSpace(parsed.Title) ? parsed.Title!.Trim()
+                : !string.IsNullOrWhiteSpace(doc.Title) && doc.Title != "Untitled" ? doc.Title
+                : !string.IsNullOrWhiteSpace(parsed.Title) ? parsed.Title!.Trim()
+                : "Untitled";
 
             // If date still empty, default to today mode for new full rewrites.
             if (string.IsNullOrWhiteSpace(date) && string.IsNullOrWhiteSpace(dateMode))
@@ -1318,13 +1330,19 @@ public sealed partial class AskLiliaService : IAskLiliaService
             });
             batch.Add(new BatchUpdateBlockDto(titleId, BlockTypes.Title, titleContent, sort++, null, 0));
 
+            // A block keeps its id where one of the same type stood in the same place, so ids an app
+            // read before the rewrite still work (MCP-57: 600 of 601 were renewed).
+            var previous = (doc.Blocks ?? new()).Where(b => !string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase)).ToList();
+            var position = 0;
             foreach (var b in parsed.Blocks)
             {
                 // Skip any accidental title-type from LML; Title is handled above.
                 if (string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase))
                     continue;
                 var contentEl = JsonSerializer.SerializeToElement(b.Content);
-                var id = Guid.NewGuid();
+                var id = position < previous.Count && string.Equals(previous[position].Type, b.Type, StringComparison.OrdinalIgnoreCase)
+                    ? previous[position].Id : Guid.NewGuid();
+                position++;
                 batch.Add(new BatchUpdateBlockDto(id, b.Type, contentEl, sort++, null, b.Depth));
             }
 
@@ -1453,6 +1471,21 @@ public sealed partial class AskLiliaService : IAskLiliaService
             .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
             .Where(g => g != Guid.Empty).ToList();
         if (ids.Count == 0) return new { error = "no valid block ids" };
+        // Every block, each once, nothing else (MCP-53: a partial list was accepted, a bogus id skipped
+        // silently, and the order that resulted was not the one asked for).
+        var current = (doc.Blocks ?? new()).Select(b => b.Id).ToHashSet();
+        var unknown = (blockIds ?? Array.Empty<string>()).Where(s => !Guid.TryParse(s, out var g) || !current.Contains(g)).ToList();
+        var missing = current.Except(ids).Count();
+        if (unknown.Count > 0 || missing > 0 || ids.Distinct().Count() != ids.Count)
+            return new
+            {
+                error = "reorder_blocks takes every block id of the document, each once, in the new order. "
+                    + (unknown.Count > 0 ? $"Not in this document: {string.Join(", ", unknown.Take(5))}. " : "")
+                    + (missing > 0 ? $"{missing} block(s) missing from the list. " : "")
+                    + (ids.Distinct().Count() != ids.Count ? "Some ids repeat. " : "")
+                    + "Nothing was moved; call get_outline for the ids.",
+                category = "invalid",
+            };
         await _blockService.ReorderBlocksAsync(docId, ids);
         changed.AddRange(ids.Select(g => g.ToString()));
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",

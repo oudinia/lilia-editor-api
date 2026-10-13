@@ -937,8 +937,7 @@ public class LaTeXExportService : ILaTeXExportService
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
         // span="page" → \begin{figure*}, which in single-column mode behaves
         // identically to \begin{figure}, so we can emit it unconditionally.
-        var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
-        var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure";
+        var env = RenderService.IsFullWidth(content) ? "figure*" : "figure";
 
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("figure", label)}}}" : "";
 

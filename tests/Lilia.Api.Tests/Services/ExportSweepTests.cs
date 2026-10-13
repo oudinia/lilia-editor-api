@@ -130,4 +130,49 @@ public class ExportSweepTests
     public void An_embed_takes_latex_as_well_as_code() =>
         _render.RenderBlockToLatex(B("embed", new { latex = @"\begin{center}Raw\end{center}" }))
             .Should().Contain(@"\begin{center}Raw\end{center}");
+
+    // ── Run 2, R2 ───────────────────────────────────────────────────────
+    [Fact]
+    public void A_footnote_block_attaches_to_the_paragraph_before_it()
+    {
+        var tex = _render.RenderToLatex(Doc(null, B("paragraph", new { text = "A claim." }), B("footnote", new { text = "The source." })));
+        tex.Should().Contain(@"A claim.\footnote{The source.");
+    }
+
+    [Fact]
+    public void A_bracketed_description_term_keeps_its_label() =>
+        _render.RenderBlockToLatex(B("list", new { kind = "description", items = new[] { new { text = "[Bracket] term", description = "d" } } }))
+            .Should().Contain(@"\item[{[Bracket] term}]");
+
+    [Fact]
+    public void Single_quotes_open_and_close() =>
+        _render.RenderBlockToLatex(B("paragraph", new { text = "She said 'hello' and don't." }))
+            .Should().Contain("`hello'").And.Contain("don't");
+
+    [Fact]
+    public void New_theorem_kinds_print_as_themselves()
+    {
+        _render.RenderBlockToLatex(B("theorem", new { theoremType = "exercise", text = "Do it." })).Should().Contain(@"\begin{exercise}");
+        LaTeXPreamble.CustomPreambleForEmit(@"\newtheorem{exercise}{Exercise}").Should().Contain("left out");
+        var r = new Lilia.Import.Services.LmlTextParser().Parse("@theorem[kind=claim]\n  It holds.");
+        System.Text.Json.JsonSerializer.Serialize(r.Blocks[0].Content).Should().Contain("claim");
+    }
+
+    [Fact]
+    public void A_wide_table_spans_both_columns() =>
+        _render.RenderBlockToLatex(B("table", new { headers = new[] { "A" }, rows = new[] { new[] { "1" } }, span = "page" }))
+            .Should().Contain(@"\begin{table*}").And.Contain(@"\end{table*}");
+
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task Header_footer_and_numbering_compile()
+    {
+        var doc = Doc(null, B("paragraph", new { text = "Body." }), B("footnote", new { text = "Note." }));
+        doc.HeaderLeft = "Left"; doc.FooterCenter = "Centre"; doc.PageNumbering = "Roman";
+        var tex = _render.RenderToLatex(doc);
+        tex.Should().Contain(@"\pagenumbering{Roman}").And.Contain(@"\rfoot{\thepage}").And.Contain(@"\setlength{\headheight}");
+        (await Compile(tex)).Should().NotBeEmpty();
+        doc.PageNumbering = "none";
+        (await Compile(_render.RenderToLatex(doc))).Should().NotBeEmpty();
+    }
 }

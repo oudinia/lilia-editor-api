@@ -77,6 +77,7 @@ public sealed class LmlTextParser : ILmlTextParser
         var blocks = new List<LmlParsedBlock>();
         var warnings = new List<string>();
         string? title = null;
+        var titleFromHeading = false;
 
         // Skip optional @document header metadata
         var i = 0;
@@ -118,7 +119,7 @@ public sealed class LmlTextParser : ILmlTextParser
                 var anchor = Regex.Match(text, @"\s*\{#([^\s{}]+)\}\s*$");
                 if (anchor.Success) text = text[..anchor.Index];
                 blocks.Add(MakeHeading(text, level, anchor.Success ? anchor.Groups[1].Value : null));
-                if (title is null && level == 1) title = text;
+                if (title is null && level == 1) { title = text; titleFromHeading = true; }
                 i++;
                 continue;
             }
@@ -140,7 +141,7 @@ public sealed class LmlTextParser : ILmlTextParser
                 i++;
                 var (body, next) = ReadIndentedBody(lines, i);
                 i = next;
-                AppendBlock(blocks, type, attrsRaw, body, warnings, ref title);
+                { var before = title; AppendBlock(blocks, type, attrsRaw, body, warnings, ref title); if (before is null && title is not null) titleFromHeading = true; }
                 continue;
             }
 
@@ -155,7 +156,7 @@ public sealed class LmlTextParser : ILmlTextParser
                 var (body, next) = ReadIndentedBody(lines, i);
                 i = next;
                 var fullBody = string.IsNullOrEmpty(body) ? first : first + "\n" + body;
-                AppendBlock(blocks, type, attrsRaw, fullBody, warnings, ref title);
+                { var before = title; AppendBlock(blocks, type, attrsRaw, fullBody, warnings, ref title); if (before is null && title is not null) titleFromHeading = true; }
                 continue;
             }
 
@@ -208,6 +209,7 @@ public sealed class LmlTextParser : ILmlTextParser
         return new LmlTextParseResult
         {
             Title = title,
+            TitleFromHeading = titleFromHeading,
             Blocks = blocks,
             Warnings = warnings,
         };
@@ -405,8 +407,10 @@ public sealed class LmlTextParser : ILmlTextParser
                 string theoremType;
                 if (type == "theorem")
                 {
+                    // kind= as well as type= and the flag form (MCP-30: kind=claim was ignored).
                     theoremType = attrs.GetValueOrDefault("_positional0")
                         ?? attrs.GetValueOrDefault("type")
+                        ?? attrs.GetValueOrDefault("kind")
                         ?? "theorem";
                 }
                 else

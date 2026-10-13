@@ -1652,6 +1652,13 @@ public partial class RenderService : IRenderService
 \end{{tcolorbox}}";
     }
 
+    /// <summary>A float across both columns: span "page", or wide / fullWidth true (MCP-63).</summary>
+    public static bool IsFullWidth(JsonElement content) =>
+        content.ValueKind == JsonValueKind.Object
+        && ((content.TryGetProperty("span", out var sp) && sp.ValueKind == JsonValueKind.String && string.Equals(sp.GetString(), "page", StringComparison.OrdinalIgnoreCase))
+            || (content.TryGetProperty("wide", out var w) && w.ValueKind == JsonValueKind.True)
+            || (content.TryGetProperty("fullWidth", out var f) && f.ValueKind == JsonValueKind.True));
+
     private string RenderFootnoteToLatex(JsonElement content)
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
@@ -1769,6 +1776,8 @@ public partial class RenderService : IRenderService
         // Shared with the table path so the two mappings cannot drift — tables
         // used to ignore `placement` altogether. See BlockBreakAttributes.
         var floatSpec = BlockBreakAttributes.FloatSpecifier(content);
+        // Across both columns when asked (span page, wide, fullWidth), as the export prints it.
+        var figureEnv = IsFullWidth(content) ? "figure*" : "figure";
 
         // A TikZ figure: its source goes out byte for byte (TikzFigure).
         if (TikzFigure.IsTikz(content))
@@ -1794,7 +1803,7 @@ public partial class RenderService : IRenderService
         // Check for subfigures
         if (content.TryGetProperty("subfigures", out var subfigures) && subfigures.ValueKind == JsonValueKind.Array && subfigures.GetArrayLength() > 0)
         {
-            sb.AppendLine($@"\begin{{figure}}{floatSpec}");
+            sb.AppendLine($@"\begin{{{figureEnv}}}{floatSpec}");
             sb.AppendLine(alignCommand);
 
             var subfigCount = subfigures.GetArrayLength();
@@ -1826,11 +1835,11 @@ public partial class RenderService : IRenderService
                 sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}");
             if (!string.IsNullOrEmpty(label))
                 sb.AppendLine($@"\label{{{label}}}");
-            sb.AppendLine(@"\end{figure}");
+            sb.AppendLine($@"\end{{{figureEnv}}}");
         }
         else
         {
-            sb.AppendLine($@"\begin{{figure}}{floatSpec}");
+            sb.AppendLine($@"\begin{{{figureEnv}}}{floatSpec}");
             sb.AppendLine(alignCommand);
             if (!string.IsNullOrEmpty(src))
                 sb.AppendLine($@"\includegraphics[width={FigureWidth.Latex(content)}]{{{displayPath}}}");
@@ -1844,7 +1853,7 @@ public partial class RenderService : IRenderService
             {
                 sb.AppendLine($@"\label{{{label}}}");
             }
-            sb.AppendLine(@"\end{figure}");
+            sb.AppendLine($@"\end{{{figureEnv}}}");
         }
 
         return sb.ToString();
@@ -2122,7 +2131,8 @@ public partial class RenderService : IRenderService
                 // setting "here" on a table did nothing and reported nothing —
                 // while the same attribute worked on figures. Shared with the figure
                 // path via BlockBreakAttributes so the two cannot drift again.
-                sb.AppendLine($"\\begin{{table}}{BlockBreakAttributes.FloatSpecifier(content)}");
+                // Full width in two columns: span=page (or wide / fullWidth) is table* (MCP-63).
+                sb.AppendLine($"\\begin{{{(IsFullWidth(content) ? "table*" : "table")}}}{BlockBreakAttributes.FloatSpecifier(content)}");
                 sb.AppendLine(@"\centering");
                 sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
                 if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
@@ -2226,7 +2236,7 @@ public partial class RenderService : IRenderService
                     sb.AppendLine(layout.NotesList());
                     sb.AppendLine(@"\end{threeparttable}");
                 }
-                sb.AppendLine(@"\end{table}");
+                sb.AppendLine(IsFullWidth(content) ? @"\end{table*}" : @"\end{table}");
             }
         }
 
@@ -2278,6 +2288,7 @@ public partial class RenderService : IRenderService
     /// </summary>
     public string ComposeBody(Document doc, IReadOnlyList<Block> blocks, IReadOnlyList<string> rendered, bool pageMap)
     {
+        rendered = AttachFootnotes(blocks, rendered);
         var latex = new StringBuilder();
         var blocksList = blocks;
         var bookDivisions = LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "memoir" or "scrbook"
@@ -2330,6 +2341,26 @@ public partial class RenderService : IRenderService
             if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
         }
         return latex.ToString();
+    }
+
+    /// <summary>
+    /// A footnote block's \footnote goes at the end of the paragraph before it. Printed on its own
+    /// line, its mark stood at the start of an empty paragraph, attached to nothing (MCP-35).
+    /// </summary>
+    private static IReadOnlyList<string> AttachFootnotes(IReadOnlyList<Block> blocks, IReadOnlyList<string> rendered)
+    {
+        List<string>? copy = null;
+        for (var i = 1; i < blocks.Count && i < rendered.Count; i++)
+        {
+            if (!string.Equals(blocks[i].Type, "footnote", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(rendered[i])) continue;
+            var j = i - 1;
+            while (j >= 0 && string.IsNullOrWhiteSpace((copy ?? rendered)[j])) j--;
+            if (j < 0 || !string.Equals(blocks[j].Type, "paragraph", StringComparison.OrdinalIgnoreCase)) continue;
+            copy ??= rendered.ToList();
+            copy[j] = copy[j].TrimEnd() + copy[i].Trim() + "\n";
+            copy[i] = "";
+        }
+        return copy ?? rendered;
     }
 
     /// <summary>
@@ -2549,7 +2580,8 @@ public partial class RenderService : IRenderService
             {
                 descriptionText = descProp.GetString() ?? "";
             }
-            sb.AppendLine($@"\item[{ProcessLatexText(itemText)}] {ProcessLatexText(descriptionText)}");
+            // Braced when it holds a ], so the term can't end the label early (MCP-33).
+            sb.AppendLine($@"\item[{OptionalArgument(ProcessLatexText(itemText).Trim())}] {ProcessLatexText(descriptionText)}");
         }
         else
         {
@@ -3030,6 +3062,9 @@ public partial class RenderService : IRenderService
         result = result.Replace("“", "``").Replace("”", "''");
         result = result.Replace("‘", "`").Replace("’", "'");
         result = Regex.Replace(result, "\"([^\"\\n]+)\"", "``$1''");
+        // 'single' quotes too: the opening mark was a closing one (MCP-32). Only a pair that starts
+        // after a space or bracket and ends before one, so apostrophes (don't, the dogs') are left.
+        result = Regex.Replace(result, @"(?<=^|[\s(\[])'([^'\n]+?)'(?=$|[\s.,;:!?)\]])", "`$1'");
 
         // Step 2: Escape special LaTeX chars in the remaining text.
         // After Step 1 all math regions are replaced with placeholders so
