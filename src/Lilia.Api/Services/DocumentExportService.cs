@@ -180,6 +180,10 @@ public class DocumentExportService : IDocumentExportService
             var setupDoc = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId);
             if (setupDoc is not null && lookOverride is not null) setupDoc.Look = lookOverride.ToStorage();
             if (setupDoc is not null && PageSetupRouting.WhyLatex(setupDoc) is not null) wantsLatex = true;
+            // …and content Typst would print wrong (ContentRouting, MCP-80).
+            if (!wantsLatex && ContentRouting.WhyLatex((await _context.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId)
+                    .Select(b => new { b.Type, b.Content }).ToListAsync()).Select(b => (b.Type, b.Content.RootElement))) is not null)
+                wantsLatex = true;
         }
 
         if (!wantsLatex)

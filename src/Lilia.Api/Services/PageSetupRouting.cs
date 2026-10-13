@@ -41,4 +41,44 @@ public static class PageSetupRouting
         if (Lilia.Engines.Themes.DocumentLook.IsThemed(d.Look, d.LatexDocumentClass)) reasons.Add("theme");
         return reasons.Count == 0 ? null : string.Join(", ", reasons.Distinct());
     }
+
+}
+
+/// <summary>
+/// Whether a document's content can only be printed faithfully by LaTeX. The Typst path reads
+/// Markdown-ish marks and plain maths; it printed <c>__under__</c>, <c>==hi==</c> and <c>\SI{3.0}{\metre}</c>
+/// as text, dropped the caret in <c>\(e^{i\pi}\)</c>, left <c>\[ x^2 \]</c> raw and set
+/// <c>$5 … $10</c> as maths (run 2, MCP-80) — with no error, so nothing fell back. The LaTeX path is
+/// the one check_document verifies. Plain prose keeps Typst's speed.
+/// </summary>
+public static class ContentRouting
+{
+    private static readonly System.Text.RegularExpressions.Regex LatexOnly = new(
+        @"\\[A-Za-z]|\\[(\[]|__\S|==\S|~~\S|\^\S[^^\s]*\^|%%\S|\[%|@cite[\[{]|@ref[\[{]|~\(",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Null when Typst prints every block as LaTeX would, else why not.</summary>
+    public static string? WhyLatex(IEnumerable<(string Type, System.Text.Json.JsonElement Content)> blocks)
+    {
+        foreach (var (type, content) in blocks)
+        {
+            // Equations are LaTeX maths, which Typst's maths doesn't read.
+            if (string.Equals(type, "equation", StringComparison.OrdinalIgnoreCase)) return "equations";
+            foreach (var text in Strings(content))
+            {
+                if (LatexOnly.IsMatch(text)) return $"LaTeX or Lilia marks in a {type} block";
+                if (Lilia.Engines.CurrencyDollar.Protect(text, _ => "\u0001").Contains('\u0001')) return $"a price in a {type} block";
+                if (text.Contains('$')) return $"maths in a {type} block";
+            }
+        }
+        return null;
+    }
+
+    private static IEnumerable<string> Strings(System.Text.Json.JsonElement e) => e.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.String => [e.GetString() ?? ""],
+        System.Text.Json.JsonValueKind.Array => e.EnumerateArray().SelectMany(Strings),
+        System.Text.Json.JsonValueKind.Object => e.EnumerateObject().Where(p => p.Name is not ("src" or "url" or "code" or "language")).SelectMany(p => Strings(p.Value)),
+        _ => [],
+    };
 }

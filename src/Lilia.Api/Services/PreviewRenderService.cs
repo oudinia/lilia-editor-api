@@ -107,6 +107,10 @@ public class PreviewRenderService : IPreviewRenderService
         // goes to LaTeX, which honours it. See PageSetupRouting.
         var setupDoc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
         var whyLatex = setupDoc is null ? null : PageSetupRouting.WhyLatex(setupDoc);
+        // …and content Typst would print wrong (ContentRouting, MCP-80).
+        if (whyLatex is null && typstFirst)
+            whyLatex = ContentRouting.WhyLatex((await _db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId)
+                .Select(b => new { b.Type, b.Content }).ToListAsync(ct)).Select(b => (b.Type, b.Content.RootElement)));
         if (typstFirst && whyLatex is not null)
         {
             typstFirst = false;
