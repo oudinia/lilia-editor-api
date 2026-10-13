@@ -174,6 +174,17 @@ public sealed class LiliaMcpWriteTools(
         "marginTop", "marginBottom", "marginLeft", "marginRight", "paragraphIndent", "customPreamble",
         "headerLeft", "headerCenter", "headerRight", "footerLeft", "footerCenter", "footerRight",
     };
+    private static readonly HashSet<string> NumericSettings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "columns", "columnGap", "balancedColumns", "fontSize", "lineSpacing",
+    };
+    /** Every field set_document_settings takes, as Ask Lilia's tool names it. */
+    private static readonly string[] SettingNames =
+    [
+        "paperSize", "orientation", "marginTop", "marginBottom", "marginLeft", "marginRight", "columns", "columnGap",
+        "columnSeparator", "balancedColumns", "fontFamily", "fontSize", "lineSpacing", "paragraphIndent", "pageNumbering",
+        "headingNumbering", "headerLeft", "headerCenter", "headerRight", "footerLeft", "footerCenter", "footerRight", "customPreamble",
+    ];
     private static readonly JsonElement EmptyString = JsonDocument.Parse("\"\"").RootElement;
 
     [McpServerTool(Name = "set_document_settings", Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -182,12 +193,40 @@ public sealed class LiliaMcpWriteTools(
         [Description("The document id.")] string documentId,
         [Description("The fields to change, e.g. {\"fontSize\":12,\"marginLeft\":\"2cm\"}.")] JsonElement settings)
     {
+        // Some clients send the object as a JSON string: it changed nothing ("Provide at least one setting").
+        if (settings.ValueKind == JsonValueKind.String)
+        {
+            try { settings = JsonDocument.Parse(settings.GetString() ?? "").RootElement; }
+            catch (JsonException) { return Task.FromResult<object>(new { error = "settings must be one JSON object, e.g. {\"fontSize\":12}.", category = "invalid" }); }
+        }
+        if (settings.ValueKind != JsonValueKind.Object)
+            return Task.FromResult<object>(new { error = "settings must be one JSON object, e.g. {\"fontSize\":12}.", category = "invalid" });
+
         var args = new Dictionary<string, object?>();
-        if (settings.ValueKind == JsonValueKind.Object)
-            foreach (var p in settings.EnumerateObject())
+        var unknown = new List<string>();
+        foreach (var p in settings.EnumerateObject())
+        {
+            // A misspelt field was dropped without a word.
+            var name = SettingNames.FirstOrDefault(n => n.Equals(p.Name, StringComparison.OrdinalIgnoreCase));
+            if (name is null) { unknown.Add(p.Name); continue; }
+            args[name] = p.Value.ValueKind switch
+            {
                 // null on a text setting means "unset", as get_document_settings reports it; it was a
                 // silent no-op (MCP-86). The empty string is what clears it.
-                args[p.Name] = p.Value.ValueKind == JsonValueKind.Null && TextSettings.Contains(p.Name) ? EmptyString : p.Value;
+                JsonValueKind.Null when TextSettings.Contains(name) => EmptyString,
+                // headingNumbering: 2 failed with "could not be converted to System.String": the
+                // choices that read as numbers are text fields.
+                JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False when !NumericSettings.Contains(name) =>
+                    JsonSerializer.SerializeToElement(p.Value.GetRawText()),
+                _ => p.Value,
+            };
+        }
+        if (unknown.Count > 0)
+            return Task.FromResult<object>(new
+            {
+                error = $"Lilia has no setting {string.Join(", ", unknown.Select(u => $"'{u}'"))}. Settings: {string.Join(", ", SettingNames)}. Nothing was changed.",
+                category = "invalid",
+            });
         return WriteAsync(documentId, "set_document_settings", args);
     }
 

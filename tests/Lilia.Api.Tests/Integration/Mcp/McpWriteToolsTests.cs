@@ -152,6 +152,31 @@ public class McpWriteToolsTests : IntegrationTestBase
         (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id)).HeadingNumbering.Should().BeNull();
     }
 
+    // From the MCP re-test (13 Oct): {"headingNumbering": 1} failed ("could not be converted to
+    // System.String"), the object sent as a JSON string changed nothing, and a misspelt field was ignored.
+    [Fact]
+    public async Task Settings_take_numbers_for_choices_a_json_string_and_name_unknown_fields()
+    {
+        await SeedUserAsync("mcpw_shapes");
+        var doc = await SeedDocumentAsync("mcpw_shapes");
+        var client = CreateClientAs("mcpw_shapes");
+        var r = await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { headingNumbering = 1 } });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        r = await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = """{"pageNumbering":"roman","FontSize":12}""" });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        await using (var db = CreateDbContext())
+        {
+            var saved = await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id);
+            saved.HeadingNumbering.Should().Be(1);
+            saved.PageNumbering.Should().Be("roman");
+            saved.FontSize.Should().Be(12);
+        }
+        r = await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { fontSize = 11, pageNumber = "none" } });
+        r.GetProperty("error").GetString().Should().Contain("'pageNumber'").And.Contain("pageNumbering");
+        await using (var db = CreateDbContext())
+            (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id)).FontSize.Should().Be(12, "nothing changes when a field is unknown");
+    }
+
     // MCP-86: null on a text setting clears it, as get_document_settings reports unset.
     [Fact]
     public async Task Null_clears_a_text_setting()
