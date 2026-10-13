@@ -101,6 +101,38 @@ public class McpTransfersTests : IntegrationTestBase
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
+    // MCP-114 (run 3b): an app holding the file imports it in one call — .tex and .lml as text,
+    // .docx as base64 — through the same importer; a numbered Word heading style carries over (MCP-31).
+    [Fact]
+    public async Task An_app_imports_a_file_it_has()
+    {
+        await SeedUserAsync("mcpx_appimport");
+        var app = CreateClientAs("mcpx_appimport");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+
+        var tex = await CallAsync(app, "import_document", new
+        {
+            filename = "paper.tex",
+            content = "\\documentclass{article}\\title{Imported by an app}\\begin{document}\\maketitle\\section{Intro}Hello.\\end{document}",
+        });
+        tex.TryGetProperty("error", out _).Should().BeFalse(tex.ToString());
+        tex.GetProperty("url").GetString().Should().EndWith($"/d/{tex.GetProperty("documentId").GetGuid()}");
+
+        var lml = await CallAsync(app, "import_document", new { filename = "notes.lml", content = "@heading[level=1]\n  Notes\n@paragraph\n  From LML." });
+        lml.TryGetProperty("error", out _).Should().BeFalse(lml.ToString());
+
+        var path = Lilia.Api.Tests.Services.HeadingNumberingTests.Docx(true, (1, "Introduction"), (2, "Scope"), (1, "Method"));
+        var docx = await CallAsync(app, "import_document", new { filename = "thesis.docx", content = Convert.ToBase64String(await File.ReadAllBytesAsync(path)) });
+        docx.TryGetProperty("error", out _).Should().BeFalse(docx.ToString());
+        await using var db = CreateDbContext();
+        var imported = await db.Documents.AsNoTracking().FirstAsync(d => d.Id == docx.GetProperty("documentId").GetGuid());
+        imported.OwnerId.Should().Be("mcpx_appimport");
+        imported.HeadingNumbering.Should().Be(2, "the Word file numbered its headings to level 2");
+
+        (await CallAsync(app, "import_document", new { filename = "x.pdf", content = "abc" })).GetProperty("error").GetString().Should().Contain(".tex, .docx and .lml");
+        (await CallAsync(app, "import_document", new { filename = "x.docx", content = "not base64!" })).GetProperty("error").GetString().Should().Contain("base64");
+    }
+
     [Fact]
     public async Task An_apps_token_cannot_upload_on_the_drop_page()
     {

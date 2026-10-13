@@ -38,6 +38,7 @@ public sealed class LiliaMcpWriteTools(
     IHttpClientFactory httpFactory,
     IConfiguration config,
     ConnectorTransfers transfers,
+    IJobService jobs,
     ILogger<LiliaMcpWriteTools> logger)
 {
     public const string WriteScope = "documents:write";
@@ -258,8 +259,61 @@ public sealed class LiliaMcpWriteTools(
         return new { id = doc.Id, title = doc.Title, kind = category, body, url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}" };
     }
 
+    /// <summary>Base64 for 10 MB, the largest file import_document takes.</summary>
+    private const int ImportMaxChars = 14_000_000;
+
+    [McpServerTool(Name = "import_document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Import a file you have as a new Lilia document, in one call: .tex or .lml as text, .docx as base64 (up to 10 MB). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
+    public async Task<object> ImportDocument(
+        [Description("The file name, e.g. paper.tex, thesis.docx, notes.lml. Its extension gives the format unless format is set.")] string filename,
+        [Description("The file: its text for .tex and .lml, base64 for .docx (a data: prefix is fine).")] string content,
+        [Description("Optional: tex, docx or lml.")] string? format = null)
+    {
+        // MCP-114 (run 3b): an app holding the file could only hand the author a drop page, and an
+        // unattended agent couldn't import at all.
+        if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        if (string.IsNullOrWhiteSpace(content)) return new { error = "content is empty: give the file's text (.tex, .lml) or base64 (.docx).", category = "invalid" };
+        if (content.Length > ImportMaxChars) return new { error = "The file is over 10 MB. Use start_import: the author drops it on Lilia's page.", category = "invalid" };
+        var name = string.IsNullOrWhiteSpace(filename) ? "import" : Path.GetFileName(filename.Trim());
+        var kind = ((format ?? Path.GetExtension(name)).Trim().TrimStart('.').ToLowerInvariant()) switch
+        {
+            "tex" or "latex" => "LATEX",
+            "docx" or "word" => "DOCX",
+            "lml" => "LML",
+            _ => null,
+        };
+        if (kind is null) return new { error = "Lilia imports .tex, .docx and .lml files: give one of these extensions, or format.", category = "invalid" };
+        if (kind == "DOCX")
+        {
+            var comma = content.IndexOf(',');
+            if (content.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0) content = content[(comma + 1)..];
+            try { _ = Convert.FromBase64String(content.Trim()); }
+            catch (FormatException) { return new { error = "A .docx goes as base64: this isn't valid base64.", category = "invalid" }; }
+            content = content.Trim();
+        }
+        try
+        {
+            var result = await jobs.CreateImportJobFromBase64Async(UserId, new Lilia.Core.DTOs.ImportRequestDto(content, kind, name, SkipReview: true));
+            if (result.Document is null)
+                return new { error = $"Lilia could not import this file: {result.Job?.ErrorMessage ?? "the importer produced no document"}" };
+            logger.LogInformation("[Mcp] import_document {File} ({Kind}) → {DocId} by {App}", name, kind, result.Document.Id, await AppNameAsync());
+            return new
+            {
+                documentId = result.Document.Id,
+                title = result.Document.Title,
+                url = $"{McpOAuth.PublicOrigin(config)}/d/{result.Document.Id}",
+                next = "Read it with get_outline, or check it compiles with check_document.",
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Mcp] import_document of {File} failed", name);
+            return new { error = $"Lilia could not import this file: {(ex.Message.Length > 300 ? ex.Message[..300] : ex.Message)}" };
+        }
+    }
+
     [McpServerTool(Name = "start_import", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file (.tex, .docx or .lml) as a new Lilia document, without the file passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes.")]
+    [Description("Import a file (.tex, .docx or .lml) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. When you have the file yourself, import_document does it in one call.")]
     public async Task<object> StartImport()
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };

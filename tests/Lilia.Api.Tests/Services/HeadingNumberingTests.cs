@@ -74,7 +74,7 @@ public class HeadingNumberingTests
     }
 
     // ── DOCX import ─────────────────────────────────────────────────────
-    private static string Docx(bool styleNumbering, params (int Level, string Text)[] headings)
+    internal static string Docx(bool styleNumbering, params (int Level, string Text)[] headings)
     {
         var path = Path.Combine(Path.GetTempPath(), $"hn-{Guid.NewGuid()}.docx");
         using var word = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
