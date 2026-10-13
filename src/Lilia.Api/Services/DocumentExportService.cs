@@ -58,6 +58,8 @@ public class DocumentExportService : IDocumentExportService
         _logger = logger;
     }
 
+    private Func<string, string?>? _labelNumber;
+
     public async Task<ExportDocument> BuildExportDocumentAsync(Guid documentId)
     {
         var doc = await _context.Documents
@@ -85,6 +87,10 @@ public class DocumentExportService : IDocumentExportService
                 Modified = doc.UpdatedAt
             }
         };
+
+        // References in prose take the numbers the last compile gave them (ProseLatex).
+        var labels = LabelNumbers.Parse(doc.LabelNumbers);
+        _labelNumber = key => labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
 
         var theoremCounter = 0;
 
@@ -372,7 +378,7 @@ public class DocumentExportService : IDocumentExportService
                 Content = new ExportBlockContent
                 {
                     Text = content.GetString() ?? "",
-                    RichText = ParseInlineFormatting(content.GetString() ?? "")
+                    RichText = ParseInlineFormatting(content.GetString() ?? "", _labelNumber)
                 }
             };
         }
@@ -545,7 +551,7 @@ public class DocumentExportService : IDocumentExportService
             Type = "heading",
             Content = new ExportBlockContent
             {
-                Text = text,
+                Text = ProseLatex.PlainForWord(text, _labelNumber),
                 Level = level
             }
         };
@@ -590,7 +596,7 @@ public class DocumentExportService : IDocumentExportService
             {
                 Code = code,
                 Language = GetString(content, "language"),
-                Caption = GetString(content, "caption")
+                Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber)
             }
         };
     }
@@ -652,7 +658,7 @@ public class DocumentExportService : IDocumentExportService
         var exportItem = new ExportListItem
         {
             Text = text,
-            RichText = ParseInlineFormatting(text)
+            RichText = ParseInlineFormatting(text, _labelNumber)
         };
 
         if (item.ValueKind == JsonValueKind.Object &&
@@ -694,7 +700,7 @@ public class DocumentExportService : IDocumentExportService
                     : header.ValueKind == JsonValueKind.Object
                         ? GetString(header, "text")
                         : "";
-                headerRow.Add(new ExportTableCell { Text = text });
+                headerRow.Add(new ExportTableCell { Text = ProseLatex.PlainForWord(text, _labelNumber) });
             }
 
             if (headerRow.Any(c => !string.IsNullOrWhiteSpace(c.Text)))
@@ -721,7 +727,7 @@ public class DocumentExportService : IDocumentExportService
                     exportRow.Add(new ExportTableCell
                     {
                         Text = cellText,
-                        RichText = ParseInlineFormatting(cellText)
+                        RichText = ParseInlineFormatting(cellText, _labelNumber)
                     });
                 }
                 rows.Add(exportRow);
@@ -737,7 +743,7 @@ public class DocumentExportService : IDocumentExportService
                 HasHeader = hasHeader,
                 // Dropped until 26 Sep: every other export printed the table's
                 // caption; the .docx had none.
-                Caption = GetString(content, "caption")
+                Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber)
             }
         };
     }
@@ -799,7 +805,7 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Image = imageData,
-                Caption = caption
+                Caption = ProseLatex.PlainForWord(caption, _labelNumber)
             }
         };
     }
@@ -813,7 +819,7 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Text = text,
-                RichText = ParseInlineFormatting(text)
+                RichText = ParseInlineFormatting(text, _labelNumber)
             }
         };
     }
@@ -833,8 +839,8 @@ public class DocumentExportService : IDocumentExportService
             {
                 TheoremType = theoremType,
                 TheoremNumber = theoremCounter,
-                Text = title,  // title goes in Text for the header
-                RichText = ParseInlineFormatting(text) // body text in RichText
+                Text = ProseLatex.PlainForWord(title, _labelNumber),  // title goes in Text for the header
+                RichText = ParseInlineFormatting(text, _labelNumber) // body text in RichText
             }
         };
     }
@@ -848,7 +854,7 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Text = text,
-                RichText = ParseInlineFormatting(text)
+                RichText = ParseInlineFormatting(text, _labelNumber)
             }
         };
     }
@@ -891,7 +897,7 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Code = code,
-                Caption = caption,
+                Caption = ProseLatex.PlainForWord(caption, _labelNumber),
                 Language = "text"
             }
         };
@@ -907,8 +913,8 @@ public class DocumentExportService : IDocumentExportService
             Type = "callout",
             Content = new ExportBlockContent
             {
-                Text = title,
-                RichText = ParseInlineFormatting(text)
+                Text = ProseLatex.PlainForWord(title, _labelNumber),
+                RichText = ParseInlineFormatting(text, _labelNumber)
             }
         };
     }
@@ -922,7 +928,7 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Text = text,
-                RichText = ParseInlineFormatting(text)
+                RichText = ParseInlineFormatting(text, _labelNumber)
             }
         };
     }
@@ -1083,7 +1089,22 @@ public class DocumentExportService : IDocumentExportService
     /// Parse markdown-like inline formatting into rich text spans.
     /// Supports: **bold**, *italic*, __underline__, ~~strikethrough~~, `code`, $math$
     /// </summary>
-    public static List<ExportRichTextSpan> ParseInlineFormatting(string? text)
+    public static List<ExportRichTextSpan> ParseInlineFormatting(string? text) => ParseInlineFormatting(text, null);
+
+    /// <summary>
+    /// The same, after the LaTeX in the prose is read for Word (<see cref="ProseLatex"/>):
+    /// <paramref name="labelNumber"/> numbers references from the last compile.
+    /// </summary>
+    public static List<ExportRichTextSpan> ParseInlineFormatting(string? text, Func<string, string?>? labelNumber)
+    {
+        var spans = ParseMarks(ProseLatex.ForWord(text, labelNumber));
+        foreach (var span in spans)
+            if (span.Equation is null && span.Text.Contains(ProseLatex.PriceDollar))
+                span.Text = span.Text.Replace(ProseLatex.PriceDollar, '$');
+        return spans;
+    }
+
+    private static List<ExportRichTextSpan> ParseMarks(string? text)
     {
         if (string.IsNullOrEmpty(text))
             return [new ExportRichTextSpan { Text = text ?? "" }];
