@@ -772,8 +772,14 @@ public partial class RenderService : IRenderService
         if (!string.IsNullOrEmpty(location)) sb.Append($"<span class=\"cv-entry-location\"> — {WebUtility.HtmlEncode(location)}</span>");
         if (!string.IsNullOrEmpty(period)) sb.Append($"<span class=\"cv-entry-period\">{WebUtility.HtmlEncode(period)}</span>");
         sb.Append("</div>");
+        var highlight = JsonStr(content, "highlight");
+        if (!string.IsNullOrEmpty(highlight))
+            sb.Append($"<p class=\"cv-entry-highlight\"><em>{ProcessInlineContent(highlight)}</em></p>");
         if (!string.IsNullOrEmpty(description))
             sb.Append($"<p class=\"cv-entry-description\">{ProcessInlineContent(description)}</p>");
+        var tech = CvTech(content);
+        if (tech.Count > 0)
+            sb.Append($"<p class=\"cv-entry-tech\"><small>{WebUtility.HtmlEncode(string.Join(", ", tech))}</small></p>");
         sb.Append("</div>");
         return sb.ToString();
     }
@@ -1747,9 +1753,29 @@ public partial class RenderService : IRenderService
         if (!string.IsNullOrEmpty(location)) sb.Append(@$" — {EscapeLatex(location)}");
         if (!string.IsNullOrEmpty(period)) sb.Append(@$" \hfill {EscapeLatex(period)}");
         sb.AppendLine(@"\par");
+        // highlight and tech were stored and never printed (MCP-58).
+        var highlight = JsonStr(content, "highlight");
+        if (!string.IsNullOrEmpty(highlight))
+            sb.AppendLine(@$"\textit{{{ProcessLatexText(highlight)}}}\par");
         if (!string.IsNullOrEmpty(description))
             sb.AppendLine(ProcessLatexText(description) + @"\par");
+        var tech = CvTech(content);
+        if (tech.Count > 0)
+            sb.AppendLine(@$"{{\small {string.Join(", ", tech.Select(EscapeLatex))}}}\par");
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>A cvEntry's tech list: an array of strings, or one comma-separated string.</summary>
+    private static List<string> CvTech(JsonElement content)
+    {
+        if (!content.TryGetProperty("tech", out var t)) return [];
+        var items = t.ValueKind switch
+        {
+            JsonValueKind.Array => t.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString() ?? ""),
+            JsonValueKind.String => (t.GetString() ?? "").Split(',', ';'),
+            _ => [],
+        };
+        return items.Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
     }
 
     private static string JsonStr(JsonElement el, string prop) =>

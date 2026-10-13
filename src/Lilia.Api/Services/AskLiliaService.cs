@@ -1435,7 +1435,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
             if (anchor is not null) sortOrder = anchor.SortOrder + 1;
         }
         var created = await _blockService.CreateBlockAsync(docId,
-            new Lilia.Core.DTOs.CreateBlockDto(type, ParseContent(contentJson), sortOrder, null, null));
+            new Lilia.Core.DTOs.CreateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(type, ParseContent(contentJson)), sortOrder, null, null));
         doc.Blocks?.Add(created);
         changed.Add(created.Id.ToString());
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
@@ -1446,8 +1446,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private async Task<object> EditBlockAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string blockId, string contentJson, string? type, List<string> changed)
     {
         if (!Guid.TryParse(blockId, out var id)) return BlockIdError(doc, blockId, parsed: false);
+        // CV field names an app guesses (firstName, organization, startDate…) become Lilia's (MCP-58).
+        var blockType = string.IsNullOrWhiteSpace(type) ? doc.Blocks?.FirstOrDefault(b => b.Id == id)?.Type : type;
         var updated = await _blockService.UpdateBlockAsync(docId, id,
-            new Lilia.Core.DTOs.UpdateBlockDto(type, ParseContent(contentJson), null, null, null));
+            new Lilia.Core.DTOs.UpdateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(blockType, ParseContent(contentJson)), null, null, null));
         if (updated is null) return BlockIdError(doc, blockId, parsed: true);
         var i = doc.Blocks?.FindIndex(b => b.Id == id) ?? -1;
         if (i >= 0) doc.Blocks![i] = updated;
