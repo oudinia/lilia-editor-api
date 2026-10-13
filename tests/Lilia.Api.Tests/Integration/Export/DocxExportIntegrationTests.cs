@@ -334,6 +334,37 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         Regex.Matches(xml, "<w:numId w:val=\"2\" />").Count.Should().Be(3);
     }
 
+    // MCP-102 (run 3): footnotes printed as separate "*text" paragraphs, with no mark in the text.
+    [Fact]
+    public async Task FootnotesAreWordFootnotesMarkedOnTheirParagraph()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Notes");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"The claim stands."}""");
+        await SeedBlockAsync(doc.Id, "footnote", """{"text":"See the appendix."}""", 1);
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var body = word.MainDocumentPart!.Document.Body!;
+        var claim = body.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>().Single(p => p.InnerText.Contains("The claim stands."));
+        claim.Descendants<DocumentFormat.OpenXml.Wordprocessing.FootnoteReference>().Should().ContainSingle();
+        body.InnerText.Should().NotContain("See the appendix.");
+        word.MainDocumentPart.FootnotesPart!.Footnotes!.InnerText.Should().Contain("See the appendix.");
+    }
+
+    // MCP-97 / MCP-105 (run 3): verse breaks were newlines inside w:t; the attribution was dropped.
+    [Fact]
+    public async Task AVerseKeepsItsLinesAndAttribution()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Verse");
+        await SeedBlockAsync(doc.Id, "blockquote", """{"text":"First line\nSecond line","variant":"verse","attribution":"A. Poet"}""");
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+
+        XmlIn(bytes).Should().Contain("<w:br />");
+        TextIn(bytes).Should().Contain("First line").And.Contain("Second line").And.Contain("— A. Poet");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {
