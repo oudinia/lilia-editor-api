@@ -70,7 +70,10 @@ public static class ProseLatex
         ["Phi"] = "Φ", ["Psi"] = "Ψ", ["Omega"] = "Ω",
         ["le"] = "≤", ["leq"] = "≤", ["ge"] = "≥", ["geq"] = "≥", ["ne"] = "≠", ["neq"] = "≠", ["approx"] = "≈",
         ["times"] = "×", ["cdot"] = "·", ["pm"] = "±", ["infty"] = "∞", ["to"] = "→", ["in"] = "∈",
-        ["sim"] = "∼", ["partial"] = "∂", ["nabla"] = "∇", ["ell"] = "ℓ", ["leftarrow"] = "←", ["gets"] = "←", ["rightarrow"] = "→", ["ldots"] = "…", ["dots"] = "…", ["cdots"] = "⋯",
+        ["sim"] = "∼", ["partial"] = "∂", ["nabla"] = "∇", ["ell"] = "ℓ", ["gcd"] = "gcd", ["bmod"] = " mod ", ["mod"] = " mod ", ["log"] = "log", ["ln"] = "ln", ["exp"] = "exp",
+        ["sin"] = "sin", ["cos"] = "cos", ["tan"] = "tan", ["max"] = "max", ["min"] = "min", ["det"] = "det",
+        ["lim"] = "lim", ["neg"] = "¬", ["land"] = "∧", ["lor"] = "∨", ["forall"] = "∀", ["exists"] = "∃",
+        ["subset"] = "⊂", ["subseteq"] = "⊆", ["cup"] = "∪", ["cap"] = "∩", ["emptyset"] = "∅", ["mid"] = "|", ["leftarrow"] = "←", ["gets"] = "←", ["rightarrow"] = "→", ["ldots"] = "…", ["dots"] = "…", ["cdots"] = "⋯",
     };
 
     private const string Sup = "⁰¹²³⁴⁵⁶⁷⁸⁹", Sub = "₀₁₂₃₄₅₆₇₈₉";
@@ -87,7 +90,7 @@ public static class ProseLatex
             var converted = Regex.Replace(body, @"\\([A-Za-z]+)", c => MathSymbols.TryGetValue(c.Groups[1].Value, out var u) ? u : c.Value);
             converted = Regex.Replace(converted, @"\^\{?(\d+)\}?", d => string.Concat(d.Groups[1].Value.Select(ch => Sup[ch - '0'])));
             converted = Regex.Replace(converted, @"_\{?(\d+)\}?", d => string.Concat(d.Groups[1].Value.Select(ch => Sub[ch - '0'])));
-            return Regex.IsMatch(converted, @"[\\^_{}]") ? m.Value : converted;
+            return Regex.IsMatch(converted, @"[\\^_{}]") ? m.Value : Regex.Replace(converted, " {2,}", " ").Trim();
         });
 
     private static string ForWord(string? text, Func<string, string?>? labelNumber, bool plain)

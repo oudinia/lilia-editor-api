@@ -104,6 +104,7 @@ public class WordProseTests
     [InlineData(@"Results for $\alpha = 0.05$ and $n^2$ samples", "Results for α = 0.05 and n² samples")]
     [InlineData(@"Error $x_1 \le \epsilon$", "Error x₁ ≤ ε")]
     [InlineData(@"Rate $\frac{a}{b}$", @"Rate $\frac{a}{b}$")]
+    [InlineData(@"Step $a \gets b \bmod a$ until $\gcd(a, b) = 1$", "Step a ← b mod a until gcd(a, b) = 1")]
     public void Simple_maths_in_a_plain_field_reads_as_text(string text, string expected) =>
         ProseLatex.PlainForWord(text).Should().Be(expected);
 
