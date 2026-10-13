@@ -430,7 +430,8 @@ public class JobService : IJobService
                     var sessionResult = await _reviewService.CreateSessionFromImportAsync(
                         userId, job.Id, title, reviewBlocks,
                         paragraphTraces: tracesJson,
-                        sourceFilePath: persistentPath);
+                        sourceFilePath: persistentPath,
+                        headingNumbering: importResult.IntermediateDocument?.Metadata.HeadingNumbering);
 
                     reviewSessionId = sessionResult.Session.Id;
 

@@ -168,6 +168,7 @@ public class DocxParser : IDocxParser
                 allElements.AddRange(trackChangeElements);
 
                 importDoc.Elements = allElements;
+                importDoc.Metadata.HeadingNumbering = Lilia.Import.Detection.HeadingNumbering.Detect(elements);
 
                 // If no title from properties, use first heading
                 if (importDoc.Title == Path.GetFileNameWithoutExtension(filePath))
@@ -273,6 +274,7 @@ public class DocxParser : IDocxParser
             AllItalic = allItalic,
             AllCaps = !string.IsNullOrEmpty(text) && text == text.ToUpperInvariant() && text.Any(char.IsLetter),
             HasNumberingProperties = numPr != null,
+            StyleNumbered = styleId is not null && StyleHasNumbering(mainPart, styleId),
             NumberingProperties = numPr,
             NumberingLevel = (int)(numPr?.NumberingLevelReference?.Val?.Value ?? 0),
             NumberingId = numPr != null ? (int?)numPr.NumberingId?.Val?.Value : null,
@@ -478,6 +480,23 @@ public class DocxParser : IDocxParser
     /// authoring language, so matching on StyleName is language-independent.
     /// Cached per MainDocumentPart.
     /// </summary>
+    /// <summary>The style, or one it is based on, carries list numbering (numId other than 0).</summary>
+    private static bool StyleHasNumbering(MainDocumentPart mainPart, string styleId)
+    {
+        var styles = mainPart.StyleDefinitionsPart?.Styles;
+        if (styles is null) return false;
+        var id = styleId;
+        for (var hop = 0; hop < 6 && id is not null; hop++)
+        {
+            var style = styles.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == id);
+            if (style is null) return false;
+            var num = style.StyleParagraphProperties?.NumberingProperties;
+            if (num?.NumberingId?.Val?.Value is int n) return n != 0;
+            id = style.BasedOn?.Val?.Value;
+        }
+        return false;
+    }
+
     private string? ResolveStyleName(MainDocumentPart mainPart, string styleId)
     {
         if (!_styleNameCache.TryGetValue(mainPart, out var cache))

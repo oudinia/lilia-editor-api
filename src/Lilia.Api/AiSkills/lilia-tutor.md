@@ -96,7 +96,9 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - **Document settings**: click the document-type button in the top bar (e.g. **Article ▾**). It opens
   **Type & class** (article, report, book, slides…), **Class options** (paper, font size, columns, one
   or two sides, orientation, title page), **Layout** (margins, line spacing, paragraph indent, page
-  numbering, header and footer text) and **Look**. A view-only reader sees it read-only. (On a phone:
+  numbering, **heading numbering**, header and footer text) and **Look**. Heading numbering chooses which
+  heading levels carry a number — *Class default*, *None*, or levels 1 to 5 — and the table of contents
+  lists the same levels; a Word import starts from what the Word file did. A view-only reader sees it read-only. (On a phone:
   **⋯ → Page & settings** and **⋯ → Look**.)
 - **Look** (in the document settings): the **document theme**, the paper (*Theme's paper* or *White
   always*), the header band, a colour pinned to a chapter, and tables (style, density, caption

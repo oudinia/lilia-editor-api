@@ -27,6 +27,7 @@ public class ImportReviewSessionConfiguration : IEntityTypeConfiguration<ImportR
         builder.Property(s => s.ProjectSessionId).HasColumnName("project_session_id");
         builder.Property(s => s.DocumentCategory).HasColumnName("document_category").HasMaxLength(30);
         builder.Property(s => s.SourceFormat).HasColumnName("source_format").HasDefaultValue("tex").IsRequired();
+        builder.Property(s => s.HeadingNumbering).HasColumnName("heading_numbering");
         builder.Property(s => s.TabProgress).HasColumnName("tab_progress").HasColumnType("jsonb");
         builder.Property(s => s.LastFocusedTab).HasColumnName("last_focused_tab");
         builder.Property(s => s.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");

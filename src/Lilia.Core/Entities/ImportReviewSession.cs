@@ -39,6 +39,10 @@ public class ImportReviewSession
     /// </summary>
     public string SourceFormat { get; set; } = "tex";
 
+    /// <summary>Heading levels the source numbered (a DOCX's Word numbering), written onto the
+    /// document at finalize as Document.HeadingNumbering. Null when unknown.</summary>
+    public int? HeadingNumbering { get; set; }
+
     /// <summary>
     /// Per-tab progress in the aspect-based review UI. Shape:
     /// { structure: "unvisited|in_progress|done", content: ..., tables:

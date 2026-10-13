@@ -41,7 +41,8 @@ public static class DocumentSettingsValidator
         string? PageNumbering = null,
         string? HeaderLeft = null, string? HeaderCenter = null, string? HeaderRight = null,
         string? FooterLeft = null, string? FooterCenter = null, string? FooterRight = null,
-        string? CustomPreamble = null);
+        string? CustomPreamble = null,
+        string? HeadingNumbering = null);
 
     public sealed record Result(UpdateDocumentDto? Update, IReadOnlyList<string> Errors, IReadOnlyList<string> Fields)
     {
@@ -143,6 +144,18 @@ public static class DocumentSettingsValidator
             Touch("pageNumbering");
         }
 
+        // Numbered heading levels: "none" (or 0), 1–5, or "default" / "" for the class default.
+        int? headingNumbering = null;
+        if (i.HeadingNumbering is not null)
+        {
+            Touch("headingNumbering");
+            var h = i.HeadingNumbering.Trim().ToLowerInvariant();
+            if (h is "" or "default") headingNumbering = -1;
+            else if (h is "none" or "off" or "0") headingNumbering = 0;
+            else if (int.TryParse(h, out var n) && n is >= 1 and <= 5) headingNumbering = n;
+            else errors.Add($"headingNumbering '{i.HeadingNumbering}' is not valid. Valid: none, 1, 2, 3, 4, 5 (levels numbered), default.");
+        }
+
         string? Slot(string? raw, string name)
         {
             if (raw is null) return null;
@@ -181,7 +194,7 @@ public static class DocumentSettingsValidator
             DocumentClass: null, DocumentCategory: null, Sides: null, TitlePage: null,
             Orientation: orient, CustomPreamble: preamble,
             HeaderLeft: hl, HeaderCenter: hc, HeaderRight: hr,
-            FooterLeft: fl, FooterCenter: fc, FooterRight: fr);
+            FooterLeft: fl, FooterCenter: fc, FooterRight: fr, HeadingNumbering: headingNumbering);
         return new Result(dto, errors, fields);
     }
 

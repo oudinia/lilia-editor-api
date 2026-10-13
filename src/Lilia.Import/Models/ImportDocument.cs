@@ -87,6 +87,9 @@ public class ImportDocument
 /// </summary>
 public class ImportMetadata
 {
+    /// <summary>Heading levels the source numbered (HeadingNumbering.Detect): null unknown, 0 none, 1–5.</summary>
+    public int? HeadingNumbering { get; set; }
+
     /// <summary>
     /// Document author (dc:creator).
     /// </summary>

@@ -1492,6 +1492,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("header_text");
 
+                    b.Property<int?>("HeadingNumbering")
+                        .HasColumnType("integer")
+                        .HasColumnName("heading_numbering");
+
                     b.Property<string>("HelpCategory")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -4417,6 +4421,10 @@ namespace Lilia.Infrastructure.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.Property<int?>("HeadingNumbering")
+                        .HasColumnType("integer")
+                        .HasColumnName("heading_numbering");
 
                     b.Property<bool>("IsPlayground")
                         .ValueGeneratedOnAdd()

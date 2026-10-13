@@ -119,7 +119,8 @@ public interface IImportReviewService
         List<object>? warnings = null,
         System.Text.Json.JsonElement? paragraphTraces = null,
         string? sourceFilePath = null,
-        string? rawImportData = null
+        string? rawImportData = null,
+        int? headingNumbering = null
     );
 
     // Paragraph traces

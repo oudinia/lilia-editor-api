@@ -137,6 +137,21 @@ public class McpWriteToolsTests : IntegrationTestBase
         saved.MarginLeft.Should().Be("2cm");
     }
 
+    // MCP-31: heading numbering is a document setting the author (or the app) chooses.
+    [Fact]
+    public async Task Heading_numbering_is_a_setting()
+    {
+        await SeedUserAsync("mcpw_numbering");
+        var doc = await SeedDocumentAsync("mcpw_numbering");
+        var client = CreateClientAs("mcpw_numbering");
+        var r = await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { headingNumbering = "2" } });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        (await CallAsync(client, "get_document_settings", new { documentId = doc.Id.ToString() })).GetProperty("headingNumbering").GetString().Should().Be("2");
+        await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { headingNumbering = "default" } });
+        await using var db = CreateDbContext();
+        (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id)).HeadingNumbering.Should().BeNull();
+    }
+
     // MCP-86: null on a text setting clears it, as get_document_settings reports unset.
     [Fact]
     public async Task Null_clears_a_text_setting()

@@ -66,6 +66,10 @@ public class ParagraphAnalysis
     /// </summary>
     public bool HasNumberingProperties { get; init; }
 
+    /// <summary>The paragraph's style (or one it is based on) carries list numbering: how Word
+    /// numbers headings ("1 Introduction", "1.2 Method") without a w:numPr on the paragraph.</summary>
+    public bool StyleNumbered { get; init; }
+
     /// <summary>
     /// The NumberingProperties element (null if not a list item).
     /// </summary>

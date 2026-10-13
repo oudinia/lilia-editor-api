@@ -91,6 +91,13 @@ public class Document
     public string? PageNumbering { get; set; } // "arabic", "roman", "none"
 
     /// <summary>
+    /// Which heading levels are numbered: null keeps the class default, 0 numbers none, 1–5
+    /// number levels 1 to that one. The table of contents lists the same levels. The author's
+    /// choice (13 Oct); a DOCX import sets it from whether the Word headings were numbered.
+    /// </summary>
+    public int? HeadingNumbering { get; set; }
+
+    /// <summary>
     /// How the bottom of a page is filled — the one knob of the pagination
     /// policy an author can sensibly hold an opinion about.
     ///

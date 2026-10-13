@@ -246,7 +246,8 @@ public static class DefaultRuleRegistry
                         Level = level,
                         Text = analysis.Text,
                         Formatting = analysis.Formatting,
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
+                        SourceNumbered = HeadingNumbering.IsNumbered(analysis),
                     }
                 ];
             },
@@ -327,7 +328,8 @@ public static class DefaultRuleRegistry
                         Level = level,
                         Text = analysis.Text,
                         Formatting = analysis.Formatting,
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
+                        SourceNumbered = HeadingNumbering.IsNumbered(analysis),
                     }
                 ];
             },
@@ -363,7 +365,8 @@ public static class DefaultRuleRegistry
                         Level = level,
                         Text = analysis.Text,
                         Formatting = analysis.Formatting,
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
+                        SourceNumbered = HeadingNumbering.IsNumbered(analysis),
                     }
                 ];
             },
@@ -426,7 +429,8 @@ public static class DefaultRuleRegistry
                         Level = level,
                         Text = analysis.Text.Trim(),
                         Formatting = analysis.Formatting,
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
+                        SourceNumbered = HeadingNumbering.IsNumbered(analysis),
                     }
                 ];
             },
@@ -463,7 +467,8 @@ public static class DefaultRuleRegistry
                         Level = level.Value,
                         Text = analysis.Text,
                         Formatting = analysis.Formatting,
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
+                        SourceNumbered = HeadingNumbering.IsNumbered(analysis),
                     }
                 ];
             },
@@ -697,7 +702,7 @@ public static class DefaultRuleRegistry
                         Order = parser.NextElementOrder(),
                         Text = analysis.Text,
                         Formatting = parser.ShouldPreserveFormatting() ? analysis.Formatting : [],
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
                     }
                 ];
             }
@@ -725,7 +730,7 @@ public static class DefaultRuleRegistry
                         Order = parser.NextElementOrder(),
                         Text = analysis.Text,
                         Formatting = parser.ShouldPreserveFormatting() ? analysis.Formatting : [],
-                        StyleId = analysis.StyleId
+                        StyleId = analysis.StyleId,
                     }
                 ];
             }

@@ -590,6 +590,8 @@ public class DocumentService : IDocumentService
         if (dto.LineSpacing.HasValue) document.LineSpacing = dto.LineSpacing.Value;
         if (dto.ParagraphIndent != null) document.ParagraphIndent = Unset(dto.ParagraphIndent);
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
+        // -1 returns to the class default; 0 numbers none; 1–5 number levels 1 to n.
+        if (dto.HeadingNumbering is { } hn) document.HeadingNumbering = hn < 0 ? null : Math.Clamp(hn, 0, 5);
         if (!string.IsNullOrWhiteSpace(dto.PaginationPolicy))
         {
             // Same shape as LatexEngine below: the DB CHECK would reject a bad
@@ -1110,6 +1112,7 @@ public class DocumentService : IDocumentService
                 HeaderText = original.HeaderText,
                 FooterText = original.FooterText,
                 PageNumbering = original.PageNumbering,
+                HeadingNumbering = original.HeadingNumbering,
                 PaginationPolicy = original.PaginationPolicy,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -1360,7 +1363,8 @@ public class DocumentService : IDocumentService
             FooterRight: d.FooterRight,
             Look: ReadLook(d.Look),
             LookLocked: ThemeLock.Reason(d.LatexDocumentClass),
-            LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass)
+            LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass),
+            HeadingNumbering: d.HeadingNumbering
         );
     }
 
