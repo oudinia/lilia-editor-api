@@ -238,6 +238,17 @@ public static partial class LaTeXPreamble
         return false;
     }
 
+    private static readonly Regex MhchemCommandRe = new(@"\\ce\{", RegexOptions.Compiled);
+
+    /// <summary>
+    /// mhchem, when the text uses <c>\ce{…}</c> and the author's own packages don't load it: Lilia's
+    /// preamble doesn't, so <c>\ce</c> was undefined unless a custom preamble added it (LTX-85).
+    /// </summary>
+    public static string MhchemLine(IEnumerable<string?> latexSources, params string?[] authorPackages) =>
+        latexSources.Any(src => !string.IsNullOrEmpty(src) && MhchemCommandRe.IsMatch(src))
+        && !authorPackages.Any(p => (p ?? "").Contains("mhchem", StringComparison.Ordinal))
+            ? "\\usepackage[version=4]{mhchem}\n" : "";
+
     /// <summary>
     /// Emitted <i>before</i> <see cref="Packages"/> so it precedes hyperref,
     /// which is the load order natbib documents.
