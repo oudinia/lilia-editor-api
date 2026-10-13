@@ -1019,7 +1019,7 @@ public class LaTeXExportService : ILaTeXExportService
         var level = content.TryGetProperty("level", out var l) ? l.GetInt32() : 1;
         // In a class with \chapter, level 1 is a chapter (see HeadingCommands).
         var command = Lilia.Core.Models.HeadingCommands.For(level, _headingClass);
-        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
+        (text, var label) = Lilia.Engines.HeadingAnchor.Read(content, text);
         var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{Lilia.Engines.LabelKey.Safe(label)}}}" : "";
 
         // Starred form: `numbered: false` emits \section*{} which

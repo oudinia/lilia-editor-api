@@ -96,4 +96,32 @@ public class ExportSweepTests
         (await Compile(_render.RenderToLatex(CjkDoc()))).Should().NotBeEmpty();
         (await Compile(Export(CjkDoc()))).Should().NotBeEmpty();
     }
+
+    // LTX-18: a listing labels itself in its options; a \ref to it is not dangling.
+    [Fact]
+    public void A_listing_label_counts_as_a_label()
+    {
+        var doc = Doc(null, B("paragraph", new { text = @"See \ref{lst:py}." }),
+            B("code", new { code = "x = 1", language = "python", caption = "C", label = "lst:py" }));
+        new EmittedLatexAudit(_render.RenderToLatex(doc)).DanglingReferences.Should().BeEmpty();
+    }
+
+    // LTX-11: a heading stored with its Markdown anchor still in the text; and the LML id on export.
+    [Fact]
+    public void A_heading_anchor_is_its_label_on_both_emitters()
+    {
+        var doc = Doc(null, B("heading", new { text = "Markdown Heading {#sec:md}", level = 1 }),
+            B("heading", new { text = "By id", level = 2, id = "sec:byid" }));
+        foreach (var latex in new[] { _render.RenderToLatex(doc), Export(doc) })
+        {
+            latex.Should().Contain(@"\section{Markdown Heading}\label{sec:md}").And.NotContain("{\\#");
+            latex.Should().Contain(@"\label{sec:byid}");
+        }
+    }
+
+    // LTX-34: the warning check_document reads to say characters are missing from the PDF.
+    [Fact]
+    public void The_dropped_characters_warning_carries_its_marker() =>
+        LaTeXGlyphScanner.Describe(LaTeXGlyphScanner.Scan("Missing character: There is no П (U+041F) in font lmroman10-regular!"))
+            .Should().Contain(LaTeXGlyphScanner.DroppedMarker);
 }

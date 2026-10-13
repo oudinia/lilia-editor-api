@@ -153,11 +153,14 @@ public sealed class LiliaMcpTools(
                 .ToList();
             // MCP-37: the block the compile error is in (the source carries a % block:{id} marker per block).
             var errorBlockId = result.ParsedError?.LineNumber is int line ? audit.BlockAtLine(line) : null;
+            // Characters the font doesn't have compile, but are missing from the PDF (13 Oct sweep:
+            // LTX-34's Cyrillic, with printsCorrectly true).
+            var dropped = result.Warnings.FirstOrDefault(w => w.Contains(LaTeXGlyphScanner.DroppedMarker, StringComparison.Ordinal));
             return new
             {
                 compiles = result.Valid,
                 engine,
-                printsCorrectly = result.Valid && references.Count == 0 && citations.Count == 0,
+                printsCorrectly = result.Valid && references.Count == 0 && citations.Count == 0 && dropped is null,
                 error = result.Error,
                 errorCategory = result.ParsedError?.Category,
                 errorBlockId,
@@ -168,7 +171,9 @@ public sealed class LiliaMcpTools(
                 durationMs = result.DurationMs,
                 note = references.Count + citations.Count > 0
                     ? "It compiles, but references or citations above will print as ?? or ? in the PDF."
-                    : null,
+                    : dropped is not null && result.Valid
+                        ? "It compiles, but some characters are missing from the PDF (see warnings)."
+                        : null,
                 url = EditorUrl(d.Id),
             };
         }

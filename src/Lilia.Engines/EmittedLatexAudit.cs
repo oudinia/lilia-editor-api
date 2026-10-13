@@ -22,6 +22,9 @@ public sealed class EmittedLatexAudit
     private readonly IReadOnlyList<(int Line, Guid Block)> _markers;
 
     private static readonly Regex LabelRx = new(@"\\label\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
+    // A listing labels itself in its options: \begin{lstlisting}[…, label={lst:py}] (13 Oct sweep:
+    // every \ref to a listing was reported dangling though it resolves).
+    private static readonly Regex ListingLabelRx = new(@"\\(?:begin\{lstlisting\}|lstinputlisting)\[[^\]]*?\blabel=\{?(?<k>[^,{}\]]+)\}?", RegexOptions.Compiled);
     private static readonly Regex RefRx = new(@"\\(?:eqref|autoref|cref|Cref|pageref|nameref|ref)\*?\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
     private static readonly Regex CiteRx = new(@"\\(?:cite|citep|citet|citealp|citealt|parencite|textcite|footcite|autocite|nocite)\*?(?:\[[^\]]*\]){0,2}\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
     private static readonly Regex BibItemRx = new(@"\\bibitem(?:\[[^\]]*\])?\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
@@ -50,7 +53,7 @@ public sealed class EmittedLatexAudit
             }
             var text = CommentRx.Replace(raw, "");
             if (text.Length == 0) continue;
-            foreach (Match m in LabelRx.Matches(text))
+            foreach (var m in LabelRx.Matches(text).Concat(ListingLabelRx.Matches(text)))
                 labels[m.Groups["k"].Value.Trim()] = labels.GetValueOrDefault(m.Groups["k"].Value.Trim()) + 1;
             foreach (Match m in RefRx.Matches(text))
                 foreach (var k in m.Groups["k"].Value.Split(','))
