@@ -146,10 +146,12 @@ public class TikzFigureEndpointTests : FourCallersTestBase
         var svg = await res.Content.ReadAsStringAsync();
         svg.Should().StartWith("<?xml").And.Contain("<svg").And.Contain("</svg>");
 
-        // The preview keeps the fast path and places the drawing with its caption.
+        // The corpus documents fill their pages with \lipsum: LaTeX content, so since #266 they print
+        // through LaTeX (ContentRouting), which loads lipsum for them. It stopped there: \lipsum was
+        // undefined.
         var pdf = await c.PostAsync($"/api/latex/{doc.Id}/pdf", null);
         pdf.StatusCode.Should().Be(HttpStatusCode.OK, await pdf.Content.ReadAsStringAsync());
-        pdf.Headers.GetValues("X-Render-Engine").Single().Should().Be("typst");
+        pdf.Headers.GetValues("X-Render-Engine").Single().Should().Be("pdflatex");
         Encoding.ASCII.GetString(await pdf.Content.ReadAsByteArrayAsync(), 0, 4).Should().Be("%PDF");
     }
 }

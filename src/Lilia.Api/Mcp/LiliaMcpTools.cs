@@ -203,6 +203,8 @@ public sealed class LiliaMcpTools(
                 unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
                 error = result.Error,
                 errorCategory = result.ParsedError?.Category,
+                // The command LaTeX doesn't know (MCP-37: only "Undefined control sequence." was said).
+                errorCommand = result.ParsedError is { Category: "undefined_control_sequence", Token: { } token } ? token : null,
                 errorBlockId,
                 warnings = result.Warnings.Take(20),
                 warningCount = result.Warnings.Length,
