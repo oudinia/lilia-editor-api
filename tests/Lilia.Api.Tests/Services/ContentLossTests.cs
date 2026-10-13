@@ -146,6 +146,41 @@ public class ContentLossTests
         latex.Should().NotContain("Unknown block type");
     }
 
+    // MCP-91 (run 3): a book's abstract opened \mainmatter in the check (arabic page 1 before the
+    // preface) and went before \frontmatter in the export. Both now keep it in the front matter.
+    [Fact]
+    public void A_books_abstract_is_front_matter_in_the_check_and_the_export()
+    {
+        Block[] Blocks() =>
+        [
+            B("abstract", new { text = "What the book shows." }),
+            B("frontMatter", new { subType = "preface", text = "Why this book." }),
+            B("heading", new { text = "Start", level = 1 }),
+            B("paragraph", new { text = "Body." }),
+        ];
+        var check = RenderDoc("book", Blocks());
+        var doc = new Document
+        {
+            Id = Guid.NewGuid(), Title = "T", OwnerId = "u", Language = "en", PaperSize = "a4",
+            FontFamily = "serif", FontSize = 11, LatexDocumentClass = "book",
+            Blocks = Blocks().Select((b, i) => { b.SortOrder = i; return b; }).ToList(),
+            BibliographyEntries = new List<BibliographyEntry>(),
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        };
+        var export = new Lilia.Api.Services.LaTeXExportService(null!, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<Lilia.Api.Services.LaTeXExportService>.Instance)
+            .BuildSingleFileLatex(doc, doc.Blocks.ToList(), [], new Lilia.Api.Services.LaTeXExportOptions());
+        foreach (var latex in new[] { check, export })
+        {
+            var front = latex.IndexOf(@"\frontmatter", StringComparison.Ordinal);
+            var abs = latex.IndexOf("What the book shows.", StringComparison.Ordinal);
+            var main = latex.IndexOf(@"\mainmatter", StringComparison.Ordinal);
+            front.Should().BeGreaterThan(0, latex);
+            abs.Should().BeGreaterThan(front, "the abstract is front matter");
+            main.Should().BeGreaterThan(abs);
+            latex.Split("What the book shows.").Length.Should().Be(2, "printed once");
+        }
+    }
+
     [Fact]
     public void In_an_article_front_matter_is_a_starred_section()
     {
