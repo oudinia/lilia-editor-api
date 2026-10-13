@@ -57,6 +57,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        bibEntries = WithTextEntries(blocks, bibEntries);
         var files = ApplyCitationBackend(GenerateSingleFile(doc, blocks, bibEntries, options), options);
         return files.First(f => f.Path == "main.tex").Content;
     }
@@ -134,6 +135,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        bibEntries = WithTextEntries(blocks, bibEntries);
         var files = options.Structure switch
         {
             "multi" when options.MultiFileLayout == "overleaf" =>
@@ -162,8 +164,38 @@ public class LaTeXExportService : ILaTeXExportService
     // is a hard error (RenderService.SupportsLongtable). Set with the heading class.
     private bool _longtableAllowed = true;
 
+    // The check emitter, which renders every body block of the export too (BlocksToLatex), and
+    // the document being exported, set with the heading class.
+    private readonly RenderService _check = new(null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<RenderService>.Instance);
+    private Document? _doc;
+
+    /// <summary>
+    /// References written as text in a bibliography block (<c>@cite[key] Author - Title</c>), as
+    /// <c>@misc</c> entries in the .bib beside the document's own. The check printed them; the
+    /// export printed nothing and every citation of them was [?] (MCP-04, run 2's MCP-76).
+    /// </summary>
+    internal static List<BibliographyEntry> WithTextEntries(IEnumerable<Block> blocks, List<BibliographyEntry> bibEntries)
+    {
+        var known = bibEntries.Select(e => e.CiteKey).ToHashSet(StringComparer.Ordinal);
+        var extra = blocks
+            .Where(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(b => BibliographyText.Parse(
+                b.Content?.RootElement is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
+                    ? t.GetString() : null))
+            .Where(e => known.Add(e.Key))
+            .Select(e => new BibliographyEntry
+            {
+                CiteKey = e.Key,
+                EntryType = "misc",
+                Data = JsonDocument.Parse(JsonSerializer.Serialize(new { note = e.Text })),
+            })
+            .ToList();
+        return extra.Count == 0 ? bibEntries : bibEntries.Concat(extra).ToList();
+    }
+
     private void UseHeadingClass(Document doc, LaTeXExportOptions options)
     {
+        _doc = doc;
         _headingClass = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
         _longtableAllowed = RenderService.SupportsLongtable(doc);
     }
@@ -836,7 +868,10 @@ public class LaTeXExportService : ILaTeXExportService
         // A deck's footnote blocks go inside the slide before them (SlideLatex.AttachFootnotes).
         if (LaTeXPreamble.IsBeamer(_headingClass))
             SlideLatex.AttachFootnotes(blocks.Select(b => b.Type).ToList(), rendered);
-        return string.Join("\n\n", rendered.Where(r => !string.IsNullOrEmpty(r)));
+        // Composed as the check composes it: book divisions, break attributes, floats in multicols.
+        return _doc is null
+            ? string.Join("\n\n", rendered.Where(r => !string.IsNullOrEmpty(r)))
+            : _check.ComposeBody(_doc, blocks, rendered, pageMap: false).TrimEnd();
     }
 
     private string RenderBlock(Block block)
@@ -845,46 +880,20 @@ public class LaTeXExportService : ILaTeXExportService
         {
             var content = block.Content.RootElement;
 
-            return block.Type switch
+            // One emitter (run 2, MCP-76): every body block is rendered by the check emitter, so the
+            // export prints what check_document judged. The export keeps only what it needs to do
+            // differently: figures (files under figures/, with a placeholder when one is missing)
+            // and the bibliography (a .bib, with the text references added: WithTextEntries).
+            switch (block.Type)
             {
-                "paragraph" => RenderParagraph(content),
-                "heading" => RenderHeading(content),
-                "equation" => RenderEquation(content),
-                "figure" => RenderFigure(content),
-                "table" => RenderTable(content),
-                "code" => RenderCode(content),
-                "list" => RenderList(content),
-                "blockquote" => RenderBlockquote(content),
-                "theorem" => RenderTheorem(content),
-                "algorithm" or "algorithm2e" => RenderAlgorithm(content),
-                // Match both canonical camelCase (BlockTypes constants)
-                // and the all-lowercase forms legacy / imported data uses.
-                "tableOfContents" or "tableofcontents" or "toc" => @"\tableofcontents" + "\n" + @"\newpage",
-                "pageBreak" or "pagebreak" or "page_break" => @"\newpage",
-                "columnBreak" or "columnbreak" or "column_break" => @"\liliaColumnBreak",
-                "columnLayout" => RenderColumnLayout(content),
-                "personalInfo" => RenderPersonalInfo(content),
-                "photo" => RenderPhoto(content),
-                "cvEntry" => RenderCvEntry(content),
-                "cvSection" => RenderCvSection(content),
-                "embed" => RenderEmbed(content),
-                "callout" => RenderCallout(content),
-                // Footnotes reached LaTeX as
-                //   % [Unsupported block type for LaTeX export: footnote]
-                // — a comment, which is to say nothing at all. An article with
-                // footnotes exported without them, silently, in both the .tex
-                // and the PDF built from it.
-                "footnote" => RenderFootnote(content),
-                // A beamer frame, as the preview writes it. Slides were dropped here as
-                // unsupported, so an exported deck (and its PDF) had no frames.
-                "slide" => Lilia.Engines.SlideLatex.Frame(content, EscapeLatex, FormatInlineContent),
-                // The first abstract is printed after \maketitle and never reaches here (LeadAbstract).
-                "abstract" => $"\\begin{{abstract}}\n{FormatInlineContent(GetText(content))}\n\\end{{abstract}}",
-                "bibliography" => "", // handled via .bib file
-                // The Appendix back-matter block starts the appendices (see RenderService).
-                "backMatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
-                _ => RenderUnknownBlock(block),
-            };
+                case "figure" or "image":
+                    return RenderFigure(content);
+                case "bibliography":
+                    return "";
+            }
+            if (_doc is not null && block.Document is null) block.Document = _doc;
+            var latex = _check.RenderBlockToLatex(block, _longtableAllowed && RenderService.IsLongTable(block));
+            return latex.StartsWith("% Unknown block type", StringComparison.Ordinal) ? RenderUnknownBlock(block) : latex;
         }
         catch (Exception ex)
         {
@@ -913,230 +922,14 @@ public class LaTeXExportService : ILaTeXExportService
         return $"% [Unsupported block type for LaTeX export: {block.Type}]";
     }
 
-    private string RenderParagraph(JsonElement content)
-    {
-        var text = GetText(content);
-        return FormatInlineContent(text);
-    }
 
-    private static string RenderColumnLayout(JsonElement content)
-    {
-        // Paired marker — mode="start" opens a multicols region, mode="end" closes it.
-        var mode = content.TryGetProperty("mode", out var m) ? m.GetString() ?? "start" : "start";
-        if (string.Equals(mode, "end", StringComparison.OrdinalIgnoreCase))
-            return @"\end{multicols}";
-        var columns = content.TryGetProperty("columns", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 2;
-        columns = Math.Clamp(columns, 1, 3);
-        return columns >= 2
-            ? $@"\begin{{multicols}}{{{columns}}}"
-            : @"\onecolumn";
-    }
 
-    private string RenderPersonalInfo(JsonElement content)
-    {
-        var name = GetString(content, "name");
-        var headline = GetString(content, "headline");
-        var email = GetString(content, "email");
-        var homepage = GetString(content, "homepage");
-        var extra = GetString(content, "extra");
-
-        var sb = new StringBuilder();
-        if (!string.IsNullOrEmpty(name))
-            sb.AppendLine(@$"\noindent\textbf{{\LARGE {EscapeLatex(name)}}}\par\smallskip");
-        if (!string.IsNullOrEmpty(headline))
-            sb.AppendLine($@"\textit{{{EscapeLatex(headline)}}}\par");
-        var line = new List<string>();
-        if (!string.IsNullOrEmpty(email)) line.Add(@$"\texttt{{{EscapeLatex(email)}}}");
-        if (content.TryGetProperty("phones", out var phonesEl) && phonesEl.ValueKind == JsonValueKind.Array)
-            foreach (var p in phonesEl.EnumerateArray())
-            {
-                var num = p.TryGetProperty("number", out var n) ? n.GetString() : null;
-                if (!string.IsNullOrEmpty(num)) line.Add(EscapeLatex(num));
-            }
-        if (!string.IsNullOrEmpty(homepage)) line.Add($@"\url{{{homepage}}}");
-        if (line.Count > 0) sb.AppendLine(string.Join(@" \ $\cdot$\ ", line) + @"\par");
-        if (content.TryGetProperty("socials", out var socialsEl) && socialsEl.ValueKind == JsonValueKind.Array)
-            foreach (var s in socialsEl.EnumerateArray())
-            {
-                var network = s.TryGetProperty("network", out var nEl) ? nEl.GetString() : "";
-                var handle = s.TryGetProperty("handle", out var hEl) ? hEl.GetString() : "";
-                if (!string.IsNullOrEmpty(handle))
-                    sb.AppendLine(@$"\small\textbf{{{EscapeLatex(network ?? "")}:}} {EscapeLatex(handle)}\par");
-            }
-        if (!string.IsNullOrEmpty(extra))
-            sb.AppendLine($@"\smallskip\textit{{{EscapeLatex(extra)}}}\par");
-        return sb.ToString().TrimEnd();
-    }
-
-    private string RenderPhoto(JsonElement content)
-    {
-        var src = GetString(content, "src");
-        if (string.IsNullOrEmpty(src)) return "";
-        var size = content.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number ? sz.GetInt32() : 64;
-        var position = GetString(content, "position"); // left|right|center
-        var align = position switch
-        {
-            "left" => "flushleft",
-            "right" => "flushright",
-            _ => "center"
-        };
-        var filename = ExtractImageFilename(src);
-        return $@"\begin{{{align}}}
-\IfFileExists{{figures/{filename}}}{{\includegraphics[height={size}pt]{{figures/{filename}}}}}{{\fbox{{\parbox{{{size}pt}}{{\centering\small [photo]}}}}}}
-\end{{{align}}}";
-    }
-
-    private string RenderCvSection(JsonElement content)
-    {
-        var title = GetString(content, "title");
-        return @$"\par\medskip\noindent\textbf{{\Large {EscapeLatex(title)}}}\par\smallskip";
-    }
-
-    private string RenderCvEntry(JsonElement content)
-    {
-        var period = GetString(content, "period");
-        var role = GetString(content, "role");
-        var org = GetString(content, "org");
-        var location = GetString(content, "location");
-        var description = GetString(content, "description");
-        var sb = new StringBuilder();
-        sb.Append(@$"\noindent\textbf{{{EscapeLatex(role)}}}");
-        if (!string.IsNullOrEmpty(org)) sb.Append(@$", \emph{{{EscapeLatex(org)}}}");
-        if (!string.IsNullOrEmpty(location)) sb.Append(@$" — {EscapeLatex(location)}");
-        if (!string.IsNullOrEmpty(period)) sb.Append(@$" \hfill {EscapeLatex(period)}");
-        sb.AppendLine(@"\par");
-        if (!string.IsNullOrEmpty(description))
-            sb.AppendLine(FormatInlineContent(description) + @"\par");
-        return sb.ToString().TrimEnd();
-    }
 
     private static string GetString(JsonElement el, string prop) =>
         el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
-    private string RenderHeading(JsonElement content)
-    {
-        var text = GetText(content);
-        var level = content.TryGetProperty("level", out var l) ? l.GetInt32() : 1;
-        // In a class with \chapter, level 1 is a chapter (see HeadingCommands).
-        var command = Lilia.Core.Models.HeadingCommands.For(level, _headingClass);
-        (text, var label) = Lilia.Engines.HeadingAnchor.Read(content, text);
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{Lilia.Engines.LabelKey.Safe(label)}}}" : "";
 
-        // Starred form: `numbered: false` emits \section*{} which
-        // suppresses both the auto-number and the TOC entry. Matches
-        // LaTeX's behavior — see "Designing Pages" §sectioning.
-        var numbered = !content.TryGetProperty("numbered", out var nEl)
-            || nEl.ValueKind != JsonValueKind.False;
-        var star = numbered ? "" : "*";
 
-        // Optional short title for the TOC entry — \section[short]{full}.
-        // Only meaningful when numbered (TOC entry exists); silently
-        // drop the bracketed arg on starred headings.
-        var shortTitle = content.TryGetProperty("shortTitle", out var stEl) && stEl.ValueKind == JsonValueKind.String
-            ? stEl.GetString() ?? ""
-            : "";
-        var shortPart = numbered && !string.IsNullOrEmpty(shortTitle)
-            ? $"[{FormatInlineContent(shortTitle)}]"
-            : "";
-
-        // Route through FormatInlineContent so `**Important**` becomes
-        // `\textbf{Important}` (parity with paragraph + preview render).
-        // Strip baked-in numbering prefix ("1. ", "1.1 ", "I. ", "A. ")
-        // mirroring SectionKeywordRegistry.StripNumberingPrefix on the
-        // import path. Without this, LaTeX auto-numbering shows the
-        // number twice in the rendered PDF and the TOC.
-        var stripped = StripBakedNumberingPrefixForHeading(text);
-        return $@"\{command}{star}{shortPart}{{{FormatInlineContent(stripped)}}}{labelPart}";
-    }
-
-    /// <summary>
-    /// Mirror of <c>SectionKeywordRegistry.StripNumberingPrefix</c>.
-    /// </summary>
-    private static string StripBakedNumberingPrefixForHeading(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return text;
-        var match = System.Text.RegularExpressions.Regex.Match(text,
-            @"^(?:\d+(?:\.\d+)*\.?\s+|[IVXLC]+\.\s+|[A-Z]\.\s+)(.+)$");
-        return match.Success ? match.Groups[1].Value : text;
-    }
-
-    private string RenderEquation(JsonElement content)
-    {
-        var latex = EquationContent.ReadSource(content);
-        var (mode, numbered) = EquationContent.ReadMode(content);
-        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        // Not when the source carries its own \label: two labels in one equation stop the compile
-        // ("Multiple \label's", 5 of the campaign's 8 papers on 13 Oct).
-        var labelPart = !string.IsNullOrEmpty(label) && !latex.Contains(@"\label{", StringComparison.Ordinal)
-            ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
-        // An empty display is a blank line in maths mode, which LaTeX refuses (LTX-43).
-        if (string.IsNullOrWhiteSpace(latex)) return "% Empty equation";
-
-        // The source is itself a display environment — what a .tex import
-        // stores for align / gather / multline (it keeps the environment so
-        // KaTeX can render the alignment). Wrapping that in equation or \[…\]
-        // is fatal: "Erroneous nesting of equation structures" / "\begin{gather}
-        // allowed only in paragraph mode", no PDF. Emit it as the environment
-        // it is; numbering is the block's, so the star follows `numbered`.
-        if (mode != "inline" && TryRenderStandaloneMathEnvironment(latex, numbered, labelPart) is { } standalone)
-            return standalone;
-
-        // An alignment body with no mode to match it.
-        //
-        // Four blocks in the corpus store `a &= b \\ c &= d` with mode unset,
-        // which reads as "display" above and lands in \begin{equation} — where
-        // an alignment tab is fatal: "Misplaced alignment tab character &",
-        // no PDF produced. The whole export fails, not just this equation.
-        //
-        // Promoting to align is what the content already is. It is done only
-        // for a top-level tab, so a pmatrix keeps its own & untouched, and it
-        // is logged rather than done quietly: the document renders differently
-        // from what its mode claims, and that is worth being able to find out.
-        if (mode is not ("align" or "gather") && EquationContent.HasTopLevelAlignment(latex))
-        {
-            _logger.LogWarning(
-                "[LaTeX] Equation declares mode '{Mode}' but its source is an alignment body; " +
-                "emitting align instead. In {Mode} it would fail to compile with " +
-                "'Misplaced alignment tab character &'.",
-                mode, mode);
-            mode = "align";
-        }
-
-        if (mode == "inline")
-            return $"${latex}$";
-        if (mode == "align")
-            return $@"\begin{{align{(numbered ? "" : "*")}}}{labelPart}" + "\n" + latex + "\n" + $@"\end{{align{(numbered ? "" : "*")}}}";
-        if (mode == "gather")
-            return $@"\begin{{gather{(numbered ? "" : "*")}}}{labelPart}" + "\n" + latex + "\n" + $@"\end{{gather{(numbered ? "" : "*")}}}";
-        if (numbered)
-            return $@"\begin{{equation}}{labelPart}" + "\n" + latex + "\n" + @"\end{equation}";
-        return $@"\[" + "\n" + latex + "\n" + @"\]";
-    }
-
-    // Display environments that cannot sit inside equation / \[…\]. split,
-    // aligned, cases and friends are deliberately absent: they need the wrapper.
-    private static readonly Regex StandaloneMathEnvironment = new(
-        @"^\\begin\{(align|gather|multline|flalign|alignat|eqnarray)(\*?)\}([\s\S]*)\\end\{\1\2\}$",
-        RegexOptions.Compiled);
-
-    internal static string? TryRenderStandaloneMathEnvironment(string latex, bool numbered, string labelPart)
-    {
-        var m = StandaloneMathEnvironment.Match(latex.Trim());
-        if (!m.Success) return null;
-
-        var env = m.Groups[1].Value + (numbered ? "" : "*");
-        var body = m.Groups[3].Value;
-        // alignat takes its column count as the first argument; keep it on the
-        // \begin line and put the label after it.
-        var arg = "";
-        var argMatch = Regex.Match(body, @"^\{[^{}]*\}");
-        if (m.Groups[1].Value == "alignat" && argMatch.Success)
-        {
-            arg = argMatch.Value;
-            body = body[argMatch.Length..];
-        }
-        return $@"\begin{{{env}}}{arg}{labelPart}" + "\n" + body.Trim('\n', '\r') + "\n" + $@"\end{{{env}}}";
-    }
 
     private string RenderFigure(JsonElement content)
     {
@@ -1217,289 +1010,7 @@ public class LaTeXExportService : ILaTeXExportService
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Build the LaTeX column specifier from the table block's
-    /// columnAlign + columnWidth fields. Each entry in columnAlign
-    /// is one of "l" (left), "c" (center), "r" (right), or "p" (paragraph
-    /// — needs a matching width). columnWidth is parallel: same index
-    /// gives the cell width for "p"/"m"/"b" columns. Falls back to "l"
-    /// for any column not covered by either array, so partial schemas
-    /// degrade safely.
-    /// </summary>
-    private static string[] BuildColumnSpec(JsonElement content, int colCount)
-    {
-        string[] aligns = Array.Empty<string>();
-        if (content.TryGetProperty("columnAlign", out var alignEl) && alignEl.ValueKind == JsonValueKind.Array)
-        {
-            aligns = alignEl.EnumerateArray()
-                .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "l" : "l")
-                .ToArray();
-        }
-        string[] widths = Array.Empty<string>();
-        if (content.TryGetProperty("columnWidth", out var widEl) && widEl.ValueKind == JsonValueKind.Array)
-        {
-            widths = widEl.EnumerateArray()
-                .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : "")
-                .ToArray();
-        }
 
-        var letters = new string[colCount];
-        for (int i = 0; i < colCount; i++)
-        {
-            var raw = (i < aligns.Length ? aligns[i] : "l").Trim().ToLowerInvariant();
-            // Normalise: anything other than the supported set falls back
-            // to 'l'. Prevents user-typed garbage breaking pdflatex. A decimal
-            // column ("decimal") becomes an S column through TableColumnFormat.
-            switch (raw)
-            {
-                case "c":
-                case "r":
-                    letters[i] = raw;
-                    break;
-                case "p":
-                case "m":
-                case "b":
-                    var w = i < widths.Length ? widths[i] : "";
-                    letters[i] = string.IsNullOrWhiteSpace(w) ? "l" : $"{raw}{{{w}}}";
-                    break;
-                default:
-                    letters[i] = "l";
-                    break;
-            }
-        }
-        return letters;
-    }
-
-    private string RenderTable(JsonElement content)
-    {
-        var hasHeaders = content.TryGetProperty("headers", out var headers)
-            && headers.ValueKind == JsonValueKind.Array
-            && headers.GetArrayLength() > 0;
-
-        if (!content.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array)
-            return "";
-
-        var rowList = rows.EnumerateArray().ToList();
-        var colCount = hasHeaders
-            ? headers.GetArrayLength()
-            : rowList.Count > 0 && rowList[0].ValueKind == JsonValueKind.Array
-                ? rowList[0].GetArrayLength()
-                : 1;
-        // Per-column alignment: read columnAlign + optional columnWidth
-        // from the block content. Pre-fix this rendered every column as
-        // 'l' regardless of what the schema said.
-        // The table's own meaning (2g): decimal alignment as an siunitx S column, the unit in
-        // the header, the best value in bold. Shared with the preview's emitter.
-        var plan = TableColumnFormat.Plan(content, colCount, hasHeaders);
-        var colSpec = plan.ApplyToSpec(BuildColumnSpec(content, colCount));
-
-        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
-        var shortCaption = content.TryGetProperty("shortCaption", out var sc) && sc.ValueKind == JsonValueKind.String
-            ? sc.GetString() ?? ""
-            : "";
-        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("table", label)}}}" : "";
-        var span = content.TryGetProperty("span", out var sp) ? sp.GetString() ?? "column" : "column";
-        var env = string.Equals(span, "page", StringComparison.OrdinalIgnoreCase) ? "table*" : "table";
-
-        // The rest of the table's meaning (2g): group headers, notes, row groups, and
-        // whether it is long. See TableLayout (shared with the preview's emitter).
-        var layout = TableLayout.Read(content, colCount, hasHeaders);
-
-        // longtable: page-breaking tables, for a table marked longTable or over 40 body rows
-        // (TableLayout.IsLong), and only in a single-column document — longtable fails in two
-        // columns. The header repeats on each page. longtable IS its own float, so we do NOT
-        // wrap it in table/table* — its \caption goes inside the environment.
-        var longTable = layout.IsLong && _longtableAllowed;
-
-        var captionLine = !string.IsNullOrEmpty(caption)
-            ? (!string.IsNullOrEmpty(shortCaption)
-                ? $@"\caption[{RenderService.OptionalArgument(InlineArgument(shortCaption))}]{{{InlineArgument(caption)}}}{labelPart}"
-                : $@"\caption{{{InlineArgument(caption)}}}{labelPart}")
-            : "";
-
-        var sb = new StringBuilder();
-        if (!longTable)
-        {
-            sb.AppendLine($@"\begin{{{env}}}[H]");
-            sb.AppendLine(@"\centering");
-            if (!string.IsNullOrEmpty(captionLine)) sb.AppendLine(captionLine);
-        }
-
-        // Per-column alignment letters for \multicolumn (the leftmost column of
-        // a span drives its alignment).
-        var colAligns = ResolveColumnAligns(content, colCount);
-
-        // Build the coverage maps from span origins so the export can emit
-        // \multicolumn / \multirow and skip the cells a span absorbs. The
-        // editor keeps full-width rows (data index == grid column), so a span
-        // origin is an object {content,colspan,rowspan} and the cells it covers
-        // remain in the grid but are dropped here.
-        var origins = new Dictionary<(int, int), (int Cs, int Rs, string Text)>();
-        var contLeft = new Dictionary<(int, int), int>(); // rowspan continuation: (r,c0) -> colspan width
-        var covered = new HashSet<(int, int)>();
-        for (int r = 0; r < rowList.Count; r++)
-        {
-            if (rowList[r].ValueKind != JsonValueKind.Array) continue;
-            var cells = rowList[r].EnumerateArray().ToList();
-            for (int c = 0; c < cells.Count; c++)
-            {
-                var (cs, rs) = TableCellSpan(cells[c]);
-                if (cs <= 1 && rs <= 1) continue;
-                origins[(r, c)] = (cs, rs, TableCellText(cells[c]));
-                for (int rr = r; rr < r + rs; rr++)
-                    for (int cc = c; cc < c + cs; cc++)
-                    {
-                        if (rr == r && cc == c) continue;
-                        covered.Add((rr, cc));
-                        if (rr > r && cc == c) contLeft[(rr, cc)] = cs; // left edge of a continuation row
-                    }
-            }
-        }
-
-        // Emit a single body row (grid-aware). `bi` is the row's index among the body rows,
-        // which is how notes and row groups name it.
-        string EmitRow(int r, int bi, List<JsonElement> cells)
-        {
-            var toks = new List<string>();
-            int c = 0;
-            while (c < colCount)
-            {
-                var align = c < colAligns.Length ? colAligns[c] : "l";
-                if (origins.TryGetValue((r, c), out var o))
-                {
-                    // A cell's text is read as the preview reads it (LatexText.EscapeCell): the
-                    // author's \textbf and $…$ survive, everything else is escaped.
-                    var inner = layout.WithNote(bi, c, LatexText.EscapeCell(plan.BodyText(c, o.Text)));
-                    if (o.Rs > 1) inner = $@"\multirow{{{o.Rs}}}{{*}}{{{inner}}}";
-                    toks.Add(o.Cs > 1 ? $@"\multicolumn{{{o.Cs}}}{{{align}}}{{{inner}}}" : plan.Protect(c, inner));
-                    c += Math.Max(1, o.Cs);
-                }
-                else if (contLeft.TryGetValue((r, c), out var cw))
-                {
-                    // Continuation row of a rowspan: leave the slot blank but
-                    // keep the column count consistent.
-                    toks.Add(cw > 1 ? $@"\multicolumn{{{cw}}}{{{align}}}{{}}" : "");
-                    c += Math.Max(1, cw);
-                }
-                else if (covered.Contains((r, c)))
-                {
-                    c += 1; // absorbed by a span; nothing to emit
-                }
-                else
-                {
-                    var text = plan.BodyText(c, c < cells.Count ? TableCellText(cells[c]) : "");
-                    var number = plan.DecimalNumber(c, text);
-                    var cell = number is not null
-                        ? layout.NumberWithNote(bi, c, number)
-                        : plan.Protect(c, layout.WithNote(bi, c, plan.BoldBest(c, text, LatexText.EscapeCell(text))));
-                    // A cell starting with '[' straight after \\ or a rule reads as that
-                    // command's optional argument; an empty group ends the scan (as the preview).
-                    if (cell.StartsWith("[", StringComparison.Ordinal)) cell = "{}" + cell;
-                    toks.Add(cell);
-                    c += 1;
-                }
-            }
-            return string.Join(" & ", toks) + @" \\";
-        }
-
-        // The header rows, kept as text: a longtable writes them twice.
-        var headRows = "";
-        if (hasHeaders)
-        {
-            // An S column reads its header as a number unless it is braced.
-            var headerCells = headers.EnumerateArray()
-                .Select((h, i) => plan.Protect(i, LatexText.TableHead(layout.WithNote(-1, i, LatexText.HeaderCell(plan.HeaderText(i, TableCellText(h)))))))
-                .ToList();
-            // A group header row above it, with a trimmed rule under each group.
-            var groupLines = layout.GroupHeaderLines(colCount, l => LatexText.TableHead(LatexText.HeaderCell(l)));
-            // \liliaHeadRow and \liliaTableHead: a document theme styles the header row and its
-            // cells; the cells keep \textbf.
-            headRows = (groupLines is null ? "" : groupLines + "\n")
-                + LatexText.HeadRow + string.Join(" & ", headerCells) + @" \\";
-        }
-
-        var tableEnv = longTable ? "longtable" : "tabular";
-        if (hasHeaders)
-        {
-            sb.AppendLine(LatexText.HeadRowFallback);
-            sb.AppendLine(LatexText.TableHeadFallback);
-        }
-        if (rowList.Count(r => r.ValueKind == JsonValueKind.Array) < LatexText.BandMinBodyRows) sb.AppendLine(LatexText.FewRows);
-        if (longTable)
-        {
-            // Notes under a longtable: threeparttablex collects them first and prints them in
-            // the last foot.
-            if (layout.HasNotes)
-            {
-                sb.AppendLine(@"\begin{ThreePartTable}");
-                sb.AppendLine(layout.LongNotesList());
-            }
-            sb.AppendLine($@"\begin{{longtable}}{{{colSpec}}}");
-            // longtable's \caption lives inside the env and ends the line; the header repeats on
-            // every page under "(continued)".
-            var captionRow = !string.IsNullOrEmpty(captionLine) ? captionLine + @" \\"
-                : !string.IsNullOrEmpty(labelPart) ? labelPart + @" \\" : "";
-            sb.AppendLine(TableLayout.LongTableHead(captionRow, !string.IsNullOrEmpty(captionLine), headRows));
-            if (layout.HasNotes)
-            {
-                sb.AppendLine(@"\bottomrule");
-                sb.AppendLine(@"\insertTableNotes");
-                sb.AppendLine(@"\endlastfoot");
-            }
-        }
-        else
-        {
-            // Notes print under the table, not at the page foot: threeparttable.
-            if (layout.HasNotes) sb.AppendLine(@"\begin{threeparttable}");
-            sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
-            sb.AppendLine(@"\toprule");
-            if (headRows.Length > 0)
-            {
-                sb.AppendLine(headRows);
-                sb.AppendLine(@"\midrule");
-            }
-        }
-
-        var body = 0;
-        for (int r = 0; r < rowList.Count; r++)
-            if (rowList[r].ValueKind == JsonValueKind.Array)
-            {
-                var bi = body++;
-                // A row group starts here: a rule before it, after which a Banded paper restarts
-                // its stripes (lilia-theme.sty).
-                if (layout.StartsGroup(bi)) sb.AppendLine(@"\midrule");
-                sb.AppendLine(EmitRow(r, bi, rowList[r].EnumerateArray().ToList()));
-            }
-
-        // With notes under a longtable the bottom rule is in the last foot, above them.
-        if (!(longTable && layout.HasNotes)) sb.AppendLine(@"\bottomrule");
-        sb.AppendLine($@"\end{{{tableEnv}}}");
-        if (longTable)
-        {
-            if (layout.HasNotes) sb.AppendLine(@"\end{ThreePartTable}");
-            return sb.ToString().TrimEnd();
-        }
-        if (layout.HasNotes)
-        {
-            sb.AppendLine(layout.NotesList());
-            sb.AppendLine(@"\end{threeparttable}");
-        }
-        sb.Append($@"\end{{{env}}}");
-        return sb.ToString();
-    }
-
-    // A table cell is either a plain string or an object {content|text, colspan, rowspan}.
-    private static string TableCellText(JsonElement cell)
-    {
-        if (cell.ValueKind == JsonValueKind.String) return cell.GetString() ?? "";
-        if (cell.ValueKind == JsonValueKind.Object)
-        {
-            if (cell.TryGetProperty("content", out var ct) && ct.ValueKind == JsonValueKind.String) return ct.GetString() ?? "";
-            if (cell.TryGetProperty("text", out var tx) && tx.ValueKind == JsonValueKind.String) return tx.GetString() ?? "";
-        }
-        return "";
-    }
 
     private static (int Colspan, int Rowspan) TableCellSpan(JsonElement cell)
     {
@@ -1509,103 +1020,6 @@ public class LaTeXExportService : ILaTeXExportService
         return (Math.Max(1, cs), Math.Max(1, rs));
     }
 
-    // Per-column alignment letters (c/l/r), reading either `alignments` (editor)
-    // or `columnAlign` (legacy). Used for \multicolumn; defaults to 'l'.
-    private static string[] ResolveColumnAligns(JsonElement content, int colCount)
-    {
-        JsonElement arr = default;
-        var has = (content.TryGetProperty("alignments", out arr) && arr.ValueKind == JsonValueKind.Array)
-            || (content.TryGetProperty("columnAlign", out arr) && arr.ValueKind == JsonValueKind.Array);
-        var result = new string[colCount];
-        for (int i = 0; i < colCount; i++)
-        {
-            var raw = has && i < arr.GetArrayLength()
-                ? (arr[i].ValueKind == JsonValueKind.String ? arr[i].GetString() ?? "l" : "l")
-                : "l";
-            raw = raw.Trim().ToLowerInvariant();
-            result[i] = raw switch { "center" or "c" => "c", "right" or "r" => "r", _ => "l" };
-        }
-        return result;
-    }
-
-
-    private string RenderCode(JsonElement content)
-    {
-        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
-        var rawLanguage = content.TryGetProperty("language", out var l) ? l.GetString() : null;
-        var language = LaTeXPreamble.NormalizeListingsLanguage(rawLanguage);
-        (code, var escapeOption) = ListingText.Escape(code);
-        var options = new[] { string.IsNullOrEmpty(language) ? null : $"language={language}", escapeOption }
-            .Where(o => o is not null).ToList();
-        var opening = options.Count == 0
-            ? @"\begin{lstlisting}"
-            : $@"\begin{{lstlisting}}[{string.Join(", ", options)}]";
-        return opening + "\n" + code + "\n" + @"\end{lstlisting}";
-    }
-
-    private string RenderList(JsonElement content)
-    {
-        var isOrdered = false;
-        if (content.TryGetProperty("listType", out var lt))
-            isOrdered = lt.GetString() == "ordered";
-        else if (content.TryGetProperty("ordered", out var ord))
-            isOrdered = ord.ValueKind == JsonValueKind.True;
-
-        // `kind` takes precedence over `ordered` when present (Phase 2).
-        string? kind = null;
-        if (content.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String)
-            kind = kindProp.GetString();
-        var isDescription = kind == "description";
-
-        var env = isDescription ? "description" : (isOrdered ? "enumerate" : "itemize");
-
-        // enumitem options — mirror RenderService.RenderListToLatex so
-        // /preview/latex and /export/pdf agree. `spacing` applies to
-        // all three envs; labelFormat/start are ordered-only.
-        var enumOptions = new List<string>();
-        if (content.TryGetProperty("spacing", out var spProp) && spProp.ValueKind == JsonValueKind.String)
-        {
-            var spacingOption = spProp.GetString() switch
-            {
-                "tight" => "noitemsep",
-                "compact" => "nosep",
-                _ => null,
-            };
-            if (spacingOption != null) enumOptions.Add(spacingOption);
-        }
-        if (isOrdered && !isDescription)
-        {
-            if (content.TryGetProperty("labelFormat", out var lfProp))
-            {
-                var labelOption = lfProp.GetString() switch
-                {
-                    "alpha" => @"label=(\alph*)",
-                    "Alpha" => @"label=(\Alph*)",
-                    "roman" => @"label=(\roman*)",
-                    "Roman" => @"label=(\Roman*)",
-                    _ => null,
-                };
-                if (labelOption != null) enumOptions.Add(labelOption);
-            }
-            if (content.TryGetProperty("start", out var startProp)
-                && startProp.TryGetInt32(out var startNum) && startNum != 1)
-            {
-                enumOptions.Add($"start={startNum}");
-            }
-        }
-
-        var sb = new StringBuilder();
-        if (content.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
-        {
-            AppendListItems(items, env, depth: 0, sb, enumOptions);
-        }
-        else
-        {
-            sb.AppendLine($@"\begin{{{env}}}");
-            sb.Append($@"\end{{{env}}}");
-        }
-        return sb.ToString().TrimEnd();
-    }
 
     /// <summary>
     /// Walks the items array recursively, emitting nested
@@ -1661,174 +1075,12 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine($@"{indent}\end{{{env}}}");
     }
 
-    /// <summary>
-    /// A footnote block. LaTeX attaches the note wherever the command appears,
-    /// so a standalone block becomes a <c>\footnote</c> at that point in the
-    /// text — the same position the author put it in.
-    /// </summary>
-    private string RenderFootnote(JsonElement content)
-    {
-        var text = GetText(content);
-        if (string.IsNullOrWhiteSpace(text)) return "";
-        return $@"\footnote{{{FormatInlineContent(text)}}}";
-    }
-
-    private string RenderCallout(JsonElement content)
-    {
-        // Mirror of RenderService.RenderCalloutToLatex — keep the two
-        // paths aligned so /preview/latex and /export/pdf emit the same
-        // tcolorbox for the same content. Free-form color override:
-        // when `color` is set, paint colback/colframe with that xcolor
-        // name; otherwise use the tcolorbox theme default.
-        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "note" : "note";
-        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-        var text = GetText(content);
-        var color = content.TryGetProperty("color", out var c) ? c.GetString() ?? "" : "";
-        var displayTitle = !string.IsNullOrEmpty(title) ? title : char.ToUpper(variant[0]) + variant[1..];
-        var titlePart = $"title={{{EscapeLatex(displayTitle)}}}";
-        var colorPart = !string.IsNullOrEmpty(color)
-            ? $", colback={color}!10!white, colframe={color}!75!black, coltitle=white"
-            : "";
-        return $@"\begin{{tcolorbox}}[{titlePart}{colorPart}]" + "\n" + FormatInlineContent(text) + "\n" + @"\end{tcolorbox}";
-    }
 
     /// <summary>A caption or theorem title: maths and marks as in a paragraph, on one line (MCP-14/60).</summary>
     private string InlineArgument(string? text) =>
         FormatInlineContent(Regex.Replace(text ?? "", @"\s*\r?\n\s*", " ")).Trim();
 
-    private string RenderBlockquote(JsonElement content)
-    {
-        var text = GetText(content);
-        var variant = content.TryGetProperty("variant", out var v) ? v.GetString() ?? "simple" : "simple";
-        var attribution = content.TryGetProperty("attribution", out var a) ? a.GetString() ?? "" : "";
 
-        // Mirror of RenderService.RenderBlockquoteToLatex variant routing
-        // — keep the two paths aligned so /preview/latex + /export/pdf
-        // emit identical LaTeX for the same content.
-        switch (variant)
-        {
-            case "epigraph":
-                return $@"\epigraph{{{FormatInlineContent(text)}}}{{{FormatInlineContent(attribution)}}}";
-            case "verse":
-            {
-                var lines = (text ?? "").Split('\n');
-                var body = string.Join(" \\\\\n", lines.Select(l => FormatInlineContent(l)));
-                return $@"\begin{{verse}}" + "\n" + body + RenderService.AttributionLine(FormatInlineContent(attribution)) + "\n" + @"\end{verse}";
-            }
-            default:
-                return $@"\begin{{quote}}" + "\n" + FormatInlineContent(text) + RenderService.AttributionLine(FormatInlineContent(attribution)) + "\n" + @"\end{quote}";
-        }
-    }
-
-    /// <summary>
-    /// Algorithm block → an <c>algorithm</c> float wrapping <c>algorithmic</c>
-    /// pseudocode (both packages are in the shared preamble). Body is either a
-    /// <c>lines</c> array or a freeform <c>body</c>/<c>code</c> string (split on
-    /// newlines); each line becomes a numbered \STATE. Lines pass through
-    /// FormatInlineContent so inline math ($…$) and emphasis survive.
-    /// </summary>
-    private string RenderAlgorithm(JsonElement content)
-    {
-        var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
-        var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("algorithm", label)}}}" : "";
-
-        // Build the algorithmic body. The editor stores `lines` as structured
-        // objects { indent, keyword, text, comment }; legacy/imported data may
-        // store `lines` as plain strings or a freeform `body`/`code` string.
-        // Each line becomes a numbered \STATE that always compiles (keywords
-        // are bold text + indent via \hspace, rather than \IF/\ENDIF pairs the
-        // flat line model can't guarantee are balanced).
-        var rendered = new List<string>();
-        if (content.TryGetProperty("lines", out var ln) && ln.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var line in ln.EnumerateArray())
-            {
-                if (line.ValueKind == JsonValueKind.String)
-                {
-                    var t = (line.GetString() ?? "").Trim();
-                    if (t.Length > 0) rendered.Add($@"\STATE {FormatInlineContent(t)}");
-                }
-                else if (line.ValueKind == JsonValueKind.Object)
-                {
-                    var indent = line.TryGetProperty("indent", out var iv) && iv.ValueKind == JsonValueKind.Number ? iv.GetInt32() : 0;
-                    var keyword = line.TryGetProperty("keyword", out var kv) ? kv.GetString() ?? "" : "";
-                    var text = line.TryGetProperty("text", out var txv) ? txv.GetString() ?? "" : "";
-                    var comment = line.TryGetProperty("comment", out var cv) ? cv.GetString() ?? "" : "";
-                    if (string.IsNullOrWhiteSpace(keyword) && string.IsNullOrWhiteSpace(text) && string.IsNullOrWhiteSpace(comment))
-                        continue;
-                    var p = new StringBuilder(@"\STATE ");
-                    if (indent > 0) p.Append($@"\hspace{{{indent}em}}");
-                    if (!string.IsNullOrWhiteSpace(keyword)) p.Append($@"\textbf{{{EscapeLatex(keyword)}}} ");
-                    if (!string.IsNullOrWhiteSpace(text)) p.Append(FormatInlineContent(text));
-                    if (!string.IsNullOrWhiteSpace(comment)) p.Append($@" \COMMENT{{{EscapeLatex(comment)}}}");
-                    rendered.Add(p.ToString());
-                }
-            }
-        }
-        else
-        {
-            var body =
-                content.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() :
-                content.TryGetProperty("code", out var cd) && cd.ValueKind == JsonValueKind.String ? cd.GetString() :
-                GetText(content);
-            if (!string.IsNullOrEmpty(body))
-                foreach (var raw in body.Replace("\r\n", "\n").Split('\n'))
-                {
-                    var t = raw.Trim();
-                    if (t.Length > 0) rendered.Add($@"\STATE {FormatInlineContent(t)}");
-                }
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine(@"\begin{algorithm}[H]");
-        if (!string.IsNullOrEmpty(caption))
-            sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}{labelPart}");
-        else if (!string.IsNullOrEmpty(labelPart))
-            sb.AppendLine(labelPart);
-        sb.AppendLine(@"\begin{algorithmic}[1]");
-        foreach (var r in rendered) sb.AppendLine(r);
-        sb.AppendLine(@"\end{algorithmic}");
-        sb.Append(@"\end{algorithm}");
-        return sb.ToString();
-    }
-
-    private string RenderTheorem(JsonElement content)
-    {
-        // Normalize to an env the preamble actually declares — the editor
-        // stores capitalized labels ("Theorem") but \newtheorem is lowercase.
-        var theoremType = LaTeXPreamble.NormalizeTheoremEnv(
-            content.TryGetProperty("theoremType", out var tt) ? tt.GetString() : null);
-        var text = GetText(content);
-        var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("theorem", label)}}}" : "";
-
-        if (theoremType == "proof")
-            return $@"\begin{{proof}}" + "\n" + FormatInlineContent(text) + "\n" + @"\end{proof}";
-
-        var titlePart = !string.IsNullOrEmpty(title) ? $"[{RenderService.OptionalArgument(InlineArgument(title))}]" : "";
-        return $@"\begin{{{theoremType}}}{titlePart}{labelPart}" + "\n" + FormatInlineContent(text) + "\n" + $@"\end{{{theoremType}}}";
-    }
-
-    private string RenderEmbed(JsonElement content)
-    {
-        var engine = content.TryGetProperty("engine", out var e) ? e.GetString() ?? "" : "";
-        var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
-        var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
-        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-
-        if (engine == "latex")
-        {
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(caption)) parts.Add($"% {EscapeLatex(caption)}");
-            if (!string.IsNullOrEmpty(label)) parts.Add($@"\label{{{label}}}");
-            parts.Add(code);
-            return string.Join("\n", parts);
-        }
-
-        return "% Typst embed (not compiled in LaTeX output)\n% " + code.Replace("\n", "\n% ");
-    }
 
     // ── Inline content formatting (placeholder approach) ───────────────
 

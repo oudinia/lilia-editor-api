@@ -13,6 +13,20 @@ public static class HeadingAnchor
 {
     private static readonly Regex Trailing = new(@"\s*\{#(?<k>[^\s{}]+)\}\s*$", RegexOptions.Compiled);
 
+    private static readonly Regex BakedNumber = new(@"^(?:\d+(?:\.\d+)*\.?\s+|[IVXLC]+\.\s+|[A-Z]\.\s+)(.+)$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// A number typed into the heading ("1. Introduction", "1.2 Scope", "IV. Methods") is dropped:
+    /// LaTeX numbers the heading itself, and the PDF and the table of contents showed both. The
+    /// import does the same (SectionKeywordRegistry.StripNumberingPrefix).
+    /// </summary>
+    public static string WithoutTypedNumber(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var m = BakedNumber.Match(text);
+        return m.Success ? m.Groups[1].Value : text;
+    }
+
     public static (string Text, string? Label) Read(JsonElement content, string text)
     {
         static string? Str(JsonElement c, string name) =>

@@ -61,7 +61,7 @@ public class LatexExportImportedMathEnvironmentTests
     {
         var body = Body(Latex(new { latex = "\\begin{align}\na &= b\n\\end{align}", equationMode = "display", label = "eq:a" }));
 
-        body.Should().Contain("\\begin{align}\\label{eq:a}\na &= b\n\\end{align}");
+        body.Should().Contain("\\begin{align}\n\\label{eq:a}\na &= b\n\\end{align}");
     }
 
     [Fact]
