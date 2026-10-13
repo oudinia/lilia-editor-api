@@ -431,7 +431,7 @@ public class DocxExportIntegrationTests : IntegrationTestBase
 
         text.Should().Contain("As in [2] and [1].");
         text.Should().Contain("[1] Fejér, Lipót").And.Contain("Untersuchungen über Fouriersche Reihen").And.Contain("pp. 51–69");
-        text.Should().Contain("[2] Young, L. C.").And.Contain("On Δ-sets");
+        text.Should().Contain("[2] Young, L. C. (1936)").And.Contain("On Δ-sets");
         text.Should().NotContain("Uncited").And.NotContain("{").And.NotContain("\\'");
     }
 
@@ -478,6 +478,24 @@ public class DocxExportIntegrationTests : IntegrationTestBase
             .Where(e => e.Part?.Uri.ToString().Contains("document.xml") == true || e.Part?.Uri.ToString().Contains("styles") == true
                 || e.Part?.Uri.ToString().Contains("header") == true || e.Part?.Uri.ToString().Contains("footer") == true)
             .Select(e => $"{e.Part?.Uri} {e.Path?.XPath}: {e.Description}").Should().BeEmpty();
+    }
+
+    // MCP-104 (run 3): figures exported as a caption only — TikZ not drawn, no placeholder.
+    [Fact]
+    public async Task ATikzFigureIsDrawnAndAMissingImageHasAPlaceholder()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Figures");
+        await SeedBlockAsync(doc.Id, "figure", """{"kind":"tikz","source":"\\begin{tikzpicture}\\draw (0,0) -- (2,1);\\end{tikzpicture}","caption":"A line"}""");
+        await SeedBlockAsync(doc.Id, "figure", """{"src":"https://example.invalid/plot.png","alt":"The fitted curve","caption":"Fit"}""", 1);
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var main = word.MainDocumentPart!;
+
+        main.Document.Body!.Descendants<DocumentFormat.OpenXml.Wordprocessing.Drawing>().Should().ContainSingle("the TikZ picture is drawn");
+        main.ImageParts.Should().ContainSingle();
+        main.Document.Body.InnerText.Should().Contain("[Figure: The fitted curve]").And.Contain("A line").And.Contain("Fit");
     }
 
     [Fact]
