@@ -192,7 +192,7 @@ public static class ProseLatex
             case "num":
                 return Arg(0);
             case "ce":
-                return Regex.Replace(args.FirstOrDefault() ?? "", @"(?<=[A-Za-z)])(\d+)", d => string.Concat(d.Value.Select(c => "₀₁₂₃₄₅₆₇₈₉"[c - '0'])));
+                return ChemText(args.FirstOrDefault() ?? "");
             case "label" or "index" or "hspace" or "vspace" or "phantom" or "nocite":
                 return "";
             case "footnote":
@@ -224,9 +224,30 @@ public static class ProseLatex
     /// <summary>A formula as mhchem prints it: H2O → H₂O, SO4^2- → SO₄²⁻, in LaTeX the converter knows.</summary>
     private static string Chem(string formula)
     {
-        var f = Regex.Replace(formula.Trim(), @"(?<=[A-Za-z)\]])(\d+)", "_{$1}");
+        // Reaction arrows first (MCP-100: "->[cat]" stayed as typed): conditions over the arrow.
+        var f = Regex.Replace(formula.Trim(), @"->\[([^\]]*)\](?:\[([^\]]*)\])?", m => $"\u0001{m.Groups[1].Value}\u0002");
+        f = Regex.Replace(f, @"(?<=[A-Za-z)\]])(\d+)", "_{$1}");
         f = Regex.Replace(f, @"\^(\d*[+-])", "^{$1}");
+        f = f.Replace("<=>", "\\rightleftharpoons ").Replace("<->", "\\leftrightarrow ").Replace("->", "\\rightarrow ").Replace("<-", "\\leftarrow ");
+        f = Regex.Replace(f, "\u0001([^\u0002]*)\u0002", m => $"\\overset{{\\mathrm{{{m.Groups[1].Value}}}}}{{\\rightarrow}}");
         return "\\mathrm{" + f.Replace(" ", "\\ ") + "}";
+    }
+
+    private const string Subscripts = "₀₁₂₃₄₅₆₇₈₉";
+    private static readonly Dictionary<char, char> Superscripts = new()
+    {
+        ['0'] = '⁰', ['1'] = '¹', ['2'] = '²', ['3'] = '³', ['4'] = '⁴', ['5'] = '⁵', ['6'] = '⁶', ['7'] = '⁷', ['8'] = '⁸', ['9'] = '⁹',
+        ['+'] = '⁺', ['-'] = '⁻',
+    };
+
+    /// <summary>\ce in prose, as text: H₂O, Fe³⁺, A → B (MCP-100: "->" and "Fe^3+" stayed as typed).</summary>
+    private static string ChemText(string formula)
+    {
+        var f = Regex.Replace(formula, @"->\[([^\]]*)\](?:\[([^\]]*)\])?", m => $" →({m.Groups[1].Value}) ");
+        f = f.Replace("<=>", "⇌").Replace("<->", "↔").Replace("->", "→").Replace("<-", "←");
+        f = Regex.Replace(f, @"\^\{?(\d*[+-])\}?", m => string.Concat(m.Groups[1].Value.Select(c => Superscripts[c])));
+        f = Regex.Replace(f, @"(?<=[A-Za-z)\]])(\d+)", d => string.Concat(d.Value.Select(c => Subscripts[c - '0'])));
+        return Regex.Replace(f, @"\s+", " ").Trim();
     }
 
     public static string MathForWord(string? latex)
