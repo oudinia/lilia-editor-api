@@ -393,6 +393,9 @@ public sealed class LiliaMcpWriteTools(
         if (args.TryGetValue("type", out var t) && t is string typeName && !string.IsNullOrWhiteSpace(typeName)
             && !Lilia.Core.Entities.BlockTypes.All.Contains(typeName.Trim(), StringComparer.OrdinalIgnoreCase))
             return new { error = $"Lilia has no block type '{typeName}'. Use one of: {string.Join(", ", AgentBlockTypes)}.", category = "invalid" };
+        // A type Lilia has but the PDF can't print was accepted and printed nothing (MCP-42: cover).
+        if (args.TryGetValue("type", out var t2) && t2 is string printed && string.Equals(printed.Trim(), "cover", StringComparison.OrdinalIgnoreCase))
+            return new { error = "A cover block is for ePub books; the PDF has no place for it. Use set_title for the title page, and a figure for an image.", category = "invalid" };
         var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
         if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
         if (!AskLiliaService.MayEditWithAi(true, doc))
