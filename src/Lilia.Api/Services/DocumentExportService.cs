@@ -86,6 +86,15 @@ public class DocumentExportService : IDocumentExportService
             FontSize = doc.FontSize,
             Columns = doc.Columns,
             BalancedColumns = doc.BalancedColumns,
+            // The running header and footer (MCP-105: the .docx had none). The slots, or the legacy
+            // header / footer text on the left, as the LaTeX export reads them.
+            HeaderLeft = NullIfEmpty(doc.HeaderLeft) ?? (AllEmpty(doc.HeaderLeft, doc.HeaderCenter, doc.HeaderRight) ? NullIfEmpty(doc.HeaderText) : null),
+            HeaderCenter = NullIfEmpty(doc.HeaderCenter),
+            HeaderRight = NullIfEmpty(doc.HeaderRight),
+            FooterLeft = NullIfEmpty(doc.FooterLeft) ?? (AllEmpty(doc.FooterLeft, doc.FooterCenter, doc.FooterRight) ? NullIfEmpty(doc.FooterText) : null),
+            FooterCenter = NullIfEmpty(doc.FooterCenter),
+            FooterRight = NullIfEmpty(doc.FooterRight),
+            PageNumbering = doc.PageNumbering,
             Metadata = new ExportMetadata
             {
                 Author = author,
@@ -116,14 +125,23 @@ public class DocumentExportService : IDocumentExportService
             ? citeNumbers.GetValueOrDefault(key[5..])
             : labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
 
-        var theoremCounter = 0;
+        // One counter per kind, as each \newtheorem has its own; a proof and numbered:false take
+        // none. Word numbered every theorem-like block with one counter, proofs too ("Proof 4", MCP-105).
+        var theoremCounters = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var block in doc.Blocks)
         {
+            int? theoremNumber = null;
             if (block.Type.ToLowerInvariant() == "theorem")
-                theoremCounter++;
+            {
+                var kind = GetString(block.Content.RootElement, "theoremType");
+                if (string.IsNullOrEmpty(kind)) kind = "theorem";
+                var unnumbered = kind.Equals("proof", StringComparison.OrdinalIgnoreCase) || kind.EndsWith('*')
+                    || (block.Content.RootElement.TryGetProperty("numbered", out var nb) && nb.ValueKind == JsonValueKind.False);
+                if (!unnumbered) theoremNumber = theoremCounters[kind] = theoremCounters.GetValueOrDefault(kind) + 1;
+            }
 
-            var exportBlock = await ConvertBlockAsync(block, theoremCounter);
+            var exportBlock = await ConvertBlockAsync(block, theoremNumber);
             if (exportBlock != null)
                 exportDoc.Blocks.Add(exportBlock);
         }
@@ -419,7 +437,7 @@ public class DocumentExportService : IDocumentExportService
         return BibliographyCommandRe.Replace(latex, _ => bbl, 1);
     }
 
-    private async Task<ExportBlock?> ConvertBlockAsync(Block block, int theoremCounter)
+    private async Task<ExportBlock?> ConvertBlockAsync(Block block, int? theoremNumber)
     {
         var content = block.Content.RootElement;
 
@@ -458,7 +476,10 @@ public class DocumentExportService : IDocumentExportService
             "table" => ConvertTableBlock(content),
             "figure" => await ConvertFigureBlockAsync(content, block.DocumentId),
             "blockquote" => ConvertBlockquoteBlock(content),
-            "theorem" => ConvertTheoremBlock(content, theoremCounter),
+            "theorem" => ConvertTheoremBlock(content, theoremNumber),
+            // Front and back matter: a preface, a dedication, an appendix (MCP-105: printed as text
+            // without their title).
+            "frontmatter" or "backmatter" => ConvertMatterBlock(content),
             "abstract" => ConvertAbstractBlock(content),
             "pagebreak" => ConvertPageBreakBlock(),
             "tableofcontents" => ConvertTableOfContentsBlock(),
@@ -957,7 +978,7 @@ public class DocumentExportService : IDocumentExportService
         };
     }
 
-    private ExportBlock ConvertTheoremBlock(JsonElement content, int theoremCounter)
+    private ExportBlock ConvertTheoremBlock(JsonElement content, int? theoremNumber)
     {
         var theoremType = GetString(content, "theoremType");
         if (string.IsNullOrEmpty(theoremType)) theoremType = "theorem";
@@ -971,12 +992,40 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 TheoremType = theoremType,
-                TheoremNumber = theoremCounter,
+                TheoremNumber = theoremNumber,
                 Text = ProseLatex.PlainForWord(title, _labelNumber),  // title goes in Text for the header
                 RichText = ParseInlineFormatting(text, _labelNumber) // body text in RichText
             }
         };
     }
+
+    private ExportBlock ConvertMatterBlock(JsonElement content)
+    {
+        var subType = GetString(content, "subType");
+        if (string.IsNullOrEmpty(subType)) subType = GetString(content, "kind");
+        var title = GetString(content, "title");
+        if (string.IsNullOrEmpty(title))
+            title = subType.ToLowerInvariant() switch
+            {
+                "" or "dedication" => "",
+                "acknowledgments" or "acknowledgements" => "Acknowledgements",
+                _ => char.ToUpperInvariant(subType[0]) + subType[1..],
+            };
+        var text = GetString(content, "text");
+        if (string.IsNullOrEmpty(text)) text = GetString(content, "content");
+        return new ExportBlock
+        {
+            Type = "matter",
+            Content = new ExportBlockContent
+            {
+                Variant = subType.ToLowerInvariant(),
+                Text = ProseLatex.PlainForWord(title, _labelNumber),
+                RichText = string.IsNullOrWhiteSpace(text) ? null : ParseInlineFormatting(text, _labelNumber),
+            }
+        };
+    }
+
+    private static bool AllEmpty(params string?[] values) => values.All(string.IsNullOrWhiteSpace);
 
     private ExportBlock ConvertAbstractBlock(JsonElement content)
     {

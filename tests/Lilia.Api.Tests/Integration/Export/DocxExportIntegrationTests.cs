@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
@@ -432,6 +433,51 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         text.Should().Contain("[1] Fejér, Lipót").And.Contain("Untersuchungen über Fouriersche Reihen").And.Contain("pp. 51–69");
         text.Should().Contain("[2] Young, L. C.").And.Contain("On Δ-sets");
         text.Should().NotContain("Uncited").And.NotContain("{").And.NotContain("\\'");
+    }
+
+    // MCP-105 (run 3): proofs numbered like theorems, no appendix title, no header/footer, no
+    // column definitions, styles.xml without Normal / Title / Quote, a TOC that listed its own heading.
+    [Fact]
+    public async Task StructureAsTheLatexExportPrintsIt()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Structure");
+        await using (var db = CreateDbContext())
+        {
+            var d = await db.Documents.FirstAsync(x => x.Id == doc.Id);
+            d.Columns = 2;
+            d.HeaderLeft = "Draft";
+            d.HeaderRight = "Lilia";
+            d.PageNumbering = "arabic";
+            await db.SaveChangesAsync();
+        }
+        await SeedBlockAsync(doc.Id, "tableofcontents", """{}""");
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"theorem","text":"A."}""", 1);
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"proof","text":"Clear."}""", 2);
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"lemma","text":"B."}""", 3);
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"theorem","text":"C."}""", 4);
+        await SeedBlockAsync(doc.Id, "backMatter", """{"subType":"appendix","title":"Extra proofs","text":"Here."}""", 5);
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        var text = TextIn(bytes);
+
+        text.Should().Contain("Theorem 1.").And.Contain("Lemma 1.").And.Contain("Theorem 2.").And.Contain("Proof.").And.NotContain("Proof 2");
+        text.Should().Contain("Extra proofs").And.Contain("Here.");
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var main = word.MainDocumentPart!;
+        main.StyleDefinitionsPart!.Styles!.Elements<DocumentFormat.OpenXml.Wordprocessing.Style>().Select(st => st.StyleId!.Value)
+            .Should().Contain(["Normal", "Title", "Quote", "TOCHeading"]);
+        main.Document.Body!.Descendants<DocumentFormat.OpenXml.Wordprocessing.ParagraphStyleId>().Select(p => p.Val!.Value)
+            .Should().Contain("TOCHeading").And.Contain("Heading1");
+        main.HeaderParts.Single().Header!.InnerText.Should().Contain("Draft").And.Contain("Lilia");
+        main.FooterParts.Single().Footer!.Descendants<DocumentFormat.OpenXml.Wordprocessing.SimpleField>().Should().ContainSingle(f => f.Instruction!.Value!.Contains("PAGE"));
+        var cols = main.Document.Body.Elements<DocumentFormat.OpenXml.Wordprocessing.SectionProperties>().Single().GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Columns>()!;
+        cols.EqualWidth!.Value.Should().BeTrue();
+        // Valid against Word's schema: element order in sectPr, rPr, tables, footnotes.
+        new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word)
+            .Where(e => e.Part?.Uri.ToString().Contains("document.xml") == true || e.Part?.Uri.ToString().Contains("styles") == true
+                || e.Part?.Uri.ToString().Contains("header") == true || e.Part?.Uri.ToString().Contains("footer") == true)
+            .Select(e => $"{e.Part?.Uri} {e.Path?.XPath}: {e.Description}").Should().BeEmpty();
     }
 
     [Fact]

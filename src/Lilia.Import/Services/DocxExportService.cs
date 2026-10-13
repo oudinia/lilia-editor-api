@@ -48,7 +48,7 @@ public class DocxExportService : IDocxExportService
             var body = mainPart.Document.AppendChild(new Body());
 
             // Add styles
-            AddStyles(mainPart);
+            AddStyles(mainPart, document);
 
             // Add numbering for lists
             AddNumberingDefinitions(mainPart);
@@ -112,15 +112,20 @@ public class DocxExportService : IDocxExportService
             // BalancedColumns (EqualWidth → whether Word auto-distributes width).
             if (document.Columns >= 2)
             {
+                // Equal columns with a gap. EqualWidth followed BalancedColumns, so an unbalanced
+                // two-column paper asked for unequal columns and defined none (MCP-105).
                 sectionProps.Append(new Columns
                 {
                     ColumnCount = (short)Math.Min(document.Columns, 3),
-                    EqualWidth = document.BalancedColumns,
+                    EqualWidth = true,
+                    Space = "567",
                     Separator = false,
                 });
             }
 
+            AddHeaderFooter(mainPart, sectionProps, document);
             body.AppendChild(sectionProps);
+            SchemaOrder(mainPart);
 
             // Set document properties
             if (!string.IsNullOrEmpty(document.Title))
@@ -138,10 +143,46 @@ public class DocxExportService : IDocxExportService
         return ms.ToArray();
     }
 
-    private void AddStyles(MainDocumentPart mainPart)
+    private void AddStyles(MainDocumentPart mainPart, ExportDocument document)
     {
         var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
         var styles = new Styles();
+
+        // Normal, Title, Quote and TOC Heading (MCP-105): every style here is BasedOn Normal, which
+        // wasn't defined, so Word fell back to its own defaults; the document's font size goes here.
+        var normal = new Style { Type = StyleValues.Paragraph, StyleId = "Normal", Default = true };
+        normal.Append(new StyleName { Val = "Normal" });
+        normal.Append(new PrimaryStyle());
+        normal.Append(new StyleParagraphProperties(new SpacingBetweenLines { After = "120", Line = "264", LineRule = LineSpacingRuleValues.Auto }));
+        normal.Append(new StyleRunProperties(new FontSize { Val = (Math.Clamp(document.FontSize, 8, 20) * 2).ToString() }));
+        styles.Append(normal);
+
+        var title = new Style { Type = StyleValues.Paragraph, StyleId = "Title" };
+        title.Append(new StyleName { Val = "Title" });
+        title.Append(new BasedOn { Val = "Normal" });
+        title.Append(new NextParagraphStyle { Val = "Normal" });
+        title.Append(new PrimaryStyle());
+        title.Append(new StyleParagraphProperties(new Justification { Val = JustificationValues.Center }, new SpacingBetweenLines { After = "120" }));
+        title.Append(new StyleRunProperties(new Bold(), new FontSize { Val = "40" }));
+        styles.Append(title);
+
+        var quote = new Style { Type = StyleValues.Paragraph, StyleId = "Quote" };
+        quote.Append(new StyleName { Val = "Quote" });
+        quote.Append(new BasedOn { Val = "Normal" });
+        quote.Append(new NextParagraphStyle { Val = "Normal" });
+        quote.Append(new PrimaryStyle());
+        quote.Append(new StyleRunProperties(new Italic()));
+        styles.Append(quote);
+
+        // The contents' own heading: looks like a heading, but outside the outline, so the table of
+        // contents doesn't list itself (it was Heading1).
+        var tocHeading = new Style { Type = StyleValues.Paragraph, StyleId = "TOCHeading" };
+        tocHeading.Append(new StyleName { Val = "TOC Heading" });
+        tocHeading.Append(new BasedOn { Val = "Normal" });
+        tocHeading.Append(new NextParagraphStyle { Val = "Normal" });
+        tocHeading.Append(new StyleParagraphProperties(new SpacingBetweenLines { Before = "240", After = "120" }));
+        tocHeading.Append(new StyleRunProperties(new Bold(), new FontSize { Val = GetHeadingFontSize(1) }));
+        styles.Append(tocHeading);
 
         // Add heading styles
         for (int level = 1; level <= 6; level++)
@@ -186,13 +227,14 @@ public class DocxExportService : IDocxExportService
             CustomStyle = true
         };
         codeStyle.Append(new StyleName { Val = "Code" });
+        // w:pPr before w:rPr (schema order).
+        var codePPr = new StyleParagraphProperties();
+        codePPr.Append(new Shading { Val = ShadingPatternValues.Clear, Fill = "F0F0F0" });
+        codeStyle.Append(codePPr);
         var codeRPr = new StyleRunProperties();
         codeRPr.Append(new RunFonts { Ascii = "Consolas", HighAnsi = "Consolas" });
         codeRPr.Append(new FontSize { Val = "20" }); // 10pt
         codeStyle.Append(codeRPr);
-        var codePPr = new StyleParagraphProperties();
-        codePPr.Append(new Shading { Val = ShadingPatternValues.Clear, Fill = "F0F0F0" });
-        codeStyle.Append(codePPr);
         styles.Append(codeStyle);
 
         stylesPart.Styles = styles;
@@ -283,6 +325,7 @@ public class DocxExportService : IDocxExportService
             "blockquote" => ConvertBlockquote(block),
             "theorem" => ConvertTheorem(block),
             "title" => ConvertTitle(block),
+            "matter" => ConvertMatter(block),
             "abstract" => ConvertAbstract(block),
             "bibliography" => ConvertBibliography(options, document),
             "pagebreak" => ConvertPageBreak(),
@@ -879,10 +922,10 @@ public class DocxExportService : IDocxExportService
         var para = new Paragraph();
         var pPr = new ParagraphProperties();
         pPr.Append(new ParagraphStyleId { Val = "Quote" });
-        pPr.Append(new Indentation { Left = "720" });
         pPr.Append(new ParagraphBorders(
             new LeftBorder { Val = BorderValues.Single, Size = 24, Color = "CCCCCC" }
         ));
+        pPr.Append(new Indentation { Left = "720" });
         para.Append(pPr);
 
         // Its runs, italic, each line break a Word line break: a verse is its lines, and a newline
@@ -975,13 +1018,13 @@ public class DocxExportService : IDocxExportService
             headerText += $" ({title})";
         headerText += ".";
 
-        // Theorem paragraph with left border
+        // Theorem paragraph with left border (w:pBdr before w:ind: Word's schema order)
         var para = new Paragraph();
         var pPr = new ParagraphProperties();
-        pPr.Append(new Indentation { Left = "360" });
         pPr.Append(new ParagraphBorders(
             new LeftBorder { Val = BorderValues.Single, Size = 18, Color = "4472C4" }
         ));
+        pPr.Append(new Indentation { Left = "360" });
         pPr.Append(new SpacingBetweenLines { Before = "120", After = "120" });
         para.Append(pPr);
 
@@ -1155,6 +1198,119 @@ public class DocxExportService : IDocxExportService
         return string.Join(". ", parts) + ".";
     }
 
+    // Word's schema order for paragraph and run properties (CT_PPrBase, CT_RPr). The writers append
+    // them as they go, which Word tolerates and the schema doesn't (MCP-105: "unexpected child").
+    private static readonly string[] ParagraphOrder =
+    [
+        "pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr", "suppressLineNumbers",
+        "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap", "overflowPunct", "topLinePunct", "autoSpaceDE",
+        "autoSpaceDN", "bidi", "adjustRightInd", "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents",
+        "suppressOverlap", "jc", "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle",
+        "rPr", "sectPr", "pPrChange",
+    ];
+    private static readonly string[] RunOrder =
+    [
+        "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline", "shadow", "emboss",
+        "imprint", "noProof", "snapToGrid", "vanish", "webHidden", "color", "spacing", "w", "kern", "position", "sz", "szCs",
+        "highlight", "u", "effect", "bdr", "shd", "fitText", "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout",
+        "specVanish", "oMath",
+    ];
+
+    private static void SchemaOrder(MainDocumentPart mainPart)
+    {
+        static void Sort(OpenXmlElement props, string[] order)
+        {
+            var children = props.ChildElements.ToList();
+            var sorted = children.OrderBy(c => { var i = Array.IndexOf(order, c.LocalName); return i < 0 ? order.Length : i; }).ToList();
+            if (children.SequenceEqual(sorted)) return;
+            props.RemoveAllChildren();
+            foreach (var c in sorted) props.AppendChild(c);
+        }
+        IEnumerable<OpenXmlElement> Roots()
+        {
+            if (mainPart.Document is { } d) yield return d;
+            foreach (var h in mainPart.HeaderParts) if (h.Header is { } x) yield return x;
+            foreach (var f in mainPart.FooterParts) if (f.Footer is { } x) yield return x;
+            if (mainPart.FootnotesPart?.Footnotes is { } n) yield return n;
+        }
+        foreach (var root in Roots())
+        {
+            foreach (var p in root.Descendants<ParagraphProperties>().ToList()) Sort(p, ParagraphOrder);
+            foreach (var r in root.Descendants<RunProperties>().ToList()) Sort(r, RunOrder);
+        }
+        if (mainPart.StyleDefinitionsPart?.Styles is { } styles)
+        {
+            foreach (var p in styles.Descendants<StyleParagraphProperties>().ToList()) Sort(p, ParagraphOrder);
+            foreach (var r in styles.Descendants<StyleRunProperties>().ToList()) Sort(r, RunOrder);
+        }
+    }
+
+    /// <summary>
+    /// A front or back matter block: its title as an unnumbered heading, then its text; a dedication
+    /// centred in italics without a heading, as the LaTeX export prints them.
+    /// </summary>
+    private IEnumerable<OpenXmlElement> ConvertMatter(ExportBlock block)
+    {
+        var content = block.Content;
+        var dedication = content.Variant == "dedication";
+        if (!dedication && !string.IsNullOrWhiteSpace(content.Text))
+            yield return new Paragraph(new ParagraphProperties(new ParagraphStyleId { Val = "Heading1" }),
+                new Run(new Text(content.Text) { Space = SpaceProcessingModeValues.Preserve }));
+        if (content.RichText is not { Count: > 0 } spans) yield break;
+        var para = new Paragraph();
+        if (dedication)
+            para.Append(new ParagraphProperties(new Justification { Val = JustificationValues.Center }, new SpacingBetweenLines { Before = "480", After = "480" }));
+        foreach (var span in spans)
+        {
+            if (dedication && string.IsNullOrEmpty(span.Equation)) span.Italic = true;
+            para.AppendChild(CreateSpanElement(span));
+        }
+        yield return para;
+    }
+
+    /// <summary>
+    /// The running header and footer: left, centre and right slots on one line (centre and right tab
+    /// stops), as fancyhdr prints them. With no footer slot, the page number centred, unless page
+    /// numbering is off. The .docx had neither (MCP-105).
+    /// </summary>
+    private static void AddHeaderFooter(MainDocumentPart mainPart, SectionProperties section, ExportDocument document)
+    {
+        static Paragraph Line(string? left, string? center, string? right, bool pageNumber, bool roman)
+        {
+            var para = new Paragraph(new ParagraphProperties(new Tabs(
+                new TabStop { Val = TabStopValues.Center, Position = 4513 },
+                new TabStop { Val = TabStopValues.Right, Position = 9026 })));
+            void Add(string? text) { if (!string.IsNullOrEmpty(text)) para.Append(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve })); }
+            Add(left);
+            para.Append(new Run(new TabChar()));
+            if (pageNumber)
+                para.Append(new SimpleField(new Run(new Text("1"))) { Instruction = roman ? " PAGE \\* roman " : " PAGE " });
+            else
+                Add(center);
+            para.Append(new Run(new TabChar()));
+            Add(right);
+            return para;
+        }
+
+        var hasHeader = !string.IsNullOrWhiteSpace(document.HeaderLeft) || !string.IsNullOrWhiteSpace(document.HeaderCenter) || !string.IsNullOrWhiteSpace(document.HeaderRight);
+        if (hasHeader)
+        {
+            var header = mainPart.AddNewPart<HeaderPart>();
+            header.Header = new Header(Line(document.HeaderLeft, document.HeaderCenter, document.HeaderRight, false, false));
+            // References come first in w:sectPr (schema order), before the page size.
+            section.InsertAt(new HeaderReference { Type = HeaderFooterValues.Default, Id = mainPart.GetIdOfPart(header) }, 0);
+        }
+
+        var hasFooter = !string.IsNullOrWhiteSpace(document.FooterLeft) || !string.IsNullOrWhiteSpace(document.FooterCenter) || !string.IsNullOrWhiteSpace(document.FooterRight);
+        var numbering = (document.PageNumbering ?? "arabic").Trim().ToLowerInvariant();
+        if (!hasFooter && numbering == "none") return;
+        var footer = mainPart.AddNewPart<FooterPart>();
+        footer.Footer = new Footer(hasFooter
+            ? Line(document.FooterLeft, document.FooterCenter, document.FooterRight, false, false)
+            : Line(null, null, null, true, numbering == "roman"));
+        section.InsertAt(new FooterReference { Type = HeaderFooterValues.Default, Id = mainPart.GetIdOfPart(footer) }, hasHeader ? 1 : 0);
+    }
+
     /// <summary>
     /// The title block: title, then author, then date, centred.
     ///
@@ -1172,7 +1328,11 @@ public class DocxExportService : IDocxExportService
 
         var title = content.Text;
         if (!string.IsNullOrWhiteSpace(title))
-            yield return CentredParagraph(title, sizeHalfPoints: "40", bold: true, spaceAfter: "120");
+        {
+            var para = CentredParagraph(title, sizeHalfPoints: "40", bold: true, spaceAfter: "120");
+            para.ParagraphProperties!.PrependChild(new ParagraphStyleId { Val = "Title" });
+            yield return para;
+        }
 
         if (!string.IsNullOrWhiteSpace(content.Author))
             yield return CentredParagraph(content.Author, sizeHalfPoints: "24", bold: false, spaceAfter: "60");
@@ -1284,9 +1444,9 @@ public class DocxExportService : IDocxExportService
         // TOC heading
         var headingPara = new Paragraph();
         var headingPPr = new ParagraphProperties();
-        headingPPr.Append(new ParagraphStyleId { Val = "Heading1" });
+        headingPPr.Append(new ParagraphStyleId { Val = "TOCHeading" });
         headingPara.Append(headingPPr);
-        headingPara.AppendChild(new Run(new Text("Table of Contents")));
+        headingPara.AppendChild(new Run(new Text("Contents")));
         elements.Add(headingPara);
 
         // TOC field
@@ -1362,10 +1522,10 @@ public class DocxExportService : IDocxExportService
 
         var para = new Paragraph();
         var pPr = new ParagraphProperties();
-        pPr.Append(new Indentation { Left = "720" });
         pPr.Append(new ParagraphBorders(
             new LeftBorder { Val = BorderValues.Single, Size = 24, Color = "70AD47" }
         ));
+        pPr.Append(new Indentation { Left = "720" });
         pPr.Append(new SpacingBetweenLines { Before = "120", After = "120" });
         pPr.Append(new Shading { Val = ShadingPatternValues.Clear, Fill = "F0FFF0" });
         para.Append(pPr);
