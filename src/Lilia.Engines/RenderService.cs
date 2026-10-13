@@ -1602,7 +1602,11 @@ public partial class RenderService : IRenderService
             {
                 var trimmed = line.TrimStart();
                 if (string.IsNullOrWhiteSpace(trimmed)) { sb.AppendLine(); continue; }
-                if (Regex.IsMatch(trimmed, @"^\\(STATE|IF|ELSE|ELSIF|ELSEIF|ENDIF|FOR|FORALL|ENDFOR|WHILE|ENDWHILE|REPEAT|UNTIL|LOOP|ENDLOOP|RETURN|REQUIRE|ENSURE|PRINT|COMMENT)\b") || trimmed.StartsWith("%"))
+                // A \COMMENT on its own line is a statement: right after \IF{…} it failed the compile
+                // ("perhaps a missing \item", MCP-107), as it did on the structured path (MCP-22).
+                if (trimmed.StartsWith(@"\COMMENT", StringComparison.Ordinal))
+                    sb.AppendLine($@"\STATE {trimmed}");
+                else if (Regex.IsMatch(trimmed, @"^\\(STATE|IF|ELSE|ELSIF|ELSEIF|ENDIF|FOR|FORALL|ENDFOR|WHILE|ENDWHILE|REPEAT|UNTIL|LOOP|ENDLOOP|RETURN|REQUIRE|ENSURE|PRINT)\b") || trimmed.StartsWith("%"))
                     sb.AppendLine(line);
                 else
                     sb.AppendLine($@"\STATE {trimmed}");
@@ -2608,7 +2612,7 @@ public partial class RenderService : IRenderService
         return sb.ToString();
     }
 
-    private void RenderListItemToLatex(JsonElement item, string parentEnv, StringBuilder sb)
+    private void RenderListItemToLatex(JsonElement item, string parentEnv, StringBuilder sb, int depth = 1)
     {
         var isDescription = parentEnv == "description";
         var parentIsOrdered = parentEnv == "enumerate";
@@ -2682,13 +2686,23 @@ public partial class RenderService : IRenderService
         // per-child kind, which the model doesn't carry yet).
         if (children.HasValue)
         {
-            var nestedEnv = parentEnv;
-            sb.AppendLine($@"\begin{{{nestedEnv}}}");
-            foreach (var child in children.Value.EnumerateArray())
+            // LaTeX nests lists four deep; a fifth level failed the compile ("Too deeply nested",
+            // MCP-33). Deeper items stay at the fourth level, after their parent.
+            if (depth >= 4)
             {
-                RenderListItemToLatex(child, nestedEnv, sb);
+                foreach (var child in children.Value.EnumerateArray())
+                    RenderListItemToLatex(child, parentEnv, sb, depth);
             }
-            sb.AppendLine($@"\end{{{nestedEnv}}}");
+            else
+            {
+                var nestedEnv = parentEnv;
+                sb.AppendLine($@"\begin{{{nestedEnv}}}");
+                foreach (var child in children.Value.EnumerateArray())
+                {
+                    RenderListItemToLatex(child, nestedEnv, sb, depth + 1);
+                }
+                sb.AppendLine($@"\end{{{nestedEnv}}}");
+            }
         }
         _ = parentIsOrdered; // retained for future per-kind logic
     }

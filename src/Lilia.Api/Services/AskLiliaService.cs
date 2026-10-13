@@ -1435,7 +1435,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
             if (anchor is not null) sortOrder = anchor.SortOrder + 1;
         }
         var created = await _blockService.CreateBlockAsync(docId,
-            new Lilia.Core.DTOs.CreateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(type, ParseContent(contentJson)), sortOrder, null, null));
+            new Lilia.Core.DTOs.CreateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(type, ParseContent(contentJson, type)), sortOrder, null, null));
         doc.Blocks?.Add(created);
         changed.Add(created.Id.ToString());
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
@@ -1449,7 +1449,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         // CV field names an app guesses (firstName, organization, startDate…) become Lilia's (MCP-58).
         var blockType = string.IsNullOrWhiteSpace(type) ? doc.Blocks?.FirstOrDefault(b => b.Id == id)?.Type : type;
         var updated = await _blockService.UpdateBlockAsync(docId, id,
-            new Lilia.Core.DTOs.UpdateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(blockType, ParseContent(contentJson)), null, null, null));
+            new Lilia.Core.DTOs.UpdateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(blockType, ParseContent(contentJson, blockType)), null, null, null));
         if (updated is null) return BlockIdError(doc, blockId, parsed: true);
         var i = doc.Blocks?.FindIndex(b => b.Id == id) ?? -1;
         if (i >= 0) doc.Blocks![i] = updated;
@@ -1527,14 +1527,14 @@ public sealed partial class AskLiliaService : IAskLiliaService
         return new { ok = true, id = created.Id, title };
     }
 
-    private static System.Text.Json.JsonElement ParseContent(string json)
+    private static System.Text.Json.JsonElement ParseContent(string json, string? blockType = null)
     {
         try
         {
             var el = System.Text.Json.JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement.Clone();
             // Soft-wrap AI tool JSON the same way as LML: single newlines in
             // prose fields become spaces so Flow doesn't render mid-phrase breaks.
-            return NormalizeProseContentFields(el);
+            return NormalizeProseContentFields(el, blockType);
         }
         catch { return System.Text.Json.JsonDocument.Parse("{}").RootElement.Clone(); }
     }
@@ -1543,14 +1543,16 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// Normalize <c>text</c> / <c>title</c> / <c>latex</c> string fields on a
     /// block content object (soft newlines → spaces). Non-object payloads pass through.
     /// </summary>
-    private static JsonElement NormalizeProseContentFields(JsonElement el)
+    private static JsonElement NormalizeProseContentFields(JsonElement el, string? blockType = null)
     {
         if (el.ValueKind != JsonValueKind.Object) return el;
         if (JsonNode.Parse(el.GetRawText()) is not JsonObject node) return el;
         // MCP-10: an equation's LaTeX and a verse keep their line breaks (a % comment runs to the
         // end of its line; a poem is its lines). Everything else is prose: soft wraps → spaces.
-        var verse = node["variant"] is JsonValue vv && vv.GetValueKind() == JsonValueKind.String
-            && string.Equals(vv.GetValue<string>(), "verse", StringComparison.OrdinalIgnoreCase);
+        // A verse block (the ePub type) is its lines too: they were joined on write (MCP-42, run 3b).
+        var verse = string.Equals(blockType, "verse", StringComparison.OrdinalIgnoreCase)
+            || (node["variant"] is JsonValue vv && vv.GetValueKind() == JsonValueKind.String
+                && string.Equals(vv.GetValue<string>(), "verse", StringComparison.OrdinalIgnoreCase));
         foreach (var key in new[] { "text", "title", "latex", "caption" })
         {
             if (node[key] is not JsonValue jv || jv.GetValueKind() != JsonValueKind.String) continue;

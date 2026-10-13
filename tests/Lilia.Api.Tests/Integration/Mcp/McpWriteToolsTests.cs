@@ -278,6 +278,24 @@ public class McpWriteToolsTests : IntegrationTestBase
         (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id)).PageNumbering.Should().Be("arabic");
     }
 
+    // MCP-42 (run 3b): a verse block lost its lines on write; a cover block was accepted and printed nothing.
+    [Fact]
+    public async Task A_verse_keeps_its_lines_and_a_cover_is_refused()
+    {
+        await SeedUserAsync("mcpw_verse");
+        var doc = await SeedDocumentAsync("mcpw_verse");
+        var client = CreateClientAs("mcpw_verse");
+        var r = await CallAsync(client, "add_block", new { documentId = doc.Id.ToString(), type = "verse", content = """{"text":"Line one\nLine two"}""" });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        await using (var db = CreateDbContext())
+        {
+            var block = await db.Blocks.AsNoTracking().FirstAsync(b => b.DocumentId == doc.Id && b.Type == "verse");
+            block.Content.RootElement.GetProperty("text").GetString().Should().Be("Line one\nLine two");
+        }
+        (await CallAsync(client, "add_block", new { documentId = doc.Id.ToString(), type = "cover", content = """{"title":"X"}""" }))
+            .GetProperty("error").GetString().Should().Contain("ePub");
+    }
+
     // MCP-85 / MCP-87: get_lilia_latex says the engine the check uses; a list's outline is its text.
     [Fact]
     public async Task The_engine_and_the_outline_are_told_plainly()
