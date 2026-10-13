@@ -70,7 +70,7 @@ public static class ProseLatex
         ["Phi"] = "Φ", ["Psi"] = "Ψ", ["Omega"] = "Ω",
         ["le"] = "≤", ["leq"] = "≤", ["ge"] = "≥", ["geq"] = "≥", ["ne"] = "≠", ["neq"] = "≠", ["approx"] = "≈",
         ["times"] = "×", ["cdot"] = "·", ["pm"] = "±", ["infty"] = "∞", ["to"] = "→", ["in"] = "∈",
-        ["sim"] = "∼", ["partial"] = "∂", ["nabla"] = "∇", ["ell"] = "ℓ",
+        ["sim"] = "∼", ["partial"] = "∂", ["nabla"] = "∇", ["ell"] = "ℓ", ["leftarrow"] = "←", ["gets"] = "←", ["rightarrow"] = "→", ["ldots"] = "…", ["dots"] = "…", ["cdots"] = "⋯",
     };
 
     private const string Sup = "⁰¹²³⁴⁵⁶⁷⁸⁹", Sub = "₀₁₂₃₄₅₆₇₈₉";
