@@ -245,6 +245,39 @@ public class McpWriteToolsTests : IntegrationTestBase
         tex.GetProperty("url").GetString().Should().Contain("/connector/files/");
     }
 
+    // Run 3b: MCP-108 (the note said "It compiles, but…" of a broken document), MCP-110 (a pdf link
+    // made before the check served a PDF of a broken version), MCP-113 (null ignored on a choice).
+    [Fact]
+    public async Task A_broken_version_gets_no_pdf_even_from_an_earlier_link()
+    {
+        await SeedUserAsync("mcpw_early");
+        var doc = await SeedDocumentAsync("mcpw_early");
+        await SeedBlockAsync(doc.Id, "embed", """{"latex":"\\notACommandEarly"}""", 0);
+        var client = CreateClientAs("mcpw_early");
+        var early = await CallAsync(client, "export_document", new { documentId = doc.Id.ToString(), format = "pdf" });
+        var url = early.GetProperty("url").GetString()!;
+        var download = await CreateAnonymousClient().GetAsync(new Uri(url).PathAndQuery);
+        download.StatusCode.Should().Be(System.Net.HttpStatusCode.UnprocessableEntity, "the version doesn't compile");
+        (await download.Content.ReadAsStringAsync()).Should().Contain("does not compile");
+
+        var check = await CallAsync(client, "check_document", new { documentId = doc.Id.ToString() });
+        check.GetProperty("note").GetString().Should().StartWith("It does not compile");
+    }
+
+    [Fact]
+    public async Task Null_puts_a_choice_back_to_its_default()
+    {
+        await SeedUserAsync("mcpw_nullchoice");
+        var doc = await SeedDocumentAsync("mcpw_nullchoice");
+        var client = CreateClientAs("mcpw_nullchoice");
+        await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { pageNumbering = "none" } });
+        var r = await CallAsync(client, "set_document_settings",
+            new { documentId = doc.Id.ToString(), settings = JsonDocument.Parse("""{"pageNumbering":null}""").RootElement });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        await using var db = CreateDbContext();
+        (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc.Id)).PageNumbering.Should().Be("arabic");
+    }
+
     // MCP-85 / MCP-87: get_lilia_latex says the engine the check uses; a list's outline is its text.
     [Fact]
     public async Task The_engine_and_the_outline_are_told_plainly()
