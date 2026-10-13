@@ -166,6 +166,9 @@ public class ExportBlockContent
     /// </summary>
     public string? Caption { get; set; }
 
+    /// <summary>The caption's runs: its maths as equations and its marks (MCP-103: they printed as typed).</summary>
+    public List<ExportRichTextSpan>? CaptionRichText { get; set; }
+
     /// <summary>
     /// "Table 2", "Figure 3": the caption's number among captioned blocks of
     /// its kind, set by the exporter before it renders (a singleton cannot

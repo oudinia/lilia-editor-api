@@ -461,6 +461,9 @@ public class DocxExportService : IDocxExportService
         var code = content.Code ?? content.Text ?? "";
         var lines = code.Split('\n');
         var elements = new List<OpenXmlElement>();
+        // "Listing 2: …" above the code, as the LaTeX export prints it; the .docx had no caption.
+        if (string.Equals(block.Type, "code", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(content.Caption))
+            elements.Add(CaptionParagraph("Listing", content.CaptionNumber, content.Caption!, center: false, content.CaptionRichText));
 
         foreach (var line in lines)
         {
@@ -623,12 +626,15 @@ public class DocxExportService : IDocxExportService
     /// </summary>
     private static void NumberCaptions(IEnumerable<ExportBlock> blocks)
     {
-        int tables = 0, figures = 0;
+        int tables = 0, figures = 0, listings = 0, algorithms = 0;
         foreach (var b in blocks)
         {
             if (b.Content is null || string.IsNullOrWhiteSpace(b.Content.Caption)) continue;
             if (string.Equals(b.Type, "table", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++tables;
             else if (string.Equals(b.Type, "figure", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++figures;
+            // Listing and algorithm captions, numbered as LaTeX numbers them (MCP-105: they were gone).
+            else if (string.Equals(b.Type, "code", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++listings;
+            else if (string.Equals(b.Type, "algorithm", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++algorithms;
         }
     }
 
@@ -638,7 +644,7 @@ public class DocxExportService : IDocxExportService
     /// at — Olivia, 23 Sep: use Word's own fields, so Word numbers them); the
     /// run inside it is the number shown before Word updates fields.
     /// </summary>
-    private static Paragraph CaptionParagraph(string label, int? number, string text, bool center)
+    private Paragraph CaptionParagraph(string label, int? number, string text, bool center, List<ExportRichTextSpan>? runs = null)
     {
         var para = new Paragraph();
         var pPr = new ParagraphProperties(new ParagraphStyleId { Val = "Caption" });
@@ -650,7 +656,10 @@ public class DocxExportService : IDocxExportService
             para.Append(new SimpleField(new Run(new Text(n.ToString()))) { Instruction = $" SEQ {label} \\* ARABIC " });
             para.Append(new Run(new Text(": ") { Space = SpaceProcessingModeValues.Preserve }));
         }
-        para.Append(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
+        if (runs is { Count: > 0 })
+            foreach (var span in runs) para.AppendChild(CreateSpanElement(span));
+        else
+            para.Append(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
         return para;
     }
 
@@ -658,7 +667,7 @@ public class DocxExportService : IDocxExportService
     {
         // The caption goes above the table, as the LaTeX export places it.
         if (!string.IsNullOrWhiteSpace(block.Content?.Caption))
-            yield return CaptionParagraph("Table", block.Content.CaptionNumber, block.Content.Caption!, center: true);
+            yield return CaptionParagraph("Table", block.Content.CaptionNumber, block.Content.Caption!, center: true, block.Content.CaptionRichText);
         foreach (var element in ConvertTableBody(block)) yield return element;
     }
 
@@ -826,7 +835,7 @@ public class DocxExportService : IDocxExportService
 
         // Add caption if present — "Figure N: …", as the PDF prints it.
         if (!string.IsNullOrEmpty(content.Caption))
-            elements.Add(CaptionParagraph("Figure", content.CaptionNumber, content.Caption, center: true));
+            elements.Add(CaptionParagraph("Figure", content.CaptionNumber, content.Caption, center: true, content.CaptionRichText));
 
         if (elements.Count == 0)
         {
@@ -1306,11 +1315,24 @@ public class DocxExportService : IDocxExportService
             var captionPPr = new ParagraphProperties();
             captionPPr.Append(new SpacingBetweenLines { Before = "120", After = "60" });
             captionPara.Append(captionPPr);
+            if (content.CaptionNumber is int n)
+                captionPara.AppendChild(new Run(new RunProperties(new Bold()), new Text($"Algorithm {n} ") { Space = SpaceProcessingModeValues.Preserve }));
 
-            var captionRun = new Run();
-            captionRun.Append(new RunProperties(new Bold()));
-            captionRun.Append(new Text(content.Caption) { Space = SpaceProcessingModeValues.Preserve });
-            captionPara.AppendChild(captionRun);
+            if (content.CaptionRichText is { Count: > 0 } runs)
+            {
+                foreach (var span in runs)
+                {
+                    if (string.IsNullOrEmpty(span.Equation)) span.Bold = true;
+                    captionPara.AppendChild(CreateSpanElement(span));
+                }
+            }
+            else
+            {
+                var captionRun = new Run();
+                captionRun.Append(new RunProperties(new Bold()));
+                captionRun.Append(new Text(content.Caption) { Space = SpaceProcessingModeValues.Preserve });
+                captionPara.AppendChild(captionRun);
+            }
             elements.Add(captionPara);
         }
 
