@@ -875,6 +875,23 @@ public class DocxExportService : IDocxExportService
                 elements.Add(para);
             }
         }
+        else
+        {
+            // No image to place (a drawing that did not render, a link Lilia cannot read): a framed
+            // placeholder, so the figure isn't a caption floating alone (MCP-104).
+            var alt = content.Image?.AltText;
+            elements.Add(new Paragraph(
+                new ParagraphProperties(
+                    new ParagraphBorders(
+                        new TopBorder { Val = BorderValues.Single, Size = 4, Color = "999999" },
+                        new LeftBorder { Val = BorderValues.Single, Size = 4, Color = "999999" },
+                        new BottomBorder { Val = BorderValues.Single, Size = 4, Color = "999999" },
+                        new RightBorder { Val = BorderValues.Single, Size = 4, Color = "999999" }),
+                    new SpacingBetweenLines { Before = "240", After = "240" },
+                    new Justification { Val = JustificationValues.Center }),
+                new Run(new RunProperties(new Italic(), new Color { Val = "666666" }),
+                    new Text(string.IsNullOrWhiteSpace(alt) ? "[Figure: see the PDF export]" : $"[Figure: {alt}]") { Space = SpaceProcessingModeValues.Preserve })));
+        }
 
         // Add caption if present — "Figure N: …", as the PDF prints it.
         if (!string.IsNullOrEmpty(content.Caption))
@@ -1195,7 +1212,8 @@ public class DocxExportService : IDocxExportService
         // and it at least lets the author find the entry they need to fix.
         if (parts.Count == 0) return entry.CiteKey;
 
-        return string.Join(". ", parts) + ".";
+        // A part that ends with its own full stop (an initial: "Young, L. C.") doesn't get a second.
+        return string.Join(". ", parts.Select(p => p.TrimEnd('.'))) + ".";
     }
 
     // Word's schema order for paragraph and run properties (CT_PPrBase, CT_RPr). The writers append

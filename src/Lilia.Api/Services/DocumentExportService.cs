@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Engines;
 using Lilia.Engines.Themes;
+using Lilia.Core.Blocks;
 
 namespace Lilia.Api.Services;
 
@@ -59,6 +60,7 @@ public class DocumentExportService : IDocumentExportService
     }
 
     private Func<string, string?>? _labelNumber;
+    private string? _customPreamble;
 
     public async Task<ExportDocument> BuildExportDocumentAsync(Guid documentId)
     {
@@ -117,6 +119,8 @@ public class DocumentExportService : IDocumentExportService
             .ToList();
         for (var n = 0; n < listed.Count; n++) listed[n].Number = n + 1;
         var citeNumbers = listed.ToDictionary(e => e.CiteKey, e => e.Number!.Value.ToString(), StringComparer.Ordinal);
+
+        _customPreamble = doc.CustomPreamble;
 
         // References in prose take the numbers the last compile gave them (ProseLatex); citations
         // ("cite:key") the numbers above.
@@ -941,11 +945,21 @@ public class DocumentExportService : IDocumentExportService
             imageData = await ResolveDocumentAssetAsync(documentId, src);
         }
 
+        // A TikZ figure has no file: draw it (MCP-104: it exported as its caption only).
+        if (imageData == null && TikzFigure.IsTikz(content))
+            imageData = await RenderTikzAsync(TikzFigure.Source(content));
+
         if (imageData != null)
         {
             imageData.AltText = alt;
             imageData.Width = width * 500; // approximate pixel width
-            imageData.Height = imageData.Width * 0.75; // default 4:3 aspect
+            // A PNG's own proportions (its IHDR header); 4:3 for anything else.
+            imageData.Height = imageData.Width * (PngAspect(imageData) ?? 0.75);
+        }
+        else if (!string.IsNullOrWhiteSpace(alt))
+        {
+            // No image, but its description: the placeholder says what the figure shows.
+            imageData = new ExportImageData { AltText = alt };
         }
 
         return new ExportBlock
@@ -958,6 +972,54 @@ public class DocumentExportService : IDocumentExportService
                 CaptionRichText = CaptionRuns(caption),
             }
         };
+    }
+
+    /// <summary>
+    /// A TikZ picture as a PNG: a standalone page with the packages the picture needs and the
+    /// document's own TikZ setup (\usetikzlibrary, \tikzset…). Null when it doesn't compile, or the
+    /// source is refused, and the writer prints a placeholder.
+    /// </summary>
+    private async Task<ExportImageData?> RenderTikzAsync(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return null;
+        var sb = new System.Text.StringBuilder();
+        sb.Append("\\documentclass[border=4pt]{standalone}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath,amssymb}\n\\usepackage{xcolor}\n");
+        foreach (var pkg in TikzFigure.RequiredPackages(source)) sb.Append("\\usepackage{").Append(pkg).Append("}\n");
+        if (TikzFigure.RequiredPackages(source).Contains("pgfplots")) sb.Append("\\pgfplotsset{compat=1.18}\n");
+        sb.Append(TikzFigure.SetupLines(_customPreamble)).Append('\n');
+        sb.Append("\\begin{document}\n").Append(source).Append("\n\\end{document}\n");
+        var tex = sb.ToString();
+        if (Lilia.Engines.TexSafety.TexSourceGuard.Violation(tex) is not null) return null;
+        try
+        {
+            var png = await _latexRenderService.RenderToPngAsync(tex, dpi: 200, timeout: 30);
+            return png is { Length: > 0 }
+                ? new ExportImageData { Data = Convert.ToBase64String(png), MimeType = "image/png", Filename = "tikz.png" }
+                : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogInformation(ex, "[Export] a TikZ figure did not render for Word");
+            return null;
+        }
+    }
+
+    /// <summary>Height over width from a PNG's IHDR chunk, or null when it isn't a PNG.</summary>
+    private static double? PngAspect(ExportImageData image)
+    {
+        if (!string.Equals(image.MimeType, "image/png", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(image.Data)) return null;
+        try
+        {
+            var head = Convert.FromBase64String(image.Data.Length > 64 ? image.Data[..64] : image.Data);
+            if (head.Length < 24 || head[1] != 'P' || head[2] != 'N' || head[3] != 'G') return null;
+            var w = (head[16] << 24) | (head[17] << 16) | (head[18] << 8) | head[19];
+            var h = (head[20] << 24) | (head[21] << 16) | (head[22] << 8) | head[23];
+            return w > 0 && h > 0 ? (double)h / w : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private ExportBlock ConvertBlockquoteBlock(JsonElement content)
