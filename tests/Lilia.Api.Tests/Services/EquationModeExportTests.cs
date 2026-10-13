@@ -45,7 +45,7 @@ public class EquationModeExportTests
     }
 
     [Theory]
-    [InlineData("display*", @"\[")]
+    [InlineData("display*", @"\begin{equation*}")]
     [InlineData("align*", @"\begin{align*}")]
     [InlineData("gather*", @"\begin{gather*}")]
     [InlineData("align", @"\begin{align}")]

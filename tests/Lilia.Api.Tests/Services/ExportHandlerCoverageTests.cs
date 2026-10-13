@@ -52,20 +52,23 @@ public class ExportHandlerCoverageTests
     public static IEnumerable<object[]> RequiredBlockTypes() =>
         RequiredCoverage.Select(t => new object[] { t });
 
+    // Measured by exporting, not by reading the source: since run 2 (MCP-76) the export renders
+    // body blocks with the check emitter, so its cases are no longer arms in its own switch.
     [Theory]
     [MemberData(nameof(RequiredBlockTypes))]
     public void Latex_exporter_has_case_for_block_type(string blockType)
     {
-        var src = File.ReadAllText(LatexExportPath);
-        // Match `"<type>" =>` for solo cases OR `"<type>" or "..." =>`
-        // for combined-alias cases (lowercase legacy forms now ride
-        // alongside canonical camelCase). Mirrors the Typst gate.
-        var pattern = $"\"{blockType}\"\\s*(=>|or\\s+\")";
-        src.Should().MatchRegex(pattern,
-            $"LaTeXExportService.RenderBlock should have a case for '{blockType}' — " +
-            "without it the block silently falls to the empty default and " +
-            "exports as no content. See ExportHandlerCoverageTests for the " +
-            "reflection check.");
+        var doc = new Document { Id = Guid.NewGuid(), Title = "T", LatexDocumentClass = "article", Language = "en", PaperSize = "a4", FontFamily = "serif", FontSize = 11 };
+        var block = new Block
+        {
+            Id = Guid.NewGuid(), DocumentId = doc.Id, Type = blockType, SortOrder = 0,
+            Content = System.Text.Json.JsonDocument.Parse("{}"),
+        };
+        var tex = new Lilia.Api.Services.LaTeXExportService(null!, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<Lilia.Api.Services.LaTeXExportService>.Instance)
+            .BuildSingleFileLatex(doc, [block], [], new Lilia.Api.Services.LaTeXExportOptions());
+        tex.Should().NotContain($"Unsupported block type for LaTeX export: {blockType}",
+            $"the LaTeX export must have a case for '{blockType}' — without it the block " +
+            "exports as no content.");
     }
 
     [Theory]

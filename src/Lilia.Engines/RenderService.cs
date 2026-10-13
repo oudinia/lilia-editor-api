@@ -1291,56 +1291,7 @@ public partial class RenderService : IRenderService
 
         // Blocks — reuse the pre-rendered LaTeX from above so we don't
         // run the (potentially expensive) per-block rendering twice.
-        var blocksList = blocks;
-        var bookDivisions = LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "memoir" or "scrbook"
-            && blocksList.Any(b => string.Equals(b.Type, "frontMatter", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(b.Type, "backMatter", StringComparison.OrdinalIgnoreCase));
-        var division = 0; // 0 none yet, 1 front, 2 main, 3 back
-        for (int i = 0; i < blocksList.Count; i++)
-        {
-            latex.AppendLine($"% block:{blocksList[i].Id}");
-
-            // Per-block \label so LaTeX records which page the block landed on.
-            // It writes one \newlabel line per label into the .aux on every run,
-            // which AuxPageMap reads back — the page map costs one parse of a
-            // file we already produce, with no PDF inspection and no heuristics.
-            //
-            // Placed BEFORE the content, so the recorded page is where the block
-            // starts. The honest caveat: a block that itself forces a page break
-            // (a pagebreak block, or a chapter heading under a class that opens
-            // one) records the page *preceding* the break, because the label
-            // ships out before the break does. That is why the map is advisory —
-            // good enough to draw markers and spot bad breaks, not a layout
-            // oracle.
-            latex.AppendLine($"\\label{{{AuxPageMap.LabelFor(blocksList[i].Id)}}}");
-
-            // Break intent, expressed as attributes rather than as a positional
-            // @pagebreak block. Applied here — around the whole block — because
-            // that is the unit the intent is about: "keep THIS heading with what
-            // follows", "do not split THIS table".
-            // MCP-41: a book's divisions — \frontmatter before its front matter, \mainmatter when
-            // the body starts, \backmatter before back matter that isn't an appendix.
-            if (bookDivisions)
-            {
-                var type = blocksList[i].Type ?? "";
-                var isFront = string.Equals(type, "frontMatter", StringComparison.OrdinalIgnoreCase);
-                var isBack = string.Equals(type, "backMatter", StringComparison.OrdinalIgnoreCase)
-                    && !Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(blocksList[i]);
-                var isNeutral = type.Equals("title", StringComparison.OrdinalIgnoreCase)
-                    || type.Equals("tableofcontents", StringComparison.OrdinalIgnoreCase);
-                if (isFront && division == 0) { latex.AppendLine(@"\frontmatter"); division = 1; }
-                else if (!isFront && !isBack && !isNeutral && division == 1) { latex.AppendLine(@"\mainmatter"); division = 2; }
-                else if (isBack && division < 3) { if (division == 1) latex.AppendLine(@"\mainmatter"); latex.AppendLine(@"\backmatter"); division = 3; }
-            }
-
-            var breaks = BlockBreakAttributes.For(blocksList[i].Content.RootElement);
-            if (breaks.Before.Length > 0) latex.AppendLine(breaks.Before);
-            // MCP-40: inside balanced multicols LaTeX drops floats outright ("Floats and marginpars
-            // not allowed inside multicols"): the table and its label vanished, check clean. There
-            // they are placed exactly where they are written ([H], float package).
-            latex.AppendLine(LaTeXPreambleBuilder.UsesMulticols(doc) ? InMulticols(renderedBlocks[i]) : renderedBlocks[i]);
-            if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
-        }
+        latex.Append(ComposeBody(doc, blocks, renderedBlocks, pageMap: true));
 
         // Close multi-column wrapper (paired with the opener above).
         // Same rule: only when BalancedColumns is on. See opener comment.
@@ -1398,7 +1349,7 @@ public partial class RenderService : IRenderService
         RenderBlockToLatex(block, IsLongTable(block) && (block.Document is null || SupportsLongtable(block.Document)));
 
     /// <summary>A table block long enough to break across pages by itself (TableLayout).</summary>
-    private static bool IsLongTable(Block block)
+    public static bool IsLongTable(Block block)
     {
         if (!string.Equals(block.Type, "table", StringComparison.OrdinalIgnoreCase) || block.Content is null) return false;
         try { return TableLayout.IsLongTable(block.Content.RootElement); }
@@ -1500,6 +1451,7 @@ public partial class RenderService : IRenderService
         // preview, the PDF compile and Ask Lilia's get_lilia_latex use, dropped
         // it, so every reference to a section printed "??".
         (text, var label) = HeadingAnchor.Read(content, text);
+        text = HeadingAnchor.WithoutTypedNumber(text);
         var labelPart = string.IsNullOrWhiteSpace(label) ? "" : $@"\label{{{LabelKey.Safe(label)}}}";
 
         return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}{labelPart}";
@@ -1806,77 +1758,8 @@ public partial class RenderService : IRenderService
     // split is not one of them: it needs a host equation, and printed bare it stopped the
     // compile ("\begin{split} won't work here", MCP-23).
 
-    private string RenderEquationToLatex(JsonElement content)
-    {
-        var latex = EquationContent.ReadSource(content);
-
-        var displayMode = ResolveDisplayMode(content);
-
-        var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;
-        // MCP-03: the label, keyed as the exporter and the reference index key it (LabelKey).
-        // It was never printed here, so every reference to an equation read "??" with a clean check.
-        var labelKey = LabelKey.Effective("equation",
-            content.TryGetProperty("label", out var lab) && lab.ValueKind == JsonValueKind.String ? lab.GetString() : null);
-        // Not when the source has its own \label: two in one equation stop the compile.
-        var labelLine = numbered && labelKey.Length > 0 && !latex.Contains(@"\label{", StringComparison.Ordinal)
-            ? $"\\label{{{labelKey}}}\n" : "";
-
-        // Strip MathLive placeholder artifacts
-        latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
-
-        // Empty equation guard
-        if (string.IsNullOrWhiteSpace(latex))
-            return "% Empty equation";
-
-        // Auto-detect paragraph-level math environments — these can't be wrapped in $...$
-        var containsParagraphEnv = ParagraphMathEnvironments.Any(env =>
-            latex.Contains($"\\begin{{{env}}}"));
-
-        var needsHost = latex.Contains(@"\begin{split}", StringComparison.Ordinal);
-        if (displayMode || containsParagraphEnv || needsHost)
-        {
-            // If it already contains a math environment, handle numbering
-            if (containsParagraphEnv)
-            {
-                if (!numbered)
-                {
-                    // Convert unstarred environments to starred variants
-                    var result = latex;
-                    foreach (var env in ParagraphMathEnvironments)
-                    {
-                        // Only convert non-starred environments to starred
-                        if (env.EndsWith("*")) continue;
-                        result = result.Replace($"\\begin{{{env}}}", $"\\begin{{{env}*}}");
-                        result = result.Replace($"\\end{{{env}}}", $"\\end{{{env}*}}");
-                    }
-                    return result;
-                }
-                // The label goes just inside the first environment, unless the source has its own.
-                if (labelLine.Length > 0 && !latex.Contains(@"\label{"))
-                {
-                    var open = ParagraphMathEnvironments
-                        .Select(env => (env, at: latex.IndexOf($"\\begin{{{env}}}", StringComparison.Ordinal)))
-                        .Where(x => x.at >= 0).OrderBy(x => x.at).FirstOrDefault();
-                    if (open.env is not null)
-                    {
-                        var insertAt = open.at + $"\\begin{{{open.env}}}".Length;
-                        return latex[..insertAt] + "\n" + labelLine.TrimEnd('\n') + latex[insertAt..];
-                    }
-                }
-                return latex;
-            }
-
-            // A bare alignment body (a &= b \\ c &= d): align, as the exporter does (MCP-23).
-            // In equation* its & stopped the compile ("Misplaced alignment tab character &").
-            var eqEnv = EquationContent.HasTopLevelAlignment(latex)
-                ? (numbered ? "align" : "align*")
-                : (numbered ? "equation" : "equation*");
-            return $@"\begin{{{eqEnv}}}
-{labelLine}{latex}
-\end{{{eqEnv}}}";
-        }
-        return $"${latex}$";
-    }
+    // One renderer for both emitters (EquationLatex).
+    private static string RenderEquationToLatex(JsonElement content) => EquationLatex.Render(content);
 
     private string RenderFigureToLatex(JsonElement content)
     {
@@ -2383,6 +2266,71 @@ public partial class RenderService : IRenderService
         if (cell.ValueKind == JsonValueKind.Object && cell.TryGetProperty(propName, out var prop) && prop.TryGetInt32(out var val))
             return val;
         return defaultValue;
+    }
+
+
+    /// <summary>
+    /// The document body as both emitters write it: each block's LaTeX in order, with a book's
+    /// \frontmatter / \mainmatter / \backmatter, the blocks' break attributes, and floats held in
+    /// place inside multicols. The export used to join its blocks without any of this, and with its
+    /// own block renderers — the run-2 finding (MCP-76): what the check printed, the export lost.
+    /// <paramref name="pageMap"/> adds the per-block markers and page-map labels the compile reads;
+    /// an exported .tex goes without them.
+    /// </summary>
+    public string ComposeBody(Document doc, IReadOnlyList<Block> blocks, IReadOnlyList<string> rendered, bool pageMap)
+    {
+        var latex = new StringBuilder();
+        var blocksList = blocks;
+        var bookDivisions = LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "memoir" or "scrbook"
+            && blocksList.Any(b => string.Equals(b.Type, "frontMatter", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(b.Type, "backMatter", StringComparison.OrdinalIgnoreCase));
+        var division = 0; // 0 none yet, 1 front, 2 main, 3 back
+        for (int i = 0; i < blocksList.Count; i++)
+        {
+            if (pageMap) latex.AppendLine($"% block:{blocksList[i].Id}");
+
+            // Per-block \label so LaTeX records which page the block landed on.
+            // It writes one \newlabel line per label into the .aux on every run,
+            // which AuxPageMap reads back — the page map costs one parse of a
+            // file we already produce, with no PDF inspection and no heuristics.
+            //
+            // Placed BEFORE the content, so the recorded page is where the block
+            // starts. The honest caveat: a block that itself forces a page break
+            // (a pagebreak block, or a chapter heading under a class that opens
+            // one) records the page *preceding* the break, because the label
+            // ships out before the break does. That is why the map is advisory —
+            // good enough to draw markers and spot bad breaks, not a layout
+            // oracle.
+            if (pageMap) latex.AppendLine($"\\label{{{AuxPageMap.LabelFor(blocksList[i].Id)}}}");
+
+            // Break intent, expressed as attributes rather than as a positional
+            // @pagebreak block. Applied here — around the whole block — because
+            // that is the unit the intent is about: "keep THIS heading with what
+            // follows", "do not split THIS table".
+            // MCP-41: a book's divisions — \frontmatter before its front matter, \mainmatter when
+            // the body starts, \backmatter before back matter that isn't an appendix.
+            if (bookDivisions)
+            {
+                var type = blocksList[i].Type ?? "";
+                var isFront = string.Equals(type, "frontMatter", StringComparison.OrdinalIgnoreCase);
+                var isBack = string.Equals(type, "backMatter", StringComparison.OrdinalIgnoreCase)
+                    && !Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(blocksList[i]);
+                var isNeutral = type.Equals("title", StringComparison.OrdinalIgnoreCase)
+                    || type.Equals("tableofcontents", StringComparison.OrdinalIgnoreCase);
+                if (isFront && division == 0) { latex.AppendLine(@"\frontmatter"); division = 1; }
+                else if (!isFront && !isBack && !isNeutral && division == 1) { latex.AppendLine(@"\mainmatter"); division = 2; }
+                else if (isBack && division < 3) { if (division == 1) latex.AppendLine(@"\mainmatter"); latex.AppendLine(@"\backmatter"); division = 3; }
+            }
+
+            var breaks = BlockBreakAttributes.For(blocksList[i].Content.RootElement);
+            if (breaks.Before.Length > 0) latex.AppendLine(breaks.Before);
+            // MCP-40: inside balanced multicols LaTeX drops floats outright ("Floats and marginpars
+            // not allowed inside multicols"): the table and its label vanished, check clean. There
+            // they are placed exactly where they are written ([H], float package).
+            latex.AppendLine(LaTeXPreambleBuilder.UsesMulticols(doc) ? InMulticols(rendered[i]) : rendered[i]);
+            if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
+        }
+        return latex.ToString();
     }
 
     /// <summary>

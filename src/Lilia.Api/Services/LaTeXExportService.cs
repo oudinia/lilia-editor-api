@@ -57,6 +57,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        bibEntries = WithTextEntries(blocks, bibEntries);
         var files = ApplyCitationBackend(GenerateSingleFile(doc, blocks, bibEntries, options), options);
         return files.First(f => f.Path == "main.tex").Content;
     }
@@ -134,6 +135,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        bibEntries = WithTextEntries(blocks, bibEntries);
         var files = options.Structure switch
         {
             "multi" when options.MultiFileLayout == "overleaf" =>
@@ -162,8 +164,38 @@ public class LaTeXExportService : ILaTeXExportService
     // is a hard error (RenderService.SupportsLongtable). Set with the heading class.
     private bool _longtableAllowed = true;
 
+    // The check emitter, which renders every body block of the export too (BlocksToLatex), and
+    // the document being exported, set with the heading class.
+    private readonly RenderService _check = new(null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<RenderService>.Instance);
+    private Document? _doc;
+
+    /// <summary>
+    /// References written as text in a bibliography block (<c>@cite[key] Author - Title</c>), as
+    /// <c>@misc</c> entries in the .bib beside the document's own. The check printed them; the
+    /// export printed nothing and every citation of them was [?] (MCP-04, run 2's MCP-76).
+    /// </summary>
+    internal static List<BibliographyEntry> WithTextEntries(IEnumerable<Block> blocks, List<BibliographyEntry> bibEntries)
+    {
+        var known = bibEntries.Select(e => e.CiteKey).ToHashSet(StringComparer.Ordinal);
+        var extra = blocks
+            .Where(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(b => BibliographyText.Parse(
+                b.Content?.RootElement is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
+                    ? t.GetString() : null))
+            .Where(e => known.Add(e.Key))
+            .Select(e => new BibliographyEntry
+            {
+                CiteKey = e.Key,
+                EntryType = "misc",
+                Data = JsonDocument.Parse(JsonSerializer.Serialize(new { note = e.Text })),
+            })
+            .ToList();
+        return extra.Count == 0 ? bibEntries : bibEntries.Concat(extra).ToList();
+    }
+
     private void UseHeadingClass(Document doc, LaTeXExportOptions options)
     {
+        _doc = doc;
         _headingClass = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
         _longtableAllowed = RenderService.SupportsLongtable(doc);
     }
@@ -836,7 +868,10 @@ public class LaTeXExportService : ILaTeXExportService
         // A deck's footnote blocks go inside the slide before them (SlideLatex.AttachFootnotes).
         if (LaTeXPreamble.IsBeamer(_headingClass))
             SlideLatex.AttachFootnotes(blocks.Select(b => b.Type).ToList(), rendered);
-        return string.Join("\n\n", rendered.Where(r => !string.IsNullOrEmpty(r)));
+        // Composed as the check composes it: book divisions, break attributes, floats in multicols.
+        return _doc is null
+            ? string.Join("\n\n", rendered.Where(r => !string.IsNullOrEmpty(r)))
+            : _check.ComposeBody(_doc, blocks, rendered, pageMap: false).TrimEnd();
     }
 
     private string RenderBlock(Block block)
@@ -845,46 +880,20 @@ public class LaTeXExportService : ILaTeXExportService
         {
             var content = block.Content.RootElement;
 
-            return block.Type switch
+            // One emitter (run 2, MCP-76): every body block is rendered by the check emitter, so the
+            // export prints what check_document judged. The export keeps only what it needs to do
+            // differently: figures (files under figures/, with a placeholder when one is missing)
+            // and the bibliography (a .bib, with the text references added: WithTextEntries).
+            switch (block.Type)
             {
-                "paragraph" => RenderParagraph(content),
-                "heading" => RenderHeading(content),
-                "equation" => RenderEquation(content),
-                "figure" => RenderFigure(content),
-                "table" => RenderTable(content),
-                "code" => RenderCode(content),
-                "list" => RenderList(content),
-                "blockquote" => RenderBlockquote(content),
-                "theorem" => RenderTheorem(content),
-                "algorithm" or "algorithm2e" => RenderAlgorithm(content),
-                // Match both canonical camelCase (BlockTypes constants)
-                // and the all-lowercase forms legacy / imported data uses.
-                "tableOfContents" or "tableofcontents" or "toc" => @"\tableofcontents" + "\n" + @"\newpage",
-                "pageBreak" or "pagebreak" or "page_break" => @"\newpage",
-                "columnBreak" or "columnbreak" or "column_break" => @"\liliaColumnBreak",
-                "columnLayout" => RenderColumnLayout(content),
-                "personalInfo" => RenderPersonalInfo(content),
-                "photo" => RenderPhoto(content),
-                "cvEntry" => RenderCvEntry(content),
-                "cvSection" => RenderCvSection(content),
-                "embed" => RenderEmbed(content),
-                "callout" => RenderCallout(content),
-                // Footnotes reached LaTeX as
-                //   % [Unsupported block type for LaTeX export: footnote]
-                // — a comment, which is to say nothing at all. An article with
-                // footnotes exported without them, silently, in both the .tex
-                // and the PDF built from it.
-                "footnote" => RenderFootnote(content),
-                // A beamer frame, as the preview writes it. Slides were dropped here as
-                // unsupported, so an exported deck (and its PDF) had no frames.
-                "slide" => Lilia.Engines.SlideLatex.Frame(content, EscapeLatex, FormatInlineContent),
-                // The first abstract is printed after \maketitle and never reaches here (LeadAbstract).
-                "abstract" => $"\\begin{{abstract}}\n{FormatInlineContent(GetText(content))}\n\\end{{abstract}}",
-                "bibliography" => "", // handled via .bib file
-                // The Appendix back-matter block starts the appendices (see RenderService).
-                "backMatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block) => @"\appendix",
-                _ => RenderUnknownBlock(block),
-            };
+                case "figure" or "image":
+                    return RenderFigure(content);
+                case "bibliography":
+                    return "";
+            }
+            if (_doc is not null && block.Document is null) block.Document = _doc;
+            var latex = _check.RenderBlockToLatex(block, _longtableAllowed && RenderService.IsLongTable(block));
+            return latex.StartsWith("% Unknown block type", StringComparison.Ordinal) ? RenderUnknownBlock(block) : latex;
         }
         catch (Exception ex)
         {
@@ -1060,83 +1069,8 @@ public class LaTeXExportService : ILaTeXExportService
         return match.Success ? match.Groups[1].Value : text;
     }
 
-    private string RenderEquation(JsonElement content)
-    {
-        var latex = EquationContent.ReadSource(content);
-        var (mode, numbered) = EquationContent.ReadMode(content);
-        var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        // Not when the source carries its own \label: two labels in one equation stop the compile
-        // ("Multiple \label's", 5 of the campaign's 8 papers on 13 Oct).
-        var labelPart = !string.IsNullOrEmpty(label) && !latex.Contains(@"\label{", StringComparison.Ordinal)
-            ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
-        // An empty display is a blank line in maths mode, which LaTeX refuses (LTX-43).
-        if (string.IsNullOrWhiteSpace(latex)) return "% Empty equation";
-
-        // The source is itself a display environment — what a .tex import
-        // stores for align / gather / multline (it keeps the environment so
-        // KaTeX can render the alignment). Wrapping that in equation or \[…\]
-        // is fatal: "Erroneous nesting of equation structures" / "\begin{gather}
-        // allowed only in paragraph mode", no PDF. Emit it as the environment
-        // it is; numbering is the block's, so the star follows `numbered`.
-        if (mode != "inline" && TryRenderStandaloneMathEnvironment(latex, numbered, labelPart) is { } standalone)
-            return standalone;
-
-        // An alignment body with no mode to match it.
-        //
-        // Four blocks in the corpus store `a &= b \\ c &= d` with mode unset,
-        // which reads as "display" above and lands in \begin{equation} — where
-        // an alignment tab is fatal: "Misplaced alignment tab character &",
-        // no PDF produced. The whole export fails, not just this equation.
-        //
-        // Promoting to align is what the content already is. It is done only
-        // for a top-level tab, so a pmatrix keeps its own & untouched, and it
-        // is logged rather than done quietly: the document renders differently
-        // from what its mode claims, and that is worth being able to find out.
-        if (mode is not ("align" or "gather") && EquationContent.HasTopLevelAlignment(latex))
-        {
-            _logger.LogWarning(
-                "[LaTeX] Equation declares mode '{Mode}' but its source is an alignment body; " +
-                "emitting align instead. In {Mode} it would fail to compile with " +
-                "'Misplaced alignment tab character &'.",
-                mode, mode);
-            mode = "align";
-        }
-
-        if (mode == "inline")
-            return $"${latex}$";
-        if (mode == "align")
-            return $@"\begin{{align{(numbered ? "" : "*")}}}{labelPart}" + "\n" + latex + "\n" + $@"\end{{align{(numbered ? "" : "*")}}}";
-        if (mode == "gather")
-            return $@"\begin{{gather{(numbered ? "" : "*")}}}{labelPart}" + "\n" + latex + "\n" + $@"\end{{gather{(numbered ? "" : "*")}}}";
-        if (numbered)
-            return $@"\begin{{equation}}{labelPart}" + "\n" + latex + "\n" + @"\end{equation}";
-        return $@"\[" + "\n" + latex + "\n" + @"\]";
-    }
-
-    // Display environments that cannot sit inside equation / \[…\]. split,
-    // aligned, cases and friends are deliberately absent: they need the wrapper.
-    private static readonly Regex StandaloneMathEnvironment = new(
-        @"^\\begin\{(align|gather|multline|flalign|alignat|eqnarray)(\*?)\}([\s\S]*)\\end\{\1\2\}$",
-        RegexOptions.Compiled);
-
-    internal static string? TryRenderStandaloneMathEnvironment(string latex, bool numbered, string labelPart)
-    {
-        var m = StandaloneMathEnvironment.Match(latex.Trim());
-        if (!m.Success) return null;
-
-        var env = m.Groups[1].Value + (numbered ? "" : "*");
-        var body = m.Groups[3].Value;
-        // alignat takes its column count as the first argument; keep it on the
-        // \begin line and put the label after it.
-        var arg = "";
-        var argMatch = Regex.Match(body, @"^\{[^{}]*\}");
-        if (m.Groups[1].Value == "alignat" && argMatch.Success)
-        {
-            arg = argMatch.Value;
-            body = body[argMatch.Length..];
-        }
-        return $@"\begin{{{env}}}{arg}{labelPart}" + "\n" + body.Trim('\n', '\r') + "\n" + $@"\end{{{env}}}";
-    }
+    internal static string? TryRenderStandaloneMathEnvironment(string latex, bool numbered, string labelPart) =>
+        EquationLatex.TryRenderStandalone(latex, numbered, labelPart);
 
     private string RenderFigure(JsonElement content)
     {

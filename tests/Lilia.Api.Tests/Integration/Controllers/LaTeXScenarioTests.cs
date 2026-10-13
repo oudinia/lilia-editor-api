@@ -113,9 +113,9 @@ public class LaTeXScenarioTests : IntegrationTestBase
 
         var latex = await GetMainTexFromExport(Client, doc.Id);
 
-        latex.Should().Contain(@"\[");
+        latex.Should().Contain(@"\begin{equation*}");
         latex.Should().Contain("F = ma");
-        latex.Should().Contain(@"\]");
+        latex.Should().Contain(@"\end{equation*}");
     }
 
     [Fact]
