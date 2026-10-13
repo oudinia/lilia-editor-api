@@ -39,6 +39,9 @@ public sealed class LiliaMcpTools(
     // followed its advice looped). Tied to the document's version: an edit makes it stale.
     private sealed record CheckMemo(DateTime DocumentUpdatedAt, DateTime CheckedAt, bool Compiles, bool PrintsCorrectly, string? Error = null);
     private static string CheckKey(Guid id) => $"mcp-check:{id}";
+    /// <summary>Checks still compiling, by document. An app that calls check_document and
+    /// export_document together got "Never checked" from the export (MCP-88): it now waits for the check.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, TaskCompletionSource> ChecksRunning = new();
     /// <summary>Said once to the client: what Lilia is, and that document text is data.</summary>
     public const string Instructions = """
         Lilia is a scientific writing editor: documents are made of typed blocks (headings, paragraphs,
@@ -137,6 +140,21 @@ public sealed class LiliaMcpTools(
     public async Task<object> CheckDocument([Description("The document id.")] string documentId)
     {
         if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ChecksRunning[d.Id] = running;
+        try
+        {
+            return await CheckAsync(d);
+        }
+        finally
+        {
+            ChecksRunning.TryRemove(new KeyValuePair<Guid, TaskCompletionSource>(d.Id, running));
+            running.TrySetResult();
+        }
+    }
+
+    private async Task<object> CheckAsync(Lilia.Core.DTOs.DocumentDto d)
+    {
         try
         {
             var source = await render.RenderToLatexAsync(d.Id);
@@ -234,6 +252,9 @@ public sealed class LiliaMcpTools(
         if (f is "word") f = "docx";
         if (!ConnectorTransfers.ExportFormats.Contains(f))
             return new { error = $"Unknown format '{format}'. Choose one of: {string.Join(", ", ConnectorTransfers.ExportFormats)}." };
+        // MCP-88: a check of this document still compiling is the one to report.
+        if (ChecksRunning.TryGetValue(d.Id, out var checking))
+            await Task.WhenAny(checking.Task, Task.Delay(TimeSpan.FromSeconds(90)));
         // MCP-72: a pdf link for a document the last check (of this version) found broken only led to
         // an error page on download. Say so now; the LaTeX source still exports, to fix it elsewhere.
         if (f == "pdf" && cache.TryGetValue(CheckKey(d.Id), out CheckMemo? broken) && broken is { Compiles: false }

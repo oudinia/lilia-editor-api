@@ -211,6 +211,22 @@ public class McpWriteToolsTests : IntegrationTestBase
         export.GetProperty("lastCheck").GetProperty("printsCorrectly").GetBoolean().Should().BeFalse();
     }
 
+    // MCP-88 (run 3): an app calling check_document and export_document together got "Never
+    // checked" from the export; it now waits for the check that is still compiling.
+    [Fact]
+    public async Task An_export_during_a_check_reports_that_check()
+    {
+        await SeedUserAsync("mcpw_together");
+        var doc = await SeedDocumentAsync("mcpw_together");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body."}""", 0);
+        var client = CreateClientAs("mcpw_together");
+        var check = CallAsync(client, "check_document", new { documentId = doc.Id.ToString() });
+        await Task.Delay(400);
+        var export = await CallAsync(CreateClientAs("mcpw_together"), "export_document", new { documentId = doc.Id.ToString(), format = "tex" });
+        (await check).GetProperty("compiles").GetBoolean().Should().BeTrue();
+        export.GetProperty("lastCheck").GetProperty("source").GetString().Should().Be("check_document", export.ToString());
+    }
+
     // MCP-72: no pdf link for a version the check just found broken; the LaTeX still exports.
     [Fact]
     public async Task No_pdf_link_for_a_document_that_does_not_compile()
