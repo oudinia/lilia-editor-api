@@ -172,6 +172,27 @@ public static class ProseLatex
         return string.Concat(Enumerable.Range(0, args.Count).Select(Arg));
     }
 
+    private static readonly Regex SiCommand = new(@"\\(?<c>SI|qty|si|unit|num)\s*(?:\[[^\]]*\])?\{(?<a>(?:[^{}]|\{[^{}]*\})*)\}(?:\{(?<b>(?:[^{}]|\{[^{}]*\})*)\})?", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Maths for Word's equation converter, which knows no siunitx: <c>\SI{9.81}{\metre\per\second}</c>
+    /// becomes <c>9.81\,\mathrm{m/s}</c>.
+    /// </summary>
+    public static string MathForWord(string? latex)
+    {
+        if (string.IsNullOrEmpty(latex) || latex.IndexOf('\\') < 0) return latex ?? "";
+        return SiCommand.Replace(latex, m =>
+        {
+            var a = m.Groups["a"].Value.Trim();
+            return m.Groups["c"].Value switch
+            {
+                "SI" or "qty" when m.Groups["b"].Success => $"{a}\\,\\mathrm{{{UnitText(m.Groups["b"].Value)}}}",
+                "si" or "unit" => $"\\mathrm{{{UnitText(a)}}}",
+                _ => a,
+            };
+        });
+    }
+
     private static string Number(string key, Func<string, string?>? labelNumber) =>
         labelNumber?.Invoke(LabelKey.Safe(key)) ?? labelNumber?.Invoke(key) ?? $"[{key}]";
 
