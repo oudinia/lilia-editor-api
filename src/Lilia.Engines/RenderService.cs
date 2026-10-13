@@ -1541,6 +1541,8 @@ public partial class RenderService : IRenderService
     private string RenderEmbedToLatex(JsonElement content)
     {
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
+        // {"latex": …} is what an app writes for raw LaTeX; it printed nothing (MCP-84).
+        if (string.IsNullOrEmpty(code) && content.TryGetProperty("latex", out var lx) && lx.ValueKind == JsonValueKind.String) code = lx.GetString() ?? "";
         // Embed blocks are raw code escape hatches — output the code directly
         return code;
     }
