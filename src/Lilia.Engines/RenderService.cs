@@ -1828,8 +1828,6 @@ public partial class RenderService : IRenderService
                 string.Equals(tikzSpan, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure") + "\n";
         }
 
-        // Use a clean filename instead of the full URL for readability
-        var displayPath = ExtractCleanImagePath(src);
 
 
         var alignCommand = position switch
@@ -1856,18 +1854,16 @@ public partial class RenderService : IRenderService
                 var subSrc = subfig.TryGetProperty("src", out var ss) ? ss.GetString() ?? "" : "";
                 var subCaption = subfig.TryGetProperty("caption", out var sc) ? sc.GetString() ?? "" : "";
                 var subLabel = subfig.TryGetProperty("label", out var sl) ? sl.GetString() ?? "" : "";
-                var subDisplayPath = ExtractCleanImagePath(subSrc);
-
                 sb.AppendLine($@"\begin{{subfigure}}{{{subfigWidthStr}\textwidth}}");
                 sb.AppendLine(@"\centering");
                 if (!string.IsNullOrEmpty(subSrc))
-                    sb.AppendLine($@"\includegraphics[width=\textwidth]{{{subDisplayPath}}}");
+                    sb.AppendLine(FigureFile.Include(FigureFile.Name(subSrc), @"\textwidth", @"\textwidth"));
                 else
                     sb.AppendLine(@"% [subfigure placeholder — no image uploaded]");
                 if (!string.IsNullOrEmpty(subCaption))
                     sb.AppendLine($@"\caption{{{InlineArgument(subCaption)}}}");
                 if (!string.IsNullOrEmpty(subLabel))
-                    sb.AppendLine($@"\label{{{subLabel}}}");
+                    sb.AppendLine($@"\label{{{LabelKey.Effective("figure", subLabel)}}}");
                 sb.AppendLine(@"\end{subfigure}");
                 sb.AppendLine(@"\hfill");
             }
@@ -1875,15 +1871,17 @@ public partial class RenderService : IRenderService
             if (!string.IsNullOrEmpty(caption))
                 sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}");
             if (!string.IsNullOrEmpty(label))
-                sb.AppendLine($@"\label{{{label}}}");
+                sb.AppendLine($@"\label{{{LabelKey.Effective("figure", label)}}}");
             sb.AppendLine($@"\end{{{figureEnv}}}");
         }
         else
         {
             sb.AppendLine($@"\begin{{{figureEnv}}}{floatSpec}");
             sb.AppendLine(alignCommand);
+            // The export's file and placeholder (FigureFile): a missing image is a frame, not a fatal
+            // error, and the label is the key references use (MCP-111).
             if (!string.IsNullOrEmpty(src))
-                sb.AppendLine($@"\includegraphics[width={FigureWidth.Latex(content)}]{{{displayPath}}}");
+                sb.AppendLine(FigureFile.Include(FigureFile.Name(src), FigureWidth.Latex(content)));
             else
                 sb.AppendLine(@"% [figure placeholder — no image uploaded]");
             if (!string.IsNullOrEmpty(caption))
@@ -1892,50 +1890,12 @@ public partial class RenderService : IRenderService
             }
             if (!string.IsNullOrEmpty(label))
             {
-                sb.AppendLine($@"\label{{{label}}}");
+                sb.AppendLine($@"\label{{{LabelKey.Effective("figure", label)}}}");
             }
             sb.AppendLine($@"\end{{{figureEnv}}}");
         }
 
         return sb.ToString();
-    }
-
-    /// <summary>
-    /// Extracts a clean filename from an image URL or path for LaTeX preview.
-    /// Converts long URLs like "/api/documents/.../assets/uuid" to "figures/uuid.png".
-    /// </summary>
-    private static string ExtractCleanImagePath(string src)
-    {
-        if (string.IsNullOrEmpty(src))
-            return "(no image)";
-
-        // Try to extract filename from URL
-        try
-        {
-            if (Uri.TryCreate(src, UriKind.Absolute, out var uri))
-            {
-                var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                var last = segments.Length > 0 ? segments[^1] : "image";
-                // If no extension, add .png
-                if (!Path.HasExtension(last))
-                    last = $"{last[..Math.Min(last.Length, 8)]}.png";
-                return $"figures/{last}";
-            }
-        }
-        catch { /* fall through */ }
-
-        // For relative paths or API paths
-        if (src.StartsWith("/api/") || src.StartsWith("http"))
-        {
-            var parts = src.Split('/');
-            var last = parts.Length > 0 ? parts[^1] : "image";
-            if (!Path.HasExtension(last))
-                last = $"{last[..Math.Min(last.Length, 8)]}.png";
-            return $"figures/{last}";
-        }
-
-        // Already a short path — keep as-is
-        return src.Length > 60 ? $"figures/{Path.GetFileName(src)}" : src;
     }
 
     /// <summary>
