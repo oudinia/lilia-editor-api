@@ -891,9 +891,9 @@ public class DocumentExportService : IDocumentExportService
         // "code" is the usual key; "text" and "content" appear in documents
         // written by other paths. Reading only "code" meant an algorithm block
         // exported as an empty caption with its steps gone.
-        var code = GetString(content, "code");
-        if (string.IsNullOrEmpty(code)) code = GetString(content, "text");
-        if (string.IsNullOrEmpty(code)) code = GetString(content, "content");
+        // Readable pseudocode from whichever shape the block holds (AlgorithmText): typed lines were
+        // dropped, and a code string of \STATE / \FOR printed as typed.
+        var code = AlgorithmText.ForWord(content);
         var caption = GetString(content, "caption");
 
         if (string.IsNullOrEmpty(caption) && !string.IsNullOrEmpty(title))

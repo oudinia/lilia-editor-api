@@ -113,4 +113,26 @@ public class WordProseTests
     [InlineData(@"\textcolor{red}{warm}", "warm")]
     public void An_unknown_command_keeps_its_text(string text, string expected) =>
         ProseLatex.ForWord(text).Should().Be(expected);
+
+    private static System.Text.Json.JsonElement J(object o) =>
+        System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(o)).RootElement;
+
+    // LTX-20: a code string of algorithmic commands.
+    [Fact]
+    public void An_algorithm_code_string_reads_as_pseudocode() =>
+        AlgorithmText.ForWord(J(new { code = @"\STATE $x \gets 0$ \FOR{$i = 1$ \TO $n$} \STATE $x \gets x + i$ \ENDFOR \RETURN $x$" }))
+            .Should().Be("x ← 0\nfor i = 1 to n do\n  x ← x + i\nend for\nreturn x");
+
+    // Typed lines were dropped from the Word export altogether.
+    [Fact]
+    public void Typed_algorithm_lines_read_as_pseudocode() =>
+        AlgorithmText.ForWord(J(new
+        {
+            lines = new object[]
+            {
+                new { kind = "require", text = "$n \\ge 0$" }, new { kind = "if", text = "$n = 0$" },
+                new { kind = "comment", text = "base case" }, new { kind = "return", text = "1" },
+                new { kind = "else", text = "" }, new { kind = "return", text = "$n \\cdot f(n-1)$" }, new { kind = "endif", text = "" },
+            },
+        })).Should().Be("Require: n ≥ 0\nif n = 0 then\n  ▷ base case\n  return 1\nelse\n  return n · f(n-1)\nend if");
 }
