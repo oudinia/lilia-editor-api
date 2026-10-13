@@ -387,6 +387,37 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         TextIn(bytes).Should().Contain("First line").And.Contain("Second line").And.Contain("— A. Poet");
     }
 
+    // MCP-103 (run 3): caption maths and the ==, ^…^, %%…%% marks printed as typed.
+    [Fact]
+    public async Task MarksAndCaptionMathsAreWordFormatting()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Marks");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"A ==key== point, x^2^ and H%%2%%O."}""");
+        await SeedBlockAsync(doc.Id, "table", """{"caption":"Fit at $\\theta_0 = 5^\\circ$","headers":["A"],"rows":[["1"]]}""", 1);
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        var xml = XmlIn(bytes);
+        var text = TextIn(bytes);
+
+        text.Should().NotContain("==").And.NotContain("%%").And.NotContain("^2^").And.NotContain("$");
+        xml.Should().Contain("<w:highlight w:val=\"yellow\" />").And.Contain("w:val=\"superscript\"").And.Contain("w:val=\"subscript\"");
+        var caption = Regex.Match(xml, "<w:p><w:pPr><w:pStyle w:val=\"Caption\" />.*?</w:p>").Value;
+        caption.Should().Contain("<m:oMath");
+    }
+
+    // MCP-105 (part): listing and algorithm captions were gone from Word.
+    [Fact]
+    public async Task ListingAndAlgorithmCaptionsAreNumbered()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Captions");
+        await SeedBlockAsync(doc.Id, "code", """{"code":"print(1)","language":"python","caption":"Hello"}""");
+        await SeedBlockAsync(doc.Id, "algorithm", """{"caption":"Sort","lines":[{"kind":"statement","text":"swap"}]}""", 1);
+
+        var text = TextIn((await ExportAsync(doc.Id)).Bytes);
+
+        text.Should().Contain("Listing 1: Hello").And.Contain("Algorithm 1 Sort");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {

@@ -637,7 +637,8 @@ public class DocumentExportService : IDocumentExportService
             {
                 Code = code,
                 Language = GetString(content, "language"),
-                Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber)
+                Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber),
+                CaptionRichText = CaptionRuns(GetString(content, "caption")),
             }
         };
     }
@@ -826,7 +827,8 @@ public class DocumentExportService : IDocumentExportService
                 TableNotes = layout.HasNotes ? layout.Notes.Select(n => (n.Mark, ProseLatex.PlainForWord(n.Text, _labelNumber))).ToList() : null,
                 // Dropped until 26 Sep: every other export printed the table's
                 // caption; the .docx had none.
-                Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber)
+                Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber),
+                CaptionRichText = CaptionRuns(GetString(content, "caption")),
             }
         };
     }
@@ -888,7 +890,8 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Image = imageData,
-                Caption = ProseLatex.PlainForWord(caption, _labelNumber)
+                Caption = ProseLatex.PlainForWord(caption, _labelNumber),
+                CaptionRichText = CaptionRuns(caption),
             }
         };
     }
@@ -985,6 +988,7 @@ public class DocumentExportService : IDocumentExportService
             {
                 Code = code,
                 Caption = ProseLatex.PlainForWord(caption, _labelNumber),
+                CaptionRichText = CaptionRuns(caption),
                 Language = "text"
             }
         };
@@ -1195,6 +1199,15 @@ public class DocumentExportService : IDocumentExportService
         return spans;
     }
 
+    /// <summary>A caption's runs, or null when it is plain text.</summary>
+    private List<ExportRichTextSpan>? CaptionRuns(string? caption)
+    {
+        if (string.IsNullOrWhiteSpace(caption)) return null;
+        var spans = ParseInlineFormatting(caption, _labelNumber);
+        return spans.Count == 1 && spans[0].Equation is null && !spans[0].Bold && !spans[0].Italic && !spans[0].Superscript
+            && !spans[0].Subscript && spans[0].Highlight is null ? null : spans;
+    }
+
     private static List<ExportRichTextSpan> ParseMarks(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -1290,6 +1303,38 @@ public class DocumentExportService : IDocumentExportService
                 }
             }
 
+            // Lilia's marks the LaTeX emitter reads too (RenderService): ==highlight==, ^^small caps^^,
+            // ^superscript^, %%subscript%%. They printed as typed in Word (MCP-103).
+            if (Mark(text, i, "==", out var hl))
+            {
+                FlushCurrent();
+                spans.Add(new ExportRichTextSpan { Text = hl, Highlight = "yellow" });
+                i += hl.Length + 4;
+                continue;
+            }
+            if (Mark(text, i, "^^", out var sc))
+            {
+                FlushCurrent();
+                // Word's small capitals would need a run property the writer doesn't set; the text stays.
+                spans.Add(new ExportRichTextSpan { Text = sc });
+                i += sc.Length + 4;
+                continue;
+            }
+            if (text[i] == '^' && (i == 0 || text[i - 1] != '^') && Mark(text, i, "^", out var sup) && !sup.StartsWith(' '))
+            {
+                FlushCurrent();
+                spans.Add(new ExportRichTextSpan { Text = sup, Superscript = true });
+                i += sup.Length + 2;
+                continue;
+            }
+            if (Mark(text, i, "%%", out var sub))
+            {
+                FlushCurrent();
+                spans.Add(new ExportRichTextSpan { Text = sub, Subscript = true });
+                i += sub.Length + 4;
+                continue;
+            }
+
             // Italic: *...*
             if (text[i] == '*' && (i + 1 < text.Length && text[i + 1] != '*'))
             {
@@ -1352,6 +1397,21 @@ public class DocumentExportService : IDocumentExportService
             spans.Add(new ExportRichTextSpan { Text = text });
 
         return spans;
+    }
+
+    /// <summary>A mark opened by <paramref name="fence"/> at <paramref name="i"/> and closed by it on the
+    /// same line, with something between (no ^ inside a ^…^ superscript).</summary>
+    private static bool Mark(string text, int i, string fence, out string inner)
+    {
+        inner = "";
+        if (string.CompareOrdinal(text, i, fence, 0, fence.Length) != 0) return false;
+        if (fence == "^" && i + 1 < text.Length && text[i + 1] == '^') return false;
+        var close = text.IndexOf(fence, i + fence.Length, StringComparison.Ordinal);
+        if (close <= i + fence.Length) return false;
+        var body = text[(i + fence.Length)..close];
+        if (body.Contains('\n') || (fence == "^" && (body.Contains(' ') || (close + 1 < text.Length && text[close + 1] == '^')))) return false;
+        inner = body;
+        return true;
     }
 
     #endregion
