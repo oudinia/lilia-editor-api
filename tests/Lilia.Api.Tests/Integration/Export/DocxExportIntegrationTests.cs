@@ -498,6 +498,28 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         main.Document.Body.InnerText.Should().Contain("[Figure: The fitted curve]").And.Contain("A line").And.Contain("Fit");
     }
 
+    // MCP-96 (run 3): prose printed raw labels when there was no compile, and its numbers disagreed
+    // with Word's (theorems on one counter, equations without numbers, headings unnumbered).
+    [Fact]
+    public async Task ReferencesTakeTheNumbersWordShows()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Numbers");
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Introduction","level":1,"label":"sec:intro"}""");
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"lemma","text":"A.","label":"lem:a"}""", 1);
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"theorem","text":"B.","label":"thm:b"}""", 2);
+        await SeedBlockAsync(doc.Id, "equation", """{"latex":"E = mc^2","equationMode":"display","label":"energy"}""", 3);
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Method","level":2}""", 4);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"See Section~(sec:intro), Lemma~(lem:a), Theorem~(thm:b) and Equation~(energy)."}""", 5);
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        // A tie (~) is a no-break space.
+        var text = TextIn(bytes).Replace('\u00A0', ' ');
+
+        text.Should().Contain("See Section 1, Lemma 1, Theorem 1 and Equation (1).");
+        text.Should().Contain("1 Introduction").And.Contain("1.1 Method");
+        text.Should().Contain("(1)").And.NotContain("[sec:intro]").And.NotContain("lem:a");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {

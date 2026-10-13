@@ -428,7 +428,14 @@ public class DocxExportService : IDocxExportService
                 try
                 {
                     var para = new Paragraph();
-                    if (displayMode)
+                    if (displayMode && !string.IsNullOrEmpty(content.EquationNumber))
+                    {
+                        // Centred, its number at the right margin: a centre and a right tab stop.
+                        para.InnerXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:tabs><w:tab w:val=\"center\" w:pos=\"4513\"/><w:tab w:val=\"right\" w:pos=\"9026\"/></w:tabs></w:pPr>"
+                            + $"<w:r xmlns:w=\"{WordNs}\"><w:tab/></w:r>" + omml
+                            + $"<w:r xmlns:w=\"{WordNs}\"><w:tab/><w:t>({System.Security.SecurityElement.Escape(content.EquationNumber)})</w:t></w:r>";
+                    }
+                    else if (displayMode)
                     {
                         var pPrXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:jc w:val=\"center\"/></w:pPr>";
                         para.InnerXml = pPrXml + $"<m:oMathPara xmlns:m=\"{MathNs}\">{omml}</m:oMathPara>";

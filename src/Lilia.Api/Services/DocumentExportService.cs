@@ -60,6 +60,8 @@ public class DocumentExportService : IDocumentExportService
     }
 
     private Func<string, string?>? _labelNumber;
+    private Dictionary<Guid, string> _blockNumbers = [];
+    private string? _currentBlockNumber;
     private string? _customPreamble;
 
     public async Task<ExportDocument> BuildExportDocumentAsync(Guid documentId)
@@ -122,11 +124,15 @@ public class DocumentExportService : IDocumentExportService
 
         _customPreamble = doc.CustomPreamble;
 
-        // References in prose take the numbers the last compile gave them (ProseLatex); citations
-        // ("cite:key") the numbers above.
+        // References in prose take the numbers Word shows (MCP-96: they came from the last LaTeX compile,
+        // or printed raw labels when there was none, and disagreed with Word's own), then the last
+        // compile's for anything this count doesn't cover; citations ("cite:key") the numbers above.
         var labels = LabelNumbers.Parse(doc.LabelNumbers);
+        var own = WordNumbers(doc);
+        _blockNumbers = own.Blocks;
         _labelNumber = key => key.StartsWith("cite:", StringComparison.Ordinal)
             ? citeNumbers.GetValueOrDefault(key[5..])
+            : own.Labels.TryGetValue(key, out var mine) ? mine
             : labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
 
         // One counter per kind, as each \newtheorem has its own; a proof and numbered:false take
@@ -145,6 +151,7 @@ public class DocumentExportService : IDocumentExportService
                 if (!unnumbered) theoremNumber = theoremCounters[kind] = theoremCounters.GetValueOrDefault(kind) + 1;
             }
 
+            _currentBlockNumber = _blockNumbers.GetValueOrDefault(block.Id);
             var exportBlock = await ConvertBlockAsync(block, theoremNumber);
             if (exportBlock != null)
                 exportDoc.Blocks.Add(exportBlock);
@@ -153,6 +160,81 @@ public class DocumentExportService : IDocumentExportService
         if (listed.Count > 0) exportDoc.Bibliography = listed;
 
         return exportDoc;
+    }
+
+    /// <summary>
+    /// The numbers the LaTeX export gives, counted as it counts them, for the Word file to show and
+    /// its references to use: headings to the document's heading numbering, theorem-like blocks by
+    /// kind (proofs and numbered:false unnumbered), numbered display equations (an align counts each
+    /// line), captioned figures, tables, listings and algorithms.
+    /// </summary>
+    internal static (Dictionary<Guid, string> Blocks, Dictionary<string, string> Labels) WordNumbers(Document doc)
+    {
+        var blocks = new Dictionary<Guid, string>();
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal);
+        var depth = doc.HeadingNumbering switch { null => 3, < 0 => 3, var n => n.Value };
+        var sections = new int[7];
+        var kinds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var equations = 0;
+
+        void Label(JsonElement content, string type, string number)
+        {
+            var label = GetString(content, "label");
+            if (!string.IsNullOrWhiteSpace(label)) labels[LabelKey.Effective(type, label)] = number;
+        }
+
+        foreach (var block in doc.Blocks.OrderBy(b => b.SortOrder))
+        {
+            var content = block.Content.RootElement;
+            switch (block.Type.ToLowerInvariant())
+            {
+                case "heading":
+                {
+                    var level = Math.Clamp(GetInt(content, "level", 1), 1, 6);
+                    var unnumbered = content.ValueKind == JsonValueKind.Object && content.TryGetProperty("numbered", out var nb) && nb.ValueKind == JsonValueKind.False;
+                    if (unnumbered || level > depth) break;
+                    sections[level]++;
+                    for (var k = level + 1; k < sections.Length; k++) sections[k] = 0;
+                    var number = string.Join(".", sections.Skip(1).Take(level).Select(x => Math.Max(x, 0)));
+                    blocks[block.Id] = number;
+                    Label(content, "heading", number);
+                    break;
+                }
+                case "theorem":
+                {
+                    var kind = GetString(content, "theoremType");
+                    if (string.IsNullOrEmpty(kind)) kind = "theorem";
+                    if (kind.Equals("proof", StringComparison.OrdinalIgnoreCase) || kind.EndsWith('*')
+                        || (content.TryGetProperty("numbered", out var tn) && tn.ValueKind == JsonValueKind.False)) break;
+                    var number = (kinds[kind] = kinds.GetValueOrDefault(kind) + 1).ToString();
+                    Label(content, "theorem", number);
+                    break;
+                }
+                case "equation":
+                {
+                    var (mode, numbered) = Lilia.Core.Blocks.EquationContent.ReadMode(content);
+                    if (!numbered || mode == "inline") break;
+                    var source = Lilia.Core.Blocks.EquationContent.ReadSource(content);
+                    var rows = mode is "align" or "gather" || Lilia.Core.Blocks.EquationContent.HasTopLevelAlignment(source)
+                        ? Math.Max(1, Regex.Matches(source, @"\\\\(?!\s*$)").Count + 1 - Regex.Matches(source, @"\\(?:nonumber|notag)\b").Count)
+                        : 1;
+                    var number = (equations + 1).ToString();
+                    equations += rows;
+                    blocks[block.Id] = number;
+                    Label(content, "equation", number);
+                    break;
+                }
+                case "figure" or "image" or "table" or "code" or "algorithm":
+                {
+                    if (string.IsNullOrWhiteSpace(GetString(content, "caption"))) break;
+                    var type = block.Type.ToLowerInvariant() == "image" ? "figure" : block.Type.ToLowerInvariant();
+                    var number = (kinds["#" + type] = kinds.GetValueOrDefault("#" + type) + 1).ToString();
+                    Label(content, type, number);
+                    break;
+                }
+            }
+        }
+        return (blocks, labels);
     }
 
     private static readonly Regex CiteKeys = new(
@@ -628,12 +710,14 @@ public class DocumentExportService : IDocumentExportService
         var level = GetInt(content, "level", 1);
         level = Math.Clamp(level, 1, 6);
 
+        var plain = ProseLatex.PlainForWord(HeadingAnchor.WithoutTypedNumber(text), _labelNumber);
         return new ExportBlock
         {
             Type = "heading",
             Content = new ExportBlockContent
             {
-                Text = ProseLatex.PlainForWord(text, _labelNumber),
+                // Numbered as the PDF numbers it, so "Section 2" in the text finds "2 Methods" (MCP-96).
+                Text = _currentBlockNumber is { } n ? $"{n} {plain}" : plain,
                 Level = level
             }
         };
@@ -660,7 +744,9 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Latex = AsWordDisplay(ProseLatex.MathForWord(latex)),
-                DisplayMode = displayMode
+                DisplayMode = displayMode,
+                // "(3)" at the right margin, as the PDF prints it; Word's equations had no number (MCP-96).
+                EquationNumber = _currentBlockNumber,
             }
         };
     }
