@@ -1819,7 +1819,9 @@ public partial class RenderService : IRenderService
         // It was never printed here, so every reference to an equation read "??" with a clean check.
         var labelKey = LabelKey.Effective("equation",
             content.TryGetProperty("label", out var lab) && lab.ValueKind == JsonValueKind.String ? lab.GetString() : null);
-        var labelLine = numbered && labelKey.Length > 0 ? $"\\label{{{labelKey}}}\n" : "";
+        // Not when the source has its own \label: two in one equation stop the compile.
+        var labelLine = numbered && labelKey.Length > 0 && !latex.Contains(@"\label{", StringComparison.Ordinal)
+            ? $"\\label{{{labelKey}}}\n" : "";
 
         // Strip MathLive placeholder artifacts
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
@@ -3106,7 +3108,8 @@ public partial class RenderService : IRenderService
         // a tie protected before \parencite[p.~12]{…} was, sits inside it.
         for (int i = commandRegions.Count - 1; i >= 0; i--)
             result = result.Replace($"\x00CMD{i}\x00", commandRegions[i]);
-        for (int i = 0; i < mathRegions.Count; i++)
+        // Newest first here too: a price protected before the maths can sit inside a formula's region.
+        for (int i = mathRegions.Count - 1; i >= 0; i--)
             result = result.Replace($"\x00MATH{i}\x00", mathRegions[i]);
 
         return result;

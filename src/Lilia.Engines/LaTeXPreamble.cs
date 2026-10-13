@@ -183,7 +183,12 @@ public static partial class LaTeXPreamble
     public static string CjkAddendum(LatexEngine engine) => engine == LatexEngine.Lualatex
         ? "\\usepackage{luatexja-fontspec}\n"
         : XeCjkLoad + "\\setCJKmainfont{FandolSong-Regular.otf}[BoldFont=FandolSong-Bold.otf]\n"
-          + "\\setCJKsansfont{FandolHei-Regular.otf}[BoldFont=FandolHei-Bold.otf]\n\\setCJKmonofont{FandolSong-Regular.otf}\n";
+          + "\\setCJKsansfont{FandolHei-Regular.otf}[BoldFont=FandolHei-Bold.otf]\n\\setCJKmonofont{FandolSong-Regular.otf}\n"
+          // A document written for pdflatex's CJK package (\begin{CJK}{UTF8}{gbsn}…) keeps its markup:
+          // under xeCJK the environment only has to pass its text through (LTX-34).
+          + "\\AtBeginDocument{\\ifdefined\\CJK\\else\\newenvironment{CJK}[3][]{}{}\\fi"
+          + "\\ifcsname CJK*\\endcsname\\else\\newenvironment{CJK*}[3][]{}{}\\fi"
+          + "\\providecommand{\\CJKfamily}[1]{}}\n";
 
     /// <summary>
     /// All packages needed by the Lilia block system.

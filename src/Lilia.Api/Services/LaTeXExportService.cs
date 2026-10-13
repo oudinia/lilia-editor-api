@@ -1065,7 +1065,12 @@ public class LaTeXExportService : ILaTeXExportService
         var latex = EquationContent.ReadSource(content);
         var (mode, numbered) = EquationContent.ReadMode(content);
         var label = content.TryGetProperty("label", out var lbl) ? lbl.GetString() ?? "" : "";
-        var labelPart = !string.IsNullOrEmpty(label) ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
+        // Not when the source carries its own \label: two labels in one equation stop the compile
+        // ("Multiple \label's", 5 of the campaign's 8 papers on 13 Oct).
+        var labelPart = !string.IsNullOrEmpty(label) && !latex.Contains(@"\label{", StringComparison.Ordinal)
+            ? $@"\label{{{LabelKey.Effective("equation", label)}}}" : "";
+        // An empty display is a blank line in maths mode, which LaTeX refuses (LTX-43).
+        if (string.IsNullOrWhiteSpace(latex)) return "% Empty equation";
 
         // The source is itself a display environment — what a .tex import
         // stores for align / gather / multline (it keeps the environment so
@@ -2008,7 +2013,10 @@ public class LaTeXExportService : ILaTeXExportService
         result = EscapeLatex(result);
 
         // 8. Restore placeholders
-        result = Regex.Replace(result, @"\x00PH(\d+)\x00", m => placeholders[int.Parse(m.Groups[1].Value)]);
+        // A placeholder can sit inside another's text (a price inside a formula), so restore until
+        // none is left; each pass only goes down a level, and nesting is shallow.
+        for (var pass = 0; pass < 8 && result.Contains("\x00PH", StringComparison.Ordinal); pass++)
+            result = Regex.Replace(result, @"\x00PH(\d+)\x00", m => placeholders[int.Parse(m.Groups[1].Value)]);
 
         return result;
     }
