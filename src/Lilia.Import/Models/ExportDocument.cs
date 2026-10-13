@@ -139,6 +139,12 @@ public class ExportBlockContent
     /// </summary>
     public List<List<ExportTableCell>>? Rows { get; set; }
 
+    /// <summary>A blockquote's variant (quote, verse, epigraph…).</summary>
+    public string? Variant { get; set; }
+
+    /// <summary>A blockquote's attribution, printed under it.</summary>
+    public string? Attribution { get; set; }
+
     /// <summary>
     /// Whether table has a header row.
     /// </summary>

@@ -62,6 +62,14 @@ public class DocxExportService : IDocxExportService
                 if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
                     sawBibliography = true;
 
+                // A footnote is a Word footnote, its mark on the paragraph before it (MCP-102: it
+                // printed as a free-standing "*text" paragraph).
+                if (string.Equals(block.Type, "footnote", StringComparison.OrdinalIgnoreCase))
+                {
+                    AppendFootnote(block, mainPart, body);
+                    continue;
+                }
+
                 var elements = await ConvertBlock(block, mainPart, options, document);
                 foreach (var element in elements)
                 {
@@ -836,18 +844,82 @@ public class DocxExportService : IDocxExportService
     {
         var para = new Paragraph();
         var pPr = new ParagraphProperties();
+        pPr.Append(new ParagraphStyleId { Val = "Quote" });
         pPr.Append(new Indentation { Left = "720" });
         pPr.Append(new ParagraphBorders(
             new LeftBorder { Val = BorderValues.Single, Size = 24, Color = "CCCCCC" }
         ));
         para.Append(pPr);
 
-        var run = new Run();
-        run.Append(new RunProperties(new Italic()));
-        run.Append(new Text(block.Content.Text ?? "") { Space = SpaceProcessingModeValues.Preserve });
-        para.AppendChild(run);
+        // Its runs, italic, each line break a Word line break: a verse is its lines, and a newline
+        // inside w:t showed as one run-on line (MCP-97).
+        var spans = block.Content.RichText is { Count: > 0 } rich
+            ? rich
+            : [new ExportRichTextSpan { Text = block.Content.Text ?? "" }];
+        foreach (var span in spans)
+        {
+            if (!string.IsNullOrEmpty(span.Equation) || !span.Text.Contains('\n'))
+            {
+                if (string.IsNullOrEmpty(span.Equation)) span.Italic = true;
+                para.AppendChild(CreateSpanElement(span));
+                continue;
+            }
+            var lines = span.Text.Replace("\r\n", "\n").Split('\n');
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (i > 0) para.AppendChild(new Run(new Break()));
+                if (lines[i].Length == 0) continue;
+                para.AppendChild(new Run(new RunProperties(new Italic()), new Text(lines[i]) { Space = SpaceProcessingModeValues.Preserve }));
+            }
+        }
 
-        return [para];
+        if (string.IsNullOrWhiteSpace(block.Content.Attribution)) return [para];
+        var attribution = new Paragraph(
+            new ParagraphProperties(new Justification { Val = JustificationValues.Right }),
+            new Run(new Text("— " + block.Content.Attribution) { Space = SpaceProcessingModeValues.Preserve }));
+        return [para, attribution];
+    }
+
+    /// <summary>
+    /// A real Word footnote: its text in the footnotes part, its mark at the end of the paragraph
+    /// (or table cell) before it. A footnote with nothing before it gets a paragraph for its mark.
+    /// </summary>
+    private void AppendFootnote(ExportBlock block, MainDocumentPart mainPart, Body body)
+    {
+        var part = mainPart.FootnotesPart ?? mainPart.AddNewPart<FootnotesPart>();
+        if (part.Footnotes is null)
+        {
+            part.Footnotes = new Footnotes(
+                new Footnote(new Paragraph(new Run(new SeparatorMark()))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
+                new Footnote(new Paragraph(new Run(new ContinuationSeparatorMark()))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 });
+        }
+        var id = part.Footnotes.Elements<Footnote>().Select(f => (int)(f.Id?.Value ?? 0)).DefaultIfEmpty(0).Max() + 1;
+
+        var text = new Paragraph(new Run(
+            new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
+            new FootnoteReferenceMark()));
+        text.AppendChild(new Run(new Text(" ") { Space = SpaceProcessingModeValues.Preserve }));
+        if (block.Content.RichText is { Count: > 0 } spans)
+            foreach (var span in spans) text.AppendChild(CreateSpanElement(span));
+        else
+            text.AppendChild(new Run(new Text(block.Content.Text ?? "") { Space = SpaceProcessingModeValues.Preserve }));
+        part.Footnotes.AppendChild(new Footnote(text) { Id = id });
+
+        var reference = new Run(
+            new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
+            new FootnoteReference { Id = id });
+        var host = body.LastChild switch
+        {
+            Paragraph p => p,
+            Table t => t.Descendants<Paragraph>().LastOrDefault(),
+            _ => null,
+        };
+        if (host is null)
+        {
+            host = new Paragraph();
+            body.AppendChild(host);
+        }
+        host.AppendChild(reference);
     }
 
     private IEnumerable<OpenXmlElement> ConvertTheorem(ExportBlock block)

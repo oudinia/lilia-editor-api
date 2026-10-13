@@ -896,13 +896,17 @@ public class DocumentExportService : IDocumentExportService
     private ExportBlock ConvertBlockquoteBlock(JsonElement content)
     {
         var text = GetString(content, "text");
+        var attribution = GetString(content, "attribution");
         return new ExportBlock
         {
             Type = "blockquote",
             Content = new ExportBlockContent
             {
                 Text = text,
-                RichText = ParseInlineFormatting(text, _labelNumber)
+                RichText = ParseInlineFormatting(text, _labelNumber),
+                Variant = NullIfEmpty(GetString(content, "variant")),
+                // The attribution was dropped (MCP-105).
+                Attribution = NullIfEmpty(ProseLatex.PlainForWord(attribution, _labelNumber)),
             }
         };
     }
