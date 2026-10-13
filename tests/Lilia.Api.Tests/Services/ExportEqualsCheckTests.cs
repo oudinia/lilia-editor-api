@@ -106,4 +106,45 @@ public class ExportEqualsCheckTests
         var pdf = await new LaTeXRenderService(NullLogger<LaTeXRenderService>.Instance).RenderToPdfAsync(tex, "pdflatex", timeout: 180);
         pdf.Should().NotBeEmpty();
     }
+
+    // R1 / MCP-81: BibTeX in the bibliography block, as the help teaches, prints and resolves.
+    private const string Bibtex = """
+        @article{vaswani2017attention,
+          author = {Vaswani, Ashish and others},
+          title  = {Attention Is All You Need},
+          year   = {2017}
+        }
+        """;
+
+    [Fact]
+    public void Bibtex_in_the_bibliography_block_prints_on_both()
+    {
+        var doc = Doc("article",
+            B("paragraph", new { text = @"Transformers \citep{vaswani2017attention} changed things; see also @cite[knuth84]." }),
+            B("bibliography", new { text = Bibtex }));
+        var check = _render.RenderToLatex(doc);
+        check.Should().Contain(@"\bibitem").And.Contain("vaswani2017attention").And.Contain("Attention Is All You Need");
+        check.Should().Contain(@"\cite{knuth84}");
+        new EmittedLatexAudit(check).MissingCitations.Select(c => c.Key).Should().Equal("knuth84");
+
+        var entries = LaTeXExportService.WithTextEntries(doc.Blocks, []);
+        entries.Should().ContainSingle(e => e.CiteKey == "vaswani2017attention" && e.EntryType == "article");
+    }
+
+    [Fact]
+    public void The_old_bracket_forms_are_read() =>
+        _render.RenderBlockToLatex(B("paragraph", new { text = "See @ref[sec:a] and @cite[knuth84,lamport94]." }))
+            .Should().Contain(@"\ref{sec:a}").And.Contain(@"\cite{knuth84,lamport94}");
+
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task Bibtex_in_the_block_compiles_with_natbib()
+    {
+        var doc = Doc("article",
+            B("paragraph", new { text = @"Transformers \citep{vaswani2017attention} and \citet{vaswani2017attention}." }),
+            B("bibliography", new { text = Bibtex }));
+        var pdf = await new LaTeXRenderService(NullLogger<LaTeXRenderService>.Instance)
+            .RenderToPdfAsync(_render.RenderToLatex(doc), "pdflatex", timeout: 180);
+        pdf.Should().NotBeEmpty();
+    }
 }

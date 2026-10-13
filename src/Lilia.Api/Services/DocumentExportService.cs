@@ -110,9 +110,12 @@ public class DocumentExportService : IDocumentExportService
                 exportDoc.Blocks.Add(exportBlock);
         }
 
-        if (doc.BibliographyEntries.Any())
+        // The document's entries, then what its bibliography blocks hold (BibTeX and @cite[key] text),
+        // as the LaTeX export takes them (LaTeXExportService.WithTextEntries).
+        var allEntries = LaTeXExportService.WithTextEntries(doc.Blocks, doc.BibliographyEntries.ToList());
+        if (allEntries.Count > 0)
         {
-            exportDoc.Bibliography = doc.BibliographyEntries.Select(e => ConvertBibliographyEntry(e)).ToList();
+            exportDoc.Bibliography = allEntries.Select(e => ConvertBibliographyEntry(e)).ToList();
         }
 
         return exportDoc;

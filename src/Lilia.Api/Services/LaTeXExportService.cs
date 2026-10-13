@@ -177,18 +177,17 @@ public class LaTeXExportService : ILaTeXExportService
     internal static List<BibliographyEntry> WithTextEntries(IEnumerable<Block> blocks, List<BibliographyEntry> bibEntries)
     {
         var known = bibEntries.Select(e => e.CiteKey).ToHashSet(StringComparer.Ordinal);
-        var extra = blocks
-            .Where(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(b => BibliographyText.Parse(
-                b.Content?.RootElement is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
-                    ? t.GetString() : null))
+        var list = blocks.ToList();
+        // BibTeX written in the block (MCP-81), then references written as text.
+        var bibtex = BibliographyBlocks.BibTeX(list).Where(e => known.Add(e.CiteKey)).ToList();
+        var extra = bibtex.Concat(BibliographyBlocks.Text(list)
             .Where(e => known.Add(e.Key))
             .Select(e => new BibliographyEntry
             {
                 CiteKey = e.Key,
                 EntryType = "misc",
                 Data = JsonDocument.Parse(JsonSerializer.Serialize(new { note = e.Text })),
-            })
+            }))
             .ToList();
         return extra.Count == 0 ? bibEntries : bibEntries.Concat(extra).ToList();
     }
