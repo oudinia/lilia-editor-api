@@ -707,10 +707,13 @@ public class LaTeXRenderService : ILaTeXRenderService
                     // TeX emits one line per occurrence, so a paragraph of CJK
                     // produces hundreds.
                     var glyphs = LaTeXGlyphScanner.Describe(LaTeXGlyphScanner.Scan(logContent));
+                    // Tables wider than the column (MCP-63): an \hbox warning, but not a cosmetic one.
+                    var wideTables = Lilia.Engines.WideTables.Find(logContent, latex).Select(Lilia.Engines.WideTables.Message);
 
                     actionableWarnings =
                     [
                         .. new[] { glyphs, overflow }.Where(w => w is not null).Select(w => w!),
+                        .. wideTables,
                         .. frames,
                         .. actionableWarnings,
                     ];

@@ -190,11 +190,16 @@ public sealed class LiliaMcpTools(
             // Characters the font doesn't have compile, but are missing from the PDF (13 Oct sweep:
             // LTX-34's Cyrillic, with printsCorrectly true).
             var dropped = result.Warnings.FirstOrDefault(w => w.Contains(LaTeXGlyphScanner.DroppedMarker, StringComparison.Ordinal));
+            // MCP-63: tables wider than their column run into the margin or the other column.
+            var wide = Lilia.Engines.WideTables.Find(result.Log, source)
+                .Select(o => new { blockId = audit.BlockAtLine(o.FirstLine), tooWidePt = Math.Round(o.Points, 1) })
+                .ToList();
             return new
             {
                 compiles = result.Valid,
                 engine,
-                printsCorrectly = PrintsCorrectly(result.Valid, references.Count + citations.Count, dropped, unprinted, d, result.Error),
+                printsCorrectly = PrintsCorrectly(result.Valid, references.Count + citations.Count, dropped, unprinted, d, result.Error, wide.Count),
+                wideTables = wide.Count > 0 ? wide : null,
                 unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
                 error = result.Error,
                 errorCategory = result.ParsedError?.Category,
@@ -208,7 +213,9 @@ public sealed class LiliaMcpTools(
                     ? "It compiles, but references or citations above will print as ?? or ? in the PDF."
                     : dropped is not null && result.Valid
                         ? "It compiles, but some characters are missing from the PDF (see warnings)."
-                        : null,
+                        : wide.Count > 0
+                            ? "It compiles, but a table is wider than its column and runs into the margin (wideTables)."
+                            : null,
                 url = EditorUrl(d.Id),
             };
         }
@@ -229,9 +236,9 @@ public sealed class LiliaMcpTools(
         }
     }
 
-    private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d, string? error = null)
+    private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d, string? error = null, int wideTables = 0)
     {
-        var prints = compiles && brokenRefs == 0 && dropped is null && unprinted.Count == 0;
+        var prints = compiles && brokenRefs == 0 && dropped is null && unprinted.Count == 0 && wideTables == 0;
         cache.Set(CheckKey(d.Id), new CheckMemo(d.UpdatedAt, DateTime.UtcNow, compiles, prints, error), TimeSpan.FromDays(1));
         return prints;
     }
