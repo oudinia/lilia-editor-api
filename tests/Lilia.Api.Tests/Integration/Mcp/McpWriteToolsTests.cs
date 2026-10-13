@@ -211,6 +211,24 @@ public class McpWriteToolsTests : IntegrationTestBase
         export.GetProperty("lastCheck").GetProperty("printsCorrectly").GetBoolean().Should().BeFalse();
     }
 
+    // MCP-72: no pdf link for a version the check just found broken; the LaTeX still exports.
+    [Fact]
+    public async Task No_pdf_link_for_a_document_that_does_not_compile()
+    {
+        await SeedUserAsync("mcpw_broken");
+        var doc = await SeedDocumentAsync("mcpw_broken");
+        await SeedBlockAsync(doc.Id, "embed", """{"latex":"\\notACommandAnywhere"}""", 0);
+        var client = CreateClientAs("mcpw_broken");
+        var check = await CallAsync(client, "check_document", new { documentId = doc.Id.ToString() });
+        check.GetProperty("compiles").GetBoolean().Should().BeFalse(check.ToString());
+        var pdf = await CallAsync(client, "export_document", new { documentId = doc.Id.ToString(), format = "pdf" });
+        pdf.GetProperty("category").GetString().Should().Be("does-not-compile", pdf.ToString());
+        pdf.TryGetProperty("url", out var u).Should().BeTrue();
+        u.GetString().Should().NotContain("/connector/files/");
+        var tex = await CallAsync(client, "export_document", new { documentId = doc.Id.ToString(), format = "tex" });
+        tex.GetProperty("url").GetString().Should().Contain("/connector/files/");
+    }
+
     // MCP-85 / MCP-87: get_lilia_latex says the engine the check uses; a list's outline is its text.
     [Fact]
     public async Task The_engine_and_the_outline_are_told_plainly()
