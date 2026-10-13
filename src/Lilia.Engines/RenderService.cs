@@ -2408,12 +2408,70 @@ public partial class RenderService : IRenderService
             if (!string.Equals(blocks[i].Type, "footnote", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(rendered[i])) continue;
             var j = i - 1;
             while (j >= 0 && string.IsNullOrWhiteSpace((copy ?? rendered)[j])) j--;
-            if (j < 0 || !string.Equals(blocks[j].Type, "paragraph", StringComparison.OrdinalIgnoreCase)) continue;
+            if (j < 0) continue;
+            var host = (copy ?? rendered)[j];
+            var footnote = (copy ?? rendered)[i].Trim();
+            var merged = string.Equals(blocks[j].Type, "paragraph", StringComparison.OrdinalIgnoreCase)
+                ? host.TrimEnd() + footnote + "\n"
+                : FootnoteInto(host, footnote);
+            if (merged is null) continue;
             copy ??= rendered.ToList();
-            copy[j] = copy[j].TrimEnd() + copy[i].Trim() + "\n";
+            copy[j] = merged;
             copy[i] = "";
         }
         return copy ?? rendered;
+    }
+
+    private static readonly Regex TrailingEnd = new(@"\\end\{(?<env>[A-Za-z]+\*?)\}\s*$", RegexOptions.Compiled);
+    private static readonly HashSet<string> DisplayMath = new(StringComparer.Ordinal)
+        { "equation", "align", "gather", "multline", "flalign", "alignat", "equation*", "align*", "gather*", "multline*", "flalign*", "alignat*" };
+    private static readonly HashSet<string> Floats = new(StringComparer.Ordinal)
+        { "figure", "figure*", "table", "table*", "algorithm" };
+    private static readonly HashSet<string> Verbatim = new(StringComparer.Ordinal)
+        { "verbatim", "verbatim*", "lstlisting", "algorithmic", "tabular", "tabularx", "longtable", "tikzpicture", "comment" };
+
+    /// <summary>
+    /// A footnote after a block that isn't a paragraph (MCP-35, run 3: after an equation or an
+    /// algorithm it stayed free-standing). In a display, a mark and the text after it; in a theorem,
+    /// list or quote, the footnote before its \end; in a captioned float, a mark on the caption.
+    /// Null when there is no place for it (verbatim, a float without caption): it stays where it is.
+    /// </summary>
+    internal static string? FootnoteInto(string host, string footnote)
+    {
+        if (!footnote.StartsWith(@"\footnote{", StringComparison.Ordinal)) return null;
+        var text = @"\footnotetext{" + footnote[@"\footnote{".Length..];
+        var trimmed = host.TrimEnd();
+        var end = TrailingEnd.Match(trimmed);
+        if (!end.Success) return null;
+        var env = end.Groups["env"].Value;
+        var before = trimmed[..end.Index].TrimEnd();
+        if (DisplayMath.Contains(env))
+        {
+            if (before.EndsWith(@"\\", StringComparison.Ordinal)) before = before[..^2].TrimEnd();
+            return $"{before}\\text{{\\footnotemark}}\n{end.Value}\n{text}\n";
+        }
+        if (Floats.Contains(env))
+        {
+            var at = trimmed.IndexOf(@"\caption{", StringComparison.Ordinal);
+            if (at < 0) return null;
+            var close = MatchingBrace(trimmed, at + @"\caption".Length);
+            return close < 0 ? null : $"{trimmed[..close]}\\protect\\footnotemark{trimmed[close..]}\n{text}\n";
+        }
+        if (Verbatim.Contains(env)) return null;
+        return $"{before}{footnote}\n{end.Value}\n";
+    }
+
+    /// <summary>The index of the brace closing the one at <paramref name="open"/>, or -1.</summary>
+    private static int MatchingBrace(string s, int open)
+    {
+        var depth = 0;
+        for (var k = open; k < s.Length; k++)
+        {
+            if (s[k] == '\\') { k++; continue; }
+            if (s[k] == '{') depth++;
+            else if (s[k] == '}' && --depth == 0) return k;
+        }
+        return -1;
     }
 
     /// <summary>
