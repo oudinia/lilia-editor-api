@@ -201,6 +201,8 @@ taken from the web editor's locale files: refresh this table when the interface'
 | Snippets | Extraits | Fragmentos |
 | Import / Export | Import / Export | Importar / Exportar |
 | Settings | Paramètres | Ajustes |
+| Page Numbering | Numérotation des pages | Numeración de páginas |
+| Heading numbering · Class default · None | Numérotation des titres · Par défaut de la classe · Aucune | Numeración de títulos · Predeterminada de la clase · Ninguna |
 | Ask Lilia and help | Demander à Lilia et aide | Preguntar a Lilia y ayuda |
 | How Lilia explains things | Comment Lilia explique les choses | Cómo explica Lilia las cosas |
 | Simple · Standard · For LaTeX users | Simple · Standard · Pour les utilisateurs de LaTeX | Sencillo · Estándar · Para usuarios de LaTeX |
