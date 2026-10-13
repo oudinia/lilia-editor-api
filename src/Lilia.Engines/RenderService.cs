@@ -2378,7 +2378,8 @@ public partial class RenderService : IRenderService
             latex.AppendLine(LaTeXPreambleBuilder.UsesMulticols(doc) ? InMulticols(rendered[i]) : rendered[i]);
             if (breaks.After.Length > 0) latex.AppendLine(breaks.After);
         }
-        return latex.ToString();
+        // \eqref{loss} to an equation labelled "loss" (written eq:loss) resolves (MCP-106).
+        return CrossRefSyntax.ResolveBareReferences(latex.ToString());
     }
 
     /// <summary>A book with front or back matter blocks: its body is split by \frontmatter,

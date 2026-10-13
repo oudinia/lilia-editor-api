@@ -267,7 +267,11 @@ public static class ProseLatex
     }
 
     private static string Number(string key, Func<string, string?>? labelNumber) =>
-        labelNumber?.Invoke(LabelKey.Safe(key)) ?? labelNumber?.Invoke(key) ?? $"[{key}]";
+        labelNumber?.Invoke(LabelKey.Safe(key)) ?? labelNumber?.Invoke(key)
+        // A bare name defined with its kind's prefix (eq:loss for "loss"), as the LaTeX resolves it (MCP-106).
+        ?? (key.Contains(':') ? null : new[] { "eq", "fig", "tbl", "tab", "alg", "thm", "sec" }
+            .Select(p => labelNumber?.Invoke($"{p}:{LabelKey.Safe(key)}")).FirstOrDefault(n => n is not null))
+        ?? $"[{key}]";
 
     /// <summary><c>\metre\per\second\squared</c> → m/s²; literal units (<c>m/s^2</c>) are kept.</summary>
     private static string UnitText(string units)
