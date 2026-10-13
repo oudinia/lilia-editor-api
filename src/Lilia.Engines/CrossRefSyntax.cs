@@ -25,9 +25,11 @@ public static class CrossRefSyntax
         @"(?<kind>\p{L}[\p{L}\p{M}]*)~\((?<key>[A-Za-z][A-Za-z0-9-]*:[^()\s{}]+)\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static readonly Regex AtRef = new(@"@ref\{(?<key>[^{}]+)\}", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    // The square-bracket form (@ref[x], @cite[x]) is the old spec's, still in many prompts (run 2, R1):
+    // read like the braced one. A bibliography block's "@cite[key] Author" item is not prose.
+    public static readonly Regex AtRef = new(@"@ref(?:\{(?<key>[^{}]+)\}|\[(?<key>[^\]\s]+)\])", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static readonly Regex AtCite = new(@"@cite\{(?<keys>[^{}]+)\}", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    public static readonly Regex AtCite = new(@"@cite(?:\{(?<keys>[^{}]+)\}|\[(?<keys>[^\]]+)\])", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary><c>\eqref</c> for an equation label (<c>eq:…</c>), <c>\ref</c> for anything else.</summary>
     public static string RefCommand(string label)

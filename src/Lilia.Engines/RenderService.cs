@@ -1304,16 +1304,11 @@ public partial class RenderService : IRenderService
 
         // Bibliography: the document's entries, and the references written as text inside its
         // bibliography blocks (MCP-04) that the table doesn't already hold.
+        // BibTeX written in a bibliography block counts as the document's own entries (MCP-81).
         var tableEntries = doc.BibliographyEntries?.ToList() ?? new List<BibliographyEntry>();
         var known = tableEntries.Select(e => e.CiteKey).ToHashSet(StringComparer.Ordinal);
-        var textEntries = blocks
-            .Where(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(b => BibliographyText.Parse(
-                b.Content?.RootElement is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
-                    ? t.GetString() : null))
-            .Where(e => !known.Contains(e.Key))
-            .GroupBy(e => e.Key).Select(g => g.First())
-            .ToList();
+        tableEntries.AddRange(BibliographyBlocks.BibTeX(blocks).Where(e => known.Add(e.CiteKey)));
+        var textEntries = BibliographyBlocks.Text(blocks).Where(e => !known.Contains(e.Key)).ToList();
         if (tableEntries.Count > 0 || textEntries.Count > 0)
         {
             latex.AppendLine();
