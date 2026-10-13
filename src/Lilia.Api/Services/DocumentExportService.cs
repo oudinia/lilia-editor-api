@@ -94,9 +94,27 @@ public class DocumentExportService : IDocumentExportService
             }
         };
 
-        // References in prose take the numbers the last compile gave them (ProseLatex).
+        // The document's entries, then what its bibliography blocks hold (BibTeX and @cite[key] text),
+        // as the LaTeX export takes them (LaTeXExportService.WithTextEntries). MCP-98: the cited ones,
+        // as BibTeX lists them, numbered in the order the references print; a citation prints its number.
+        var allEntries = LaTeXExportService.WithTextEntries(doc.Blocks, doc.BibliographyEntries.ToList());
+        var cited = CitedKeys(doc.Blocks);
+        var listed = allEntries
+            .Where(e => cited.Count == 0 || cited.Contains("*") || cited.Contains(e.CiteKey))
+            .Select(ConvertBibliographyEntry)
+            .OrderBy(e => BibTeXField.ShortAuthors(e.Fields.GetValueOrDefault("author")), StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(e => e.Fields.GetValueOrDefault("year") ?? "", StringComparer.Ordinal)
+            .ThenBy(e => e.Fields.GetValueOrDefault("title") ?? e.CiteKey, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        for (var n = 0; n < listed.Count; n++) listed[n].Number = n + 1;
+        var citeNumbers = listed.ToDictionary(e => e.CiteKey, e => e.Number!.Value.ToString(), StringComparer.Ordinal);
+
+        // References in prose take the numbers the last compile gave them (ProseLatex); citations
+        // ("cite:key") the numbers above.
         var labels = LabelNumbers.Parse(doc.LabelNumbers);
-        _labelNumber = key => labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
+        _labelNumber = key => key.StartsWith("cite:", StringComparison.Ordinal)
+            ? citeNumbers.GetValueOrDefault(key[5..])
+            : labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
 
         var theoremCounter = 0;
 
@@ -110,15 +128,38 @@ public class DocumentExportService : IDocumentExportService
                 exportDoc.Blocks.Add(exportBlock);
         }
 
-        // The document's entries, then what its bibliography blocks hold (BibTeX and @cite[key] text),
-        // as the LaTeX export takes them (LaTeXExportService.WithTextEntries).
-        var allEntries = LaTeXExportService.WithTextEntries(doc.Blocks, doc.BibliographyEntries.ToList());
-        if (allEntries.Count > 0)
-        {
-            exportDoc.Bibliography = allEntries.Select(e => ConvertBibliographyEntry(e)).ToList();
-        }
+        if (listed.Count > 0) exportDoc.Bibliography = listed;
 
         return exportDoc;
+    }
+
+    private static readonly Regex CiteKeys = new(
+        @"\\(?:no)?cite[a-zA-Z]*\*?(?:\[[^\]]*\]){0,2}\{(?<k>[^}]*)\}|@cite\{(?<k>[^}]*)\}|@cite\[(?<k>[^\]]*)\]",
+        RegexOptions.Compiled);
+
+    /// <summary>The keys the document's text cites (every string in its blocks but the bibliography).</summary>
+    private static HashSet<string> CitedKeys(IEnumerable<Block> blocks)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        void Walk(JsonElement el)
+        {
+            switch (el.ValueKind)
+            {
+                case JsonValueKind.String:
+                    foreach (Match m in CiteKeys.Matches(el.GetString() ?? ""))
+                        foreach (var k in m.Groups["k"].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                            keys.Add(k);
+                    break;
+                case JsonValueKind.Object:
+                    foreach (var p in el.EnumerateObject()) Walk(p.Value);
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var x in el.EnumerateArray()) Walk(x);
+                    break;
+            }
+        }
+        foreach (var b in blocks.Where(b => b.Type != "bibliography")) Walk(b.Content.RootElement);
+        return keys;
     }
 
     public async Task<byte[]> ExportToDocxAsync(Guid documentId)
@@ -482,14 +523,16 @@ public class DocumentExportService : IDocumentExportService
     /// bold sentence containing <c>$x$</c> stays bold on both sides of the
     /// equation.</para>
     /// </summary>
-    private static List<ExportRichTextSpan> MapRichText(JsonElement content, string text)
+    // Not static: references and citations take their numbers (_labelNumber); a paragraph printed
+    // "Equation ([eq:x])" and "[key]" while lists and tables printed numbers (MCP-96, MCP-98).
+    private List<ExportRichTextSpan> MapRichText(JsonElement content, string text)
     {
         if (content.ValueKind != JsonValueKind.Object
             || !content.TryGetProperty("richText", out var stored)
             || stored.ValueKind != JsonValueKind.Array
             || stored.GetArrayLength() == 0)
         {
-            return ParseInlineFormatting(text);
+            return ParseInlineFormatting(text, _labelNumber);
         }
 
         var spans = new List<ExportRichTextSpan>();
@@ -524,13 +567,13 @@ public class DocumentExportService : IDocumentExportService
 
             if (string.IsNullOrEmpty(spanText)) continue;
 
-            foreach (var piece in ParseInlineFormatting(spanText))
+            foreach (var piece in ParseInlineFormatting(spanText, _labelNumber))
             {
                 spans.Add(WithMarks(marks, piece.Text, piece.Equation));
             }
         }
 
-        return spans.Count > 0 ? spans : ParseInlineFormatting(text);
+        return spans.Count > 0 ? spans : ParseInlineFormatting(text, _labelNumber);
     }
 
     private static string? NullIfEmpty(string? value) =>
@@ -1042,7 +1085,8 @@ public class DocumentExportService : IDocumentExportService
         {
             CiteKey = entry.CiteKey,
             EntryType = entry.EntryType,
-            Fields = fields
+            // BibTeX markup as the reader sees it: Fej{\'e}r → Fejér, -- → –, {NLP} → NLP (MCP-98).
+            Fields = fields.ToDictionary(f => f.Key, f => BibTeXField.ToPlain(f.Value)),
         };
     }
 

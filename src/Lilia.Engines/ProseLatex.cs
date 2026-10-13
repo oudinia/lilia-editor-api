@@ -182,7 +182,9 @@ public static class ProseLatex
             case "eqref":
                 return "(" + Number((args.FirstOrDefault() ?? "").Trim(), labelNumber) + ")";
             case "cite" or "citep" or "citet" or "parencite" or "textcite" or "autocite" or "citealp" or "citealt":
-                return "[" + string.Join(", ", (args.FirstOrDefault() ?? "").Split(',').Select(k => k.Trim())) + "]";
+                // The reference's number where the export knows it ("cite:key"), else its key (MCP-98).
+                return "[" + string.Join(", ", (args.FirstOrDefault() ?? "").Split(',').Select(k => k.Trim())
+                    .Select(k => labelNumber?.Invoke("cite:" + k) ?? k)) + "]";
             case "SI" or "qty":
                 return Arg(0).Replace("\\pm", "±").Replace(" ", "") + " " + UnitText(args.Count > 1 ? args[1] : "");
             case "si" or "unit":
