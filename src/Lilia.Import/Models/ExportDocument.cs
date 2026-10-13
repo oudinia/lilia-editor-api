@@ -395,6 +395,9 @@ public class ExportListItem
     /// Child items for nested lists.
     /// </summary>
     public List<ExportListItem>? Children { get; set; }
+
+    /// <summary>A description list item's description; <see cref="Text"/> is its term.</summary>
+    public List<ExportRichTextSpan>? Description { get; set; }
 }
 
 /// <summary>

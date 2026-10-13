@@ -591,10 +591,37 @@ public class DocumentExportService : IDocumentExportService
             Type = "equation",
             Content = new ExportBlockContent
             {
-                Latex = ProseLatex.MathForWord(latex),
+                Latex = AsWordDisplay(ProseLatex.MathForWord(latex)),
                 DisplayMode = displayMode
             }
         };
+    }
+
+    /// <summary>
+    /// A multi-line body (<c>a &amp;= b \\ c &amp;= d</c>, what an align or gather block stores) as
+    /// one aligned display. Word's converter stopped at the first <c>\\</c>, so an align* kept
+    /// only its first line (MCP-94, run 3).
+    /// </summary>
+    internal static string AsWordDisplay(string latex)
+    {
+        if (string.IsNullOrWhiteSpace(latex)) return latex;
+        if (!Lilia.Core.Blocks.EquationContent.HasTopLevelAlignment(latex) && !HasTopLevelRowBreak(latex)) return latex;
+        var body = Regex.Replace(latex.Trim(), @"\\\\\s*$", "");
+        return $"\\begin{{aligned}}{body}\\end{{aligned}}";
+    }
+
+    private static bool HasTopLevelRowBreak(string s)
+    {
+        var depth = 0;
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (s[i] != '\\') continue;
+            if (string.CompareOrdinal(s, i, @"\begin{", 0, 7) == 0) { depth++; i += 6; continue; }
+            if (string.CompareOrdinal(s, i, @"\end{", 0, 5) == 0) { if (depth > 0) depth--; i += 4; continue; }
+            if (i + 1 < s.Length && s[i + 1] == '\\' && depth == 0) return true;
+            i++;
+        }
+        return false;
     }
 
     private ExportBlock ConvertCodeBlock(JsonElement content)
@@ -617,11 +644,14 @@ public class DocumentExportService : IDocumentExportService
 
     private ExportBlock ConvertListBlock(JsonElement content)
     {
-        var listType = "bullet";
-        if (content.TryGetProperty("listType", out var lt))
-            listType = lt.GetString() ?? "bullet";
-        else if (content.TryGetProperty("ordered", out var ord) && ord.ValueKind == JsonValueKind.True)
-            listType = "ordered";
+        // One reading of kind / listType / ordered for every emitter (ListKind): "numbered" and
+        // kind "description" were lost here (MCP-95, MCP-99).
+        var listType = ListKind.Of(content) switch
+        {
+            ListKind.Numbered => "ordered",
+            ListKind.Description => "description",
+            _ => "bullet",
+        };
 
         var items = new List<ExportListItem>();
         if (content.TryGetProperty("items", out var itemsEl) && itemsEl.ValueKind == JsonValueKind.Array)
@@ -669,10 +699,13 @@ public class DocumentExportService : IDocumentExportService
             text = "";
         }
 
+        // A description item: {text: term, description}.
+        var description = item.ValueKind == JsonValueKind.Object ? GetString(item, "description") : "";
         var exportItem = new ExportListItem
         {
             Text = text,
-            RichText = ParseInlineFormatting(text, _labelNumber)
+            RichText = ParseInlineFormatting(text, _labelNumber),
+            Description = string.IsNullOrEmpty(description) ? null : ParseInlineFormatting(description, _labelNumber),
         };
 
         if (item.ValueKind == JsonValueKind.Object &&

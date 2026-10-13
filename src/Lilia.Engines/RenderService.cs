@@ -470,16 +470,8 @@ public partial class RenderService : IRenderService
 
     private string RenderListToHtml(JsonElement content)
     {
-        // Support both "listType" (string: "ordered"/"unordered") and "ordered" (boolean) formats
-        var isOrdered = false;
-        if (content.TryGetProperty("listType", out var lt))
-        {
-            isOrdered = lt.GetString() == "ordered";
-        }
-        else if (content.TryGetProperty("ordered", out var ord))
-        {
-            isOrdered = ord.ValueKind == JsonValueKind.True;
-        }
+        // kind / listType / ordered, as every emitter reads them (ListKind).
+        var isOrdered = ListKind.Of(content) == ListKind.Numbered;
 
         var tag = isOrdered ? "ol" : "ul";
 
@@ -2548,27 +2540,10 @@ public partial class RenderService : IRenderService
 
     private string RenderListToLatex(JsonElement content)
     {
-        // Support both "listType" (string: "ordered"/"unordered") and "ordered" (boolean) formats
-        var isOrdered = false;
-        if (content.TryGetProperty("listType", out var lt))
-        {
-            isOrdered = lt.GetString() == "ordered";
-        }
-        else if (content.TryGetProperty("ordered", out var ord))
-        {
-            isOrdered = ord.ValueKind == JsonValueKind.True;
-        }
-
-        // `kind` takes precedence over `ordered` when present. Legacy
-        // docs (pre-Phase-2) carry only `ordered`; new docs may carry
-        // `kind` ∈ {"bullet","numbered","description"}.
-        string? kind = null;
-        if (content.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String)
-        {
-            kind = kindProp.GetString();
-        }
-        var isDescription = kind == "description";
-        var env = isDescription ? "description" : (isOrdered ? "enumerate" : "itemize");
+        // kind / listType / ordered, read as every emitter reads them (ListKind).
+        var kind = ListKind.Of(content);
+        var isOrdered = kind == ListKind.Numbered;
+        var env = kind == ListKind.Description ? "description" : (isOrdered ? "enumerate" : "itemize");
 
         var sb = new StringBuilder();
 
@@ -2586,7 +2561,7 @@ public partial class RenderService : IRenderService
             };
             if (spacingOption != null) enumOptions.Add(spacingOption);
         }
-        if (isOrdered && !isDescription)
+        if (isOrdered)
         {
             // Label format support
             if (content.TryGetProperty("labelFormat", out var lfProp))
