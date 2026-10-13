@@ -120,7 +120,9 @@ public record DocumentDto(
     // The theme ids this document may use, in catalog order: beamer → ["classic","exposition"],
     // a locked class → ["classic"], any other class → every theme but exposition. A stored
     // look.theme outside this list (left by a class change) prints as Classic.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? LookThemes = null
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? LookThemes = null,
+    // Numbered heading levels: null = class default, 0 = none, 1–5 = levels 1 to n (Document.HeadingNumbering).
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? HeadingNumbering = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -188,7 +190,10 @@ public record UpdateDocumentDto(
     // "density": "normal"|"compact", "caption": "above"|"below" } (tables and each key optional) }.
     // Null leaves it alone; theme "classic" without tables clears it.
     // Validated (400 listing the valid values) by DocumentLook.Validate.
-    JsonElement? Look = null
+    JsonElement? Look = null,
+    // Numbered heading levels: null leaves it alone, -1 returns to the class default, 0 numbers none,
+    // 1–5 number levels 1 to n.
+    int? HeadingNumbering = null
 );
 
 public record TrashDocumentDto(

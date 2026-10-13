@@ -35,6 +35,10 @@ public abstract class ImportElement
 /// </summary>
 public class ImportHeading : ImportElement
 {
+    /// <summary>The source numbered this heading (Word list numbering, or a typed "1.2 " prefix). Not
+    /// <see cref="Numbered"/>, which is LaTeX's starred / unstarred for this one heading.</summary>
+    public bool SourceNumbered { get; set; }
+
     public override ImportElementType Type => ImportElementType.Heading;
 
     /// <summary>

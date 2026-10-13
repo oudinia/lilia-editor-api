@@ -834,6 +834,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                  [Description("Line spacing factor, 0.8 to 3 (1 single, 1.5 one-and-a-half, 2 double).")] double? lineSpacing = null,
                  [Description("Paragraph indent as a length (1.5em, 1cm, 12pt) or \"none\" for no indent.")] string? paragraphIndent = null,
                  [Description("Page numbers: arabic | roman | none.")] string? pageNumbering = null,
+                 [Description("Which heading levels are numbered (the table of contents lists the same): none, 1 (level-1 headings only), 2, 3, 4 or 5; \"default\" for the class default.")] string? headingNumbering = null,
                  [Description("Running header, left slot. Plain text: LaTeX commands such as \\thepage are not interpreted. \"\" clears it.")] string? headerLeft = null,
                  [Description("Running header, centre slot. Plain text.")] string? headerCenter = null,
                  [Description("Running header, right slot. Plain text.")] string? headerRight = null,
@@ -844,10 +845,11 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     => SetDocumentSettingsAsync(live, docGuid, userId, markMetaChanged,
                         new DocumentSettingsValidator.Input(paperSize, orientation, marginTop, marginBottom, marginLeft, marginRight,
                             columns, columnGap, columnSeparator, balancedColumns, fontFamily, fontSize, lineSpacing, paragraphIndent,
-                            pageNumbering, headerLeft, headerCenter, headerRight, footerLeft, footerCenter, footerRight, customPreamble)),
+                            pageNumbering, headerLeft, headerCenter, headerRight, footerLeft, footerCenter, footerRight, customPreamble,
+                            HeadingNumbering: headingNumbering)),
                 name: "set_document_settings",
                 description: "Set the document's page setup: paper size, orientation, margins, columns, font, size, line spacing, "
-                    + "paragraph indent, page numbering, running headers and footers, and (advanced) the custom preamble. "
+                    + "paragraph indent, page numbering, heading numbering, running headers and footers, and (advanced) the custom preamble. "
                     + "Pass ONLY the fields to change; everything else is left alone. Invalid values are rejected with the valid "
                     + "choices and nothing is changed. Returns the resulting settings. Does not touch body blocks."));
             tools.Add(AIFunctionFactory.Create(
@@ -886,6 +888,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         ["lineSpacing"] = d.LineSpacing,
         ["paragraphIndent"] = Unset(d.ParagraphIndent),
         ["pageNumbering"] = d.PageNumbering,
+        ["headingNumbering"] = d.HeadingNumbering is null ? null : d.HeadingNumbering == 0 ? "none" : d.HeadingNumbering.ToString(),
         ["headerLeft"] = Unset(d.HeaderLeft),
         ["headerCenter"] = Unset(d.HeaderCenter),
         ["headerRight"] = Unset(d.HeaderRight),

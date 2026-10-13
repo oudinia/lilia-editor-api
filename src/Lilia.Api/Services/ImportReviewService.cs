@@ -399,8 +399,12 @@ public class ImportReviewService : IImportReviewService
             // and re-exports under a generic article preamble.
             var pre = await _context.ImportReviewSessions
                 .Where(s => s.Id == sessionId)
-                .Select(s => new { s.RawImportData, s.SourceFormat })
+                .Select(s => new { s.RawImportData, s.SourceFormat, s.HeadingNumbering })
                 .FirstOrDefaultAsync(ct);
+            // The source's heading numbering (a DOCX's Word numbering): the document starts from it.
+            if (pre?.HeadingNumbering is { } sourceNumbering)
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE documents SET heading_numbering = {sourceNumbering} WHERE id = {documentId}", ct);
             if (pre != null
                 && !string.IsNullOrWhiteSpace(pre.RawImportData)
                 && (pre.SourceFormat == "latex" || pre.SourceFormat == "tex"))
@@ -1141,7 +1145,8 @@ public class ImportReviewService : IImportReviewService
         List<object>? warnings = null,
         JsonElement? paragraphTraces = null,
         string? sourceFilePath = null,
-        string? rawImportData = null)
+        string? rawImportData = null,
+        int? headingNumbering = null)
     {
         var warningsJson = warnings != null
             ? JsonSerializer.SerializeToElement(warnings)
@@ -1157,11 +1162,12 @@ public class ImportReviewService : IImportReviewService
         var result = await CreateSessionAsync(userId, dto);
 
         // Store paragraph traces and source file path if provided
-        if (paragraphTraces.HasValue || sourceFilePath != null || rawImportData != null)
+        if (paragraphTraces.HasValue || sourceFilePath != null || rawImportData != null || headingNumbering != null)
         {
             var session = await _context.ImportReviewSessions.FindAsync(result.Session.Id);
             if (session != null)
             {
+                session.HeadingNumbering = headingNumbering;
                 if (paragraphTraces.HasValue)
                 {
                     session.ParagraphTraces = JsonDocument.Parse(paragraphTraces.Value.GetRawText());

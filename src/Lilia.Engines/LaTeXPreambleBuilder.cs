@@ -422,6 +422,18 @@ public static class LaTeXPreambleBuilder
             sb.AppendLine("\\usepackage{multicol}");
         }
 
+        // Heading numbering, the author's choice (Document.HeadingNumbering): which levels carry a
+        // number, and the table of contents lists the same levels. Level 1 is a chapter in a class
+        // with chapters (depth 0), a section otherwise (depth 1).
+        if (doc.HeadingNumbering is { } numbered)
+        {
+            var hasChapters = Lilia.Core.Models.HeadingCommands.For(1, ResolveClassName(doc)) == "chapter";
+            var depth = numbered <= 0 ? -2 : numbered - (hasChapters ? 1 : 0);
+            sb.AppendLine("% Heading numbering (document setting)");
+            sb.AppendLine($"\\setcounter{{secnumdepth}}{{{depth}}}");
+            if (numbered > 0) sb.AppendLine($"\\setcounter{{tocdepth}}{{{depth}}}");
+        }
+
         // Page numbering — drives \pagenumbering / \pagestyle{empty}.
         // Default behaviour (null) leaves the class default in place.
         if (!string.IsNullOrWhiteSpace(doc.PageNumbering))

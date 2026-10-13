@@ -66,6 +66,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.LineSpacing).HasColumnName("line_spacing");
         builder.Property(d => d.ParagraphIndent).HasColumnName("paragraph_indent");
         builder.Property(d => d.PageNumbering).HasColumnName("page_numbering").HasMaxLength(20);
+        builder.Property(d => d.HeadingNumbering).HasColumnName("heading_numbering");
 
         // Bottom-fill policy. NULL means "leave the class default alone" and is
         // the default for every existing row — so the migration cannot change
