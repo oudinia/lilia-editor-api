@@ -262,6 +262,36 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         TextIn(bytes).Should().Contain("Header A").And.Contain("cell two");
     }
 
+    // MCP-93 (run 3, LTX-17): cells written as objects ({"content": …, "rowspan": 2}) exported
+    // empty, rows ragged, no spans, notes or group headers.
+    [Fact]
+    public async Task TableCellsAsObjectsWithSpansNotesAndGroups()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Spans");
+        await SeedBlockAsync(doc.Id, "table", """
+            {"headers":[{"content":"Site"},{"content":"Min"},{"content":"Max","note":"Daily maximum."}],
+             "headerGroups":[{"label":"Temperature","start":1,"span":2}],
+             "rows":[[{"content":"Lyon","rowspan":2},{"content":"3"},{"content":"21"}],
+                     [{"content":"5"},{"content":"24"}],
+                     [{"content":"Total over both","colspan":2},{"content":"45"}]]}
+            """);
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        var xml = XmlIn(bytes);
+        var text = TextIn(bytes);
+
+        text.Should().Contain("Lyon").And.Contain("24").And.Contain("Total over both").And.Contain("Temperature").And.Contain("Daily maximum.");
+        xml.Should().Contain("<w:tblGrid>").And.Contain("<w:vMerge w:val=\"restart\" />").And.Contain("<w:vMerge />").And.Contain("<w:gridSpan w:val=\"2\" />");
+        // Every row is three grid columns wide: group row, header, three body rows.
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var rows = word.MainDocumentPart!.Document.Descendants<DocumentFormat.OpenXml.Wordprocessing.TableRow>().ToList();
+        rows.Should().HaveCount(5);
+        rows.Should().OnlyContain(r => r.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>()
+            .Sum(c => c.TableCellProperties!.GridSpan == null ? 1 : c.TableCellProperties.GridSpan.Val!.Value) == 3);
+        rows.Take(2).Should().OnlyContain(r => r.TableRowProperties != null, "the group row and the header repeat as header rows");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {

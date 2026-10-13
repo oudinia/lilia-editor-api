@@ -692,61 +692,94 @@ public class DocumentExportService : IDocumentExportService
 
     private ExportBlock ConvertTableBlock(JsonElement content)
     {
-        var rows = new List<List<ExportTableCell>>();
         var hasHeader = GetBool(content, "hasHeader", true);
 
         // The editor stores a table as { headers: [...], rows: [[...]] } — the
         // column headings live in their own array, not as the first entry of
         // rows. Only "rows" was read, so every real table exported to Word with
-        // its header row missing: the data survived, the thing telling you what
-        // the columns meant did not (2026-09-09). Markdown and LML read it and
-        // were unaffected, which is why this took a shape-accurate test to see.
-        if (content.ValueKind == JsonValueKind.Object
-            && content.TryGetProperty("headers", out var headersEl)
-            && headersEl.ValueKind == JsonValueKind.Array
-            && headersEl.GetArrayLength() > 0)
-        {
-            var headerRow = new List<ExportTableCell>();
-            foreach (var header in headersEl.EnumerateArray())
-            {
-                var text = header.ValueKind == JsonValueKind.String
-                    ? header.GetString() ?? ""
-                    : header.ValueKind == JsonValueKind.Object
-                        ? GetString(header, "text")
-                        : "";
-                // Plain text, and its runs for the writer: a header can hold maths (Spearman $\rho$).
-                headerRow.Add(new ExportTableCell { Text = ProseLatex.PlainForWord(text, _labelNumber), RichText = ParseInlineFormatting(text, _labelNumber) });
-            }
+        // its header row missing (2026-09-09).
+        var headers = content.ValueKind == JsonValueKind.Object && content.TryGetProperty("headers", out var headersEl)
+            && headersEl.ValueKind == JsonValueKind.Array && headersEl.GetArrayLength() > 0
+            && headersEl.EnumerateArray().Any(h => !string.IsNullOrWhiteSpace(TableColumnFormat.CellText(h)))
+            ? headersEl : (JsonElement?)null;
+        var bodyRows = content.ValueKind == JsonValueKind.Object && content.TryGetProperty("rows", out var rowsEl) && rowsEl.ValueKind == JsonValueKind.Array
+            ? rowsEl.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Array).ToList()
+            : [];
+        if (headers is not null) hasHeader = true;
 
-            if (headerRow.Any(c => !string.IsNullOrWhiteSpace(c.Text)))
+        // MCP-93 (run 3): cells written as objects ({"content": …, "rowspan": 2}) exported empty —
+        // only {text} was read — and rows came out ragged, with no spans, notes or group headers.
+        // The grid is built as the LaTeX emitter builds it (RenderService table path, TableLayout).
+        static int Span(JsonElement cell, string name) =>
+            cell.ValueKind == JsonValueKind.Object && cell.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) && n > 1 ? n : 1;
+        var stored = (headers is { } hd ? new[] { hd } : []).Concat(bodyRows).ToList();
+        var colCount = stored.Count == 0 ? 0 : stored.Max(r => r.EnumerateArray().Sum(c => Span(c, "colspan")));
+        var layout = TableLayout.Read(content, colCount, headers is not null);
+
+        var rows = new List<List<ExportTableCell>>();
+        var covered = new Dictionary<(int Row, int Col), int>();
+        for (var g = 0; g < stored.Count; g++)
+        {
+            var isHeader = headers is not null && g == 0;
+            var layoutRow = headers is null ? g : g - 1;
+            var row = new List<ExportTableCell>();
+            var col = 0;
+            void FillCovered()
             {
-                rows.Add(headerRow);
-                hasHeader = true;
+                while (col < colCount && covered.TryGetValue((g, col), out var span))
+                {
+                    row.Add(new ExportTableCell { MergedAbove = true, ColSpan = span });
+                    col += span;
+                }
             }
+            var ci = 0;
+            foreach (var cell in stored[g].EnumerateArray())
+            {
+                var index = ci++;
+                FillCovered();
+                if (col >= colCount) break;
+                var text = TableColumnFormat.CellText(cell);
+                var colspan = Math.Min(Span(cell, "colspan"), colCount - col);
+                var rowspan = Span(cell, "rowspan");
+                var rich = ParseInlineFormatting(text, _labelNumber) ?? [];
+                if (layout.MarkAt(isHeader ? -1 : layoutRow, index) is { } mark)
+                    rich.Add(new ExportRichTextSpan { Text = mark, Superscript = true });
+                row.Add(new ExportTableCell
+                {
+                    Text = ProseLatex.PlainForWord(text, _labelNumber),
+                    RichText = rich.Count > 0 ? rich : null,
+                    ColSpan = colspan,
+                    RowSpan = Math.Min(rowspan, stored.Count - g),
+                });
+                for (var k = 1; k < rowspan && g + k < stored.Count; k++) covered[(g + k, col)] = colspan;
+                col += colspan;
+            }
+            // A short row is padded to the table's width, or Word shifts its cells under the wrong columns.
+            while (col < colCount)
+            {
+                FillCovered();
+                if (col >= colCount) break;
+                row.Add(new ExportTableCell());
+                col++;
+            }
+            rows.Add(row);
         }
 
-        if (content.TryGetProperty("rows", out var rowsEl) && rowsEl.ValueKind == JsonValueKind.Array)
+        // Group headers: a row above the header, each label over its columns.
+        var headerRows = headers is not null || hasHeader ? 1 : 0;
+        if (headers is not null && layout.Groups.Count > 0)
         {
-            foreach (var row in rowsEl.EnumerateArray())
+            var groupRow = new List<ExportTableCell>();
+            var col = 0;
+            foreach (var group in layout.Groups)
             {
-                if (row.ValueKind != JsonValueKind.Array) continue;
-                var exportRow = new List<ExportTableCell>();
-                foreach (var cell in row.EnumerateArray())
-                {
-                    var cellText = cell.ValueKind == JsonValueKind.String
-                        ? cell.GetString() ?? ""
-                        : cell.ValueKind == JsonValueKind.Object
-                            ? GetString(cell, "text")
-                            : "";
-
-                    exportRow.Add(new ExportTableCell
-                    {
-                        Text = cellText,
-                        RichText = ParseInlineFormatting(cellText, _labelNumber)
-                    });
-                }
-                rows.Add(exportRow);
+                for (; col < group.Start; col++) groupRow.Add(new ExportTableCell());
+                groupRow.Add(new ExportTableCell { Text = ProseLatex.PlainForWord(group.Label, _labelNumber), RichText = ParseInlineFormatting(group.Label, _labelNumber), ColSpan = group.Span });
+                col += group.Span;
             }
+            for (; col < colCount; col++) groupRow.Add(new ExportTableCell());
+            rows.Insert(0, groupRow);
+            headerRows = 2;
         }
 
         return new ExportBlock
@@ -756,6 +789,8 @@ public class DocumentExportService : IDocumentExportService
             {
                 Rows = rows,
                 HasHeader = hasHeader,
+                HeaderRows = headerRows,
+                TableNotes = layout.HasNotes ? layout.Notes.Select(n => (n.Mark, ProseLatex.PlainForWord(n.Text, _labelNumber))).ToList() : null,
                 // Dropped until 26 Sep: every other export printed the table's
                 // caption; the .docx had none.
                 Caption = ProseLatex.PlainForWord(GetString(content, "caption"), _labelNumber)

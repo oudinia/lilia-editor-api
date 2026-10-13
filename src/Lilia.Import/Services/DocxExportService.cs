@@ -615,16 +615,23 @@ public class DocxExportService : IDocxExportService
         ));
         tblPr.Append(new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct });
         table.Append(tblPr);
+        // The grid the spans count against (w:tblGrid is required, and gridSpan needs it).
+        var gridColumns = content.Rows is { Count: > 0 } ? content.Rows.Max(r => r.Sum(c => Math.Max(1, c.ColSpan))) : 0;
+        if (gridColumns > 0)
+            table.Append(new TableGrid(Enumerable.Range(0, gridColumns).Select(_ => new GridColumn { Width = (9000 / gridColumns).ToString() })));
 
         if (content.Rows != null)
         {
-            var isFirstRow = true;
+            // Header rows: the column headings, and the group headers above them (MCP-93).
+            var headerRows = content.HeaderRows ?? ((content.HasHeader ?? false) ? 1 : 0);
+            var rowIndex = 0;
             foreach (var rowData in content.Rows)
             {
                 var row = new TableRow();
+                var isFirstRow = rowIndex++ < headerRows;
 
-                // Mark first row as header if HasHeader is true
-                if (isFirstRow && (content.HasHeader ?? false))
+                // Header rows repeat on every page.
+                if (isFirstRow)
                 {
                     var trPr = new TableRowProperties();
                     trPr.Append(new TableHeader());
@@ -641,11 +648,22 @@ public class DocxExportService : IDocxExportService
                     {
                         tcPr.Append(new GridSpan { Val = cellData.ColSpan });
                     }
+                    // A cell spanning rows starts a vertical merge; the places under it continue it.
+                    if (cellData.RowSpan > 1)
+                        tcPr.Append(new VerticalMerge { Val = MergedCellValues.Restart });
+                    else if (cellData.MergedAbove)
+                        tcPr.Append(new VerticalMerge());
                     cell.Append(tcPr);
+                    if (cellData.MergedAbove)
+                    {
+                        cell.Append(new Paragraph());
+                        row.Append(cell);
+                        continue;
+                    }
 
                     // Cell content
                     var para = new Paragraph();
-                    if (isFirstRow && (content.HasHeader ?? false) && cellData.RichText is { Count: > 0 })
+                    if (isFirstRow && cellData.RichText is { Count: > 0 })
                     {
                         // Bold, with its maths as equations.
                         foreach (var span in cellData.RichText)
@@ -654,7 +672,7 @@ public class DocxExportService : IDocxExportService
                             para.AppendChild(CreateSpanElement(span));
                         }
                     }
-                    else if (isFirstRow && (content.HasHeader ?? false))
+                    else if (isFirstRow)
                     {
                         var run = new Run();
                         run.Append(new RunProperties(new Bold()));
@@ -677,11 +695,22 @@ public class DocxExportService : IDocxExportService
                 }
 
                 table.Append(row);
-                isFirstRow = false;
             }
         }
 
-        return [table];
+        if (content.TableNotes is not { Count: > 0 } notes) return [table];
+
+        // The table's notes under it, each after its mark, as threeparttable prints them.
+        var elements = new List<OpenXmlElement> { table };
+        foreach (var (mark, text) in notes)
+        {
+            var note = new Paragraph(new ParagraphProperties(new SpacingBetweenLines { Before = "0", After = "0" }));
+            note.Append(new Run(new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }, new FontSize { Val = "18" }),
+                new Text(mark) { Space = SpaceProcessingModeValues.Preserve }));
+            note.Append(new Run(new RunProperties(new FontSize { Val = "18" }), new Text(" " + text) { Space = SpaceProcessingModeValues.Preserve }));
+            elements.Add(note);
+        }
+        return elements;
     }
 
     private IEnumerable<OpenXmlElement> ConvertFigure(ExportBlock block, MainDocumentPart mainPart)

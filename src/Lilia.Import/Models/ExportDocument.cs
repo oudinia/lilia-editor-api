@@ -144,6 +144,12 @@ public class ExportBlockContent
     /// </summary>
     public bool? HasHeader { get; set; }
 
+    /// <summary>How many leading rows are header rows (a group header row adds one). Null: one when <see cref="HasHeader"/>.</summary>
+    public int? HeaderRows { get; set; }
+
+    /// <summary>A table's notes, printed under it: (mark, text) in mark order.</summary>
+    public List<(string Mark, string Text)>? TableNotes { get; set; }
+
     /// <summary>
     /// Image data for figures.
     /// </summary>
@@ -324,6 +330,9 @@ public class ExportTableCell
     /// Row span (default 1).
     /// </summary>
     public int RowSpan { get; set; } = 1;
+
+    /// <summary>A place covered by a cell above that spans rows: Word continues its vertical merge here.</summary>
+    public bool MergedAbove { get; set; }
 }
 
 /// <summary>
