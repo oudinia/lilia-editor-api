@@ -59,7 +59,26 @@ public class LaTeXExportService : ILaTeXExportService
     {
         bibEntries = WithTextEntries(blocks, bibEntries);
         var files = ApplyCitationBackend(GenerateSingleFile(doc, blocks, bibEntries, options), options);
-        return files.First(f => f.Path == "main.tex").Content;
+        var main = files.First(f => f.Path == "main.tex").Content;
+        var bib = files.FirstOrDefault(f => f.Path == "references.bib")?.Content;
+        return bib is null ? main : WithBibInside(main, bib);
+    }
+
+    /// <summary>
+    /// The one-file .tex carries its references.bib (MCP-89): it ended with \bibliography{references}
+    /// and shipped no .bib, so every citation printed [?]. filecontents* writes the file on the first
+    /// run, before \documentclass; BibTeX (or Overleaf, latexmk) then reads it as from the zip.
+    /// </summary>
+    internal static string WithBibInside(string main, string bib)
+    {
+        // A line that would end the environment early is the only thing that can't pass through.
+        var safe = System.Text.RegularExpressions.Regex.Replace(bib, @"\\end\{filecontents\*?\}", "");
+        var block = "% The bibliography, written to references.bib when this file is compiled.\n"
+            + "\\begin{filecontents*}[overwrite]{references.bib}\n" + safe.TrimEnd() + "\n\\end{filecontents*}\n";
+        var at = main.IndexOf("\\documentclass", StringComparison.Ordinal);
+        if (at < 0) return block + main;
+        var lineStart = main.LastIndexOf('\n', Math.Max(0, at - 1)) + 1;
+        return main[..lineStart] + block + main[lineStart..];
     }
 
     public async Task<Stream> ExportToZipAsync(Guid documentId, LaTeXExportOptions options)
