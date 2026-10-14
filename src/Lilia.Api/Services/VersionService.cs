@@ -13,8 +13,11 @@ public class VersionService : IVersionService
     private readonly LiliaDbContext _context;
     private readonly IDocumentService _documentService;
 
-    public VersionService(LiliaDbContext context, IDocumentService documentService)
+    private readonly IEntitlementService? _entitlements;
+
+    public VersionService(LiliaDbContext context, IDocumentService documentService, IEntitlementService? entitlements = null)
     {
+        _entitlements = entitlements;
         _context = context;
         _documentService = documentService;
     }
@@ -249,6 +252,7 @@ public class VersionService : IVersionService
         var version = await _context.DocumentVersions
             .FirstOrDefaultAsync(v => v.DocumentId == documentId && v.Id == versionId);
         if (version == null) return null;
+        if (_entitlements is not null) await _entitlements.EnsureCanCreateDocumentAsync(userId);
 
         var snapshot = version.Snapshot.RootElement;
 

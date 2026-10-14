@@ -110,6 +110,17 @@ public class ExceptionLoggingFilter : IExceptionFilter
                    "The request timed out. Please try again.",
                    LogLevel.Warning, CaptureSentry: true),
 
+        // ── Plan limits (402: the request is fine, the plan has no room) ─────
+        Lilia.Api.Services.QuotaExceededException q
+            => new(402, q.Resource switch
+                   {
+                       "maxDocs" => LiliaErrorCodes.PlanDocumentLimit,
+                       "maxImportsPerMonth" => LiliaErrorCodes.PlanImportLimit,
+                       "aiCreditsPerMonth" => LiliaErrorCodes.AiQuotaExceeded,
+                       _ => LiliaErrorCodes.Forbidden,
+                   },
+                   q.Message, LogLevel.Information, CaptureSentry: false),
+
         // ── Validation / bad input ──────────────────────────────────────────
         ArgumentNullException or ArgumentException or ArgumentOutOfRangeException
             => new(400, LiliaErrorCodes.ValidationFailed,

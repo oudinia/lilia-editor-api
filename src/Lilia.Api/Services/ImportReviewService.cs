@@ -15,6 +15,7 @@ public class ImportReviewMessages { }
 
 public class ImportReviewService : IImportReviewService
 {
+    private readonly IEntitlementService? _entitlements;
     private readonly LiliaDbContext _context;
     private readonly ILogger<ImportReviewService> _logger;
     private readonly IStringLocalizer<ImportReviewMessages> _localizer;
@@ -29,8 +30,10 @@ public class ImportReviewService : IImportReviewService
         IStringLocalizer<ImportReviewMessages> localizer,
         IRenderService? renderService = null,
         IStorageService? storageService = null,
-        ILatexProjectExtractor? projectExtractor = null)
+        ILatexProjectExtractor? projectExtractor = null,
+        IEntitlementService? entitlements = null)
     {
+        _entitlements = entitlements;
         _context = context;
         _logger = logger;
         _localizer = localizer;
@@ -368,6 +371,9 @@ public class ImportReviewService : IImportReviewService
     private async Task<FinalizeResultDto> FinalizeInternalAsync(
         Guid sessionId, string ownerId, string documentTitle, bool force, CancellationToken ct)
     {
+        // Finalizing makes the document, so nothing is created until the plan has room.
+        if (_entitlements is not null) await _entitlements.EnsureCanCreateDocumentAsync(ownerId, ct);
+
         await using var tx = await _context.Database.BeginTransactionAsync(ct);
         try
         {

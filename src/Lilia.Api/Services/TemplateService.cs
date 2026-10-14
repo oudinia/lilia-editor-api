@@ -11,8 +11,11 @@ public class TemplateService : ITemplateService
     private readonly LiliaDbContext _context;
     private readonly IDocumentService _documentService;
 
-    public TemplateService(LiliaDbContext context, IDocumentService documentService)
+    private readonly IEntitlementService? _entitlements;
+
+    public TemplateService(LiliaDbContext context, IDocumentService documentService, IEntitlementService? entitlements = null)
     {
+        _entitlements = entitlements;
         _context = context;
         _documentService = documentService;
     }
@@ -169,6 +172,7 @@ public class TemplateService : ITemplateService
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
             .Include(d => d.BibliographyEntries)
             .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate);
+        if (_entitlements is not null) await _entitlements.EnsureCanCreateDocumentAsync(userId);
 
         // Using a template copies its content, so it is visible on the same
         // terms as reading it: someone else's private template is not found.

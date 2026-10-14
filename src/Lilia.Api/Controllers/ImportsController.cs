@@ -66,11 +66,14 @@ public class ImportsController : ControllerBase
     [RequestSizeLimit(MaxUploadBytes)]
     public async Task<ActionResult<LatexImportUploadResponseDto>> UploadLatex(
         IFormFile file,
+        [FromServices] Lilia.Api.Services.IEntitlementService entitlements,
         [FromQuery] bool autoFinalize = false,
         CancellationToken ct = default)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        // An import uses one of the month's imports and makes a document: both need room.
+        await entitlements.EnsureCanImportAsync(userId, ct);
 
         if (file is null || file.Length == 0) return BadRequest(new { message = "file is required" });
         if (file.Length > MaxUploadBytes) return BadRequest(new { message = $"file exceeds {MaxUploadBytes / 1024 / 1024} MB cap" });
@@ -235,11 +238,14 @@ public class ImportsController : ControllerBase
     [RequestSizeLimit(MaxUploadBytes)]
     public async Task<ActionResult<LatexImportUploadResponseDto>> UploadEpub(
         IFormFile file,
+        [FromServices] Lilia.Api.Services.IEntitlementService entitlements,
         [FromQuery] bool autoFinalize = false,
         CancellationToken ct = default)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        // An import uses one of the month's imports and makes a document: both need room.
+        await entitlements.EnsureCanImportAsync(userId, ct);
 
         if (file is null || file.Length == 0) return BadRequest(new { message = "file is required" });
         if (file.Length > MaxUploadBytes) return BadRequest(new { message = $"file exceeds {MaxUploadBytes / 1024 / 1024} MB cap" });

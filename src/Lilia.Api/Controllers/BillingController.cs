@@ -13,6 +13,7 @@ namespace Lilia.Api.Controllers;
 //  these instead of talking to Stripe itself.
 //
 //    GET  /api/billing/plans     — public catalog of plans (anon)
+//    GET  /api/plan              — your plan and how much of it is used (auth)
 //    POST /api/billing/checkout  — start a Checkout for a plan (auth)
 //    POST /api/billing/portal    — open the Stripe customer portal (auth)
 //    POST /api/billing/webhook   — Stripe subscription webhook (anon,
@@ -66,6 +67,21 @@ public class BillingController : ControllerBase
 
         Response.Headers.CacheControl = "public, max-age=300";
         return Ok(new { plans });
+    }
+
+    /// <summary>
+    /// Your plan and how much of it is used: documents and imports as counts, Ask Lilia as how far
+    /// through the month's allowance (never a balance). <c>enforced</c> is false while limits are
+    /// only shown, not applied. The editor's plan surfaces read every number from here.
+    /// </summary>
+    [HttpGet("/api/plan")]
+    [Authorize]
+    public async Task<ActionResult<PlanUsageDto>> GetMyPlan([FromServices] IEntitlementService entitlements, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var usage = await entitlements.GetUsageAsync(userId, ct);
+        return usage is null ? NotFound() : Ok(usage);
     }
 
     public record CheckoutRequest(string PlanSlug, string? Interval);

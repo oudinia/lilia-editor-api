@@ -131,6 +131,12 @@ public class ConnectorFilesController(
             t.Title = result.Document.Title;
             return Ok(new { documentId = result.Document.Id, title = result.Document.Title });
         }
+        catch (QuotaExceededException limit)
+        {
+            t.Status = "failed";
+            t.Error = limit.Message;
+            return StatusCode(StatusCodes.Status402PaymentRequired, new { error = limit.Message, category = "plan-limit" });
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[Connector] import of {File} failed for {UserId}", file.Filename, userId);
