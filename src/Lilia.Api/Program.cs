@@ -24,6 +24,16 @@ using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// The VM runs the API as Production since 14 Oct 2026 (it ran as Development, which accepted unsigned
+// sign-in tokens without Stytch configured and exposed the test routes). Its secrets stay in
+// user-secrets, which ASP.NET loads only in Development: load them here too, with environment
+// variables still on top. Optional, so a container without them is unaffected.
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets(typeof(Program).Assembly, optional: true, reloadOnChange: false);
+    builder.Configuration.AddEnvironmentVariables();
+}
+
 // TEMPORARY (machine transfer, remove after Sunday 2026-07-20): load committed
 // local-dev.secrets.json so a fresh clone works without dotnet user-secrets.
 // File is optional so production / machines without it are unaffected.
@@ -940,19 +950,27 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads"
 });
 
-// Local storage upload endpoint — accepts PUT requests from the frontend
-// when using LocalStorageService (dev mode). Production uses R2 presigned URLs.
-app.MapPut("/api/upload/{**key}", async (string key, HttpContext ctx) =>
+// Local storage upload endpoint: the "presigned" PUT that LocalStorageService hands out in
+// development (production storage presigns its own URLs; the editor uploads through the assets
+// endpoint). It had no sign-in and no path check, and was live on the public site (14 Oct 2026):
+// anyone could write any file under the publicly served /uploads, or outside it. Development only,
+// signed in, inside the uploads folder, image and document types only.
+if (app.Environment.IsDevelopment())
 {
-    var filePath = Path.Combine(uploadsPath, key.Replace('/', Path.DirectorySeparatorChar));
-    var directory = Path.GetDirectoryName(filePath);
-    if (!string.IsNullOrEmpty(directory))
-        Directory.CreateDirectory(directory);
-
-    using var fileStream = File.Create(filePath);
-    await ctx.Request.Body.CopyToAsync(fileStream);
-    return Results.Ok();
-});
+    app.MapPut("/api/upload/{**key}", async (string key, HttpContext ctx) =>
+    {
+        if (!Lilia.Api.Security.LocalUploadKey.IsSafe(key)) return Results.BadRequest(new { error = "Invalid upload key." });
+        var filePath = Path.GetFullPath(Path.Combine(uploadsPath, key.Replace('/', Path.DirectorySeparatorChar)));
+        if (!filePath.StartsWith(uploadsPath + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            return Results.BadRequest(new { error = "Invalid upload key." });
+        if (ctx.Request.ContentLength > Lilia.Api.Security.LocalUploadKey.MaxBytes)
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        await using var fileStream = File.Create(filePath);
+        await ctx.Request.Body.CopyToAsync(fileStream);
+        return Results.Ok();
+    }).RequireAuthorization();
+}
 
 // Forwarded headers (DigitalOcean proxy → real client IPs)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
