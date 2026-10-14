@@ -2,6 +2,7 @@ using System.Text.Json;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Lilia.Api.Services;
 
@@ -19,16 +20,29 @@ public class EntitlementService : IEntitlementService
     private readonly LiliaDbContext _context;
     private readonly ILogger<EntitlementService> _logger;
     private readonly IAiCatalogService _aiCatalog;
+    private readonly EntitlementOptions _options;
 
-    public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog)
+    public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog,
+        IOptions<EntitlementOptions>? options = null)
     {
         _context = context;
         _logger = logger;
         _aiCatalog = aiCatalog;
+        _options = options?.Value ?? new EntitlementOptions();
     }
+
+    public bool Enforced => _options.Enforce;
 
     public async Task<ActivePlanDto?> GetActivePlanAsync(string userId, CancellationToken ct = default)
     {
+        if (_options.StaffUserIds.Contains(userId, StringComparer.Ordinal))
+        {
+            var beta = await _context.Plans.AsNoTracking().FirstOrDefaultAsync(p => p.Slug == "beta" && p.IsActive, ct);
+            if (beta is not null)
+                return new ActivePlanDto(beta.Id, beta.Slug, beta.DisplayName, beta.Caps.RootElement, beta.Features.RootElement,
+                    Status: "active", CurrentPeriodEnd: null, CancelAtPeriodEnd: false);
+        }
+
         var userPlan = await _context.UserPlans
             .AsNoTracking()
             .Include(up => up.Plan)
@@ -65,7 +79,7 @@ public class EntitlementService : IEntitlementService
         {
             QuotaResource.Documents         => ("maxDocs",           await CountDocsAsync(userId, ct),         (DateTime?)null),
             QuotaResource.ImportsPerMonth   => ("maxImportsPerMonth", await CountImportsThisMonthAsync(userId, ct), NextMonthStart()),
-            QuotaResource.AiCredits         => ("aiCreditsPerMonth", -await GetAiCreditBalanceAsync(userId, ct), plan.CurrentPeriodEnd),
+            QuotaResource.AiCredits         => ("aiCreditsPerMonth", await GetAiCreditsSpentThisMonthAsync(userId, ct), NextMonthStart()),
             QuotaResource.TeamSeats         => ("maxTeamSeats",      await CountTeamSeatsAsync(userId, ct),    (DateTime?)null),
             _ => throw new ArgumentOutOfRangeException(nameof(resource)),
         };
@@ -73,8 +87,52 @@ public class EntitlementService : IEntitlementService
         var cap = ReadCap(plan.Caps, capKey);
         if (cap < 0) return;                          // -1 = unlimited
         if (used + delta > cap)
-            throw new QuotaExceededException(capKey, cap, used, resetsAt);
+            throw new QuotaExceededException(capKey, cap, used, resetsAt, QuotaMessage(capKey, cap, resetsAt));
     }
+
+    public async Task EnsureCanCreateDocumentAsync(string userId, CancellationToken ct = default)
+    {
+        if (_options.Enforce) await EnsureQuotaAsync(userId, QuotaResource.Documents, 1, ct);
+    }
+
+    public async Task EnsureCanImportAsync(string userId, CancellationToken ct = default)
+    {
+        if (!_options.Enforce) return;
+        await EnsureQuotaAsync(userId, QuotaResource.ImportsPerMonth, 1, ct);
+        await EnsureQuotaAsync(userId, QuotaResource.Documents, 1, ct);
+    }
+
+    public async Task<bool> HasFiniteDocumentLimitAsync(string userId, CancellationToken ct = default)
+    {
+        var plan = await GetActivePlanAsync(userId, ct);
+        return plan is not null && ReadCap(plan.Caps, "maxDocs") >= 0;
+    }
+
+    public async Task<PlanUsageDto?> GetUsageAsync(string userId, CancellationToken ct = default)
+    {
+        var plan = await GetActivePlanAsync(userId, ct);
+        if (plan is null) return null;
+        var askCap = ReadCap(plan.Caps, "aiCreditsPerMonth");
+        var askSpent = await GetAiCreditsSpentThisMonthAsync(userId, ct);
+        return new PlanUsageDto(
+            Enforced: _options.Enforce,
+            Plan: new PlanNameDto(plan.Slug, plan.DisplayName),
+            Documents: new PlanMeterDto(await CountDocsAsync(userId, ct), ReadCap(plan.Caps, "maxDocs"), null),
+            Imports: new PlanMeterDto(await CountImportsThisMonthAsync(userId, ct), ReadCap(plan.Caps, "maxImportsPerMonth"), NextMonthStart()),
+            // Ask Lilia is an allowance, never a balance (design rule): only how far through it you are.
+            Ask: new PlanAllowanceDto(
+                askCap < 0 ? 0 : askCap == 0 ? 1 : Math.Min(1.0, (double)askSpent / askCap),
+                Unlimited: askCap < 0,
+                ResetsAt: NextMonthStart()));
+    }
+
+    private static string QuotaMessage(string capKey, int cap, DateTime? resetsAt) => capKey switch
+    {
+        "maxDocs" => $"Your plan holds {cap} documents. Move one to the Trash or upgrade to start another.",
+        "maxImportsPerMonth" => $"Your plan includes {cap} imports a month; the next one is available on {resetsAt:d MMMM}.",
+        "aiCreditsPerMonth" => $"This month's Ask Lilia allowance is used; it renews on {resetsAt:d MMMM}.",
+        _ => $"Your plan's limit for {capKey} is reached.",
+    };
 
     public async Task<bool> HasFeatureAsync(string userId, string featureKey, CancellationToken ct = default)
     {
@@ -161,8 +219,18 @@ public class EntitlementService : IEntitlementService
     // ── Helpers ──────────────────────────────────────────────────────
 
     private Task<int> CountDocsAsync(string userId, CancellationToken ct) =>
-        // FT-SANDBOX-SCOPE: throwaway playground docs don't count against quota.
-        _context.Documents.AsNoTracking().CountAsync(d => d.OwnerId == userId && !d.IsPlayground, ct);
+        // Documents you own. Not playground sandboxes, templates or help articles; documents in
+        // the Trash are filtered out by the query filter, and documents shared with you aren't yours.
+        _context.Documents.AsNoTracking().CountAsync(d => d.OwnerId == userId && !d.IsPlayground && !d.IsTemplate && !d.IsHelpContent, ct);
+
+    private async Task<int> GetAiCreditsSpentThisMonthAsync(string userId, CancellationToken ct)
+    {
+        var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var spent = await _context.AiCreditLedger.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Reason == "spend" && l.CreatedAt >= monthStart)
+            .SumAsync(l => (int?)l.Delta, ct);
+        return -(spent ?? 0);
+    }
 
     private Task<int> CountImportsThisMonthAsync(string userId, CancellationToken ct)
     {

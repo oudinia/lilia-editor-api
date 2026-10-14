@@ -15,13 +15,20 @@ public class DocumentService : IDocumentService
     private readonly LiliaDbContext _context;
     private readonly ILogger<DocumentService> _logger;
     private readonly IAiService _aiService;
+    private readonly IEntitlementService? _entitlements;
 
-    public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService)
+    public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService,
+        IEntitlementService? entitlements = null)
     {
         _context = context;
         _logger = logger;
         _aiService = aiService;
+        _entitlements = entitlements;
     }
+
+    /// <summary>Refuses a new document when the plan's documents are used (and limits are enforced).</summary>
+    private Task EnsureRoomForDocumentAsync(string userId) =>
+        _entitlements?.EnsureCanCreateDocumentAsync(userId) ?? Task.CompletedTask;
 
     /// <summary>
     /// Generate (or regenerate) the document's one-sentence AI gist and persist it.
@@ -357,6 +364,8 @@ public class DocumentService : IDocumentService
 
     public async Task<DocumentDto> CreateDocumentAsync(string userId, CreateDocumentDto dto)
     {
+        await EnsureRoomForDocumentAsync(userId);
+
         // Normalise the structured class options up-front so the same value
         // applies whether we land on the structured columns (PaperSize,
         // FontSize, Columns) or the LatexDocumentClassOptions blob below.
@@ -776,7 +785,9 @@ public class DocumentService : IDocumentService
         // row, so we call it as the source's owner and then re-own
         // the result to the visitor. Cheap and avoids duplicating
         // block-copy logic.
-        var clone = await DuplicateDocumentAsync(source.Id, source.OwnerId);
+        // The copy becomes the visitor's, so it's the visitor's plan that needs room.
+        await EnsureRoomForDocumentAsync(userId);
+        var clone = await DuplicateDocumentAsync(source.Id, source.OwnerId, checkPlan: false);
         if (clone == null) return null;
         var freshlyCreated = await _context.Documents.FindAsync(clone.Id);
         if (freshlyCreated == null) return null;
@@ -801,7 +812,10 @@ public class DocumentService : IDocumentService
         return true;
     }
 
-    public async Task<DocumentDto?> DuplicateDocumentAsync(Guid id, string userId)
+    public Task<DocumentDto?> DuplicateDocumentAsync(Guid id, string userId) =>
+        DuplicateDocumentAsync(id, userId, checkPlan: true);
+
+    private async Task<DocumentDto?> DuplicateDocumentAsync(Guid id, string userId, bool checkPlan)
     {
         var original = await _context.Documents
             .Include(d => d.Blocks)
@@ -809,6 +823,7 @@ public class DocumentService : IDocumentService
             .FirstOrDefaultAsync(d => d.Id == id);
 
         if (original == null) return null;
+        if (checkPlan) await EnsureRoomForDocumentAsync(userId);
 
         if (!await HasAccessAsync(id, userId, Permissions.Read))
             return null;
@@ -1074,6 +1089,11 @@ public class DocumentService : IDocumentService
     public async Task<int> CloneStarterDocumentsAsync(string userId)
     {
         const string sampleUserId = "sample-content";
+
+        // With limits on, four sample documents would fill a 3-document plan before the author
+        // wrote a word. Those accounts start from the welcome screen's blank, template or import.
+        if (_entitlements is { Enforced: true } && await _entitlements.HasFiniteDocumentLimitAsync(userId))
+            return 0;
 
         // Only clone the curated starter set (CV, book, article, report)
         // — IsStarter is set on a small handful of sample-content docs

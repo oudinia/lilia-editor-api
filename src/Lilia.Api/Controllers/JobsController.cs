@@ -79,6 +79,10 @@ public class JobsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (QuotaExceededException)
+        {
+            throw; // the plan's limit: a 402 the editor shows as such, not a failed import
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Import] Failed to import file {Filename}", request.Filename);

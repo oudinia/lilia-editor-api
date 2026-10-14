@@ -28,6 +28,21 @@ public interface IEntitlementService
     /// </summary>
     Task EnsureQuotaAsync(string userId, QuotaResource resource, int delta = 1, CancellationToken ct = default);
 
+    /// <summary>Whether plan limits are enforced (<c>Entitlements:Enforce</c>).</summary>
+    bool Enforced { get; }
+
+    /// <summary>Refuse a new document when enforcement is on and the plan's documents are used.</summary>
+    Task EnsureCanCreateDocumentAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>Refuse an import (which also creates a document) when enforcement is on and either limit is reached.</summary>
+    Task EnsureCanImportAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>True when the user's plan caps documents (Free); false for unlimited plans.</summary>
+    Task<bool> HasFiniteDocumentLimitAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>The plan and how much of it is used, for <c>GET /api/plan</c>.</summary>
+    Task<PlanUsageDto?> GetUsageAsync(string userId, CancellationToken ct = default);
+
     /// <summary>True if the user's active plan grants the feature key.</summary>
     Task<bool> HasFeatureAsync(string userId, string featureKey, CancellationToken ct = default);
 
@@ -72,6 +87,16 @@ public record ActivePlanDto(
     string Status,            // active | trial | past_due | cancelled
     DateTime? CurrentPeriodEnd,
     bool CancelAtPeriodEnd);
+
+/// <summary>A limit: <see cref="Limit"/> -1 means unlimited.</summary>
+public record PlanMeterDto(int Used, int Limit, DateTime? ResetsAt);
+
+/// <summary>How far through the month's allowance (0–1), with no counts: Ask Lilia is never a balance.</summary>
+public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsAt);
+
+public record PlanNameDto(string Slug, string Name);
+
+public record PlanUsageDto(bool Enforced, PlanNameDto Plan, PlanMeterDto Documents, PlanMeterDto Imports, PlanAllowanceDto Ask);
 
 public class QuotaExceededException : Exception
 {

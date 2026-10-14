@@ -670,6 +670,7 @@ builder.Configuration.GetSection(Lilia.Core.Security.ZipLimitsOptions.Section).B
 builder.Services.Configure<Lilia.Core.Security.ZipLimitsOptions>(
     builder.Configuration.GetSection(Lilia.Core.Security.ZipLimitsOptions.Section));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection("Stripe"));
+builder.Services.Configure<EntitlementOptions>(builder.Configuration.GetSection("Entitlements"));
 
 var anthropicKey = builder.Configuration["AI:Anthropic:ApiKey"];
 if (!string.IsNullOrEmpty(anthropicKey))

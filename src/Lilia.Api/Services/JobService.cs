@@ -17,6 +17,7 @@ public class JobService : IJobService
     private readonly IRenderService _renderService;
     private readonly IDocxImportService _docxImportService;
     private readonly IPdfParser? _pdfParser;
+    private readonly IEntitlementService? _entitlements;
     private readonly ILatexParser _latexParser;
     private readonly ILmlTextParser _lmlTextParser;
     private readonly Lilia.Import.Services.ILatexProjectExtractor _latexProjectExtractor;
@@ -39,8 +40,10 @@ public class JobService : IJobService
         Wolverine.IMessageBus bus,
         Lilia.Core.Interfaces.IStorageService storage,
         ILogger<JobService> logger,
-        IPdfParser? pdfParser = null)
+        IPdfParser? pdfParser = null,
+        IEntitlementService? entitlements = null)
     {
+        _entitlements = entitlements;
         _context = context;
         _documentService = documentService;
         _renderService = renderService;
@@ -293,6 +296,9 @@ public class JobService : IJobService
 
     public async Task<ImportResultDto> CreateImportJobFromBase64Async(string userId, ImportRequestDto request)
     {
+        // An import uses one of the month's imports and makes a document: both need room.
+        if (_entitlements is not null) await _entitlements.EnsureCanImportAsync(userId);
+
         // Calculate file size for progress tracking
         var fileSizeBytes = request.Content.Length * 3 / 4; // Approximate decoded size from base64
 

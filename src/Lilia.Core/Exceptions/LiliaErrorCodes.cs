@@ -61,6 +61,10 @@ public static class LiliaErrorCodes
     public const string DoiLookupFailed        = "DOI_LOOKUP_FAILED";
     public const string IsbnLookupFailed       = "ISBN_LOOKUP_FAILED";
 
+    // ── Plans ─────────────────────────────────────────────────────────────────
+    public const string PlanDocumentLimit      = "PLAN_DOCUMENT_LIMIT";
+    public const string PlanImportLimit        = "PLAN_IMPORT_LIMIT";
+
     // ── AI ────────────────────────────────────────────────────────────────────
     public const string AiServiceUnavailable   = "AI_SERVICE_UNAVAILABLE";
     public const string AiQuotaExceeded        = "AI_QUOTA_EXCEEDED";

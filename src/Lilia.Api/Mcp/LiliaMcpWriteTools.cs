@@ -264,12 +264,21 @@ public sealed class LiliaMcpWriteTools(
             "book" or "thesis" => "book",
             _ => "article",
         };
-        var doc = await documents.CreateDocumentAsync(UserId, new Lilia.Api.Models.Documents.CreateDocumentDto
+        Lilia.Core.DTOs.DocumentDto doc;
+        try
         {
-            Title = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim(),
-            DocumentCategory = category,
-            DocumentClass = category,
-        });
+            doc = await documents.CreateDocumentAsync(UserId, new Lilia.Api.Models.Documents.CreateDocumentDto
+            {
+                Title = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim(),
+                DocumentCategory = category,
+                DocumentClass = category,
+            });
+        }
+        catch (QuotaExceededException limit)
+        {
+            // The author's plan, not the request: say so, so the app doesn't retry or rephrase.
+            return new { error = limit.Message, category = "plan-limit" };
+        }
         object? body = null;
         if (!string.IsNullOrWhiteSpace(lml))
             // MCP-02: the title given here stays; apply_lml would otherwise take the first heading.
@@ -322,6 +331,10 @@ public sealed class LiliaMcpWriteTools(
                 url = $"{McpOAuth.PublicOrigin(config)}/d/{result.Document.Id}",
                 next = "Read it with get_outline, or check it compiles with check_document.",
             };
+        }
+        catch (QuotaExceededException limit)
+        {
+            return new { error = limit.Message, category = "plan-limit" };
         }
         catch (Exception ex)
         {
