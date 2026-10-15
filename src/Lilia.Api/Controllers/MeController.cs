@@ -82,4 +82,33 @@ public class MeController : ControllerBase
         await db.SaveChangesAsync(ct);
         return new ProfileDto(user.Id, user.Email, user.Name, user.Image);
     }
+
+    /// <summary>Start "export everything" (Settings → Your data); returns the running one if there is one.</summary>
+    [HttpPost("export")]
+    public async Task<ActionResult<AccountExportDto>> StartExport([FromServices] AccountExportService exports, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        return Accepted(await exports.StartAsync(userId, ct));
+    }
+
+    /// <summary>The latest export: pending, processing, completed (until it expires) or failed. 204 when none.</summary>
+    [HttpGet("export")]
+    public async Task<ActionResult<AccountExportDto>> LatestExport([FromServices] AccountExportService exports, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var latest = await exports.LatestAsync(userId, ct);
+        return latest is null ? NoContent() : Ok(latest);
+    }
+
+    /// <summary>The archive, to its owner, within 7 days of being made.</summary>
+    [HttpGet("export/{id:guid}/download")]
+    public async Task<IActionResult> DownloadExport(Guid id, [FromServices] AccountExportService exports, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var file = await exports.OpenAsync(userId, id, ct);
+        return file is null ? NotFound() : File(file.Value.Stream, "application/zip", file.Value.FileName);
+    }
 }
