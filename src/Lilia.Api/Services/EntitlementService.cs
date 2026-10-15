@@ -21,10 +21,13 @@ public class EntitlementService : IEntitlementService
     private readonly ILogger<EntitlementService> _logger;
     private readonly IAiCatalogService _aiCatalog;
     private readonly EntitlementOptions _options;
+    private readonly bool _aiEnforced;
 
     public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog,
-        IOptions<EntitlementOptions>? options = null)
+        IOptions<EntitlementOptions>? options = null, IConfiguration? configuration = null)
     {
+        // The same switch AskLiliaService and AiArchitectService read before refusing a request.
+        _aiEnforced = configuration?.GetValue("AI:EnforceCredits", false) ?? false;
         _context = context;
         _logger = logger;
         _aiCatalog = aiCatalog;
@@ -123,7 +126,8 @@ public class EntitlementService : IEntitlementService
             Ask: new PlanAllowanceDto(
                 askCap < 0 ? 0 : askCap == 0 ? 1 : Math.Min(1.0, (double)askSpent / askCap),
                 Unlimited: askCap < 0,
-                ResetsAt: NextMonthStart()));
+                ResetsAt: NextMonthStart(),
+                Enforced: _aiEnforced));
     }
 
     private static string QuotaMessage(string capKey, int cap, DateTime? resetsAt) => capKey switch

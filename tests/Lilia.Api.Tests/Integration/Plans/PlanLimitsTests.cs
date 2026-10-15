@@ -151,4 +151,16 @@ public class PlanLimitsTests : IntegrationTestBase
         ask.TryGetProperty("used", out _).Should().BeFalse("Ask Lilia is an allowance, never a balance");
         ask.GetProperty("resetsAt").GetDateTime().Day.Should().Be(1);
     }
+
+    [Fact]
+    public async Task The_plan_says_whether_a_used_Ask_allowance_stops_Ask_Lilia()
+    {
+        var author = await FreeAuthorWith(0);
+        var off = await As(_enforced, author).GetFromJsonAsync<JsonElement>("/api/plan");
+        off.GetProperty("ask").GetProperty("enforced").GetBoolean().Should().BeFalse("AI:EnforceCredits is off by default");
+
+        var aiOn = _enforced.WithWebHostBuilder(b => b.UseSetting("AI:EnforceCredits", "true"));
+        var on = await As(aiOn, author).GetFromJsonAsync<JsonElement>("/api/plan");
+        on.GetProperty("ask").GetProperty("enforced").GetBoolean().Should().BeTrue();
+    }
 }
