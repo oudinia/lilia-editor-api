@@ -36,9 +36,11 @@ public class EntitlementService : IEntitlementService
 
     public bool Enforced => _options.Enforce;
 
+    private bool IsStaff(string userId) => _options.StaffUserIds.Contains(userId, StringComparer.Ordinal);
+
     public async Task<ActivePlanDto?> GetActivePlanAsync(string userId, CancellationToken ct = default)
     {
-        if (_options.StaffUserIds.Contains(userId, StringComparer.Ordinal))
+        if (IsStaff(userId))
         {
             var beta = await _context.Plans.AsNoTracking().FirstOrDefaultAsync(p => p.Slug == "beta" && p.IsActive, ct);
             if (beta is not null)
@@ -75,6 +77,9 @@ public class EntitlementService : IEntitlementService
 
     public async Task EnsureQuotaAsync(string userId, QuotaResource resource, int delta = 1, CancellationToken ct = default)
     {
+        // Staff (the owner's account) hold Beta for its features but no limit at all: not documents,
+        // and not Ask Lilia, whose Beta allowance would otherwise stop the owner's own use.
+        if (IsStaff(userId)) return;
         var plan = await GetActivePlanAsync(userId, ct);
         if (plan is null) return; // No plan data at all — fail open (logged elsewhere).
 
@@ -115,7 +120,7 @@ public class EntitlementService : IEntitlementService
     {
         var plan = await GetActivePlanAsync(userId, ct);
         if (plan is null) return null;
-        var askCap = ReadCap(plan.Caps, "aiCreditsPerMonth");
+        var askCap = IsStaff(userId) ? -1 : ReadCap(plan.Caps, "aiCreditsPerMonth");
         var askSpent = await GetAiCreditsSpentThisMonthAsync(userId, ct);
         return new PlanUsageDto(
             Enforced: _options.Enforce,
