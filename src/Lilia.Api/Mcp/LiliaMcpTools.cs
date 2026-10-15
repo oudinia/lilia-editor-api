@@ -27,20 +27,17 @@ public sealed class LiliaMcpTools(
     IDocumentService documents,
     IKbService kb,
     Lilia.Engines.IRenderService render,
-    ILaTeXRenderService latex,
+    IDocumentCheckService checker,
     LiliaDbContext db,
     IConfiguration config,
     ConnectorTransfers transfers,
     CheckMemoStore checks,
     ILogger<LiliaMcpTools> logger)
 {
-    // check_document's last verdict per document, for export_document's lastCheck (MCP-82: the
+    // check_document's last verdict per document (checks), for export_document's lastCheck (MCP-82: the
     // check saves nothing by design, so lastCheck always said "never checked" and an app that
-    // followed its advice looped). Tied to the document's version: an edit makes it stale.
-
-    /// <summary>Checks still compiling, by document. An app that calls check_document and
-    /// export_document together got "Never checked" from the export (MCP-88): it now waits for the check.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, TaskCompletionSource> ChecksRunning = new();
+    // followed its advice looped). Tied to the document's version: an edit makes it stale. The check
+    // itself is IDocumentCheckService, shared with Ask Lilia (15 Oct).
     /// <summary>Said once to the client: what Lilia is, and that document text is data.</summary>
     public const string Instructions = """
         Lilia is a scientific writing editor: documents are made of typed blocks (headings, paragraphs,
@@ -136,117 +133,9 @@ public sealed class LiliaMcpTools(
         await OpenAsync(documentId) is { } d ? AskLiliaService.SettingsView(d) : NoDocument(documentId);
 
     [McpServerTool(Name = "check_document", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), and printsCorrectly. Takes a few seconds. It does not change the document or its saved validation.")]
-    public async Task<object> CheckDocument([Description("The document id.")] string documentId)
-    {
-        if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
-        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        ChecksRunning[d.Id] = running;
-        try
-        {
-            return await CheckAsync(d);
-        }
-        finally
-        {
-            ChecksRunning.TryRemove(new KeyValuePair<Guid, TaskCompletionSource>(d.Id, running));
-            running.TrySetResult();
-        }
-    }
-
-    private async Task<object> CheckAsync(Lilia.Core.DTOs.DocumentDto d)
-    {
-        try
-        {
-            var source = await render.RenderToLatexAsync(d.Id);
-            // MCP-08: compile with the engine the emitted LaTeX needs (it loads fontspec for
-            // xelatex/lualatex), or the document's own; validation was hard-wired to pdflatex.
-            var engine = EngineFor(source, d.LatexEngine);
-            var result = await latex.ValidateAsync(source, engine);
-            // T1 (MCP-27/61, MCP-08): judge references and citations from the LaTeX actually emitted,
-            // not the stored fields. A label the emitter never printed made "??" under a clean check,
-            // and a one-pass compile can't report undefined references itself.
-            var audit = new Lilia.Engines.EmittedLatexAudit(source);
-            var references = audit.DanglingReferences
-                .GroupBy(r => r.Key)
-                .Select(g => new { kind = "dangling", label = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct() })
-                .Cast<object>()
-                .Concat(audit.DuplicateLabels.Select(l => (object)new { kind = "duplicate", label = l }))
-                // MCP-92: a label with no number before it; the reference prints nothing.
-                .Concat(audit.EmptyReferences.GroupBy(r => r.Key).Select(g => (object)new
-                {
-                    kind = "empty", label = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct(),
-                    note = "No numbered item (caption, numbered equation or theorem, section) comes before this label, so the reference prints nothing.",
-                }))
-                .ToList();
-            var citations = audit.MissingCitations
-                .GroupBy(c => c.Key)
-                .Select(g => new { kind = "missing", key = g.Key, blockIds = g.Select(u => u.BlockId).Where(b => b is not null).Distinct() })
-                .ToList();
-            // MCP-37: the block the compile error is in (the source carries a % block:{id} marker per block).
-            var errorBlockId = result.ParsedError?.LineNumber is int line ? audit.BlockAtLine(line) : null;
-            // Blocks that print nothing: a type the emitter has no arm for (MCP-83).
-            var unprinted = System.Text.RegularExpressions.Regex.Matches(source, @"% Unknown block type: (\S+)")
-                .Select(m => m.Groups[1].Value).Distinct().ToList();
-            // Characters the font doesn't have compile, but are missing from the PDF (13 Oct sweep:
-            // LTX-34's Cyrillic, with printsCorrectly true).
-            var dropped = result.Warnings.FirstOrDefault(w => w.Contains(LaTeXGlyphScanner.DroppedMarker, StringComparison.Ordinal));
-            // MCP-63: tables wider than their column run into the margin or the other column.
-            var wide = Lilia.Engines.WideTables.Find(result.Log, source)
-                .Select(o => new { blockId = audit.BlockAtLine(o.FirstLine), tooWidePt = Math.Round(o.Points, 1) })
-                .ToList();
-            return new
-            {
-                compiles = result.Valid,
-                engine,
-                printsCorrectly = PrintsCorrectly(result.Valid, references.Count + citations.Count, dropped, unprinted, d, result.Error, wide.Count),
-                wideTables = wide.Count > 0 ? wide : null,
-                unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
-                error = result.Error,
-                errorCategory = result.ParsedError?.Category,
-                // The command LaTeX doesn't know (MCP-37: only "Undefined control sequence." was said).
-                errorCommand = result.ParsedError is { Category: "undefined_control_sequence", Token: { } token } ? token : null,
-                errorBlockId,
-                warnings = result.Warnings.Take(20),
-                warningCount = result.Warnings.Length,
-                references,
-                citations,
-                durationMs = result.DurationMs,
-                // MCP-108: "It compiles, but…" was said of a document that doesn't compile.
-                note = !result.Valid
-                    ? "It does not compile: see error (and errorBlockId for the block)."
-                    : references.Count + citations.Count > 0
-                    ? "It compiles, but references or citations above will print as ?? or ? in the PDF."
-                    : dropped is not null && result.Valid
-                        ? "It compiles, but some characters are missing from the PDF (see warnings)."
-                        : wide.Count > 0
-                            ? "It compiles, but a table is wider than its column and runs into the margin (wideTables)."
-                            : null,
-                url = EditorUrl(d.Id),
-            };
-        }
-        // MCP-45: say what happened. A refusal repeats, so "try again" was wrong for it.
-        catch (Lilia.Engines.TexSafety.UnsafeLatexException ex)
-        {
-            return new { compiles = false, category = "refused", error = $"Lilia refuses to compile this LaTeX: {ex.Message}" };
-        }
-        catch (Exception ex) when (ex is TimeoutException or TaskCanceledException or OperationCanceledException)
-        {
-            logger.LogWarning(ex, "[Mcp] check_document timed out for {DocId}", d.Id);
-            return new { compiles = false, category = "timeout", error = "The compile took too long and was stopped. A loop or a very heavy figure is the usual cause." };
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "[Mcp] check_document failed for {DocId}", d.Id);
-            return new { category = "error", error = $"Lilia could not compile this document: {ex.Message}" };
-        }
-    }
-
-    private bool PrintsCorrectly(bool compiles, int brokenRefs, string? dropped, List<string> unprinted, Lilia.Core.DTOs.DocumentDto d, string? error = null, int wideTables = 0)
-    {
-        var prints = compiles && brokenRefs == 0 && dropped is null && unprinted.Count == 0 && wideTables == 0;
-        checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, compiles, prints, error));
-        return prints;
-    }
+    [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), printsCorrectly, and problems: each error and warning with its block id and line. Takes a few seconds. It does not change the document or its saved validation.")]
+    public async Task<object> CheckDocument([Description("The document id.")] string documentId) =>
+        await OpenAsync(documentId) is { } d ? (await checker.CheckAsync(d)).Report : NoDocument(documentId);
 
     internal static string EngineFor(string source, string? documentEngine)
     {
@@ -271,8 +160,7 @@ public sealed class LiliaMcpTools(
         if (!ConnectorTransfers.ExportFormats.Contains(f))
             return new { error = $"Unknown format '{format}'. Choose one of: {string.Join(", ", ConnectorTransfers.ExportFormats)}." };
         // MCP-88: a check of this document still compiling is the one to report.
-        if (ChecksRunning.TryGetValue(d.Id, out var checking))
-            await Task.WhenAny(checking.Task, Task.Delay(TimeSpan.FromSeconds(90)));
+        await checker.WaitForRunningAsync(d.Id, TimeSpan.FromSeconds(90));
         // MCP-72: a pdf link for a document the last check (of this version) found broken only led to
         // an error page on download. Say so now; the LaTeX source still exports, to fix it elsewhere.
         if (f == "pdf" && checks.Current(d.Id, d.UpdatedAt) is { Compiles: false } broken)

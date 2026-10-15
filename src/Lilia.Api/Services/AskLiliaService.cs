@@ -84,6 +84,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private readonly AiOptions _options;
     private readonly ILogger<AskLiliaService> _logger;
     private readonly ITikzFigureService? _tikz;
+    // check_document: compiles the document so Ask Lilia can confirm its own fixes (15 Oct).
+    private readonly IDocumentCheckService? _checker;
+    private readonly int _creditsPerCompile;
     private readonly bool _useAi;
     private readonly bool _enabled;
     private readonly bool _enforceCredits;
@@ -204,9 +207,12 @@ public sealed partial class AskLiliaService : IAskLiliaService
         IOptions<AiOptions> options,
         IConfiguration configuration,
         ILogger<AskLiliaService> logger,
-        ITikzFigureService? tikz = null)
+        ITikzFigureService? tikz = null,
+        IDocumentCheckService? checker = null)
     {
         _tikz = tikz;
+        _checker = checker;
+        _creditsPerCompile = configuration.GetValue("AI:CheckDocument:CreditsPerCompile", 1);
         _chatClient = chatClient;
         _entitlement = entitlement;
         _catalog = catalog;
@@ -336,6 +342,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
                             """);
                     }
                     systemSb.AppendLine().AppendLine(PageSetupNote(editMode));
+                    if (_checker is not null)
+                        systemSb.AppendLine().AppendLine(CompileCheckNote(editMode, skill.Id));
                     systemSb.AppendLine(AiArchitectService.BuildDocumentContext(document));
                 }
             }
@@ -436,11 +444,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 catch (Exception ex) { _logger.LogWarning(ex, "[AskLilia] undo snapshot failed for {DocId}", documentId); }
             }
             var tools = BuildKbTools(KbLanguage.Normalize(request.Language), level, ct);
+            var repair = new CompileRepair(changed);
+            LiveDocument? liveDoc = null;
             if (document is not null)
             {
-                var liveDoc = new LiveDocument(document);
+                liveDoc = new LiveDocument(document);
                 tools = tools.Concat(BuildDocumentTools(
-                    liveDoc, documentId!.Value, userId, editMode, changed, () => metaChanged = true, ct)).ToList();
+                    liveDoc, documentId!.Value, userId, editMode, changed, () => metaChanged = true, ct, repair)).ToList();
             }
             // Live web search (Anthropic server-side tool). It runs provider-side —
             // results arrive within the same response, so the KB tool-use loop below
@@ -457,72 +467,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 Tools = tools,
             };
 
-            // Manual tool-use loop: the model may call search_kb/get_kb to ground its
-            // answer. Each round is one model call; we execute any tool calls, feed the
-            // results back, and continue until the model returns a final text answer (or
-            // we hit the round cap). Token usage is summed across all rounds for metering.
-            ChatResponse response = null!;
-            var inputTokens = 0;
-            var outputTokens = 0;
-            var toolCalls = 0;
-            // Which tools, and how many times each. Only read when the cap is
-            // hit, but counted throughout because by then it is too late.
-            var toolUsage = new Dictionary<string, int>(StringComparer.Ordinal);
-            var webSearches = 0;
-            var partialApply = false;
-            // Structured citations from web search, accumulated + deduped across rounds.
-            var citations = new List<WebCitation>();
-            var citationUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (var round = 0; round < MaxToolRounds; round++)
-            {
-                response = await _chatClient.GetResponseAsync(messages, options, ct);
-                inputTokens += (int?)response.Usage?.InputTokenCount ?? 0;
-                outputTokens += (int?)response.Usage?.OutputTokenCount ?? 0;
-                webSearches += ExtractWebSearches(response);
-                if (webSearch)
-                    foreach (var c in WebCitationExtractor.Extract(response))
-                        if (citationUrls.Add(c.Url)) citations.Add(c);
-
-                // Carry the assistant turn (incl. any function-call content) into history.
-                messages.AddRange(response.Messages);
-
-                var calls = response.Messages
-                    .SelectMany(m => m.Contents)
-                    .OfType<FunctionCallContent>()
-                    .ToList();
-                if (calls.Count == 0) break; // final answer
-
-                // Last allowed round still wants tools → execute them, but we cannot
-                // get a follow-up summary round. Flag partial so the client warns.
-                if (round == MaxToolRounds - 1)
-                {
-                    partialApply = true;
-                    // Log WHICH tools burned the rounds, not just how many were
-                    // left. The cap is nearly always hit the same way — a
-                    // per-block tool called once per block, where apply_lml
-                    // would have done the whole document in one round — and
-                    // without the histogram there is no way to confirm that
-                    // after the fact. "16 rounds, 3 pending" says nothing.
-                    var histogram = string.Join(", ", toolUsage
-                        .OrderByDescending(kv => kv.Value)
-                        .Select(kv => $"{kv.Key}×{kv.Value}"));
-                    _logger.LogWarning(
-                        "[AskLilia] tool-round cap ({Max}) hit for skill={Skill} doc={DocId} req={ReqId} " +
-                        "with {Calls} pending call(s); tools used: {Histogram}",
-                        MaxToolRounds, skill.Id, documentId, aiRequestId, calls.Count,
-                        string.IsNullOrEmpty(histogram) ? "(none)" : histogram);
-                }
-
-                foreach (var call in calls)
-                {
-                    toolCalls++;
-                    var toolName = call.Name ?? "(unnamed)";
-                    toolUsage[toolName] = toolUsage.GetValueOrDefault(toolName) + 1;
-                    var toolResult = await InvokeKbToolAsync(tools, call, ct);
-                    messages.Add(new ChatMessage(ChatRole.Tool,
-                        [new FunctionResultContent(call.CallId, toolResult)]));
-                }
-            }
+            var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct);
+            var (response, inputTokens, outputTokens, toolCalls, webSearches, partialApply, citations) =
+                (loop.Response, loop.InputTokens, loop.OutputTokens, loop.ToolCalls, loop.WebSearches, loop.PartialApply, loop.Citations);
             if (toolCalls > 0)
                 _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} tool call(s) partial={Partial}", skill.Id, toolCalls, partialApply);
 
@@ -550,12 +497,26 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     : $"Done — updated {changed.Distinct().Count()} block(s).";
             }
 
+            // A fix must end by saying whether the document now compiles (15 Oct). The compile doctor
+            // checks once more when its last edit came after its last check; the verdict is the check's,
+            // not the model's.
+            if (liveDoc is not null && repair.Writes > 0 && !repair.LastIsCurrent && !repair.Exhausted
+                && skill.Id == CompileDoctorSkill && _checker is not null)
+            {
+                try { await RunCheckAsync(liveDoc, documentId!.Value, userId, repair, ct); }
+                catch (Exception ex) { _logger.LogWarning(ex, "[AskLilia] final compile check failed for {DocId}", documentId); }
+            }
+            if (CompileVerdict(repair, skill.Id, request.Language) is { } verdict)
+                reply = string.IsNullOrWhiteSpace(reply) ? verdict : reply + "\n\n" + verdict;
+
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
 
+            // Compiles are metered like web searches: a surcharge row on the same request.
+            var compileCredits = repair.Compiles * _creditsPerCompile;
             var (credits, balance, creditsUsed) = await MeterAsync(userId, model, inputTokens, outputTokens, aiRequestId,
-                webSearchCredits, $"{webSearches} web search(es)", ct);
+                [(webSearchCredits, $"{webSearches} web search(es)"), (compileCredits, $"{repair.Compiles} compile check(s)")], ct);
 
             var anyWrite = changed.Count > 0 || metaChanged;
             var result = new AskLiliaResponse(
@@ -593,7 +554,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// <summary>Debit the turn's tokens (and any surcharge) and read the balance back. Best effort: the reply is what was asked for.</summary>
     private async Task<(int Credits, AiArchitectBalance? Balance, int CreditsUsed)> MeterAsync(
         string userId, string model, int inputTokens, int outputTokens, Guid aiRequestId,
-        int surchargeCredits, string surchargeReason, CancellationToken ct)
+        IReadOnlyList<(int Credits, string Reason)> surcharges, CancellationToken ct)
     {
         AiArchitectBalance? balance = null;
         var credits = 0;
@@ -601,7 +562,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         try
         {
             credits = await _entitlement.RecordAiSpendAsync(userId, model, inputTokens, outputTokens, aiRequestId, ct);
-            if (surchargeCredits > 0)
+            foreach (var (surchargeCredits, surchargeReason) in surcharges.Where(x => x.Credits > 0))
             {
                 await _entitlement.RecordAiSurchargeAsync(userId, surchargeCredits, surchargeReason, aiRequestId, ct);
                 credits += surchargeCredits;
@@ -731,8 +692,12 @@ public sealed partial class AskLiliaService : IAskLiliaService
         bool allowWrite,
         List<string> changed,
         Action markMetaChanged,
-        CancellationToken ct)
+        CancellationToken ct,
+        CompileRepair? repair = null)
     {
+        repair ??= new CompileRepair(changed);
+        var meta = markMetaChanged;
+        markMetaChanged = () => { meta(); repair.MetaWrites++; };
         var tools = new List<AITool>
         {
             AIFunctionFactory.Create(
@@ -771,6 +736,15 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     + "pageNumbering, the six header/footer slots and the custom preamble. A null value means the "
                     + "class default applies. Call it before changing settings or when asked about the page layout."),
         };
+        if (_checker is not null)
+            tools.Add(AIFunctionFactory.Create(
+                () => CheckDocumentToolAsync(live, docGuid, userId, repair, ct),
+                name: "check_document",
+                description: "Compile the document now, as saved, with Lilia's LaTeX, and say whether it compiles: compiles, printsCorrectly, "
+                    + "the error with its block (errorBlockId), and problems: every error and warning as {blockId, line, severity, message}. "
+                    + "Takes a few seconds; a version already checked answers at once. After you edit to fix a compile error, call it to "
+                    + "confirm the fix. At most " + MaxRepairAttempts + " edit-and-check attempts per turn: the reply says how many are left "
+                    + "and what to do next. It does not change the document."));
 
         if (allowWrite)
         {

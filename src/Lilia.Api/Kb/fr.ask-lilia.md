@@ -23,8 +23,10 @@ keywords: demander à lilia ia assistant discussion aide écrire rédiger corrig
 ## Ce que cela veut dire {#beginner}
 - Demandez n’importe quoi, en français, en anglais ou en espagnol : comment faire quelque chose dans Lilia, pourquoi le document ne compile pas, comment écrire une équation, rédiger une section ou reprendre un paragraphe.
 - Lilia propose, vous décidez : rien ne change avant que vous appliquiez, et vous pouvez annuler.
+- Quand il corrige un document qui ne compile pas, Lilia vérifie que sa correction compile (jusqu’à 3 essais) et dit si le document compile maintenant.
 - Il n’invente jamais de références ni de résultats ; quand il lui manque une information de votre part, il le dit.
 
 ## Pour les utilisateurs de LaTeX {#expert}
 - Les demandes sont orientées vers une compétence (citations, docteur de compilation, équation, tableau, figure, style, revue, tuteur, architecte) ; les réponses contiennent du LML, du BibTeX ou du LaTeX dans des blocs à copier.
 - Dans un document, Demander à Lilia le lit avec des outils (plan, un bloc, recherche, le LaTeX produit par Lilia, la mise en page) et précise si le LaTeX qu’il montre est celui de Lilia ou du LaTeX standard.
+- Il peut compiler le document (check_document : erreurs et avertissements par bloc, avec la ligne). Le docteur de compilation s’en sert pour vérifier chaque correction : modifier, vérifier, réparer 3 fois au plus, puis il dit ce qui échoue encore.
