@@ -141,6 +141,16 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
                 "inviter", "exporter", "valider", "raccourci", "corbeille", "mot de passe",
                 "dónde está", "ajustes", "modo oscuro", "modo claro", "tema", "temas", "idioma", "compartir", "invitar",
                 "exportar", "validar", "atajo", "papelera", "contraseña",
+                // the account (Settings, plans, export, delete: 14–15 Oct)
+                "delete my account", "delete account", "close my account", "restore my account", "export everything",
+                "my data", "free plan", "my plan", "pro plan", "upgrade", "document limit", "how many documents",
+                "allowance", "connected apps", "display name", "terms of service", "privacy policy",
+                "supprimer mon compte", "supprimer le compte", "fermer mon compte", "restaurer mon compte", "tout exporter",
+                "mes données", "offre gratuite", "mon offre", "offre pro", "limite de documents", "combien de documents",
+                "allocation", "applications connectées", "conditions d'utilisation", "confidentialité",
+                "eliminar mi cuenta", "eliminar la cuenta", "cerrar mi cuenta", "restaurar mi cuenta", "exportar todo",
+                "mis datos", "plan gratuito", "mi plan", "plan pro", "límite de documentos", "cuántos documentos",
+                "asignación", "aplicaciones conectadas", "condiciones de uso", "privacidad",
                 // outside AI apps over MCP (the connector, 12 Oct)
                 "connector", "connecteur", "conector", "mcp", "connect claude", "connecter claude", "conectar claude",
                 "chatgpt" },

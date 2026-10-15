@@ -19,6 +19,7 @@ keywords: demander à lilia ia assistant discussion aide écrire rédiger corrig
 5. Joignez un fichier (csv, tex, bib, docx, pdf) ou une image avec les boutons trombone et image.
 6. **Nouvelle discussion** en commence une autre ; les précédentes restent dans le menu des discussions.
 7. La façon dont Lilia explique : la première fois, il demande *Connaissez-vous bien LaTeX ?* (ou Passer). Changez-la ensuite avec **Réponses : … ▾** sous la zone de message, ou dans **Paramètres → Demander à Lilia et aide** : **Simple**, **Standard** ou **Pour les utilisateurs de LaTeX**.
+8. Demander à Lilia a une allocation mensuelle (plus grande avec Pro). À partir de 80 %, une ligne sous la zone de saisie indique quand elle se renouvelle ; quand elle est utilisée, la zone donne la date. **Paramètres → Offre** montre ce qu'il reste. Claude et les autres applications connectées ne l'utilisent pas.
 
 ## Ce que cela veut dire {#beginner}
 - Demandez n’importe quoi, en français, en anglais ou en espagnol : comment faire quelque chose dans Lilia, pourquoi le document ne compile pas, comment écrire une équation, rédiger une section ou reprendre un paragraphe.

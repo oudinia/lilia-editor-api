@@ -17,7 +17,7 @@ keywords: phone mobile iphone android small screen read reader preview pdf ask l
 3. The bar at the bottom asks Lilia about the whole document.
 4. Top right: the outline, and **Preview the PDF**.
 5. **⋯** has **Share**, **Check document**, **Look**, **Page & settings** and **Document details**.
-6. Your avatar has **Appearance**, **Language** and **Sign out**.
+6. Your avatar has **Appearance**, **Language**, **Settings** (Profile, Security, Plan, Connected apps, Your data) and **Sign out**.
 
 ## What this means {#beginner}
 - A phone is for reading, checking and asking; you change the document through Ask Lilia.

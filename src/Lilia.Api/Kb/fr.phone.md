@@ -17,7 +17,7 @@ keywords: téléphone mobile iphone android petit écran lire lecteur aperçu pd
 3. La barre du bas pose une question sur tout le document.
 4. En haut à droite : le plan, et **Aperçu du PDF**.
 5. **⋯** propose **Partager…**, **Vérifier le document**, **Style…**, **Page et réglages…** et **Détails du document**.
-6. Votre avatar propose **Apparence**, **Langue** et **Se déconnecter**.
+6. Votre avatar propose **Apparence**, **Langue**, **Paramètres** (Profil, Sécurité, Offre, Applications connectées, Vos données) et **Se déconnecter**.
 
 ## Ce que cela veut dire {#beginner}
 - Le téléphone sert à lire, vérifier et demander ; vous modifiez le document via Demander à Lilia.

@@ -14,7 +14,7 @@ keywords: sign up sign in log in login account create register password forgot r
 1. **New to Lilia:** on the sign-in page, click **Create an account**. Enter your email and a password (a display name is optional), then **Create account**.
 2. Open the email Lilia sends you and click its link (it expires after 30 minutes). You land on *You're all set*; click **Open Lilia**.
 3. **Signing in:** enter your email and password and click **Sign in**, or use **Continue with Google** / **Continue with GitHub**, or **Email me a sign-in link instead**.
-4. **Forgot your password?** Click **Forgot password?**, enter your email, then follow the link in the email to **Set a new password** (at least 10 characters). You're signed in on that device afterwards.
+4. **Forgot your password?** Click **Forgot password?**, enter your email, then follow the link in the email to **Set a new password** (at least 10 characters). You're signed in on that device afterwards. Know your password and want a new one? **Settings → Security → Change password**.
 5. If your account uses two-factor authentication, enter the 6-digit code from your authenticator app; lost the device? **Use a recovery code**.
 6. To sign out: the avatar (top right) → **Log out** (on a phone: avatar → **Sign out**).
 

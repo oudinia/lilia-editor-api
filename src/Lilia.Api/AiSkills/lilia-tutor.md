@@ -143,26 +143,55 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - The bell (top bar) lists notifications: shared with you, someone joined, and so on.
 
 ### Settings
-Open from the avatar (top right) → **Settings**, or the Lilia menu. Sections:
-- **Appearance** (applies at once, everywhere):
-  - **Theme**: **System** (follows the computer or phone: light by day, dark at night), **Light**,
-    **Dark**. The moon/sun button in the top bar switches light and dark too; the avatar menu's
-    **Theme & accent…** opens the same choices.
-  - **Accent**: **Cerulean** (the default blue), **Plum** (warmer, lower contrast), **Ink**
-    (near-monochrome): the colour of buttons, links and selections.
-  - **Light style (trying out)**: how light mode separates things: **Crisp** (default: borders on
-    white), **Ledger** (boxed panels, firmest lines), **Graphite** (light grey chrome around white),
-    **Contrast** (near-monochrome), **Shelf** (pale blue sidebar), **Studio** (Crisp with a deeper
-    canvas), **Paper** (warm greys), **Before Crisp** (the earlier light). Dark is not affected.
-  - **Language**: English, Français, Español (the page reloads in that language).
-  - **Personality**: Pro or Fun (the save moment). **Reduce motion**.
-- **Ask Lilia and help**: **How Lilia explains things**: Simple, Standard or For LaTeX users.
-- **Editor defaults**: default font, size and paper for new documents, auto-save and its interval,
-  **LaTeX-native editing** (show LaTeX commands and source), and **Reset to defaults**.
-- **Security**: password, two-factor authentication, and **Clear cache & reload** (fetches the
-  latest version of the app; documents are not affected).
-- **Account**, **Billing & plan** and **Notifications** are previews: their choices are not saved
-  yet. Say so if asked. Lilia is in beta: every feature is unlocked.
+Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone: the avatar on
+**Documents** → **Settings** (a list; each section on its own screen). Article: settings.
+- **Account**:
+  - **Profile**: the name others see on comments, shares and presence; change it, then **Save** in the
+    bar that appears (**Discard** puts it back). The email is the sign-in address, shown, not edited here.
+  - **Security**: **Change password** (current password, then the new one; you stay signed in). An
+    account that signs in with Google or a link has no password to change.
+  - **Plan**: the plan and its meters: **Documents**, **Imports this month**, **Ask Lilia this month**
+    (a share of the month, with the day it renews). Article: plans-and-limits.
+  - **Connected apps**: AI apps connected to Lilia (Claude…), each with **Disconnect**.
+  - **Your data**: **Export everything** (one zip of every document you own, as LaTeX and as Lilia's
+    data, made in the background, emailed when ready, downloadable for 7 days; article:
+    export-everything) and **Delete account…** (type the account's email and the password; the account
+    closes at once; signing back in within 30 days offers **Restore my account**; then it is erased;
+    article: delete-account).
+- **Preferences**:
+  - **Appearance** (applies at once, everywhere):
+    - **Theme**: **System** (follows the computer or phone: light by day, dark at night), **Light**,
+      **Dark**. The moon/sun button in the top bar switches light and dark too; the avatar menu's
+      **Theme & accent…** opens the same choices.
+    - **Accent**: **Cerulean** (the default blue), **Plum** (warmer, lower contrast), **Ink**
+      (near-monochrome): the colour of buttons, links and selections.
+    - **Light style (trying out)**: how light mode separates things: **Crisp** (default: borders on
+      white), **Ledger** (boxed panels, firmest lines), **Graphite** (light grey chrome around white),
+      **Contrast** (near-monochrome), **Shelf** (pale blue sidebar), **Studio** (Crisp with a deeper
+      canvas), **Paper** (warm greys), **Before Crisp** (the earlier light). Dark is not affected.
+    - **Language**: English, Français, Español (the page reloads in that language).
+    - **Personality**: Pro or Fun (the save moment). **Reduce motion**.
+  - **Ask Lilia and help**: **How Lilia explains things**: Simple, Standard or For LaTeX users.
+  - **Editor**: default font, size and paper for new documents, auto-save and its interval,
+    **LaTeX-native editing** (show LaTeX commands and source), **Reset to defaults**, and
+    **Troubleshooting → Clear cache & reload** (fetches the latest version of the app; documents are
+    not affected).
+- Not in Settings yet, so don't offer them: notification emails, two-step sign-in, signed-in sessions,
+  changing the email address, paying for Pro.
+
+### Plans and limits
+- **Free**: 3 documents the author owns (documents in the Trash and documents shared with them don't
+  count), 3 imports a month, every export format and page, the compile check, sharing to read and
+  comment, and a small monthly Ask Lilia allowance.
+- **Pro** ($10.99 a month): no document or import limit, a larger Ask Lilia allowance, co-authors who
+  edit. Buying Pro isn't open yet: say so if asked how to upgrade.
+- At the limit, starting a 4th document (New, a template, a copy, an import) shows **Your plan's
+  documents are all in use**; nothing is created; **Open my documents** to move one to the Trash.
+  Nothing is ever deleted because of a plan. The documents rail shows "Free · 2 of 3 documents".
+- Ask Lilia's allowance: from 80% a line under the box gives the renewal day; when used, the box is
+  replaced by a card with the date. Connected apps (Claude) don't use it. Validate always works.
+- **Terms** and **Privacy**: /legal/terms and /legal/privacy (linked from sign-up and the footers).
+  The text is a placeholder until the lawyer's; English is the binding version.
 
 ### Other tools
 - **Import / Export**: bring in .tex, .docx or ePub; Lilia shows a review before it becomes a paper.
@@ -175,7 +204,7 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. Sections:
 Phones get a reading version: **Documents** (search, grouped Today / This week / Earlier), the
 document to read, **Ask Lilia** (the bar at the bottom; tap a block to ask about it), **Preview**
 (the PDF), **View LaTeX**, and **⋯**: **Share**, **Check document**, **Look**, **Page & settings**,
-**Document details**. The avatar has **Appearance**, **Language** and **Sign out**. Editing on a
+**Document details**. The avatar has **Appearance**, **Language**, **Settings** and **Sign out**. Editing on a
 phone goes through Ask Lilia; the full editor is for a computer or a large tablet.
 
 ### Connect Claude or another AI app
@@ -269,11 +298,28 @@ taken from the web editor's locale files: refresh this table when the interface'
 | Remove from doc | Retirer du document | Quitar del documento |
 | Done | Terminé | Hecho |
 | Account | Compte | Cuenta |
-| Billing & plan | Facturation et offre | Facturación y plan |
+| Preferences | Préférences | Preferencias |
+| Profile | Profil | Perfil |
+| Plan | Offre | Plan |
+| Connected apps | Applications connectées | Aplicaciones conectadas |
+| Your data | Vos données | Tus datos |
+| Export everything | Tout exporter | Exportar todo |
+| Download | Télécharger | Descargar |
+| Delete account… | Supprimer le compte… | Eliminar cuenta… |
+| Delete my account | Supprimer mon compte | Eliminar mi cuenta |
+| Restore my account | Restaurer mon compte | Restaurar mi cuenta |
+| Change password | Changer le mot de passe | Cambiar contraseña |
+| Disconnect | Déconnecter | Desconectar |
+| Documents (plan meter) | Documents | Documentos |
+| Imports this month | Importations ce mois-ci | Importaciones este mes |
+| Ask Lilia this month | Demander à Lilia ce mois-ci | Preguntar a Lilia este mes |
+| Your plan's documents are all in use | Tous les documents de votre offre sont utilisés | Todos los documentos de tu plan están en uso |
+| Open my documents | Ouvrir mes documents | Abrir mis documentos |
+| Troubleshooting | Dépannage | Solución de problemas |
+| Terms · Privacy | Conditions · Confidentialité | Condiciones · Privacidad |
 | Appearance | Apparence | Apariencia |
-| Notifications | Notifications | Notificaciones |
 | Security | Sécurité | Seguridad |
-| Editor defaults | Préférences de l’éditeur | Preferencias del editor |
+| Editor | Éditeur | Editor |
 | Theme | Thème | Tema |
 | System | Système | Sistema |
 | Light | Clair | Claro |
@@ -302,7 +348,7 @@ taken from the web editor's locale files: refresh this table when the interface'
 The knowledge base (search_kb / get_kb) holds the same steps per task, in the author's language and
 at their level: getting-started, compile-and-validate, sharing, sign-in, saving-and-versions, export,
 import, view-only, ask-lilia, citations, trash, phone, appearance-and-language, document-look, teams,
-connect-claude.
+connect-claude, settings, plans-and-limits, export-everything, delete-account.
 Prefer get_kb for a task's exact steps, and end with its link (/help/<slug>).
 
 ## How to respond

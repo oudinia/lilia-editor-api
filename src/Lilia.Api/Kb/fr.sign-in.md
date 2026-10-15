@@ -14,7 +14,7 @@ keywords: inscription connexion se connecter compte créer mot de passe oublié 
 1. **Nouveau sur Lilia :** sur la page de connexion, cliquez sur **Créer un compte**. Saisissez votre e-mail et un mot de passe (le nom affiché est facultatif), puis **Créer un compte**.
 2. Ouvrez l’e-mail que Lilia vous envoie et cliquez sur son lien (il expire au bout de 30 minutes). Vous arrivez sur *Tout est prêt.* : cliquez sur **Ouvrir Lilia**.
 3. **Se connecter :** saisissez votre e-mail et votre mot de passe puis cliquez sur **Se connecter**, ou utilisez **Continuer avec Google** / **Continuer avec GitHub**, ou **Recevoir un lien de connexion par e-mail**.
-4. **Mot de passe oublié ?** Cliquez dessus, saisissez votre e-mail, puis suivez le lien reçu pour **Choisir un nouveau mot de passe** (au moins 10 caractères). Vous êtes ensuite connecté sur cet appareil.
+4. **Mot de passe oublié ?** Cliquez dessus, saisissez votre e-mail, puis suivez le lien reçu pour **Choisir un nouveau mot de passe** (au moins 10 caractères). Vous êtes ensuite connecté sur cet appareil. Vous connaissez votre mot de passe et voulez en changer ? **Paramètres → Sécurité → Changer le mot de passe**.
 5. Si votre compte utilise la double authentification, saisissez le code à 6 chiffres de votre application ; appareil perdu ? **Utiliser un code de récupération**.
 6. Pour vous déconnecter : l’avatar (en haut à droite) → **Se déconnecter** (sur un téléphone : avatar → **Se déconnecter**).
 

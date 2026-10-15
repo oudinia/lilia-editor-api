@@ -40,6 +40,10 @@ public class KbLanguagesAndLevelsTests : IntegrationTestBase
     [InlineData("document-look")]
     [InlineData("teams")]
     [InlineData("connect-claude")]
+    [InlineData("settings")]
+    [InlineData("plans-and-limits")]
+    [InlineData("export-everything")]
+    [InlineData("delete-account")]
     public async Task Each_task_article_has_three_languages_and_three_levels(string slug)
     {
         var kb = await SeededAsync();
@@ -77,6 +81,14 @@ public class KbLanguagesAndLevelsTests : IntegrationTestBase
     [InlineData("connect Claude to Lilia", "en", "connect-claude")]
     [InlineData("connecter claude à lilia avec un connecteur", "fr", "connect-claude")]
     [InlineData("conectar claude a lilia", "es", "connect-claude")]
+    [InlineData("delete my account", "en", "delete-account")]
+    [InlineData("supprimer mon compte et restaurer", "fr", "delete-account")]
+    [InlineData("restaurar mi cuenta cerrada", "es", "delete-account")]
+    [InlineData("how many documents on the free plan", "en", "plans-and-limits")]
+    [InlineData("combien de documents avec l'offre gratuite", "fr", "plans-and-limits")]
+    [InlineData("exportar todo mis datos", "es", "export-everything")]
+    [InlineData("download all my documents as a zip", "en", "export-everything")]
+    [InlineData("where do I change my password", "en", "settings")]
     public async Task Search_finds_the_article_in_the_users_language(string query, string lang, string slug)
     {
         var kb = await SeededAsync();
