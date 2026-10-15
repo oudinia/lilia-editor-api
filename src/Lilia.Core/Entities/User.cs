@@ -6,6 +6,11 @@ public class User
     public string Email { get; set; } = string.Empty;
     public string? Name { get; set; }
     public string? Image { get; set; }
+    /// <summary>
+    /// When the author asked to delete their account (Settings → Your data). The account is closed at
+    /// once and erased 30 days later unless they restore it; null otherwise.
+    /// </summary>
+    public DateTime? DeletionRequestedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string? Username { get; set; }
