@@ -15,6 +15,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Email).HasColumnName("email").HasMaxLength(255).IsRequired();
         builder.Property(u => u.Name).HasColumnName("name").HasMaxLength(255);
         builder.Property(u => u.Image).HasColumnName("image");
+        builder.Property(u => u.DeletionRequestedAt).HasColumnName("deletion_requested_at");
         builder.Property(u => u.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(u => u.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(u => u.Username).HasColumnName("username").HasMaxLength(255);

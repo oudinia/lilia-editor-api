@@ -111,4 +111,46 @@ public class MeController : ControllerBase
         var file = await exports.OpenAsync(userId, id, ct);
         return file is null ? NotFound() : File(file.Value.Stream, "application/zip", file.Value.FileName);
     }
+
+    public record DeleteAccountRequest(string? ConfirmEmail);
+
+    /// <summary>What deleting would take with it (documents, shared ones, people), and whether it's asked.</summary>
+    [HttpGet("account")]
+    public async Task<ActionResult<AccountStatusDto>> AccountStatus([FromServices] AccountDeletionService accounts, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var status = await accounts.StatusAsync(userId, ct);
+        return status is null ? NotFound() : Ok(status);
+    }
+
+    /// <summary>
+    /// Delete the account: type its email, from a recent sign-in. Closed at once, erased in 30 days
+    /// unless restored (launch redesign 3g).
+    /// </summary>
+    [HttpPost("delete")]
+    public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountRequest req, [FromServices] AccountDeletionService accounts,
+        [FromServices] IConfiguration config, [FromServices] IWebHostEnvironment env, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var recent = AccountDeletionService.RecentlySignedIn(User, DateTime.UtcNow,
+            Lilia.Api.Middleware.DevelopmentAuthMiddleware.IsEnabled(config, env.IsDevelopment()));
+        var (refusal, erasedOn) = await accounts.RequestAsync(userId, req.ConfirmEmail, recent, ct);
+        return refusal switch
+        {
+            DeletionRefusal.None or DeletionRefusal.AlreadyRequested => Ok(new { erasedOn }),
+            DeletionRefusal.EmailMismatch => BadRequest(new { code = "EMAIL_MISMATCH", message = "Type the email of this account to delete it." }),
+            _ => StatusCode(StatusCodes.Status403Forbidden, new { code = "REAUTH_REQUIRED", message = "Sign in again to delete your account." }),
+        };
+    }
+
+    /// <summary>Undo a deletion within its 30 days.</summary>
+    [HttpPost("restore")]
+    public async Task<IActionResult> RestoreAccount([FromServices] AccountDeletionService accounts, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        return await accounts.RestoreAsync(userId, ct) ? NoContent() : NotFound();
+    }
 }

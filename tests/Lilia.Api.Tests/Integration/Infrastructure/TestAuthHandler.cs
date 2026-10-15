@@ -62,6 +62,9 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             claims.Add(new Claim("client_id", clientId));
         if (Request.Headers["X-Test-Scope"].FirstOrDefault() is { Length: > 0 } scope)
             claims.Add(new Claim("scope", scope));
+        // Stytch's session claim (its factors and when each was used), as a real session JWT carries it.
+        if (Request.Headers["X-Test-StytchSession"].FirstOrDefault() is { Length: > 0 } session)
+            claims.Add(new Claim("https://stytch.com/session", session));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);

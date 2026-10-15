@@ -7199,6 +7199,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("default_team_id");
 
+                    b.Property<DateTime?>("DeletionRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deletion_requested_at");
+
                     b.Property<string>("DisplayUsername")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")

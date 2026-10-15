@@ -504,6 +504,8 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
+builder.Services.AddScoped<AccountDeletionService>();
+builder.Services.AddHostedService<AccountErasureBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
 // FT-SANDBOX-SCOPE: reap idle sandbox (is_playground) documents.
 builder.Services.AddHostedService<PlaygroundPurgeBackgroundService>();
@@ -1003,6 +1005,8 @@ app.UseAuthorization();
 
 // Sync user data on authenticated requests
 app.UseUserSync();
+// A closed account (asked to delete) reaches only its status and Restore.
+app.UseMiddleware<AccountClosedMiddleware>();
 
 app.MapControllers();
 app.MapMcp("/api/mcp").RequireAuthorization().RequireRateLimiting("mcp");
