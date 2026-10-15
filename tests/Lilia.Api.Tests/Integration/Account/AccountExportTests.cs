@@ -71,13 +71,23 @@ public class AccountExportTests : IntegrationTestBase
     [Fact]
     public async Task Asking_again_while_one_runs_returns_the_same_export()
     {
+        // A running export, seeded so the test doesn't race the worker (an empty account's export
+        // can finish before a second request arrives, and then a new one is right).
         var id = $"export-{Guid.NewGuid():N}"[..20];
         await SeedUserAsync(id);
+        var running = Guid.NewGuid();
+        await using (var db = CreateDbContext())
+        {
+            db.Jobs.Add(new Lilia.Core.Entities.Job
+            {
+                Id = running, TenantId = id, UserId = id, JobType = Lilia.Api.Services.AccountExportService.JobType,
+                Status = Lilia.Core.Entities.JobStatus.Processing, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
         var client = CreateClientAs(id);
-        var a = await (await client.PostAsync("/api/me/export", null)).Content.ReadFromJsonAsync<JsonElement>();
-        var b = await (await client.PostAsync("/api/me/export", null)).Content.ReadFromJsonAsync<JsonElement>();
-        if (b.GetProperty("status").GetString() is "PENDING" or "PROCESSING")
-            b.GetProperty("id").GetGuid().Should().Be(a.GetProperty("id").GetGuid());
-        await WaitDone(client);
+        var again = await client.PostAsync("/api/me/export", null);
+        again.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid().Should().Be(running);
     }
 }

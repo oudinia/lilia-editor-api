@@ -17,7 +17,7 @@ keywords: teléfono móvil iphone android pantalla pequeña leer lector vista pr
 3. La barra inferior pregunta sobre todo el documento.
 4. Arriba a la derecha: el esquema y **Vista previa del PDF**.
 5. **⋯** ofrece **Compartir…**, **Revisar el documento**, **Estilo…**, **Página y ajustes…** y **Detalles del documento**.
-6. Tu avatar ofrece **Apariencia**, **Idioma** y **Cerrar sesión**.
+6. Tu avatar ofrece **Apariencia**, **Idioma**, **Ajustes** (Perfil, Seguridad, Plan, Aplicaciones conectadas, Tus datos) y **Cerrar sesión**.
 
 ## Qué significa {#beginner}
 - El teléfono sirve para leer, revisar y preguntar; cambias el documento a través de Preguntar a Lilia.

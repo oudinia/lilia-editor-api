@@ -87,6 +87,13 @@ public class AskSuggestionRoutingTests
     [InlineData("Comment faire pour partager ce document ?")]
     [InlineData("¿Dónde está el modo oscuro?")]
     [InlineData("¿Cómo cambio el idioma?")]
+    [InlineData("How do I delete my account?")]
+    [InlineData("How many documents can I have on the free plan?")]
+    [InlineData("Can I export everything I wrote?")]
+    [InlineData("Comment supprimer mon compte ?")]
+    [InlineData("Combien de documents avec l'offre gratuite ?")]
+    [InlineData("¿Cómo restauro mi cuenta?")]
+    [InlineData("Quiero exportar todo")]
     public void App_questions_reach_the_tutor(string question)
     {
         _router.Route(question).SkillId.Should().Be("lilia-tutor");
@@ -99,7 +106,10 @@ public class AskSuggestionRoutingTests
         guide.Should().Contain("Lilia, step by step");
         foreach (var fact in new[] { "Validate now", "Cerulean", "Exposition", "Light style", "Español", "Anyone with the link", "⌘K", "Save a version",
                      // the glossary: what a French or Spanish user sees on screen
-                     "Valider maintenant", "Prune", "Paramètres", "Validar ahora", "Ciruela", "Ajustes" })
+                     "Valider maintenant", "Prune", "Paramètres", "Validar ahora", "Ciruela", "Ajustes",
+                     // Settings, plans and the account (14–15 Oct)
+                     "Export everything", "Restore my account", "Free · 2 of 3 documents", "Connected apps",
+                     "Tout exporter", "Restaurer mon compte", "Exportar todo", "Restaurar mi cuenta" })
             guide.Should().Contain(fact);
     }
 

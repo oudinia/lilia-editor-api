@@ -19,6 +19,7 @@ keywords: preguntar a lilia ia asistente chat ayuda escribir redactar corregir e
 5. Adjunta un archivo (csv, tex, bib, docx, pdf) o una imagen con los botones de clip e imagen.
 6. **Nueva conversación** empieza otra; las anteriores siguen en el menú de conversaciones.
 7. Cómo explica Lilia: la primera vez pregunta *¿Cuánto conoces LaTeX?* (u Omitir). Cámbialo después con **Respuestas: … ▾** bajo el cuadro de mensaje, o en **Ajustes → Preguntar a Lilia y ayuda**: **Sencillo**, **Estándar** o **Para usuarios de LaTeX**.
+8. Preguntar a Lilia tiene una asignación mensual (más amplia en Pro). A partir del 80 %, una línea bajo el cuadro indica cuándo se renueva; cuando está usada, el cuadro da la fecha. **Ajustes → Plan** muestra cuánto queda. Claude y las demás aplicaciones conectadas no la usan.
 
 ## Qué significa {#beginner}
 - Pregunta lo que quieras, en español, inglés o francés: cómo hacer algo en Lilia, por qué no compila el documento, cómo escribir una ecuación, redactar una sección o pulir un párrafo.
