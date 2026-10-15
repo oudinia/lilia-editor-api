@@ -407,16 +407,7 @@ Console.WriteLine($"[BOOT] database target: {database}");
 //   53300: remaining connection slots are reserved for roles with the SUPERUSER attribute
 // (see Sentry LILIA-API-9). Always force these caps on top of whatever
 // the env var carries, so ops can't accidentally blow past the DB limit.
-{
-    var csBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
-    {
-        MaxPoolSize = 18,
-        MinPoolSize = 1,
-        ConnectionIdleLifetime = 30,
-        Pooling = true,
-    };
-    connectionString = csBuilder.ConnectionString;
-}
+connectionString = Lilia.Api.Services.DatabasePool.Tune(connectionString);
 
 builder.Services.AddDbContext<LiliaDbContext>(options =>
     options
