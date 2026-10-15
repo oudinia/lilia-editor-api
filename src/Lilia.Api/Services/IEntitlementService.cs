@@ -91,8 +91,11 @@ public record ActivePlanDto(
 /// <summary>A limit: <see cref="Limit"/> -1 means unlimited.</summary>
 public record PlanMeterDto(int Used, int Limit, DateTime? ResetsAt);
 
-/// <summary>How far through the month's allowance (0–1), with no counts: Ask Lilia is never a balance.</summary>
-public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsAt);
+/// <summary>
+/// How far through the month's allowance (0–1), with no counts: Ask Lilia is never a balance.
+/// <see cref="Enforced"/>: whether a used allowance stops Ask Lilia (<c>AI:EnforceCredits</c>).
+/// </summary>
+public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsAt, bool Enforced = false);
 
 public record PlanNameDto(string Slug, string Name);
 
