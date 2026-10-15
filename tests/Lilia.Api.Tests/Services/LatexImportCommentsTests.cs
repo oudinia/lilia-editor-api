@@ -29,6 +29,17 @@ public class LatexImportCommentsTests
     }
 
     [Fact]
+    public async Task A_line_break_inside_a_paragraph_is_a_space()
+    {
+        // The newline used to stay in the block text, and the export (a newline is a new
+        // paragraph there) split the paragraph in two on round-trip (coverage, 15 Oct).
+        var doc = await Parse("Visible text. % a hidden comment\nMore visible text.\nAs in Section~\\ref{sec:setup}.");
+
+        doc.Elements.OfType<ImportParagraph>().Single().Text
+            .Should().Be("Visible text. More visible text. As in Section \\ref{sec:setup}.");
+    }
+
+    [Fact]
     public async Task A_comment_line_does_not_split_a_paragraph()
     {
         var doc = await Parse("First half\n% between the lines\nsecond half.");

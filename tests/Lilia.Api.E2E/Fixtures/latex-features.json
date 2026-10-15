@@ -3544,7 +3544,7 @@
       "expect": {
         "blocks": [
           {
-            "type": "code",
+            "type": "figure",
             "text": [
               "\\draw (0,0) -- (1,1);"
             ]

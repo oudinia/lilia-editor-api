@@ -132,6 +132,23 @@ public class InlineMarkerRenderTests
         latex.Should().Contain("`world'");
     }
 
+    [Fact]
+    public void An_umlaut_accent_is_not_a_quote()
+    {
+        // LaTeX coverage text.accents (15 Oct): M\"obius and na\"ive came back as M``obius and
+        // na''ive, the two accents paired as a quotation.
+        var latex = Render("Caf\\'e and M\\\"obius and na\\\"ive.");
+        latex.Should().Contain("M\\\"obius").And.Contain("na\\\"ive");
+        latex.Should().NotContain("``").And.NotContain("''");
+    }
+
+    [Fact]
+    public void A_quote_pair_next_to_an_umlaut_still_converts()
+    {
+        var latex = Render("He wrote \"M\\\"obius\" twice.");
+        latex.Should().Contain("``M\\\"obius''");
+    }
+
     #endregion
 
     #region Inline-styling commands (FormatRail picker)

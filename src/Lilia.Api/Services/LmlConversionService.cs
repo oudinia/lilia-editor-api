@@ -695,7 +695,8 @@ public partial class LmlConversionService : ILmlConversionService
         // Single quotes follow the same pattern.
         result = result.Replace("“", "``").Replace("”", "''");
         result = result.Replace("‘", "`").Replace("’", "'");
-        result = Regex.Replace(result, "\"([^\"\\n]+)\"", "``$1''");
+        // A `\"` is an umlaut (M\"obius), not a quote: neither mark of a pair may follow a backslash.
+        result = Regex.Replace(result, "(?<!\\\\)\"((?:\\\\\"|[^\"\\n])+?)(?<!\\\\)\"", "``$1''");
         return result;
     }
 
