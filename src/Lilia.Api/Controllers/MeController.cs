@@ -1,5 +1,7 @@
 using Lilia.Api.Services;
+using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lilia.Api.Controllers;
@@ -46,5 +48,38 @@ public class MeController : ControllerBase
 
         var balance = await _entitlement.GetAiCreditBalanceAsync(userId, ct);
         return Ok(new { balance });
+    }
+
+    public record ProfileDto(string Id, string Email, string? Name, string? Image);
+    public record UpdateProfileRequest(string? Name);
+
+    /// <summary>
+    /// The profile as collaborators see it: the name on comments, shares and presence (Settings →
+    /// Profile, launch redesign 3a). The email comes from sign-in and changes there, not here.
+    /// </summary>
+    [HttpGet("profile")]
+    public async Task<ActionResult<ProfileDto>> GetProfile([FromServices] LiliaDbContext db, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        return user is null ? NotFound() : new ProfileDto(user.Id, user.Email, user.Name, user.Image);
+    }
+
+    /// <summary>Change the name others see. 1–120 characters, trimmed.</summary>
+    [HttpPut("profile")]
+    public async Task<ActionResult<ProfileDto>> UpdateProfile([FromBody] UpdateProfileRequest req, [FromServices] LiliaDbContext db, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var name = req.Name?.Trim();
+        if (string.IsNullOrEmpty(name) || name.Length > 120)
+            return BadRequest(new { code = "VALIDATION_FAILED", message = "A name is 1 to 120 characters." });
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return NotFound();
+        user.Name = name;
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return new ProfileDto(user.Id, user.Email, user.Name, user.Image);
     }
 }
