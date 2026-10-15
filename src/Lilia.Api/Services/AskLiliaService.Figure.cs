@@ -74,7 +74,7 @@ public sealed partial class AskLiliaService
 
             await MarkAsync(aiRequestId, "success", null, run.InputTokens, run.OutputTokens, (int)sw.ElapsedMilliseconds, ct);
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, run.InputTokens, run.OutputTokens);
-            var (credits, balance, creditsUsed) = await MeterAsync(userId, model, run.InputTokens, run.OutputTokens, aiRequestId, 0, "", ct);
+            var (credits, balance, creditsUsed) = await MeterAsync(userId, model, run.InputTokens, run.OutputTokens, aiRequestId, [], ct);
             _logger.LogInformation("[AskLilia] figure answered kind={Kind} attempts={Attempts} calls={Calls}",
                 run.Proposal.Kind, run.Proposal.Attempts, run.ModelCalls);
 

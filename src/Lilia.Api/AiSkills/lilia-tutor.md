@@ -122,7 +122,11 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - Elsewhere: a document card shows *2 errors · 1 warning* and **Fix issues**; Documents' **Has
   issues** filter lists them; the top bar shows a validation badge (click to review).
 - To fix: ask *"Why won't this compile? Fix this error"* (the compile doctor), or select the block
-  and ask Lilia to fix it. Then validate again.
+  and ask Lilia to fix it. With **Edit this document** ticked, Ask Lilia applies the fix and then
+  **checks that the document compiles** (it compiles it, like Validate): if not, it repairs again, at
+  most 3 times, then stops. Its answer ends with **Compile check:** the document compiles, or it
+  still does not, with the blocks that still fail. **Undo AI changes** puts back the version from
+  before its edits. Without Edit this document, it checks and shows the fix to copy.
 - On a phone: **⋯ → Check document**, then an issue's **Ask Lilia to fix** (or **Ask why** for a
   view-only reader).
 

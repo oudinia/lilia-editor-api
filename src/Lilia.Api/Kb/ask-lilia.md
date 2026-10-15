@@ -23,8 +23,10 @@ keywords: ask lilia ai assistant chat help write draft fix explain apply undo ch
 ## What this means {#beginner}
 - Ask anything, in English, French or Spanish: how to do something in Lilia, why the document won't compile, how to write an equation, to draft a section or tidy a paragraph.
 - Lilia proposes, you decide: nothing changes until you apply, and you can undo.
+- When it fixes a document that won't compile, Lilia checks its fix compiles (up to 3 tries) and says whether the document compiles now.
 - It never invents references or results; when it needs a fact from you, it says so.
 
 ## For LaTeX users {#expert}
 - Requests are routed to a skill (citations, compile doctor, equation, table, figure, polish, journal, tutor, architect); replies carry LML, BibTeX or LaTeX in fenced blocks you can copy.
 - In a document, Ask Lilia reads it through tools (outline, a block, search, the LaTeX Lilia emits, the page settings) and says whether LaTeX it shows is Lilia's output or standard LaTeX.
+- It can compile the document (check_document: errors and warnings per block, with the line). The compile doctor uses it to verify each fix: edit, check, repair at most 3 times, then it reports what still fails.

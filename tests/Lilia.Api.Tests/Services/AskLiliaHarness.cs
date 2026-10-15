@@ -33,7 +33,9 @@ internal sealed class AskLiliaHarness
         new DbContextOptionsBuilder<LiliaDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     public AskLiliaService Service { get; }
 
-    public AskLiliaHarness()
+    /// <param name="chat">The model; a script (<see cref="ScriptedChatClient"/>, <see cref="ToolCallingChatClient"/>) to run the tool loop.</param>
+    /// <param name="checker">check_document's compile check; without it the tool is not offered.</param>
+    public AskLiliaHarness(IChatClient? chat = null, IDocumentCheckService? checker = null)
     {
         var proxy = new Mock<IClientProxy>();
         proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
@@ -45,11 +47,11 @@ internal sealed class AskLiliaHarness
         Proxy = proxy;
 
         Service = new AskLiliaService(
-            Mock.Of<IChatClient>(), Mock.Of<IEntitlementService>(), Mock.Of<IAiCatalogService>(),
+            chat ?? Mock.Of<IChatClient>(), Mock.Of<IEntitlementService>(), Mock.Of<IAiCatalogService>(),
             Mock.Of<IAskLiliaRouter>(), Mock.Of<IKbService>(),
             Documents.Object, Blocks.Object, Render.Object, Versions.Object, Lml.Object, LatexParser,
             hub.Object, Db, Options.Create(new AiOptions()),
-            new ConfigurationBuilder().Build(), NullLogger<AskLiliaService>.Instance);
+            new ConfigurationBuilder().Build(), NullLogger<AskLiliaService>.Instance, checker: checker);
     }
 
     public Mock<IClientProxy> Proxy { get; }
@@ -65,9 +67,10 @@ internal sealed class AskLiliaHarness
     public static BlockDto Block(Guid id, string type = "paragraph") =>
         new(id, Guid.Empty, type, JsonDocument.Parse("{\"text\":\"hi\"}").RootElement, 0, null, 0, DateTime.UtcNow, DateTime.UtcNow);
 
-    public IList<AITool> Tools(DocumentDto doc, bool allowWrite, List<string>? changed = null, Action? meta = null) =>
+    public IList<AITool> Tools(DocumentDto doc, bool allowWrite, List<string>? changed = null, Action? meta = null,
+        AskLiliaService.CompileRepair? repair = null) =>
         Service.BuildDocumentTools(new AskLiliaService.LiveDocument(doc), doc.Id, "u1", allowWrite,
-            changed ?? new List<string>(), meta ?? (() => { }), default);
+            changed ?? new List<string>(), meta ?? (() => { }), default, repair);
 
     public static AIFunction Fn(IList<AITool> tools, string name) =>
         tools.OfType<AIFunction>().Single(t => t.Name == name);

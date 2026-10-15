@@ -705,6 +705,8 @@ builder.Services.AddMcpServer(o =>
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Lilia.Api.Mcp.ConnectorTransfers>();
 builder.Services.AddSingleton<Lilia.Api.Mcp.CheckMemoStore>();
+// The compile check behind check_document, in the connector and in Ask Lilia (15 Oct).
+builder.Services.AddScoped<IDocumentCheckService, DocumentCheckService>();
 builder.Services.AddScoped<IKbSeeder, KbSeeder>();
 
 // Register Lilia.Import services for document conversion. DocxParser

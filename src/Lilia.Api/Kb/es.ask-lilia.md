@@ -23,8 +23,10 @@ keywords: preguntar a lilia ia asistente chat ayuda escribir redactar corregir e
 ## Qué significa {#beginner}
 - Pregunta lo que quieras, en español, inglés o francés: cómo hacer algo en Lilia, por qué no compila el documento, cómo escribir una ecuación, redactar una sección o pulir un párrafo.
 - Lilia propone y tú decides: nada cambia hasta que aplicas, y puedes deshacer.
+- Cuando corrige un documento que no compila, Lilia comprueba que su corrección compila (hasta 3 intentos) y dice si el documento compila ahora.
 - Nunca inventa referencias ni resultados; cuando necesita un dato tuyo, lo dice.
 
 ## Para usuarios de LaTeX {#expert}
 - Las peticiones se dirigen a una habilidad (citas, doctor de compilación, ecuación, tabla, figura, estilo, revista, tutor, arquitecto); las respuestas traen LML, BibTeX o LaTeX en bloques para copiar.
 - En un documento, Preguntar a Lilia lo lee con herramientas (esquema, un bloque, búsqueda, el LaTeX que genera Lilia, la configuración de página) y aclara si el LaTeX que muestra es el de Lilia o LaTeX estándar.
+- Puede compilar el documento (check_document: errores y avisos por bloque, con la línea). El doctor de compilación lo usa para verificar cada corrección: editar, comprobar, reparar 3 veces como máximo, y luego dice qué sigue fallando.

@@ -99,7 +99,21 @@ equation you're referring to:
 Now `Equation~(eq:loss)` resolves. (If the equation exists with a different label, point me at it
 and I'll fix the `\ref` instead.)
 
----
+## In Lilia: check the fix compiles
 
-*Hosted in Lilia, this skill can re-run the real compile/validate engine to confirm the fix
-actually resolves the error before applying it. As a downloaded skill, recompile to confirm.*
+Hosted in Lilia, you have **`check_document`**: it compiles the open document as saved and returns
+`compiles`, the error with its block (`errorBlockId`), and `problems` — every error and warning as
+`{blockId, line, severity, message}`. Use it instead of guessing.
+
+In **Edit mode**, when the author asks you to fix it ("it won't compile", "fix this error"):
+
+1. **Check** — `check_document` shows the real error and the block it is in.
+2. **Repair** — fix that block with the smallest edit (`get_block`, then `edit_block`).
+3. **Check again.** Still failing? Repair again — **at most 3 edit-and-check attempts** in all.
+
+Then **stop** and answer. Say plainly whether the document **now compiles**. If it still does not,
+name each block that still fails (its id and the error) and what you tried — never claim a fix you
+have not seen compile. Lilia saved a version before your first edit, so the author can undo.
+
+Without Edit mode, check, diagnose and give the corrected snippet; tell the author to turn on Edit
+mode if they want you to apply and verify it. As a downloaded skill, recompile to confirm.

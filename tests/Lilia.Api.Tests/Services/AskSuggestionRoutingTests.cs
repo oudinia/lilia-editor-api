@@ -64,6 +64,18 @@ public class AskSuggestionRoutingTests
         _router.Route(suggestion).SkillId.Should().Be(skill);
     }
 
+    /// <summary>Asking for a fix that compiles reaches the compile doctor and its repair loop (15 Oct).</summary>
+    [Theory]
+    [InlineData("Make it compile")]
+    [InlineData("It fails to compile, fix the errors")]
+    [InlineData("My document does not compile")]
+    [InlineData("Fais-le compiler, il ne compile plus")]
+    [InlineData("Haz que compile")]
+    public void Asking_for_a_fix_that_compiles_reaches_the_compile_doctor(string message)
+    {
+        _router.Route(message).SkillId.Should().Be("lilia-compile-doctor");
+    }
+
     /// <summary>Questions about the app itself reach the tutor and its step-by-step guide.</summary>
     [Theory]
     [InlineData("How do I switch to dark mode?")]
