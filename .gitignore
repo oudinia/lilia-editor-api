@@ -33,3 +33,6 @@ TestResults/
 
 # check_document verdicts kept across restarts (CheckMemoStore)
 App_Data/
+
+# Settings → Your data archives (AccountExportService); private, never committed.
+account-exports/
