@@ -473,9 +473,9 @@ public partial class RenderService
             return $"\x00C{codeProtected.Count - 1}\x00";
         });
 
-        // LML bold *x* → Markdown **x**
-        result = Regex.Replace(result, @"\*([^*\n]+)\*", "**$1**");
-        // LML italic _x_ → Markdown *x*
+        // Bold **x** and italic *x* are already Markdown's, as the LaTeX and HTML exports read them;
+        // rewriting *x* to **x** made italic bold and bold ***bold*** (MarkdownInlineMarksTests).
+        // Italic _x_ → Markdown *x*
         result = Regex.Replace(result, @"(?<![\w])_([^_\n]+)_(?![\w])", "*$1*");
 
         // Citations: @cite{k1,k2} or \cite{k1,k2} → [@k1; @k2]
