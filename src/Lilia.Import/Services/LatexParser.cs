@@ -2168,6 +2168,10 @@ public class LatexParser : ILatexParser
             // Without this, user-defined \newcommand wrappers leak into the
             // block text as literal "\inlinecode{foo}" strings.
             var normalised = NormaliseInlineCommands(para);
+            // A line break inside a LaTeX paragraph is a space. Kept, it reached the block text,
+            // and the export (where a newline is a new paragraph) split the paragraph in two
+            // (LaTeX coverage text.comments and refs.section-ref, 15 Oct).
+            normalised = Regex.Replace(normalised, @"[ \t]*\r?\n[ \t]*", " ");
 
             document.Elements.Add(new ImportParagraph
             {

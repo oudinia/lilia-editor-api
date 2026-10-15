@@ -648,14 +648,18 @@ public class LaTeXExportService : ILaTeXExportService
             sb.AppendLine();
         }
 
-        // Use the shared preamble — same 31 packages as validation
-        sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
-        sb.AppendLine();
-
         // Chinese, Japanese or Korean text: compiled with xelatex (MCP-26, EngineDetector reads
         // the xeCJK line), so the file says so for whoever compiles it next.
         var bodyForCjk = bodyBlocks ?? doc.Blocks ?? new List<Block>();
-        if (CjkText.Contains(doc.Title) || bodyForCjk.Any(b => CjkText.Contains(b.Content.RootElement)))
+        var hasCjk = CjkText.Contains(doc.Title) || bodyForCjk.Any(b => CjkText.Contains(b.Content.RootElement));
+
+        // Use the shared preamble — same 31 packages as validation, less the pdflatex encoding
+        // stack when the file is for xelatex.
+        sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(hasCjk ? LatexEngine.Xelatex : LatexEngine.Pdflatex),
+            LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
+        sb.AppendLine();
+
+        if (hasCjk)
         {
             sb.AppendLine("% Chinese / Japanese / Korean text: compile with xelatex.");
             sb.Append(LaTeXPreamble.EngineAddendum(LatexEngine.Xelatex, cjk: true));

@@ -83,3 +83,29 @@ public class PreamblePackageTests
         LaTeXExportService.IsDefaultPreamblePackageForTest("tikz-cd").Should().BeFalse();
     }
 }
+
+/// <summary>
+/// A file for xelatex or lualatex doesn't load pdflatex's encoding stack: fontspec sets the fonts,
+/// and inputenc next to fontspec read as an engine conflict to Lilia's own importer, which held the
+/// re-import for review (LaTeX coverage text.unicode, 15 Oct).
+/// </summary>
+public class PackagesForEngineTests
+{
+    [Theory]
+    [InlineData(Lilia.Engines.LatexEngine.Xelatex)]
+    [InlineData(Lilia.Engines.LatexEngine.Lualatex)]
+    public void Unicode_engines_leave_out_inputenc_fontenc_and_lmodern(Lilia.Engines.LatexEngine engine)
+    {
+        var packages = Lilia.Engines.LaTeXPreamble.PackagesFor(engine);
+
+        packages.Should().NotContain("{inputenc}").And.NotContain("{fontenc}").And.NotContain("{lmodern}");
+        packages.Should().Contain("\\usepackage{amsmath,amssymb,amsfonts,amsthm}", "everything else stays");
+    }
+
+    [Fact]
+    public void Pdflatex_keeps_the_encoding_stack()
+    {
+        Lilia.Engines.LaTeXPreamble.PackagesFor(Lilia.Engines.LatexEngine.Pdflatex)
+            .Should().Be(Lilia.Engines.LaTeXPreamble.Packages);
+    }
+}

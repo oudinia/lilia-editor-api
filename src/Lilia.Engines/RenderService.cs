@@ -1051,7 +1051,7 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
-        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc)));
+        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(engine), LaTeXPreambleBuilder.ResolveClassName(doc)));
         // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures (TikzFigure).
         latex.Append(TikzFigure.PackageLines(
             (doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
@@ -1199,7 +1199,7 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
-        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.Packages, LaTeXPreambleBuilder.ResolveClassName(doc)));
+        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(engine), LaTeXPreambleBuilder.ResolveClassName(doc)));
         // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures (TikzFigure).
         latex.Append(TikzFigure.PackageLines(
             (doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
@@ -3140,7 +3140,8 @@ public partial class RenderService : IRenderService
         // then any leftover straight pairs (e.g. pasted from elsewhere).
         result = result.Replace("“", "``").Replace("”", "''");
         result = result.Replace("‘", "`").Replace("’", "'");
-        result = Regex.Replace(result, "\"([^\"\\n]+)\"", "``$1''");
+        // A `\"` is an umlaut (M\"obius), not a quote: neither mark of a pair may follow a backslash.
+        result = Regex.Replace(result, "(?<!\\\\)\"((?:\\\\\"|[^\"\\n])+?)(?<!\\\\)\"", "``$1''");
         // 'single' quotes too: the opening mark was a closing one (MCP-32). Only a pair that starts
         // after a space or bracket and ends before one, so apostrophes (don't, the dogs') are left.
         result = Regex.Replace(result, @"(?<=^|[\s(\[])'([^'\n]+?)'(?=$|[\s.,;:!?)\]])", "`$1'");

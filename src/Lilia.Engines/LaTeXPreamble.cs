@@ -287,6 +287,19 @@ public static partial class LaTeXPreamble
     /// relies on, and a slide's \footnote printed its mark but never its text (6 Oct 2026). Line
     /// spacing on a deck is written as \linespread instead (LaTeXPreambleBuilder).
     /// </summary>
+    /// <summary>
+    /// <see cref="Packages"/> for the engine that will compile it. Under xelatex or lualatex the
+    /// pdflatex encoding stack (inputenc, T1 fontenc, lmodern) is left out: fontspec sets the fonts,
+    /// and a preamble loading both read as an engine conflict to whoever opened it next, Lilia's own
+    /// importer included (LaTeX coverage text.unicode, 15 Oct: a re-import held for review).
+    /// </summary>
+    public static string PackagesFor(LatexEngine engine) => engine is LatexEngine.Xelatex or LatexEngine.Lualatex
+        ? Packages
+            .Replace("\\usepackage[utf8]{inputenc}\n", "")
+            .Replace("\\usepackage[T1]{fontenc}\n", "")
+            .Replace("\\usepackage{lmodern}        % Latin Modern: better scaling + PDF-embedding than default Computer Modern\n", "")
+        : Packages;
+
     public static string ForClass(string packages, string? className) =>
         IsBeamer(className)
             ? packages.Replace("\\usepackage{setspace}\n",

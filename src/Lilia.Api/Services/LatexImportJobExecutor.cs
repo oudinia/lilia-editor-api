@@ -417,9 +417,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         return blocks;
     }
 
-    // Mirror of JobService.MapImportElementToBlock — we don't reuse the private
-    // JobService version so the two pipelines stay independent (new pipeline
-    // must be free to diverge without breaking the legacy DOCX path).
+    // The one LaTeX element → block mapping: the upload path here and JobService's base64 path
+    // (the connector's import_document) both use MapElements.
     private static (string type, object content) MapImportElementToBlock(ImportElement element) => element switch
     {
         ImportHeading h => ("heading", HeadingContent(h)),

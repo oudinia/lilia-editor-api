@@ -770,9 +770,12 @@ public class JobService : IJobService
                         if (parsedDoc.Elements.Count > 0)
                         {
                             int sortOrder = 0;
-                            foreach (var element in parsedDoc.Elements)
+                            // The upload path's mapping (LatexImportJobExecutor), not a copy: the copy here
+                            // had drifted and dropped heading labels and numbering, table captions and
+                            // layout, quotes and algorithms, and made a list per item. This path is the
+                            // connector's import_document (LaTeX coverage refs.section-ref, 15 Oct).
+                            foreach (var (blockType, blockContent) in LatexImportJobExecutor.MapElements(parsedDoc.Elements))
                             {
-                                var (blockType, blockContent) = MapImportElementToBlock(element);
                                 _context.Blocks.Add(new Lilia.Core.Entities.Block
                                 {
                                     Id = Guid.NewGuid(),
@@ -1007,39 +1010,6 @@ public class JobService : IJobService
         }
 
         return sanitized.Trim();
-    }
-
-    /// <summary>
-    /// Maps an ImportElement from the LaTeX parser to a block type and content dictionary.
-    /// </summary>
-    private static (string type, object content) MapImportElementToBlock(ImportElement element)
-    {
-        return element switch
-        {
-            ImportHeading h => ("heading", new { text = h.Text, level = h.Level }),
-            ImportParagraph p => ("paragraph", new { text = p.Text }),
-            ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
-            ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
-            ImportTable t => ("table", new
-            {
-                headers = t.HasHeaderRow && t.Rows.Count > 0
-                    ? t.Rows[0].Select(c => c.Text).ToArray()
-                    : Enumerable.Range(0, t.ColumnCount).Select(i => $"Column {i + 1}").ToArray(),
-                rows = (t.HasHeaderRow ? t.Rows.Skip(1) : t.Rows)
-                    .Select(r => r.Select(c => c.Text).ToArray()).ToArray()
-            }),
-            ImportAbstract a => ("abstract", new { text = a.Text }),
-            ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
-            ImportListItem li => ("list", new { items = new[] { li.Text }, ordered = li.IsNumbered }),
-            ImportPageBreak => ("pageBreak", new { }),
-            // Same fix as LatexImportJobExecutor.MapImportElementToBlock —
-            // carry the \includegraphics filename so downstream asset
-            // staging can rewrite it to the storage URL.
-            ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
-            ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
-            ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
-            _ => ("paragraph", new { text = "" }),
-        };
     }
 
     private static JobDto MapToDto(Job j)
