@@ -130,6 +130,17 @@ public class PlanLimitsTests : IntegrationTestBase
         var plan = await client.GetFromJsonAsync<JsonElement>("/api/plan");
         plan.GetProperty("plan").GetProperty("slug").GetString().Should().Be("beta");
         plan.GetProperty("documents").GetProperty("limit").GetInt32().Should().Be(-1);
+        plan.GetProperty("ask").GetProperty("unlimited").GetBoolean().Should().BeTrue("Beta's allowance would stop the owner's own Ask Lilia");
+
+        // Over any allowance, Ask Lilia's gate still lets staff through.
+        await using (var db = CreateDbContext())
+        {
+            db.AiCreditLedger.Add(new AiCreditLedger { Id = Guid.NewGuid(), UserId = Staff, Delta = -5000, Reason = "spend", CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        using var scope = _enforced.Services.CreateScope();
+        var entitlements = scope.ServiceProvider.GetRequiredService<IEntitlementService>();
+        await entitlements.Invoking(e => e.EnsureQuotaAsync(Staff, QuotaResource.AiCredits)).Should().NotThrowAsync();
     }
 
     [Fact]
