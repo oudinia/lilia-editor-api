@@ -90,8 +90,9 @@ public class UserService : IUserService
         else
         {
             user.Email = dto.Email;
-            user.Name = dto.Name;
-            user.Image = dto.Image;
+            // A token without a name (or picture) keeps the one the author set in Settings → Profile.
+            if (!string.IsNullOrWhiteSpace(dto.Name)) user.Name = dto.Name;
+            if (!string.IsNullOrWhiteSpace(dto.Image)) user.Image = dto.Image;
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
