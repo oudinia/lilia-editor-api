@@ -64,7 +64,8 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
             DocumentsCreated7d: await db.Documents.CountAsync(d => d.CreatedAt >= d7 && !d.IsPlayground, ct),
             AskRequests7d: await ask.CountAsync(ct),
             AskTokens7d: await ask.SumAsync(r => (long)r.PromptTokens + r.CompletionTokens, ct),
-            AskFailed7d: await ask.CountAsync(r => r.ErrorMessage != null || r.Status == "failed", ct),
+            // ck_ai_request_status: pending, success, error, rate_limited, redacted_refused.
+            AskFailed7d: await ask.CountAsync(r => r.Status == "error" || r.Status == "rate_limited", ct),
             Compiles7d: await compiles.CountAsync(ct),
             CompilesFailed7d: await compiles.CountAsync(e => !e.Success, ct),
             ImportErrors7d: await db.ImportTelemetryEvents.CountAsync(e => e.CreatedAt >= d7 && e.Severity == "error", ct),

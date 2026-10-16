@@ -1,0 +1,36 @@
+@* A daily series as an area and line, drawn in SVG; hover a point for its day and value. *@
+<figure class="chart" data-testid="admin-chart" data-series="@Name">
+    <figcaption><span>@Name</span><strong>@(Headline ?? Fmt.Number(Values.Sum()))</strong></figcaption>
+    @{
+        const int W = 600, H = 120, pad = 4;
+        var max = Math.Max(1, Values.DefaultIfEmpty(0).Max());
+        var n = Math.Max(1, Values.Count - 1);
+        string X(int i) => (pad + i * (W - 2.0 * pad) / n).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        string Y(int v) => (H - pad - v * (H - 2.0 * pad) / max).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        var line = string.Join(" ", Values.Select((v, i) => $"{X(i)},{Y(v)}"));
+        var area = $"{X(0)},{H - pad} {line} {X(Values.Count - 1)},{H - pad}";
+    }
+    <svg viewBox="0 0 @W @H" preserveAspectRatio="none" role="img" aria-label="@Name per day">
+        <defs>
+            <linearGradient id="@($"stroke-{Key}")" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#22d3ee" /><stop offset="1" stop-color="#a78bfa" /></linearGradient>
+            <linearGradient id="@($"fill-{Key}")" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity=".32" /><stop offset="1" stop-color="#22d3ee" stop-opacity="0" /></linearGradient>
+        </defs>
+        <polygon points="@area" class="area" fill="url(#@($"fill-{Key}"))" />
+        <polyline points="@line" class="line" stroke="url(#@($"stroke-{Key}"))" />
+        @for (var i = 0; i < Values.Count; i++)
+        {
+            <circle cx="@X(i)" cy="@Y(Values[i])" r="6" class="hit"><title>@Days[i].ToString("d MMM"): @Values[i]</title></circle>
+        }
+    </svg>
+    <div class="axis"><span>@Days.FirstOrDefault().ToString("d MMM")</span><span>max @max / day</span><span>@Days.LastOrDefault().ToString("d MMM")</span></div>
+</figure>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter, EditorRequired] public IReadOnlyList<int> Values { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<DateOnly> Days { get; set; } = [];
+    /// <summary>Instead of the period's total: for a count of distinct accounts, a sum of days means nothing.</summary>
+    [Parameter] public string? Headline { get; set; }
+    // One gradient per chart: ids are page-wide in SVG.
+    private string Key => new string(Name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+}
