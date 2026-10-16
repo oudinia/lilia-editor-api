@@ -56,7 +56,9 @@ public class PreviewCacheService : IPreviewCacheService
         try
         {
             // Invalidate all cached formats for this document
-            var formats = new[] { "html", "latex" };
+            // html-full too: it was left out, so the full HTML preview kept a block's old text
+            // for up to an hour after an edit (16 Oct).
+            var formats = new[] { "html", "latex", "html-full" };
             var tasks = new List<Task>();
 
             foreach (var format in formats)

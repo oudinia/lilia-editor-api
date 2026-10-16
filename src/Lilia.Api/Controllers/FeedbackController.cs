@@ -15,11 +15,13 @@ public class FeedbackController : ControllerBase
 {
     private readonly LiliaDbContext _db;
     private readonly ILogger<FeedbackController> _logger;
+    private readonly IConfiguration _config;
 
-    public FeedbackController(LiliaDbContext db, ILogger<FeedbackController> logger)
+    public FeedbackController(LiliaDbContext db, ILogger<FeedbackController> logger, IConfiguration config)
     {
         _db = db;
         _logger = logger;
+        _config = config;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -68,7 +70,10 @@ public class FeedbackController : ControllerBase
     /// <summary>
     /// List feedback with optional filters.
     /// </summary>
+    // Triage is for operators (Auth:Admins): it asked only for a login, so any signed-in account
+    // could read, change and count everyone's feedback (16 Oct).
     [HttpGet]
+    [Authorize(Policy = Lilia.Api.Security.AdminPolicy.Name)]
     public async Task<ActionResult<List<FeedbackDto>>> ListFeedback(
         [FromQuery] string? status,
         [FromQuery] string? type,
@@ -111,7 +116,10 @@ public class FeedbackController : ControllerBase
             .Include(f => f.User)
             .FirstOrDefaultAsync(f => f.Id == id);
 
-        if (feedback == null) return NotFound();
+        // The author's own, or an admin's: anyone else gets the same 404 as a missing one.
+        if (feedback == null
+            || (feedback.UserId != userId && !Lilia.Api.Security.AdminPolicy.IsAdmin(User, _config["Auth:Admins"])))
+            return NotFound();
 
         return Ok(MapToDto(feedback, feedback.User?.Name));
     }
@@ -120,6 +128,7 @@ public class FeedbackController : ControllerBase
     /// Update feedback status or add an admin response.
     /// </summary>
     [HttpPatch("{id:guid}")]
+    [Authorize(Policy = Lilia.Api.Security.AdminPolicy.Name)]
     public async Task<ActionResult<FeedbackDto>> UpdateFeedback(Guid id, [FromBody] UpdateFeedbackDto dto)
     {
         var userId = GetUserId();
@@ -153,6 +162,7 @@ public class FeedbackController : ControllerBase
     /// Get summary counts by type and status.
     /// </summary>
     [HttpGet("stats")]
+    [Authorize(Policy = Lilia.Api.Security.AdminPolicy.Name)]
     public async Task<ActionResult<object>> GetStats()
     {
         var userId = GetUserId();
