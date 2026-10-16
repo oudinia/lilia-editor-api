@@ -461,4 +461,32 @@ public class LatexStagingImportTests : IntegrationTestBase
         response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.BadRequest);
         // We accept either — the point is the endpoint is reachable, not removed.
     }
+
+    [Fact]
+    public async Task Finalize_KeepsTheSourcesPageSetup()
+    {
+        // 16 Oct: finalize kept the class, the packages and the macros, but not the class options
+        // or the margins: an 11pt two-column A5 paper opened at 12pt, one column, A4.
+        const string source = @"\documentclass[11pt,twocolumn,a5paper]{article}
+\usepackage[margin=2cm]{geometry}
+\newcommand{\R}{\mathbb{R}}
+\begin{document}
+\section{Setup}
+Real numbers $\R$.
+\end{document}";
+        var sessionId = await SeedSessionFromSourceAsync(source);
+        await RunExecutorAsync(sessionId);
+
+        var res = await Client.PostAsJsonAsync($"/api/lilia/import-review/sessions/{sessionId}/finalize", new { force = true });
+        res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
+
+        await using var db = CreateDbContext();
+        var doc = await db.Documents.AsNoTracking().OrderByDescending(d => d.CreatedAt).FirstAsync(d => d.OwnerId == UserId);
+        doc.FontSize.Should().Be(11);
+        doc.Columns.Should().Be(2);
+        doc.PaperSize.Should().Be("a5");
+        doc.MarginLeft.Should().Be("2cm");
+        doc.MarginTop.Should().Be("2cm");
+        doc.CustomPreamble.Should().Contain("\\newcommand{\\R}{\\mathbb{R}}");
+    }
 }

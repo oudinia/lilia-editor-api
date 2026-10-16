@@ -16,6 +16,8 @@ public class ImportReviewMessages { }
 public class ImportReviewService : IImportReviewService
 {
     private readonly IEntitlementService? _entitlements;
+    private readonly Lilia.Import.Interfaces.ILatexParser? _latexParser;
+    private readonly IDocumentService? _documents;
     private readonly LiliaDbContext _context;
     private readonly ILogger<ImportReviewService> _logger;
     private readonly IStringLocalizer<ImportReviewMessages> _localizer;
@@ -31,8 +33,12 @@ public class ImportReviewService : IImportReviewService
         IRenderService? renderService = null,
         IStorageService? storageService = null,
         ILatexProjectExtractor? projectExtractor = null,
-        IEntitlementService? entitlements = null)
+        IEntitlementService? entitlements = null,
+        Lilia.Import.Interfaces.ILatexParser? latexParser = null,
+        IDocumentService? documents = null)
     {
+        _latexParser = latexParser;
+        _documents = documents;
         _entitlements = entitlements;
         _context = context;
         _logger = logger;
@@ -428,6 +434,29 @@ public class ImportReviewService : IImportReviewService
                             ""LatexDocumentClass"" = COALESCE({ex.DocumentClass}, ""LatexDocumentClass""),
                             ""LatexPackages"" = COALESCE({ex.PackagesJson}, ""LatexPackages"")
                         WHERE id = {documentId}", ct);
+                }
+
+                // The page setup the source asks for — class options (11pt, twocolumn, a5paper),
+                // geometry margins, line spacing, page numbering, headers — as document settings, as
+                // Ask Lilia's import already does. Without it every imported paper opened at 12pt,
+                // one column, A4 and default margins (16 Oct).
+                if (_latexParser is not null && _documents is not null)
+                {
+                    try
+                    {
+                        var parsed = await _latexParser.ParseTextAsync(pre.RawImportData);
+                        var setup = LatexPageSetupExtractor.Extract(pre.RawImportData, parsed.Metadata);
+                        var check = DocumentSettingsValidator.Validate(setup.Settings);
+                        if (check.Update is { } settings)
+                            await _documents.UpdateDocumentAsync(documentId, ownerId, settings);
+                        if (setup.NotApplied.Count > 0)
+                            _logger.LogInformation("Import {SessionId}: page setup not applied: {Notes}", sessionId, string.Join("; ", setup.NotApplied));
+                    }
+                    catch (Exception e)
+                    {
+                        // The document is still made; only its page setup keeps the defaults.
+                        _logger.LogWarning(e, "Import {SessionId}: page setup could not be read", sessionId);
+                    }
                 }
             }
 
