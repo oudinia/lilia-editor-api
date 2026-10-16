@@ -3,6 +3,7 @@
 # The same checks as .github/workflows/tests.yml and ef-migrations-check.yml:
 #   tests       every test but Category=RequiresTeX (those run nightly: ops/tex-tests.sh),
 #               with a 3-minute hang guard so a stuck test is named, not waited on
+#   admin       the admin console's tests (tests/Lilia.Admin.Tests)
 #   migrations  the EF model has no change missing a migration, and every
 #               migration has its .Designer.cs
 #
@@ -59,7 +60,22 @@ migrations() {
   fi
 }
 
+# The admin console (src/Lilia.Admin, 16 Oct 2026): its own test project, its own Postgres.
+admin() {
+  local log="$LOG_DIR/$BRANCH-admin.log" t=$SECONDS summary
+  timeout 600 dotnet test tests/Lilia.Admin.Tests --blame-hang-timeout 3m --logger "console;verbosity=minimal" >"$log" 2>&1
+  summary=$(grep -E "^(Passed|Failed)! " "$log" | tail -1)
+  if ! grep -qE "Test Run Aborted|test run was aborted" "$log" && [[ "$summary" == Passed!*"Failed:     0,"* ]]; then
+    echo "pass admin $((SECONDS - t))s  ${summary#*- }"
+  else
+    echo "FAIL admin $((SECONDS - t))s  ${summary:-no summary (build error or hang)}  ($log)"
+    grep -E "^\s+Failed [A-Za-z]|error CS|hang|aborted" "$log" | head -10 | sed 's/^/     /'
+    return 1
+  fi
+}
+
 tests || fail=1
+admin || fail=1
 migrations || fail=1
 if [ $fail -ne 0 ]; then echo "LOCAL CI: FAIL ($((SECONDS - START))s)"; exit 1; fi
 echo "LOCAL CI: PASS ($((SECONDS - START))s)"

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- The API's: the admin reads the same database, with the same connection strings. -->
+    <UserSecretsId>ccac0501-488b-479d-97ea-48054276a00d</UserSecretsId>
+    <!-- Directory.Build.props turns static web assets off for the API (an SDK bug nested bin/ inside
+         bin/); Blazor needs them for its script and styles, so this project turns them back on. Its
+         bin/ and obj/ stay excluded by DefaultItemExcludes there. -->
+    <StaticWebAssetsEnabled>true</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
+    <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.2" />
+  </ItemGroup>
+
+</Project>

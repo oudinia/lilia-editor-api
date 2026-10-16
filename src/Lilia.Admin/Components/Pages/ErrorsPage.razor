@@ -1,0 +1,27 @@
+@page "/errors"
+@inject AdminQueries Queries
+
+<PageTitle>Errors · Lilia admin</PageTitle>
+<h1>Errors</h1>
+<p class="lede">What failed in the last 7 days, grouped. Each exception with its stack is in <a href="https://errors.liliaeditor.com" target="_blank" rel="noopener">Bugsink</a>; restarts and uptime are on the <a href="https://reports.liliaeditor.com/production-status.md" target="_blank" rel="noopener">status page</a>.</p>
+
+@if (e is null) { <p class="muted">Loading…</p> }
+else
+{
+    <h2>Compiles</h2>
+    <Groups Rows="e.Compiles" Id="compiles" Empty="No failed compile this week." />
+    <h2>Imports</h2>
+    <Groups Rows="e.Imports" Id="imports" Empty="No import error this week." />
+    <h2>Jobs</h2>
+    @if (e.Jobs.Count == 0) { <p class="muted">No failed job this week.</p> }
+    else
+    {
+        <table data-testid="admin-errors-jobs"><thead><tr><th>When</th><th>Type</th><th>Error</th><th>Account</th></tr></thead>
+            <tbody>@foreach (var j in e.Jobs) { <tr><td>@Fmt.When(j.At)</td><td>@j.Type</td><td>@j.Error</td><td><a href="users/@Uri.EscapeDataString(j.UserId)">@j.UserId</a></td></tr> }</tbody></table>
+    }
+}
+
+@code {
+    private Errors? e;
+    protected override async Task OnInitializedAsync() => e = await Queries.ErrorsAsync();
+}

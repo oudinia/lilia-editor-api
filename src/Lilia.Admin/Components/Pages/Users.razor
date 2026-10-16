@@ -1,0 +1,44 @@
+@page "/users"
+@inject AdminQueries Queries
+
+<PageTitle>Users · Lilia admin</PageTitle>
+<h1>Users</h1>
+<form class="search" @onsubmit="Search" data-testid="admin-users-search">
+    <input @bind="q" placeholder="Email, name or id" aria-label="Search accounts" data-testid="admin-users-q" />
+    <button type="submit" data-testid="admin-users-go">Search</button>
+</form>
+
+@if (rows is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (rows.Count == 0)
+{
+    <p class="muted" data-testid="admin-users-empty">No account matches.</p>
+}
+else
+{
+    <table data-testid="admin-users">
+        <thead><tr><th>Email</th><th>Name</th><th>Plan</th><th>Documents</th><th>Last active</th><th>Joined</th></tr></thead>
+        <tbody>
+            @foreach (var u in rows)
+            {
+                <tr data-testid="admin-user-row" data-user-id="@u.Id">
+                    <td><a href="users/@Uri.EscapeDataString(u.Id)" data-testid="admin-user-open">@u.Email</a>@if (u.DeletionRequested) { <span class="chip warn">closing</span> }</td>
+                    <td>@u.Name</td>
+                    <td>@(u.Plan ?? "free")</td>
+                    <td class="num">@u.Documents</td>
+                    <td>@Fmt.When(u.LastActive)</td>
+                    <td>@Fmt.Day(u.CreatedAt)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string? q;
+    private IReadOnlyList<UserRow>? rows;
+    protected override async Task OnInitializedAsync() => rows = await Queries.UsersAsync(null);
+    private async Task Search() => rows = await Queries.UsersAsync(q);
+}

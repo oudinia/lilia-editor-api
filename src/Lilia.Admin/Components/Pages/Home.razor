@@ -1,0 +1,41 @@
+@page "/"
+@inject AdminQueries Queries
+
+<PageTitle>Overview · Lilia admin</PageTitle>
+<h1>Overview</h1>
+<p class="lede">The last 7 days. Nothing here shows what people write.</p>
+
+@if (o is null)
+{
+    <p class="muted" data-testid="admin-loading">Loading…</p>
+}
+else
+{
+    <section class="tiles" data-testid="admin-overview">
+        <Tile Label="Accounts" Value="@o.Users" Note="@($"{o.NewUsers24h} new today, {o.NewUsers7d} this week")" Id="users" />
+        <Tile Label="Active authors" Value="@o.ActiveAuthors7d" Note="edited a document this week" Id="active" />
+        <Tile Label="Documents created" Value="@o.DocumentsCreated7d" Id="documents" />
+        <Tile Label="Ask Lilia requests" Value="@o.AskRequests7d" Note="@($"{Fmt.Number(o.AskTokens7d)} tokens · {o.AskFailed7d} failed")" Id="ask" Warn="@(o.AskFailed7d > 0)" />
+        <Tile Label="Compiles" Value="@o.Compiles7d" Note="@($"{o.CompilesFailed7d} failed")" Id="compiles" Warn="@(o.CompilesFailed7d > 0)" />
+        <Tile Label="Import errors" Value="@o.ImportErrors7d" Id="imports" Warn="@(o.ImportErrors7d > 0)" />
+        <Tile Label="Jobs" Value="@o.JobsFailed7d" Note="@($"failed · {o.JobsStuck} stuck now")" Id="jobs" Warn="@(o.JobsFailed7d + o.JobsStuck > 0)" />
+        <Tile Label="New feedback" Value="@o.FeedbackNew" Note="waiting for triage" Id="feedback" Warn="@(o.FeedbackNew > 0)" Href="feedback" />
+    </section>
+
+    <h2>Sign-ups, last 14 days</h2>
+    <div class="bars" data-testid="admin-signups">
+        @{ var max = Math.Max(1, o.SignupsByDay.Max(d => d.Count)); }
+        @foreach (var d in o.SignupsByDay)
+        {
+            <div class="bar" title="@d.Day.ToString("d MMM"): @d.Count">
+                <span style="height:@((int)Math.Round(100.0 * d.Count / max))%"></span>
+                <em>@d.Day.ToString("dd")</em>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private Overview? o;
+    protected override async Task OnInitializedAsync() => o = await Queries.OverviewAsync();
+}

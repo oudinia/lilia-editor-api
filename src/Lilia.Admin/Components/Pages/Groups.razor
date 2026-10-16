@@ -1,0 +1,22 @@
+@if (Rows.Count == 0)
+{
+    <p class="muted">@Empty</p>
+}
+else
+{
+    <table data-testid="admin-errors-@Id">
+        <thead><tr><th>Kind</th><th>Detail</th><th class="num">Count</th><th>Last</th><th>Example document</th></tr></thead>
+        <tbody>
+            @foreach (var g in Rows)
+            {
+                <tr><td>@g.Kind</td><td><code>@g.Detail</code></td><td class="num">@g.Count</td><td>@Fmt.When(g.LastSeen)</td><td><code>@g.Example</code></td></tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ErrorGroup> Rows { get; set; } = [];
+    [Parameter] public string Id { get; set; } = "";
+    [Parameter] public string Empty { get; set; } = "";
+}
