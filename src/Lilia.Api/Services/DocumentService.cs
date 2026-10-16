@@ -16,14 +16,16 @@ public class DocumentService : IDocumentService
     private readonly ILogger<DocumentService> _logger;
     private readonly IAiService _aiService;
     private readonly IEntitlementService? _entitlements;
+    private readonly IPreviewCacheService? _previewCache;
 
     public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService,
-        IEntitlementService? entitlements = null)
+        IEntitlementService? entitlements = null, IPreviewCacheService? previewCache = null)
     {
         _context = context;
         _logger = logger;
         _aiService = aiService;
         _entitlements = entitlements;
+        _previewCache = previewCache;
     }
 
     /// <summary>Refuses a new document when the plan's documents are used (and limits are enforced).</summary>
@@ -653,6 +655,9 @@ public class DocumentService : IDocumentService
         document.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
+        // The previews are built from these settings and the title: cached, they kept the old ones
+        // for up to an hour after a rename or a settings change (16 Oct).
+        if (_previewCache is not null) await _previewCache.InvalidateCacheAsync(id);
 
         return await GetDocumentAsync(id, userId);
     }
