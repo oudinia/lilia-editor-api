@@ -73,16 +73,33 @@ public class McpWriteToolsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task For_now_an_app_edits_without_the_write_scope()
+    public async Task An_app_without_the_write_scope_may_read_but_not_edit_and_is_told_how_to_allow_it()
     {
-        // The user, 12 Oct: "for now, let's give the mcp write capability also".
+        // Gate A, 16 Oct: the shipped settings require documents:write (it was open from 12 Oct).
         await SeedUserAsync("mcpw_no_scope");
         var doc = await SeedDocumentAsync("mcpw_no_scope");
         await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body."}""", 0);
-        var r = await CallAsync(App("mcpw_no_scope", "openid email profile"), "add_block",
+        var r = await CallAsync(App("mcpw_no_scope", "openid email profile documents:read"), "add_block",
             new { documentId = doc.Id.ToString(), type = "paragraph", content = """{"text":"From an app."}""" });
-        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        r.GetProperty("error").GetString().Should().Contain("connect again");
+        (await BlockCountAsync(doc.Id)).Should().Be(1, "nothing was written");
+
+        var allowed = await CallAsync(App("mcpw_no_scope", "openid email documents:read documents:write"), "add_block",
+            new { documentId = doc.Id.ToString(), type = "paragraph", content = """{"text":"From an app."}""" });
+        allowed.TryGetProperty("error", out _).Should().BeFalse(allowed.ToString());
         (await BlockCountAsync(doc.Id)).Should().Be(2);
+    }
+
+    [Fact]
+    public void The_shipped_settings_require_the_write_scope_for_an_apps_edits()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "src", "Lilia.Api", "appsettings.json"))) dir = dir.Parent;
+        dir.Should().NotBeNull("the test runs inside the repository");
+        var config = Microsoft.Extensions.Configuration.JsonConfigurationExtensions.AddJsonFile(
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder(),
+            Path.Combine(dir!.FullName, "src", "Lilia.Api", "appsettings.json")).Build();
+        Lilia.Api.Mcp.LiliaMcpWriteTools.RequireWriteScope(config).Should().BeTrue();
     }
 
     [Fact]
