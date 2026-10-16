@@ -241,7 +241,9 @@ public partial class RenderService : IRenderService
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         var processed = ProcessInlineContent(text);
-        return $"<p class=\"paragraph\">{processed}</p>";
+        var align = ParagraphAlign(content);
+        var style = align is null ? "" : $" style=\"text-align:{align}\"";
+        return $"<p class=\"paragraph\"{style}>{processed}</p>";
     }
 
     /// <summary>
@@ -1474,8 +1476,26 @@ public partial class RenderService : IRenderService
     private string RenderParagraphToLatex(JsonElement content)
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
-        return ProcessLatexText(text) + "\n";
+        var body = ProcessLatexText(text);
+        // Alignment from the editor (Block menu): LaTeX justifies by default, so only centre and
+        // right need an environment; justify is already what the class does.
+        return ParagraphAlign(content) switch
+        {
+            "center" => $"\\begin{{center}}\n{body}\n\\end{{center}}\n",
+            "right" => $"\\begin{{flushright}}\n{body}\n\\end{{flushright}}\n",
+            _ => body + "\n",
+        };
     }
+
+    /// <summary>
+    /// A paragraph's <c>align</c> (center, right, justify), as the editor saves it; null when
+    /// absent or anything else, which is the class's own setting.
+    /// </summary>
+    public static string? ParagraphAlign(JsonElement content) =>
+        content.ValueKind == JsonValueKind.Object && content.TryGetProperty("align", out var a)
+            && a.ValueKind == JsonValueKind.String && a.GetString() is "center" or "right" or "justify"
+            ? a.GetString()
+            : null;
 
     private string RenderAbstractToLatex(JsonElement content)
     {
