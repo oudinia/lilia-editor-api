@@ -20,7 +20,7 @@ namespace Lilia.Api.Mcp;
 ///   (<see cref="AskLiliaService.BuildDocumentTools"/>): same validation, same saving.</item>
 /// <item><b>Who may write.</b> The author must be the owner or an editor. With
 ///   <c>Mcp:RequireWriteScope</c> on, an app's token must also carry <see cref="WriteScope"/> (the
-///   author allowed edits on the consent page); it is off for now.</item>
+///   author allowed edits on the consent page); on since 16 Oct.</item>
 /// <item><b>Undo.</b> Before an app's first change to a document (again after
 ///   <see cref="UndoWindow"/> without changes), a version is saved; every reply gives its id.</item>
 /// <item><b>Live.</b> The open editor hears <c>DocumentChangedExternally</c> on the document's
@@ -63,8 +63,8 @@ public sealed class LiliaMcpWriteTools(
     /// <summary>
     /// Lilia's own sign-in may write. An app may write too, unless <c>Mcp:RequireWriteScope</c> is
     /// on: then only with <see cref="WriteScope"/> (the author allowed edits on the consent page).
-    /// Off for now (the user, 12 Oct: "for now, let's give the mcp write capability also"): the
-    /// Stytch RBAC scopes are not set up yet, and the consent page says the app can edit.
+    /// On since 16 Oct 2026 (it was off from 12 Oct, before Stytch had the scopes): documents:read and
+    /// documents:write are Stytch RBAC scopes in the Test and Live projects, granted to stytch_user.
     /// </summary>
     internal static bool AppMayWrite(System.Security.Claims.ClaimsPrincipal? user, bool requireScope) =>
         !requireScope || Scopes(user) is not { } scopes || scopes.Contains(WriteScope);

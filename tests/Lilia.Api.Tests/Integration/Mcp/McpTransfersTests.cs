@@ -109,6 +109,8 @@ public class McpTransfersTests : IntegrationTestBase
         await SeedUserAsync("mcpx_appimport");
         var app = CreateClientAs("mcpx_appimport");
         app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        // An import creates a document: the author allowed edits on the consent page (16 Oct).
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
 
         var tex = await CallAsync(app, "import_document", new
         {
