@@ -1,0 +1,149 @@
+@page "/stats"
+@inject AdminStats StatsService
+@inject NavigationManager Nav
+
+<PageTitle>Stats · Lilia admin</PageTitle>
+<h1>Stats</h1>
+<p class="lede">Trends, active accounts, who stays, what is used and how fast. An account is active on a day when it saved, asked Lilia, compiled, imported or exported, or created a document. Nothing here reads what people write.</p>
+
+<div class="filters" data-testid="admin-stats-period">
+    @foreach (var d in new[] { 7, 30, 90 })
+    {
+        <button class="@(d == days ? "on" : "")" @onclick="() => Load(d)" data-testid="admin-stats-period-option" data-days="@d">@d days</button>
+    }
+</div>
+
+@if (s is null)
+{
+    <p class="muted" data-testid="admin-loading">Counting…</p>
+}
+else
+{
+    <section class="tiles" data-testid="admin-stats-kpis">
+        @foreach (var k in s.Kpis)
+        {
+            <div class="tile" data-testid="admin-kpi" data-kpi="@k.Name">
+                <span class="label">@k.Name</span>
+                <span class="value">@Fmt.Number(k.Value)</span>
+                <span class="note">@Change(k)</span>
+            </div>
+        }
+        <div class="tile" data-testid="admin-kpi" data-kpi="Stickiness">
+            <span class="label">Active today · 7 days · 30 days</span>
+            <span class="value">@s.Dau · @s.Wau · @s.Mau</span>
+            <span class="note">@(s.Mau == 0 ? "no one active this month" : $"{Math.Round(100.0 * s.Dau / s.Mau)}% of the month's accounts came today")</span>
+        </div>
+    </section>
+
+    <h2>Every day</h2>
+    <div class="charts">
+        @foreach (var series in s.Daily)
+        {
+            <LineChart Name="@series.Name" Values="series.Values" Days="s.DayAxis"
+                       Headline="@(series.Name == "Active accounts" ? $"peak {series.Values.DefaultIfEmpty(0).Max()}" : null)" />
+        }
+    </div>
+
+    <h2>Who comes back: weekly cohorts</h2>
+    <p class="muted">Each row is the accounts that signed up that week; each cell, the share of them active in the weeks after.</p>
+    <table class="cohorts" data-testid="admin-cohorts">
+        <thead><tr><th>Week of</th><th class="num">Accounts</th>@for (var k = 0; k < 8; k++) { <th class="num">W@(k)</th> }</tr></thead>
+        <tbody>
+            @foreach (var c in s.Cohorts)
+            {
+                <tr>
+                    <td>@c.Week.ToString("d MMM")</td>
+                    <td class="num">@c.Size</td>
+                    @foreach (var p in c.ActivePercentByWeek)
+                    {
+                        if (p is null) { <td class="cell empty"></td> }
+                        else { <td class="cell num" style="--p:@(p.Value / 100.0)">@p%</td> }
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2>From sign-up to first export</h2>
+    <p class="muted">Accounts that signed up in this period, and how far they went.</p>
+    <div class="funnel" data-testid="admin-funnel">
+        @{ var top = Math.Max(1, s.Funnel[0].Count); }
+        @foreach (var f in s.Funnel)
+        {
+            <div class="step" data-testid="admin-funnel-step" data-step="@f.Name">
+                <span class="name">@f.Name</span>
+                <span class="track"><span style="width:@((int)Math.Round(100.0 * f.Count / top))%"></span></span>
+                <span class="num">@f.Count <em>@((int)Math.Round(100.0 * f.Count / top))%</em></span>
+            </div>
+        }
+    </div>
+
+    <div class="cols">
+        <section>
+            <h2>Ask Lilia, by purpose</h2>
+            <BarList Rows="s.AskByPurpose" Label="Purpose" ExtraLabel="Tokens" Id="ask-purpose" Empty="No request in this period." />
+        </section>
+        <section>
+            <h2>Ask Lilia, by model</h2>
+            <BarList Rows="s.AskByModel" Label="Model" ExtraLabel="Tokens" Id="ask-model" Empty="No request in this period." />
+        </section>
+        <section>
+            <h2>Exports, by format</h2>
+            <BarList Rows="s.Exports" Label="Format" ExtraLabel="Failed" Id="exports" Empty="No export in this period." />
+        </section>
+        <section>
+            <h2>Imports, by format</h2>
+            <BarList Rows="s.Imports" Label="Format" ExtraLabel="Failed" Id="imports" Empty="No import in this period." />
+        </section>
+        <section>
+            <h2>Accounts by plan</h2>
+            <BarList Rows="s.Plans" Label="Plan" Id="plans" />
+        </section>
+        <section>
+            <h2>How fast</h2>
+            <table data-testid="admin-speed">
+                <thead><tr><th></th><th class="num">Median</th><th class="num">95th %</th><th class="num">Samples</th></tr></thead>
+                <tbody>
+                    <tr><td>A compile</td><td class="num">@Ms(s.CompileMs.P50)</td><td class="num">@Ms(s.CompileMs.P95)</td><td class="num">@Fmt.Number(s.CompileMs.Samples)</td></tr>
+                    <tr><td>An Ask Lilia answer</td><td class="num">@Ms(s.AskMs.P50)</td><td class="num">@Ms(s.AskMs.P95)</td><td class="num">@Fmt.Number(s.AskMs.Samples)</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <h2>Most active accounts</h2>
+    <table data-testid="admin-top-authors">
+        <thead><tr><th>Account</th><th class="num">Active days</th><th class="num">Documents</th><th class="num">Ask tokens</th></tr></thead>
+        <tbody>
+            @foreach (var a in s.TopAuthors)
+            {
+                <tr><td><a href="users/@Uri.EscapeDataString(a.UserId)">@a.Email</a></td><td class="num">@a.ActiveDays</td><td class="num">@a.Documents</td><td class="num">@Fmt.Number(a.AskTokens)</td></tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [SupplyParameterFromQuery] public int? Days { get; set; }
+    private int days = 30;
+    private Stats? s;
+
+    protected override async Task OnInitializedAsync()
+    {
+        days = Days is 7 or 30 or 90 ? Days.Value : 30;
+        s = await StatsService.StatsAsync(days);
+    }
+
+    private async Task Load(int d)
+    {
+        days = d; s = null;
+        Nav.NavigateTo($"stats?days={d}", replace: true);
+        s = await StatsService.StatsAsync(d);
+    }
+
+    private string Change(Kpi k) => k.Change is { } c
+        ? $"{(c >= 0 ? "▲" : "▼")} {Math.Abs(Math.Round(c))}% vs the previous {days} days"
+        : k.Previous == 0 && k.Value > 0 ? $"none in the previous {days} days" : $"none in the previous {days} days either";
+
+    private static string Ms(int ms) => ms == 0 ? "–" : ms < 1000 ? $"{ms} ms" : $"{ms / 1000.0:0.0} s";
+}

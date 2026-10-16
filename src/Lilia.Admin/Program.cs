@@ -23,6 +23,7 @@ builder.Services.AddDbContextFactory<LiliaDbContext>(o => o
     .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AdminQueries>();
+builder.Services.AddScoped<AdminStats>();
 
 builder.AddAdminAccess();
 

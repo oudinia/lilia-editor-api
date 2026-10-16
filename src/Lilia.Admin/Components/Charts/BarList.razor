@@ -1,0 +1,30 @@
+@* Named counts as horizontal bars, largest first. *@
+@if (Rows.Count == 0)
+{
+    <p class="muted">@Empty</p>
+}
+else
+{
+    var max = Math.Max(1, Rows.Max(r => r.Count));
+    <table class="barlist" data-testid="admin-barlist" data-list="@Id">
+        <thead><tr><th>@Label</th><th class="num">Count</th>@if (ExtraLabel is not null) { <th class="num">@ExtraLabel</th> }</tr></thead>
+        <tbody>
+            @foreach (var r in Rows)
+            {
+                <tr>
+                    <td><span class="bar-bg" style="width:@((int)Math.Round(100.0 * r.Count / max))%"></span><span class="bar-label">@r.Name</span></td>
+                    <td class="num">@Fmt.Number(r.Count)</td>
+                    @if (ExtraLabel is not null) { <td class="num">@Fmt.Number(r.Extra)</td> }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Slice> Rows { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? ExtraLabel { get; set; }
+    [Parameter] public string Id { get; set; } = "";
+    [Parameter] public string Empty { get; set; } = "Nothing yet.";
+}
