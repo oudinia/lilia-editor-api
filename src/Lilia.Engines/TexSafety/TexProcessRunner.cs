@@ -126,6 +126,18 @@ public static class TexProcessRunner
         var outDir = System.Text.RegularExpressions.Regex.Match(arguments, "-output-directory[= ]\"?([^\"\\s]+)");
         if (outDir.Success && outDir.Groups[1].Value.StartsWith('/') && !Under(outDir.Groups[1].Value, workingDir))
             b.Add($"--bind {Q(outDir.Groups[1].Value)} {Q(outDir.Groups[1].Value)}");
+        // LuaLaTeX looks for its font-name database only in the first writable cache, which in the
+        // sandbox is the empty .texmf-var of the work directory: it rebuilt the database on every
+        // compile (20 s instead of 2). The tree's database is shown there, read-only.
+        foreach (var dir in readOnly)
+        {
+            var names = Path.Combine(dir, "luatex-cache", "generic", "names");
+            if (dir.StartsWith('/') && Directory.Exists(names))
+            {
+                b.Add($"--ro-bind {Q(names)} {Q(Path.Combine(workingDir, ".texmf-var", "luatex-cache", "generic", "names"))}");
+                break;
+            }
+        }
         b.Add($"--chdir {Q(workingDir)}");
         b.Add("--unshare-all --die-with-parent --new-session --cap-drop ALL");
         return string.Join(' ', b);

@@ -94,6 +94,21 @@ public class TexProcessRunnerTests
     }
 
     [Fact]
+    public void The_trees_lua_font_database_is_shown_read_only_where_LuaLaTeX_looks_for_it()
+    {
+        var tree = Path.Combine(Path.GetTempPath(), $"lilia-tree-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(tree, "luatex-cache", "generic", "names"));
+        try
+        {
+            var args = TexProcessRunner.Build("lualatex", "doc.tex", "/tmp/w", sandbox: true, readOnly: [tree]).Arguments;
+            args.Should().Contain($"--ro-bind \"{tree}/luatex-cache/generic/names\" \"/tmp/w/.texmf-var/luatex-cache/generic/names\"");
+            args.IndexOf("--bind \"/tmp/w\"", StringComparison.Ordinal).Should()
+                .BeLessThan(args.IndexOf("/tmp/w/.texmf-var", StringComparison.Ordinal), "it is mounted inside the work directory, so after it");
+        }
+        finally { Directory.Delete(tree, true); }
+    }
+
+    [Fact]
     public void Without_the_sandbox_nothing_changes()
     {
         TexProcessRunner.Build("pdflatex", "doc.tex", "/tmp/w").FileName.Should().Be("pdflatex");
