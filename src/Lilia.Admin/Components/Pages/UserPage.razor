@@ -1,0 +1,66 @@
+@page "/users/{Id}"
+@inject AdminQueries Queries
+
+<PageTitle>@(u?.User.Email ?? "Account") · Lilia admin</PageTitle>
+<p><a href="users" data-testid="admin-user-back">← Users</a></p>
+
+@if (loaded && u is null)
+{
+    <h1>No such account</h1>
+}
+else if (u is not null)
+{
+    <h1 data-testid="admin-user-email">@u.User.Email</h1>
+    <p class="lede">@(u.User.Name ?? "No name") · joined @Fmt.Day(u.User.CreatedAt) · plan @(u.User.Plan ?? "free")
+        @if (u.User.DeletionRequested) { <span class="chip warn">asked to close the account</span> }</p>
+
+    <section class="tiles">
+        <Tile Label="Documents" Value="@u.User.Documents" Id="user-documents" />
+        <Tile Label="Ask Lilia, 30 days" Value="@u.AskRequests30d" Note="@($"{Fmt.Number(u.AskTokens30d)} tokens")" Id="user-ask" />
+        <Tile Label="Recent compile failures" Value="@u.RecentCompileFailures.Count" Id="user-compiles" Warn="@(u.RecentCompileFailures.Count > 0)" />
+    </section>
+
+    <h2>Documents</h2>
+    <p class="muted">Titles and dates only: the console never opens a document.</p>
+    <table data-testid="admin-user-documents">
+        <thead><tr><th>Title</th><th>Created</th><th>Changed</th></tr></thead>
+        <tbody>
+            @foreach (var d in u.Documents)
+            {
+                <tr class="@(d.Deleted ? "dim" : "")"><td>@d.Title @if (d.Deleted) { <span class="chip">in trash</span> }</td><td>@Fmt.Day(d.CreatedAt)</td><td>@Fmt.When(d.UpdatedAt)</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (u.RecentCompileFailures.Count > 0)
+    {
+        <h2>Compile failures</h2>
+        <table>
+            <thead><tr><th>When</th><th>Category</th><th>Token</th><th>Document</th></tr></thead>
+            <tbody>@foreach (var c in u.RecentCompileFailures) { <tr><td>@Fmt.When(c.At)</td><td>@c.Category</td><td><code>@c.Token</code></td><td><code>@c.DocumentId</code></td></tr> }</tbody>
+        </table>
+    }
+
+    <h2>Credits</h2>
+    @if (u.Ledger.Count == 0) { <p class="muted">No credit movements.</p> }
+    else
+    {
+        <table><thead><tr><th>When</th><th>Change</th><th>Reason</th><th>Note</th></tr></thead>
+            <tbody>@foreach (var l in u.Ledger) { <tr><td>@Fmt.When(l.At)</td><td class="num">@l.Delta</td><td>@l.Reason</td><td>@l.Note</td></tr> }</tbody></table>
+    }
+
+    <h2>Activity</h2>
+    @if (u.Audit.Count == 0) { <p class="muted">No recorded activity.</p> }
+    else
+    {
+        <table data-testid="admin-user-audit"><thead><tr><th>When</th><th>Action</th><th>On</th></tr></thead>
+            <tbody>@foreach (var a in u.Audit) { <tr><td>@Fmt.When(a.At)</td><td>@a.Action</td><td>@a.EntityType <code>@a.EntityId</code></td></tr> }</tbody></table>
+    }
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    private UserDetail? u;
+    private bool loaded;
+    protected override async Task OnParametersSetAsync() { u = await Queries.UserAsync(Id); loaded = true; }
+}

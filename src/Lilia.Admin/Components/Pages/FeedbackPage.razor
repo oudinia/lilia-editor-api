@@ -1,0 +1,49 @@
+@page "/feedback"
+@inject AdminQueries Queries
+
+<PageTitle>Feedback · Lilia admin</PageTitle>
+<h1>Feedback</h1>
+<div class="filters" data-testid="admin-feedback-filter">
+    @foreach (var s in new string?[] { null }.Concat(AdminQueries.FeedbackStatuses))
+    {
+        <button class="@(s == status ? "on" : "")" @onclick="() => Filter(s)" data-testid="admin-feedback-filter-option" data-status="@(s ?? "all")">@(s ?? "all")</button>
+    }
+</div>
+
+@if (rows is null) { <p class="muted">Loading…</p> }
+else if (rows.Count == 0) { <p class="muted" data-testid="admin-feedback-empty">Nothing here.</p> }
+else
+{
+    <table data-testid="admin-feedback">
+        <thead><tr><th>When</th><th>Type</th><th>Message</th><th>Where</th><th>Status</th></tr></thead>
+        <tbody>
+            @foreach (var f in rows)
+            {
+                <tr data-testid="admin-feedback-row" data-feedback-id="@f.Id">
+                    <td>@Fmt.When(f.At)</td>
+                    <td><span class="chip">@f.Type</span></td>
+                    <td class="msg">@f.Message</td>
+                    <td>@f.Page @if (f.UserId is not null) { <br /><a href="users/@Uri.EscapeDataString(f.UserId)">account</a> }</td>
+                    <td>
+                        <select value="@f.Status" @onchange="e => SetStatus(f.Id, e.Value?.ToString())" data-testid="admin-feedback-status">
+                            @foreach (var s in AdminQueries.FeedbackStatuses) { <option value="@s">@s</option> }
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string? status = "new";
+    private IReadOnlyList<FeedbackRow>? rows;
+    protected override async Task OnInitializedAsync() => rows = await Queries.FeedbackAsync(status);
+    private async Task Filter(string? s) { status = s; rows = await Queries.FeedbackAsync(status); }
+    private async Task SetStatus(Guid id, string? s)
+    {
+        if (s is null) return;
+        await Queries.SetFeedbackStatusAsync(id, s);
+        rows = await Queries.FeedbackAsync(status);
+    }
+}
