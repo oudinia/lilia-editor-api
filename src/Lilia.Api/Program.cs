@@ -811,6 +811,15 @@ builder.Services.AddScoped<IEpubReviewImporter, EpubReviewImporter>();
 
 var app = builder.Build();
 
+// LILIA_TEX_SANDBOX=bwrap: every TeX process runs in bubblewrap (16 Oct 2026). Checked once here,
+// because a sandbox that cannot start fails every compile.
+if (Lilia.Engines.TexSafety.TexProcessRunner.Sandboxed)
+{
+    var (sandboxOk, sandboxDetail) = await Lilia.Engines.TexSafety.TexProcessRunner.SandboxSelfTestAsync();
+    if (sandboxOk) Console.WriteLine($"[BOOT] TeX sandbox (bwrap) ready: {sandboxDetail}");
+    else Console.Error.WriteLine($"[BOOT] TeX sandbox (bwrap) CANNOT START, every compile will fail: {sandboxDetail}");
+}
+
 // Document themes: find out once, in the background, which themes' TeX packages are installed
 // (GET /api/themes reports it as `available`; an unavailable theme is never compiled).
 _ = Lilia.Engines.Themes.ThemeAvailability.WarmUpAsync();
