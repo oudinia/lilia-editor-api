@@ -135,8 +135,15 @@ public class ImportHintService : IImportHintService
         if (f is null) return false;
         if (f.SessionId.HasValue && !await CanAccessSessionAsync(f.SessionId.Value, userId, ct)) return false;
         if (f.DocumentId.HasValue && !await CanAccessDocumentAsync(f.DocumentId.Value, userId, ct)) return false;
+        if (f.Status != "pending") return false;
 
         var now = DateTime.UtcNow;
+        // In a review session, Apply makes the change it offers: nothing in the review UI did, so an
+        // applied "looks like a heading" left the paragraph a paragraph (16 Oct). Document hints are
+        // still changed by their caller.
+        if (f.SessionId.HasValue && !string.IsNullOrEmpty(f.BlockId))
+            await ApplyToReviewBlockAsync(f, userId, now, ct);
+
         var affected = await _context.ImportStructuralFindings
             .Where(x => x.Id == findingId && x.Status == "pending")
             .ExecuteUpdateAsync(u => u
@@ -145,6 +152,44 @@ public class ImportHintService : IImportHintService
                 .SetProperty(x => x.ResolvedAt, now)
                 .SetProperty(x => x.UpdatedAt, now), ct);
         return affected > 0;
+    }
+
+    /// <summary>
+    /// The review block a session hint names, changed as the hint says: <c>convert_block_type</c>
+    /// sets its type (a heading gets level 1 unless it has one), <c>delete_block</c> rejects it so
+    /// finalize leaves it out. Other actions are left to their own path.
+    /// </summary>
+    private async Task ApplyToReviewBlockAsync(ImportStructuralFinding f, string userId, DateTime now, CancellationToken ct)
+    {
+        var review = await _context.ImportBlockReviews
+            .FirstOrDefaultAsync(b => b.SessionId == f.SessionId!.Value && b.BlockId == f.BlockId, ct);
+        if (review is null) return;
+
+        switch (f.ActionKind)
+        {
+            case "convert_block_type":
+            {
+                var target = f.ActionPayload?.RootElement.TryGetProperty("targetType", out var t) == true ? t.GetString() : null;
+                if (string.IsNullOrEmpty(target)) return;
+                var fields = new Dictionary<string, object?>();
+                var source = (review.CurrentContent ?? review.OriginalContent).RootElement;
+                if (source.ValueKind == JsonValueKind.Object)
+                    foreach (var p in source.EnumerateObject()) fields[p.Name] = p.Value.Clone();
+                if (target == "heading" && !fields.ContainsKey("level")) fields["level"] = 1;
+                review.CurrentType = target;
+                review.CurrentContent = JsonDocument.Parse(JsonSerializer.Serialize(fields));
+                review.Status = "edited";
+                break;
+            }
+            case "delete_block":
+                review.Status = "rejected";
+                break;
+            default:
+                return;
+        }
+        review.ReviewedBy = userId;
+        review.ReviewedAt = now;
+        await _context.SaveChangesAsync(ct);
     }
 
     public async Task<bool> DismissAsync(Guid findingId, string userId, CancellationToken ct = default)
