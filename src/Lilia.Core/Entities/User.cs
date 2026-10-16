@@ -18,6 +18,12 @@ public class User
     /// </summary>
     public int? LegalAcceptedVersion { get; set; }
     public DateTime? LegalAcceptedAt { get; set; }
+
+    /// <summary>
+    /// The author turned on two-step sign-in (Settings → Security). The API then accepts only sessions
+    /// that used a second factor (an authenticator code or a recovery code).
+    /// </summary>
+    public bool TwoStepEnabled { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string? Username { get; set; }

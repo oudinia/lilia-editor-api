@@ -7385,6 +7385,12 @@ namespace Lilia.Infrastructure.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("two_factor_enabled");
 
+                    b.Property<bool>("TwoStepEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("two_step_enabled");
+
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
