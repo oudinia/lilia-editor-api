@@ -372,7 +372,14 @@ public class TypstRenderService : ITypstRenderService
     private static string RenderParagraphToTypst(JsonElement content)
     {
         var text = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
-        return ProcessTypstText(text);
+        var body = ProcessTypstText(text);
+        return Lilia.Engines.RenderService.ParagraphAlign(content) switch
+        {
+            "center" => $"#align(center)[{body}]",
+            "right" => $"#align(right)[{body}]",
+            "justify" => $"#par(justify: true)[{body}]",
+            _ => body,
+        };
     }
 
     private static string RenderEquationToTypst(JsonElement content)

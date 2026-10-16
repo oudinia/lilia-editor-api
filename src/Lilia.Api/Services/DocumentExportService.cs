@@ -611,7 +611,8 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Text = text,
-                RichText = MapRichText(content, text)
+                RichText = MapRichText(content, text),
+                Alignment = Lilia.Engines.RenderService.ParagraphAlign(content),
             }
         };
     }

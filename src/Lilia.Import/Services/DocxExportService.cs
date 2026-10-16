@@ -361,6 +361,14 @@ public class DocxExportService : IDocxExportService
     {
         var para = new Paragraph();
         var content = block.Content;
+        JustificationValues? justify = content.Alignment switch
+        {
+            "center" => JustificationValues.Center,
+            "right" => JustificationValues.Right,
+            "justify" => JustificationValues.Both,
+            _ => null,
+        };
+        if (justify is { } j) para.AppendChild(new ParagraphProperties(new Justification { Val = j }));
 
         if (content.RichText != null && content.RichText.Count > 0)
         {

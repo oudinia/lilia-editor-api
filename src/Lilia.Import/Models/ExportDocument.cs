@@ -106,6 +106,9 @@ public class ExportBlockContent
     /// </summary>
     public List<ExportRichTextSpan>? RichText { get; set; }
 
+    /// <summary>A paragraph's alignment from the editor: center, right or justify; null = the default.</summary>
+    public string? Alignment { get; set; }
+
     /// <summary>
     /// Heading level (1-6).
     /// </summary>
