@@ -211,6 +211,21 @@ builder.Host.UseSerilog((context, services, configuration) =>
 {
     configuration.ReadFrom.Configuration(context.Configuration);
 
+    // Logged errors go to Bugsink too, not only the exceptions captured by hand: Wolverine's and
+    // the background workers' never reached it. The SDK is initialised by UseSentry above.
+    // Breadcrumbs from warnings up only: info lines can name documents.
+    if (!string.IsNullOrEmpty(sentryDsn))
+    {
+        configuration.WriteTo.Logger(sink => sink
+            .Filter.ByExcluding(ErrorTrackerLogFilter.IsAlreadyReported)
+            .WriteTo.Sentry(o =>
+            {
+                o.InitializeSdk = false;
+                o.MinimumEventLevel = Serilog.Events.LogEventLevel.Error;
+                o.MinimumBreadcrumbLevel = Serilog.Events.LogEventLevel.Warning;
+            }));
+    }
+
     var betterStackToken = context.Configuration["BetterStack:SourceToken"];
     if (!string.IsNullOrEmpty(betterStackToken))
     {
