@@ -95,61 +95,6 @@ namespace Lilia.Infrastructure.Migrations
                     b.ToTable("accounts", (string)null);
                 });
 
-            modelBuilder.Entity("Lilia.Core.Entities.AdminAction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("action");
-
-                    b.Property<string>("AdminEmail")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("admin_email");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<JsonDocument>("Details")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("details");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("reason");
-
-                    b.Property<string>("TargetUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("target_user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt")
-                        .HasDatabaseName("ix_admin_actions_created");
-
-                    b.HasIndex("TargetUserId", "CreatedAt")
-                        .HasDatabaseName("ix_admin_actions_target");
-
-                    b.ToTable("admin_actions", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status')");
-                        });
-                });
-
             modelBuilder.Entity("Lilia.Core.Entities.AiChat", b =>
                 {
                     b.Property<string>("Id")
