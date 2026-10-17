@@ -21,7 +21,7 @@ public sealed record AuditRow(DateTime At, string Action, string EntityType, str
 public sealed record CompileFailure(DateTime At, Guid? DocumentId, string? Category, string? Token);
 
 public sealed record UserDetail(
-    UserRow User, IReadOnlyList<DocumentRow> Documents,
+    UserRow User, int? TermsVersion, DateTime? TermsAcceptedAt, IReadOnlyList<DocumentRow> Documents,
     int AskRequests30d, long AskTokens30d, IReadOnlyList<LedgerRow> Ledger,
     IReadOnlyList<AuditRow> Audit, IReadOnlyList<CompileFailure> RecentCompileFailures);
 
@@ -95,8 +95,9 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
         if (row is null) return null;
         var since = clock.GetUtcNow().UtcDateTime.AddDays(-30);
         var ask = db.AiRequests.AsNoTracking().Where(r => r.UserId == id && r.CreatedAt >= since);
+        var terms = await db.Users.Where(u => u.Id == id).Select(u => new { u.LegalAcceptedVersion, u.LegalAcceptedAt }).FirstAsync(ct);
         return new UserDetail(
-            row,
+            row, terms.LegalAcceptedVersion, terms.LegalAcceptedAt,
             await db.Documents.IgnoreQueryFilters().AsNoTracking().Where(d => d.OwnerId == id).OrderByDescending(d => d.UpdatedAt).Take(100)
                 .Select(d => new DocumentRow(d.Id, d.CreatedAt, d.UpdatedAt, d.DeletedAt != null, db.Blocks.Count(b => b.DocumentId == d.Id))).ToListAsync(ct),
             await ask.CountAsync(ct),

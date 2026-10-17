@@ -11,6 +11,13 @@ public class User
     /// once and erased 30 days later unless they restore it; null otherwise.
     /// </summary>
     public DateTime? DeletionRequestedAt { get; set; }
+    /// <summary>
+    /// The version of the Terms the author last accepted: at sign-up, or with OK on the notice that
+    /// the Terms changed (launch redesign 2c). Null for accounts made before it was recorded (16 Oct
+    /// 2026); they see the notice once.
+    /// </summary>
+    public int? LegalAcceptedVersion { get; set; }
+    public DateTime? LegalAcceptedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string? Username { get; set; }

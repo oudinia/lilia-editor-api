@@ -83,6 +83,43 @@ public class MeController : ControllerBase
         return new ProfileDto(user.Id, user.Email, user.Name, user.Image);
     }
 
+    public record LegalAcceptanceDto(int? Version, DateTime? AcceptedAt);
+    public record AcceptLegalRequest(int Version);
+
+    /// <summary>Which version of the Terms the author last accepted (null: none recorded yet).</summary>
+    [HttpGet("legal")]
+    public async Task<ActionResult<LegalAcceptanceDto>> GetLegal([FromServices] LiliaDbContext db, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        return user is null ? NotFound() : new LegalAcceptanceDto(user.LegalAcceptedVersion, user.LegalAcceptedAt);
+    }
+
+    /// <summary>
+    /// Record that the author accepted this version of the Terms: at sign-up (the terms line) or with
+    /// OK on the notice that they changed (launch redesign 2c). A version is never lowered, so an old
+    /// tab can't undo a newer acceptance; the date is the first acceptance of that version.
+    /// </summary>
+    [HttpPost("legal")]
+    public async Task<ActionResult<LegalAcceptanceDto>> AcceptLegal([FromBody] AcceptLegalRequest req, [FromServices] LiliaDbContext db, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (req.Version is < 1 or > 999)
+            return BadRequest(new { code = "VALIDATION_FAILED", message = "A Terms version is 1 to 999." });
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return NotFound();
+        if (user.LegalAcceptedVersion is not { } accepted || req.Version > accepted)
+        {
+            user.LegalAcceptedVersion = req.Version;
+            user.LegalAcceptedAt = DateTime.UtcNow;
+            user.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return new LegalAcceptanceDto(user.LegalAcceptedVersion, user.LegalAcceptedAt);
+    }
+
     /// <summary>Start "export everything" (Settings → Your data); returns the running one if there is one.</summary>
     [HttpPost("export")]
     public async Task<ActionResult<AccountExportDto>> StartExport([FromServices] AccountExportService exports, CancellationToken ct)
