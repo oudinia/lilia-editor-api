@@ -13,6 +13,7 @@ else if (u is not null)
     <h1 data-testid="admin-user-email">@u.User.Email</h1>
     <p class="lede">@(u.User.Name ?? "No name") · joined @Fmt.Day(u.User.CreatedAt) · plan @(u.User.Plan ?? "free")
         @if (u.User.DeletionRequested) { <span class="chip warn">asked to close the account</span> }</p>
+    <p class="muted" data-testid="admin-user-terms">Terms: @(u.TermsVersion is { } v ? $"version {v} accepted {Fmt.When(u.TermsAcceptedAt)}" : "not accepted yet (the notice asks on the next visit)")</p>
 
     <section class="tiles">
         <Tile Label="Documents" Value="@u.User.Documents" Id="user-documents" />

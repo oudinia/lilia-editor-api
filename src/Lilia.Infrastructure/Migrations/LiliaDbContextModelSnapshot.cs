@@ -7292,6 +7292,14 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("image");
 
+                    b.Property<DateTime?>("LegalAcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("legal_accepted_at");
+
+                    b.Property<int?>("LegalAcceptedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("legal_accepted_version");
+
                     b.Property<string>("Locale")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
