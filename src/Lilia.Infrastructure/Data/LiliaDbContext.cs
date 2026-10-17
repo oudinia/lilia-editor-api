@@ -118,6 +118,7 @@ public class LiliaDbContext : DbContext
     public DbSet<LatexInsertionEvent> LatexInsertionEvents => Set<LatexInsertionEvent>();
     public DbSet<BlockValidation> BlockValidations => Set<BlockValidation>();
     public DbSet<BlockShape> BlockShapes => Set<BlockShape>();
+    public DbSet<AdminAction> AdminActions => Set<AdminAction>();
     public DbSet<BlockShapeQueueItem> BlockShapeQueue => Set<BlockShapeQueueItem>();
     public DbSet<ChangelogEntry> ChangelogEntries => Set<ChangelogEntry>();
     public DbSet<AiRequest> AiRequests => Set<AiRequest>();

@@ -12,7 +12,7 @@ public sealed record Overview(
     int Compiles7d, int CompilesFailed7d, int ImportErrors7d,
     int JobsFailed7d, int JobsStuck, int FeedbackNew);
 
-public sealed record UserRow(string Id, string Email, string? Name, DateTime CreatedAt, int Documents, DateTime? LastActive, string? Plan, bool DeletionRequested);
+public sealed record UserRow(string Id, string Email, string? Name, DateTime CreatedAt, int Documents, DateTime? LastActive, string? Plan, bool DeletionRequested, bool Suspended = false);
 
 /// <summary>No title: titles can be sensitive and stay hidden unless the author grants it (17 Oct).</summary>
 public sealed record DocumentRow(Guid Id, DateTime CreatedAt, DateTime UpdatedAt, bool Deleted, int Blocks);
@@ -141,8 +141,8 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
             .Select(f => new FeedbackRow(f.Id, f.CreatedAt, f.Type, f.Status, f.Message, f.Page, f.UserId, f.DocumentId)).ToListAsync(ct);
     }
 
-    /// <summary>Triage: the one write in phase 1. Returns false for an unknown id or status.</summary>
-    public async Task<bool> SetFeedbackStatusAsync(Guid id, string status, CancellationToken ct = default)
+    /// <summary>Triage. Returns false for an unknown id or status; recorded in admin_actions with the operator.</summary>
+    public async Task<bool> SetFeedbackStatusAsync(Guid id, string status, string? admin = null, CancellationToken ct = default)
     {
         if (!FeedbackStatuses.Contains(status)) return false;
         await using var db = await factory.CreateDbContextAsync(ct);
@@ -150,8 +150,16 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
         // without it this change was never saved.
         var f = await db.Feedback.AsTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (f is null) return false;
+        var before = f.Status;
         f.Status = status;
         f.UpdatedAt = clock.GetUtcNow().UtcDateTime;
+        if (admin is not null)
+            db.AdminActions.Add(new Lilia.Core.Entities.AdminAction
+            {
+                Id = Guid.NewGuid(), AdminEmail = admin, Action = "feedback_status", TargetUserId = f.UserId, Reason = "triage",
+                Details = System.Text.Json.JsonSerializer.SerializeToDocument(new { feedback = id, from = before, to = status }),
+                CreatedAt = clock.GetUtcNow().UtcDateTime,
+            });
         await db.SaveChangesAsync(ct);
         return true;
     }
@@ -160,12 +168,12 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
     {
         var list = await users.Select(u => new
         {
-            u.Id, u.Email, u.Name, u.CreatedAt, Deletion = u.DeletionRequestedAt != null,
+            u.Id, u.Email, u.Name, u.CreatedAt, Deletion = u.DeletionRequestedAt != null, Suspended = u.Banned && u.BanReason == "suspended",
             Documents = db.Documents.Count(d => d.OwnerId == u.Id && d.DeletedAt == null),
             LastActive = db.Documents.Where(d => d.OwnerId == u.Id).Max(d => (DateTime?)d.UpdatedAt),
             Plan = db.UserPlans.Where(p => p.UserId == u.Id && p.Status == "active")
                 .Join(db.Plans, p => p.PlanId, pl => pl.Id, (p, pl) => pl.Slug).FirstOrDefault(),
         }).ToListAsync(ct);
-        return list.Select(u => new UserRow(u.Id, u.Email, u.Name, u.CreatedAt, u.Documents, u.LastActive, u.Plan, u.Deletion)).ToList();
+        return list.Select(u => new UserRow(u.Id, u.Email, u.Name, u.CreatedAt, u.Documents, u.LastActive, u.Plan, u.Deletion, u.Suspended)).ToList();
     }
 }

@@ -1,5 +1,6 @@
 @page "/feedback"
 @inject AdminQueries Queries
+@inject AuthenticationStateProvider Auth
 
 <PageTitle>Feedback · Lilia admin</PageTitle>
 <h1>Feedback</h1>
@@ -43,7 +44,8 @@ else
     private async Task SetStatus(Guid id, string? s)
     {
         if (s is null) return;
-        await Queries.SetFeedbackStatusAsync(id, s);
+        var admin = (await Auth.GetAuthenticationStateAsync()).User.FindFirst("email")?.Value ?? "unknown";
+        await Queries.SetFeedbackStatusAsync(id, s, admin);
         rows = await Queries.FeedbackAsync(status);
     }
 }
