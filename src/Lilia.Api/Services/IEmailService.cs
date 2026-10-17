@@ -4,6 +4,12 @@ public interface IEmailService
 {
     Task SendDocumentInviteAsync(string toEmail, string inviterName, string documentTitle, string role, string documentUrl);
     Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null);
+    /// <summary>
+    /// An account email (export ready, account closed…): routed as <c>EmailKind.Account</c>, so it
+    /// never carries an Unsubscribe link. Test doubles that don't care get the plain send.
+    /// </summary>
+    Task SendAccountEmailAsync(string to, string subject, string htmlBody, string? textBody = null) =>
+        SendEmailAsync(to, subject, htmlBody, textBody);
     /// <summary>Welcome email triggered by Kinde user.created (LILIA-95).</summary>
     Task SendWelcomeAsync(string toEmail, string? firstName);
     /// <summary>

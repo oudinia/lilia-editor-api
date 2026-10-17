@@ -1,10 +1,7 @@
-using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
-using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.Extensions.Localization;
-using MimeKit;
+
+using Lilia.Api.Services.Email;
 
 namespace Lilia.Api.Services;
 
@@ -21,6 +18,17 @@ public class EmailSettings
     public string Transport { get; set; } = "resend";
 
     public string ResendApiKey { get; set; } = "";
+    public string ResendApiBase { get; set; } = "https://api.resend.com";
+
+    /// <summary>
+    /// Providers for account emails (sign-in, verify, reset, welcome, export, closure), in order:
+    /// the first that accepts the email sends it, e.g. <c>resend,smtp</c>. Unset: <see cref="Transport"/>.
+    /// See <see cref="Lilia.Api.Services.Email.EmailGateway"/>.
+    /// </summary>
+    public string? AccountRoute { get; set; }
+
+    /// <summary>Providers for notifications (sharing, teams), in order. Unset: <see cref="Transport"/>.</summary>
+    public string? NotificationRoute { get; set; }
     public string FromAddress { get; set; } = "noreply@liliaeditor.com";
     public string FromName { get; set; } = "Lilia";
     public string BaseUrl { get; set; } = "https://editor.liliaeditor.com";
@@ -46,18 +54,17 @@ public class EmailSettings
 
 public class EmailService : IEmailService
 {
-    private readonly HttpClient _http;
+    private readonly EmailGateway _gateway;
     private readonly EmailSettings _settings;
     private readonly ILogger<EmailService> _logger;
     private readonly IStringLocalizer<EmailService> _localizer;
 
-    public EmailService(EmailSettings settings, ILogger<EmailService> logger, IStringLocalizer<EmailService> localizer)
+    public EmailService(EmailSettings settings, ILogger<EmailService> logger, IStringLocalizer<EmailService> localizer, EmailGateway gateway)
     {
         _settings = settings;
         _logger = logger;
         _localizer = localizer;
-        _http = new HttpClient { BaseAddress = new Uri("https://api.resend.com") };
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ResendApiKey);
+        _gateway = gateway;
     }
 
     public async Task SendDocumentInviteAsync(string toEmail, string inviterName, string documentTitle, string role, string documentUrl)
@@ -160,36 +167,25 @@ public class EmailService : IEmailService
         </html>
         """;
         var text = $"{greeting} — welcome to Lilia.\n\nLilia is a writing studio for academic and technical work — block editor, LaTeX preview, DOCX/PDF import, and one-shot conversion.\n\nOpen your dashboard: {_settings.BaseUrl}/latex/docs\n\nReply to this email if you hit anything — early users get direct support.";
-        await SendEmailAsync(toEmail, subject, html, text);
+        await SendAccountEmailAsync(toEmail, subject, html, text);
     }
 
     public Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null) =>
-        SendEmailCoreAsync(to, subject, htmlBody, textBody, null);
+        SendEmailCoreAsync(to, subject, htmlBody, textBody, null, EmailKind.Notification);
 
-    /// <summary>Send, with an optional Reply-To (the owner, when they allow replies).</summary>
-    private async Task SendEmailCoreAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo)
+    /// <summary>An account email (the person asked for it or needs it): routed without Unsubscribe.</summary>
+    public Task SendAccountEmailAsync(string to, string subject, string htmlBody, string? textBody = null) =>
+        SendEmailCoreAsync(to, subject, htmlBody, textBody, null, EmailKind.Account);
+
+    /// <summary>Send, with an optional Reply-To (the owner, when they allow replies), through the gateway.</summary>
+    private async Task SendEmailCoreAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo, EmailKind kind)
     {
         if (!string.IsNullOrWhiteSpace(_settings.AlsoBaseUrl))
         {
             htmlBody = WithAlsoLinksHtml(htmlBody, _settings.BaseUrl, _settings.AlsoBaseUrl!);
             if (textBody != null) textBody = WithAlsoLinksText(textBody, _settings.BaseUrl, _settings.AlsoBaseUrl!);
         }
-        var transport = (_settings.Transport ?? "resend").Trim().ToLowerInvariant();
-        switch (transport)
-        {
-            case "smtp":
-                await SendViaSmtpAsync(to, subject, htmlBody, textBody, replyTo);
-                return;
-            case "noop":
-                _logger.LogInformation(
-                    "[noop transport] would send email to {To}: {Subject} ({HtmlLen} chars HTML)",
-                    to, subject, htmlBody.Length);
-                return;
-            case "resend":
-            default:
-                await SendViaResendAsync(to, subject, htmlBody, textBody, replyTo);
-                return;
-        }
+        await _gateway.SendAsync(new OutgoingEmail(to, subject, htmlBody, textBody, replyTo, kind));
     }
 
     private static List<string> LinksOn(string body, string baseUrl, string pattern)
@@ -229,97 +225,6 @@ public class EmailService : IEmailService
         if (links.Count == 0) return text;
         var host = new Uri(also).Authority;
         return text + $"\n\nSame links on {host}:\n" + string.Join("\n", links.Select(u => also + u[b.Length..]));
-    }
-
-    private async Task SendViaResendAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo = null)
-    {
-        if (string.IsNullOrEmpty(_settings.ResendApiKey))
-        {
-            // Raised from Warning to Error — every "invitation sent" UI
-            // confirmation without a delivered email is worse than a
-            // visible failure. Lands in Sentry so the missing env var is
-            // obvious rather than being dropped on the floor.
-            _logger.LogError("Resend API key not configured — email to {To} ({Subject}) NOT sent. Set Email__ResendApiKey in the app environment.", to, subject);
-            throw new InvalidOperationException("Email provider (Resend) not configured on this server.");
-        }
-
-        try
-        {
-            var payload = new Dictionary<string, object?>
-            {
-                ["from"] = $"{_settings.FromName} <{_settings.FromAddress}>",
-                ["to"] = new[] { to },
-                ["subject"] = subject,
-                ["html"] = htmlBody,
-                ["text"] = textBody,
-            };
-            if (!string.IsNullOrEmpty(replyTo)) payload["reply_to"] = replyTo;
-
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await _http.PostAsync("/emails", content);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                _logger.LogError("Resend API error {Status}: {Body}", response.StatusCode, body);
-                throw new InvalidOperationException($"Failed to send email: {response.StatusCode}");
-            }
-
-            _logger.LogInformation("Email sent to {To}: {Subject} (via resend)", to, subject);
-        }
-        catch (Exception ex) when (ex is not InvalidOperationException)
-        {
-            _logger.LogError(ex, "Failed to send email to {To}: {Subject}", to, subject);
-            throw;
-        }
-    }
-
-    private async Task SendViaSmtpAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo = null)
-    {
-        // MailKit's SmtpClient is the standard MimeKit-backed SMTP path.
-        // For Mailpit (the intended dev target), there's no auth and no
-        // TLS — security defaults to None. STARTTLS / SSL are wired so
-        // the same transport works against real SMTP relays if a team
-        // wants that flow.
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(_settings.FromName, _settings.FromAddress));
-        message.To.Add(MailboxAddress.Parse(to));
-        if (!string.IsNullOrEmpty(replyTo)) message.ReplyTo.Add(MailboxAddress.Parse(replyTo));
-        message.Subject = subject;
-        var bodyBuilder = new BodyBuilder { HtmlBody = htmlBody };
-        if (!string.IsNullOrEmpty(textBody)) bodyBuilder.TextBody = textBody;
-        message.Body = bodyBuilder.ToMessageBody();
-
-        var security = (_settings.SmtpSecurity ?? "none").Trim().ToLowerInvariant() switch
-        {
-            "starttls" => SecureSocketOptions.StartTls,
-            "ssl" => SecureSocketOptions.SslOnConnect,
-            _ => SecureSocketOptions.None,
-        };
-
-        try
-        {
-            using var client = new SmtpClient();
-            await client.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, security);
-            if (!string.IsNullOrEmpty(_settings.SmtpUsername))
-            {
-                await client.AuthenticateAsync(_settings.SmtpUsername, _settings.SmtpPassword ?? "");
-            }
-            await client.SendAsync(message);
-            await client.DisconnectAsync(true);
-
-            _logger.LogInformation(
-                "Email sent to {To}: {Subject} (via smtp {Host}:{Port})",
-                to, subject, _settings.SmtpHost, _settings.SmtpPort);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "SMTP send failed for {To}: {Subject} ({Host}:{Port})",
-                to, subject, _settings.SmtpHost, _settings.SmtpPort);
-            throw;
-        }
     }
 
     private string BuildInviteHtml(string inviterName, string documentTitle, string role, string documentUrl)
@@ -414,7 +319,7 @@ public class EmailService : IEmailService
                 null, null,
                 "You're receiving this because a document was shared with you on Lilia."),
             $"{removedByName} removed your access to \"{documentTitle}\".\n\n— Lilia",
-            replyTo);
+            replyTo, EmailKind.Notification);
 
     private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
 
@@ -605,7 +510,7 @@ public class EmailService : IEmailService
         var copy = StytchEmailCopy.For(kind, locale);
         var html = BuildStytchAuthHtml(copy, actionUrl);
         var text = $"{copy.Heading}\n\n{copy.Body}\n\n{copy.Cta}: {actionUrl}\n\n{copy.Footer}";
-        await SendEmailAsync(toEmail, copy.Subject, html, text);
+        await SendAccountEmailAsync(toEmail, copy.Subject, html, text);
     }
 
     private static string BuildStytchAuthHtml(StytchEmailCopy.Resolved copy, string actionUrl)
