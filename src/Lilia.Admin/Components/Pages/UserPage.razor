@@ -1,7 +1,5 @@
 @page "/users/{Id}"
 @inject AdminQueries Queries
-@inject AdminActions Actions
-@inject AuthenticationStateProvider Auth
 
 <PageTitle>@(u?.User.Email ?? "Account") · Lilia admin</PageTitle>
 <p><a href="users" data-testid="admin-user-back">← Users</a></p>
@@ -14,8 +12,7 @@ else if (u is not null)
 {
     <h1 data-testid="admin-user-email">@u.User.Email</h1>
     <p class="lede">@(u.User.Name ?? "No name") · joined @Fmt.Day(u.User.CreatedAt) · plan @(u.User.Plan ?? "free")
-        @if (u.User.DeletionRequested) { <span class="chip warn">asked to close the account</span> }
-        @if (u.User.Suspended) { <span class="chip warn" data-testid="admin-user-suspended">suspended</span> }</p>
+        @if (u.User.DeletionRequested) { <span class="chip warn">asked to close the account</span> }</p>
     <p class="muted" data-testid="admin-user-terms">Terms: @(u.TermsVersion is { } v ? $"version {v} accepted {Fmt.When(u.TermsAcceptedAt)}" : "not accepted yet (the notice asks on the next visit)")</p>
 
     <section class="tiles">
@@ -23,52 +20,6 @@ else if (u is not null)
         <Tile Label="Ask Lilia, 30 days" Value="@u.AskRequests30d" Note="@($"{Fmt.Number(u.AskTokens30d)} tokens")" Id="user-ask" />
         <Tile Label="Recent compile failures" Value="@u.RecentCompileFailures.Count" Id="user-compiles" Warn="@(u.RecentCompileFailures.Count > 0)" />
     </section>
-
-    <h2>Support actions</h2>
-    <section class="actions" data-testid="admin-support-actions">
-        <label class="reason">Reason, kept with the action
-            <input @bind="reason" @bind:event="oninput" placeholder="e.g. feedback #12: export failed twice" data-testid="admin-action-reason" />
-        </label>
-        <div class="action-row">
-            <span>Grant Ask Lilia credits</span>
-            <input type="number" min="1" max="@AdminActions.MaxCredits" @bind="credits" data-testid="admin-action-credits" />
-            <ActionButton Key="grant" Label="Grant" Confirm="@($"Grant {credits} credits?")" Pending="@pending" OnArm="Arm" OnRun="Grant" />
-        </div>
-        <div class="action-row">
-            <span>Plan</span>
-            <select @bind="plan" data-testid="admin-action-plan">
-                <option value="free">free</option>
-                @foreach (var p in plans) { <option value="@p.Slug">@p.Name (@p.Slug)</option> }
-            </select>
-            <ActionButton Key="plan" Label="Change plan" Confirm="@($"Change the plan to {plan}?")" Pending="@pending" OnArm="Arm" OnRun="SetPlan" />
-        </div>
-        <div class="action-row">
-            <span>@(u.User.Suspended ? "Suspended: the API refuses this account" : "Sign-in")</span>
-            @if (u.User.Suspended)
-            {
-                <ActionButton Key="restore" Label="Restore" Confirm="Restore this account?" Pending="@pending" OnArm="Arm" OnRun="() => Suspend(false)" />
-            }
-            else
-            {
-                <ActionButton Key="suspend" Label="Suspend" Confirm="Suspend this account? It is refused within 30 seconds." Pending="@pending" OnArm="Arm" OnRun="() => Suspend(true)" Danger="true" />
-            }
-        </div>
-        <div class="action-row">
-            <span>Verification email</span>
-            <ActionButton Key="verify" Label="Resend" Confirm="Resend the verification email?" Pending="@pending" OnArm="Arm" OnRun="Resend" />
-        </div>
-        @if (result is not null) { <p class="@(result.Ok ? "ok" : "problem")" data-testid="admin-action-result">@result.Message</p> }
-    </section>
-
-    <h2>What support did on this account</h2>
-    @if (history.Count == 0) { <p class="muted" data-testid="admin-user-history-empty">Nothing yet.</p> }
-    else
-    {
-        <table data-testid="admin-user-history">
-            <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Why</th><th>Details</th></tr></thead>
-            <tbody>@foreach (var h in history) { <tr><td>@Fmt.When(h.At)</td><td>@h.AdminEmail</td><td><span class="chip">@h.Action</span></td><td>@h.Reason</td><td><code>@h.Details</code></td></tr> }</tbody>
-        </table>
-    }
 
     <h2>Documents</h2>
     <p class="muted">No titles and no text: open a document to see its blocks and errors, with every word replaced by lorem ipsum.</p>
@@ -115,32 +66,5 @@ else if (u is not null)
     [Parameter] public string Id { get; set; } = "";
     private UserDetail? u;
     private bool loaded;
-    private string? reason, pending, plan = "free";
-    private int credits = 100;
-    private ActionResult? result;
-    private IReadOnlyList<PlanOption> plans = [];
-    private IReadOnlyList<ActionRow> history = [];
-
-    protected override async Task OnParametersSetAsync()
-    {
-        u = await Queries.UserAsync(Id);
-        plans = await Actions.PlansAsync();
-        history = await Actions.HistoryAsync(Id);
-        loaded = true;
-    }
-
-    private void Arm(string key) { pending = key; result = null; }
-
-    private async Task<string> Admin() => (await Auth.GetAuthenticationStateAsync()).User.FindFirst("email")?.Value ?? "unknown";
-
-    private async Task Done(ActionResult r)
-    {
-        result = r; pending = null;
-        if (r.Ok) { reason = null; u = await Queries.UserAsync(Id); history = await Actions.HistoryAsync(Id); }
-    }
-
-    private async Task Grant() => await Done(await Actions.GrantCreditsAsync(await Admin(), Id, credits, reason));
-    private async Task SetPlan() => await Done(await Actions.SetPlanAsync(await Admin(), Id, plan ?? "free", reason));
-    private async Task Suspend(bool on) => await Done(await Actions.SetSuspendedAsync(await Admin(), Id, on, reason));
-    private async Task Resend() => await Done(await Actions.ResendVerificationAsync(await Admin(), Id, reason));
+    protected override async Task OnParametersSetAsync() { u = await Queries.UserAsync(Id); loaded = true; }
 }

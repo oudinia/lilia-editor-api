@@ -163,17 +163,3 @@ button[type=submit], .filters button.on { color: #03141a; font-weight: 600; bord
 .block .problem { margin: 6px 0 0; font: 12.5px var(--mono); color: var(--rose); }
 .block.warn .problem { color: var(--amber); }
 .block.pending { opacity: .6; border-style: dashed; }
-
-/* Support actions */
-.actions { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid var(--edge); border-radius: 14px; background: linear-gradient(180deg, var(--glass-2), var(--glass)); }
-.actions .reason { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
-.actions .reason input { font: 14px var(--sans); text-transform: none; letter-spacing: 0; }
-.action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--edge); }
-.action-row > span:first-child { min-width: 220px; color: var(--muted); }
-.action-row input[type=number] { flex: 0 0 110px; }
-.confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--amber); }
-button.go { color: #03141a; font-weight: 600; border-color: transparent; background: linear-gradient(90deg, var(--cyan), var(--teal)); }
-button.danger { color: #fff; font-weight: 600; border-color: transparent; background: linear-gradient(90deg, #e11d48, var(--rose)); box-shadow: 0 0 16px rgba(251, 113, 133, .35); }
-button.danger-soft { color: var(--rose); border-color: rgba(251, 113, 133, .45); }
-.actions .ok { color: var(--teal); margin: 4px 0 0; }
-.actions .problem { color: var(--rose); margin: 4px 0 0; }

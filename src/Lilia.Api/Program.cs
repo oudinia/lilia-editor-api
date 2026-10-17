@@ -65,6 +65,18 @@ if (!builder.Environment.IsEnvironment("Testing"))
     }
 }
 
+// Outbound connections over IPv4 only, when Network:IPv4Only is set (production: restart-api.sh).
+// From this VM, IPv6 to Neon's pooler stalls for ~40 s at a time while IPv4 does not (probes,
+// 17 Oct 2026): every query in flight then times out — the Wolverine [ERR] bursts and the 500s on
+// /api/notifications, /api/documents and the connector's add_block since 11 Oct. Neon's host name
+// resolves to three IPv6 addresses first, and Npgsql tries them in that order. Set before anything
+// opens a socket; .NET reads the switch once.
+if (builder.Configuration.GetValue<bool>("Network:IPv4Only"))
+{
+    AppContext.SetSwitch("System.Net.DisableIPv6", true);
+    Console.WriteLine("[BOOT] network: IPv4 only (Network:IPv4Only)");
+}
+
 // ─── Wolverine in-process message bus ───────────────────────────────
 // Used for cross-feature event fan-out (e.g. user.created → Teams
 // slice creates default team, Email slice sends welcome). No external
@@ -80,11 +92,8 @@ builder.Host.UseWolverine(opts =>
 {
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
 
-    // One node, no leader election: no Postgres advisory lock to release at shutdown. The test
-    // host sets it — its teardown hung on that release and aborted the suite (12 Oct, a dump
-    // showed AdvisoryLock.ReleaseLockAsync → NpgsqlConnection.CloseAsync waiting forever).
-    if (builder.Configuration.GetValue<bool>("Wolverine:Solo"))
-        opts.Durability.Mode = Wolverine.DurabilityMode.Solo;
+    // One node, no leader election, unless Wolverine:Solo=false. See MessageStoreSettings.
+    MessageStoreSettings.Apply(opts.Durability, builder.Configuration);
 
     // Compilation telemetry runs on its own buffered local queue so a slow or
     // failing write can never back up onto a request thread. It replaces a
@@ -163,7 +172,7 @@ builder.Host.UseWolverine(opts =>
     var messageStore = DatabaseTarget.Resolve(builder.Configuration).ConnectionString;
     if (!string.IsNullOrWhiteSpace(messageStore))
     {
-        opts.PersistMessagesWithPostgresql(messageStore, schemaName: "wolverine");
+        opts.PersistMessagesWithPostgresql(DatabasePool.Tune(messageStore), schemaName: "wolverine");
         opts.Policies.UseDurableLocalQueues();
     }
     else
