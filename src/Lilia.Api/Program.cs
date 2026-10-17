@@ -504,6 +504,10 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
+// The admin console's block shapes (17 Oct 2026). Off under the test host: its tests run the
+// processor themselves.
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddHostedService<Lilia.Api.Services.BlockShapeWorker>();
 builder.Services.AddScoped<AccountDeletionService>();
 builder.Services.AddHostedService<AccountErasureBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();

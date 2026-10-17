@@ -21,13 +21,16 @@ else if (u is not null)
     </section>
 
     <h2>Documents</h2>
-    <p class="muted">Titles and dates only: the console never opens a document.</p>
+    <p class="muted">No titles and no text: open a document to see its blocks and errors, with every word replaced by lorem ipsum.</p>
     <table data-testid="admin-user-documents">
-        <thead><tr><th>Title</th><th>Created</th><th>Changed</th></tr></thead>
+        <thead><tr><th>Document</th><th class="num">Blocks</th><th>Created</th><th>Changed</th></tr></thead>
         <tbody>
             @foreach (var d in u.Documents)
             {
-                <tr class="@(d.Deleted ? "dim" : "")"><td>@d.Title @if (d.Deleted) { <span class="chip">in trash</span> }</td><td>@Fmt.Day(d.CreatedAt)</td><td>@Fmt.When(d.UpdatedAt)</td></tr>
+                <tr class="@(d.Deleted ? "dim" : "")">
+                    <td><a href="documents/@d.Id" data-testid="admin-document-open"><code>@d.Id.ToString()[..8]</code></a> @if (d.Deleted) { <span class="chip">in trash</span> }</td>
+                    <td class="num">@d.Blocks</td><td>@Fmt.Day(d.CreatedAt)</td><td>@Fmt.When(d.UpdatedAt)</td>
+                </tr>
             }
         </tbody>
     </table>
@@ -37,7 +40,7 @@ else if (u is not null)
         <h2>Compile failures</h2>
         <table>
             <thead><tr><th>When</th><th>Category</th><th>Token</th><th>Document</th></tr></thead>
-            <tbody>@foreach (var c in u.RecentCompileFailures) { <tr><td>@Fmt.When(c.At)</td><td>@c.Category</td><td><code>@c.Token</code></td><td><code>@c.DocumentId</code></td></tr> }</tbody>
+            <tbody>@foreach (var c in u.RecentCompileFailures) { <tr><td>@Fmt.When(c.At)</td><td>@c.Category</td><td><code>@c.Token</code></td><td>@if (c.DocumentId is { } did) { <a href="documents/@did"><code>@did.ToString()[..8]</code></a> }</td></tr> }</tbody>
         </table>
     }
 

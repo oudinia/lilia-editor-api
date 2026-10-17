@@ -1,0 +1,51 @@
+@page "/documents/{Id:guid}"
+@inject AdminDocuments Documents
+
+<PageTitle>Document · Lilia admin</PageTitle>
+@* Read from block_shapes, kept by the API as the document lives: never a block's content. *@
+@if (loaded && d is null)
+{
+    <h1>No such document</h1>
+}
+else if (d is not null)
+{
+    <p><a href="users/@Uri.EscapeDataString(d.OwnerId)" data-testid="admin-document-owner">← @(d.OwnerEmail ?? d.OwnerId)</a></p>
+    <h1>Document <code>@d.Id.ToString()[..8]</code></h1>
+    <p class="lede">The document's blocks and their errors, for support. Every word is replaced by lorem ipsum on the server, and formulas and code show only their size: what the author wrote never reaches this page, and only the author can fix it.</p>
+
+    <section class="tiles">
+        <Tile Label="Blocks" Value="@d.Blocks.Count" Id="doc-blocks" />
+        <Tile Label="With an error" Value="@d.Blocks.Count(b => b.ValidationStatus == "error" || b.CompileError is not null)" Id="doc-errors" Warn="@d.Blocks.Any(b => b.ValidationStatus == "error" || b.CompileError is not null)" />
+        <Tile Label="Words" Value="@d.Blocks.Sum(b => b.Words)" Note="@($"{d.Language} · {d.PaperSize} · {d.Columns} column{(d.Columns == 1 ? "" : "s")}")" Id="doc-words" />
+    </section>
+    <p class="muted">Created @Fmt.When(d.CreatedAt) · changed @Fmt.When(d.UpdatedAt) @if (d.Deleted) { <span class="chip">in trash</span> }</p>
+
+    <div class="filters" data-testid="admin-document-filter">
+        <button class="@(onlyErrors ? "" : "on")" @onclick="() => onlyErrors = false" data-testid="admin-document-filter-all">All blocks</button>
+        <button class="@(onlyErrors ? "on" : "")" @onclick="() => onlyErrors = true" data-testid="admin-document-filter-errors">Only blocks with a problem</button>
+    </div>
+
+    <ol class="blocks" data-testid="admin-document-blocks">
+        @foreach (var b in d.Blocks.Where(b => !onlyErrors || b.ValidationStatus is "error" or "warning" || b.CompileError is not null))
+        {
+            var bad = b.ValidationStatus == "error" || b.CompileError is not null;
+            <li class="block @(bad ? "bad" : b.ValidationStatus == "warning" ? "warn" : b.Pending ? "pending" : "")" style="--depth:@b.Depth" data-testid="admin-document-block" data-block-type="@b.Type">
+                <div class="block-head">
+                    <span class="idx">@b.Index.ToString("000")</span>
+                    <span class="chip">@b.Type</span>
+                    <span class="shape">@b.Shape</span>
+                </div>
+                @if (b.Preview is not null) { <p class="lorem">@b.Preview</p> }
+                @if (b.Validation is not null) { <p class="problem" data-testid="admin-block-validation">Validation: @b.Validation @(b.Warnings > 0 ? $"· {b.Warnings} warnings" : "")</p> }
+                @if (b.CompileError is not null) { <p class="problem" data-testid="admin-block-compile">Last failed compile @Fmt.When(b.CompileFailedAt): @b.CompileError</p> }
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private RedactedDocument? d;
+    private bool loaded, onlyErrors;
+    protected override async Task OnParametersSetAsync() { d = await Documents.DocumentAsync(Id); loaded = true; }
+}

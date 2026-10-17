@@ -14,7 +14,8 @@ public sealed record Overview(
 
 public sealed record UserRow(string Id, string Email, string? Name, DateTime CreatedAt, int Documents, DateTime? LastActive, string? Plan, bool DeletionRequested);
 
-public sealed record DocumentRow(Guid Id, string Title, DateTime CreatedAt, DateTime UpdatedAt, bool Deleted);
+/// <summary>No title: titles can be sensitive and stay hidden unless the author grants it (17 Oct).</summary>
+public sealed record DocumentRow(Guid Id, DateTime CreatedAt, DateTime UpdatedAt, bool Deleted, int Blocks);
 public sealed record LedgerRow(DateTime At, int Delta, string Reason, string? Note);
 public sealed record AuditRow(DateTime At, string Action, string EntityType, string? EntityId);
 public sealed record CompileFailure(DateTime At, Guid? DocumentId, string? Category, string? Token);
@@ -96,8 +97,8 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
         var ask = db.AiRequests.AsNoTracking().Where(r => r.UserId == id && r.CreatedAt >= since);
         return new UserDetail(
             row,
-            await db.Documents.AsNoTracking().Where(d => d.OwnerId == id).OrderByDescending(d => d.UpdatedAt).Take(100)
-                .Select(d => new DocumentRow(d.Id, d.Title, d.CreatedAt, d.UpdatedAt, d.DeletedAt != null)).ToListAsync(ct),
+            await db.Documents.IgnoreQueryFilters().AsNoTracking().Where(d => d.OwnerId == id).OrderByDescending(d => d.UpdatedAt).Take(100)
+                .Select(d => new DocumentRow(d.Id, d.CreatedAt, d.UpdatedAt, d.DeletedAt != null, db.Blocks.Count(b => b.DocumentId == d.Id))).ToListAsync(ct),
             await ask.CountAsync(ct),
             await ask.SumAsync(r => (long)r.PromptTokens + r.CompletionTokens, ct),
             await db.AiCreditLedger.AsNoTracking().Where(l => l.UserId == id).OrderByDescending(l => l.CreatedAt).Take(20)
