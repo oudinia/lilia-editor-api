@@ -190,4 +190,49 @@ public class MeController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         return await accounts.RestoreAsync(userId, ct) ? NoContent() : NotFound();
     }
+
+    /// <summary>Two-step sign-in on or off, and whether sessions can be listed (Settings → Security).</summary>
+    [HttpGet("security")]
+    public async Task<ActionResult<SecurityStatusDto>> Security([FromServices] AccountSecurityService security, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        return Ok(await security.StatusAsync(userId, ct));
+    }
+
+    public record TwoStepRequest(bool Enabled);
+
+    /// <summary>
+    /// Turn two-step sign-in on (from a session that has just used the authenticator: enrolment) or
+    /// off (from a session that used it). The authenticator itself is enrolled and removed with Stytch.
+    /// </summary>
+    [HttpPut("two-step")]
+    public async Task<IActionResult> SetTwoStep([FromBody] TwoStepRequest req, [FromServices] AccountSecurityService security, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        return await security.SetAsync(userId, User, req.Enabled, DateTime.UtcNow, ct)
+            ? NoContent()
+            : StatusCode(StatusCodes.Status403Forbidden, new { code = "TWO_STEP_CODE_REQUIRED", message = "Enter a code from your authenticator app first." });
+    }
+
+    /// <summary>The author's signed-in sessions, this one first. 204 when sessions aren't available here.</summary>
+    [HttpGet("sessions")]
+    public async Task<IActionResult> Sessions([FromServices] AccountSecurityService security, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var list = await security.SessionsAsync(userId, AccountSecurityService.SessionId(User), ct);
+        return list is null ? NoContent() : Ok(list);
+    }
+
+    /// <summary>Sign out one session (by id), or every other one (no id).</summary>
+    [HttpPost("sessions/revoke")]
+    public async Task<IActionResult> RevokeSessions([FromQuery] string? id, [FromServices] AccountSecurityService security, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (!security.SessionsAvailable) return NotFound();
+        return Ok(new { signedOut = await security.RevokeAsync(userId, AccountSecurityService.SessionId(User), id, ct) });
+    }
 }

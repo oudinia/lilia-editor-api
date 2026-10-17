@@ -509,6 +509,7 @@ builder.Services.AddHostedService<TrashPurgeBackgroundService>();
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<Lilia.Api.Services.BlockShapeWorker>();
 builder.Services.AddScoped<AccountDeletionService>();
+builder.Services.AddScoped<AccountSecurityService>();
 builder.Services.AddHostedService<AccountErasureBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();
 // FT-SANDBOX-SCOPE: reap idle sandbox (is_playground) documents.
@@ -1022,6 +1023,8 @@ app.UseAuthorization();
 app.UseUserSync();
 // A closed account (asked to delete) reaches only its status and Restore.
 app.UseMiddleware<AccountClosedMiddleware>();
+// Two-step sign-in, once on, needs a second factor in the session.
+app.UseMiddleware<TwoStepMiddleware>();
 
 app.MapControllers();
 app.MapMcp("/api/mcp").RequireAuthorization().RequireRateLimiting("mcp");
