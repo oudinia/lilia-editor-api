@@ -25,6 +25,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AdminQueries>();
 builder.Services.AddScoped<AdminStats>();
 builder.Services.AddScoped<AdminDocuments>();
+builder.Services.AddScoped<AdminActions>();
 
 builder.AddAdminAccess();
 
