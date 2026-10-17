@@ -149,3 +149,17 @@ button[type=submit], .filters button.on { color: #03141a; font-weight: 600; bord
   .funnel .step { grid-template-columns: 1fr 90px; }
   .funnel .track { grid-column: 1 / -1; order: 3; }
 }
+
+/* A redacted document: blocks in order, lorem text, problems in amber and rose. */
+.blocks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.block { margin-left: calc(var(--depth, 0) * 18px); padding: 10px 14px; border: 1px solid var(--edge); border-radius: 12px; background: linear-gradient(180deg, var(--glass-2), var(--glass)); }
+.block.bad { border-color: rgba(251, 113, 133, .45); box-shadow: 0 0 18px rgba(251, 113, 133, .12); }
+.block.warn { border-color: rgba(251, 191, 36, .35); }
+.block-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.block-head .idx { font: 600 11px var(--mono); color: var(--dim); }
+.block-head .chip { margin-left: 0; }
+.block-head .shape { color: var(--muted); font-size: 13px; }
+.block .lorem { margin: 6px 0 0; color: var(--dim); font-style: italic; }
+.block .problem { margin: 6px 0 0; font: 12.5px var(--mono); color: var(--rose); }
+.block.warn .problem { color: var(--amber); }
+.block.pending { opacity: .6; border-style: dashed; }

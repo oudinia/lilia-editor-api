@@ -9,7 +9,7 @@ else
         <tbody>
             @foreach (var g in Rows)
             {
-                <tr><td>@g.Kind</td><td><code>@g.Detail</code></td><td class="num">@g.Count</td><td>@Fmt.When(g.LastSeen)</td><td><code>@g.Example</code></td></tr>
+                <tr><td>@g.Kind</td><td><code>@g.Detail</code></td><td class="num">@g.Count</td><td>@Fmt.When(g.LastSeen)</td><td>@if (Guid.TryParse(g.Example, out var did)) { <a href="documents/@did"><code>@did.ToString()[..8]</code></a> }</td></tr>
             }
         </tbody>
     </table>

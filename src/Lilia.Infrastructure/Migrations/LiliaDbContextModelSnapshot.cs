@@ -948,6 +948,80 @@ namespace Lilia.Infrastructure.Migrations
                     b.ToTable("block_previews", (string)null);
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.BlockShape", b =>
+                {
+                    b.Property<Guid>("BlockId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("block_id");
+
+                    b.Property<int>("Characters")
+                        .HasColumnType("integer")
+                        .HasColumnName("characters");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("computed_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("Preview")
+                        .HasColumnType("text")
+                        .HasColumnName("preview");
+
+                    b.Property<string>("Shape")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("shape");
+
+                    b.Property<string>("ValidationKind")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("validation_kind");
+
+                    b.Property<string>("ValidationStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("validation_status");
+
+                    b.Property<int>("Warnings")
+                        .HasColumnType("integer")
+                        .HasColumnName("warnings");
+
+                    b.Property<int>("Words")
+                        .HasColumnType("integer")
+                        .HasColumnName("words");
+
+                    b.HasKey("BlockId");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("ix_block_shapes_document");
+
+                    b.ToTable("block_shapes", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BlockShapeQueueItem", b =>
+                {
+                    b.Property<Guid>("BlockId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("block_id");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("queued_at")
+                        .HasDefaultValueSql("clock_timestamp()");
+
+                    b.HasKey("BlockId");
+
+                    b.ToTable("block_shape_queue", (string)null);
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.BlockValidation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7671,6 +7745,15 @@ namespace Lilia.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Block");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BlockShape", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.Block", null)
+                        .WithOne()
+                        .HasForeignKey("Lilia.Core.Entities.BlockShape", "BlockId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.BlockValidation", b =>

@@ -57,11 +57,11 @@ public class AdminQueriesTests(AdminFixture fx)
 
         var page = await Queries(scope).UserAsync(id);
         page.Should().NotBeNull();
-        page!.Documents.Should().ContainSingle().Which.Title.Should().Be("Paper by search");
+        page!.Documents.Should().ContainSingle();
         page.RecentCompileFailures.Should().ContainSingle().Which.Token.Should().Be("\\macrosearch");
-        // The console never carries a document's content: the row is title, dates and the trash flag.
+        // No title, no content: titles can be sensitive and stay hidden (17 Oct).
         typeof(DocumentRow).GetProperties().Select(p => p.Name)
-            .Should().BeEquivalentTo(["Id", "Title", "CreatedAt", "UpdatedAt", "Deleted"]);
+            .Should().BeEquivalentTo(["Id", "CreatedAt", "UpdatedAt", "Deleted", "Blocks"]);
 
         (await Queries(scope).UserAsync("no-such-account")).Should().BeNull();
     }

@@ -24,6 +24,7 @@ builder.Services.AddDbContextFactory<LiliaDbContext>(o => o
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AdminQueries>();
 builder.Services.AddScoped<AdminStats>();
+builder.Services.AddScoped<AdminDocuments>();
 
 builder.AddAdminAccess();
 
