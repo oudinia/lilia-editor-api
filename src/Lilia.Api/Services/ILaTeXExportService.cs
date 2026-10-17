@@ -20,7 +20,15 @@ public interface ILaTeXExportService
 
 public class LaTeXExportOptions
 {
+    /// <summary>The class for a document that has none of its own (a fallback, not a choice).</summary>
     public string DocumentClass { get; set; } = "article";
+
+    /// <summary>
+    /// The class for this export only, over the document's own (the LaTeX export page's Document
+    /// Class). Null uses the document's class. Only a class Lilia ships counts. Bound from
+    /// <c>?classOverride=</c>; the document itself is not changed.
+    /// </summary>
+    public string? ClassOverride { get; set; }
     // Null: the document's own font size and paper. These defaulted to "11pt" and "a4paper", which the
     // preamble builder applied OVER the document, and the web app never sends them, so every .tex/.zip
     // download and every LaTeX PDF export was 11pt A4 (5 Oct review). Set them only to override.

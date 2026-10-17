@@ -77,6 +77,7 @@ public class ExportController : ControllerBase
 
             // Load blocks + bibliography to call the in-memory helper (no zip step).
             var docWithBlocks = await _dbContext.Documents
+                .AsNoTracking()
                 .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
                 .Include(d => d.BibliographyEntries)
                 .FirstOrDefaultAsync(d => d.Id == docId);

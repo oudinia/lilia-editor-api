@@ -46,6 +46,17 @@ public class LaTeXExportService : ILaTeXExportService
         "full pdflatex -> bibtex -> pdflatex -> pdflatex cycle to refresh main.bbl.\n";
 
     /// <summary>
+    /// The export's class choice (<see cref="LaTeXExportOptions.ClassOverride"/>), set on the
+    /// in-memory document so every part of the preamble and the heading map agree on it. Callers
+    /// that pass an override pass an untracked document; nothing here is saved.
+    /// </summary>
+    private static void UseClassForThisExport(Document doc, LaTeXExportOptions options)
+    {
+        if (LaTeXPreambleBuilder.IsSafeClass(options.ClassOverride))
+            doc.LatexDocumentClass = options.ClassOverride!.Trim();
+    }
+
+    /// <summary>
     /// Test-only entry point that bypasses the DB. Generates the
     /// single-file LaTeX source from in-memory document + blocks. Used
     /// by LatexRoundtripTests to verify parse → blocks → export →
@@ -57,6 +68,7 @@ public class LaTeXExportService : ILaTeXExportService
         List<BibliographyEntry> bibEntries,
         LaTeXExportOptions options)
     {
+        UseClassForThisExport(doc, options);
         bibEntries = WithTextEntries(blocks, bibEntries);
         var files = ApplyCitationBackend(GenerateSingleFile(doc, blocks, bibEntries, options), options);
         var main = files.First(f => f.Path == "main.tex").Content;
@@ -83,13 +95,16 @@ public class LaTeXExportService : ILaTeXExportService
 
     public async Task<Stream> ExportToZipAsync(Guid documentId, LaTeXExportOptions options)
     {
+        // Untracked: an export only reads, and a class override must never be saved.
         var doc = await _context.Documents
+            .AsNoTracking()
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
             .Include(d => d.BibliographyEntries)
             .FirstOrDefaultAsync(d => d.Id == documentId);
 
         if (doc == null)
             throw new ArgumentException("Document not found");
+        UseClassForThisExport(doc, options);
 
         var blocks = doc.Blocks.ToList();
         var bibEntries = doc.BibliographyEntries?.ToList() ?? new List<BibliographyEntry>();
