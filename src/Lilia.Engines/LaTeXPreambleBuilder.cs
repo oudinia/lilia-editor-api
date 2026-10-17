@@ -125,6 +125,10 @@ public static class LaTeXPreambleBuilder
         return t;
     }
 
+    /// <summary>Whether Lilia ships this class's .cls, so it can be emitted as is.</summary>
+    public static bool IsSafeClass(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && SafeDocumentClasses.Contains(name.Trim());
+
     /// <summary>
     /// The class actually emitted for this document: the stored one when we ship
     /// its .cls, otherwise the fallback. Shared by the class directive and the
