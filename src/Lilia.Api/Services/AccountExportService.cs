@@ -153,7 +153,7 @@ public class AccountExportService
         var link = $"{(_config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/')}/settings/data";
         try
         {
-            await _email.SendEmailAsync(email, "Your Lilia export is ready",
+            await _email.SendAccountEmailAsync(email, "Your Lilia export is ready",
                 $"<p>Your export is ready. Download it from <a href=\"{link}\">Settings → Your data</a> within 7 days.</p>",
                 $"Your export is ready. Download it from Settings → Your data within 7 days: {link}");
         }

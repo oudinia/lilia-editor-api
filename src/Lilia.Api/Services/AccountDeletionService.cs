@@ -167,7 +167,7 @@ public class AccountDeletionService
     private async Task SendAsync(string to, string subject, string text)
     {
         if (_email is null || string.IsNullOrEmpty(to)) return;
-        try { await _email.SendEmailAsync(to, subject, $"<p>{System.Net.WebUtility.HtmlEncode(text)}</p>", text); }
+        try { await _email.SendAccountEmailAsync(to, subject, $"<p>{System.Net.WebUtility.HtmlEncode(text)}</p>", text); }
         catch (Exception ex) { _logger.LogWarning(ex, "[AccountDeletion] email not sent"); }
     }
 }

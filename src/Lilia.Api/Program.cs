@@ -575,17 +575,26 @@ builder.Services.AddScoped<Lilia.Import.Services.ILatexProjectExtractor, Lilia.I
 builder.Services.AddSingleton<IAssetOptimizer, AssetOptimizerService>();
 builder.Services.AddScoped<IDocumentSizeService, DocumentSizeService>();
 
-// Email service (Resend). Missing key used to be a silent warning that
-// manifested as "invitation sent" UI confirmations with no actual email
-// going out. Log loudly at boot so Sentry catches it on the first
-// deploy after a config drift.
+// Email (the gateway, 17 Oct): each email has a kind (account, notification), each kind a route
+// of providers tried in order (Email__AccountRoute=resend,smtp · Email__NotificationRoute=smtp;
+// unset: Email__Transport). A route that only names a provider without settings would drop every
+// email of that kind, so say it at boot where the error tracker sees it.
 var emailSettings = builder.Configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
-if (string.IsNullOrEmpty(emailSettings.ResendApiKey))
-{
-    Console.Error.WriteLine("[BOOT] Email__ResendApiKey is not configured — invitations, share notifications, and every other outbound email will fail until it is set.");
-}
 builder.Services.AddSingleton(emailSettings);
+builder.Services.AddHttpClient("email-resend", c => c.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddSingleton<Lilia.Api.Services.Email.IEmailProvider, Lilia.Api.Services.Email.ResendEmailProvider>();
+builder.Services.AddSingleton<Lilia.Api.Services.Email.IEmailProvider, Lilia.Api.Services.Email.SmtpEmailProvider>();
+builder.Services.AddSingleton<Lilia.Api.Services.Email.IEmailProvider, Lilia.Api.Services.Email.NoopEmailProvider>();
+builder.Services.AddSingleton<Lilia.Api.Services.Email.EmailGateway>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
+foreach (var kind in new[] { Lilia.Api.Services.Email.EmailKind.Account, Lilia.Api.Services.Email.EmailKind.Notification })
+{
+    var route = new Lilia.Api.Services.Email.EmailGateway([], emailSettings, Microsoft.Extensions.Logging.Abstractions.NullLogger<Lilia.Api.Services.Email.EmailGateway>.Instance).Route(kind);
+    var usable = route.Any(n => n == "noop" || (n == "smtp" && !string.IsNullOrEmpty(emailSettings.SmtpHost)) || (n == "resend" && !string.IsNullOrEmpty(emailSettings.ResendApiKey)));
+    Console.Error.WriteLine(usable
+        ? $"[BOOT] Email {kind}: {string.Join(" → ", route)}"
+        : $"[BOOT] Email {kind}: no usable provider in [{string.Join(",", route)}] — these emails will fail until one is configured.");
+}
 
 // Stytch BYOM webhook signing secret. Required in production (we reject
 // unsigned payloads). In dev, leaving it unset lets curl-replays through
