@@ -1150,6 +1150,10 @@ public partial class RenderService : IRenderService
     /// its blocks in order and its bibliography entries. <see cref="RenderToLatexAsync(Guid, IReadOnlySet{Guid}?)"/>
     /// loads the document and calls this; the theme compile tests call it directly.
     /// </summary>
+    /// <summary>Marks the author's own preamble lines in the preview's .tex (the editor's Preamble tab).</summary>
+    public const string YourPreambleStart = "% lilia:your-preamble";
+    public const string YourPreambleEnd = "% lilia:end-your-preamble";
+
     public string RenderToLatex(Document doc, IReadOnlySet<Guid>? longtableBlocks = null)
     {
         // Pre-render blocks so the engine detector can scan their LaTeX
@@ -1254,7 +1258,11 @@ public partial class RenderService : IRenderService
         // export yet fails the full-doc preview compile.
         if (!string.IsNullOrWhiteSpace(doc.CustomPreamble))
         {
+            // The markers let the editor's LaTeX view tell the author's lines from Lilia's
+            // (Preamble tab, DESIGN-14). Comments: they change nothing in the PDF.
+            latex.AppendLine(YourPreambleStart);
             latex.AppendLine(LaTeXPreamble.CustomPreambleForEmit(doc.CustomPreamble));
+            latex.AppendLine(YourPreambleEnd);
         }
 
         // Title metadata — sourced from a Title block if the document has one
