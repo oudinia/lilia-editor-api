@@ -218,6 +218,21 @@ public class PreviewController : ControllerBase
     /// <summary>
     /// Get the full document rendered as LaTeX
     /// </summary>
+    /// <summary>
+    /// The maths macros the editor renders this document with (18 Oct): Lilia's shortcuts, the
+    /// siunitx stand-ins KaTeX needs, and the document's own preamble macros, which win. The PDF
+    /// defines the same shortcuts (MathMacros.PreambleShortcuts), so the editor and the PDF agree.
+    /// </summary>
+    [HttpGet("math-macros")]
+    public async Task<IActionResult> GetMathMacros(Guid docId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized(new { error = "No valid authentication token provided" });
+        var document = await _documentService.GetDocumentAsync(docId, userId);
+        if (document == null) return NotFound();
+        return Ok(new { macros = Lilia.Engines.MathMacros.ForEditor(document.CustomPreamble) });
+    }
+
     [HttpGet("latex")]
     public async Task<ActionResult<PreviewResponse>> GetLatexPreview(Guid docId)
     {
