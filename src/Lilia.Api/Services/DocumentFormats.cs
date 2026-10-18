@@ -20,14 +20,35 @@ namespace Lilia.Api.Services;
 /// <para>As TikZ figures do: a format not built yet is built in the background and this compile runs
 /// without it; one that fails to build, or to compile with, is left alone for ten minutes and the
 /// compile runs as before. pdflatex only. On disk, in the temp directory, at most
-/// <see cref="MaxFormats"/> of them (about 7 MB each).</para>
+/// <see cref="MaxFormats"/> of them (about 7 MB each). They outlive deploys: a format is keyed by its
+/// preamble, the theme files staged with it and the installed TeX, not by the server's build.</para>
 /// </summary>
 public sealed class DocumentFormats
 {
     internal const string EndOfDump = @"\csname endofdump\endcsname";
     public const int MaxFormats = 40;
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(10);
-    private static readonly string BuildToken = typeof(DocumentFormats).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    /// <summary>
+    /// What a format depends on besides its preamble text: the installed TeX (its own pdflatex format
+    /// changes with every TeX Live update) and, per format, the theme files Lilia stages beside it.
+    /// Not this server's build: keyed on the build, every deploy threw the formats away and the first
+    /// PDF of each document after it paid full price (LTX-110: three TeX runs, 10 s, 18 Oct).
+    /// </summary>
+    private static readonly Lazy<string> TexToken = new(() =>
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("kpsewhich", "-engine=pdftex pdflatex.fmt")
+            { RedirectStandardOutput = true, UseShellExecute = false };
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            var path = p.StandardOutput.ReadToEnd().Trim();
+            p.WaitForExit(5000);
+            var info = new FileInfo(path);
+            if (info.Exists) return $"{path}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+        }
+        catch { /* no kpsewhich: fall back to the build */ }
+        return typeof(DocumentFormats).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    });
 
     private readonly string _dir;
     private readonly ConcurrentDictionary<string, Task<bool>> _builds = new();
@@ -86,7 +107,8 @@ public sealed class DocumentFormats
 
     internal string PathFor(string dumpPart, string engine)
     {
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(BuildToken + "\u0001" + engine + "\u0001" + dumpPart)));
+        var themes = string.Concat(Lilia.Engines.Themes.ThemeCatalog.FilesUsedBy(dumpPart).Select(f => f.FileName + "\u0002" + f.Source + "\u0003"));
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(TexToken.Value + "\u0001" + engine + "\u0001" + themes + "\u0001" + dumpPart)));
         return Path.Combine(_dir, "doc-" + hash[..24].ToLowerInvariant());
     }
 
