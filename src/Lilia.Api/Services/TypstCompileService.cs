@@ -79,6 +79,7 @@ public class TypstCompileService : ITypstCompileService
         string? evalAfter,
         CancellationToken ct = default)
     {
+        using var timed = Lilia.Core.Diagnostics.Timing.Measure("typst.compile");
         var binary = ResolveBinary();
         if (binary is null)
         {

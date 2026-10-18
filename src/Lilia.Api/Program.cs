@@ -433,9 +433,12 @@ Console.WriteLine($"[BOOT] database target: {database}");
 // the env var carries, so ops can't accidentally blow past the DB limit.
 connectionString = Lilia.Api.Services.DatabasePool.Tune(connectionString);
 
-builder.Services.AddDbContext<LiliaDbContext>(options =>
+// Every query's time goes to its request's timing line; slow ones are logged (18 Oct).
+builder.Services.AddSingleton<Lilia.Api.Services.QueryTimingInterceptor>();
+builder.Services.AddDbContext<LiliaDbContext>((sp, options) =>
     options
         .UseNpgsql(connectionString)
+        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>())
         // Column-name-only remappings (e.g. HasColumnName added after the
         // column already existed in the database) make EF think the model
         // has pending changes, which MigrateAsync then treats as fatal.
@@ -950,11 +953,27 @@ app.UseRequestLocalization(options =>
 // Correlation ID for request tracing
 app.UseCorrelationId();
 
+// Where each request's time goes (Lilia.Core.Diagnostics.Timing, 18 Oct): started here, before the
+// request log, so the log line below can read it.
+app.Use(async (context, next) =>
+{
+    Lilia.Core.Diagnostics.Timing.Begin();
+    await next();
+});
+
 // Request logging with enhanced diagnostic context
 app.UseSerilogRequestLogging(options =>
 {
     options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
     {
+        // Queries and measured steps: "db 14q 2460ms | pdf.project 300ms, pdf.compile 1650ms".
+        if (Lilia.Core.Diagnostics.Timing.Current is { } timing)
+        {
+            diagnosticContext.Set("DbQueries", timing.DbQueries);
+            diagnosticContext.Set("DbMs", Math.Round(timing.DbMs));
+            var steps = timing.Steps();
+            diagnosticContext.Set("Steps", steps.Length == 0 ? "" : " | " + steps);
+        }
         diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
         diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
         diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString());
@@ -968,7 +987,7 @@ app.UseSerilogRequestLogging(options =>
         }
     };
 
-    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms | db {DbQueries}q {DbMs}ms{Steps}";
 });
 
 // Swagger UI - only in development

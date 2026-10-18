@@ -1132,6 +1132,7 @@ public partial class RenderService : IRenderService
     /// </summary>
     public async Task<string> RenderToLatexAsync(Guid documentId, IReadOnlySet<Guid>? longtableBlocks)
     {
+        using var timed = Lilia.Core.Diagnostics.Timing.Measure("render.latex");
         var doc = await _context.Documents
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
             .Include(d => d.BibliographyEntries)
