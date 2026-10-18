@@ -747,9 +747,43 @@ public class LaTeXRenderService : ILaTeXRenderService
         _          => "pdflatex",
     };
 
+    /// <summary>
+    /// The .bbl of each project already built, by its exact files: a document with references paid a
+    /// pdflatex pass and BibTeX before every PDF, ahead of the compile cache (LTX-110: ~2.5 s of a
+    /// cached PDF's 3 s, 18 Oct). Exact, not by citations: a citation inside an author's own macro
+    /// could otherwise leave a stale bibliography.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, string> _bblCache = new();
+    private const int MaxBblCacheEntries = 512;
+
     public async Task<string?> GenerateBblAsync(
         IReadOnlyList<(string Path, string Content)> files,
         string mainStem = "main", int timeoutSeconds = 60)
+    {
+        var bblKey = BblKey(files, mainStem);
+        if (_bblCache.TryGetValue(bblKey, out var kept)) return kept;
+        var made = await GenerateBblUncachedAsync(files, mainStem, timeoutSeconds);
+        if (!string.IsNullOrWhiteSpace(made))
+        {
+            if (_bblCache.Count >= MaxBblCacheEntries) _bblCache.Clear();
+            _bblCache[bblKey] = made;
+        }
+        return made;
+    }
+
+    private static string BblKey(IReadOnlyList<(string Path, string Content)> files, string mainStem)
+    {
+        using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        void Add(string v) { var b = Encoding.UTF8.GetBytes(v); sha.AppendData(BitConverter.GetBytes(b.Length)); sha.AppendData(b); }
+        Add(typeof(LaTeXRenderService).Assembly.ManifestModule.ModuleVersionId.ToString("N"));
+        Add(mainStem);
+        foreach (var (path, content) in files) { Add(path); Add(content); }
+        return Convert.ToHexString(sha.GetHashAndReset());
+    }
+
+    private async Task<string?> GenerateBblUncachedAsync(
+        IReadOnlyList<(string Path, string Content)> files,
+        string mainStem, int timeoutSeconds)
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-bbl-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
@@ -769,7 +803,27 @@ public class LaTeXRenderService : ILaTeXRenderService
             // Pass 1: pdflatex emits {mainStem}.aux with \citation/\bibdata/\bibstyle.
             // nonstopmode (no -halt-on-error) so a missing \includegraphics asset
             // doesn't abort before the .aux is written — BibTeX only needs the .aux.
-            await RunProcessAsync("pdflatex", $"-interaction=nonstopmode {mainStem}.tex", tmpDir, timeoutSeconds);
+            // It starts from the document's precompiled preamble when there is one (DocumentFormats);
+            // a format that leaves BibTeX nothing to read is set aside and the pass runs without it.
+            var mainPath = Path.Combine(tmpDir, $"{mainStem}.tex");
+            var mainTex = files.FirstOrDefault(f => f.Path == $"{mainStem}.tex").Content;
+            var format = mainTex is null ? null : DocumentFormats.Shared?.FormatFor(mainTex, "pdflatex", BuildFormatAsyncForDocuments, _logger);
+            if (format is not null)
+            {
+                await File.WriteAllTextAsync(mainPath, DocumentFormats.WithEndOfDump(mainTex!));
+                await RunProcessAsync("pdflatex", $"-interaction=nonstopmode \"-fmt={format}\" {mainStem}.tex", tmpDir, timeoutSeconds);
+                if (!File.Exists(Path.Combine(tmpDir, $"{mainStem}.aux")))
+                {
+                    _logger.LogWarning("[bbl] the preamble format wrote no .aux; running the pass without it");
+                    DocumentFormats.Shared!.Failed(format);
+                    format = null;
+                }
+            }
+            if (format is null)
+            {
+                if (mainTex is not null) await File.WriteAllTextAsync(mainPath, mainTex);
+                await RunProcessAsync("pdflatex", $"-interaction=nonstopmode {mainStem}.tex", tmpDir, timeoutSeconds);
+            }
 
             // BibTeX: {mainStem}.aux + references.bib -> {mainStem}.bbl.
             var (bibExit, bibOut, _) = await RunProcessAsync("bibtex", mainStem, tmpDir, timeoutSeconds);
