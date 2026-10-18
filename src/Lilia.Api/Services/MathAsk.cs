@@ -76,7 +76,7 @@ public static partial class MathAsk
             """);
         if (macros.Count > 0)
         {
-            sb.AppendLine("SHORTCUTS this document defines (prefer them when they print what is shown):");
+            sb.AppendLine("SHORTCUTS this document defines. Use one only when it prints exactly what is shown: an italic d stays d (\\dd is an upright d), plain bold letters stay \\mathbf, and | | is not a floor or a ceiling:");
             foreach (var (name, body) in macros.Take(MaxMacros))
                 sb.Append("  ").Append(name).Append(" = ").AppendLine(body);
             sb.AppendLine();
