@@ -1067,6 +1067,7 @@ public partial class RenderService : IRenderService
         }
 
         latex.AppendLine(LaTeXPreamble.JournalShims);
+        latex.AppendLine(MathMacros.PreambleShortcuts);
         latex.AppendLine(LaTeXPreamble.CvShims);
         latex.AppendLine(LaTeXPreamble.BeamerShims);
         latex.AppendLine(LaTeXPreamble.NewspaperShims);
@@ -1220,6 +1221,7 @@ public partial class RenderService : IRenderService
         }
         // Journal-class shims — safe no-ops when commands already exist
         latex.AppendLine(LaTeXPreamble.JournalShims);
+        latex.AppendLine(MathMacros.PreambleShortcuts);
         latex.AppendLine(LaTeXPreamble.CvShims);
         latex.AppendLine(LaTeXPreamble.BeamerShims);
         latex.AppendLine(LaTeXPreamble.NewspaperShims);

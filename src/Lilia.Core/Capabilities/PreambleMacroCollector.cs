@@ -121,7 +121,9 @@ public static partial class PreambleMacroCollector
         {
             var name = match.Groups["name"].Value.Trim();
             if (!name.StartsWith('\\') || name.Length < 2) continue;
-            macros[name] = new MacroDefinition(name, 0, match.Groups["body"].Value, "DeclareMathOperator");
+            // The starred form puts limits under the name in display (\argmax_x), as \operatorname* does.
+            macros[name] = new MacroDefinition(name, 0, match.Groups["body"].Value,
+                match.Groups["star"].Value == "*" ? "DeclareMathOperator*" : "DeclareMathOperator");
         }
 
         return macros;
@@ -228,6 +230,6 @@ public static partial class PreambleMacroCollector
     [GeneratedRegex(@"\G(?:\\[a-zA-Z]+|\\.)")]
     private static partial Regex CommandName();
 
-    [GeneratedRegex(@"\\DeclareMathOperator\*?\s*\{(?<name>[^}]*)\}\s*\{(?<body>[^}]*)\}")]
+    [GeneratedRegex(@"\\DeclareMathOperator(?<star>\*?)\s*\{(?<name>[^}]*)\}\s*\{(?<body>[^}]*)\}")]
     private static partial Regex DeclareMathOperator();
 }

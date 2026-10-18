@@ -694,6 +694,8 @@ public class LaTeXExportService : ILaTeXExportService
         // Shims so journal-class-specific commands in imported bodies
         // (\begin{keywords}, \affiliation, etc.) don't abort compilation.
         sb.Append(LaTeXPreamble.JournalShims);
+        sb.AppendLine();
+        sb.Append(MathMacros.PreambleShortcuts);
         sb.Append(LaTeXPreamble.CvShims);
         sb.Append(LaTeXPreamble.BeamerShims);
         sb.Append(LaTeXPreamble.NewspaperShims);
