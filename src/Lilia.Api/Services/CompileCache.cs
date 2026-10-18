@@ -10,13 +10,15 @@ namespace Lilia.Api.Services;
 /// validation?"). A compile took 4–5 s for a six-block document, every time it was asked for.
 ///
 /// <para>Keyed by what the engine is given, not by the document: the .tex, the engine, the
-/// tolerant flag, every file beside it (figures, bibliography) and this build of the server (its
-/// theme .sty files and its rules). Any edit, setting, look, figure or deploy changes the key, so
-/// nothing has to be invalidated by hand and a stale PDF cannot be served.</para>
+/// tolerant flag, every file beside it (figures, bibliography), the theme files staged with it,
+/// the installed TeX and <see cref="ProcedureVersion"/>. Any edit, setting, look or figure changes
+/// the key, so nothing has to be invalidated by hand and a stale PDF cannot be served.</para>
 ///
-/// <para>In memory, bounded by bytes, least recently used first out, gone on restart: no user
-/// content is written to disk for it. Two requests for the same compile at once share one run.
-/// Failures are not kept.</para>
+/// <para>Per user (18 Oct: "add redis and cache in it per user"): entries are kept under the
+/// signed-in user (<see cref="CacheOwner"/>), first in this process's memory (bounded by bytes,
+/// least recently used out first), then in Redis for three days (<see cref="UserCache"/>), so a
+/// restart or a deploy no longer starts every document cold. Closing an account deletes its
+/// entries. Two requests for the same compile at once share one run. Failures are not kept.</para>
 /// </summary>
 public sealed class CompileCache
 {
@@ -30,7 +32,12 @@ public sealed class CompileCache
     /// <summary>A single PDF above this is compiled every time rather than crowding out the rest.</summary>
     public const long MaxEntryBytes = 32L * 1024 * 1024;
 
-    private static readonly string BuildToken = typeof(CompileCache).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+    /// <summary>
+    /// How Lilia compiles (the passes, BibTeX inside them, tolerant mode). Bump it whenever
+    /// <c>LaTeXRenderService.CompileInDirAsync</c> or the bibliography steps change what they
+    /// produce: kept results outlive deploys, and would otherwise be served from the old steps.
+    /// </summary>
+    public const string ProcedureVersion = "2026-10-18.1";
 
     private readonly long _maxBytes;
     private readonly object _lock = new();
@@ -59,7 +66,9 @@ public sealed class CompileCache
             sha.AppendData(BitConverter.GetBytes(b.Length));
             sha.AppendData(b);
         }
-        Add(BuildToken);
+        Add(ProcedureVersion);
+        Add(DocumentFormats.TexIdentity);
+        foreach (var (name, source) in Lilia.Engines.Themes.ThemeCatalog.FilesUsedBy(latex)) { Add(name); Add(source); }
         Add(engine);
         Add(tolerant ? "tolerant" : "strict");
         Add(latex);
@@ -116,20 +125,30 @@ public sealed class CompileCache
     /// </summary>
     public async Task<(Entry Entry, bool Hit)> GetOrCompileAsync(string key, Func<Task<Entry>> compile)
     {
-        if (Get(key) is { } cached)
+        // The current user's entry: this process's memory, then Redis, then the compile.
+        var scoped = CacheOwner.Scope(CacheOwner.Current) + ":" + key;
+        if (Get(scoped) is { } cached)
         {
             Interlocked.Increment(ref Hits);
             return (cached, true);
         }
+        if (await UserCache.GetAsync("pdf", key) is { } kept && Deserialize(kept) is { } fromRedis)
+        {
+            Interlocked.Increment(ref Hits);
+            Lilia.Core.Diagnostics.Timing.Mark("tex.cache hit (redis)");
+            Put(scoped, fromRedis);
+            return (fromRedis, true);
+        }
         var mine = new Lazy<Task<Entry>>(compile);
-        var running = _inFlight.GetOrAdd(key, mine);
+        var running = _inFlight.GetOrAdd(scoped, mine);
         try
         {
             var entry = await running.Value;
             if (ReferenceEquals(running, mine))
             {
                 Interlocked.Increment(ref Misses);
-                Put(key, entry);
+                Put(scoped, entry);
+                if (entry.Bytes <= MaxEntryBytes) await UserCache.SetAsync("pdf", key, Serialize(entry));
                 return (entry, false);
             }
             Interlocked.Increment(ref Hits);
@@ -137,7 +156,49 @@ public sealed class CompileCache
         }
         finally
         {
-            if (ReferenceEquals(running, mine)) _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Entry>>>(key, mine));
+            if (ReferenceEquals(running, mine)) _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Entry>>>(scoped, mine));
         }
+    }
+
+    /// <summary>Drop one user's entries from this process's memory (account closed); how many.</summary>
+    public int RemoveScope(string scope)
+    {
+        var prefix = scope + ":";
+        lock (_lock)
+        {
+            var gone = _map.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+            foreach (var k in gone)
+            {
+                var node = _map[k];
+                _lru.Remove(node);
+                _bytes -= node.Value.Entry.Bytes;
+                _map.Remove(k);
+            }
+            return gone.Count;
+        }
+    }
+
+    internal static byte[] Serialize(Entry e)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
+        {
+            w.Write(1); // format
+            w.Write(e.Pdf.Length); w.Write(e.Pdf);
+            w.Write(e.Log); w.Write(e.Aux);
+        }
+        return ms.ToArray();
+    }
+
+    internal static Entry? Deserialize(byte[] bytes)
+    {
+        try
+        {
+            using var r = new BinaryReader(new MemoryStream(bytes), Encoding.UTF8);
+            if (r.ReadInt32() != 1) return null;
+            var pdf = r.ReadBytes(r.ReadInt32());
+            return new Entry(pdf, r.ReadString(), r.ReadString());
+        }
+        catch { return null; }
     }
 }
