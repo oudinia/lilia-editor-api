@@ -88,6 +88,14 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   **How Ask Lilia explains** (Simple · Standard · For LaTeX users): asked once (*How familiar are
   you with LaTeX?*, Skip means Simple); changed with **Answers: … ▾** under the message box or in
   **Settings → Ask Lilia and help → How Lilia explains things**. Help pages start at that level.
+- **Maths**: type `$…$` or `\(…\)` in a sentence for inline maths (click it to edit its LaTeX);
+  `$$…$$` or `\[…\]` alone on a line makes an equation. **Maths from a photo** (Ask Lilia's first
+  button, or **/** then *Maths from a photo…*): take or pick a photo, screenshot or handwriting; Ask
+  Lilia writes the LaTeX, checks it prints in this document, and shows a card per formula: correct
+  the LaTeX if needed, then **Insert as equation** / **Insert inline**, **Save to library** (it then
+  appears under **Equations**) or **Copy LaTeX**. With an image attached, **Read the maths** does the
+  same. **Pasting** maths copied from a chat (ChatGPT, Claude), a web page with KaTeX or MathJax,
+  Wikipedia, MathML, or a Word equation turns it into Lilia maths by itself.
 - **Saving** is automatic as you type. The indicator says *Saved*, *Saving…*, *Saved on this
   device* (offline: it syncs when you are back) or *Couldn't save* (with **Retry**). Hover it for the
   card: **Save a version… (⌘S / Ctrl+S)**, **History**, and **Style: Pro / Fun** (Fun adds a small
