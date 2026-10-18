@@ -211,16 +211,8 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// </summary>
     public async Task<byte[]> RenderToPdfAsync(string latex, string engine, int timeout = 30)
     {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var (pdf, _, _) = await CompileLatexAsync(latex, timeout, engine: ResolveEngine(engine));
-            return pdf;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        var (pdf, _, _) = await CompileLatexAsync(latex, timeout, engine: ResolveEngine(engine));
+        return pdf;
     }
 
     /// <summary>
@@ -240,17 +232,9 @@ public class LaTeXRenderService : ILaTeXRenderService
         string latex, int timeout = 60, string engine = "pdflatex",
         Func<string, Task>? materialiseAssets = null)
     {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var (pdf, _, aux) = await CompileLatexAsync(
-                latex, timeout, tolerant: true, engine: engine, materialiseAssets: materialiseAssets);
-            return (pdf, aux);
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        var (pdf, _, aux) = await CompileLatexAsync(
+            latex, timeout, tolerant: true, engine: engine, materialiseAssets: materialiseAssets);
+        return (pdf, aux);
     }
 
     /// <summary>
@@ -269,48 +253,24 @@ public class LaTeXRenderService : ILaTeXRenderService
     public async Task<(byte[] Pdf, IReadOnlyDictionary<Guid, int> PageMap)> RenderToPdfWithPageMapAsync(
         string latex, string engine = "pdflatex", int timeout = 60)
     {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var (pdf, _, aux) = await CompileLatexAsync(
-                latex, timeout, tolerant: true, engine: ResolveEngine(engine));
-            return (pdf, AuxPageMap.Parse(aux));
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        var (pdf, _, aux) = await CompileLatexAsync(
+            latex, timeout, tolerant: true, engine: ResolveEngine(engine));
+        return (pdf, AuxPageMap.Parse(aux));
     }
 
     /// <inheritdoc />
     public async Task<string?> RenderToAuxAsync(
         string latex, string engine = "pdflatex", int timeout = 60)
     {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var (_, _, aux) = await CompileLatexAsync(
-                latex, timeout, tolerant: true, engine: ResolveEngine(engine));
-            return aux;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        var (_, _, aux) = await CompileLatexAsync(
+            latex, timeout, tolerant: true, engine: ResolveEngine(engine));
+        return aux;
     }
 
     public async Task<byte[]> RenderToPngAsync(string latex, int dpi = 150, int timeout = 30)
     {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var (pdf, _, _) = await CompileLatexAsync(latex, timeout);
-            return await PdfToPngAsync(pdf, dpi);
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        var (pdf, _, _) = await CompileLatexAsync(latex, timeout);
+        return await PdfToPngAsync(pdf, dpi);
     }
 
     public async Task<byte[]> RenderBlockToPngAsync(string latexFragment, string? preamble = null, int dpi = 150)
@@ -838,12 +798,44 @@ public class LaTeXRenderService : ILaTeXRenderService
         try
         {
             if (materialiseAssets != null) await materialiseAssets(tmpDir);
+            Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
 
+            // An unchanged document is not compiled again (CompileCache): the key is the .tex, the
+            // engine and every file beside it. Only a miss takes one of the three compile slots.
+            var key = CompileCache.Key(latex, engine, tolerant, tmpDir);
+            var sw = Stopwatch.StartNew();
+            var (entry, hit) = await CompileCache.Shared.GetOrCompileAsync(key, async () =>
+            {
+                await _semaphore.WaitAsync();
+                try
+                {
+                    var (pdf, log, aux) = await CompileInDirAsync(latex, timeout, tolerant, engine, tmpDir);
+                    return new CompileCache.Entry(pdf, log, aux);
+                }
+                finally
+                {
+                    _semaphore.Release();
+                }
+            });
+            _logger.LogInformation("[Compile] {Outcome} {Key} in {Ms}ms ({Engine}, {Bytes} bytes)",
+                hit ? "cache hit" : "compiled", key[..12], sw.ElapsedMilliseconds, engine, entry.Pdf.Length);
+            return (entry.Pdf, entry.Log, entry.Aux);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    /// <summary>The compile itself, in a directory that already holds the project's files.</summary>
+    private async Task<(byte[] Pdf, string Log, string Aux)> CompileInDirAsync(
+        string latex, int timeout, bool tolerant, string engine, string tmpDir)
+    {
+        {
             var texPath = Path.Combine(tmpDir, "document.tex");
             var pdfPath = Path.Combine(tmpDir, "document.pdf");
             var logPath = Path.Combine(tmpDir, "document.log");
-            Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
-                await File.WriteAllTextAsync(texPath, latex);
+            await File.WriteAllTextAsync(texPath, latex);
             // A themed document loads lilia-theme.sty, a themed deck its beamertheme….sty (LiliaIndex …),
             // from beside it (an exported project has already put its own copy there).
             Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
@@ -904,10 +896,6 @@ public class LaTeXRenderService : ILaTeXRenderService
             var aux = File.Exists(auxPath) ? await File.ReadAllTextAsync(auxPath) : "";
 
             return (pdf, log, aux);
-        }
-        finally
-        {
-            try { Directory.Delete(tmpDir, true); } catch { }
         }
     }
 
