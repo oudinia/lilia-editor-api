@@ -831,6 +831,31 @@ public class LaTeXRenderService : ILaTeXRenderService
     private async Task<(byte[] Pdf, string Log, string Aux)> CompileInDirAsync(
         string latex, int timeout, bool tolerant, string engine, string tmpDir)
     {
+        // Lilia's preamble, precompiled (DocumentFormats): about 1.7 s of each pass was loading it. A
+        // compile the format cannot carry runs again without it, and the format is set aside.
+        var format = DocumentFormats.Shared?.FormatFor(latex, engine, BuildFormatAsyncForDocuments, _logger);
+        if (format is not null)
+        {
+            try
+            {
+                return await CompilePassesAsync(DocumentFormats.WithEndOfDump(latex), timeout, tolerant, engine, tmpDir, format);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning("[Compile] the preamble format could not compile this document, compiling without it: {Error}", ex.Message);
+                DocumentFormats.Shared!.Failed(format);
+                foreach (var f in Directory.EnumerateFiles(tmpDir, "document.*")) File.Delete(f);
+            }
+        }
+        return await CompilePassesAsync(latex, timeout, tolerant, engine, tmpDir, null);
+    }
+
+    private Task<bool> BuildFormatAsyncForDocuments(string dump, string engine, string path) =>
+        BuildFormatAsync(dump, engine, path, timeoutSeconds: 60);
+
+    private async Task<(byte[] Pdf, string Log, string Aux)> CompilePassesAsync(
+        string latex, int timeout, bool tolerant, string engine, string tmpDir, string? format)
+    {
         {
             var texPath = Path.Combine(tmpDir, "document.tex");
             var pdfPath = Path.Combine(tmpDir, "document.pdf");
@@ -847,7 +872,9 @@ public class LaTeXRenderService : ILaTeXRenderService
             // skip it implicitly in BuildPdflatexArgs.
             for (int pass = 0; pass < 2; pass++)
             {
-                var args = BuildPdflatexArgs(texPath, tmpDir, tolerant: tolerant);
+                var args = format is null
+                    ? BuildPdflatexArgs(texPath, tmpDir, tolerant: tolerant)
+                    : $"-interaction=nonstopmode {(tolerant ? "" : "-halt-on-error ")}--no-shell-escape \"-fmt={format}\" -output-directory {tmpDir} {texPath}";
                 var (exitCode, stdout, stderr) = await RunProcessAsync(
                     engine,
                     args,
@@ -988,6 +1015,8 @@ public class LaTeXRenderService : ILaTeXRenderService
             var src = Path.Combine(tmpDir, "preamble.tex");
             // mylatexformat dumps everything up to \endofdump (or \begin{document}).
             await File.WriteAllTextAsync(src, preamble.TrimEnd() + "\n\\csname endofdump\\endcsname\n", ct);
+            // A themed preamble loads lilia-theme.sty from beside it.
+            Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(preamble, tmpDir);
             int exit;
             try
             {
