@@ -224,6 +224,7 @@ public class PreviewController : ControllerBase
     /// defines the same shortcuts (MathMacros.PreambleShortcuts), so the editor and the PDF agree.
     /// </summary>
     [HttpGet("math-macros")]
+    [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> GetMathMacros(Guid docId)
     {
         var userId = GetUserId();

@@ -100,6 +100,6 @@ public class MathMacrosTests : IntegrationTestBase
         macros.TryGetProperty(@"\Re", out _).Should().BeFalse("LaTeX's own \\Re is not redefined");
 
         (await CreateClientAs($"other-{Guid.NewGuid():N}"[..20]).GetAsync($"/api/documents/{doc}/preview/math-macros"))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound, "another user's document");
+            .StatusCode.Should().BeOneOf(new[] { HttpStatusCode.Forbidden, HttpStatusCode.NotFound }, "another user's document");
     }
 }
