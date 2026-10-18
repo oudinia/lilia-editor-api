@@ -244,6 +244,7 @@ public class PreviewController : ControllerBase
 
         if (cached != null)
         {
+            Lilia.Core.Diagnostics.Timing.Mark("preview.cache hit");
             return Ok(new PreviewResponse(
                 cached,
                 "latex",

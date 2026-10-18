@@ -55,6 +55,7 @@ public class R2StorageService : IStorageService
 
     public async Task<Stream> DownloadAsync(string key)
     {
+        using var timed = Lilia.Core.Diagnostics.Timing.Measure("storage.download");
         var response = await _s3Client.GetObjectAsync(_bucketName, key);
         var memoryStream = new MemoryStream();
         await response.ResponseStream.CopyToAsync(memoryStream);

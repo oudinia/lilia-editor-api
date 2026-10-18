@@ -292,6 +292,7 @@ public class DocumentExportService : IDocumentExportService
 
         // The engine the document itself asks for. Read before the Typst branch
         // because it decides whether that branch may run at all.
+        var routing = Lilia.Core.Diagnostics.Timing.Measure("pdf.route");
         var documentEngine = await _context.Documents
             .Where(d => d.Id == documentId)
             .Select(d => d.LatexEngine)
@@ -331,6 +332,7 @@ public class DocumentExportService : IDocumentExportService
                 wantsLatex = true;
         }
 
+        routing.Dispose();
         if (!wantsLatex)
         {
             // Phase 2 step 9 — Typst-first preview path. Sub-second compile
@@ -338,7 +340,9 @@ public class DocumentExportService : IDocumentExportService
             // existing pdflatex pipeline below (unless caller asked for
             // typst-only). Telemetry on every fallback is recorded inside
             // TryTypstPdfAsync so we see real-world coverage gaps.
-            var typstPdf = await _previewRender.TryTypstPdfAsync(documentId);
+            byte[]? typstPdf;
+            using (Lilia.Core.Diagnostics.Timing.Measure("pdf.typst"))
+                typstPdf = await _previewRender.TryTypstPdfAsync(documentId);
             if (typstPdf is not null && typstPdf.Length > 0)
             {
                 return (typstPdf, "typst");
@@ -368,14 +372,17 @@ public class DocumentExportService : IDocumentExportService
             CompileHere = true,
             LookOverride = lookOverride,
         };
-        var projectStream = await _latexExportService.ExportToZipAsync(documentId, opts);
+        Stream projectStream;
+        using (Lilia.Core.Diagnostics.Timing.Measure("pdf.project"))
+            projectStream = await _latexExportService.ExportToZipAsync(documentId, opts);
         using var archive = new System.IO.Compression.ZipArchive(projectStream, System.IO.Compression.ZipArchiveMode.Read);
         var mainEntry = archive.Entries.FirstOrDefault(e => e.Name == "main.tex");
         if (mainEntry == null)
             throw new InvalidOperationException("Generated LaTeX project has no main.tex");
         using var reader = new System.IO.StreamReader(mainEntry.Open());
         var latex = await reader.ReadToEndAsync();
-        latex = await InlineBibliographyAsync(archive, latex, documentId);
+        using (Lilia.Core.Diagnostics.Timing.Measure("pdf.bibliography"))
+            latex = await InlineBibliographyAsync(archive, latex, documentId);
         // Tolerant mode — body errors produce a partial PDF instead of 500.
         // Preamble errors still surface (no PDF file generated → exception).
         // Compile with the engine the document asks for. This passed no engine
@@ -387,10 +394,14 @@ public class DocumentExportService : IDocumentExportService
         // …except Chinese, Japanese or Korean text, which the exporter sets with xeCJK: XeTeX only (MCP-26).
         if (EngineDetector.Detect(latex) == LatexEngine.Xelatex) engine = "xelatex";
 
-        var (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
-            latex, timeout: 60, engine: engine,
-            materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
-        await KeepLabelNumbersAsync(documentId, aux);
+        byte[] pdflatexPdf;
+        string? aux;
+        using (Lilia.Core.Diagnostics.Timing.Measure("pdf.compile"))
+            (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
+                latex, timeout: 60, engine: engine,
+                materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
+        using (Lilia.Core.Diagnostics.Timing.Measure("pdf.labels"))
+            await KeepLabelNumbersAsync(documentId, aux);
         return (pdflatexPdf, engine);
     }
 

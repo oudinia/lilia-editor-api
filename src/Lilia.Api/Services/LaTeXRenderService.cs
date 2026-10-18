@@ -500,10 +500,12 @@ public class LaTeXRenderService : ILaTeXRenderService
         if (_validationCache.TryGetValue(hash, out var cached))
         {
             _logger.LogDebug("Validation cache hit for hash {Hash} ({Engine})", hash[..12], resolvedEngine);
+            Lilia.Core.Diagnostics.Timing.Mark("validate.cache hit");
             return FromCache(cached);
         }
 
-        await _semaphore.WaitAsync();
+        using (Lilia.Core.Diagnostics.Timing.Measure("tex.queue"))
+            await _semaphore.WaitAsync();
         try
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
@@ -545,6 +547,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                     args = $"-interaction=nonstopmode -halt-on-error --no-shell-escape \"-fmt={docFormat}\" -output-directory {tmpDir} {texPath}";
                 }
                 var sw = System.Diagnostics.Stopwatch.StartNew();
+                using var validating = Lilia.Core.Diagnostics.Timing.Measure(docFormat is null ? "validate.compile" : "validate.compile (format)");
                 var (exitCode, _, stderr) = await RunProcessAsync(resolvedEngine, args, tmpDir, 15);
                 if (docFormat is not null && exitCode != 0)
                 {
@@ -761,8 +764,14 @@ public class LaTeXRenderService : ILaTeXRenderService
         string mainStem = "main", int timeoutSeconds = 60)
     {
         var bblKey = BblKey(files, mainStem);
-        if (_bblCache.TryGetValue(bblKey, out var kept)) return kept;
-        var made = await GenerateBblUncachedAsync(files, mainStem, timeoutSeconds);
+        if (_bblCache.TryGetValue(bblKey, out var kept))
+        {
+            Lilia.Core.Diagnostics.Timing.Mark("bbl.cache hit");
+            return kept;
+        }
+        string? made;
+        using (Lilia.Core.Diagnostics.Timing.Measure("bbl.build"))
+            made = await GenerateBblUncachedAsync(files, mainStem, timeoutSeconds);
         if (!string.IsNullOrWhiteSpace(made))
         {
             if (_bblCache.Count >= MaxBblCacheEntries) _bblCache.Clear();
@@ -878,9 +887,11 @@ public class LaTeXRenderService : ILaTeXRenderService
             var sw = Stopwatch.StartNew();
             var (entry, hit) = await CompileCache.Shared.GetOrCompileAsync(key, async () =>
             {
-                await _semaphore.WaitAsync();
+                using (Lilia.Core.Diagnostics.Timing.Measure("tex.queue"))
+                    await _semaphore.WaitAsync();
                 try
                 {
+                    using var compiling = Lilia.Core.Diagnostics.Timing.Measure("tex.compile");
                     var (pdf, log, aux) = await CompileInDirAsync(latex, timeout, tolerant, engine, tmpDir);
                     return new CompileCache.Entry(pdf, log, aux);
                 }
@@ -889,6 +900,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                     _semaphore.Release();
                 }
             });
+            if (hit) Lilia.Core.Diagnostics.Timing.Mark("tex.cache hit");
             _logger.LogInformation("[Compile] {Outcome} {Key} in {Ms}ms ({Engine}, {Bytes} bytes)",
                 hit ? "cache hit" : "compiled", key[..12], sw.ElapsedMilliseconds, engine, entry.Pdf.Length);
             return (entry.Pdf, entry.Log, entry.Aux);
@@ -908,6 +920,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         var format = DocumentFormats.Shared?.FormatFor(latex, engine, BuildFormatAsyncForDocuments, _logger);
         if (format is not null)
         {
+            Lilia.Core.Diagnostics.Timing.Mark("tex.preamble format");
             try
             {
                 return await CompilePassesAsync(DocumentFormats.WithEndOfDump(latex), timeout, tolerant, engine, tmpDir, format);
