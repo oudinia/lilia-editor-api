@@ -75,8 +75,10 @@ public class AskLiliaController : ControllerBase
     {
         var userId = GetUserId();
         if (userId is null) return Unauthorized();
-        if (request is null || string.IsNullOrWhiteSpace(request.Message))
+        // A photo or a paste of maths needs no words: "Read the maths" is the message (18 Oct).
+        if (request is null || (string.IsNullOrWhiteSpace(request.Message) && request.Math is null))
             return BadRequest(new { message = "Message is required." });
+        if (string.IsNullOrWhiteSpace(request.Message)) request = request with { Message = "" };
 
         try
         {

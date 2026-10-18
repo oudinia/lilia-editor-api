@@ -36,7 +36,7 @@ public interface IAskLiliaService
 }
 
 /// <summary><c>Figure</c>: the TikZ figure the dock is scoped to (TikZ step 3, 1c); with it the turn reads only that figure.</summary>
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null, string? Language = null);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null, string? Language = null, MathAskInput? Math = null);
 
 /// <summary>A file the author attached to the message. <see cref="DataBase64"/>
 /// is the raw file bytes, base64-encoded. Images/PDFs go to the model natively;
@@ -58,7 +58,9 @@ public sealed record AskLiliaResponse(
     /// <summary>Resolved model id used for this turn (e.g. claude-sonnet-5).</summary>
     string? Model = null,
     /// <summary>A figure turn's proposal (drawing, change, explanation, caption), compiled first.</summary>
-    TikzAskProposal? Figure = null);
+    TikzAskProposal? Figure = null,
+    /// <summary>A maths turn's reading (photo or paste), each formula checked by TeX first.</summary>
+    MathAskProposal? Math = null);
 
 public sealed record AskLiliaResult(bool Locked, string? Reason, string? Message, AskLiliaResponse? Response)
 {
@@ -86,6 +88,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private readonly ITikzFigureService? _tikz;
     // check_document: compiles the document so Ask Lilia can confirm its own fixes (15 Oct).
     private readonly IDocumentCheckService? _checker;
+    // Reading maths from a photo or a paste: TeX checks each formula with the document's preamble (18 Oct).
+    private readonly ILaTeXRenderService? _latexRender;
+    private readonly string? _mathModel;
     private readonly int _creditsPerCompile;
     private readonly bool _useAi;
     private readonly bool _enabled;
@@ -208,10 +213,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
         IConfiguration configuration,
         ILogger<AskLiliaService> logger,
         ITikzFigureService? tikz = null,
-        IDocumentCheckService? checker = null)
+        IDocumentCheckService? checker = null,
+        ILaTeXRenderService? latexRender = null)
     {
         _tikz = tikz;
         _checker = checker;
+        _latexRender = latexRender;
+        _mathModel = configuration["AI:Math:Model"];
         _creditsPerCompile = configuration.GetValue("AI:CheckDocument:CreditsPerCompile", 1);
         _chatClient = chatClient;
         _entitlement = entitlement;
@@ -278,6 +286,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
         // A turn scoped to one TikZ figure reads that figure only, and compiles what it proposes.
         if (request.Figure is not null)
             return await AskFigureAsync(userId, request, request.Figure, ct);
+        // A photo or a paste of maths: read, checked by TeX, proposed; nothing is written.
+        if (request.Math is not null)
+            return await AskMathAsync(userId, request, request.Math, ct);
 
         // ── route + prompt ────────────────────────────────────────────────
         var route = _router.Route(request.Message);
