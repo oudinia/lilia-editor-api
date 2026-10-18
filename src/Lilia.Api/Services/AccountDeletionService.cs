@@ -79,6 +79,9 @@ public class AccountDeletionService
         user.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         _cache.Remove(CacheKey(userId));
+        // What was cached for them (PDFs, bibliographies, checks; 18 Oct) goes with the account.
+        var purged = await UserCache.PurgeUserAsync(userId);
+        _logger.LogInformation("[AccountDeletion] {UserId}: {Count} cached entries removed", userId, purged);
         var erasedOn = user.DeletionRequestedAt.Value.AddDays(RestoreDays);
         _logger.LogInformation("[AccountDeletion] {UserId} asked to delete; erasure on {Date:yyyy-MM-dd}", userId, erasedOn);
         await SendAsync(user.Email, "Your Lilia account is closed",
@@ -138,6 +141,7 @@ public class AccountDeletionService
         user.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+        await UserCache.PurgeUserAsync(userId);
         _cache.Remove(CacheKey(userId));
 
         var exports = Path.GetFullPath(Path.Combine(_config["AccountExport:Path"] ?? "./account-exports", userId));

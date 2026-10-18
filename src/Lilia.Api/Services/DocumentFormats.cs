@@ -34,6 +34,8 @@ public sealed class DocumentFormats
     /// Not this server's build: keyed on the build, every deploy threw the formats away and the first
     /// PDF of each document after it paid full price (LTX-110: three TeX runs, 10 s, 18 Oct).
     /// </summary>
+    internal static string TexIdentity => TexToken.Value;
+
     private static readonly Lazy<string> TexToken = new(() =>
     {
         try

@@ -496,12 +496,22 @@ public class LaTeXRenderService : ILaTeXRenderService
     {
         var resolvedEngine = ResolveEngine(engine);
         // Cache key includes engine so swapping engines invalidates cleanly.
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(latex + "|" + resolvedEngine)));
-        if (_validationCache.TryGetValue(hash, out var cached))
+        // Kept per user (18 Oct), in memory and in Redis; the key holds the check's procedure and
+        // the installed TeX so a kept result outlives deploys only while it would still be the same.
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            latex + "|" + resolvedEngine + "|" + CompileCache.ProcedureVersion + "|" + DocumentFormats.TexIdentity)));
+        var scopedHash = CacheOwner.Scope(CacheOwner.Current) + ":" + hash;
+        if (_validationCache.TryGetValue(scopedHash, out var cached))
         {
             _logger.LogDebug("Validation cache hit for hash {Hash} ({Engine})", hash[..12], resolvedEngine);
             Lilia.Core.Diagnostics.Timing.Mark("validate.cache hit");
             return FromCache(cached);
+        }
+        if (await UserCache.GetAsync("val", hash) is { } keptBytes && ValidationFromBytes(keptBytes) is { } kept)
+        {
+            Lilia.Core.Diagnostics.Timing.Mark("validate.cache hit (redis)");
+            _validationCache[scopedHash] = kept;
+            return FromCache(kept);
         }
 
         using (Lilia.Core.Diagnostics.Timing.Measure("tex.queue"))
@@ -509,7 +519,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         try
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
-            if (_validationCache.TryGetValue(hash, out cached))
+            if (_validationCache.TryGetValue(scopedHash, out cached))
                 return FromCache(cached);
 
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
@@ -704,7 +714,8 @@ public class LaTeXRenderService : ILaTeXRenderService
 
                 // Cache the result (with compile metadata so cache hits still
                 // surface engine/log/timing for the validation page).
-                CacheValidationResult(hash, (result.Valid, result.Error, result.Warnings, result.Engine, result.Log, result.DurationMs));
+                CacheValidationResult(scopedHash, (result.Valid, result.Error, result.Warnings, result.Engine, result.Log, result.DurationMs));
+                await UserCache.SetAsync("val", hash, ValidationToBytes(_validationCache[scopedHash]));
 
                 return result;
             }
@@ -728,6 +739,33 @@ public class LaTeXRenderService : ILaTeXRenderService
         new(cached.Valid, cached.Error, cached.Warnings,
             cached.Valid ? null : LaTeXErrorParser.Parse(cached.Log),
             cached.DurationMs, cached.Engine, cached.Log);
+
+    private sealed record KeptValidation(bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs, DateTime CachedAt);
+
+    private static byte[] ValidationToBytes((bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs, DateTime CachedAt) v) =>
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new KeptValidation(v.Valid, v.Error, v.Warnings, v.Engine, v.Log, v.DurationMs, v.CachedAt));
+
+    private static (bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs, DateTime CachedAt)? ValidationFromBytes(byte[] bytes)
+    {
+        try
+        {
+            var k = System.Text.Json.JsonSerializer.Deserialize<KeptValidation>(bytes);
+            return k is null ? null : (k.Valid, k.Error, k.Warnings, k.Engine, k.Log, k.DurationMs, k.CachedAt);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Drop one user's kept checks and bibliographies from this process (account closed); how many.</summary>
+    internal static int ForgetScope(string scope)
+    {
+        var prefix = scope + ":";
+        var n = 0;
+        foreach (var k in _validationCache.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+            if (_validationCache.TryRemove(k, out _)) n++;
+        foreach (var k in _bblCache.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+            if (_bblCache.TryRemove(k, out _)) n++;
+        return n;
+    }
 
     private static void CacheValidationResult(string hash, (bool Valid, string? Error, string[] Warnings, string Engine, string Log, int DurationMs) result)
     {
@@ -763,11 +801,18 @@ public class LaTeXRenderService : ILaTeXRenderService
         IReadOnlyList<(string Path, string Content)> files,
         string mainStem = "main", int timeoutSeconds = 60)
     {
+        // Per user (18 Oct): this process's memory, then Redis, then BibTeX.
         var bblKey = BblKey(files, mainStem);
-        if (_bblCache.TryGetValue(bblKey, out var kept))
+        var scoped = CacheOwner.Scope(CacheOwner.Current) + ":" + bblKey;
+        if (_bblCache.TryGetValue(scoped, out var kept))
         {
             Lilia.Core.Diagnostics.Timing.Mark("bbl.cache hit");
             return kept;
+        }
+        if (await UserCache.GetAsync("bbl", bblKey) is { } keptBytes)
+        {
+            Lilia.Core.Diagnostics.Timing.Mark("bbl.cache hit (redis)");
+            return _bblCache[scoped] = Encoding.UTF8.GetString(keptBytes);
         }
         string? made;
         using (Lilia.Core.Diagnostics.Timing.Measure("bbl.build"))
@@ -775,7 +820,8 @@ public class LaTeXRenderService : ILaTeXRenderService
         if (!string.IsNullOrWhiteSpace(made))
         {
             if (_bblCache.Count >= MaxBblCacheEntries) _bblCache.Clear();
-            _bblCache[bblKey] = made;
+            _bblCache[scoped] = made;
+            await UserCache.SetAsync("bbl", bblKey, Encoding.UTF8.GetBytes(made));
         }
         return made;
     }
@@ -784,7 +830,8 @@ public class LaTeXRenderService : ILaTeXRenderService
     {
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         void Add(string v) { var b = Encoding.UTF8.GetBytes(v); sha.AppendData(BitConverter.GetBytes(b.Length)); sha.AppendData(b); }
-        Add(typeof(LaTeXRenderService).Assembly.ManifestModule.ModuleVersionId.ToString("N"));
+        Add(CompileCache.ProcedureVersion);
+        Add(DocumentFormats.TexIdentity);
         Add(mainStem);
         foreach (var (path, content) in files) { Add(path); Add(content); }
         return Convert.ToHexString(sha.GetHashAndReset());

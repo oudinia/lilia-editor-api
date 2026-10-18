@@ -613,8 +613,29 @@ if (stytchWebhookSettings.RequireSignature && string.IsNullOrEmpty(stytchWebhook
 }
 builder.Services.AddSingleton(stytchWebhookSettings);
 
-// Add distributed cache (in-memory for now, swap to Redis with 1 line when scaling)
-builder.Services.AddDistributedMemoryCache();
+// The distributed cache and the per-user compile caches (18 Oct): Redis when Redis__ConnectionString
+// is set (ops/redis.sh: local, password-protected, 512 MB, nothing on disk), memory otherwise. A
+// Redis that cannot be reached never fails a request: abortConnect=false, and the caches fall back
+// to memory (UserCache).
+var redisConnection = builder.Configuration["Redis:ConnectionString"];
+var redisPrefix = builder.Configuration["Redis:Prefix"] is { Length: > 0 } rp ? rp : "lilia:";
+if (!string.IsNullOrWhiteSpace(redisConnection))
+{
+    var redis = StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnection);
+    builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redis);
+    builder.Services.AddStackExchangeRedisCache(o =>
+    {
+        o.ConnectionMultiplexerFactory = () => Task.FromResult<StackExchange.Redis.IConnectionMultiplexer>(redis);
+        o.InstanceName = redisPrefix + "dc:";
+    });
+    Lilia.Api.Services.UserCache.Store = new Lilia.Api.Services.RedisUserCacheStore(redis, redisPrefix);
+    Console.WriteLine($"[BOOT] Cache: redis ({(redis.IsConnected ? "connected" : "NOT connected, memory until it is")}, prefix {redisPrefix})");
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+    Console.WriteLine("[BOOT] Cache: memory (no Redis__ConnectionString)");
+}
 
 // Rate limiting — strict policy partitions by client IP so one abuser can't
 // exhaust the bucket for everyone. Auth-sensitive and anonymous endpoints
@@ -851,6 +872,7 @@ builder.Services.AddScoped<IEpubService, EpubService>();
 builder.Services.AddScoped<IEpubReviewImporter, EpubReviewImporter>();
 
 var app = builder.Build();
+Lilia.Api.Services.UserCache.Logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Lilia.Api.Services.UserCache");
 
 // LILIA_TEX_SANDBOX=bwrap: every TeX process runs in bubblewrap (16 Oct 2026). Checked once here,
 // because a sandbox that cannot start fails every compile.
@@ -1073,6 +1095,14 @@ app.UseAuthorization();
 
 // Sync user data on authenticated requests
 app.UseUserSync();
+
+// Whose cache this request reads and fills: the signed-in user (CacheOwner, 18 Oct).
+app.Use(async (context, next) =>
+{
+    Lilia.Api.Services.CacheOwner.Set(context.User?.FindFirst("sub")?.Value
+        ?? context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
+    await next();
+});
 // A closed account (asked to delete) reaches only its status and Restore.
 app.UseMiddleware<AccountClosedMiddleware>();
 // Two-step sign-in, once on, needs a second factor in the session.

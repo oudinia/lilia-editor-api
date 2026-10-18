@@ -44,6 +44,8 @@ public class ConnectorFilesController(
         if (doc is null) return Explain(404, "This document is no longer available.");
         var name = FileName(doc.Title);
         logger.LogInformation("[Connector] {Format} download of {DocId} for {UserId}", t.Format, t.DocumentId, t.UserId);
+        // A signed link, no sign-in: the link's user owns what this download caches.
+        CacheOwner.Set(t.UserId);
         try
         {
             switch (t.Format)
