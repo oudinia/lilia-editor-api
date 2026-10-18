@@ -117,7 +117,8 @@ public static class UserCache
     public static async Task<long> PurgeUserAsync(string userId)
     {
         var scope = CacheOwner.Scope(userId);
-        long removed = CompileCache.Shared.RemoveScope(scope) + LaTeXRenderService.ForgetScope(scope);
+        long removed = CompileCache.Shared.RemoveScope(scope) + CompileCache.Versions.RemoveScope(scope)
+            + CompileCache.Checks.RemoveScope(scope) + LaTeXRenderService.ForgetScope(scope);
         if (Store is not null)
         {
             try { removed += await Store.PurgeAsync(scope); }

@@ -163,6 +163,21 @@ public class ExportController : ControllerBase
         if (!string.IsNullOrWhiteSpace(look) && Lilia.Engines.Themes.ThemeLock.WhyNot(document.LatexDocumentClass, look) is { } wrongClass)
             return BadRequest(new { message = wrongClass, error = "invalid_look" });
 
+        // The version as an ETag (18 Oct): a browser or phone that already has this PDF gets 304 and
+        // keeps its copy. Revalidated on every use (no-cache), private to the user.
+        if (HttpContext.RequestServices.GetService<DocumentVersions>() is { } versions
+            && await versions.OfAsync(docId) is { } version)
+        {
+            var etag = "\"" + DocumentVersions.OutputKey(version, "pdf", engine, look, printSafe ? "print-safe" : null)[..32] + "\"";
+            Response.Headers.ETag = etag;
+            Response.Headers.CacheControl = "private, no-cache";
+            if (Request.Headers.IfNoneMatch.Any(v => v == etag))
+            {
+                Lilia.Core.Diagnostics.Timing.Mark("pdf.not modified");
+                return StatusCode(StatusCodes.Status304NotModified);
+            }
+        }
+
         _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId} (engine={Engine}, look={Look}, printSafe={PrintSafe})",
             docId, userId, engine, look ?? "document", printSafe);
 

@@ -38,6 +38,7 @@ public class DocumentExportService : IDocumentExportService
     private readonly IPreviewRenderService _previewRender;
     private readonly IStorageService _storageService;
     private readonly ILogger<DocumentExportService> _logger;
+    private readonly DocumentVersions? _versions;
 
     public DocumentExportService(
         LiliaDbContext context,
@@ -47,8 +48,10 @@ public class DocumentExportService : IDocumentExportService
         ILaTeXRenderService latexRenderService,
         IPreviewRenderService previewRender,
         IStorageService storageService,
-        ILogger<DocumentExportService> logger)
+        ILogger<DocumentExportService> logger,
+        DocumentVersions? versions = null)
     {
+        _versions = versions;
         _context = context;
         _docxExportService = docxExportService;
         _renderService = renderService;
@@ -282,6 +285,25 @@ public class DocumentExportService : IDocumentExportService
         ExportToPdfWithEngineAsync(documentId, engineHint, lookTheme: null, printSafe: false);
 
     public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(
+        Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
+    {
+        // By document version first (DocumentVersions, 18 Oct): an unchanged document's PDF is
+        // answered before anything is rendered or routed, and two requests at once share one export.
+        if (_versions is not null && await _versions.OfAsync(documentId) is { } version)
+        {
+            var key = DocumentVersions.OutputKey(version, "pdf", engineHint ?? "auto", lookTheme, printSafe ? "print-safe" : null);
+            var (entry, hit) = await CompileCache.Versions.GetOrCompileAsync(key, async () =>
+            {
+                var (pdf, engine) = await ExportToPdfUncachedAsync(documentId, engineHint, lookTheme, printSafe);
+                return new CompileCache.Entry(pdf, engine, "");
+            });
+            if (hit) Lilia.Core.Diagnostics.Timing.Mark("pdf.version hit");
+            return (entry.Pdf, entry.Log);
+        }
+        return await ExportToPdfUncachedAsync(documentId, engineHint, lookTheme, printSafe);
+    }
+
+    private async Task<(byte[] Pdf, string Engine)> ExportToPdfUncachedAsync(
         Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
     {
         // engineHint = "typst"     → Typst only, throw if it fails

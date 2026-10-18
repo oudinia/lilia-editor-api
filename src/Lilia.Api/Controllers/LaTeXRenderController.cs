@@ -627,6 +627,38 @@ public class LaTeXRenderController : ControllerBase
     [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> ValidateDocument(Guid documentId)
     {
+        // By document version (18 Oct): an unchanged document's check is answered without rendering
+        // or compiling; two checks at once share one. Only a successful answer is kept.
+        if (HttpContext.RequestServices.GetService<DocumentVersions>() is { } versions
+            && await versions.OfAsync(documentId) is { } version)
+        {
+            var key = DocumentVersions.OutputKey(version, "check");
+            try
+            {
+                var (entry, hit) = await CompileCache.Checks.GetOrCompileAsync(key, async () =>
+                {
+                    var answer = await ValidateDocumentUncached(documentId);
+                    if (answer is OkObjectResult ok)
+                        return new CompileCache.Entry(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(ok.Value, CheckJson), "", "");
+                    throw new UncachedAnswer(answer);
+                });
+                if (hit) Lilia.Core.Diagnostics.Timing.Mark("check.version hit");
+                return File(entry.Pdf, "application/json; charset=utf-8");
+            }
+            catch (UncachedAnswer u) { return u.Answer; }
+        }
+        return await ValidateDocumentUncached(documentId);
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions CheckJson = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    private sealed class UncachedAnswer(IActionResult answer) : Exception
+    {
+        public IActionResult Answer { get; } = answer;
+    }
+
+    private async Task<IActionResult> ValidateDocumentUncached(Guid documentId)
+    {
         try
         {
             var db = HttpContext.RequestServices.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();

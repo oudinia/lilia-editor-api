@@ -46,10 +46,25 @@ public sealed class CompileCache
     private readonly ConcurrentDictionary<string, Lazy<Task<Entry>>> _inFlight = new();
     private long _bytes;
 
-    public CompileCache(long maxBytes = DefaultMaxBytes) => _maxBytes = maxBytes;
+    private readonly string _kind;
+
+    public CompileCache(long maxBytes = DefaultMaxBytes, string kind = "pdf")
+    {
+        _maxBytes = maxBytes;
+        _kind = kind;
+    }
 
     /// <summary>The cache every compile in this process shares.</summary>
     public static CompileCache Shared { get; } = new();
+
+    /// <summary>
+    /// Finished PDFs by document version (DocumentVersions): answered before anything is rendered.
+    /// The entry's Log holds the engine that made it.
+    /// </summary>
+    public static CompileCache Versions { get; } = new(128L * 1024 * 1024, "pdfv");
+
+    /// <summary>The whole-document check's answer (JSON, in the entry's bytes) by document version.</summary>
+    public static CompileCache Checks { get; } = new(32L * 1024 * 1024, "valv");
 
     public long Hits;
     public long Misses;
@@ -132,10 +147,10 @@ public sealed class CompileCache
             Interlocked.Increment(ref Hits);
             return (cached, true);
         }
-        if (await UserCache.GetAsync("pdf", key) is { } kept && Deserialize(kept) is { } fromRedis)
+        if (await UserCache.GetAsync(_kind, key) is { } kept && Deserialize(kept) is { } fromRedis)
         {
             Interlocked.Increment(ref Hits);
-            Lilia.Core.Diagnostics.Timing.Mark("tex.cache hit (redis)");
+            Lilia.Core.Diagnostics.Timing.Mark(_kind + " hit (redis)");
             Put(scoped, fromRedis);
             return (fromRedis, true);
         }
@@ -148,7 +163,7 @@ public sealed class CompileCache
             {
                 Interlocked.Increment(ref Misses);
                 Put(scoped, entry);
-                if (entry.Bytes <= MaxEntryBytes) await UserCache.SetAsync("pdf", key, Serialize(entry));
+                if (entry.Bytes <= MaxEntryBytes) await UserCache.SetAsync(_kind, key, Serialize(entry));
                 return (entry, false);
             }
             Interlocked.Increment(ref Hits);

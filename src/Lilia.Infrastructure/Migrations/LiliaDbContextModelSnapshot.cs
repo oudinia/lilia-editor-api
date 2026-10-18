@@ -758,6 +758,12 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnName("content")
                         .HasDefaultValueSql("'{}'::jsonb");
 
+                    b.Property<string>("ContentHash")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")

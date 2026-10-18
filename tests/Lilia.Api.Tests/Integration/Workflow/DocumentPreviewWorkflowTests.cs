@@ -33,6 +33,9 @@ public class DocumentPreviewWorkflowTests : IntegrationTestBase
         _client = CreateClientAs(_userId);
     }
 
+    /// <summary>Answers from a cache: by document version (since 18 Oct) or by compile input.</summary>
+    private static long CachedAnswers() => CompileCache.Versions.Hits + CompileCache.Shared.Hits;
+
     // ── the author's actions ─────────────────────────────────────────────
 
     private async Task<Guid> NewDocumentAsync(string title)
@@ -132,10 +135,10 @@ public class DocumentPreviewWorkflowTests : IntegrationTestBase
         var para = await AddBlockAsync(doc, "paragraph", new { text = "The first version of this sentence." }, 0);
 
         var first = await PdfAsync(doc);
-        var hits = CompileCache.Shared.Hits;
+        var hits = CachedAnswers();
         var again = await PdfAsync(doc);
         again.Should().Equal(first, "the same document is the same PDF");
-        CompileCache.Shared.Hits.Should().BeGreaterThan(hits, "the second request is served from the compile cache");
+        CachedAnswers().Should().BeGreaterThan(hits, "the second request is served from the compile cache");
 
         await EditBlockAsync(doc, para, "paragraph", new { text = "The second version of this sentence." });
         var edited = Text(await PdfAsync(doc));
@@ -202,9 +205,9 @@ public class DocumentPreviewWorkflowTests : IntegrationTestBase
         text.Should().NotContain("[?]", "the citation resolved");
 
         // The bibliography file once carried the time it was written, so this never hit the cache (#332).
-        var hits = CompileCache.Shared.Hits;
+        var hits = CachedAnswers();
         (await PdfAsync(doc)).Should().Equal(first);
-        CompileCache.Shared.Hits.Should().BeGreaterThan(hits);
+        CachedAnswers().Should().BeGreaterThan(hits);
 
         await EditBlockAsync(doc, para, "paragraph", new { text = @"As \cite{knuth84} and \cite{lamport94} show, macros compose." });
         Text(await PdfAsync(doc)).Should().Contain("The TeXbook").And.Contain("A Document Preparation System");

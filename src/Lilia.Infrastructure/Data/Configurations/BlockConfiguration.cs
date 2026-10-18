@@ -24,6 +24,8 @@ public class BlockConfiguration : IEntityTypeConfiguration<Block>
         builder.Property(b => b.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
         builder.Property(b => b.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
         builder.Property(b => b.CreatedBy).HasColumnName("created_by").HasMaxLength(255);
+        // Written by the database (trg_blocks_content_hash), read back after each save.
+        builder.Property(b => b.ContentHash).HasColumnName("content_hash").HasMaxLength(64).ValueGeneratedOnAddOrUpdate();
 
         builder.HasIndex(b => b.DocumentId);
         builder.HasIndex(b => new { b.DocumentId, b.SortOrder });

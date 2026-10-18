@@ -17,6 +17,12 @@ public class Block
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string? CreatedBy { get; set; }
+    /// <summary>
+    /// SHA-256 of the block's type, content and metadata, set by the database on every write
+    /// (trigger trg_blocks_content_hash), never by the application: a document's version is the hash
+    /// of its blocks' hashes (DocumentVersions, 18 Oct), so no write path can leave it stale.
+    /// </summary>
+    public string? ContentHash { get; set; }
 
     // Navigation properties
     public virtual Document Document { get; set; } = null!;
