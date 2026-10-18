@@ -127,6 +127,17 @@ public class DocumentService : IDocumentService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
+        // The documents this user may see, gathered first: owned, shared with them, shared with a
+        // group they are in, in a team they are in. Each part reads its own index. Written as
+        // owner OR EXISTS(…) OR EXISTS(…), Postgres checked every document in the database against
+        // the user: ~100 ms for a user with three documents among 11,000 (18 Oct, the request
+        // timings), and growing with every author. As a UNION of ids, ~1 ms.
+        var userTeams = _context.GroupMembers.Where(gm => gm.UserId == userId).Select(gm => (Guid?)gm.Group.TeamId);
+        var visible = _context.Documents.Where(x => x.OwnerId == userId).Select(x => x.Id)
+            .Union(_context.DocumentCollaborators.Where(c => c.UserId == userId).Select(c => c.DocumentId))
+            .Union(_context.DocumentGroups.Where(dg => dg.Group.Members.Any(m => m.UserId == userId)).Select(dg => dg.DocumentId))
+            .Union(_context.Documents.Where(x => x.TeamId != null && userTeams.Contains(x.TeamId)).Select(x => x.Id));
+
         var query = _context.Documents
             .Include(d => d.Owner)
             .Include(d => d.Team)
@@ -135,11 +146,7 @@ public class DocumentService : IDocumentService
             .Where(d => d.DeletedAt == null)
             .Where(d => !d.IsTemplate)
             .Where(d => !d.IsPlayground) // FT-SANDBOX-SCOPE: sandbox docs never in real lists
-            .Where(d => d.OwnerId == userId ||
-                        d.Collaborators.Any(c => c.UserId == userId) ||
-                        d.DocumentGroups.Any(dg => dg.Group.Members.Any(m => m.UserId == userId)) ||
-                        // A document in a team the user is in.
-                        (d.TeamId != null && _context.GroupMembers.Any(gm => gm.Group.TeamId == d.TeamId && gm.UserId == userId)))
+            .Where(d => visible.Contains(d.Id))
             // "Remove from my documents" — shared with them, but not listed.
             .Where(d => !_context.DocumentHides.Any(h => h.DocumentId == d.Id && h.UserId == userId));
 
