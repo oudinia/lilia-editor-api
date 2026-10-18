@@ -950,35 +950,50 @@ public class LaTeXRenderService : ILaTeXRenderService
             // from beside it (an exported project has already put its own copy there).
             Lilia.Engines.Themes.ThemeCatalog.StageIfUsed(latex, tmpDir);
 
-            // Run the chosen engine twice (for references). pdflatex is the
+            // Run the chosen engine twice (for references), three times at most with a bibliography. pdflatex is the
             // default; xelatex / lualatex take the same arg shape for our
             // use-case so the build-args helper just passes the command
             // through. Precompiled format is pdflatex-only, so other engines
             // skip it implicitly in BuildPdflatexArgs.
-            for (int pass = 0; pass < 2; pass++)
-            {
-                var args = format is null
-                    ? BuildPdflatexArgs(texPath, tmpDir, tolerant: tolerant)
-                    : $"-interaction=nonstopmode {(tolerant ? "" : "-halt-on-error ")}--no-shell-escape \"-fmt={format}\" -output-directory {tmpDir} {texPath}";
-                var (exitCode, stdout, stderr) = await RunProcessAsync(
-                    engine,
-                    args,
-                    tmpDir,
-                    timeout
-                );
+            var args = format is null
+                ? BuildPdflatexArgs(texPath, tmpDir, tolerant: tolerant)
+                : $"-interaction=nonstopmode {(tolerant ? "" : "-halt-on-error ")}--no-shell-escape \"-fmt={format}\" -output-directory {tmpDir} {texPath}";
+            async Task<int> Pass() => (await RunProcessAsync(engine, args, tmpDir, timeout)).ExitCode;
 
-                // In tolerant mode, accept whatever PDF was produced even if
-                // exit code indicates errors — the user gets a partial preview.
-                if (exitCode != 0 && pass == 1 && !tolerant)
+            var exitCode = await Pass();
+            // A bibliography: BibTeX reads pass 1's .aux, and pass 2 starts with the citations it will
+            // print already in the .aux (BibliographyPasses). A third pass only if TeX says so.
+            if (await RunBibTeXAsync(tmpDir, timeout) is { } bbl)
+            {
+                var auxPath1 = Path.Combine(tmpDir, "document.aux");
+                var natbib = BibliographyPasses.UsesNatbib(latex, File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "");
+                await File.AppendAllTextAsync(auxPath1, BibliographyPasses.Bibcites(bbl, natbib));
+                var lists = await ReadListsAsync(tmpDir);
+                exitCode = await Pass();
+                var log2 = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+                var lists2 = await ReadListsAsync(tmpDir);
+                if (BibliographyPasses.NeedsRerun(log2) || !lists.AsEnumerable().SequenceEqual(lists2))
                 {
-                    var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
-                    var errorLines = logContent.Split('\n')
-                        .Where(l => l.StartsWith("!") || l.Contains("Error"))
-                        .Take(5);
-                    throw new InvalidOperationException(
-                        $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
-                    );
+                    Lilia.Core.Diagnostics.Timing.Mark("tex.pass 3");
+                    exitCode = await Pass();
                 }
+            }
+            else
+            {
+                exitCode = await Pass();
+            }
+
+            // In tolerant mode, accept whatever PDF was produced even if
+            // exit code indicates errors — the user gets a partial preview.
+            if (exitCode != 0 && !tolerant)
+            {
+                var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+                var errorLines = logContent.Split('\n')
+                    .Where(l => l.StartsWith("!") || l.Contains("Error"))
+                    .Take(5);
+                throw new InvalidOperationException(
+                    $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
+                );
             }
 
             if (!File.Exists(pdfPath))
@@ -1010,6 +1025,40 @@ public class LaTeXRenderService : ILaTeXRenderService
             return (pdf, log, aux);
         }
     }
+
+    /// <summary>
+    /// BibTeX on pass 1's .aux, when it names a .bib that is beside the .tex (an exported project's
+    /// references.bib). The .bbl it wrote, or null: no bibliography, or BibTeX made none, and the
+    /// document compiles as it would have without one.
+    /// </summary>
+    private async Task<string?> RunBibTeXAsync(string tmpDir, int timeout)
+    {
+        var auxPath = Path.Combine(tmpDir, "document.aux");
+        if (!File.Exists(auxPath) || !BibliographyPasses.HasDatabase(await File.ReadAllTextAsync(auxPath), tmpDir)) return null;
+        using (Lilia.Core.Diagnostics.Timing.Measure("tex.bibtex"))
+        {
+            try
+            {
+                var (exit, stdout, _) = await RunProcessAsync("bibtex", "document", tmpDir, timeout);
+                var bblPath = Path.Combine(tmpDir, "document.bbl");
+                if (File.Exists(bblPath) && await File.ReadAllTextAsync(bblPath) is { } bbl && !string.IsNullOrWhiteSpace(bbl)) return bbl;
+                _logger.LogWarning("[Compile] BibTeX produced no .bbl (exit {Exit}); citations will print [?]: {Out}",
+                    exit, stdout.Length > 400 ? stdout[..400] : stdout);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("[Compile] BibTeX timed out; citations will print [?]");
+            }
+            return null;
+        }
+    }
+
+    private static async Task<string[]> ReadListsAsync(string tmpDir) =>
+        await Task.WhenAll(BibliographyPasses.ListExtensions.Select(async ext =>
+        {
+            var path = Path.Combine(tmpDir, "document" + ext);
+            return File.Exists(path) ? await File.ReadAllTextAsync(path) : "";
+        }));
 
     public async Task<StandaloneSvgResult> CompileStandaloneSvgAsync(
         string latex, string engine = "pdflatex", int timeoutSeconds = 20, CancellationToken ct = default, string? formatPath = null)
