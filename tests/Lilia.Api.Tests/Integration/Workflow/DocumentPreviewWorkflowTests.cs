@@ -266,4 +266,16 @@ public class DocumentPreviewWorkflowTests : IntegrationTestBase
         // Asked again unchanged, the same answer.
         (await ValidateAsync(doc)).GetProperty("valid").GetBoolean().Should().BeTrue();
     }
+
+    [Fact]
+    public async Task A_document_the_sandbox_refuses_is_explained_not_a_server_error()
+    {
+        // LTX-144 (18 Oct): \write18 is refused by the guard, and the PDF request answered 500.
+        var doc = await NewDocumentAsync("Refused");
+        await AddBlockAsync(doc, "paragraph", new { text = "Harmless text." }, 0);
+        (await _client.PutAsJsonAsync($"/api/documents/{doc}", new { customPreamble = "\\immediate\\write18{ls}" })).EnsureSuccessStatusCode();
+        var res = await _client.GetAsync($"/api/documents/{doc}/export/pdf?engine=pdflatex");
+        res.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, "refused with the reason, not a 500");
+        (await res.Content.ReadAsStringAsync()).Should().Contain("write18");
+    }
 }
