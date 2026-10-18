@@ -196,6 +196,12 @@ public class ExportController : ControllerBase
             var sanitizedTitle = SanitizeFilename(document.Title);
             return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
         }
+        catch (Lilia.Engines.TexSafety.UnsafeLatexException unsafeLatex)
+        {
+            // Refused by the sandbox's guard: about the document, not a server failure (18 Oct).
+            _logger.LogInformation("[Export] PDF of {DocId} refused: {Reason}", docId, unsafeLatex.Message);
+            return UnprocessableEntity(new { message = unsafeLatex.Message, error = "unsafe_latex" });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Export] PDF compilation failed for document {DocId}", docId);

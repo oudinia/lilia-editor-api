@@ -76,6 +76,13 @@ public class ConnectorFilesController(
                     return File(System.Text.Encoding.UTF8.GetBytes(tex), "application/x-tex", $"{name}.tex");
             }
         }
+        catch (Lilia.Engines.TexSafety.UnsafeLatexException unsafeLatex)
+        {
+            // The sandbox's guard refusing what the document asks for (\write18 and the like) is an
+            // answer about the document, not a server failure: it was a bare 500 (18 Oct, LTX-144).
+            logger.LogInformation("[Connector] {Format} export of {DocId} refused: {Reason}", t.Format, t.DocumentId, unsafeLatex.Message);
+            return Explain(422, $"Lilia will not make a PDF of this document: {unsafeLatex.Message} Remove it in Lilia, or export tex or zip to work on the LaTeX.");
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "[Connector] {Format} export of {DocId} failed", t.Format, t.DocumentId);
