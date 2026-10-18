@@ -411,12 +411,11 @@ public class DocumentExportService : IDocumentExportService
             var stored = LabelNumbers.FromAux(aux);
             if (stored is null) return;
 
-            var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == documentId);
-            if (doc is null) return;
-
-            doc.LabelNumbers = stored;
-            doc.LabelNumbersAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            // One statement, no tracked entity: the preview asks for its PDF twice at once, and the
+            // second save of a loaded document failed its concurrency check on every export (18 Oct).
+            var now = DateTime.UtcNow;
+            await _context.Documents.Where(d => d.Id == documentId)
+                .ExecuteUpdateAsync(u => u.SetProperty(d => d.LabelNumbers, stored).SetProperty(d => d.LabelNumbersAt, now));
         }
         catch (Exception ex)
         {

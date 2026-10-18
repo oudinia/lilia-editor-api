@@ -534,8 +534,26 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var usePrecompiled = resolvedEngine == "pdflatex"
                     && !latex.Contains(@"\documentclass", StringComparison.Ordinal);
                 var args = BuildPdflatexArgs(texPath, tmpDir, usePrecompiled: usePrecompiled);
+                // A whole document starts from its precompiled preamble (DocumentFormats), as the
+                // PDF does: after an edit, the check no longer loads every package again (18 Oct).
+                // An error found with the format is checked again without it, so a format can never
+                // report an error the document does not have.
+                var docFormat = usePrecompiled ? null : DocumentFormats.Shared?.FormatFor(latex, resolvedEngine, BuildFormatAsyncForDocuments, _logger);
+                if (docFormat is not null)
+                {
+                    await File.WriteAllTextAsync(texPath, DocumentFormats.WithEndOfDump(latex));
+                    args = $"-interaction=nonstopmode -halt-on-error --no-shell-escape \"-fmt={docFormat}\" -output-directory {tmpDir} {texPath}";
+                }
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 var (exitCode, _, stderr) = await RunProcessAsync(resolvedEngine, args, tmpDir, 15);
+                if (docFormat is not null && exitCode != 0)
+                {
+                    _logger.LogInformation("[Validate] error with the preamble format; checking again without it");
+                    foreach (var f in Directory.EnumerateFiles(tmpDir, "document.*")) File.Delete(f);
+                    await File.WriteAllTextAsync(texPath, latex);
+                    args = BuildPdflatexArgs(texPath, tmpDir);
+                    (exitCode, _, stderr) = await RunProcessAsync(resolvedEngine, args, tmpDir, 15);
+                }
                 sw.Stop();
                 var durationMs = (int)sw.ElapsedMilliseconds;
 
