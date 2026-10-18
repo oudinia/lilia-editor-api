@@ -380,9 +380,10 @@ public class DocumentExportService : IDocumentExportService
         if (mainEntry == null)
             throw new InvalidOperationException("Generated LaTeX project has no main.tex");
         using var reader = new System.IO.StreamReader(mainEntry.Open());
+        // The bibliography is built inside the compile: references.bib is written beside main.tex with
+        // the figures, and BibTeX runs after pass 1 (BibliographyPasses). It was a compile of its own,
+        // pasted in as a .bbl first: one more TeX run on every PDF with references (LTX-110, 18 Oct).
         var latex = await reader.ReadToEndAsync();
-        using (Lilia.Core.Diagnostics.Timing.Measure("pdf.bibliography"))
-            latex = await InlineBibliographyAsync(archive, latex, documentId);
         // Tolerant mode — body errors produce a partial PDF instead of 500.
         // Preamble errors still surface (no PDF file generated → exception).
         // Compile with the engine the document asks for. This passed no engine
@@ -440,8 +441,8 @@ public class DocumentExportService : IDocumentExportService
     ///
     /// <para>Each entry is streamed from the archive straight to disk, so a
     /// paper with a dozen images never holds a dozen images in memory. The .tex
-    /// is skipped: the caller has already modified it (the bibliography is
-    /// inlined) and passes it separately.</para>
+    /// is skipped: the caller passes it separately. references.bib goes with the
+    /// rest, for the BibTeX run inside the compile.</para>
     ///
     /// <para>Entry names are checked against the destination even though this
     /// archive is one we generated ourselves. A zip that can write outside its
@@ -472,65 +473,6 @@ public class DocumentExportService : IDocumentExportService
             await using var file = File.Create(target);
             await source.CopyToAsync(file);
         }
-    }
-
-    private static readonly System.Text.RegularExpressions.Regex BibliographyCommandRe =
-        new(@"\\bibliography\{[^}]*\}", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    /// <summary>
-    /// Resolve <c>\bibliography{references}</c> into a literal
-    /// <c>thebibliography</c> before the PDF compile.
-    ///
-    /// <para>The exported project keeps its bibliography in a separate
-    /// references.bib, pulled in by <c>\bibliography{references}</c> — which
-    /// only resolves if BibTeX runs between pdflatex passes.
-    /// <c>RenderToPdfTolerantAsync</c> compiles a single string with two
-    /// pdflatex passes and nothing else, and only main.tex was ever handed to
-    /// it. references.bib never reached the compile directory, BibTeX never
-    /// ran, and so <b>every citation in every exported PDF rendered as
-    /// <c>[?]</c> and the References section came out empty</b> — the complaint
-    /// that started this, on 2026-09-08. An author spent a session being told
-    /// their document was at fault.</para>
-    ///
-    /// <para>This is the same move the arXiv export already makes: run the
-    /// BibTeX cycle once via <see cref="ILaTeXRenderService.GenerateBblAsync"/>,
-    /// then paste the resulting environment straight into the source so the
-    /// two-pass compile can resolve the citations. Failure is non-fatal — a
-    /// document still exports, just with the unresolved citations it had
-    /// before.</para>
-    /// </summary>
-    private async Task<string> InlineBibliographyAsync(
-        System.IO.Compression.ZipArchive archive, string latex, Guid documentId)
-    {
-        if (!BibliographyCommandRe.IsMatch(latex)) return latex;
-
-        var files = new List<(string Path, string Content)>();
-        foreach (var entry in archive.Entries)
-        {
-            if (string.IsNullOrEmpty(entry.Name)) continue;
-            if (!entry.FullName.EndsWith(".tex") && !entry.FullName.EndsWith(".bib")
-                && !entry.FullName.EndsWith(".bst") && !entry.FullName.EndsWith(".sty")) continue;
-            using var entryReader = new System.IO.StreamReader(entry.Open());
-            files.Add((entry.FullName, await entryReader.ReadToEndAsync()));
-        }
-
-        // Nothing to cite — leave the source alone rather than pay for a
-        // BibTeX round that can only come back empty.
-        if (!files.Any(f => f.Path.EndsWith(".bib") && !string.IsNullOrWhiteSpace(f.Content)))
-            return latex;
-
-        var bbl = await _latexRenderService.GenerateBblAsync(files);
-        if (string.IsNullOrWhiteSpace(bbl))
-        {
-            _logger.LogWarning(
-                "[Export] BibTeX produced no bibliography for document {DocId}; "
-                + "citations will render as [?] and References will be empty", documentId);
-            return latex;
-        }
-
-        // MatchEvaluator, not a replacement string — a .bbl is full of $ and \,
-        // which Regex.Replace would read as substitution syntax.
-        return BibliographyCommandRe.Replace(latex, _ => bbl, 1);
     }
 
     private async Task<ExportBlock?> ConvertBlockAsync(Block block, int? theoremNumber)
