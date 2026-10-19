@@ -6,7 +6,9 @@ public class Document
     public string OwnerId { get; set; } = string.Empty;
     public Guid? TeamId { get; set; }
     public string Title { get; set; } = "Untitled";
-    public string Language { get; set; } = "en";
+    /// <summary>The language the PDF is typeset in: a code of Lilia.Engines.DocumentLanguage, or "auto"
+    /// (read from the text, English when unsure). Was "en" for every document until 19 Oct.</summary>
+    public string Language { get; set; } = "auto";
     public string PaperSize { get; set; } = "a4";
 
     /// <summary>

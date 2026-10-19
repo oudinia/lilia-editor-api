@@ -415,7 +415,11 @@ public class DocumentExportService : IDocumentExportService
         // other hint ("auto", "typst") falls back to the document's own setting.
         var engine = hint is "xelatex" or "lualatex" or "pdflatex" ? hint : documentEngine;
         // …except Chinese, Japanese or Korean text, which the exporter sets with xeCJK: XeTeX only (MCP-26).
-        if (EngineDetector.Detect(latex) == LatexEngine.Xelatex) engine = "xelatex";
+        var detected = EngineDetector.Detect(latex);
+        if (detected == LatexEngine.Xelatex) engine = "xelatex";
+        // …and fontspec (a document language whose script needs Unicode faces) on a pdflatex document,
+        // or what only LuaLaTeX runs (Arabic and Hebrew's bidi=basic): LuaLaTeX (DocumentLanguage).
+        else if (EngineDetector.RequiresLua(latex) || (detected == LatexEngine.Lualatex && engine == "pdflatex")) engine = "lualatex";
 
         byte[] pdflatexPdf;
         string? aux;

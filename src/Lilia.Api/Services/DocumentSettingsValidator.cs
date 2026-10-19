@@ -42,7 +42,8 @@ public static class DocumentSettingsValidator
         string? HeaderLeft = null, string? HeaderCenter = null, string? HeaderRight = null,
         string? FooterLeft = null, string? FooterCenter = null, string? FooterRight = null,
         string? CustomPreamble = null,
-        string? HeadingNumbering = null);
+        string? HeadingNumbering = null,
+        string? Language = null);
 
     public sealed record Result(UpdateDocumentDto? Update, IReadOnlyList<string> Errors, IReadOnlyList<string> Fields)
     {
@@ -180,10 +181,19 @@ public static class DocumentSettingsValidator
             else preamble = i.CustomPreamble;
         }
 
+        string? language = null;
+        if (i.Language is not null)
+        {
+            Touch("language");
+            language = Lilia.Engines.DocumentLanguage.Normalize(i.Language);
+            if (language is null)
+                errors.Add($"language '{i.Language}' is not valid. Valid: {string.Join(", ", Lilia.Engines.DocumentLanguage.Codes)} (auto: read from the text).");
+        }
+
         if (errors.Count > 0) return new Result(null, errors, fields);
 
         var dto = new UpdateDocumentDto(
-            Title: null, Language: null, PaperSize: paper, FontFamily: family, FontSize: i.FontSize,
+            Title: null, Language: language, PaperSize: paper, FontFamily: family, FontSize: i.FontSize,
             Columns: i.Columns, ColumnSeparator: sep, ColumnGap: i.ColumnGap,
             LatexDocumentClass: null, LatexDocumentClassOptions: null, LatexPackages: null,
             BalancedColumns: i.BalancedColumns,

@@ -185,6 +185,7 @@ public sealed class LiliaMcpWriteTools(
         "paperSize", "orientation", "marginTop", "marginBottom", "marginLeft", "marginRight", "columns", "columnGap",
         "columnSeparator", "balancedColumns", "fontFamily", "fontSize", "lineSpacing", "paragraphIndent", "pageNumbering",
         "headingNumbering", "headerLeft", "headerCenter", "headerRight", "footerLeft", "footerCenter", "footerRight", "customPreamble",
+        "language",
     ];
     private static readonly JsonElement EmptyString = JsonDocument.Parse("\"\"").RootElement;
 
@@ -202,10 +203,11 @@ public sealed class LiliaMcpWriteTools(
         ["lineSpacing"] = JsonSerializer.SerializeToElement(1.0),
         ["pageNumbering"] = JsonSerializer.SerializeToElement("arabic"),
         ["headingNumbering"] = JsonSerializer.SerializeToElement("default"),
+        ["language"] = JsonSerializer.SerializeToElement("auto"),
     };
 
     [McpServerTool(Name = "set_document_settings", Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headingNumbering (none|1-5: the heading levels numbered, which the table of contents lists too; default), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
+    [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headingNumbering (none|1-5: the heading levels numbered, which the table of contents lists too; default), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), language (auto|en|en-GB|fr|de|es|it|pt|nl|pl|sv|tr|ru|el|ar|he|zh|ja|ko: the PDF's language, auto reads it from the text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
     public Task<object> SetDocumentSettings(
         [Description("The document id.")] string documentId,
         [Description("The fields to change, e.g. {\"fontSize\":12,\"marginLeft\":\"2cm\"}.")] JsonElement settings)

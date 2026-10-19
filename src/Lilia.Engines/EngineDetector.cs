@@ -53,8 +53,11 @@ public static class EngineDetector
 {
     // Lualatex-only — Lua callouts that pdflatex/xelatex can't run.
     private static readonly Regex LuaOnly = new(
-        @"\\(directlua|luaexec|luadirect)\b",
+        @"\\(directlua|luaexec|luadirect)\b|\\usepackage\s*\[[^\]]*\bbidi=basic\b",   // babel's bidi=basic: LuaTeX only (DocumentLanguage)
         RegexOptions.Compiled);
+
+    /// <summary>True when only LuaLaTeX can compile it, whatever engine the document is set to.</summary>
+    public static bool RequiresLua(string? latex) => !string.IsNullOrEmpty(latex) && LuaOnly.IsMatch(latex);
 
     // XeTeX-only packages.
     private static readonly Regex XeOnly = new(

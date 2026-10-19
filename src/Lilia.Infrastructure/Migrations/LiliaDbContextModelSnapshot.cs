@@ -1639,7 +1639,7 @@ namespace Lilia.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
-                        .HasDefaultValue("en")
+                        .HasDefaultValue("auto")
                         .HasColumnName("language");
 
                     b.Property<DateTime?>("LastAutoSavedAt")

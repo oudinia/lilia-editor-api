@@ -388,7 +388,7 @@ public class DocumentService : IDocumentService
             OwnerId = userId,
             TeamId = dto.TeamId,
             Title = string.IsNullOrWhiteSpace(dto.Title) ? "Untitled" : dto.Title,
-            Language = string.IsNullOrWhiteSpace(dto.Language) ? "en" : dto.Language,
+            Language = Lilia.Engines.DocumentLanguage.Normalize(dto.Language) ?? Lilia.Engines.DocumentLanguage.Auto,
             PaperSize = paperSize,
             FontFamily = string.IsNullOrWhiteSpace(dto.FontFamily) ? "serif" : dto.FontFamily,
             FontSize = fontSize,
@@ -502,7 +502,7 @@ public class DocumentService : IDocumentService
             Id = Guid.NewGuid(),
             OwnerId = userId,
             Title = "Editor playground",
-            Language = "en",
+            Language = Lilia.Engines.DocumentLanguage.Auto,
             PaperSize = "a4",
             FontFamily = "serif",
             FontSize = 12,
@@ -581,7 +581,8 @@ public class DocumentService : IDocumentService
             // Title block over documents.title) stays consistent.
             await SyncTitleBlockFromDocumentTitleAsync(id, dto.Title);
         }
-        if (dto.Language != null) document.Language = dto.Language;
+        // A code DocumentLanguage knows, or auto; anything else leaves the language as it was.
+        if (dto.Language != null && Lilia.Engines.DocumentLanguage.Normalize(dto.Language) is { } language) document.Language = language;
         if (dto.PaperSize != null) document.PaperSize = dto.PaperSize;
         if (dto.FontFamily != null) document.FontFamily = dto.FontFamily;
         if (dto.FontSize.HasValue) document.FontSize = dto.FontSize.Value;
@@ -1396,7 +1397,9 @@ public class DocumentService : IDocumentService
             Look: ReadLook(d.Look),
             LookLocked: ThemeLock.Reason(d.LatexDocumentClass),
             LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass),
-            HeadingNumbering: d.HeadingNumbering
+            HeadingNumbering: d.HeadingNumbering,
+            DetectedLanguage: Lilia.Engines.DocumentLanguage.Normalize(d.Language) == Lilia.Engines.DocumentLanguage.Auto
+                ? Lilia.Engines.DocumentLanguage.Detect(d) : null
         );
     }
 

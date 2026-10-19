@@ -826,15 +826,16 @@ public sealed partial class AskLiliaService : IAskLiliaService
                  [Description("Running footer, left slot. Plain text.")] string? footerLeft = null,
                  [Description("Running footer, centre slot. Plain text.")] string? footerCenter = null,
                  [Description("Running footer, right slot. Plain text.")] string? footerRight = null,
+                 [Description("The document's language, which its PDF is typeset in (headings such as Contents and Figure, word breaks, right-to-left for Arabic and Hebrew): auto (read from the text; the default) | en | en-GB | fr | de | es | it | pt | nl | pl | sv | tr | ru | el | ar | he | zh | ja | ko. The interface's language is separate.")] string? language = null,
                  [Description("ADVANCED: raw LaTeX added to the preamble (\\newcommand, \\DeclareMathOperator, \\newenvironment). Lilia's own preamble and packages always stay; this replaces only the previous custom preamble, so read that with get_document_settings first and include what should stay. Emitted verbatim after Lilia's packages, before the title; a mistake here can break compilation.")] string? customPreamble = null)
                     => SetDocumentSettingsAsync(live, docGuid, userId, markMetaChanged,
                         new DocumentSettingsValidator.Input(paperSize, orientation, marginTop, marginBottom, marginLeft, marginRight,
                             columns, columnGap, columnSeparator, balancedColumns, fontFamily, fontSize, lineSpacing, paragraphIndent,
                             pageNumbering, headerLeft, headerCenter, headerRight, footerLeft, footerCenter, footerRight, customPreamble,
-                            HeadingNumbering: headingNumbering)),
+                            HeadingNumbering: headingNumbering, Language: language)),
                 name: "set_document_settings",
                 description: "Set the document's page setup: paper size, orientation, margins, columns, font, size, line spacing, "
-                    + "paragraph indent, page numbering, heading numbering, running headers and footers, and (advanced) the custom preamble. "
+                    + "paragraph indent, page numbering, heading numbering, the document's language, running headers and footers, and (advanced) the custom preamble. "
                     + "Pass ONLY the fields to change; everything else is left alone. Invalid values are rejected with the valid "
                     + "choices and nothing is changed. Returns the resulting settings. Does not touch body blocks."));
             tools.Add(AIFunctionFactory.Create(
@@ -855,6 +856,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
     internal static Dictionary<string, object?> SettingsView(Lilia.Core.DTOs.DocumentDto d) => new()
     {
         ["paperSize"] = d.PaperSize,
+        // "auto" with what the text reads as, or the chosen language (DocumentLanguage).
+        ["language"] = d.Language,
+        ["detectedLanguage"] = d.DetectedLanguage,
         // Older documents made landscape by the class popover hold it only in the options blob; they
         // compile landscape, so they are landscape (5 Oct review).
         ["orientation"] = string.Equals(d.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
