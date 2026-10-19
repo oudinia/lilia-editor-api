@@ -150,6 +150,19 @@ public class DocumentLanguageTests : IntegrationTestBase
         (await PdfAsync(latin)).Text.Should().Contain("Abstract");
     }
 
+    [Theory]
+    [InlineData("ar", "تصف هذه الدراسة القصيرة الطريقة والنتائج التي حصلنا عليها في المختبر.")]
+    [InlineData("ja", "この短い研究では、方法と得られた結果について説明します。")]
+    [InlineData("ru", "Это короткое исследование описывает метод и полученные нами результаты.")]
+    public async Task The_editor_s_check_passes_what_the_PDF_prints(string code, string text)
+    {
+        // The check compiled every document with pdflatex: Arabic, Japanese, Russian… failed it while
+        // their PDFs printed (the user's Arabic document, 20 Oct; LTX-34).
+        var id = await DocumentAsync(code, text);
+        var check = await (await _client.PostAsync($"/api/latex/{id}/validate", null)).Content.ReadFromJsonAsync<JsonElement>();
+        check.GetProperty("valid").GetBoolean().Should().BeTrue(check.ToString());
+    }
+
     [Fact]
     public async Task A_new_document_reads_its_language_from_the_text_unless_told()
     {

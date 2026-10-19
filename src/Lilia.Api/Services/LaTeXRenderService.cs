@@ -483,8 +483,14 @@ public class LaTeXRenderService : ILaTeXRenderService
              + "across pages.";
     }
 
+    /// <summary>
+    /// The check with the engine the LaTeX needs (EngineDetector): xeCJK → xelatex, fontspec or what only
+    /// LuaTeX runs (Arabic and Hebrew's bidi=basic) → lualatex, else pdflatex. It was always pdflatex, so
+    /// the editor's check failed every Chinese, Japanese, Korean, Arabic or Hebrew document whose PDF
+    /// printed fine (LTX-34; the user's Arabic document, 20 Oct).
+    /// </summary>
     public async Task<LatexValidationResult> ValidateAsync(string latex) =>
-        await ValidateAsync(latex, "pdflatex");
+        await ValidateAsync(latex, Lilia.Engines.EngineDetector.Detect(latex).ToCli());
 
     /// <summary>
     /// Engine-aware validate. engine: "pdflatex" | "xelatex" | "lualatex".

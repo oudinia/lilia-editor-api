@@ -139,7 +139,10 @@ public sealed class LiliaMcpTools(
 
     internal static string EngineFor(string source, string? documentEngine)
     {
+        // What only LuaTeX runs (Arabic and Hebrew's bidi=basic) wins over any setting; xeCJK needs XeTeX.
+        if (Lilia.Engines.EngineDetector.RequiresLua(source)) return "lualatex";
         var chosen = (documentEngine ?? "").Trim().ToLowerInvariant();
+        if (Lilia.Engines.EngineDetector.Detect(source) == Lilia.Engines.LatexEngine.Xelatex) return "xelatex";
         var needsUnicodeEngine = source.Contains(@"\usepackage{fontspec}", StringComparison.Ordinal)
             || source.Contains(@"\usepackage{unicode-math}", StringComparison.Ordinal)
             || source.Contains(@"\usepackage[", StringComparison.Ordinal) && source.Contains("]{fontspec}", StringComparison.Ordinal);
