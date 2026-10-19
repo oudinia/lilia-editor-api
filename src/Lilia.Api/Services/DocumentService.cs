@@ -1321,6 +1321,17 @@ public class DocumentService : IDocumentService
         return string.IsNullOrEmpty(slug) ? "document" : slug;
     }
 
+    /// <summary>
+    /// The language the PDF is typeset in, when it is not simply the setting: "auto", or text in a
+    /// script the setting cannot print (DocumentLanguage.For). The editor shows dates in it (20 Oct).
+    /// </summary>
+    private static string? PrintedLanguage(Document d)
+    {
+        var setting = Lilia.Engines.DocumentLanguage.Normalize(d.Language) ?? Lilia.Engines.DocumentLanguage.Auto;
+        var printed = Lilia.Engines.DocumentLanguage.For(d).Code;
+        return setting == Lilia.Engines.DocumentLanguage.Auto || printed != setting ? printed : null;
+    }
+
     private static DocumentDto MapToDto(Document d)
     {
         return new DocumentDto(
@@ -1399,8 +1410,7 @@ public class DocumentService : IDocumentService
             LookLocked: ThemeLock.Reason(d.LatexDocumentClass),
             LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass),
             HeadingNumbering: d.HeadingNumbering,
-            DetectedLanguage: Lilia.Engines.DocumentLanguage.Normalize(d.Language) == Lilia.Engines.DocumentLanguage.Auto
-                ? Lilia.Engines.DocumentLanguage.Detect(d) : null
+            DetectedLanguage: PrintedLanguage(d)
         );
     }
 

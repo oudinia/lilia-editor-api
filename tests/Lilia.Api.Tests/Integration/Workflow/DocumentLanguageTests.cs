@@ -145,6 +145,9 @@ public class DocumentLanguageTests : IntegrationTestBase
         pdf.Should().Contain("ملخص");
         engine.Should().Be("lualatex");
 
+        var dto = await (await _client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonElement>();
+        dto.GetProperty("detectedLanguage").GetString().Should().Be("ar", "the editor shows dates in the language it prints in");
+
         // Latin text keeps the chosen language: English stays English on French-looking text.
         var latin = await DocumentAsync("en", "Cette courte étude décrit la méthode et les résultats que nous avons obtenus.");
         (await PdfAsync(latin)).Text.Should().Contain("Abstract");

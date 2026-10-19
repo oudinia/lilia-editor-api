@@ -123,7 +123,8 @@ public record DocumentDto(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? LookThemes = null,
     // Numbered heading levels: null = class default, 0 = none, 1–5 = levels 1 to n (Document.HeadingNumbering).
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? HeadingNumbering = null,
-    // With Language "auto": the language the text reads as, which the PDF is typeset in (DocumentLanguage).
+    // The language the PDF is typeset in when it is not the setting: with "auto", or when the text is in
+    // a script the setting cannot print (DocumentLanguage).
     string? DetectedLanguage = null
 );
 
