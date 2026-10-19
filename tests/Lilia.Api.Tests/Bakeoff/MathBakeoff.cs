@@ -16,8 +16,8 @@ namespace Lilia.Api.Tests.Bakeoff;
 /// helps, what about tokens"). Not part of CI: it calls the real model and costs money, so it runs
 /// only with LILIA_MATH_BAKEOFF=1 and a key (ops/math-bakeoff.sh, which never prints it).
 ///
-/// <para>30 equations are printed by TeX; each is read twice, as a clean image and as a phone photo
-/// (tilted, off-white, blurred, noisy, JPEG), through the same prompt, check and retry as Ask Lilia
+/// <para>30 equations are printed by TeX; each is read as a clean image, as a phone photo
+/// (tilted, off-white, blurred, noisy, JPEG), and as that photo at under half the size, through the same prompt, check and retry as Ask Lilia
 /// (<see cref="MathAskRunner"/>). A reading counts as right when TeX prints it exactly as it printed
 /// the original, whatever its spelling (\dfrac or \frac, spaces). Tokens, cost and time are kept.</para>
 /// </summary>
@@ -105,6 +105,33 @@ public class MathBakeoff : IntegrationTestBase
             images.Add((i, "photo", Photo(printed, seed: i), "image/jpeg", printed));
             await File.WriteAllBytesAsync(Path.Combine(outDir, $"f{i + 1:00}-clean.png"), printed);
             await File.WriteAllBytesAsync(Path.Combine(outDir, $"f{i + 1:00}-photo.jpg"), images[^1].Bytes);
+            // The same photo at under half the size: fewer image tokens, and how far reading holds up.
+            images.Add((i, "small", Photo(printed, seed: i, scale: 0.45f), "image/jpeg", printed));
+            await File.WriteAllBytesAsync(Path.Combine(outDir, $"f{i + 1:00}-small.jpg"), images[^1].Bytes);
+            // (Enlarging the small photo before sending it was measured on 19 Oct: Sonnet 5.5 69% → 70%,
+            // Haiku 43% → 57%, for 40% more tokens. Not worth it with Sonnet 5.5, so not done.)
+        }
+        var only = (Environment.GetEnvironmentVariable("LILIA_MATH_BAKEOFF_VARIANTS") ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
+        if (only.Count > 0) images.RemoveAll(x => !only.Contains(x.Variant));
+
+        // Real photos, when given: each image beside a .tex of the same name holding what it shows.
+        var realDir = Environment.GetEnvironmentVariable("LILIA_MATH_BAKEOFF_PHOTOS");
+        var realNames = new Dictionary<int, string>();
+        if (!string.IsNullOrWhiteSpace(realDir) && Directory.Exists(realDir))
+        {
+            var k = 100;
+            foreach (var file in Directory.GetFiles(realDir).Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).Order())
+            {
+                var truthFile = Path.ChangeExtension(file, ".tex");
+                if (!File.Exists(truthFile)) { _out.WriteLine($"{Path.GetFileName(file)}: no .tex beside it, skipped"); continue; }
+                var printedTruth = await Print((await File.ReadAllTextAsync(truthFile)).Trim());
+                if (printedTruth is null) { _out.WriteLine($"{Path.GetFileName(truthFile)} does not print, skipped"); continue; }
+                var media = file.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+                images.Add((k, "real", await File.ReadAllBytesAsync(file), media, printedTruth));
+                realNames[k++] = Path.GetFileName(file);
+            }
         }
 
         var rows = new List<Row>();
@@ -138,21 +165,27 @@ public class MathBakeoff : IntegrationTestBase
                 r.CostUsd.ToString(CultureInfo.InvariantCulture), r.Ms, "\"" + r.Latex.Replace("\"", "\"\"").Replace("\n", " ") + "\""));
         await File.WriteAllTextAsync(Path.Combine(outDir, "results.csv"), csv.ToString());
 
-        var md = new StringBuilder("| Model | Images | Right (prints the same) | Clean | Photo | Prints | Input tokens / image | Output tokens / image | Cost / image | Time / image |\n|---|---|---|---|---|---|---|---|---|---|\n");
+        var variants = rows.Select(r => r.Variant).Distinct().ToList();
+        var md = new StringBuilder("| Model | Images | Right (prints the same) | " + string.Join(" | ", variants.Select(v => char.ToUpper(v[0]) + v[1..]))
+            + " | Prints | Input tokens / image | Output tokens / image | Cost / image | Time / image |\n|" + string.Concat(Enumerable.Repeat("---|", 9 + variants.Count)) + "\n");
         foreach (var g in rows.GroupBy(r => r.Model))
         {
             var n = g.Count();
             string Pct(Func<Row, bool> p, IEnumerable<Row> of) { var s = of.ToList(); return s.Count == 0 ? "-" : $"{100.0 * s.Count(p) / s.Count:0}%"; }
-            md.AppendLine($"| {g.Key} | {n} | {Pct(r => r.Same, g)} | {Pct(r => r.Same, g.Where(r => r.Variant == "clean"))} | {Pct(r => r.Same, g.Where(r => r.Variant == "photo"))} | {Pct(r => r.Prints, g)} | {g.Average(r => r.InputTokens):0} | {g.Average(r => r.OutputTokens):0} | ${g.Average(r => r.CostUsd):0.0000} | {g.Average(r => r.Ms) / 1000:0.0} s |");
+            md.AppendLine($"| {g.Key} | {n} | {Pct(r => r.Same, g)} | " + string.Join(" | ", variants.Select(v => Pct(r => r.Same, g.Where(r => r.Variant == v))))
+                + $" | {Pct(r => r.Prints, g)} | {g.Average(r => r.InputTokens):0} | {g.Average(r => r.OutputTokens):0} | ${g.Average(r => r.CostUsd):0.0000} | {g.Average(r => r.Ms) / 1000:0.0} s |");
         }
+        foreach (var (k, name) in realNames) md.AppendLine($"\nReal photo {k}: {name}");
         await File.WriteAllTextAsync(Path.Combine(outDir, "summary.md"), md.ToString());
         _out.WriteLine(md.ToString());
     }
 
     /// <summary>A clean print made to look like a phone photo of a page.</summary>
-    internal static byte[] Photo(byte[] png, int seed)
+    internal static byte[] Photo(byte[] png, int seed, float scale = 1f)
     {
-        using var src = SKBitmap.Decode(png);
+        using var full = SKBitmap.Decode(png);
+        using var src = scale == 1f ? full.Copy()
+            : full.Resize(new SKImageInfo(Math.Max(8, (int)(full.Width * scale)), Math.Max(8, (int)(full.Height * scale))), new SKSamplingOptions(SKCubicResampler.Mitchell));
         var w = src.Width + 120; var h = src.Height + 100;
         using var surface = SKSurface.Create(new SKImageInfo(w, h));
         var c = surface.Canvas;
