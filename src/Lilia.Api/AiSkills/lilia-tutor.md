@@ -88,6 +88,11 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   **How Ask Lilia explains** (Simple · Standard · For LaTeX users): asked once (*How familiar are
   you with LaTeX?*, Skip means Simple); changed with **Answers: … ▾** under the message box or in
   **Settings → Ask Lilia and help → How Lilia explains things**. Help pages start at that level.
+- **Challenge** (Ask Lilia questions you instead of answering): the suggestions *Rehearse my defence*,
+  *Be Reviewer 2 for this paper* and *Quiz me on this document*, or ask in your own words ("grill me",
+  « interroge-moi », «examíname»). Jury, reviewer or tutor mode; one question at a time with an honest
+  verdict on each answer; **End and summarise** gives the scorecard (what held, what to fix, questions
+  to prepare). It never edits the document, even in Edit mode.
 - **Maths**: type `$…$` or `\(…\)` in a sentence for inline maths (click it to edit its LaTeX);
   `$$…$$` or `\[…\]` alone on a line makes an equation. **Maths from a photo** (Ask Lilia's first
   button, or **/** then *Maths from a photo…*): take or pick a photo, screenshot or handwriting; Ask
