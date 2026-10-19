@@ -136,6 +136,21 @@ public class DocumentLanguageTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Arabic_text_set_to_English_still_prints_in_Arabic()
+    {
+        // The user's Arabic document (19 Oct) was set to "en" and did not compile at all:
+        // "Unicode character ن". The text's script wins over a setting that cannot print it.
+        var id = await DocumentAsync("en", "تصف هذه الدراسة القصيرة الطريقة والنتائج التي حصلنا عليها في المختبر.");
+        var (pdf, engine) = await PdfAsync(id);
+        pdf.Should().Contain("ملخص");
+        engine.Should().Be("lualatex");
+
+        // Latin text keeps the chosen language: English stays English on French-looking text.
+        var latin = await DocumentAsync("en", "Cette courte étude décrit la méthode et les résultats que nous avons obtenus.");
+        (await PdfAsync(latin)).Text.Should().Contain("Abstract");
+    }
+
+    [Fact]
     public async Task A_new_document_reads_its_language_from_the_text_unless_told()
     {
         var res = await _client.PostAsJsonAsync("/api/documents", new { title = "No language given" });
