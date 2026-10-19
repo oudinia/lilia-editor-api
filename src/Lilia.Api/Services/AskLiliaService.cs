@@ -36,7 +36,17 @@ public interface IAskLiliaService
 }
 
 /// <summary><c>Figure</c>: the TikZ figure the dock is scoped to (TikZ step 3, 1c); with it the turn reads only that figure.</summary>
-public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null, string? Language = null, MathAskInput? Math = null);
+public sealed record AskLiliaRequest(string Message, string? Proficiency = null, string? Model = null, string? DocumentId = null, bool EditMode = false, IReadOnlyList<AskTurn>? History = null, IReadOnlyList<AskAttachment>? Attachments = null, TikzAskFigure? Figure = null, string? Language = null, MathAskInput? Math = null, string? ContinueSkill = null);
+
+/// <summary>
+/// Challenge (19 Oct): Ask Lilia questions the author on their own document. While a challenge runs
+/// the editor sends <see cref="AskLiliaRequest.ContinueSkill"/> = <see cref="SkillId"/>, so the author's
+/// answers stay with it whatever words they use; it never writes, even in Edit mode.
+/// </summary>
+public static class ChallengeSkill
+{
+    public const string SkillId = "lilia-challenge";
+}
 
 /// <summary>A file the author attached to the message. <see cref="DataBase64"/>
 /// is the raw file bytes, base64-encoded. Images/PDFs go to the model natively;
@@ -291,7 +301,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
             return await AskMathAsync(userId, request, request.Math, ct);
 
         // ── route + prompt ────────────────────────────────────────────────
-        var route = _router.Route(request.Message);
+        // A challenge in progress keeps the author's answers (ChallengeSkill); anything else is routed.
+        var route = string.Equals(request.ContinueSkill, ChallengeSkill.SkillId, StringComparison.Ordinal)
+            ? new AskRoute(ChallengeSkill.SkillId, "Challenge", 1.0, "challenge in progress")
+            : _router.Route(request.Message);
         var skill = _router.Get(route.SkillId);
         var level = ProficiencyGuidance.Parse(request.Proficiency ?? await AccountAskLevelAsync(userId, ct));
         var webSearch = WebSearchEnabledFor(skill.Id);
@@ -316,7 +329,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
             try
             {
                 document = await _documentService.GetDocumentAsync(docGuid, userId);
-                editMode = MayEditWithAi(request.EditMode, document);
+                // A challenge asks and assesses; it never writes, whatever the dock's Edit switch says.
+                editMode = MayEditWithAi(request.EditMode, document) && skill.Id != ChallengeSkill.SkillId;
                 if (request.EditMode && !editMode && document is not null)
                     _logger.LogWarning("[AskLilia] edit mode refused: {UserId} is {Role} on {DocId}", userId, document.Role, docGuid);
                 if (document is not null)

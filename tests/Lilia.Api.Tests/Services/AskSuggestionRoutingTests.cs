@@ -118,4 +118,19 @@ public class AskSuggestionRoutingTests
     {
         AskLiliaService.LanguageNote.Should().Contain("French").And.Contain("Spanish").And.Contain("Keep LaTeX");
     }
+
+    /// <summary>Challenge (19 Oct): the suggestions and the ways people ask to be questioned.</summary>
+    [Theory]
+    [InlineData("Rehearse my defence: ask me what a jury would")]
+    [InlineData("Be Reviewer 2 for this paper")]
+    [InlineData("Quiz me on this document")]
+    [InlineData("Grill me on chapter 3")]
+    [InlineData("Répète ma soutenance avec moi : pose-moi les questions du jury")]
+    [InlineData("Joue le relecteur 2 pour cet article")]
+    [InlineData("Interroge-moi sur ce document")]
+    [InlineData("Ensaya mi defensa: hazme las preguntas del tribunal")]
+    [InlineData("Haz de revisor 2 para este artículo")]
+    [InlineData("Examíname sobre este documento")]
+    public void Asking_to_be_questioned_reaches_challenge(string message) =>
+        _router.Route(message).SkillId.Should().Be("lilia-challenge");
 }

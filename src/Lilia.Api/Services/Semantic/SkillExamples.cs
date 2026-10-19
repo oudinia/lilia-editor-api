@@ -180,6 +180,25 @@ public static class SkillExamples
             "Prepara el artículo para enviarlo a IEEE",
             "Adapta el documento al formato de la revista",
         },
+        ["lilia-challenge"] = new[]
+        {
+            "Rehearse my thesis defence with me",
+            "Ask me the questions the jury will ask",
+            "Be Reviewer 2 for this paper",
+            "Quiz me on the proofs in chapter 2",
+            "Play a tough peer reviewer and question my claims",
+            "Test whether I really understand my method",
+            "Grill me on this report before my presentation",
+            "Pretend you are my committee",
+            "Fais-moi répéter ma soutenance",
+            "Pose-moi les questions du jury",
+            "Joue le rôle d'un relecteur exigeant pour cet article",
+            "Interroge-moi sur les démonstrations",
+            "Ensaya conmigo la defensa de mi tesis",
+            "Hazme las preguntas que haría el tribunal",
+            "Actúa como un revisor exigente de este artículo",
+            "Pregúntame sobre las demostraciones del capítulo",
+        },
         ["lilia-tutor"] = new[]
         {
             "How do I rename a document",
