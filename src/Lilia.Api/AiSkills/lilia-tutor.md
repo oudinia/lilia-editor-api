@@ -108,6 +108,13 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   heading levels carry a number — *Class default*, *None*, or levels 1 to 5 — and the table of contents
   lists the same levels; a Word import starts from what the Word file did. A view-only reader sees it read-only. (On a phone:
   **⋯ → Page & settings** and **⋯ → Look**.)
+- **Document language** (in the document settings, under Class options; on a phone in **Page & settings**):
+  what the PDF is typeset in: headings such as Contents, Figure and References, word breaks at line
+  ends, and right to left for Arabic and Hebrew. **Automatic** (the default) reads it from the text and
+  shows which (e.g. *Automatic · Français*); or choose one of English, English (UK), Français, Deutsch,
+  Español, Italiano, Português, Nederlands, Polski, Svenska, Türkçe, Русский, Ελληνικά, العربية, עברית,
+  中文, 日本語, 한국어. It is separate from the interface's language (Settings → Language), which is
+  English, French or Spanish. A document whose own preamble loads babel keeps its own choice.
 - **Look** (in the document settings): the **document theme**, the paper (*Theme's paper* or *White
   always*), the header band, a colour pinned to a chapter, and tables (style, density, caption
   position). The themes:
