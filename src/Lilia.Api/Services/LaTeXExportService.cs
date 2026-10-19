@@ -668,16 +668,27 @@ public class LaTeXExportService : ILaTeXExportService
         var bodyForCjk = bodyBlocks ?? doc.Blocks ?? new List<Block>();
         var hasCjk = CjkText.Contains(doc.Title) || bodyForCjk.Any(b => CjkText.Contains(b.Content.RootElement));
 
+        // The document's language (DocumentLanguage): babel's lines, and the engine its script needs.
+        var language = DocumentLanguage.PlanFor(doc, importedPkgs, hasCjk ? LatexEngine.Xelatex : LatexEngine.Pdflatex, hasCjk);
+        if (language.Preamble.Length > 0)
+        {
+            sb.Append(language.Preamble);
+            sb.AppendLine();
+        }
+
         // Use the shared preamble — same 31 packages as validation, less the pdflatex encoding
-        // stack when the file is for xelatex.
-        sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(hasCjk ? LatexEngine.Xelatex : LatexEngine.Pdflatex),
+        // stack when the file is for xelatex or lualatex.
+        sb.Append(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(language.Engine),
             LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
         sb.AppendLine();
 
-        if (hasCjk)
+        if (language.Engine != LatexEngine.Pdflatex)
         {
-            sb.AppendLine("% Chinese / Japanese / Korean text: compile with xelatex.");
-            sb.Append(LaTeXPreamble.EngineAddendum(LatexEngine.Xelatex, cjk: true));
+            sb.AppendLine(language.Cjk
+                ? "% Chinese / Japanese / Korean text: compile with xelatex."
+                : $"% This document's language needs {language.Engine.ToCli()}: compile with it.");
+            sb.Append(LaTeXPreamble.EngineAddendum(language.Engine, cjk: language.Cjk));
+            sb.Append(language.Fonts);
             sb.AppendLine();
         }
 

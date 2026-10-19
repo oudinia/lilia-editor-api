@@ -26,6 +26,8 @@ public static class PageSetupRouting
         if (string.Equals(d.Orientation, "landscape", StringComparison.OrdinalIgnoreCase)
             || (d.LatexDocumentClassOptions ?? "").Contains("landscape", StringComparison.OrdinalIgnoreCase)) reasons.Add("landscape");
         if (d.Columns > 1) reasons.Add("columns");
+        // Typst's template prints English headings; the document's language is LaTeX's (DocumentLanguage).
+        if (Lilia.Engines.DocumentLanguage.Normalize(d.Language) is { } lang && lang is not ("auto" or "en" or "en-GB")) reasons.Add("language");
         if (d.LineSpacing is { } ls && Math.Abs(ls - 1.0) > 0.001) reasons.Add("line spacing");   // 1.0 is single spacing: nothing to honour
         if (!string.IsNullOrWhiteSpace(d.ParagraphIndent)) reasons.Add("paragraph indent");
         // Typst numbers no heading; numbered headings are a LaTeX setting.
@@ -62,7 +64,8 @@ public static class ContentRouting
     /// <summary>Null when Typst prints every block as LaTeX would, else why not.</summary>
     public static string? WhyLatex(IEnumerable<(string Type, System.Text.Json.JsonElement Content)> blocks)
     {
-        foreach (var (type, content) in blocks)
+        var list = blocks.ToList();
+        foreach (var (type, content) in list)
         {
             // Equations are LaTeX maths, which Typst's maths doesn't read.
             if (string.Equals(type, "equation", StringComparison.OrdinalIgnoreCase)) return "equations";
@@ -73,6 +76,8 @@ public static class ContentRouting
                 if (text.Contains('$')) return $"maths in a {type} block";
             }
         }
+        // Text in another language: its headings and word breaks are LaTeX's (DocumentLanguage).
+        if (Lilia.Engines.DocumentLanguage.Detect(Lilia.Engines.DocumentLanguage.Prose(null, list)) != "en") return "text in another language";
         return null;
     }
 

@@ -37,7 +37,7 @@ public sealed class CompileCache
     /// <c>LaTeXRenderService.CompileInDirAsync</c> or the bibliography steps change what they
     /// produce: kept results outlive deploys, and would otherwise be served from the old steps.
     /// </summary>
-    public const string ProcedureVersion = "2026-10-18.1";
+    public const string ProcedureVersion = "2026-10-19.1";
 
     private readonly long _maxBytes;
     private readonly object _lock = new();

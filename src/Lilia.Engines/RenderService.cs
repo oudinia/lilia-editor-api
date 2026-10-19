@@ -1053,18 +1053,21 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
-        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(engine), LaTeXPreambleBuilder.ResolveClassName(doc)));
+        var language = DocumentLanguage.PlanFor(doc, importedPkgs, engine, CjkText.Contains(doc.Title)
+            || (doc.Blocks ?? new List<Block>()).Any(b => CjkText.Contains(b.Content.RootElement)));
+        latex.Append(language.Preamble);
+        latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(language.Engine), LaTeXPreambleBuilder.ResolveClassName(doc)));
         // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures (TikzFigure).
         latex.Append(TikzFigure.PackageLines(
             (doc.Blocks ?? new List<Block>()).Select(b => (b.Type, b.Content.RootElement)),
             doc.LatexPackages, doc.CustomPreamble));
 
-        var engineAddendum = LaTeXPreamble.EngineAddendum(engine, CjkText.Contains(doc.Title)
-            || (doc.Blocks ?? new List<Block>()).Any(b => CjkText.Contains(b.Content.RootElement)));
+        var engineAddendum = LaTeXPreamble.EngineAddendum(language.Engine, language.Cjk);
         if (!string.IsNullOrEmpty(engineAddendum))
         {
             latex.AppendLine(engineAddendum);
         }
+        latex.Append(language.Fonts);
 
         latex.AppendLine(LaTeXPreamble.JournalShims);
         latex.AppendLine(MathMacros.PreambleShortcuts);
@@ -1186,6 +1189,10 @@ public partial class RenderService : IRenderService
         if (hasCjk && detectedEngine < LatexEngine.Xelatex) detectedEngine = LatexEngine.Xelatex;
         var explicitEngine = (doc.LatexEngine ?? "pdflatex").ParseEngine();
         var engine = detectedEngine > explicitEngine ? detectedEngine : explicitEngine;
+        // The document's language (DocumentLanguage): its babel lines, and the engine its script needs.
+        var language = DocumentLanguage.PlanFor(doc, importedPkgs, engine, hasCjk);
+        engine = language.Engine;
+        hasCjk = language.Cjk;
 
         var latex = new StringBuilder();
 
@@ -1207,6 +1214,7 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(LaTeXPreamble.Natbib);
         }
+        latex.Append(language.Preamble);
         latex.AppendLine(LaTeXPreamble.ForClass(LaTeXPreamble.PackagesFor(engine), LaTeXPreambleBuilder.ResolveClassName(doc)));
         // TikZ / pgfplots / tikz-cd, only when the document has TikZ figures (TikzFigure).
         latex.Append(TikzFigure.PackageLines(
@@ -1219,6 +1227,7 @@ public partial class RenderService : IRenderService
         {
             latex.AppendLine(engineAddendum);
         }
+        latex.Append(language.Fonts);
         // Journal-class shims — safe no-ops when commands already exist
         latex.AppendLine(LaTeXPreamble.JournalShims);
         latex.AppendLine(MathMacros.PreambleShortcuts);
