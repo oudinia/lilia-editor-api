@@ -77,5 +77,8 @@ admin() {
 tests || fail=1
 admin || fail=1
 migrations || fail=1
+# Ryuk, Testcontainers' cleaner, is off (~/.testcontainers.properties): it listened on every interface
+# and deletes any container it is asked to (19 Oct). A test database a crashed run left behind goes here.
+docker ps -aq --filter label=org.testcontainers=true 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
 if [ $fail -ne 0 ]; then echo "LOCAL CI: FAIL ($((SECONDS - START))s)"; exit 1; fi
 echo "LOCAL CI: PASS ($((SECONDS - START))s)"

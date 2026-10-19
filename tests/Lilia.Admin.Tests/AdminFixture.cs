@@ -32,7 +32,14 @@ public sealed class AdminFixture : IAsyncLifetime
     public const string Audience = "admin-aud-test";
     public const string AdminEmail = "admin@lilia.test";
 
-    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().WithImage("postgres:16").Build();
+    // Loopback only, as the API tests' database (TestDatabaseFixture): Docker's rules go around ufw.
+    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().WithImage("postgres:16")
+        .WithCreateParameterModifier(p =>
+        {
+            foreach (var binding in p.HostConfig.PortBindings?.Values.SelectMany(b => b) ?? [])
+                binding.HostIP = "127.0.0.1";
+        })
+        .Build();
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     public string ConnectionString => _db.GetConnectionString();
 

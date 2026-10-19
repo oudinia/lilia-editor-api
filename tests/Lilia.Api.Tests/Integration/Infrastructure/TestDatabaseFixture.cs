@@ -7,8 +7,15 @@ namespace Lilia.Api.Tests.Integration.Infrastructure;
 
 public class TestDatabaseFixture : IAsyncLifetime
 {
+    // Loopback only (19 Oct): Docker publishes on every interface by default and its rules go around
+    // ufw, so each test run's database (default password) was reachable from the internet for minutes.
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
         .WithImage("postgres:16-alpine")
+        .WithCreateParameterModifier(p =>
+        {
+            foreach (var binding in p.HostConfig.PortBindings?.Values.SelectMany(b => b) ?? [])
+                binding.HostIP = "127.0.0.1";
+        })
         .Build();
 
     public string ConnectionString => _container.GetConnectionString();
