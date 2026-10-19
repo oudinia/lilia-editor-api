@@ -17,7 +17,8 @@ namespace Lilia.Api.Models.Documents;
 public class CreateDocumentDto
 {
     public string Title { get; set; } = "Untitled";
-    public string Language { get; set; } = "en";
+    // "auto": read from the text (DocumentLanguage). It was "en", which made every new document English (19 Oct).
+    public string Language { get; set; } = "auto";
 
     /// <summary>
     /// High-level category — "article" | "book" | "report" | "cv" today.
