@@ -120,6 +120,21 @@ public class DocumentLanguageTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Numbers_in_an_Arabic_table_read_left_to_right()
+    {
+        // The review's second Arabic sample: decimal-aligned columns printed 17.8 as 8.17.
+        var id = await DocumentAsync("ar", "قسنا درجة حرارة الماء في ثلاثة أنهار كل أسبوع لمدة عام كامل.");
+        (await _client.PostAsJsonAsync($"/api/documents/{id}/blocks", new
+        {
+            type = "table",
+            content = new { caption = "النتائج", headers = new[] { "النهر", "الشتاء", "الصيف" }, rows = new[] { new[] { "الشمال", "4.1", "17.8" }, new[] { "الجنوب", "6.3", "21.2" } } },
+            sortOrder = 2,
+        })).EnsureSuccessStatusCode();
+        var pdf = (await PdfAsync(id)).Text;
+        pdf.Should().Contain("17.8").And.Contain("21.2").And.NotContain("8.17").And.NotContain("2.21");
+    }
+
+    [Fact]
     public async Task A_new_document_reads_its_language_from_the_text_unless_told()
     {
         var res = await _client.PostAsJsonAsync("/api/documents", new { title = "No language given" });
