@@ -825,7 +825,18 @@ builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Ap
 builder.Services.AddScoped<Lilia.Core.Capabilities.ICapabilityProvider, Lilia.Api.Services.Capabilities.CommandSupportProvider>();
 builder.Services.AddScoped<Lilia.Api.Services.Capabilities.CapabilityResolver>();
 builder.Services.AddSingleton<IAiCatalogService, AiCatalogService>();
-builder.Services.AddSingleton<IAskLiliaRouter, AskLiliaRouter>();
+// Ask Lilia's router reads meaning as well as words (19 Oct): a small model on this server
+// (ops/models.sh), keyword routing exactly as before when it isn't installed. Semantic:Routing=false turns it off.
+builder.Services.AddSingleton<AskLiliaRouter>();
+builder.Services.AddSingleton<Lilia.Api.Services.Semantic.ITextEmbedder, Lilia.Api.Services.Semantic.E5Embedder>();
+if (builder.Configuration.GetValue("Semantic:Routing", true))
+{
+    builder.Services.AddSingleton<IAskLiliaRouter>(sp => new Lilia.Api.Services.Semantic.SemanticAskRouter(
+        sp.GetRequiredService<AskLiliaRouter>(), sp.GetRequiredService<Lilia.Api.Services.Semantic.ITextEmbedder>()));
+    builder.Services.AddHostedService<Lilia.Api.Services.Semantic.SemanticWarmUp>();
+}
+else
+    builder.Services.AddSingleton<IAskLiliaRouter>(sp => sp.GetRequiredService<AskLiliaRouter>());
 builder.Services.AddHostedService<ToolArtifactPruneService>();
 
 // ITokenRouter — catalog-backed dispatch decisions for LatexParser
