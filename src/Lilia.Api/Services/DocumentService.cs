@@ -426,7 +426,8 @@ public class DocumentService : IDocumentService
             if (templateDoc != null)
             {
                 // Copy document settings
-                document.Language = templateDoc.Language;
+                // A template's "en" is the old default, not a choice: the new document reads its own text.
+                document.Language = templateDoc.Language is "en" or "" ? Lilia.Engines.DocumentLanguage.Auto : templateDoc.Language;
                 document.PaperSize = templateDoc.PaperSize;
                 document.FontFamily = templateDoc.FontFamily;
                 document.FontSize = templateDoc.FontSize;

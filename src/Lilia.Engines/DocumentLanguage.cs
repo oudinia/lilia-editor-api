@@ -85,9 +85,25 @@ public static class DocumentLanguage
     public static LanguageSpec For(Document doc)
     {
         var code = Normalize(doc.Language) ?? Auto;
-        if (code != Auto) return Specs[code];
-        return Specs[Detect(doc)];
+        var detected = Detect(doc);
+        if (code == Auto) return Specs[detected];
+        // The setting chooses among languages of the text's script. Text in a script the setting cannot
+        // print is typeset as that script's language (the user's Arabic document of 19 Oct, set to "en",
+        // failed: pdflatex has no Arabic letters). Latin text keeps the chosen language, whatever it is.
+        var chosen = Specs[code];
+        return Script(detected) != "latin" && Script(detected) != Script(chosen.Code) ? Specs[detected] : chosen;
     }
+
+    /// <summary>The script a language is written in, as far as typesetting cares.</summary>
+    public static string Script(string code) => code switch
+    {
+        "ar" => "arabic",
+        "he" => "hebrew",
+        "zh" or "ja" or "ko" => "cjk-" + code,
+        "ru" => "cyrillic",
+        "el" => "greek",
+        _ => "latin",
+    };
 
     /// <summary>
     /// Whether the document chose its language itself, in what it brings: its class options, its
