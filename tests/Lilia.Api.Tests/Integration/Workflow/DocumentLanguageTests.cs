@@ -100,6 +100,14 @@ public class DocumentLanguageTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task A_new_document_reads_its_language_from_the_text_unless_told()
+    {
+        var res = await _client.PostAsJsonAsync("/api/documents", new { title = "No language given" });
+        (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("language").GetString()
+            .Should().Be("auto", "the create request's default was \"en\", which made every new document English");
+    }
+
+    [Fact]
     public async Task A_document_that_loads_babel_itself_keeps_its_own_choice()
     {
         var id = await DocumentAsync("fr", "Diese kurze Studie beschreibt die Methode und die Ergebnisse.", @"\usepackage[ngerman]{babel}");
