@@ -157,8 +157,23 @@ public static class DocumentLanguage
     public static IReadOnlyDictionary<string, string>? TheoremNames(LanguageSpec? spec) =>
         spec is not null && TheoremNamesByLanguage.TryGetValue(spec.Code, out var names) ? names : null;
 
-    /// <summary>The faces the script needs, after fontspec and xeCJK are loaded.</summary>
-    public static string Fonts(LanguageSpec spec) => spec.Fonts is { } f ? f + "\n" : "";
+    /// <summary>The faces the script needs, after fontspec and xeCJK are loaded; for a right-to-left
+    /// language also <see cref="LeftToRightNumbers"/> (Lilia's packages, siunitx among them, are loaded by then).</summary>
+    public static string Fonts(LanguageSpec spec) =>
+        (spec.Fonts is { } f ? f + "\n" : "") + (spec.Rtl ? LeftToRightNumbers : "");
+
+    /// <summary>
+    /// Numbers in a table's decimal-aligned columns (siunitx's S) read left to right in a right-to-left
+    /// document: siunitx sets the integer part, the marker and the decimals as separate pieces, which
+    /// the paragraph's direction laid out backwards (17.8 read 8.17, the user's review of 19 Oct).
+    /// LuaTeX's \textdir at the start of each such cell. siunitx's internal names: guarded, so a
+    /// version without them changes nothing rather than failing.
+    /// </summary>
+    public const string LeftToRightNumbers = @"\ExplSyntaxOn
+\cs_if_exist:NT \__siunitx_table_collect_begin: { \tl_put_left:Nn \__siunitx_table_collect_begin: { \textdir TLT } }
+\cs_if_exist:NT \__siunitx_table_direct_begin: { \tl_put_left:Nn \__siunitx_table_direct_begin: { \textdir TLT } }
+\ExplSyntaxOff
+";
 
     /// <summary>The engine the language needs at least: compiling with less would lose its letters.</summary>
     public static LatexEngine AtLeast(LatexEngine engine, LanguageSpec spec) => spec.Engine > engine ? spec.Engine : engine;
