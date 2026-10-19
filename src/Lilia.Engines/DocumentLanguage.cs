@@ -42,7 +42,10 @@ public static class DocumentLanguage
     {
         new LanguageSpec("en", "english", LatexEngine.Pdflatex, Cleveref: "english"),
         new LanguageSpec("en-GB", "british", LatexEngine.Pdflatex, Cleveref: "english"),
-        new LanguageSpec("fr", "french", LatexEngine.Pdflatex, Setup: @"\frenchsetup{StandardLists=true}", Cleveref: "french"),
+        // Tableau, as French writers say (babel-french prints "Table"); captions not in small capitals, like every other language here.
+        new LanguageSpec("fr", "french", LatexEngine.Pdflatex,
+            Setup: @"\frenchsetup{StandardLists=true,SmallCapsFigTabCaptions=false}" + "\n" + @"\addto\captionsfrench{\def\tablename{Tableau}}",
+            Cleveref: "french"),
         new LanguageSpec("de", "ngerman", LatexEngine.Pdflatex, Cleveref: "ngerman"),
         new LanguageSpec("es", "spanish", LatexEngine.Pdflatex, Options: "es-noshorthands,es-nodecimaldot,es-tabla,es-nosectiondot,es-nolists", Cleveref: "spanish"),
         new LanguageSpec("it", "italian", LatexEngine.Pdflatex, Cleveref: "italian"),
@@ -111,6 +114,9 @@ public static class DocumentLanguage
         {
             sb.Append(spec.Rtl ? @"\usepackage[bidi=basic]{babel}" : @"\usepackage{babel}").Append('\n');
             sb.Append(@"\babelprovide[import,main]{").Append(spec.Babel).Append("}\n");
+            // Latin letters in a right-to-left document are English, in the Latin font: set in the Arabic or
+            // Hebrew face, their commas and full stops took that script's shapes (، for ,) and 17.8 read 8،17.
+            if (spec.Rtl) sb.Append(@"\babelprovide[import,onchar=ids fonts]{english}").Append('\n');
         }
         else
         {
@@ -121,6 +127,35 @@ public static class DocumentLanguage
         if (spec.Cleveref is { } c) sb.Append(@"\PassOptionsToPackage{").Append(c).Append("}{cleveref}\n");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// The names Lilia's theorem environments print in each language (Théorème, Teorema, مبرهنة…):
+    /// Lilia declares them itself, so babel does not translate them. English, and anything missing,
+    /// keeps Lilia's English names. The proof's name is babel's own (\proofname).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, Dictionary<string, string>> TheoremNamesByLanguage = new Dictionary<string, Dictionary<string, string>>
+    {
+        ["fr"] = new Dictionary<string, string> { ["theorem"] = "Théorème", ["lemma"] = "Lemme", ["proposition"] = "Proposition", ["corollary"] = "Corollaire", ["definition"] = "Définition", ["example"] = "Exemple", ["remark"] = "Remarque", ["claim"] = "Affirmation", ["assumption"] = "Hypothèse", ["axiom"] = "Axiome", ["conjecture"] = "Conjecture", ["hypothesis"] = "Hypothèse", ["exercise"] = "Exercice", ["problem"] = "Problème", ["question"] = "Question", ["observation"] = "Observation", ["fact"] = "Fait", ["notation"] = "Notation", ["property"] = "Propriété" },
+        ["es"] = new Dictionary<string, string> { ["theorem"] = "Teorema", ["lemma"] = "Lema", ["proposition"] = "Proposición", ["corollary"] = "Corolario", ["definition"] = "Definición", ["example"] = "Ejemplo", ["remark"] = "Observación", ["claim"] = "Afirmación", ["assumption"] = "Supuesto", ["axiom"] = "Axioma", ["conjecture"] = "Conjetura", ["hypothesis"] = "Hipótesis", ["exercise"] = "Ejercicio", ["problem"] = "Problema", ["question"] = "Pregunta", ["observation"] = "Observación", ["fact"] = "Hecho", ["notation"] = "Notación", ["property"] = "Propiedad" },
+        ["de"] = new Dictionary<string, string> { ["theorem"] = "Satz", ["lemma"] = "Lemma", ["proposition"] = "Proposition", ["corollary"] = "Korollar", ["definition"] = "Definition", ["example"] = "Beispiel", ["remark"] = "Bemerkung", ["claim"] = "Behauptung", ["assumption"] = "Annahme", ["axiom"] = "Axiom", ["conjecture"] = "Vermutung", ["hypothesis"] = "Hypothese", ["exercise"] = "Übung", ["problem"] = "Problem", ["question"] = "Frage", ["observation"] = "Beobachtung", ["fact"] = "Fakt", ["notation"] = "Notation", ["property"] = "Eigenschaft" },
+        ["it"] = new Dictionary<string, string> { ["theorem"] = "Teorema", ["lemma"] = "Lemma", ["proposition"] = "Proposizione", ["corollary"] = "Corollario", ["definition"] = "Definizione", ["example"] = "Esempio", ["remark"] = "Osservazione", ["claim"] = "Affermazione", ["assumption"] = "Ipotesi", ["axiom"] = "Assioma", ["conjecture"] = "Congettura", ["hypothesis"] = "Ipotesi", ["exercise"] = "Esercizio", ["problem"] = "Problema", ["question"] = "Domanda", ["observation"] = "Osservazione", ["fact"] = "Fatto", ["notation"] = "Notazione", ["property"] = "Proprietà" },
+        ["pt"] = new Dictionary<string, string> { ["theorem"] = "Teorema", ["lemma"] = "Lema", ["proposition"] = "Proposição", ["corollary"] = "Corolário", ["definition"] = "Definição", ["example"] = "Exemplo", ["remark"] = "Observação", ["claim"] = "Afirmação", ["assumption"] = "Suposição", ["axiom"] = "Axioma", ["conjecture"] = "Conjectura", ["hypothesis"] = "Hipótese", ["exercise"] = "Exercício", ["problem"] = "Problema", ["question"] = "Questão", ["observation"] = "Observação", ["fact"] = "Facto", ["notation"] = "Notação", ["property"] = "Propriedade" },
+        ["nl"] = new Dictionary<string, string> { ["theorem"] = "Stelling", ["lemma"] = "Lemma", ["proposition"] = "Propositie", ["corollary"] = "Gevolg", ["definition"] = "Definitie", ["example"] = "Voorbeeld", ["remark"] = "Opmerking", ["claim"] = "Bewering", ["assumption"] = "Aanname", ["axiom"] = "Axioma", ["conjecture"] = "Vermoeden", ["hypothesis"] = "Hypothese", ["exercise"] = "Oefening", ["problem"] = "Probleem", ["question"] = "Vraag", ["observation"] = "Observatie", ["fact"] = "Feit", ["notation"] = "Notatie", ["property"] = "Eigenschap" },
+        ["pl"] = new Dictionary<string, string> { ["theorem"] = "Twierdzenie", ["lemma"] = "Lemat", ["proposition"] = "Stwierdzenie", ["corollary"] = "Wniosek", ["definition"] = "Definicja", ["example"] = "Przykład", ["remark"] = "Uwaga", ["claim"] = "Teza", ["assumption"] = "Założenie", ["axiom"] = "Aksjomat", ["conjecture"] = "Hipoteza", ["hypothesis"] = "Hipoteza", ["exercise"] = "Ćwiczenie", ["problem"] = "Problem", ["question"] = "Pytanie", ["observation"] = "Obserwacja", ["fact"] = "Fakt", ["notation"] = "Oznaczenie", ["property"] = "Własność" },
+        ["sv"] = new Dictionary<string, string> { ["theorem"] = "Sats", ["lemma"] = "Lemma", ["proposition"] = "Proposition", ["corollary"] = "Korollarium", ["definition"] = "Definition", ["example"] = "Exempel", ["remark"] = "Anmärkning", ["claim"] = "Påstående", ["assumption"] = "Antagande", ["axiom"] = "Axiom", ["conjecture"] = "Förmodan", ["hypothesis"] = "Hypotes", ["exercise"] = "Övning", ["problem"] = "Problem", ["question"] = "Fråga", ["observation"] = "Observation", ["fact"] = "Faktum", ["notation"] = "Notation", ["property"] = "Egenskap" },
+        ["tr"] = new Dictionary<string, string> { ["theorem"] = "Teorem", ["lemma"] = "Önsav", ["proposition"] = "Önerme", ["corollary"] = "Sonuç", ["definition"] = "Tanım", ["example"] = "Örnek", ["remark"] = "Not", ["claim"] = "İddia", ["assumption"] = "Varsayım", ["axiom"] = "Aksiyom", ["conjecture"] = "Sanı", ["hypothesis"] = "Hipotez", ["exercise"] = "Alıştırma", ["problem"] = "Problem", ["question"] = "Soru", ["observation"] = "Gözlem", ["fact"] = "Olgu", ["notation"] = "Gösterim", ["property"] = "Özellik" },
+        ["ru"] = new Dictionary<string, string> { ["theorem"] = "Теорема", ["lemma"] = "Лемма", ["proposition"] = "Предложение", ["corollary"] = "Следствие", ["definition"] = "Определение", ["example"] = "Пример", ["remark"] = "Замечание", ["claim"] = "Утверждение", ["assumption"] = "Предположение", ["axiom"] = "Аксиома", ["conjecture"] = "Гипотеза", ["hypothesis"] = "Гипотеза", ["exercise"] = "Упражнение", ["problem"] = "Задача", ["question"] = "Вопрос", ["observation"] = "Наблюдение", ["fact"] = "Факт", ["notation"] = "Обозначение", ["property"] = "Свойство" },
+        ["el"] = new Dictionary<string, string> { ["theorem"] = "Θεώρημα", ["lemma"] = "Λήμμα", ["proposition"] = "Πρόταση", ["corollary"] = "Πόρισμα", ["definition"] = "Ορισμός", ["example"] = "Παράδειγμα", ["remark"] = "Παρατήρηση", ["claim"] = "Ισχυρισμός", ["assumption"] = "Υπόθεση", ["axiom"] = "Αξίωμα", ["conjecture"] = "Εικασία", ["hypothesis"] = "Υπόθεση", ["exercise"] = "Άσκηση", ["problem"] = "Πρόβλημα", ["question"] = "Ερώτηση", ["observation"] = "Παρατήρηση", ["fact"] = "Γεγονός", ["notation"] = "Συμβολισμός", ["property"] = "Ιδιότητα" },
+        ["ar"] = new Dictionary<string, string> { ["theorem"] = "مبرهنة", ["lemma"] = "تمهيدية", ["proposition"] = "قضية", ["corollary"] = "نتيجة", ["definition"] = "تعريف", ["example"] = "مثال", ["remark"] = "ملاحظة", ["claim"] = "ادعاء", ["assumption"] = "افتراض", ["axiom"] = "مسلّمة", ["conjecture"] = "حدسية", ["hypothesis"] = "فرضية", ["exercise"] = "تمرين", ["problem"] = "مسألة", ["question"] = "سؤال", ["observation"] = "ملاحظة", ["fact"] = "حقيقة", ["notation"] = "ترميز", ["property"] = "خاصية" },
+        ["he"] = new Dictionary<string, string> { ["theorem"] = "משפט", ["lemma"] = "למה", ["proposition"] = "טענה", ["corollary"] = "מסקנה", ["definition"] = "הגדרה", ["example"] = "דוגמה", ["remark"] = "הערה", ["claim"] = "טענה", ["assumption"] = "הנחה", ["axiom"] = "אקסיומה", ["conjecture"] = "השערה", ["hypothesis"] = "השערה", ["exercise"] = "תרגיל", ["problem"] = "בעיה", ["question"] = "שאלה", ["observation"] = "תצפית", ["fact"] = "עובדה", ["notation"] = "סימון", ["property"] = "תכונה" },
+        ["zh"] = new Dictionary<string, string> { ["theorem"] = "定理", ["lemma"] = "引理", ["proposition"] = "命题", ["corollary"] = "推论", ["definition"] = "定义", ["example"] = "例", ["remark"] = "注", ["claim"] = "断言", ["assumption"] = "假设", ["axiom"] = "公理", ["conjecture"] = "猜想", ["hypothesis"] = "假说", ["exercise"] = "练习", ["problem"] = "问题", ["question"] = "提问", ["observation"] = "观察", ["fact"] = "事实", ["notation"] = "记号", ["property"] = "性质" },
+        ["ja"] = new Dictionary<string, string> { ["theorem"] = "定理", ["lemma"] = "補題", ["proposition"] = "命題", ["corollary"] = "系", ["definition"] = "定義", ["example"] = "例", ["remark"] = "注意", ["claim"] = "主張", ["assumption"] = "仮定", ["axiom"] = "公理", ["conjecture"] = "予想", ["hypothesis"] = "仮説", ["exercise"] = "演習", ["problem"] = "問題", ["question"] = "質問", ["observation"] = "観察", ["fact"] = "事実", ["notation"] = "記法", ["property"] = "性質" },
+        ["ko"] = new Dictionary<string, string> { ["theorem"] = "정리", ["lemma"] = "보조정리", ["proposition"] = "명제", ["corollary"] = "따름정리", ["definition"] = "정의", ["example"] = "예", ["remark"] = "비고", ["claim"] = "주장", ["assumption"] = "가정", ["axiom"] = "공리", ["conjecture"] = "추측", ["hypothesis"] = "가설", ["exercise"] = "연습문제", ["problem"] = "문제", ["question"] = "질문", ["observation"] = "관찰", ["fact"] = "사실", ["notation"] = "표기법", ["property"] = "성질" },
+    };
+
+    /// <summary>The theorem names for <paramref name="spec"/>, or null to keep Lilia's English ones.</summary>
+    public static IReadOnlyDictionary<string, string>? TheoremNames(LanguageSpec? spec) =>
+        spec is not null && TheoremNamesByLanguage.TryGetValue(spec.Code, out var names) ? names : null;
 
     /// <summary>The faces the script needs, after fontspec and xeCJK are loaded.</summary>
     public static string Fonts(LanguageSpec spec) => spec.Fonts is { } f ? f + "\n" : "";

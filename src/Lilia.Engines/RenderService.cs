@@ -1084,7 +1084,7 @@ public partial class RenderService : IRenderService
 
         latex.AppendLine();
 
-        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc)));
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc), DocumentLanguage.TheoremNames(language.Spec)));
 
         // The document theme, as the full-document path writes it. Left out (not failed) when this
         // server cannot compile it: validation should not mark every block for a font problem.
@@ -1251,8 +1251,8 @@ public partial class RenderService : IRenderService
 
         latex.AppendLine();
 
-        // Theorem environments
-        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc)));
+        // Theorem environments, named in the document's language
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc), DocumentLanguage.TheoremNames(language.Spec)));
 
         // The document theme (Document settings → Look): one managed line, just before the custom
         // preamble so the author's settings win. Empty for Classic and for classes that set their

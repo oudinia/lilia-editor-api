@@ -673,10 +673,17 @@ public static partial class LaTeXPreamble
     /// beamer document each is declared only where the class has not; every other class gets
     /// <see cref="TheoremEnvironments"/> unchanged.
     /// </summary>
-    public static string TheoremEnvironmentsFor(string? className) =>
-        string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase)
+    public static string TheoremEnvironmentsFor(string? className, IReadOnlyDictionary<string, string>? names = null)
+    {
+        var envs = string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase)
             ? GuardedTheoremEnvironments.Value
             : TheoremEnvironments;
+        // In the document's language (DocumentLanguage.TheoremNames): \newtheorem{lemma}{Lemme}.
+        return names is null ? envs : TheoremName.Replace(envs, m =>
+            names.TryGetValue(m.Groups["env"].Value, out var name) ? m.Groups["head"].Value + "{" + name + "}" : m.Value);
+    }
+
+    private static readonly Regex TheoremName = new(@"(?<head>\\newtheorem\*?\{(?<env>[a-z]+)\*?\})\{[^}]*\}", RegexOptions.Compiled);
 
     private static readonly Lazy<string> GuardedTheoremEnvironments = new(() =>
         "\\makeatletter\n"
