@@ -306,6 +306,147 @@ public class RoutingMeasureTests
         ("prepara un cuaderno de laboratorio semanal", "lilia-document-architect", "es"),
     };
 
+    /// <summary>
+    /// Languages the interface doesn't speak and the examples don't include (19 Oct): German,
+    /// Portuguese, Italian, Arabic, Chinese, Japanese, two messages per skill each. Whether the
+    /// model's 100 languages carry the English, French and Spanish examples over.
+    /// </summary>
+    internal static readonly (string Message, string Skill, string Lang)[] Other =
+    {
+        ("Füge diesen Artikel mit seiner DOI zu meinen Quellen hinzu", "lilia-citations", "de"),
+        ("Bei einer meiner Quellen fehlt das Jahr", "lilia-citations", "de"),
+        ("Das PDF bleibt leer, seit ich Code eingefügt habe", "lilia-compile-doctor", "de"),
+        ("Es kommt eine Fehlermeldung beim Erstellen des PDFs", "lilia-compile-doctor", "de"),
+        ("Schreib die Formel für die Varianz", "lilia-equation", "de"),
+        ("Wie schreibe ich ein Integral von 0 bis unendlich", "lilia-equation", "de"),
+        ("Mach eine Tabelle, die die drei Methoden vergleicht", "lilia-table", "de"),
+        ("Füge eine Spalte mit der Standardabweichung hinzu", "lilia-table", "de"),
+        ("Zeichne ein Flussdiagramm des Ablaufs", "lilia-figure", "de"),
+        ("Ein Histogramm der Altersverteilung wäre gut", "lilia-figure", "de"),
+        ("Importiere mein Word-Dokument", "lilia-tools", "de"),
+        ("Ich habe meine Arbeit in Google Docs, kann ich sie herholen?", "lilia-tools", "de"),
+        ("Formuliere diesen Absatz klarer", "lilia-polish", "de"),
+        ("Das klingt zu umgangssprachlich für einen Artikel", "lilia-polish", "de"),
+        ("Funktioniert das Paket chemfig hier?", "lilia-coverage", "de"),
+        ("Kann ich meine eigene .sty-Datei laden?", "lilia-coverage", "de"),
+        ("Bereite den Artikel für die Einreichung bei IEEE vor", "lilia-journal", "de"),
+        ("Meine Dissertation muss der Vorlage der Universität folgen", "lilia-journal", "de"),
+        ("Wo ändere ich die Seitenränder?", "lilia-tutor", "de"),
+        ("Wie teile ich ein Dokument mit meinem Betreuer?", "lilia-tutor", "de"),
+        ("Schreib einen ersten Entwurf eines Laborberichts", "lilia-document-architect", "de"),
+        ("Erstelle ein Übungsblatt mit fünf Aufgaben", "lilia-document-architect", "de"),
+        ("Adicione este artigo às minhas referências pelo DOI", "lilia-citations", "pt"),
+        ("Falta o ano numa das minhas fontes", "lilia-citations", "pt"),
+        ("O PDF fica em branco desde que colei código", "lilia-compile-doctor", "pt"),
+        ("Aparece uma mensagem de erro ao gerar o PDF", "lilia-compile-doctor", "pt"),
+        ("Escreve a fórmula da variância", "lilia-equation", "pt"),
+        ("Como escrevo um integral de 0 a infinito", "lilia-equation", "pt"),
+        ("Faz uma tabela que compare os três métodos", "lilia-table", "pt"),
+        ("Acrescenta uma coluna com o desvio padrão", "lilia-table", "pt"),
+        ("Desenha um fluxograma do processo", "lilia-figure", "pt"),
+        ("Um histograma das idades ajudaria", "lilia-figure", "pt"),
+        ("Importa o meu documento do Word", "lilia-tools", "pt"),
+        ("Tenho a minha tese no Google Docs, posso trazê-la?", "lilia-tools", "pt"),
+        ("Torna este parágrafo mais claro", "lilia-polish", "pt"),
+        ("Isto soa demasiado informal para um artigo", "lilia-polish", "pt"),
+        ("O pacote chemfig funciona aqui?", "lilia-coverage", "pt"),
+        ("Posso carregar o meu próprio ficheiro .sty?", "lilia-coverage", "pt"),
+        ("Prepara o artigo para submeter à IEEE", "lilia-journal", "pt"),
+        ("A minha tese tem de seguir o modelo da universidade", "lilia-journal", "pt"),
+        ("Onde mudo as margens da página?", "lilia-tutor", "pt"),
+        ("Como partilho um documento com o meu orientador?", "lilia-tutor", "pt"),
+        ("Escreve um primeiro rascunho de um relatório de laboratório", "lilia-document-architect", "pt"),
+        ("Cria uma folha de exercícios com cinco problemas", "lilia-document-architect", "pt"),
+        ("Aggiungi questo articolo ai miei riferimenti con il DOI", "lilia-citations", "it"),
+        ("In una delle mie fonti manca l'anno", "lilia-citations", "it"),
+        ("Il PDF resta bianco da quando ho incollato del codice", "lilia-compile-doctor", "it"),
+        ("Compare un messaggio di errore quando genero il PDF", "lilia-compile-doctor", "it"),
+        ("Scrivi la formula della varianza", "lilia-equation", "it"),
+        ("Come scrivo un integrale da 0 a infinito", "lilia-equation", "it"),
+        ("Fai una tabella che confronti i tre metodi", "lilia-table", "it"),
+        ("Aggiungi una colonna con la deviazione standard", "lilia-table", "it"),
+        ("Disegna un diagramma di flusso del processo", "lilia-figure", "it"),
+        ("Un istogramma delle età sarebbe utile", "lilia-figure", "it"),
+        ("Importa il mio documento Word", "lilia-tools", "it"),
+        ("Ho la tesi su Google Docs, posso portarla qui?", "lilia-tools", "it"),
+        ("Rendi questo paragrafo più chiaro", "lilia-polish", "it"),
+        ("Suona troppo informale per un articolo", "lilia-polish", "it"),
+        ("Il pacchetto chemfig funziona qui?", "lilia-coverage", "it"),
+        ("Posso caricare il mio file .sty?", "lilia-coverage", "it"),
+        ("Prepara l'articolo per l'invio a IEEE", "lilia-journal", "it"),
+        ("La mia tesi deve seguire il modello dell'università", "lilia-journal", "it"),
+        ("Dove cambio i margini della pagina?", "lilia-tutor", "it"),
+        ("Come condivido un documento con il mio relatore?", "lilia-tutor", "it"),
+        ("Scrivi una prima bozza di una relazione di laboratorio", "lilia-document-architect", "it"),
+        ("Crea un foglio di esercizi con cinque problemi", "lilia-document-architect", "it"),
+        ("أضف هذا المقال إلى مراجعي باستخدام رقم DOI", "lilia-citations", "ar"),
+        ("إحدى مصادري ينقصها سنة النشر", "lilia-citations", "ar"),
+        ("ملف PDF فارغ منذ أن لصقت الشيفرة", "lilia-compile-doctor", "ar"),
+        ("تظهر رسالة خطأ عند إنشاء ملف PDF", "lilia-compile-doctor", "ar"),
+        ("اكتب صيغة التباين", "lilia-equation", "ar"),
+        ("كيف أكتب تكاملاً من الصفر إلى ما لا نهاية", "lilia-equation", "ar"),
+        ("اصنع جدولاً يقارن بين الطرق الثلاث", "lilia-table", "ar"),
+        ("أضف عموداً للانحراف المعياري", "lilia-table", "ar"),
+        ("ارسم مخططاً انسيابياً للعملية", "lilia-figure", "ar"),
+        ("رسم بياني للأعمار سيكون مفيداً", "lilia-figure", "ar"),
+        ("استورد مستند وورد الخاص بي", "lilia-tools", "ar"),
+        ("رسالتي على مستندات جوجل، هل يمكنني نقلها؟", "lilia-tools", "ar"),
+        ("اجعل هذه الفقرة أوضح", "lilia-polish", "ar"),
+        ("هذا يبدو غير رسمي لمقال علمي", "lilia-polish", "ar"),
+        ("هل تعمل حزمة chemfig هنا؟", "lilia-coverage", "ar"),
+        ("هل يمكنني تحميل ملف .sty الخاص بي؟", "lilia-coverage", "ar"),
+        ("جهّز المقال للتقديم إلى IEEE", "lilia-journal", "ar"),
+        ("يجب أن تتبع أطروحتي قالب الجامعة", "lilia-journal", "ar"),
+        ("أين أغيّر هوامش الصفحة؟", "lilia-tutor", "ar"),
+        ("كيف أشارك مستنداً مع المشرف؟", "lilia-tutor", "ar"),
+        ("اكتب مسودة أولى لتقرير مختبر", "lilia-document-architect", "ar"),
+        ("أنشئ ورقة تمارين من خمس مسائل", "lilia-document-architect", "ar"),
+        ("用 DOI 把这篇文章加到我的参考文献里", "lilia-citations", "zh"),
+        ("我的一个文献来源缺少年份", "lilia-citations", "zh"),
+        ("自从我粘贴了代码，PDF 就是空白的", "lilia-compile-doctor", "zh"),
+        ("生成 PDF 时出现错误信息", "lilia-compile-doctor", "zh"),
+        ("写出方差的公式", "lilia-equation", "zh"),
+        ("怎么写从 0 到无穷的积分", "lilia-equation", "zh"),
+        ("做一个比较三种方法的表格", "lilia-table", "zh"),
+        ("加一列标准差", "lilia-table", "zh"),
+        ("画一个流程图", "lilia-figure", "zh"),
+        ("年龄的直方图会有帮助", "lilia-figure", "zh"),
+        ("导入我的 Word 文档", "lilia-tools", "zh"),
+        ("我的论文在 Google 文档里，可以搬过来吗？", "lilia-tools", "zh"),
+        ("把这段话改得更清楚", "lilia-polish", "zh"),
+        ("这听起来对论文来说太口语化了", "lilia-polish", "zh"),
+        ("这里能用 chemfig 宏包吗？", "lilia-coverage", "zh"),
+        ("我可以加载自己的 .sty 文件吗？", "lilia-coverage", "zh"),
+        ("把文章准备好投给 IEEE", "lilia-journal", "zh"),
+        ("我的学位论文必须遵循学校的模板", "lilia-journal", "zh"),
+        ("在哪里修改页边距？", "lilia-tutor", "zh"),
+        ("怎么和导师共享文档？", "lilia-tutor", "zh"),
+        ("写一份实验报告的初稿", "lilia-document-architect", "zh"),
+        ("出一份有五道题的练习卷", "lilia-document-architect", "zh"),
+        ("この論文を DOI で参考文献に追加して", "lilia-citations", "ja"),
+        ("参考文献の一つに年が抜けている", "lilia-citations", "ja"),
+        ("コードを貼り付けてから PDF が真っ白になった", "lilia-compile-doctor", "ja"),
+        ("PDF を作るとエラーメッセージが出る", "lilia-compile-doctor", "ja"),
+        ("分散の式を書いて", "lilia-equation", "ja"),
+        ("0 から無限大までの積分はどう書く？", "lilia-equation", "ja"),
+        ("三つの手法を比較する表を作って", "lilia-table", "ja"),
+        ("標準偏差の列を追加して", "lilia-table", "ja"),
+        ("処理の流れ図を描いて", "lilia-figure", "ja"),
+        ("年齢のヒストグラムがあると助かる", "lilia-figure", "ja"),
+        ("Word の文書を取り込んで", "lilia-tools", "ja"),
+        ("論文が Google ドキュメントにあるけど、持ってこれる？", "lilia-tools", "ja"),
+        ("この段落をもっと分かりやすくして", "lilia-polish", "ja"),
+        ("論文にしては口語的すぎる", "lilia-polish", "ja"),
+        ("ここで chemfig パッケージは使える？", "lilia-coverage", "ja"),
+        ("自分の .sty ファイルを読み込める？", "lilia-coverage", "ja"),
+        ("IEEE に投稿できるように論文を整えて", "lilia-journal", "ja"),
+        ("学位論文は大学のテンプレートに従う必要がある", "lilia-journal", "ja"),
+        ("ページの余白はどこで変える？", "lilia-tutor", "ja"),
+        ("指導教員と文書を共有するには？", "lilia-tutor", "ja"),
+        ("実験レポートの下書きを書いて", "lilia-document-architect", "ja"),
+        ("問題が五つある演習プリントを作って", "lilia-document-architect", "ja"),
+    };
+
     internal static string ModelDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".local/share/lilia/models", E5Embedder.ModelName);
 
@@ -315,6 +456,7 @@ public class RoutingMeasureTests
         var examples = SkillExamples.All.SelectMany(kv => kv.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         Set.Select(s => s.Message).Where(examples.Contains).Should().BeEmpty();
         Set.GroupBy(s => s.Skill).Should().HaveCount(11).And.OnlyContain(g => g.Count() == 12);
+        Other.GroupBy(s => s.Skill).Should().HaveCount(11).And.OnlyContain(g => g.Count() == 12);
         Fresh.Select(s => s.Message).Where(examples.Contains).Should().BeEmpty();
         Fresh.GroupBy(s => s.Skill).Should().HaveCount(11).And.OnlyContain(g => g.Count() == 12);
     }
@@ -324,6 +466,7 @@ public class RoutingMeasureTests
     {
         Measure("first set (examples widened from its misses)", Set, assertBetter: false);
         Measure("fresh set (unseen)", Fresh, assertBetter: true);
+        Measure("other languages (no examples in them)", Other, assertBetter: false);
     }
 
     private void Measure(string title, (string Message, string Skill, string Lang)[] Set, bool assertBetter)
@@ -350,14 +493,15 @@ public class RoutingMeasureTests
             var some = rows.Where(r => lang is null || r.s.Lang == lang).ToList();
             return $"{100.0 * some.Count(r => ok(r.s, r.words, r.meaning, r.both)) / some.Count:0}%";
         }
-        _out.WriteLine("| | All | en | fr | es |\n|---|---|---|---|---|");
+        var langs = Set.Select(x => x.Lang).Distinct().ToList();
+        _out.WriteLine("| | All | " + string.Join(" | ", langs) + " |\n|---|---|" + string.Concat(langs.Select(_ => "---|")));
         foreach (var (name, ok) in new (string, Func<(string Message, string Skill, string Lang), AskRoute?, Classified?, AskRoute?, bool>)[]
         {
             ("Keywords (today)", (s, w, m, b) => w!.SkillId == s.Skill),
             ("Meaning alone", (s, w, m, b) => m!.Label == s.Skill),
             ("Both (SemanticAskRouter)", (s, w, m, b) => b!.SkillId == s.Skill),
         })
-            _out.WriteLine($"| {name} | {Pct(ok)} | {Pct(ok, "en")} | {Pct(ok, "fr")} | {Pct(ok, "es")} |");
+            _out.WriteLine($"| {name} | {Pct(ok)} | " + string.Join(" | ", langs.Select(l => Pct(ok, l))) + " |");
         _out.WriteLine($"\n{msPer:0.0} ms a message");
         foreach (var r in rows.Where(r => assertBetter && r.both.SkillId != r.s.Skill).Take(40))
             _out.WriteLine($"miss: {r.s.Message} → {r.both.SkillId} (want {r.s.Skill}; words {r.words.SkillId} {r.words.Confidence:0.00}, meaning {r.meaning.Label} {r.meaning.Score:0.00}/{r.meaning.Margin:0.000})");
