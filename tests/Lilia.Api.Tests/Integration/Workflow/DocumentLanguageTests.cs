@@ -100,6 +100,26 @@ public class DocumentLanguageTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Theorems_and_tables_are_named_in_the_language_too()
+    {
+        // The user's review (19 Oct): "Theorem 1" stayed English, and French tables read "Table".
+        var id = await DocumentAsync("fr", "Cette courte étude décrit la méthode et les résultats.");
+        (await _client.PostAsJsonAsync($"/api/documents/{id}/blocks", new { type = "theorem", content = new { theoremType = "theorem", text = "La moyenne est comprise entre les extrêmes." }, sortOrder = 2 })).EnsureSuccessStatusCode();
+        (await _client.PostAsJsonAsync($"/api/documents/{id}/blocks", new { type = "table", content = new { caption = "Mesures", headers = new[] { "A", "B" }, rows = new[] { new[] { "1", "2" } } }, sortOrder = 3 })).EnsureSuccessStatusCode();
+        var pdf = (await PdfAsync(id)).Text;
+        pdf.Should().Contain("Théorème 1").And.Contain("Tableau 1").And.NotContain("Theorem");
+    }
+
+    [Fact]
+    public async Task English_inside_an_Arabic_document_keeps_its_own_punctuation_and_numbers()
+    {
+        // In the Arabic face, "Knuth, The TeXbook" printed Arabic commas (،) and 17.8 read 8،17.
+        var id = await DocumentAsync("ar", "استخدمنا برنامج Python لتحليل البيانات، والمتوسط 17.8 درجة. انظر Knuth, The TeXbook.");
+        var pdf = (await PdfAsync(id)).Text;
+        pdf.Should().Contain("Knuth, The TeXbook").And.Contain("17.8").And.NotContain("Knuth،");
+    }
+
+    [Fact]
     public async Task A_new_document_reads_its_language_from_the_text_unless_told()
     {
         var res = await _client.PostAsJsonAsync("/api/documents", new { title = "No language given" });
