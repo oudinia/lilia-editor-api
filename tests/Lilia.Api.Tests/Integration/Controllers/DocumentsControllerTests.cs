@@ -126,7 +126,7 @@ public class DocumentsControllerTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var doc = await response.Content.ReadFromJsonAsync<DocumentDto>();
         doc!.Title.Should().Be("Untitled");
-        doc.Language.Should().Be("en");
+        doc.Language.Should().Be("auto", "read from the text unless chosen (DocumentLanguage)");
         // LILIA-121: even an empty body lands on the article default class
         // so downstream code (LaTeX export, block-type filter) always has
         // a class to work with.
