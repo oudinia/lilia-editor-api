@@ -132,6 +132,7 @@ public class DocumentLanguageTests : IntegrationTestBase
         })).EnsureSuccessStatusCode();
         var pdf = (await PdfAsync(id)).Text;
         pdf.Should().Contain("17.8").And.Contain("21.2").And.NotContain("8.17").And.NotContain("2.21");
+        pdf.Should().NotContain("ءاتشلا", "the column's head stays right to left (it printed backwards with the first fix)");
     }
 
     [Fact]
