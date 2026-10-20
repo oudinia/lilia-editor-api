@@ -181,6 +181,20 @@ public class OnboardingTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Sign_in_emails_are_limited_per_address()
+    {
+        // No Stytch secret here: an allowed request goes as far as "service_unavailable"; one over
+        // the limit stops before, with the same plausible answer and no email.
+        var anon = CreateAnonymousClient();
+        async Task<string> Ask(string email) =>
+            await (await anon.PostAsJsonAsync("/api/auth/resend-verification", new { email, locale = "fr" })).Content.ReadAsStringAsync();
+
+        (await Ask("flood@lilia.test")).Should().Contain("service_unavailable");
+        (await Ask("FLOOD@lilia.test")).Should().Be("{\"sent\":true}", "a second one within the minute is held back");
+        (await Ask("other@lilia.test")).Should().Contain("service_unavailable", "another address has its own limit");
+    }
+
+    [Fact]
     public async Task Onboarding_needs_a_signed_in_person()
     {
         var res = await CreateAnonymousClient().GetAsync("/api/me/onboarding");
