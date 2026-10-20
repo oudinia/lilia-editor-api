@@ -159,7 +159,7 @@ public class AccountDeletionService
         try
         {
             using var client = _http.CreateClient();
-            var req = new HttpRequestMessage(HttpMethod.Delete, $"{(_config["Stytch:ApiBase"] ?? "https://api.stytch.com").TrimEnd('/')}/v1/users/{Uri.EscapeDataString(userId)}");
+            var req = new HttpRequestMessage(HttpMethod.Delete, $"{StytchUserLookup.ApiBase(_config)}/v1/users/{Uri.EscapeDataString(userId)}");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
                 Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{project}:{secret}")));
             var res = await client.SendAsync(req);
