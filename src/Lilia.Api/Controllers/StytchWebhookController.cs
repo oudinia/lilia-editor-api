@@ -222,7 +222,8 @@ public class StytchWebhookController : ControllerBase
         // Email:BaseUrl is the editor origin (appsettings.json) — reuse
         // it instead of inventing a new config key.
         var editorOrigin = _config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com";
-        return $"{editorOrigin}/auth/callback?stytch_token_type=magic_links&token={Uri.EscapeDataString(token)}";
+        // intent=verify: the web shows "Email verified" for this link only (Google and sign-in links go straight in).
+        return $"{editorOrigin}/auth/callback?stytch_token_type=magic_links&token={Uri.EscapeDataString(token)}&intent=verify";
     }
 
     /// <summary>The interface language the sign-up page stored with the account (<c>locale</c> in its metadata).</summary>
