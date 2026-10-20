@@ -1,0 +1,204 @@
+{
+  "verify": {
+    "en": {
+      "subject": "Confirm your email for Lilia",
+      "preheader": "One step left to finish creating your account."
+    },
+    "fr": {
+      "subject": "Confirmez votre adresse e-mail pour Lilia",
+      "preheader": "Plus qu’une étape pour terminer la création de votre compte."
+    },
+    "es": {
+      "subject": "Confirma tu correo para Lilia",
+      "preheader": "Solo falta un paso para terminar de crear tu cuenta."
+    }
+  },
+  "signin": {
+    "en": {
+      "subject": "Your Lilia sign-in link",
+      "preheader": "It works once and is valid for 1 hour."
+    },
+    "fr": {
+      "subject": "Votre lien de connexion à Lilia",
+      "preheader": "Il ne fonctionne qu’une fois et reste valable 1 heure."
+    },
+    "es": {
+      "subject": "Tu enlace para iniciar sesión en Lilia",
+      "preheader": "Funciona una sola vez y es válido durante 1 hora."
+    }
+  },
+  "reset": {
+    "en": {
+      "subject": "Reset your Lilia password",
+      "preheader": "This link works once and is valid for 30 minutes."
+    },
+    "fr": {
+      "subject": "Réinitialisez votre mot de passe Lilia",
+      "preheader": "Ce lien ne fonctionne qu’une fois et reste valable 30 minutes."
+    },
+    "es": {
+      "subject": "Restablece tu contraseña de Lilia",
+      "preheader": "Este enlace funciona una sola vez y es válido durante 30 minutos."
+    }
+  },
+  "welcome": {
+    "en": {
+      "subject": "Welcome to Lilia",
+      "preheader": "Your account is ready."
+    },
+    "fr": {
+      "subject": "Bienvenue sur Lilia",
+      "preheader": "Votre compte est prêt."
+    },
+    "es": {
+      "subject": "Te damos la bienvenida a Lilia",
+      "preheader": "Tu cuenta está lista."
+    }
+  },
+  "export": {
+    "en": {
+      "subject": "Your Lilia export is ready",
+      "preheader": "Download it before {{expires_on}}."
+    },
+    "fr": {
+      "subject": "Votre export Lilia est prêt",
+      "preheader": "Téléchargez-le avant le {{expires_on}}."
+    },
+    "es": {
+      "subject": "Tu exportación de Lilia está lista",
+      "preheader": "Descárgala antes del {{expires_on}}."
+    }
+  },
+  "closed": {
+    "en": {
+      "subject": "Your Lilia account is closed",
+      "preheader": "It will be erased on {{erase_date}}. Until then you can restore it."
+    },
+    "fr": {
+      "subject": "Votre compte Lilia est fermé",
+      "preheader": "Il sera effacé le {{erase_date}}. D’ici là, vous pouvez le restaurer."
+    },
+    "es": {
+      "subject": "Tu cuenta de Lilia está cerrada",
+      "preheader": "Se borrará el {{erase_date}}. Hasta entonces puedes restaurarla."
+    }
+  },
+  "invitation": {
+    "en": {
+      "subject": "{{actor_name}} invited you to “{{doc_title}}”",
+      "preheader": "Open it in Lilia. Your free account takes a minute."
+    },
+    "fr": {
+      "subject": "{{actor_name}} vous invite à « {{doc_title}} »",
+      "preheader": "Ouvrez-le dans Lilia. Votre compte gratuit se crée en une minute."
+    },
+    "es": {
+      "subject": "{{actor_name}} te invitó a «{{doc_title}}»",
+      "preheader": "Ábrelo en Lilia. Crear tu cuenta gratuita lleva un minuto."
+    }
+  },
+  "shared": {
+    "en": {
+      "subject": "{{actor_name}} shared “{{doc_title}}” with you",
+      "preheader": "You’ll also find it under Shared with you."
+    },
+    "fr": {
+      "subject": "{{actor_name}} a partagé « {{doc_title}} » avec vous",
+      "preheader": "Vous le retrouverez aussi dans Partagés avec vous."
+    },
+    "es": {
+      "subject": "{{actor_name}} compartió «{{doc_title}}» contigo",
+      "preheader": "También lo encontrarás en Compartidos contigo."
+    }
+  },
+  "accepted": {
+    "en": {
+      "subject": "{{actor_name}} joined “{{doc_title}}”",
+      "preheader": "Your invitation was accepted."
+    },
+    "fr": {
+      "subject": "{{actor_name}} a rejoint « {{doc_title}} »",
+      "preheader": "Votre invitation a été acceptée."
+    },
+    "es": {
+      "subject": "{{actor_name}} se unió a «{{doc_title}}»",
+      "preheader": "Aceptó tu invitación."
+    }
+  },
+  "changed": {
+    "en": {
+      "subject": "Your access to “{{doc_title}}” changed",
+      "preheader": "{{actor_name}} changed what you can do in this document."
+    },
+    "fr": {
+      "subject": "Votre accès à « {{doc_title}} » a changé",
+      "preheader": "{{actor_name}} a modifié vos droits sur ce document."
+    },
+    "es": {
+      "subject": "Cambió tu acceso a «{{doc_title}}»",
+      "preheader": "{{actor_name}} cambió lo que puedes hacer en este documento."
+    }
+  },
+  "removed": {
+    "en": {
+      "subject": "Your access to “{{doc_title}}” was removed",
+      "preheader": "It no longer appears in your documents. Your own documents aren’t affected."
+    },
+    "fr": {
+      "subject": "Votre accès à « {{doc_title}} » a été retiré",
+      "preheader": "Il n’apparaît plus dans vos documents. Vos propres documents ne sont pas concernés."
+    },
+    "es": {
+      "subject": "Se retiró tu acceso a «{{doc_title}}»",
+      "preheader": "Ya no aparece en tus documentos. Tus propios documentos no se ven afectados."
+    }
+  },
+  "team_invite": {
+    "en": {
+      "subject": "{{actor_name}} invited you to {{team_name}} on Lilia",
+      "preheader": "Accept to work on the team’s documents together."
+    },
+    "fr": {
+      "subject": "{{actor_name}} vous invite dans l’équipe {{team_name}} sur Lilia",
+      "preheader": "Acceptez pour travailler ensemble sur les documents de l’équipe."
+    },
+    "es": {
+      "subject": "{{actor_name}} te invitó a {{team_name}} en Lilia",
+      "preheader": "Acepta para trabajar juntos en los documentos del equipo."
+    }
+  },
+  "team_ready": {
+    "en": {
+      "subject": "Your team is ready — {{team_codename}}",
+      "preheader": "Next, invite the people you write with."
+    },
+    "fr": {
+      "subject": "Votre équipe est prête — {{team_codename}}",
+      "preheader": "Prochaine étape : invitez les personnes avec qui vous écrivez."
+    },
+    "es": {
+      "subject": "Tu equipo está listo — {{team_codename}}",
+      "preheader": "Ahora invita a las personas con las que escribes."
+    }
+  },
+  "team_removed": {
+    "en": {
+      "subject": "You were removed from {{team_name}} on Lilia",
+      "preheader": "The team’s documents no longer appear for you. Your own documents aren’t affected."
+    },
+    "fr": {
+      "subject": "Vous ne faites plus partie de {{team_name}} sur Lilia",
+      "preheader": "Les documents de l’équipe n’apparaissent plus pour vous. Vos propres documents ne sont pas concernés."
+    },
+    "es": {
+      "subject": "Ya no formas parte de {{team_name}} en Lilia",
+      "preheader": "Los documentos del equipo ya no aparecen para ti. Tus propios documentos no se ven afectados."
+    }
+  },
+  "_pieces": {
+    "en": {
+      "subject": "Lilia email — pieces",
+      "preheader": "Reference: every block in the system."
+    }
+  }
+}

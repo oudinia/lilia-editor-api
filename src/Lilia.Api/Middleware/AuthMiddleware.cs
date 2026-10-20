@@ -121,6 +121,20 @@ public class UserSyncMiddleware
         _logger = logger;
     }
 
+    /// <summary>
+    /// en, fr or es: the web's interface language (<c>X-Lilia-Locale</c>), else the browser's first
+    /// language when it is one of the three. Null otherwise: the emails fall back to English.
+    /// </summary>
+    public static string? InterfaceLanguage(HttpRequest request)
+    {
+        var tag = request.Headers["X-Lilia-Locale"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(tag))
+            tag = request.Headers.AcceptLanguage.FirstOrDefault()?.Split(',')[0].Split(';')[0];
+        var two = (tag ?? "").Trim().ToLowerInvariant();
+        two = two.Length >= 2 ? two[..2] : "";
+        return two is "en" or "fr" or "es" ? two : null;
+    }
+
     /// <summary>Whether <paramref name="email"/> is free, or already this user's: emails are unique.</summary>
     private static async Task<bool> EmailFreeForAsync(IUserService users, string email, string userId) =>
         await users.GetUserByEmailAsync(email) is not { } holder || holder.Id == userId;
@@ -200,7 +214,8 @@ public class UserSyncMiddleware
                             userId,
                             email,
                             name,
-                            image
+                            image,
+                            InterfaceLanguage(context.Request)
                         ));
 
                         // Mark as synced in distributed cache (TTL handles cleanup)

@@ -1,0 +1,18 @@
+Lilia
+
+Choisissez un nouveau mot de passe
+
+Une réinitialisation du mot de passe a été demandée pour {{recipient_email}}. Utilisez le bouton pour en choisir un nouveau.
+
+Choisir un nouveau mot de passe:
+{{action_url}}
+
+Ce lien ne fonctionne qu’une fois et reste valable 30 minutes.
+
+Vous n’avez rien demandé ? Ignorez ce message : votre mot de passe reste inchangé.
+
+—
+Vous recevez ce message car une réinitialisation du mot de passe a été demandée pour {{recipient_email}}.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

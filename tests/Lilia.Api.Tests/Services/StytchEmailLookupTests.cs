@@ -98,10 +98,19 @@ public class StytchEmailLookupTests
     public void Stytch_answers_are_read_in_both_shapes_verified_email_first()
     {
         StytchUserLookup.Parse("""{"user_id":"user-1","emails":[{"email":"old@x.org","verified":false},{"email":"new@x.org","verified":true}],"name":{"first_name":"Ada","middle_name":"","last_name":"Lovelace"}}""")
-            .Should().Be(new StytchUserInfo("new@x.org", "Ada Lovelace"));
+            .Should().Be(new StytchUserInfo("new@x.org", "Ada Lovelace", EmailVerified: true));
         StytchUserLookup.Parse("""{"user":{"emails":[{"email":"only@x.org"}],"name":{"first_name":"Grace"}}}""")
             .Should().Be(new StytchUserInfo("only@x.org", "Grace"));
         StytchUserLookup.Parse("""{"user":{"emails":[]}}""").Should().BeNull();
+    }
+
+    [Fact]
+    public void The_name_typed_at_sign_up_is_read_from_the_metadata()
+    {
+        StytchUserLookup.Parse("""{"user":{"emails":[{"email":"n@x.org","verified":true}],"name":{"first_name":""},"trusted_metadata":{"display_name":" Nadia Benali "}}}""")
+            .Should().Be(new StytchUserInfo("n@x.org", "Nadia Benali", EmailVerified: true));
+        StytchUserLookup.Parse("""{"user":{"emails":[{"email":"o@x.org"}],"untrusted_metadata":{"display_name":"Omar"}}}""")!
+            .Name.Should().Be("Omar");
     }
 
     [Theory]

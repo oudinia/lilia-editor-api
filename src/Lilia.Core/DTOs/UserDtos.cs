@@ -12,5 +12,7 @@ public record CreateOrUpdateUserDto(
     string Id,
     string Email,
     string? Name,
-    string? Image
+    string? Image,
+    /// <summary>en, fr or es: the interface language at sign-up, for the emails.</summary>
+    string? Locale = null
 );

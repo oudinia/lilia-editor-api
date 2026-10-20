@@ -1,0 +1,18 @@
+Lilia
+
+Connectez-vous à Lilia
+
+Utilisez le bouton ci-dessous pour vous connecter en tant que {{recipient_email}}.
+
+Se connecter à Lilia:
+{{action_url}}
+
+Ce lien ne fonctionne qu’une fois et reste valable 1 heure.
+
+Vous n’avez pas demandé à vous connecter ? Ignorez ce message : votre compte reste protégé. Ne transférez jamais ce lien : quiconque le possède peut se connecter à votre place.
+
+—
+Vous recevez ce message car une connexion à Lilia a été demandée avec {{recipient_email}}.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

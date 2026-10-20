@@ -1,0 +1,18 @@
+Lilia
+
+Sign in to Lilia
+
+Use the button below to sign in as {{recipient_email}}.
+
+Sign in to Lilia:
+{{action_url}}
+
+This link works once and is valid for 1 hour.
+
+Didn’t try to sign in? Ignore this email; your account stays safe. Never forward this link: anyone who has it can sign in as you.
+
+—
+You’re receiving this because someone asked to sign in to Lilia with {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

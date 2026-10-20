@@ -1,0 +1,18 @@
+Lilia
+
+Elige una contraseña nueva
+
+Alguien pidió restablecer la contraseña de {{recipient_email}}. Usa el botón para elegir una nueva.
+
+Elegir una contraseña nueva:
+{{action_url}}
+
+Este enlace funciona una sola vez y es válido durante 30 minutos.
+
+¿No lo pediste tú? Ignora este mensaje: tu contraseña no cambia.
+
+—
+Recibes este mensaje porque se pidió restablecer la contraseña de {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

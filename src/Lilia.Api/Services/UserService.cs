@@ -12,10 +12,13 @@ public class UserService : IUserService
     private readonly ILogger<UserService> _logger;
 
     private readonly ISharingNotifier? _sharingNotifier;
+    private readonly Wolverine.IMessageBus? _bus;
 
-    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger, ISharingNotifier? sharingNotifier = null)
+    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger, ISharingNotifier? sharingNotifier = null,
+        Wolverine.IMessageBus? bus = null)
     {
         _sharingNotifier = sharingNotifier;
+        _bus = bus;
         _context = context;
         _documentService = documentService;
         _logger = logger;
@@ -47,6 +50,7 @@ public class UserService : IUserService
                 Email = dto.Email,
                 Name = dto.Name,
                 Image = dto.Image,
+                Locale = dto.Locale,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -97,9 +101,23 @@ public class UserService : IUserService
             await _context.SaveChangesAsync();
         }
 
-        // Clone starter documents for new users
         if (isNewUser)
         {
+            // A new account, once: its default team, onboarding record and welcome email follow
+            // (CreateDefaultTeamHandler, WelcomeOnSignUpHandler). Durable, so a restart doesn't lose it.
+            if (_bus is not null)
+            {
+                try
+                {
+                    await _bus.PublishAsync(new Events.Common.UserCreatedEvent(user!.Id, user.Email, Lilia.Api.Services.EmailService.FirstName(user.Name)));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[Onboarding] UserCreatedEvent for {UserId} not published", dto.Id);
+                }
+            }
+
+            // Clone starter documents (never while plan limits are on, as in production).
             try
             {
                 var count = await _documentService.CloneStarterDocumentsAsync(dto.Id);

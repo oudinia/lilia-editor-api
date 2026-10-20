@@ -459,6 +459,7 @@ else
 
 // Register Application Services
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<Lilia.Api.Features.Onboarding.IOnboardingService, Lilia.Api.Features.Onboarding.OnboardingService>();
 builder.Services.AddScoped<IE2EService, E2EService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddSingleton<IBlockTypeService, BlockTypeService>();

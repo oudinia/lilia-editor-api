@@ -7366,6 +7366,86 @@ namespace Lilia.Infrastructure.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.UserOnboarding", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime?>("FirstDocumentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_document_at");
+
+                    b.Property<string>("FirstDocumentRoute")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("first_document_route");
+
+                    b.Property<DateTime?>("FirstExportAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_export_at");
+
+                    b.Property<DateTime?>("FirstValidatePassAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_validate_pass_at");
+
+                    b.Property<DateTime?>("FollowUpSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("follow_up_sent_at");
+
+                    b.Property<string>("TimeZone")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<bool>("TipsOptOut")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("tips_opt_out");
+
+                    b.Property<int>("TourRestarts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("tour_restarts");
+
+                    b.Property<DateTime?>("TourSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("tour_seen_at");
+
+                    b.Property<int?>("TourStepReached")
+                        .HasColumnType("integer")
+                        .HasColumnName("tour_step_reached");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verified_at");
+
+                    b.Property<DateTime?>("WelcomeSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("welcome_sent_at");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("user_onboarding", (string)null);
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.UserPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8837,6 +8917,17 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("DefaultTeam");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.UserOnboarding", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.User", "User")
+                        .WithOne()
+                        .HasForeignKey("Lilia.Core.Entities.UserOnboarding", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.UserPlan", b =>

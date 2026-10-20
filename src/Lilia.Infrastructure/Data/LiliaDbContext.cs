@@ -38,6 +38,7 @@ public class LiliaDbContext : DbContext
     // Templates are now documents with is_template = true — no separate table
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+    public DbSet<UserOnboarding> UserOnboarding => Set<UserOnboarding>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<Formula> Formulas => Set<Formula>();
     public DbSet<Snippet> Snippets => Set<Snippet>();

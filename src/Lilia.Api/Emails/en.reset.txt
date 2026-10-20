@@ -1,0 +1,18 @@
+Lilia
+
+Choose a new password
+
+Someone asked to reset the password for {{recipient_email}}. Use the button to choose a new one.
+
+Choose a new password:
+{{action_url}}
+
+This link works once and is valid for 30 minutes.
+
+Didn’t ask for this? Ignore this email; your password stays the same.
+
+—
+You’re receiving this because a password reset was requested for {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

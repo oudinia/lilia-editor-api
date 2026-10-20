@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Caching.Distributed;
 using System.Text;
 using System.Text.Json;
 using Lilia.Api.Services;
@@ -41,13 +42,16 @@ public class AuthEmailController : ControllerBase
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<AuthEmailController> _logger;
+    private readonly Microsoft.Extensions.Caching.Distributed.IDistributedCache? _cache;
 
     public AuthEmailController(
         IEmailService emails,
         IConfiguration config,
         IHttpClientFactory httpFactory,
-        ILogger<AuthEmailController> logger)
+        ILogger<AuthEmailController> logger,
+        Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null)
     {
+        _cache = cache;
         _emails = emails;
         _config = config;
         _httpFactory = httpFactory;
@@ -78,6 +82,15 @@ public class AuthEmailController : ControllerBase
             return BadRequest(new { error = "invalid_email" });
         }
 
+        // Anyone can call these, and behind the tunnel every caller has the same IP: so the limit is
+        // per address. One email a minute and five an hour per address, whatever the kind; past it
+        // the answer looks the same and nothing is sent, so an inbox can't be flooded.
+        if (!await WithinAddressLimitAsync(email, ct))
+        {
+            _logger.LogWarning("{Kind} email for {Email} held back: over the per-address limit", kind, email);
+            return Ok(new { sent = true });
+        }
+
         // Resolve the callback origin. Default = editor (back-compat).
         // Callers may pass redirectTo (e.g. the storefront wants the
         // magic link to land back on liliaeditor.com, not editor.*)
@@ -104,7 +117,7 @@ public class AuthEmailController : ControllerBase
             return Ok(new { sent = true });  // Plausible-success response.
         }
 
-        var token = await MintMagicLinkTokenAsync(http, apiBase, userId, ct);
+        var token = await MintMagicLinkTokenAsync(http, apiBase, userId, ValidMinutes(kind), ct);
         if (token is null)
         {
             _logger.LogWarning("Could not mint magic-link token for {UserId} ({Kind})", userId, kind);
@@ -234,14 +247,38 @@ public class AuthEmailController : ControllerBase
     /// POST /v1/magic_links → embedded magic-link token (no email sent).
     /// We email it ourselves via IEmailService.
     /// </summary>
+    private async Task<bool> WithinAddressLimitAsync(string email, CancellationToken ct)
+    {
+        if (_cache is null) return true;
+        var who = email.Trim().ToLowerInvariant();
+        var minuteKey = $"authmail:minute:{who}";
+        var hourKey = $"authmail:hour:{who}";
+        if (await _cache.GetAsync(minuteKey, ct) is not null) return false;
+        var hour = await _cache.GetStringAsync(hourKey, ct);
+        var sent = int.TryParse(hour, out var n) ? n : 0;
+        if (sent >= 5) return false;
+        await _cache.SetAsync(minuteKey, [1], new() { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(55) }, ct);
+        // The hour window starts at the first email and isn't extended by later ones.
+        await _cache.SetStringAsync(hourKey, (sent + 1).ToString(), new() { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) }, ct);
+        return true;
+    }
+
+    /// <summary>How long each link works: what the 17 Oct emails promise (verify 7 days, sign-in 1 hour, reset 30 minutes).</summary>
+    internal static int ValidMinutes(AuthEmailKind kind) => kind switch
+    {
+        AuthEmailKind.Verification => 7 * 24 * 60,
+        AuthEmailKind.PasswordReset => 30,
+        _ => 60,
+    };
+
     private async Task<string?> MintMagicLinkTokenAsync(
-        HttpClient http, string _apiBase, string userId, CancellationToken ct)
+        HttpClient http, string _apiBase, string userId, int validMinutes, CancellationToken ct)
     {
         // /v1/magic_links rejects session_duration_minutes — that param
         // belongs on the *authenticate* call once the user clicks the
         // link. The mint endpoint only takes user_id (+ optional
         // expiration_minutes to bound the click window).
-        var payload = new { user_id = userId, expiration_minutes = 60 };
+        var payload = new { user_id = userId, expiration_minutes = validMinutes };
         using var content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var res = await http.PostAsync("/v1/magic_links", content, ct);
