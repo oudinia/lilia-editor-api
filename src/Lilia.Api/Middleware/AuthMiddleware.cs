@@ -121,7 +121,11 @@ public class UserSyncMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, IUserService userService, IDistributedCache cache)
+    /// <summary>Whether <paramref name="email"/> is free, or already this user's: emails are unique.</summary>
+    private static async Task<bool> EmailFreeForAsync(IUserService users, string email, string userId) =>
+        await users.GetUserByEmailAsync(email) is not { } holder || holder.Id == userId;
+
+    public async Task InvokeAsync(HttpContext context, IUserService userService, IDistributedCache cache, IStytchUserLookup? stytchUsers = null)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -156,6 +160,18 @@ public class UserSyncMiddleware
                 if (string.IsNullOrEmpty(email))
                 {
                     var existingUser = await userService.GetUserAsync(userId);
+                    // Stytch's tokens carry no email by default: ask Stytch (when Lilia has its secret) for a
+                    // new user, and for one still on the stand-in address (the first Google sign-up, 20 Oct).
+                    if ((existingUser is null || StytchUserLookup.IsPlaceholder(existingUser.Email))
+                        && stytchUsers is not null && await stytchUsers.FindAsync(userId, context.RequestAborted) is { Email: { Length: > 0 } found } info
+                        // Emails are unique: one another account already holds stays with it.
+                        && await EmailFreeForAsync(userService, found, userId))
+                    {
+                        email = found;
+                        if (string.IsNullOrWhiteSpace(name)) name = info.Name;
+                        _logger.LogInformation("[Stytch] email for {UserId} read from Stytch", userId);
+                        existingUser = null;   // sync below, with the real address
+                    }
                     if (existingUser != null)
                     {
                         // User already in DB, no need to sync — just cache and move on
@@ -167,9 +183,12 @@ public class UserSyncMiddleware
                         return;
                     }
 
-                    // User not in DB and no email in JWT — use a placeholder email
-                    _logger.LogWarning("Email not in JWT for new user {UserId}, using placeholder", userId);
-                    email = $"{userId}@auth.liliaeditor.com";
+                    if (string.IsNullOrEmpty(email))
+                    {
+                        // User not in DB, no email in JWT, and Stytch can't say: a placeholder email
+                        _logger.LogWarning("Email not in JWT for new user {UserId}, using placeholder", userId);
+                        email = $"{userId}{StytchUserLookup.PlaceholderDomain}";
+                    }
                 }
 
                 // Sync user to database if we have the required data

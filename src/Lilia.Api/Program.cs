@@ -718,6 +718,8 @@ builder.Services.AddScoped<IAiImportService, AiImportService>();
 
 // Add HttpClient for external API calls (DOI lookup)
 builder.Services.AddHttpClient();
+// Who a user is when their sign-in token doesn't say (no email in Stytch's session JWT): asks Stytch, given its secret.
+builder.Services.AddSingleton<IStytchUserLookup, StytchUserLookup>();
 
 // Configure AI services
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("AI"));
