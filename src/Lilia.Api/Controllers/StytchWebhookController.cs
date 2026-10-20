@@ -191,9 +191,8 @@ public class StytchWebhookController : ControllerBase
         // the user — no email is sent (we send our own). The endpoint
         // rejects session_duration_minutes (that belongs on the
         // authenticate call); use expiration_minutes for the click
-        // window instead. 60 minutes is the Stytch default and matches
-        // typical "verify your email within an hour" UX.
-        var payload = new { user_id = userId, expiration_minutes = 60 };
+        // window instead: 7 days, what the verification email promises (17 Oct design).
+        var payload = new { user_id = userId, expiration_minutes = AuthEmailController.ValidMinutes(AuthEmailKind.Verification) };
         var json = JsonSerializer.Serialize(payload);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         var res = await http.PostAsync("/v1/magic_links", content, ct);
@@ -226,13 +225,12 @@ public class StytchWebhookController : ControllerBase
         return $"{editorOrigin}/auth/callback?stytch_token_type=magic_links&token={Uri.EscapeDataString(token)}";
     }
 
+    /// <summary>The interface language the sign-up page stored with the account (<c>locale</c> in its metadata).</summary>
     private static string? ExtractLocale(StytchEventUser user)
     {
-        // Future: read locale from user.trusted_metadata.locale or the
-        // request header captured during signup. For now we don't have
-        // the locale in the payload, so let the EmailService fall back
-        // to English.
-        _ = user;
+        foreach (var bag in new[] { user.TrustedMetadata, user.UntrustedMetadata })
+            if (bag is { ValueKind: JsonValueKind.Object } m && m.TryGetProperty("locale", out var v) && v.ValueKind == JsonValueKind.String)
+                return v.GetString();
         return null;
     }
 
@@ -267,6 +265,7 @@ public class StytchEventUser
     [JsonPropertyName("emails")] public List<StytchEventEmail>? Emails { get; set; }
     [JsonPropertyName("status")] public string? Status { get; set; }
     [JsonPropertyName("trusted_metadata")] public JsonElement? TrustedMetadata { get; set; }
+    [JsonPropertyName("untrusted_metadata")] public JsonElement? UntrustedMetadata { get; set; }
 }
 
 public class StytchEventEmail

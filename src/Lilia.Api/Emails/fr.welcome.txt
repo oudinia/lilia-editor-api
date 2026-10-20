@@ -1,0 +1,16 @@
+Lilia
+
+Bienvenue sur Lilia, {{first_name}}
+
+Votre compte est prêt. Avec l’offre Free, vous pouvez conserver jusqu’à 3 documents, et ceux partagés avec vous n’y comptent jamais.
+
+Ouvrir Lilia:
+{{action_url}}
+
+Une question en chemin ? Le centre d’aide (https://editor.liliaeditor.com/help) répond à la plupart d’entre elles, et Ask Lilia est dans chaque document.
+
+—
+Vous recevez ce message car vous avez créé un compte Lilia avec {{recipient_email}}.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

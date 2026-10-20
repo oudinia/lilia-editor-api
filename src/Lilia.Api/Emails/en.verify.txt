@@ -1,0 +1,18 @@
+Lilia
+
+Confirm your email
+
+Confirm that {{recipient_email}} is yours to finish creating your Lilia account.
+
+Confirm my email:
+{{action_url}}
+
+This link works once and is valid for 7 days.
+
+Didn’t sign up for Lilia? Ignore this email. No account is created without this step.
+
+—
+You’re receiving this because someone signed up for Lilia with {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

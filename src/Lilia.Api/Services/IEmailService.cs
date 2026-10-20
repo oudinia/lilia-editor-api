@@ -10,8 +10,8 @@ public interface IEmailService
     /// </summary>
     Task SendAccountEmailAsync(string to, string subject, string htmlBody, string? textBody = null) =>
         SendEmailAsync(to, subject, htmlBody, textBody);
-    /// <summary>Welcome email triggered by Kinde user.created (LILIA-95).</summary>
-    Task SendWelcomeAsync(string toEmail, string? firstName);
+    /// <summary>Welcome to Lilia (17 Oct design), in the person's language: once per account (OnboardingService).</summary>
+    Task SendWelcomeAsync(string toEmail, string? firstName, string? locale);
     /// <summary>
     /// New default team announcement — sent on user.created right after
     /// the welcome (or as a standalone test from /api/teams/test-welcome).

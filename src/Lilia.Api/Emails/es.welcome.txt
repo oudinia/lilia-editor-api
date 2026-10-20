@@ -1,0 +1,16 @@
+Lilia
+
+Te damos la bienvenida, {{first_name}}
+
+Tu cuenta está lista. Con el plan Free puedes tener hasta 3 documentos, y los que otros comparten contigo nunca cuentan.
+
+Abrir Lilia:
+{{action_url}}
+
+¿Alguna duda? El centro de ayuda (https://editor.liliaeditor.com/help) responde a la mayoría, y Ask Lilia está en cada documento.
+
+—
+Recibes este mensaje porque creaste una cuenta de Lilia con {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

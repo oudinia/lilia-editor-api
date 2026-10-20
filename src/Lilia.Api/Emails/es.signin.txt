@@ -1,0 +1,18 @@
+Lilia
+
+Inicia sesión en Lilia
+
+Usa el botón de abajo para iniciar sesión como {{recipient_email}}.
+
+Iniciar sesión en Lilia:
+{{action_url}}
+
+Este enlace funciona una sola vez y es válido durante 1 hora.
+
+¿No intentaste iniciar sesión? Ignora este mensaje: tu cuenta sigue protegida. No reenvíes nunca este enlace: quien lo tenga puede entrar como tú.
+
+—
+Recibes este mensaje porque alguien pidió iniciar sesión en Lilia con {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

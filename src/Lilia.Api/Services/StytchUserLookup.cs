@@ -4,14 +4,17 @@ using System.Text.Json;
 
 namespace Lilia.Api.Services;
 
-/// <summary>A person's email and name as Stytch holds them.</summary>
-public sealed record StytchUserInfo(string? Email, string? Name);
+/// <summary>A person's email and name as Stytch holds them, and whether that email is verified.</summary>
+public sealed record StytchUserInfo(string? Email, string? Name, bool EmailVerified = false);
 
 /// <summary>Asks Stytch who a user is, when a sign-in token does not say.</summary>
 public interface IStytchUserLookup
 {
     /// <summary>The user's email and name, or null when Stytch can't be asked (no secret) or doesn't answer.</summary>
     Task<StytchUserInfo?> FindAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>Whether Stytch can be asked at all (a project and its secret are set).</summary>
+    bool CanAsk => true;
 }
 
 /// <summary>
@@ -34,6 +37,8 @@ public sealed class StytchUserLookup(IConfiguration config, IHttpClientFactory h
         (config["Stytch:ApiBase"] is { Length: > 0 } b ? b
             : (config["Stytch:ProjectId"] ?? "").StartsWith("project-test-", StringComparison.Ordinal)
                 ? "https://test.stytch.com" : "https://api.stytch.com").TrimEnd('/');
+
+    public bool CanAsk => !string.IsNullOrEmpty(config["Stytch:ProjectId"]) && !string.IsNullOrEmpty(config["Stytch:Secret"]);
 
     public async Task<StytchUserInfo?> FindAsync(string userId, CancellationToken ct = default)
     {
@@ -64,7 +69,8 @@ public sealed class StytchUserLookup(IConfiguration config, IHttpClientFactory h
 
     /// <summary>
     /// Reads Stytch's Get User answer: the fields at the top level, or under <c>user</c>. The first
-    /// verified email, else the first; the name from first, middle and last.
+    /// verified email, else the first; the name from first, middle and last, else the name typed at
+    /// sign-up (<c>display_name</c> in the trusted or untrusted metadata).
     /// </summary>
     public static StytchUserInfo? Parse(string json)
     {
@@ -72,13 +78,16 @@ public sealed class StytchUserLookup(IConfiguration config, IHttpClientFactory h
         var root = doc.RootElement;
         var user = root.TryGetProperty("user", out var u) && u.ValueKind == JsonValueKind.Object ? u : root;
         string? email = null;
+        var verified = false;
         if (user.TryGetProperty("emails", out var emails) && emails.ValueKind == JsonValueKind.Array)
         {
             var all = emails.EnumerateArray()
                 .Select(e => (Email: e.TryGetProperty("email", out var a) ? a.GetString() : null,
                               Verified: e.TryGetProperty("verified", out var v) && v.ValueKind == JsonValueKind.True))
                 .Where(e => !string.IsNullOrWhiteSpace(e.Email)).ToList();
-            email = all.FirstOrDefault(e => e.Verified).Email ?? all.FirstOrDefault().Email;
+            var chosen = all.FirstOrDefault(e => e.Verified);
+            if (chosen.Email is null) chosen = all.FirstOrDefault();
+            (email, verified) = (chosen.Email, chosen.Verified);
         }
         string? name = null;
         if (user.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.Object)
@@ -88,6 +97,18 @@ public sealed class StytchUserLookup(IConfiguration config, IHttpClientFactory h
                 .Where(p => !string.IsNullOrWhiteSpace(p));
             name = string.Join(" ", parts) is { Length: > 0 } full ? full : null;
         }
-        return email is null && name is null ? null : new StytchUserInfo(email, name);
+        name ??= Metadata(user, "display_name");
+        return email is null && name is null ? null : new StytchUserInfo(email, name, verified);
+    }
+
+    /// <summary>A string the sign-up page stored in the user's trusted, else untrusted, metadata.</summary>
+    public static string? Metadata(JsonElement user, string key)
+    {
+        foreach (var bag in new[] { "trusted_metadata", "untrusted_metadata" })
+            if (user.TryGetProperty(bag, out var m) && m.ValueKind == JsonValueKind.Object
+                && m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(v.GetString()))
+                return v.GetString()!.Trim();
+        return null;
     }
 }

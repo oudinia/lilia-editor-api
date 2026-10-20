@@ -1,0 +1,18 @@
+Lilia
+
+Confirmez votre adresse e-mail
+
+Confirmez que {{recipient_email}} vous appartient pour terminer la création de votre compte Lilia.
+
+Confirmer mon adresse:
+{{action_url}}
+
+Ce lien ne fonctionne qu’une fois et reste valable 7 jours.
+
+Ce n’était pas vous ? Ignorez ce message. Aucun compte n’est créé sans cette étape.
+
+—
+Vous recevez ce message car une inscription à Lilia a été faite avec {{recipient_email}}.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

@@ -104,7 +104,7 @@ public class AuthEmailController : ControllerBase
             return Ok(new { sent = true });  // Plausible-success response.
         }
 
-        var token = await MintMagicLinkTokenAsync(http, apiBase, userId, ct);
+        var token = await MintMagicLinkTokenAsync(http, apiBase, userId, ValidMinutes(kind), ct);
         if (token is null)
         {
             _logger.LogWarning("Could not mint magic-link token for {UserId} ({Kind})", userId, kind);
@@ -234,14 +234,22 @@ public class AuthEmailController : ControllerBase
     /// POST /v1/magic_links → embedded magic-link token (no email sent).
     /// We email it ourselves via IEmailService.
     /// </summary>
+    /// <summary>How long each link works: what the 17 Oct emails promise (verify 7 days, sign-in 1 hour, reset 30 minutes).</summary>
+    internal static int ValidMinutes(AuthEmailKind kind) => kind switch
+    {
+        AuthEmailKind.Verification => 7 * 24 * 60,
+        AuthEmailKind.PasswordReset => 30,
+        _ => 60,
+    };
+
     private async Task<string?> MintMagicLinkTokenAsync(
-        HttpClient http, string _apiBase, string userId, CancellationToken ct)
+        HttpClient http, string _apiBase, string userId, int validMinutes, CancellationToken ct)
     {
         // /v1/magic_links rejects session_duration_minutes — that param
         // belongs on the *authenticate* call once the user clicks the
         // link. The mint endpoint only takes user_id (+ optional
         // expiration_minutes to bound the click window).
-        var payload = new { user_id = userId, expiration_minutes = 60 };
+        var payload = new { user_id = userId, expiration_minutes = validMinutes };
         using var content = new StringContent(
             JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var res = await http.PostAsync("/v1/magic_links", content, ct);

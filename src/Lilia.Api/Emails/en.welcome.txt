@@ -1,0 +1,16 @@
+Lilia
+
+Welcome to Lilia, {{first_name}}
+
+Your account is ready. On the Free plan you can keep up to 3 documents, and documents shared with you never count toward them.
+
+Open Lilia:
+{{action_url}}
+
+Stuck on something? The help center (https://editor.liliaeditor.com/help) answers most questions, and Ask Lilia is in every document.
+
+—
+You’re receiving this because you created a Lilia account with {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}
