@@ -1203,6 +1203,8 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetService<ILogger<Program>>());
     await SystemSnippetSeeder.SeedAsync(dbContext);
     await StarterDocumentSeeder.SeedAsync(dbContext);
+    // First run 5b: Article and Thesis chapter for everyone (reports/2026-10-21-welcome-onboarding.md).
+    await Lilia.Infrastructure.Data.Seeds.LaunchTemplateSeeder.SeedAsync(dbContext);
 }
 
 // Startup validation: warn loudly if PDF provider is mis-configured
