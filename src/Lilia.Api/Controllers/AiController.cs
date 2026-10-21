@@ -153,11 +153,13 @@ public class AiController : ControllerBase
 
         _logger.LogInformation("User {UserId} revising a {Type} block", userId, request.Type);
 
+        // The earlier turns go in with the instruction, so a follow-up reads in context.
+        var instruction = WithHistory(request.Instruction, request.History);
         ReviseBlockResult result;
         try
         {
             result = await _aiService.ReviseBlockAsync(
-                request.Type, request.Content, request.Instruction);
+                request.Type, request.Content, instruction);
         }
         catch (JsonException ex)
         {
@@ -178,7 +180,7 @@ public class AiController : ControllerBase
         try
         {
             var second = await _aiService.ReviseBlockAsync(
-                request.Type, request.Content, request.Instruction, error);
+                request.Type, request.Content, instruction, error);
             var (ok2, error2) = await CompilesAsync(second.Type, second.Content, requested);
             return Ok(new ReviseBlockResponse(second.Type, second.Content, second.Note, ok2, error2, 2));
         }
@@ -194,6 +196,28 @@ public class AiController : ControllerBase
     /// was reachable: "unchecked" is not "invalid", and an unreachable compiler
     /// must not become a retry — there is nothing for the model to fix.
     /// </summary>
+    /// <summary>
+    /// The instruction, after the conversation so far (the last six turns): the author asked X, the
+    /// assistant answered Y. Without it each ask stood alone, and a follow-up such as "what would
+    /// make it possible?" read as an unclear instruction (21 Oct).
+    /// </summary>
+    internal static string WithHistory(string instruction, IReadOnlyList<ReviseTurn>? history)
+    {
+        var turns = (history ?? []).Where(t => !string.IsNullOrWhiteSpace(t.Instruction)).TakeLast(6).ToList();
+        if (turns.Count == 0) return instruction;
+        var sb = new System.Text.StringBuilder("Earlier in this conversation about this block:\n");
+        foreach (var t in turns)
+        {
+            sb.Append("- The author asked: ").AppendLine(Clip(t.Instruction));
+            if (!string.IsNullOrWhiteSpace(t.Note)) sb.Append("  You answered: ").AppendLine(Clip(t.Note!));
+        }
+        sb.AppendLine().Append("Now the author says: ").Append(instruction).AppendLine();
+        sb.Append("If this is a question, answer it in the note and return the block unchanged.");
+        return sb.ToString();
+
+        static string Clip(string s) => s.Length > 400 ? s[..400] + "…" : s.Trim();
+    }
+
     private async Task<(bool Ok, string? Error)> CompilesAsync(
         string type, JsonElement content, LatexEngine? requested)
     {

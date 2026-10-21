@@ -1985,6 +1985,31 @@ public partial class RenderService : IRenderService
         if (bodyRows < LatexText.BandMinBodyRows) sb.AppendLine(LatexText.FewRows);
     }
 
+    /// <summary>
+    /// A table's own alternating row colours (<c>rowColors: { odd, even }</c>, hex; 21 Oct 2026): the
+    /// first body row is "odd". Written inside the table's group, after the theme markers, with
+    /// \liliaFewRows so a Banded paper doesn't paint its own stripes over them. The header row is
+    /// row 1, so the colours start at row 2, where the even slot falls on the first body row. Null
+    /// when the table has no valid colour.
+    /// </summary>
+    public static string? RowColoursLatex(JsonElement content)
+    {
+        if (!content.TryGetProperty("rowColors", out var rc) || rc.ValueKind != JsonValueKind.Object) return null;
+        var odd = Hex(rc, "odd");
+        var even = Hex(rc, "even");
+        if (odd is null && even is null) return null;
+        var sb = new StringBuilder(LatexText.FewRows).AppendLine();
+        if (odd is not null) sb.Append($@"\definecolor{{liliaRowOdd}}{{HTML}}{{{odd}}}");
+        if (even is not null) sb.Append($@"\definecolor{{liliaRowEven}}{{HTML}}{{{even}}}");
+        sb.Append($@"\rowcolors{{2}}{{{(even is null ? "" : "liliaRowEven")}}}{{{(odd is null ? "" : "liliaRowOdd")}}}");
+        return sb.ToString();
+
+        static string? Hex(JsonElement o, string name) =>
+            o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            && System.Text.RegularExpressions.Regex.Match(v.GetString()!.Trim(), "^#?([0-9a-fA-F]{6})$") is { Success: true } m
+                ? m.Groups[1].Value.ToUpperInvariant() : null;
+    }
+
     private string RenderTableToLatex(JsonElement content, bool useLongtable = false)
     {
         var sb = new StringBuilder();
@@ -2136,6 +2161,7 @@ public partial class RenderService : IRenderService
                 // the alignment body, where a declaration is not a row.
                 sb.AppendLine(@"{\renewcommand{\arraystretch}{1.3}");
                 AppendThemeMarkers(sb, hasHeaders, rowList);
+                if (RowColoursLatex(content) is { } rowColours) sb.AppendLine(rowColours);
                 // Notes under a longtable: threeparttablex collects them first and prints
                 // them in the last foot.
                 if (layout.HasNotes)
@@ -2179,6 +2205,7 @@ public partial class RenderService : IRenderService
                 if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
                 if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
                 AppendThemeMarkers(sb, hasHeaders, rowList);
+                if (RowColoursLatex(content) is { } rowColours) sb.AppendLine(rowColours);
                 // Notes print under the table, not at the page foot: threeparttable.
                 if (layout.HasNotes) sb.AppendLine(@"\begin{threeparttable}");
                 sb.AppendLine($@"\begin{{tabular}}{{{colSpec}}}");
