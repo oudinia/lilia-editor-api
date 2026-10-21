@@ -1,0 +1,20 @@
+Lilia
+
+Votre première page est à une minute
+
+Bonjour {{first_name}}, vous n’avez pas encore commencé de document. Choisissez ce qui vous convient :
+
+- Document vierge: Un article avec un titre, prêt à écrire.
+- À partir d’un modèle: Article, chapitre de thèse ou pas à pas.
+- Importer un fichier: LaTeX, Word ou Lilia. La structure est conservée.
+
+Ouvrir Lilia:
+{{action_url}}
+
+Ce message n’est envoyé qu’une fois. Ne plus m’envoyer de conseils: {{tips_url}}
+
+—
+Vous recevez ce message car vous avez créé un compte Lilia avec {{recipient_email}} il y a trois jours.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

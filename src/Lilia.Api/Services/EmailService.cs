@@ -137,14 +137,15 @@ public class EmailService : IEmailService
         SendEmailCoreAsync(to, subject, htmlBody, textBody, null, EmailKind.Account);
 
     /// <summary>Send, with an optional Reply-To (the owner, when they allow replies), through the gateway.</summary>
-    private async Task SendEmailCoreAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo, EmailKind kind)
+    private async Task SendEmailCoreAsync(string to, string subject, string htmlBody, string? textBody, string? replyTo, EmailKind kind,
+        IReadOnlyDictionary<string, string>? headers = null)
     {
         if (!string.IsNullOrWhiteSpace(_settings.AlsoBaseUrl))
         {
             htmlBody = WithAlsoLinksHtml(htmlBody, _settings.BaseUrl, _settings.AlsoBaseUrl!);
             if (textBody != null) textBody = WithAlsoLinksText(textBody, _settings.BaseUrl, _settings.AlsoBaseUrl!);
         }
-        await _gateway.SendAsync(new OutgoingEmail(to, subject, htmlBody, textBody, replyTo, kind));
+        await _gateway.SendAsync(new OutgoingEmail(to, subject, htmlBody, textBody, replyTo, kind, headers));
     }
 
     private static List<string> LinksOn(string body, string baseUrl, string pattern)
@@ -467,6 +468,28 @@ public class EmailService : IEmailService
     /// <summary>Welcome to Lilia: once per account, after its address is known to be real (OnboardingService).</summary>
     public Task SendWelcomeAsync(string toEmail, string? firstName, string? locale)
         => SendTemplateAsync("welcome", toEmail, locale, _settings.BaseUrl.TrimEnd('/') + "/", firstName);
+
+    /// <summary>
+    /// The day-3 tip (Olivia, 21 Oct): three ways to start, sent once to someone who hasn't. Its
+    /// "Don't send me tips" link is also the List-Unsubscribe header, one click (RFC 8058).
+    /// </summary>
+    public Task SendGettingStartedAsync(string toEmail, string? firstName, string? locale, string tipsUrl)
+    {
+        var email = EmailTemplates.Render("getting_started", locale, new Dictionary<string, string?>
+        {
+            ["action_url"] = _settings.BaseUrl.TrimEnd('/') + "/",
+            ["recipient_email"] = toEmail,
+            ["first_name"] = FirstName(firstName),
+            ["tips_url"] = tipsUrl,
+            ["publisher_line"] = _settings.PublisherLine,
+        }, _settings.BaseUrl);
+        return SendEmailCoreAsync(toEmail, email.Subject, email.Html, email.Text, null, EmailKind.Notification,
+            new Dictionary<string, string>
+            {
+                ["List-Unsubscribe"] = $"<{tipsUrl}>",
+                ["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click",
+            });
+    }
 
     /// <summary>An account email from the 17 Oct designs (<see cref="EmailTemplates"/>), in the person's language.</summary>
     private Task SendTemplateAsync(string key, string toEmail, string? locale, string actionUrl, string? firstName = null)

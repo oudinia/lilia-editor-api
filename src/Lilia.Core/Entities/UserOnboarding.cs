@@ -25,6 +25,8 @@ public class UserOnboarding
     public DateTime? FollowUpSentAt { get; set; }
     /// <summary>"Don't send me tips": the day-3 follow-up and any later tip are never sent.</summary>
     public bool TipsOptOut { get; set; }
+    /// <summary>Random, set when a tip is sent: its one-click "Don't send me tips" link carries it.</summary>
+    public string? TipsToken { get; set; }
     /// <summary>IANA time zone from the browser at sign-up (the follow-up is sent at 10:00 there).</summary>
     public string? TimeZone { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

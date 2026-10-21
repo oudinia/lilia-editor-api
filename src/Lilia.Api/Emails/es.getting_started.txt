@@ -1,0 +1,20 @@
+Lilia
+
+Tu primera página está a un minuto
+
+Hola, {{first_name}}: todavía no has empezado ningún documento. Elige lo que prefieras:
+
+- Documento en blanco: Un artículo con título, listo para escribir.
+- Desde una plantilla: Artículo, capítulo de tesis o paso a paso.
+- Importar un archivo: LaTeX, Word o Lilia. Conservamos la estructura.
+
+Abrir Lilia:
+{{action_url}}
+
+Solo enviamos este mensaje una vez. No enviarme consejos: {{tips_url}}
+
+—
+Recibes este mensaje porque creaste una cuenta de Lilia con {{recipient_email}} hace tres días.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

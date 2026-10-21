@@ -16,7 +16,9 @@ namespace Lilia.Api.Services.Email;
 /// </summary>
 public enum EmailKind { Account, Notification }
 
-public sealed record OutgoingEmail(string To, string Subject, string Html, string? Text, string? ReplyTo, EmailKind Kind);
+/// <param name="Headers">Extra headers, e.g. List-Unsubscribe on a tips email.</param>
+public sealed record OutgoingEmail(string To, string Subject, string Html, string? Text, string? ReplyTo, EmailKind Kind,
+    IReadOnlyDictionary<string, string>? Headers = null);
 
 /// <summary>One way to send an email. Adding a provider is one class and one name in the settings.</summary>
 public interface IEmailProvider
@@ -103,6 +105,7 @@ public sealed class ResendEmailProvider(EmailSettings settings, IHttpClientFacto
             ["text"] = email.Text,
         };
         if (!string.IsNullOrEmpty(email.ReplyTo)) payload["reply_to"] = email.ReplyTo;
+        if (email.Headers is { Count: > 0 }) payload["headers"] = email.Headers;
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{settings.ResendApiBase.TrimEnd('/')}/emails")
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
@@ -126,6 +129,7 @@ public sealed class SmtpEmailProvider(EmailSettings settings) : IEmailProvider
         message.From.Add(new MailboxAddress(settings.FromName, settings.FromAddress));
         message.To.Add(MailboxAddress.Parse(email.To));
         if (!string.IsNullOrEmpty(email.ReplyTo)) message.ReplyTo.Add(MailboxAddress.Parse(email.ReplyTo));
+        foreach (var (name, value) in email.Headers ?? new Dictionary<string, string>()) message.Headers.Add(name, value);
         message.Subject = email.Subject;
         var body = new BodyBuilder { HtmlBody = email.Html };
         if (!string.IsNullOrEmpty(email.Text)) body.TextBody = email.Text;

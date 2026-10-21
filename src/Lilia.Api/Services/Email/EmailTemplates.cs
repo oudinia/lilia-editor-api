@@ -55,8 +55,8 @@ public static partial class EmailTemplates
         string? Value(string name) => values.TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : null;
 
         var s = IfBlock().Replace(template, m => Value(m.Groups[1].Value) is null ? "" : m.Groups[2].Value);
-        // "Welcome to Lilia, {{first_name}}" reads "Welcome to Lilia" without a name.
-        if (Value("first_name") is null) s = s.Replace(", {{first_name}}", "");
+        // "Welcome to Lilia, {{first_name}}" reads "Welcome to Lilia", "Hi {{first_name}}, you" "Hi, you".
+        if (Value("first_name") is null) s = s.Replace(", {{first_name}}", "").Replace(" {{first_name}},", ",");
         // The publisher line waits on the owner's details (LEGAL-6): no empty paragraph meanwhile.
         if (Value("publisher_line") is null)
         {

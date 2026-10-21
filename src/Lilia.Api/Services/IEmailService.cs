@@ -12,6 +12,8 @@ public interface IEmailService
         SendEmailAsync(to, subject, htmlBody, textBody);
     /// <summary>Welcome to Lilia (17 Oct design), in the person's language: once per account (OnboardingService).</summary>
     Task SendWelcomeAsync(string toEmail, string? firstName, string? locale);
+    /// <summary>The day-3 tip to someone who hasn't started a document; <paramref name="tipsUrl"/> turns tips off in one click.</summary>
+    Task SendGettingStartedAsync(string toEmail, string? firstName, string? locale, string tipsUrl);
     /// <summary>
     /// New default team announcement — sent on user.created right after
     /// the welcome (or as a standalone test from /api/teams/test-welcome).
