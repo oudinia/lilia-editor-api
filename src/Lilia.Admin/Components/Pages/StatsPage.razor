@@ -88,6 +88,10 @@ else
             <BarList Rows="s.AskByModel" Label="Model" ExtraLabel="Tokens" Id="ask-model" Empty="No request in this period." />
         </section>
         <section>
+            <h2>First documents, by how they started</h2>
+            <BarList Rows="s.FirstRoutes" Label="Started from" Id="first-routes" Empty="No new account started a document in this period." />
+        </section>
+        <section>
             <h2>Exports, by format</h2>
             <BarList Rows="s.Exports" Label="Format" ExtraLabel="Failed" Id="exports" Empty="No export in this period." />
         </section>

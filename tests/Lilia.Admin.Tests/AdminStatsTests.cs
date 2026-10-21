@@ -48,6 +48,30 @@ public class AdminStatsTests(AdminFixture fx)
     }
 
     [Fact]
+    public async Task The_funnel_counts_the_onboarding_steps_and_how_first_documents_started()
+    {
+        var id = NewId("onb");
+        var now = DateTime.UtcNow;
+        await using (var db = fx.CreateDbContext())
+        {
+            db.Users.Add(new User { Id = id, Email = $"{id}@lilia.test", CreatedAt = now, UpdatedAt = now });
+            db.UserOnboarding.Add(new UserOnboarding
+            {
+                UserId = id, CreatedAt = now, VerifiedAt = now, FirstDocumentAt = now, FirstDocumentRoute = "template",
+                TourSeenAt = now, FirstValidatePassAt = now, FirstExportAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var scope = fx.Factory.Services.CreateScope();
+        var s = await scope.ServiceProvider.GetRequiredService<AdminStats>().StatsAsync(7);
+
+        foreach (var step in new[] { "Confirmed their address", "Finished or skipped the tour", "First clean check", "Exported" })
+            s.Funnel.Single(f => f.Name == step).Count.Should().BeGreaterThanOrEqualTo(1, step);
+        s.FirstRoutes.Should().Contain(r => r.Name == "template" && r.Count >= 1);
+    }
+
+    [Fact]
     public void Cohorts_give_each_signup_week_its_share_active_in_the_weeks_after()
     {
         var today = new DateTime(2026, 10, 16);                 // a Friday

@@ -18,7 +18,7 @@ public sealed record TopAuthor(string UserId, string Email, int ActiveDays, int 
 public sealed record Stats(
     int Days, IReadOnlyList<DateOnly> DayAxis, IReadOnlyList<Series> Daily, IReadOnlyList<Kpi> Kpis,
     int Dau, int Wau, int Mau,
-    IReadOnlyList<Cohort> Cohorts, IReadOnlyList<FunnelStep> Funnel,
+    IReadOnlyList<Cohort> Cohorts, IReadOnlyList<FunnelStep> Funnel, IReadOnlyList<Slice> FirstRoutes,
     IReadOnlyList<Slice> AskByPurpose, IReadOnlyList<Slice> AskByModel, IReadOnlyList<Slice> Exports, IReadOnlyList<Slice> Imports,
     IReadOnlyList<Slice> Plans, Percentiles CompileMs, Percentiles AskMs, IReadOnlyList<TopAuthor> TopAuthors);
 
@@ -98,6 +98,7 @@ public sealed class AdminStats(IDbContextFactory<LiliaDbContext> factory, TimePr
             Dau: (int)Distinct(today, end), Wau: (int)Distinct(today.AddDays(-6), end), Mau: (int)Distinct(today.AddDays(-29), end),
             Cohorts: Cohorts(users.Select(u => (u.Id, u.CreatedAt)).ToList(), activity, today),
             Funnel: await FunnelAsync(db, users.Where(u => u.CreatedAt >= from).Select(u => u.Id).ToList(), activity, ct),
+            FirstRoutes: await FirstRoutesAsync(db, users.Where(u => u.CreatedAt >= from).Select(u => u.Id).ToList(), ct),
             AskByPurpose: await Slices(db.AiRequests.Where(r => r.CreatedAt >= from).GroupBy(r => r.Purpose)
                 .Select(g => new Slice(g.Key, g.Count(), g.Sum(r => (long)r.PromptTokens + r.CompletionTokens))), byExtra: false, ct),
             AskByModel: await Slices(db.AiRequests.Where(r => r.CreatedAt >= from).GroupBy(r => r.Model)
@@ -159,16 +160,34 @@ public sealed class AdminStats(IDbContextFactory<LiliaDbContext> factory, TimePr
         return result;
     }
 
+    /// <summary>
+    /// Sign-up to first export, for accounts created in the period. The onboarding steps (verified,
+    /// tour, first clean check) come from user_onboarding (reports/2026-10-21-welcome-onboarding.md):
+    /// timestamps only, like the rest.
+    /// </summary>
     private static async Task<IReadOnlyList<FunnelStep>> FunnelAsync(LiliaDbContext db, List<string> newUsers, List<Act> activity, CancellationToken ct)
     {
-        if (newUsers.Count == 0)
-            return [new("Signed up", 0), new("Created a document", 0), new("Came back another day", 0), new("Asked Lilia", 0), new("Exported", 0)];
+        string[] names = ["Signed up", "Confirmed their address", "Created a document", "Finished or skipped the tour", "First clean check", "Exported", "Came back another day", "Asked Lilia"];
+        if (newUsers.Count == 0) return names.Select(n => new FunnelStep(n, 0)).ToList();
+        var steps = db.UserOnboarding.Where(o => newUsers.Contains(o.UserId));
+        var verified = await steps.CountAsync(o => o.VerifiedAt != null, ct);
+        var toured = await steps.CountAsync(o => o.TourSeenAt != null, ct);
+        var checkedClean = await steps.CountAsync(o => o.FirstValidatePassAt != null, ct);
         var withDoc = await db.Documents.Where(d => newUsers.Contains(d.OwnerId) && !d.IsPlayground).Select(d => d.OwnerId).Distinct().CountAsync(ct);
         var returned = activity.Where(a => newUsers.Contains(a.UserId)).GroupBy(a => a.UserId).Count(g => g.Select(a => a.Day).Distinct().Count() >= 2);
         var asked = await db.AiRequests.Where(r => newUsers.Contains(r.UserId)).Select(r => r.UserId).Distinct().CountAsync(ct);
-        var exported = await db.Jobs.Where(j => newUsers.Contains(j.UserId) && j.JobType.ToUpper() == "EXPORT").Select(j => j.UserId).Distinct().CountAsync(ct);
-        return [new("Signed up", newUsers.Count), new("Created a document", withDoc), new("Came back another day", returned), new("Asked Lilia", asked), new("Exported", exported)];
+        var exportJobs = await db.Jobs.Where(j => newUsers.Contains(j.UserId) && j.JobType.ToUpper() == "EXPORT").Select(j => j.UserId).Distinct().ToListAsync(ct);
+        // One-click exports don't make a job; the onboarding record has them.
+        var exportedFirst = await steps.Where(o => o.FirstExportAt != null).Select(o => o.UserId).ToListAsync(ct);
+        var exported = exportJobs.Union(exportedFirst).Count();
+        int[] counts = [newUsers.Count, verified, withDoc, toured, checkedClean, exported, returned, asked];
+        return names.Zip(counts, (n, c) => new FunnelStep(n, c)).ToList();
     }
+
+    /// <summary>How new accounts started their first document (blank, template, import, describe).</summary>
+    private static async Task<IReadOnlyList<Slice>> FirstRoutesAsync(LiliaDbContext db, List<string> newUsers, CancellationToken ct) =>
+        await Slices(db.UserOnboarding.Where(o => newUsers.Contains(o.UserId) && o.FirstDocumentAt != null)
+            .GroupBy(o => o.FirstDocumentRoute ?? "unknown").Select(g => new Slice(g.Key, g.Count(), 0)), byExtra: false, ct);
 
     // Sorted after the query: Npgsql can't order by a member of a record built in the projection.
     private static async Task<IReadOnlyList<Slice>> Slices(IQueryable<Slice> q, bool byExtra, CancellationToken ct)
