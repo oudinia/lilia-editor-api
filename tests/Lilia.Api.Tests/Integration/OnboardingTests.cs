@@ -52,6 +52,12 @@ public class OnboardingTests : IntegrationTestBase
             Asked = true;
             return Task.FromResult(Users.GetValueOrDefault(userId));
         }
+        public List<string> Minted { get; } = new();
+        public Task<string?> MintMagicLinkAsync(string userId, int validMinutes, CancellationToken ct = default)
+        {
+            Minted.Add(userId);
+            return Task.FromResult<string?>($"tok-{userId}");
+        }
     }
 
     private async Task SignUpAsync(string id, string email, string? name, string? locale)
@@ -113,7 +119,12 @@ public class OnboardingTests : IntegrationTestBase
     {
         _stytch.Users["user-test-omar"] = new StytchUserInfo("omar@lilia.test", "Omar", EmailVerified: false);
         await SignUpAsync("user-test-omar", "omar@lilia.test", "Omar", "es");
-        (await MailTo("omar@lilia.test", 1)).Should().BeEmpty("the address isn't verified yet");
+        // The server sends Lilia's confirmation itself (a returning browser may run an old copy of the page).
+        var first = await MailTo("omar@lilia.test", 1);
+        first.Should().ContainSingle(m => m.Kind == "verify");
+        first.Should().NotContain(m => m.Kind == "welcome", "the address isn't verified yet");
+        _stytch.Minted.Should().ContainSingle().Which.Should().Be("user-test-omar");
+        _mail.Clear();
 
         _stytch.Users["user-test-omar"] = new StytchUserInfo("omar@lilia.test", "Omar", EmailVerified: true);
         var res = await As("user-test-omar", email: "omar@lilia.test").PostAsync("/api/me/onboarding/verified", null);
