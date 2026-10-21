@@ -15,6 +15,9 @@ public interface IStytchUserLookup
 
     /// <summary>Whether Stytch can be asked at all (a project and its secret are set).</summary>
     bool CanAsk => true;
+
+    /// <summary>A one-time magic-link token for <paramref name="userId"/>, valid that long; null when Stytch can't be asked.</summary>
+    Task<string?> MintMagicLinkAsync(string userId, int validMinutes, CancellationToken ct = default) => Task.FromResult<string?>(null);
 }
 
 /// <summary>
@@ -63,6 +66,36 @@ public sealed class StytchUserLookup(IConfiguration config, IHttpClientFactory h
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException)
         {
             logger.LogWarning(e, "[Stytch] user lookup for {UserId} failed", userId);
+            return null;
+        }
+    }
+
+    public async Task<string?> MintMagicLinkAsync(string userId, int validMinutes, CancellationToken ct = default)
+    {
+        var project = config["Stytch:ProjectId"];
+        var secret = config["Stytch:Secret"];
+        if (string.IsNullOrEmpty(project) || string.IsNullOrEmpty(secret)) return null;
+        try
+        {
+            using var client = http.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(10);
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase(config)}/v1/magic_links")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { user_id = userId, expiration_minutes = validMinutes }), Encoding.UTF8, "application/json"),
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{project}:{secret}")));
+            using var res = await client.SendAsync(req, ct);
+            if (!res.IsSuccessStatusCode)
+            {
+                logger.LogWarning("[Stytch] magic link for {UserId}: {Status}", userId, (int)res.StatusCode);
+                return null;
+            }
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            return doc.RootElement.TryGetProperty("token", out var t) ? t.GetString() : null;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            logger.LogWarning(e, "[Stytch] magic link for {UserId} failed", userId);
             return null;
         }
     }

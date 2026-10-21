@@ -35,6 +35,11 @@ public interface IOnboardingService
     Task<OnboardingDto?> RecordAsync(string userId, string step, OnboardingStepRequest? request, CancellationToken ct = default);
     /// <summary>Sends the welcome email once the address is known to be real; at most once per account.</summary>
     Task<bool> TrySendWelcomeAsync(string userId, CancellationToken ct = default);
+    /// <summary>
+    /// For a new account whose address Stytch hasn't confirmed: Lilia's "Confirm your email", in the
+    /// account's language, under the per-address limit (so a sign-up page that also asks sends one).
+    /// </summary>
+    Task<bool> TrySendConfirmationAsync(string userId, CancellationToken ct = default);
     /// <summary>Keeps <c>User.Locale</c> on the interface language (en, fr, es) the person uses.</summary>
     Task SetLocaleAsync(string userId, string? locale, CancellationToken ct = default);
 }
@@ -71,8 +76,31 @@ public sealed class OnboardingService(
     LiliaDbContext db,
     IEmailService email,
     ILogger<OnboardingService> logger,
-    IStytchUserLookup? stytch = null) : IOnboardingService
+    IStytchUserLookup? stytch = null,
+    Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null,
+    EmailSettings? emailSettings = null) : IOnboardingService
 {
+    /// <summary>
+    /// The browser can't be relied on to ask for it: a returning browser runs its cached copy of the
+    /// app for a few seconds after a deploy (21 Oct, the owner's own sign-up). So the server does.
+    /// </summary>
+    public async Task<bool> TrySendConfirmationAsync(string userId, CancellationToken ct = default)
+    {
+        if (stytch is not { CanAsk: true } || !userId.StartsWith("user-", StringComparison.Ordinal)) return false;
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null || string.IsNullOrWhiteSpace(user.Email) || StytchUserLookup.IsPlaceholder(user.Email)) return false;
+        var info = await stytch.FindAsync(userId, ct);
+        if (info is null || info.EmailVerified) return false;
+        if (!await Lilia.Api.Services.Email.AuthEmailLimit.TryTakeAsync(cache, user.Email, ct)) return false;
+        var token = await stytch.MintMagicLinkAsync(userId, 7 * 24 * 60, ct);
+        if (token is null) return false;
+        var origin = (emailSettings?.BaseUrl ?? "https://editor.liliaeditor.com").TrimEnd('/');
+        var url = $"{origin}/auth/callback?stytch_token_type=magic_links&token={Uri.EscapeDataString(token)}&intent=verify";
+        await email.SendStytchVerificationAsync(user.Email, url, user.Locale);
+        logger.LogInformation("[Onboarding] confirmation email sent to {UserId} ({Locale})", userId, EmailTemplates.Language(user.Locale));
+        return true;
+    }
+
     public async Task<UserOnboarding?> EnsureAsync(string userId, bool newAccount = false, CancellationToken ct = default)
     {
         var row = await db.UserOnboarding.FirstOrDefaultAsync(o => o.UserId == userId, ct);
