@@ -16,7 +16,13 @@ public record ReviseBlockRequest(
     /// compiler's error if it does not build. Costs a round trip; worth it for
     /// anything going straight into a document.</summary>
     bool Verify = true,
-    string? Engine = null);
+    string? Engine = null,
+    /// <summary>The earlier turns on this block, oldest first, so "what would make it possible?"
+    /// is read against what came before (21 Oct). At most the last six are used.</summary>
+    IReadOnlyList<ReviseTurn>? History = null);
+
+/// <summary>One earlier turn: what the author asked, and the assistant's note back.</summary>
+public record ReviseTurn(string Instruction, string? Note);
 
 /// <summary>What the model came back with, before anyone has compiled it.</summary>
 public record ReviseBlockResult(string Type, JsonElement Content, string Note);

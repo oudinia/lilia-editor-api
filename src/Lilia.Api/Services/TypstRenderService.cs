@@ -431,6 +431,8 @@ public class TypstRenderService : ITypstRenderService
 
             sb.AppendLine($"#table(");
             sb.AppendLine($"  columns: {colCount},");
+            // The table's own row colours (rowColors): the first body row is "odd".
+            if (TypstRowFill(content, hasHeaders) is { } fill) sb.AppendLine($"  fill: {fill},");
 
             // Header row
             if (hasHeaders)
@@ -463,6 +465,21 @@ public class TypstRenderService : ITypstRenderService
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>A Typst fill function for a table's rowColors ({ odd, even }, hex); null without any.</summary>
+    internal static string? TypstRowFill(JsonElement content, bool hasHeaders)
+    {
+        if (!content.TryGetProperty("rowColors", out var rc) || rc.ValueKind != JsonValueKind.Object) return null;
+        static string Colour(JsonElement o, string name) =>
+            o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            && System.Text.RegularExpressions.Regex.Match(v.GetString()!.Trim(), "^#?([0-9a-fA-F]{6})$") is { Success: true } m
+                ? $"rgb(\"#{m.Groups[1].Value}\")" : "none";
+        var odd = Colour(rc, "odd");
+        var even = Colour(rc, "even");
+        if (odd == "none" && even == "none") return null;
+        var first = hasHeaders ? 1 : 0;
+        return $"(x, y) => if y < {first} {{ none }} else if calc.even(y - {first}) {{ {odd} }} else {{ {even} }}";
     }
 
     private static string RenderCodeToTypst(JsonElement content)

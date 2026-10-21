@@ -50,8 +50,13 @@ public static class AiPrompts
           { "content": "...", "colspan": n, "rowspan": n } for merged cells; the cells
           a merge covers are omitted from the row.
         - Escape what LaTeX needs escaped: & % # _ and so on.
+        - A table's alternating row colours are "rowColors": { "odd": "#RRGGBB", "even": "#RRGGBB" }.
+          "odd" colours the first body row, the third, and so on; the header is never coloured.
+          Use light, readable colours (for example light gray #F2F2F2, light blue #E8F0FE,
+          light green #E6F4EA, light yellow #FFF8E1). Remove the field to remove the colours.
+          One colour alone is fine: the other rows stay white.
         - If the instruction cannot be carried out, return the block unchanged and
-          explain why in the note.
+          explain why in the note, including what would make it possible.
         - Respond with ONLY the JSON, no additional text.
         """;
 
