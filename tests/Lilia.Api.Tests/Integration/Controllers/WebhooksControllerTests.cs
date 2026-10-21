@@ -81,6 +81,30 @@ public class WebhooksControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Stytch_UserCreate_AfterTheSignUpPageAskedForIt_SendsNoSecondCopy()
+    {
+        var emailMock = new Mock<IEmailService>();
+        using var stytch = StubStytchAdmin(token: "magic-token-def");
+        var factory = MakeFactory(emailMock, stytchApiBase: stytch.BaseAddress);
+        // The sign-up page's own request has just taken this address's send.
+        using (var scope = factory.Services.CreateScope())
+            (await Lilia.Api.Services.Email.AuthEmailLimit.TryTakeAsync(
+                scope.ServiceProvider.GetService<Microsoft.Extensions.Caching.Distributed.IDistributedCache>(), "twice@example.com"))
+                .Should().BeTrue();
+        using var client = factory.CreateClient();
+
+        var body = JsonSerializer.Serialize(new
+        {
+            event_type = "direct.user.create",
+            data = new { user = new { user_id = "user-live-002", emails = new[] { new { email = "twice@example.com", verified = false } } } }
+        });
+        (await SignedPost(client, body)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        stytch.Hits.Should().Be(0, "no link is minted for a copy that won't be sent");
+        emailMock.Verify(e => e.SendStytchVerificationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Stytch_UserCreate_PreVerifiedEmail_DoesNotSendEmail()
     {
         var emailMock = new Mock<IEmailService>();

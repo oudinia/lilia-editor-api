@@ -85,7 +85,7 @@ public class AuthEmailController : ControllerBase
         // Anyone can call these, and behind the tunnel every caller has the same IP: so the limit is
         // per address. One email a minute and five an hour per address, whatever the kind; past it
         // the answer looks the same and nothing is sent, so an inbox can't be flooded.
-        if (!await WithinAddressLimitAsync(email, ct))
+        if (!await Lilia.Api.Services.Email.AuthEmailLimit.TryTakeAsync(_cache, email, ct))
         {
             _logger.LogWarning("{Kind} email for {Email} held back: over the per-address limit", kind, email);
             return Ok(new { sent = true });
@@ -247,22 +247,6 @@ public class AuthEmailController : ControllerBase
     /// POST /v1/magic_links → embedded magic-link token (no email sent).
     /// We email it ourselves via IEmailService.
     /// </summary>
-    private async Task<bool> WithinAddressLimitAsync(string email, CancellationToken ct)
-    {
-        if (_cache is null) return true;
-        var who = email.Trim().ToLowerInvariant();
-        var minuteKey = $"authmail:minute:{who}";
-        var hourKey = $"authmail:hour:{who}";
-        if (await _cache.GetAsync(minuteKey, ct) is not null) return false;
-        var hour = await _cache.GetStringAsync(hourKey, ct);
-        var sent = int.TryParse(hour, out var n) ? n : 0;
-        if (sent >= 5) return false;
-        await _cache.SetAsync(minuteKey, [1], new() { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(55) }, ct);
-        // The hour window starts at the first email and isn't extended by later ones.
-        await _cache.SetStringAsync(hourKey, (sent + 1).ToString(), new() { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) }, ct);
-        return true;
-    }
-
     /// <summary>How long each link works: what the 17 Oct emails promise (verify 7 days, sign-in 1 hour, reset 30 minutes).</summary>
     internal static int ValidMinutes(AuthEmailKind kind) => kind switch
     {
