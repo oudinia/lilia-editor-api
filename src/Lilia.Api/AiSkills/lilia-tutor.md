@@ -51,7 +51,11 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 ### Getting around
 - **Home** (`/`): *Pick up where you left off* with **Continue**, one card per tool you have used
   (its recent items, **Open …**, and a **+ New** / **+ Import** corner), then **More tools**.
-  On the first day: **New paper**, **Import** (bring one in), **New table** (start with your data).
+  **First run** (whoever owns no document yet, on Home and on Documents → Mine): *Welcome, Nadia.
+  What are you writing?* with four cards: **Blank document** (one click, opens the editor),
+  **From a template** (Article, Thesis chapter, or **Build it step by step**), **Import a file**
+  (or drop a file anywhere on the page) and **Describe it** (Ask Lilia drafts the outline and first
+  sections). On Free a line says *Free includes 3 documents. This one counts as the first.*
 - **The Lilia menu**: the **L** button at the top left, or **⌘K / Ctrl+K**. Search tools, papers,
   tables and references; **Pinned** tools; **All tools** (pin or unpin; drag to reorder; right-click
   to unpin); **Recent**. Its search also runs actions: New document, New table, Import a file,
@@ -73,6 +77,10 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   **From structure** (a typed-block skeleton: paper, thesis, report, slides), **From template**.
 
 ### The editor
+- **The tour**: the first document opens with four cards beside their controls (**Write in blocks**,
+  **Ask Lilia**, **Check it compiles**, **Export**), with **Skip tour**, **Back** and **Next**; typing
+  ends it. It shows once per account. To see it again: the Lilia menu (**L**) → **Take the tour**
+  (on this document, else a new blank one, or the latest document when Free is full).
 - **Top bar**: the title (click to rename) · the save indicator · **Export** · **Share**.
 - **Ribbon** tabs: **Text**, **Insert**, **Block** (type, lists, alignment, indentation).
   Type **/** in an empty paragraph for the block menu.
@@ -221,7 +229,8 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone
   insert. **Templates**: start a paper from a structure. **Snippets**: reusable LaTeX pieces.
 
 ### On a phone
-Phones get a reading version: **Documents** (search, grouped Today / This week / Earlier), the
+Phones get a reading version. With no document yet, **Documents** offers **Blank document**,
+**Describe it** and **Import a file** (templates need a computer). Otherwise: **Documents** (search, grouped Today / This week / Earlier), the
 document to read, **Ask Lilia** (the bar at the bottom; tap a block to ask about it), **Preview**
 (the PDF), **View LaTeX**, and **⋯**: **Share**, **Check document**, **Look**, **Page & settings**,
 **Document details**. The avatar has **Appearance**, **Language**, **Settings** and **Sign out**. Editing on a
@@ -251,6 +260,12 @@ taken from the web editor's locale files: refresh this table when the interface'
 | References | Références | Referencias |
 | Equations | Équations | Ecuaciones |
 | Templates | Modèles | Plantillas |
+| Blank document | Document vierge | Documento en blanco |
+| From a template | À partir d’un modèle | Desde una plantilla |
+| Import a file | Importer un fichier | Importar un archivo |
+| Describe it | Décrivez-le | Descríbelo |
+| Take the tour | Faire la visite guidée | Hacer el recorrido |
+| Skip tour | Passer la visite | Saltar el recorrido |
 | Snippets | Extraits | Fragmentos |
 | Import / Export | Import / Export | Importar / Exportar |
 | Settings | Paramètres | Ajustes |
