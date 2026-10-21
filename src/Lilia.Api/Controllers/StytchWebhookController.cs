@@ -51,14 +51,17 @@ public class StytchWebhookController : ControllerBase
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<StytchWebhookController> _logger;
+    private readonly Microsoft.Extensions.Caching.Distributed.IDistributedCache? _cache;
 
     public StytchWebhookController(
         IEmailService emails,
         StytchWebhookSettings settings,
         IConfiguration config,
         IHttpClientFactory httpFactory,
-        ILogger<StytchWebhookController> logger)
+        ILogger<StytchWebhookController> logger,
+        Microsoft.Extensions.Caching.Distributed.IDistributedCache? cache = null)
     {
+        _cache = cache;
         _emails = emails;
         _settings = settings;
         _config = config;
@@ -147,6 +150,14 @@ public class StytchWebhookController : ControllerBase
         if (emailEntry.Verified == true)
         {
             _logger.LogDebug("Stytch webhook user.create {UserId}: email already verified — skip", user.UserId);
+            return;
+        }
+
+        // The sign-up page asks for this email itself (POST /api/auth/resend-verification, 21 Oct):
+        // when it just did, this one would be a second copy.
+        if (!await Lilia.Api.Services.Email.AuthEmailLimit.TryTakeAsync(_cache, emailEntry.Email!, ct))
+        {
+            _logger.LogInformation("Stytch webhook user.create {UserId}: verification already sent — skip", user.UserId);
             return;
         }
 
