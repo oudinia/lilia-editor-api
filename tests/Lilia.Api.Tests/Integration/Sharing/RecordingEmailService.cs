@@ -23,6 +23,7 @@ public sealed class RecordingEmailService : IEmailService
     public Task SendDocumentInviteAsync(string toEmail, string inviterName, string documentTitle, string role, string documentUrl) => Record("invite", toEmail, documentUrl);
     public Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null) => Record("raw", to, subject);
     public Task SendWelcomeAsync(string toEmail, string? firstName, string? locale) => Record("welcome", toEmail, locale ?? "");
+    public Task SendGettingStartedAsync(string toEmail, string? firstName, string? locale, string tipsUrl) => Record("getting-started", toEmail, tipsUrl);
     public Task SendTeamWelcomeAsync(string toEmail, string? firstName, string teamCodename) => Record("team-welcome", toEmail);
     public Task SendDocumentSharedAsync(string toEmail, string? recipientName, string inviterName, string documentTitle, string permission, string documentUrl) => Record("shared", toEmail, documentUrl);
     public Task SendTeamInviteAsync(string toEmail, string inviterName, string teamName, string role, string acceptUrl) => Record("team-invite", toEmail);

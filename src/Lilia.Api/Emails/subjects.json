@@ -200,5 +200,19 @@
       "subject": "Lilia email — pieces",
       "preheader": "Reference: every block in the system."
     }
+  },
+  "getting_started": {
+    "en": {
+      "subject": "Three ways to start your first document",
+      "preheader": "Blank, a template, or a file you already have."
+    },
+    "fr": {
+      "subject": "Trois façons de commencer votre premier document",
+      "preheader": "Une page vierge, un modèle ou un fichier que vous avez déjà."
+    },
+    "es": {
+      "subject": "Tres formas de empezar tu primer documento",
+      "preheader": "En blanco, con una plantilla o con un archivo que ya tienes."
+    }
   }
 }

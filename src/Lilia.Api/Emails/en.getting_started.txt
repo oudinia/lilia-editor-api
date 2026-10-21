@@ -1,0 +1,20 @@
+Lilia
+
+Your first page is a minute away
+
+Hi {{first_name}}, you haven’t started a document yet. Pick whichever suits you:
+
+- Blank document: An article with a title, ready to type.
+- From a template: Article, thesis chapter, or step by step.
+- Import a file: LaTeX, Word or Lilia. The structure comes with it.
+
+Open Lilia:
+{{action_url}}
+
+We send this once. Don’t send me tips: {{tips_url}}
+
+—
+You’re receiving this because you created a Lilia account with {{recipient_email}} three days ago.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

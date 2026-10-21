@@ -7411,6 +7411,11 @@ namespace Lilia.Infrastructure.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("tips_opt_out");
 
+                    b.Property<string>("TipsToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("tips_token");
+
                     b.Property<int>("TourRestarts")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -7442,6 +7447,10 @@ namespace Lilia.Infrastructure.Migrations
                     b.HasKey("UserId");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("TipsToken")
+                        .IsUnique()
+                        .HasFilter("tips_token IS NOT NULL");
 
                     b.ToTable("user_onboarding", (string)null);
                 });

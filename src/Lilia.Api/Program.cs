@@ -460,6 +460,11 @@ else
 // Register Application Services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<Lilia.Api.Features.Onboarding.IOnboardingService, Lilia.Api.Features.Onboarding.OnboardingService>();
+// The day-3 follow-up (one email, only to people who haven't started): reports/2026-10-21-welcome-onboarding.md
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(builder.Services, TimeProvider.System);
+builder.Services.AddScoped<Lilia.Api.Features.Onboarding.OnboardingFollowUp>();
+if (builder.Configuration.GetValue("Onboarding:FollowUp:Enabled", true))
+    builder.Services.AddHostedService<Lilia.Api.Features.Onboarding.OnboardingFollowUpBackgroundService>();
 builder.Services.AddScoped<IE2EService, E2EService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddSingleton<IBlockTypeService, BlockTypeService>();

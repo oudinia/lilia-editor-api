@@ -24,6 +24,8 @@ public class UserOnboardingConfiguration : IEntityTypeConfiguration<UserOnboardi
         builder.Property(o => o.FirstExportAt).HasColumnName("first_export_at");
         builder.Property(o => o.FollowUpSentAt).HasColumnName("follow_up_sent_at");
         builder.Property(o => o.TipsOptOut).HasColumnName("tips_opt_out").HasDefaultValue(false);
+        builder.Property(o => o.TipsToken).HasColumnName("tips_token").HasMaxLength(64);
+        builder.HasIndex(o => o.TipsToken).IsUnique().HasFilter("tips_token IS NOT NULL");
         builder.Property(o => o.TimeZone).HasColumnName("time_zone").HasMaxLength(64);
         builder.Property(o => o.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
