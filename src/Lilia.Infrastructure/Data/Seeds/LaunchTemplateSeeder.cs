@@ -39,7 +39,7 @@ public static class LaunchTemplateSeeder
             await context.SaveChangesAsync(ct);
         }
 
-        foreach (var seed in new[] { Article(), ThesisChapter() })
+        foreach (var seed in Build())
         {
             var order = 0;
             foreach (var b in seed.Blocks.OrderBy(b => b.SortOrder)) b.SortOrder = order++;
@@ -52,6 +52,9 @@ public static class LaunchTemplateSeeder
         }
         await context.SaveChangesAsync(ct);
     }
+
+    /// <summary>Fresh copies of the launch templates, as seeded (also what the compile test prints).</summary>
+    public static IReadOnlyList<Document> Build() => [Article(), ThesisChapter()];
 
     private static Document Template(string name, string description, string category, string documentClass,
         string? classOptions, params Block[] blocks)
