@@ -102,12 +102,26 @@ public class AccountDeletionService
     }
 
     /// <summary>True while the account is closed (asked to delete, or erased). Cached briefly per user.</summary>
-    public async Task<bool> IsClosedAsync(string userId, CancellationToken ct = default)
+    public async Task<bool> IsClosedAsync(string userId, CancellationToken ct = default) =>
+        await StateAsync(userId, ct) is AccountState.Closed;
+
+    /// <summary>
+    /// Open, closed (asked to delete, or erased) or suspended by the operator from the admin console
+    /// (17 Oct: Banned, until BanExpires if set). Cached 30 s per user, so a suspension applies
+    /// within 30 seconds.
+    /// </summary>
+    public async Task<AccountState> StateAsync(string userId, CancellationToken ct = default)
     {
-        if (_cache.TryGetValue(CacheKey(userId), out bool closed)) return closed;
-        closed = await _db.Users.AsNoTracking().AnyAsync(u => u.Id == userId && (u.DeletionRequestedAt != null || u.BanReason == ErasedReason), ct);
-        _cache.Set(CacheKey(userId), closed, TimeSpan.FromSeconds(30));
-        return closed;
+        if (_cache.TryGetValue(CacheKey(userId), out AccountState state)) return state;
+        var now = DateTime.UtcNow;
+        var u = await _db.Users.AsNoTracking().Where(x => x.Id == userId)
+            .Select(x => new { x.DeletionRequestedAt, x.Banned, x.BanReason, x.BanExpires }).FirstOrDefaultAsync(ct);
+        state = u is null ? AccountState.Open
+            : u.DeletionRequestedAt != null || u.BanReason == ErasedReason ? AccountState.Closed
+            : u.Banned && (u.BanExpires == null || u.BanExpires > now) ? AccountState.Suspended
+            : AccountState.Open;
+        _cache.Set(CacheKey(userId), state, TimeSpan.FromSeconds(30));
+        return state;
     }
 
     public const string ErasedReason = "erased";
@@ -177,6 +191,8 @@ public class AccountDeletionService
 }
 
 /// <summary>A closed account reaches only its status and Restore (403 ACCOUNT_CLOSED elsewhere).</summary>
+public enum AccountState { Open, Closed, Suspended }
+
 public class AccountClosedMiddleware
 {
     private static readonly string[] Open = ["/api/me/account", "/api/me/restore"];
@@ -187,13 +203,21 @@ public class AccountClosedMiddleware
     {
         var userId = context.User.FindFirst("sub")?.Value ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var path = context.Request.Path.Value ?? "";
-        if (!string.IsNullOrEmpty(userId) && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
-            && !Open.Any(o => path.Equals(o, StringComparison.OrdinalIgnoreCase))
-            && await accounts.IsClosedAsync(userId, context.RequestAborted))
+        if (!string.IsNullOrEmpty(userId) && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { code = "ACCOUNT_CLOSED", message = "This account is closed. Restore it from Settings to use it again." });
-            return;
+            var state = await accounts.StateAsync(userId, context.RequestAborted);
+            if (state == AccountState.Closed && !Open.Any(o => path.Equals(o, StringComparison.OrdinalIgnoreCase)))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { code = "ACCOUNT_CLOSED", message = "This account is closed. Restore it from Settings to use it again." });
+                return;
+            }
+            if (state == AccountState.Suspended)
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { code = "ACCOUNT_SUSPENDED", message = "This account is suspended. Write to support to have it restored." });
+                return;
+            }
         }
         await _next(context);
     }

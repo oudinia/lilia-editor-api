@@ -1,0 +1,23 @@
+@* Two clicks: the first arms it and shows what will happen, the second does it. *@
+@if (Pending == Key)
+{
+    <span class="confirm">
+        <span>@Confirm</span>
+        <button class="@(Danger ? "danger" : "go")" @onclick="OnRun" data-testid="admin-action-confirm" data-action="@Key">Confirm</button>
+        <button @onclick="() => OnArm.InvokeAsync(null!)" data-testid="admin-action-cancel">Cancel</button>
+    </span>
+}
+else
+{
+    <button class="@(Danger ? "danger-soft" : "")" @onclick="() => OnArm.InvokeAsync(Key)" data-testid="admin-action" data-action="@Key">@Label</button>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Key { get; set; } = "";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string Confirm { get; set; } = "";
+    [Parameter] public string? Pending { get; set; }
+    [Parameter] public EventCallback<string> OnArm { get; set; }
+    [Parameter] public EventCallback OnRun { get; set; }
+    [Parameter] public bool Danger { get; set; }
+}
