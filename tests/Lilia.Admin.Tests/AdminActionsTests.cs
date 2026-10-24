@@ -115,6 +115,33 @@ public class AdminActionsTests(AdminFixture fx)
     }
 
     [Fact]
+    public async Task Turning_two_step_off_is_recorded_and_forgets_trusted_devices()
+    {
+        var id = await SeedUserAsync("2step", u => u.TwoStepEnabled = true);
+        await using (var db = fx.CreateDbContext())
+        {
+            db.TrustedDevices.Add(new TrustedDevice
+            {
+                UserId = id, TokenHash = Guid.NewGuid().ToString("N"), Label = "Chrome on Windows",
+                CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddDays(30),
+            });
+            await db.SaveChangesAsync();
+        }
+        using var scope = fx.Factory.Services.CreateScope();
+        (await Actions(scope).TwoStepOffAsync(Admin, id, "no")).Ok.Should().BeFalse("a reason is 5 characters or more");
+        var done = await Actions(scope).TwoStepOffAsync(Admin, id, "Lost phone, identity checked by email reply");
+        done.Ok.Should().BeTrue();
+        done.Message.Should().Contain("1 trusted device");
+        (await Actions(scope).TwoStepOffAsync(Admin, id, "Lost phone, identity checked")).Ok.Should().BeFalse("already off");
+        await using (var db = fx.CreateDbContext())
+        {
+            (await db.Users.SingleAsync(x => x.Id == id)).TwoStepEnabled.Should().BeFalse();
+            (await db.TrustedDevices.AsNoTracking().CountAsync(d => d.UserId == id && d.RevokedAt == null)).Should().Be(0);
+        }
+        (await LogAsync(id)).Select(a => a.Action).Should().Equal("two_step_off");
+    }
+
+    [Fact]
     public async Task Resending_verification_goes_through_the_API_and_is_recorded()
     {
         var id = await SeedUserAsync("verify");

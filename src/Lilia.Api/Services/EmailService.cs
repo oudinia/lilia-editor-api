@@ -465,6 +465,18 @@ public class EmailService : IEmailService
     public Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale)
         => SendTemplateAsync("signin", toEmail, locale, magicLinkUrl);
 
+    /// <summary>A two-step code (25 Oct): the sign-in email's design, the code where the button was.</summary>
+    public Task SendTwoStepCodeAsync(string toEmail, string code, string? locale)
+    {
+        var email = EmailTemplates.Render("two_step_code", locale, new Dictionary<string, string?>
+        {
+            ["code"] = code,
+            ["recipient_email"] = toEmail,
+            ["publisher_line"] = _settings.PublisherLine,
+        }, _settings.BaseUrl);
+        return SendAccountEmailAsync(toEmail, email.Subject, email.Html, email.Text);
+    }
+
     /// <summary>Welcome to Lilia: once per account, after its address is known to be real (OnboardingService).</summary>
     public Task SendWelcomeAsync(string toEmail, string? firstName, string? locale)
         => SendTemplateAsync("welcome", toEmail, locale, _settings.BaseUrl.TrimEnd('/') + "/", firstName);

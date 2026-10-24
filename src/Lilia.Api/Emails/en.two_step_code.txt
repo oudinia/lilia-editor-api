@@ -1,0 +1,17 @@
+Lilia
+
+Your sign-in code
+
+Enter this code to finish signing in as {{recipient_email}}.
+
+{{code}}
+
+It works for 10 minutes, once.
+
+Didn’t try to sign in? Someone has your password. Ignore this email, then change your password in Settings → Security. Never share this code: Lilia will never ask you for it.
+
+—
+You’re receiving this because someone signed in to Lilia as {{recipient_email}} and two-step sign-in is on.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

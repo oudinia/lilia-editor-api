@@ -32,6 +32,21 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void The_two_step_code_is_in_the_subject_and_the_body_in_every_language()
+    {
+        foreach (var lang in EmailTemplates.Languages)
+        {
+            var email = EmailTemplates.Render("two_step_code", lang, new Dictionary<string, string?>
+            {
+                ["code"] = "042917", ["recipient_email"] = "nadia@lilia.test", ["publisher_line"] = null,
+            });
+            email.Subject.Should().Contain("042917", lang);
+            email.Html.Should().Contain("042917").And.Contain("nadia@lilia.test").And.NotContain("{{", lang);
+            email.Text.Should().Contain("042917").And.NotContain("{{", lang);
+        }
+    }
+
+    [Fact]
     public void The_welcome_greets_by_name_and_reads_well_without_one()
     {
         EmailTemplates.Render("welcome", "fr", Values()).Text.Should().Contain("Bienvenue sur Lilia, Nadia");

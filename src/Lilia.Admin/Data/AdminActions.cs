@@ -93,6 +93,29 @@ public sealed class AdminActions(IDbContextFactory<LiliaDbContext> factory, IHtt
         return new(true, suspend ? "Suspended: the API refuses this account within 30 seconds." : "Restored.");
     }
 
+    /// <summary>
+    /// Turns two-step sign-in off for someone who lost their phone and their email (25 Oct 2026; the
+    /// owner was locked out the day before), and forgets the account's trusted devices. The API reads
+    /// the flag with a 30 s cache, so the account gets in within half a minute.
+    /// </summary>
+    public async Task<ActionResult> TwoStepOffAsync(string admin, string userId, string? reason, CancellationToken ct = default)
+    {
+        if (CheckReason(reason) is { } bad) return new(false, bad);
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var user = await db.Users.AsTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return new(false, "No such account.");
+        if (!user.TwoStepEnabled) return new(false, "Two-step sign-in is already off.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        user.TwoStepEnabled = false;
+        user.UpdatedAt = Now;
+        var devices = await db.TrustedDevices.AsTracking().Where(d => d.UserId == userId && d.RevokedAt == null).ToListAsync(ct);
+        foreach (var d in devices) d.RevokedAt = Now;
+        Log(db, admin, "two_step_off", userId, reason!, devices.Count > 0 ? new { forgottenDevices = devices.Count } : null);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return new(true, $"Two-step sign-in is off{(devices.Count > 0 ? $"; {devices.Count} trusted device(s) forgotten" : "")}. The account gets in within 30 seconds.");
+    }
+
     /// <summary>Through the API's own endpoint, so it is the same email people get.</summary>
     public async Task<ActionResult> ResendVerificationAsync(string admin, string userId, string? reason, CancellationToken ct = default)
     {

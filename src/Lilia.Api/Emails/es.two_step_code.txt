@@ -1,0 +1,17 @@
+Lilia
+
+Tu código de inicio de sesión
+
+Introduce este código para terminar de iniciar sesión como {{recipient_email}}.
+
+{{code}}
+
+Es válido durante 10 minutos y sirve una sola vez.
+
+¿No intentaste iniciar sesión? Alguien conoce tu contraseña. Ignora este mensaje y cambia tu contraseña en Ajustes → Seguridad. No compartas nunca este código: Lilia nunca te lo pedirá.
+
+—
+Recibes este mensaje porque alguien inició sesión en Lilia como {{recipient_email}} y el inicio de sesión en dos pasos está activado.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

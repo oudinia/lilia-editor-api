@@ -54,6 +54,13 @@ else if (u is not null)
             }
         </div>
         <div class="action-row">
+            <span data-testid="admin-user-two-step">@(u.User.TwoStep ? "Two-step sign-in: on" : "Two-step sign-in: off")</span>
+            @if (u.User.TwoStep)
+            {
+                <ActionButton Key="two-step-off" Label="Turn off" Confirm="Turn off two-step sign-in? A password or Google alone will sign in." Pending="@pending" OnArm="Arm" OnRun="TwoStepOff" Danger="true" />
+            }
+        </div>
+        <div class="action-row">
             <span>Verification email</span>
             <ActionButton Key="verify" Label="Resend" Confirm="Resend the verification email?" Pending="@pending" OnArm="Arm" OnRun="Resend" />
         </div>
@@ -142,5 +149,6 @@ else if (u is not null)
     private async Task Grant() => await Done(await Actions.GrantCreditsAsync(await Admin(), Id, credits, reason));
     private async Task SetPlan() => await Done(await Actions.SetPlanAsync(await Admin(), Id, plan ?? "free", reason));
     private async Task Suspend(bool on) => await Done(await Actions.SetSuspendedAsync(await Admin(), Id, on, reason));
+    private async Task TwoStepOff() => await Done(await Actions.TwoStepOffAsync(await Admin(), Id, reason));
     private async Task Resend() => await Done(await Actions.ResendVerificationAsync(await Admin(), Id, reason));
 }

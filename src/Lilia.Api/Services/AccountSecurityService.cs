@@ -29,11 +29,33 @@ public class AccountSecurityService
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory? _http;
     private readonly ILogger<AccountSecurityService> _logger;
+    private readonly TwoStepService? _twoStep;
 
-    public AccountSecurityService(LiliaDbContext db, IMemoryCache cache, IConfiguration config, ILogger<AccountSecurityService> logger, IHttpClientFactory? http = null)
+    public AccountSecurityService(LiliaDbContext db, IMemoryCache cache, IConfiguration config, ILogger<AccountSecurityService> logger,
+        IHttpClientFactory? http = null, TwoStepService? twoStep = null)
     {
-        _db = db; _cache = cache; _config = config; _logger = logger; _http = http;
+        _db = db; _cache = cache; _config = config; _logger = logger; _http = http; _twoStep = twoStep;
     }
+
+    /// <summary>
+    /// When this session last passed the second step: an authenticator or recovery code (Stytch's
+    /// session), or an email code (Lilia's, since 25 Oct). Null if it never did.
+    /// </summary>
+    public async Task<DateTime?> SecondStepAtAsync(ClaimsPrincipal user, string userId, DateTime now, CancellationToken ct = default)
+    {
+        var stytch = SecondFactorAt(user);
+        var email = _twoStep is null ? null : await _twoStep.PassedAtAsync(userId, SessionId(user), now, ct);
+        return stytch is null ? email : email is null ? stytch : (stytch > email ? stytch : email);
+    }
+
+    /// <summary>Whether this request has passed the second step: a code in this session, or a trusted device.</summary>
+    public async Task<bool> PassedAsync(ClaimsPrincipal user, string userId, string? deviceToken, DateTime now, CancellationToken ct = default) =>
+        await SecondStepAtAsync(user, userId, now, ct) is not null
+        || (_twoStep is not null && await _twoStep.IsTrustedAsync(userId, deviceToken, now, ct));
+
+    /// <summary>A second step in the last 10 minutes: what turning two-step on, or trusting a device, needs.</summary>
+    public async Task<bool> FreshSecondStepAsync(ClaimsPrincipal user, string userId, DateTime now, CancellationToken ct = default) =>
+        await SecondStepAtAsync(user, userId, now, ct) is { } at && now - at <= FreshFactor;
 
     public static string CacheKey(string userId) => $"two-step:{userId}";
 
@@ -76,10 +98,14 @@ public class AccountSecurityService
     public async Task<SecurityStatusDto> StatusAsync(string userId, CancellationToken ct = default) =>
         new(await IsEnabledAsync(userId, ct), SessionsAvailable);
 
-    /// <summary>Turn it on: only from a session that has just used the authenticator (enrolment does).</summary>
+    /// <summary>
+    /// Turn it on: only from a session that has just passed a second step (the authenticator's enrolment,
+    /// or, since 25 Oct, an email code). Off: from a session that passed one; it also forgets every
+    /// trusted device.
+    /// </summary>
     public async Task<bool> SetAsync(string userId, ClaimsPrincipal user, bool enabled, DateTime now, CancellationToken ct = default)
     {
-        var at = SecondFactorAt(user);
+        var at = await SecondStepAtAsync(user, userId, now, ct);
         if (at is null || (enabled && now - at > FreshFactor)) return false;
         var row = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (row is null) return false;
@@ -87,6 +113,7 @@ public class AccountSecurityService
         row.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         _cache.Remove(CacheKey(userId));
+        if (!enabled && _twoStep is not null) await _twoStep.ForgetAsync(userId, null, null, now, ct);
         _logger.LogInformation("[Security] {UserId} turned two-step sign-in {State}", userId, enabled ? "on" : "off");
         return true;
     }
@@ -146,13 +173,18 @@ public class AccountSecurityService
 }
 
 /// <summary>
-/// Two-step sign-in, enforced: once an author turns it on, a session that hasn't used a second factor
-/// gets 403 TWO_STEP_REQUIRED (the editor then asks for the code). Apps connected over the connector
-/// are let through: their consent was given from a signed-in browser. Tokens without Stytch's session
-/// (development identities on a test stack) are let through too.
+/// Two-step sign-in, enforced: once an author turns it on, a session that hasn't passed the second step
+/// gets 403 TWO_STEP_REQUIRED (the editor then asks for a code). It passes with an authenticator or
+/// recovery code, an email code (25 Oct), or a trusted device's cookie (25 Oct). The two email-code
+/// routes stay open so the code can be asked for. Apps connected over the connector are let through:
+/// their consent was given from a signed-in browser. Tokens without Stytch's session (development
+/// identities on a test stack) are let through too.
 /// </summary>
 public class TwoStepMiddleware
 {
+    /// <summary>Reachable before the second step: asking for and entering an email code.</summary>
+    public static readonly string[] OpenBeforeSecondStep = ["/api/me/two-step/email/send", "/api/me/two-step/email/verify"];
+
     private readonly RequestDelegate _next;
     public TwoStepMiddleware(RequestDelegate next) => _next = next;
 
@@ -160,15 +192,17 @@ public class TwoStepMiddleware
     {
         var user = context.User;
         var userId = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var path = context.Request.Path.Value ?? "";
         if (!string.IsNullOrEmpty(userId)
-            && (context.Request.Path.Value ?? "").StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            && !OpenBeforeSecondStep.Any(p => path.Equals(p, StringComparison.OrdinalIgnoreCase))
             && !Lilia.Api.Mcp.McpOAuth.IsConnectedAppToken(user)
             && AccountSecurityService.Session(user) is not null
-            && AccountSecurityService.SecondFactorAt(user) is null
-            && await security.IsEnabledAsync(userId, context.RequestAborted))
+            && await security.IsEnabledAsync(userId, context.RequestAborted)
+            && !await security.PassedAsync(user, userId, context.Request.Cookies[TwoStepService.DeviceCookie], DateTime.UtcNow, context.RequestAborted))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { code = "TWO_STEP_REQUIRED", message = "Enter the code from your authenticator app to continue." });
+            await context.Response.WriteAsJsonAsync(new { code = "TWO_STEP_REQUIRED", message = "Enter a code from your authenticator app or your email to continue." });
             return;
         }
         await _next(context);

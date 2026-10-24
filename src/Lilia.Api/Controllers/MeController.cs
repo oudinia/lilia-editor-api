@@ -213,8 +213,85 @@ public class MeController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         return await security.SetAsync(userId, User, req.Enabled, DateTime.UtcNow, ct)
             ? NoContent()
-            : StatusCode(StatusCodes.Status403Forbidden, new { code = "TWO_STEP_CODE_REQUIRED", message = "Enter a code from your authenticator app first." });
+            : StatusCode(StatusCodes.Status403Forbidden, new { code = "TWO_STEP_CODE_REQUIRED", message = "Enter a code from your authenticator app or your email first." });
     }
+
+    // ── Two-step by email, trusted devices (25 Oct 2026) ────────────────────
+
+    public record EmailCodeRequest(string? Code, bool TrustDevice = false);
+
+    /// <summary>
+    /// Sends a two-step code to the account's own address (open before the second step, so the code
+    /// screen can ask for one). Answers { sentTo: "o•••@gmail.com" }; 404 when the account has no
+    /// real address.
+    /// </summary>
+    [HttpPost("two-step/email/send")]
+    public async Task<IActionResult> SendTwoStepEmail([FromServices] TwoStepService twoStep, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var sentTo = await twoStep.SendCodeAsync(userId, Request.Headers["X-Lilia-Locale"].FirstOrDefault(), DateTime.UtcNow, ct);
+        return sentTo is null ? NotFound(new { code = "NO_EMAIL" }) : Ok(new { sentTo });
+    }
+
+    /// <summary>
+    /// Checks an email code (open before the second step). On success this session has passed the
+    /// second step; with trustDevice, this browser is trusted for 30 days (an HttpOnly cookie).
+    /// </summary>
+    [HttpPost("two-step/email/verify")]
+    public async Task<IActionResult> VerifyTwoStepEmail([FromBody] EmailCodeRequest req, [FromServices] TwoStepService twoStep, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var now = DateTime.UtcNow;
+        var result = await twoStep.VerifyCodeAsync(userId, AccountSecurityService.SessionId(User), req.Code ?? "", now, ct);
+        if (result != CodeCheck.Ok)
+            return BadRequest(new { code = result switch { CodeCheck.Wrong => "WRONG", CodeCheck.TooMany => "TOO_MANY", CodeCheck.NoSession => "NO_SESSION", _ => "EXPIRED" } });
+        if (req.TrustDevice) SetDeviceCookie(await twoStep.TrustAsync(userId, Request.Headers.UserAgent.ToString(), now, ct));
+        return NoContent();
+    }
+
+    /// <summary>Trusts this browser for 30 days, from a session that has just passed the second step (the authenticator path).</summary>
+    [HttpPost("two-step/trust")]
+    public async Task<IActionResult> TrustThisDevice([FromServices] AccountSecurityService security, [FromServices] TwoStepService twoStep, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var now = DateTime.UtcNow;
+        if (!await security.FreshSecondStepAsync(User, userId, now, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "TWO_STEP_CODE_REQUIRED" });
+        SetDeviceCookie(await twoStep.TrustAsync(userId, Request.Headers.UserAgent.ToString(), now, ct));
+        return NoContent();
+    }
+
+    /// <summary>The account's trusted devices, this one marked (Settings → Security).</summary>
+    [HttpGet("trusted-devices")]
+    public async Task<IActionResult> TrustedDevices([FromServices] TwoStepService twoStep, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        return Ok(await twoStep.DevicesAsync(userId, Request.Cookies[TwoStepService.DeviceCookie], DateTime.UtcNow, ct));
+    }
+
+    /// <summary>Forget one trusted device (by id), or all of them (no id). Forgetting this one also drops its cookie.</summary>
+    [HttpDelete("trusted-devices")]
+    public async Task<IActionResult> ForgetTrustedDevices([FromQuery] Guid? id, [FromServices] TwoStepService twoStep, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var mine = Request.Cookies[TwoStepService.DeviceCookie];
+        var current = (await twoStep.DevicesAsync(userId, mine, DateTime.UtcNow, ct)).FirstOrDefault(d => d.Current)?.Id;
+        var n = await twoStep.ForgetAsync(userId, id, null, DateTime.UtcNow, ct);
+        if (id is null || id == current) Response.Cookies.Delete(TwoStepService.DeviceCookie, new CookieOptions { Path = "/api" });
+        return Ok(new { forgotten = n });
+    }
+
+    private void SetDeviceCookie(string token) =>
+        Response.Cookies.Append(TwoStepService.DeviceCookie, token, new CookieOptions
+        {
+            HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax, Path = "/api",
+            MaxAge = TwoStepService.TrustLife, IsEssential = true,
+        });
 
     /// <summary>The author's signed-in sessions, this one first. 204 when sessions aren't available here.</summary>
     [HttpGet("sessions")]
@@ -226,12 +303,16 @@ public class MeController : ControllerBase
         return list is null ? NoContent() : Ok(list);
     }
 
-    /// <summary>Sign out one session (by id), or every other one (no id).</summary>
+    /// <summary>
+    /// Sign out one session (by id), or every other one (no id). Signing out everywhere else also forgets
+    /// every other trusted device (25 Oct), so a lost laptop is cut off from here.
+    /// </summary>
     [HttpPost("sessions/revoke")]
-    public async Task<IActionResult> RevokeSessions([FromQuery] string? id, [FromServices] AccountSecurityService security, CancellationToken ct)
+    public async Task<IActionResult> RevokeSessions([FromQuery] string? id, [FromServices] AccountSecurityService security, [FromServices] TwoStepService twoStep, CancellationToken ct)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (id is null) await twoStep.ForgetAsync(userId, null, Request.Cookies[TwoStepService.DeviceCookie], DateTime.UtcNow, ct);
         if (!security.SessionsAvailable) return NotFound();
         return Ok(new { signedOut = await security.RevokeAsync(userId, AccountSecurityService.SessionId(User), id, ct) });
     }

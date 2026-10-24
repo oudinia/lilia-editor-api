@@ -11,7 +11,7 @@ public class AdminAction
 {
     public Guid Id { get; set; }
     public string AdminEmail { get; set; } = "";
-    /// <summary>grant_credits, set_plan, suspend, unsuspend, resend_verification, feedback_status.</summary>
+    /// <summary>grant_credits, set_plan, suspend, unsuspend, resend_verification, feedback_status, two_step_off.</summary>
     public string Action { get; set; } = "";
     public string? TargetUserId { get; set; }
     public string Reason { get; set; } = "";
