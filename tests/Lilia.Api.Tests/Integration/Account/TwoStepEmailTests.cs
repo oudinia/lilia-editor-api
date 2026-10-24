@@ -19,7 +19,7 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// important. Also, if the user trusts his laptop or tablet, he should be able to only have to login."
 /// </summary>
 [Collection("Integration")]
-public class TwoStepEmailTests : IntegrationTestBase
+public class TwoStepEmailTests : IntegrationTestBase, IDisposable
 {
     private readonly RecordingEmailService _mail = new();
     private readonly WebApplicationFactory<Program> _factory;
@@ -32,6 +32,10 @@ public class TwoStepEmailTests : IntegrationTestBase
             s.AddSingleton<IEmailService>(_mail);
         }));
     }
+
+    // xUnit makes a new instance per test: without this, each test's server keeps its database
+    // connections for the rest of the run ("53300: too many clients" in later classes).
+    public void Dispose() => _factory.Dispose();
 
     private static string Session(string id, params (string Type, DateTime At)[] factors) => JsonSerializer.Serialize(new
     {
