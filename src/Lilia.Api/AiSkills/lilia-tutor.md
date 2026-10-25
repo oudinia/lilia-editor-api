@@ -169,6 +169,12 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - **Export** opens the dialog: **PDF** (sharing and printing), **LaTeX** (one .tex, or a .zip
   project, flat or Overleaf-style), **Markdown**, **HTML**, **Lilia (LML)**, **Word (.docx)**.
   The arrow next to Export has **Word (.docx)** directly and **All formats…**.
+- **Overleaf**: on **Export → LaTeX**, **Open in Overleaf** opens the project as a new Overleaf project
+  (signed in to Overleaf; Lilia gives Overleaf a link that works for ten minutes). From Overleaf,
+  **Menu → Download → Source** gives a .zip that **Import a file** takes back: a paper written for a
+  publisher (ACM, IEEE, Elsevier, Springer LNCS, APS, AIP, AMS, IOP, SIAM) comes in with its venue
+  set, its authors with their affiliations and emails, its keywords, and for ACM its CCS concepts and
+  rights block.
 - Someone with view-only access sees **Make a copy** to get their own editable copy.
 
 ### Validation (does it compile?)
@@ -271,7 +277,10 @@ Phones get a reading version. With no document yet, **Documents** offers **Blank
 **Describe it** and **Import a file** (templates need a computer). Otherwise: **Documents** (search, grouped Today / This week / Earlier), the
 document to read, **Ask Lilia** (the bar at the bottom; tap a block to ask about it), **Preview**
 (the PDF), **View LaTeX**, and **⋯**: **Share**, **Check document**, **Look**, **Page & settings**,
-**Document details**. The avatar has **Appearance**, **Language**, **Settings** and **Sign out**. Editing on a
+**Document details**. On a document written for a publisher, **Page & settings** has **Publisher** (the
+same *Publish with…*; the venue then sets the page and text layout), **Check document** adds what the
+publisher would reject, and the documents list shows each one's venue and *ready* or *N to fix*.
+The avatar has **Appearance**, **Language**, **Settings** and **Sign out**. Editing on a
 phone goes through Ask Lilia; the full editor is for a computer or a large tablet.
 
 ### Connect Claude or another AI app
