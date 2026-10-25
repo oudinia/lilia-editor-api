@@ -28,7 +28,7 @@ public static class PublisherClasses
     /// The rules above, as a version a submission's manifest records: a change to the packages a
     /// publisher document loads changes it. Phase 2's package whitelist replaces it.
     /// </summary>
-    public const string PackagePolicyVersion = "lilia-publisher-2026-10-25";
+    public const string PackagePolicyVersion = "lilia-publisher-2026-10-25b; " + PublisherPackages.AcmListVersion;
 
     // Phase 2 (25 Oct 2026): revtex4-2 (APS, AIP), amsart (AMS), and IOP's iopjournal and SIAM's
     // siamart251216, which are not in TeX Live: installed unchanged in TEXMFLOCAL from IOP's and
@@ -279,6 +279,14 @@ public static class PublisherClasses
         }
         return (pre.ToString(), body.ToString());
     }
+
+    /// <summary>
+    /// A publisher document's LaTeX as it is sent: plain tables (<see cref="PlainTables"/>) and only the
+    /// packages its publisher accepts, where it publishes a list (<see cref="PublisherPackages"/>).
+    /// <paramref name="everything"/>: the whole project's LaTeX when the body is in other files.
+    /// </summary>
+    public static string Finish(string latex, string cls, string? everything = null) =>
+        PublisherPackages.KeepAccepted(PlainTables(latex), cls, everything is null ? null : PlainTables(everything));
 
     /// <summary>
     /// A publisher document's tables without Lilia's theme hooks (requirement NFR-3: plain LaTeX a

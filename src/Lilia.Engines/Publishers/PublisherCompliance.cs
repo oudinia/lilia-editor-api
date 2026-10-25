@@ -113,6 +113,20 @@ public static partial class PublisherCompliance
                     $"{bs.Value} sets its own reference style; the export uses {PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, cls)}.", blockId));
         }
 
+        // ── Packages the publisher doesn't accept (ACM's TAPS list) ──
+        if (PublisherPackages.Accepted(cls) is { } accepted)
+        {
+            var mine = new HashSet<string>(PublisherPackages.Loaded(doc.CustomPreamble ?? "").Concat(PublisherPackages.Loaded(ImportedPackages(doc.LatexPackages))), StringComparer.Ordinal);
+            var publisher = profile?.Publisher ?? "The publisher";
+            foreach (var package in PublisherPackages.Loaded(emittedLatex).Where(p => !accepted.Contains(p)))
+                findings.Add(mine.Contains(package)
+                    ? new("error", "package_not_accepted", $"{package} isn't on {publisher}'s list of accepted packages: its production system rejects the source. Remove it, or do without it.")
+                    : new("warning", "package_not_accepted", $"{package} isn't on {publisher}'s list of accepted packages; Lilia loads it for your {PublisherPackages.FeatureOf(package) ?? "document"}. Do without that feature, or ask {publisher} first."));
+            if (cls == "acmart")
+                foreach (var package in mine.Where(PublisherPackages.AcmartLoads.Contains))
+                    findings.Add(new("info", "package_in_class", $"acmart already loads {package}: your \\usepackage{{{package}}} can go."));
+        }
+
         findings = findings.DistinctBy(f => (f.Code, f.Message, f.BlockId)).ToList();
         var status = findings.Any(f => f.Severity == "error") ? "errors"
             : findings.Any(f => f.Severity == "warning") ? "warnings" : "passed";
