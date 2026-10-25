@@ -41,6 +41,9 @@ public static class PublisherClasses
 
     public static bool Is(string? cls) => Canonical(cls) is not null;
 
+    /// <summary>Every publisher class, as stored on a document.</summary>
+    public static IReadOnlyList<string> All => Names;
+
     /// <summary>The bibliography style each publisher requires.</summary>
     public static string? BibliographyStyle(string? cls) => Canonical(cls) switch
     {
