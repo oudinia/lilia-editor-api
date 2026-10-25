@@ -183,6 +183,10 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message, error = "invalid_look" });
         }
+        catch (PublisherProfileException ex)
+        {
+            return BadRequest(new { message = ex.Message, error = "invalid_publisher_profile" });
+        }
         if (document == null) return NotFound();
         return Ok(document);
     }

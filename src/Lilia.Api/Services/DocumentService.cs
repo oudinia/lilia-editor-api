@@ -660,6 +660,7 @@ public class DocumentService : IDocumentService
         }
 
         if (lookUpdate.Apply) document.Look = lookUpdate.Stored;
+        ApplyPublisherProfile(document, dto.PublisherProfile);
 
         document.UpdatedAt = DateTime.UtcNow;
 
@@ -669,6 +670,28 @@ public class DocumentService : IDocumentService
         if (_previewCache is not null) await _previewCache.InvalidateCacheAsync(id);
 
         return await GetDocumentAsync(id, userId);
+    }
+
+    /// <summary>
+    /// A publisher profile (25 Oct 2026): an id sets the profile, its class and its options; "" clears
+    /// the profile; an unknown id is refused (<see cref="PublisherProfileException"/>, 400). With no
+    /// profile in the request, a class change away from the profile's class clears the profile.
+    /// </summary>
+    internal static void ApplyPublisherProfile(Document document, string? requested)
+    {
+        if (requested is "") { document.PublisherProfile = null; return; }
+        if (requested is not null)
+        {
+            var profile = Lilia.Engines.Publishers.PublisherProfiles.Find(requested)
+                ?? throw new PublisherProfileException($"Unknown publisher profile \"{requested}\". GET /api/publishers lists them.");
+            document.PublisherProfile = profile.Id;
+            document.LatexDocumentClass = profile.DocumentClass;
+            document.LatexDocumentClassOptions = string.IsNullOrEmpty(profile.ClassOptions) ? null : profile.ClassOptions;
+            return;
+        }
+        if (Lilia.Engines.Publishers.PublisherProfiles.Find(document.PublisherProfile) is { } current
+            && !string.Equals(current.DocumentClass, document.LatexDocumentClass, StringComparison.OrdinalIgnoreCase))
+            document.PublisherProfile = null;
     }
 
     /// <summary>
@@ -1410,7 +1433,8 @@ public class DocumentService : IDocumentService
             LookLocked: ThemeLock.Reason(d.LatexDocumentClass),
             LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass),
             HeadingNumbering: d.HeadingNumbering,
-            DetectedLanguage: PrintedLanguage(d)
+            DetectedLanguage: PrintedLanguage(d),
+            PublisherProfile: d.PublisherProfile
         );
     }
 
@@ -1477,3 +1501,6 @@ public class DocumentService : IDocumentService
 
 /// <summary>A look the server will not store; the message names the valid values. Mapped to 400.</summary>
 public sealed class DocumentLookException(string message) : Exception(message);
+
+/// <summary>An unknown publisher profile id in an update (400).</summary>
+public sealed class PublisherProfileException(string message) : Exception(message);

@@ -184,6 +184,10 @@ public class Document
     // LatexPackages is a JSON array of { name: string, options?: string }.
     public string? LatexDocumentClass { get; set; }
     public string? LatexDocumentClassOptions { get; set; }
+    // The publisher profile (venue + stage) the document is written for, e.g. "acm-sigconf-review"
+    // (PublisherProfiles, 25 Oct 2026). Setting one sets the class and options; changing the class to
+    // another one clears it. Null: no publisher.
+    public string? PublisherProfile { get; set; }
     public string? LatexPackages { get; set; }
 
     /// <summary>
