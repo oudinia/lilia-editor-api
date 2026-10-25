@@ -1282,6 +1282,26 @@ public partial class RenderService : IRenderService
         // FormatTitleMetaLatex preserves \and / \thanks{…} / \today tokens
         // that bare EscapeLatex would mangle into \textbackslash{}.
         var (titleText, authorText, dateText) = ResolveTitleMeta(doc);
+        IReadOnlyList<Block> bodyBlocks = blocks;
+        IReadOnlyList<string> bodyRendered = renderedBlocks;
+        // A publisher class: its own front matter (acmart wants the abstract before \maketitle, elsarticle
+        // a frontmatter environment…), so the first abstract leaves the body for it (25 Oct 2026).
+        if (Publishers.PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc)) is { } publisher)
+        {
+            var lead = blocks.FindIndex(b => string.Equals(b.Type, "abstract", StringComparison.OrdinalIgnoreCase));
+            if (lead >= 0)
+            {
+                bodyBlocks = blocks.Where((_, i) => i != lead).ToList();
+                bodyRendered = renderedBlocks.Where((_, i) => i != lead).ToList();
+            }
+            var (frontPre, frontBody) = Publishers.PublisherClasses.FrontMatter(publisher, titleText, authorText,
+                lead >= 0 ? renderedBlocks[lead] : null, TitleKeywords(doc), FormatTitleMetaLatex,
+                FormatTitleMetaLatex(TitleWithoutAnd(titleText)));
+            latex.Append(frontPre);
+            latex.Append(frontBody);
+            latex.AppendLine();
+            return AppendBodyAndBibliography(doc, latex, blocks, bodyBlocks, bodyRendered, usesNatbib);
+        }
         latex.AppendLine($@"\title{{{FormatTitleMetaLatex(TitleWithoutAnd(titleText))}}}");
         // Always written, empty when there is none — as the export does.
         // Leaving it out made pdflatex warn "No \author given" on every
@@ -1297,6 +1317,18 @@ public partial class RenderService : IRenderService
         latex.AppendLine(@"\begin{document}");
         latex.AppendLine(@"\maketitle");
         latex.AppendLine();
+
+        return AppendBodyAndBibliography(doc, latex, blocks, blocks, renderedBlocks, usesNatbib);
+    }
+
+    /// <summary>
+    /// The body after the front matter, the bibliography and <c>\end{document}</c>. <paramref name="blocks"/>
+    /// are all of them (bibliography sources); <paramref name="bodyBlocks"/> and
+    /// <paramref name="bodyRendered"/> what the body prints (a publisher class takes the abstract out).
+    /// </summary>
+    private string AppendBodyAndBibliography(Document doc, StringBuilder latex, List<Block> blocks,
+        IReadOnlyList<Block> bodyBlocks, IReadOnlyList<string> bodyRendered, bool usesNatbib)
+    {
 
         // Multi-column wrapper. Only emitted for balanced multicol docs;
         // unbalanced two-column is handled by the `twocolumn` class option
@@ -1314,7 +1346,7 @@ public partial class RenderService : IRenderService
 
         // Blocks — reuse the pre-rendered LaTeX from above so we don't
         // run the (potentially expensive) per-block rendering twice.
-        latex.Append(ComposeBody(doc, blocks, renderedBlocks, pageMap: true));
+        latex.Append(ComposeBody(doc, bodyBlocks, bodyRendered, pageMap: true));
 
         // Close multi-column wrapper (paired with the opener above).
         // Same rule: only when BalancedColumns is on. See opener comment.
@@ -1351,6 +1383,21 @@ public partial class RenderService : IRenderService
         // fail the compile with "Two \documentclass commands". Keep the first
         // (the assembled preamble's), comment out the rest.
         return DedupeDocumentClass(latex.ToString());
+    }
+
+    /// <summary>The Title block's keywords: an array, or one string split at commas or semicolons.</summary>
+    public static IReadOnlyList<string> TitleKeywords(Document doc)
+    {
+        var title = doc.Blocks?.FirstOrDefault(b => string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+        if (title?.Content is null || title.Content.RootElement.ValueKind != JsonValueKind.Object
+            || !title.Content.RootElement.TryGetProperty("keywords", out var k)) return [];
+        return k.ValueKind switch
+        {
+            JsonValueKind.Array => k.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!.Trim()).Where(x => x.Length > 0).ToList(),
+            JsonValueKind.String => (k.GetString() ?? "").Split([',', ';'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            _ => [],
+        };
     }
 
     private static readonly Regex CiteCommand = new(

@@ -304,7 +304,9 @@ public static partial class LaTeXPreamble
         IsBeamer(className)
             ? packages.Replace("\\usepackage{setspace}\n",
                 "% setspace is left out for beamer: it breaks beamer's footnotes.\n")
-            : packages;
+            : Publishers.PublisherClasses.Is(className)
+                ? Publishers.PublisherClasses.Packages(packages, className!)
+                : packages;
 
     /// <summary>True for beamer (and the beamer-based classes Lilia treats as decks).</summary>
     public static bool IsBeamer(string? className) =>
@@ -675,7 +677,8 @@ public static partial class LaTeXPreamble
     /// </summary>
     public static string TheoremEnvironmentsFor(string? className, IReadOnlyDictionary<string, string>? names = null)
     {
-        var envs = string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase)
+        // beamer, and publisher classes (llncs defines theorem, lemma…), keep the ones the class defines.
+        var envs = string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase) || Publishers.PublisherClasses.Is(className)
             ? GuardedTheoremEnvironments.Value
             : TheoremEnvironments;
         // In the document's language (DocumentLanguage.TheoremNames): \newtheorem{lemma}{Lemme}.
