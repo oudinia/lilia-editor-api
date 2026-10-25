@@ -125,7 +125,9 @@ public record DocumentDto(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? HeadingNumbering = null,
     // The language the PDF is typeset in when it is not the setting: with "auto", or when the text is in
     // a script the setting cannot print (DocumentLanguage).
-    string? DetectedLanguage = null
+    string? DetectedLanguage = null,
+    // The publisher profile id (venue + stage), null when none (PublisherProfiles).
+    string? PublisherProfile = null
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as
@@ -196,7 +198,10 @@ public record UpdateDocumentDto(
     JsonElement? Look = null,
     // Numbered heading levels: null leaves it alone, -1 returns to the class default, 0 numbers none,
     // 1–5 number levels 1 to n.
-    int? HeadingNumbering = null
+    int? HeadingNumbering = null,
+    // A publisher profile id (GET /api/publishers): sets the class and its options. "" clears the
+    // profile (the class stays as it is). Unknown ids are refused (400).
+    string? PublisherProfile = null
 );
 
 public record TrashDocumentDto(

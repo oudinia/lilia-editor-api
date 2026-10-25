@@ -1794,6 +1794,9 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("paragraph_indent");
 
+                    b.Property<string>("PublisherProfile")
+                        .HasColumnType("text");
+
                     b.Property<string>("SearchText")
                         .HasColumnType("text")
                         .HasColumnName("search_text");

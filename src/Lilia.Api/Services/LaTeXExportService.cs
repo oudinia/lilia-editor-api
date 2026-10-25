@@ -288,7 +288,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine();
             sb.AppendLine("% Bibliography");
-            sb.AppendLine($@"\bibliographystyle{{{PublisherClasses.BibliographyStyle(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
+            sb.AppendLine($@"\bibliographystyle{{{PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             sb.AppendLine(@"\bibliography{references}");
         }
 
@@ -357,7 +357,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
-            main.AppendLine($@"\bibliographystyle{{{PublisherClasses.BibliographyStyle(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
+            main.AppendLine($@"\bibliographystyle{{{PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
 
@@ -438,7 +438,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
-            main.AppendLine($@"\bibliographystyle{{{PublisherClasses.BibliographyStyle(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
+            main.AppendLine($@"\bibliographystyle{{{PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
 
