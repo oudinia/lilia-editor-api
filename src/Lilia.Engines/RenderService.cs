@@ -1069,7 +1069,7 @@ public partial class RenderService : IRenderService
         }
         latex.Append(language.Fonts);
 
-        latex.AppendLine(LaTeXPreamble.JournalShims);
+        latex.AppendLine(LaTeXPreamble.JournalShimsFor(LaTeXPreambleBuilder.ResolveClassName(doc)));
         latex.AppendLine(MathMacros.PreambleShortcuts);
         latex.AppendLine(LaTeXPreamble.CvShims);
         latex.AppendLine(LaTeXPreamble.BeamerShims);
@@ -1229,7 +1229,7 @@ public partial class RenderService : IRenderService
         }
         latex.Append(language.Fonts);
         // Journal-class shims — safe no-ops when commands already exist
-        latex.AppendLine(LaTeXPreamble.JournalShims);
+        latex.AppendLine(LaTeXPreamble.JournalShimsFor(LaTeXPreambleBuilder.ResolveClassName(doc)));
         latex.AppendLine(MathMacros.PreambleShortcuts);
         latex.AppendLine(LaTeXPreamble.CvShims);
         latex.AppendLine(LaTeXPreamble.BeamerShims);

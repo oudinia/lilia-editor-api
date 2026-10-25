@@ -844,6 +844,19 @@ public static partial class LaTeXPreamble
     /// the fallback `article` class. Each shim is a no-op or minimal rendering
     /// that won't crash the compiler.
     /// </summary>
+    /// <summary>
+    /// <see cref="JournalShims"/> for a class. llncs defines <c>\keywords</c> with \providecommand late
+    /// (its own handles <c>\and</c> between keywords), so an earlier shim won and <c>\and</c> broke the
+    /// title's table ("Misplaced \crcr", 25 Oct 2026): for llncs both keyword shims (the command and the
+    /// environment, whose opening macro is also <c>\keywords</c>) are left out.
+    /// </summary>
+    public static string JournalShimsFor(string? className) =>
+        string.Equals(Publishers.PublisherClasses.Canonical(className), "llncs", StringComparison.Ordinal)
+            ? JournalShims.Replace("\\providecommand{\\keywords}[1]{\\paragraph*{Keywords:} #1}\n", "")
+                // \newenvironment{keywords} defines \keywords as well, which also hid llncs's.
+                .Replace("\\@ifundefined{keywords}{\\newenvironment{keywords}{\\paragraph*{Keywords:}}{}}{}\n", "")
+            : JournalShims;
+
     public const string JournalShims = @"% Shims for common journal-class commands (defined only if missing)
 \makeatletter
 \providecommand{\affiliation}[1]{}

@@ -98,14 +98,16 @@ public static class PublisherClasses
                 foreach (var a in authors)
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
-                    // ACM wants an affiliation per author: the lines under the name, the last one as the country.
+                    // ACM wants an affiliation per author: the lines under the name, the last one as the
+                    // country. acmart stops on an empty \country ("No country present"), so: no lines, no
+                    // \affiliation (it compiles); one line, the institution with an unknown country
+                    // (\relax: present, prints nothing). The compliance check asks for the country.
                     if (a.Lines.Count > 0)
                     {
                         var inst = a.Lines.Count > 1 ? Line(a.Lines.Take(a.Lines.Count - 1), ", ") : escape(a.Lines[0]);
-                        var country = a.Lines.Count > 1 ? escape(a.Lines[^1]) : "";
+                        var country = a.Lines.Count > 1 ? escape(a.Lines[^1]) : @"\relax";
                         pre.AppendLine($@"\affiliation{{\institution{{{inst}}}\country{{{country}}}}}");
                     }
-                    else pre.AppendLine(@"\affiliation{\institution{}\country{}}");
                 }
                 body.AppendLine(@"\begin{document}");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());

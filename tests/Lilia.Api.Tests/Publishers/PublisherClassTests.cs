@@ -98,6 +98,9 @@ public class PublisherClassTests
         LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "IEEEtran").Should().Contain(@"\PassOptionsToPackage{hidelinks}{hyperref}");
         LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "article").Should().Be(LaTeXPreamble.Packages);
         LaTeXPreamble.TheoremEnvironmentsFor("llncs").Should().Contain(@"\@ifundefined{theorem}", "llncs defines theorem itself");
+        LaTeXPreamble.JournalShimsFor("llncs").Should().NotContain(@"\providecommand{\keywords}", "llncs defines \\keywords late, with its own \\and")
+            .And.NotContain(@"\newenvironment{keywords}", "an environment named keywords defines \\keywords too");
+        LaTeXPreamble.JournalShimsFor("IEEEtran").Should().Be(LaTeXPreamble.JournalShims);
     }
 
     [Fact]
