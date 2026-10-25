@@ -61,6 +61,13 @@ public class LaTeXExportOptions
     public bool Submission { get; set; }
 
     /// <summary>
+    /// ACM's TAPS names the ZIP <c>&lt;Proceeding Acronym&gt;-&lt;Paper ID&gt;.zip</c> (its dashboard shows
+    /// both). Bound from <c>?tapsAcronym=</c> and <c>?tapsPaperId=</c>; only the file name changes.
+    /// </summary>
+    public string? TapsAcronym { get; set; }
+    public string? TapsPaperId { get; set; }
+
+    /// <summary>
     /// Citation backend: <c>natbib</c> (default — BibTeX, most journal-compatible,
     /// arXiv-safe) or <c>biblatex</c> (modern, needs Biber). When
     /// <c>biblatex</c>, the export loads <c>biblatex</c> + <c>\addbibresource</c>,

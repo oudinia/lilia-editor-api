@@ -44,11 +44,13 @@ public class SubmissionZipTests : IntegrationTestBase
         res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
         using var zip = new ZipArchive(await res.Content.ReadAsStreamAsync());
         var entries = new Dictionary<string, byte[]>();
+        // These papers are ACM's: TAPS takes everything under source/ (the TAPS test below checks it).
+        zip.Entries.Should().OnlyContain(e => e.FullName.StartsWith("source/"));
         foreach (var e in zip.Entries)
         {
             using var ms = new MemoryStream();
             await e.Open().CopyToAsync(ms);
-            entries[e.FullName] = ms.ToArray();
+            entries[e.FullName["source/".Length..]] = ms.ToArray();
         }
         return entries;
     }
@@ -145,5 +147,20 @@ public class SubmissionZipTests : IntegrationTestBase
             log.Should().NotContain("Citation `smith2024' undefined");
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task An_ACM_submission_is_laid_out_for_TAPS_and_named_by_acronym_and_paper_id()
+    {
+        var (api, id) = await AcmPaperAsync(cite: false);
+        var res = await api.GetAsync($"/api/documents/{id}/export/latex?submission=true&tapsAcronym=CHI%20'27&tapsPaperId=1234");
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        res.Content.Headers.ContentDisposition!.FileName!.Trim('"').Should().Be("CHI'27-1234.zip", "TAPS: <Proceeding Acronym>-<Paper ID>.zip");
+        using var zip = new ZipArchive(await res.Content.ReadAsStreamAsync());
+        zip.Entries.Select(e => e.FullName).Should().Contain(["source/main.tex", $"source/{SubmissionManifest.FileName}"]);
+
+        // Without them, the usual name.
+        var plain = await api.GetAsync($"/api/documents/{id}/export/latex?submission=true");
+        plain.Content.Headers.ContentDisposition!.FileName!.Trim('"').Should().EndWith("-submission.zip");
     }
 }

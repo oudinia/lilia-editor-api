@@ -21,8 +21,15 @@ public class PublishersController(LiliaDbContext db, ILaTeXExportService latex) 
     /// <summary>How many documents the dashboard checks at most, newest first.</summary>
     public const int MaxDashboardDocuments = 50;
 
+    /// <summary>The profiles, and each publisher class's version installed on this server (the template
+    /// update service: a profile's templateVersion is the one Lilia verified it with).</summary>
     [HttpGet]
-    public IActionResult List() => Ok(new { catalogVersion = PublisherProfiles.CatalogVersion, profiles = PublisherProfiles.All });
+    public async Task<IActionResult> List() => Ok(new
+    {
+        catalogVersion = PublisherProfiles.CatalogVersion,
+        profiles = PublisherProfiles.All,
+        installed = await PublisherClassVersions.AllAsync(),
+    });
 
     /// <summary>
     /// The compliance dashboard (phase 2, 25 Oct 2026): your own documents written for a publisher (a
@@ -47,11 +54,12 @@ public class PublishersController(LiliaDbContext db, ILaTeXExportService latex) 
             .AsSplitQuery()
             .ToListAsync(ct);
 
+        var installed = await PublisherClassVersions.AllAsync();
         var rows = docs.Select(d =>
         {
             var blocks = d.Blocks.OrderBy(b => b.SortOrder).ToList();
             var tex = latex.BuildSingleFileLatex(d, blocks, d.BibliographyEntries?.ToList() ?? [], new LaTeXExportOptions());
-            var report = PublisherCompliance.Check(d, blocks, tex);
+            var report = PublisherCompliance.Check(d, blocks, tex, installed.GetValueOrDefault(PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(d)) ?? ""));
             var profile = PublisherProfiles.Find(d.PublisherProfile);
             return new
             {

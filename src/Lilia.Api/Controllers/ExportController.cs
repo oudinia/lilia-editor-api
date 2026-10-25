@@ -114,8 +114,9 @@ public class ExportController : ControllerBase
         try
         {
             var zipStream = await _latexExportService.ExportToZipAsync(docId, options);
-            return File(zipStream, "application/zip",
-                options.Submission ? $"{sanitizedTitle}-submission.zip" : $"{sanitizedTitle}.zip");
+            var name = !options.Submission ? $"{sanitizedTitle}.zip"
+                : LaTeXExportService.TapsZipName(options.TapsAcronym, options.TapsPaperId) ?? $"{sanitizedTitle}-submission.zip";
+            return File(zipStream, "application/zip", name);
         }
         catch (SubmissionFigureException ex)
         {
@@ -142,7 +143,9 @@ public class ExportController : ControllerBase
         if (doc == null) return NotFound();
         var blocks = doc.Blocks.OrderBy(b => b.SortOrder).ToList();
         var tex = _latexExportService.BuildSingleFileLatex(doc, blocks, doc.BibliographyEntries?.ToList() ?? new(), new LaTeXExportOptions());
-        return Ok(Lilia.Engines.Publishers.PublisherCompliance.Check(doc, blocks, tex));
+        var cls = Lilia.Engines.Publishers.PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc));
+        var installed = cls is null ? null : await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(cls);
+        return Ok(Lilia.Engines.Publishers.PublisherCompliance.Check(doc, blocks, tex, installed));
     }
 
     /// <summary>
