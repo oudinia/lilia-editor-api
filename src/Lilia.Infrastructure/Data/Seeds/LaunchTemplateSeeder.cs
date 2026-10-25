@@ -22,7 +22,7 @@ public static class LaunchTemplateSeeder
     /// <summary>Kept in TemplateThumbnail (<c>launch-{category}-v{Version}</c>): a new value re-seeds.</summary>
     public const int Version = 1;
 
-    public static readonly string[] Names = ["Article", "Thesis chapter"];
+    public static readonly string[] Names = ["Article", "Thesis chapter", "ACM conference paper", "IEEE conference paper", "Elsevier journal article", "Springer LNCS paper"];
 
     public static async Task SeedAsync(LiliaDbContext context, CancellationToken ct = default)
     {
@@ -54,7 +54,7 @@ public static class LaunchTemplateSeeder
     }
 
     /// <summary>Fresh copies of the launch templates, as seeded (also what the compile test prints).</summary>
-    public static IReadOnlyList<Document> Build() => [Article(), ThesisChapter()];
+    public static IReadOnlyList<Document> Build() => [Article(), ThesisChapter(), .. PublisherPapers()];
 
     private static Document Template(string name, string description, string category, string documentClass,
         string? classOptions, params Block[] blocks)
@@ -123,6 +123,49 @@ public static class LaunchTemplateSeeder
         Equation(9, "\\hat{\\theta} = \\arg\\max_{\\theta} \\; \\mathcal{L}(\\theta \\mid x)"),
         Heading(10, 2, "Summary"),
         Paragraph(11, Lorem1));
+
+    /// <summary>
+    /// One starter per publisher class (publisher templates phase 1, 25 Oct 2026): the profile set
+    /// (class, options, reference style), a title block with affiliations, ACM's country and keywords,
+    /// an abstract and the usual sections. The ids are the profiles' (PublisherProfiles); the
+    /// Infrastructure layer doesn't reference the engines, so they are written out here.
+    /// </summary>
+    private static IEnumerable<Document> PublisherPapers()
+    {
+        (string Name, string Description, string Profile, string Class, string? Options)[] papers =
+        [
+            ("ACM conference paper", "acmart sigconf, review: anonymous, line numbers", "acm-sigconf-review", "acmart", "sigconf,review,anonymous"),
+            ("IEEE conference paper", "IEEEtran conference, two columns", "ieee-conference", "IEEEtran", "conference"),
+            ("Elsevier journal article", "elsarticle preprint, numbered references", "elsevier-preprint", "elsarticle", "preprint,12pt"),
+            ("Springer LNCS paper", "llncs, for Lecture Notes in Computer Science", "lncs-submission", "llncs", null),
+        ];
+        foreach (var p in papers)
+        {
+            var doc = Template(p.Name, p.Description, "article", p.Class, p.Options,
+                PaperTitle(0, "Your paper's title",
+                    "First Author\\\\Your institution\\\\Country \\and Second Author\\\\Their institution\\\\Country",
+                    ["first keyword", "second keyword"]),
+                Abstract(1, "Lorem ipsum: in 150 to 250 words, the problem, the approach, the results and why they matter. Replace this text with your own."),
+                Heading(2, 1, "Introduction"),
+                Paragraph(3, Lorem1),
+                Heading(4, 1, "Related work"),
+                Paragraph(5, Lorem2),
+                Heading(6, 1, "Method"),
+                Paragraph(7, Lorem3),
+                Equation(8, "f(x) = \\sum_{i=1}^{n} w_i x_i + b"),
+                Heading(9, 1, "Evaluation"),
+                Paragraph(10, Lorem1),
+                Heading(11, 1, "Conclusion"),
+                Paragraph(12, Lorem2));
+            doc.PublisherProfile = p.Profile;
+            // One thumbnail key per template: they share the article category.
+            doc.TemplateThumbnail = $"launch-{p.Profile}-v{Version}";
+            yield return doc;
+        }
+    }
+
+    private static Block PaperTitle(int order, string title, string author, string[] keywords) => MakeBlock(
+        "title", order, $$"""{"title": {{Json(title)}}, "author": {{Json(author)}}, "keywords": {{JsonSerializer.Serialize(keywords)}}, "dateMode": "today", "date": ""}""");
 
     private static Block Title(int order, string title, string author) => MakeBlock(
         "title", order, $$"""{"title": {{Json(title)}}, "author": {{Json(author)}}, "dateMode": "today", "date": ""}""");

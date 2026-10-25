@@ -53,7 +53,7 @@ public class PdfImportIntegrationTests : IntegrationTestBase
             });
 
         // Create a client that uses the mocked PDF parser
-        var factory = Fixture.Factory.WithWebHostBuilder(builder =>
+        await using var factory = Fixture.Factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
@@ -121,7 +121,7 @@ public class PdfImportIntegrationTests : IntegrationTestBase
     public async Task ImportPdf_UnsupportedFormat_WhenNoPdfParser_ReturnsError()
     {
         // Create a client WITHOUT a PDF parser registered
-        var factory = Fixture.Factory.WithWebHostBuilder(builder =>
+        await using var factory = Fixture.Factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {

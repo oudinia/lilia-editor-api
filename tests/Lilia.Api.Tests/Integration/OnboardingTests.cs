@@ -42,6 +42,14 @@ public class OnboardingTests : IntegrationTestBase
         }));
     }
 
+    // A factory per test (xUnit makes one instance per test) holds its own connection pool until it
+    // is disposed; undisposed, they ran the test database out of clients (53300, 25 Oct).
+    public override async Task DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        await base.DisposeAsync();
+    }
+
     private sealed class FakeStytch : IStytchUserLookup
     {
         public bool Asked { get; set; }

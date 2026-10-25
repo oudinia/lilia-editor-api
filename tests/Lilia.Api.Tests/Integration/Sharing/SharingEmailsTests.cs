@@ -49,6 +49,14 @@ public class SharingEmailsTests : IntegrationTestBase
         _owner.DefaultRequestHeaders.Add("X-Test-Name", "Ada Owner");
     }
 
+    // A factory per test (xUnit makes one instance per test) holds its own connection pool until it
+    // is disposed; undisposed, they ran the test database out of clients (53300, 25 Oct).
+    public override async Task DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        await base.DisposeAsync();
+    }
+
     private async Task<IReadOnlyList<RecordingEmailService.Sent>> MailTo(string email, int atLeast)
     {
         // The share email goes out from a message handler, a moment after the response.

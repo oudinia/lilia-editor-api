@@ -1382,7 +1382,8 @@ public partial class RenderService : IRenderService
         // raw-LaTeX paste or an imported fragment) would join the preamble's own and
         // fail the compile with "Two \documentclass commands". Keep the first
         // (the assembled preamble's), comment out the rest.
-        return DedupeDocumentClass(latex.ToString());
+        var emitted = DedupeDocumentClass(latex.ToString());
+        return Publishers.PublisherClasses.Is(LaTeXPreambleBuilder.ResolveClassName(doc)) ? Publishers.PublisherClasses.PlainTables(emitted) : emitted;
     }
 
     /// <summary>The Title block's keywords: an array, or one string split at commas or semicolons.</summary>
