@@ -29,7 +29,8 @@ public interface IDocumentService
         string? search = null,
         Guid? labelId = null,
         string sortBy = "updatedAt",
-        string sortDir = "desc");
+        string sortDir = "desc",
+        string? scope = null);
 
     /// <summary>
     /// Get all documents for a user (legacy, for backwards compatibility)
