@@ -49,6 +49,9 @@ public static class LaTeXPreambleBuilder
         "IEEEtran", "acmart", "elsarticle", "llncs",
         // Phase 2 (25 Oct 2026): APS and AIP journals. amsart is listed above.
         "revtex4-2",
+        // IOP and SIAM (25 Oct 2026): not in TeX Live, installed unchanged in TEXMFLOCAL from the
+        // publishers' sites (doc/latex/iopjournal|siam/SOURCE.txt there says from where).
+        "iopjournal", "siamart251216",
     };
 
     /// <summary>

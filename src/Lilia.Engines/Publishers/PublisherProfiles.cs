@@ -34,7 +34,7 @@ public sealed record PublisherProfile(
 /// </summary>
 public static class PublisherProfiles
 {
-    public const string CatalogVersion = "2026-10-25.2";
+    public const string CatalogVersion = "2026-10-25.3";
 
     private static readonly string[] Full = ["title", "authors", "affiliations", "abstract", "keywords"];
 
@@ -90,6 +90,20 @@ public static class PublisherProfiles
         new("ams-journal", "AMS", "AMS journals and proceedings", "journal", "final",
             "amsart", "", "amsplain", "amsart 2.20",
             ["title", "authors", "affiliations", "abstract", "keywords"], "https://www.ams.org/publications/authors/tex/amslatex"),
+        // IOP and SIAM (25 Oct 2026): their classes come from the publishers (TEXMFLOCAL). IOP reviews
+        // double-anonymous with [anonymous]; SIAM's [review] adds line numbers.
+        new("iop-review", "IOP", "IOP journals (anonymous review)", "journal", "review",
+            "iopjournal", "anonymous", "iopart-num", "iopjournal 2024/01/31",
+            ["title", "authors", "affiliations", "abstract", "keywords"], "https://publishingsupport.iopscience.iop.org/?p=413"),
+        new("iop-final", "IOP", "IOP journals", "journal", "final",
+            "iopjournal", "", "iopart-num", "iopjournal 2024/01/31",
+            ["title", "authors", "affiliations", "abstract", "keywords"], "https://publishingsupport.iopscience.iop.org/?p=413"),
+        new("siam-review", "SIAM", "SIAM journals (review, line numbers)", "journal", "review",
+            "siamart251216", "review", "siamplain", "siamart251216 v1.4.8",
+            ["title", "authors", "affiliations", "abstract", "keywords"], "https://epubs.siam.org/journal-authors"),
+        new("siam-final", "SIAM", "SIAM journals", "journal", "final",
+            "siamart251216", "", "siamplain", "siamart251216 v1.4.8",
+            ["title", "authors", "affiliations", "abstract", "keywords"], "https://epubs.siam.org/journal-authors"),
     ];
 
     public static PublisherProfile? Find(string? id) =>

@@ -131,9 +131,10 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - **Publish with…** (first in the document settings): writing for a journal or conference. Pick the
   venue and stage: **ACM** SIGCONF or journals (review or final), **IEEE** conference or journal,
   **Elsevier** preprint, double-spaced review or two-column final, **Springer LNCS** submission or
-  camera-ready, **APS** and **AIP** journals (submission or reprint layout), **AMS** journals. The
+  camera-ready, **APS** and **AIP** journals (submission or reprint layout), **AMS** journals, **IOP**
+  journals (anonymous review or standard), **SIAM** journals (review with line numbers, or final). The
   document then prints in the publisher's own class (acmart, IEEEtran, elsarticle, llncs, revtex4-2,
-  amsart) with its title block, abstract, keywords and reference style, and none of Lilia's layout or
+  amsart, iopjournal, siamart) with its title block, abstract, keywords and reference style, and none of Lilia's layout or
   theme; **Class options** and **Layout** are locked while it is set, and the top bar reads e.g.
   *Article · ACM*. Under the choice: the class and options, the reference style, what the publisher
   needs (title, authors, affiliations, abstract, keywords; ACM also a country per author) and a link to
