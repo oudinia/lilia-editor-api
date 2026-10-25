@@ -73,8 +73,8 @@ public class LaTeXExportService : ILaTeXExportService
         bibEntries = WithTextEntries(blocks, bibEntries);
         var files = ApplyCitationBackend(GenerateSingleFile(doc, blocks, bibEntries, options), options);
         var main = files.First(f => f.Path == "main.tex").Content;
-        if (PublisherClasses.Is(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)))
-            main = PublisherClasses.PlainTables(main);
+        if (LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass) is var cls && PublisherClasses.Is(cls))
+            main = PublisherClasses.Finish(main, cls);
         var bib = files.FirstOrDefault(f => f.Path == "references.bib")?.Content;
         return bib is null ? main : WithBibInside(main, bib);
     }
@@ -236,9 +236,13 @@ public class LaTeXExportService : ILaTeXExportService
             .ToList();
         foreach (var (name, source) in themeFiles)
             files.Add(new ProjectFile(name, source));
-        // A publisher's project is plain LaTeX: no Lilia table hooks (NFR-3).
-        if (PublisherClasses.Is(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)))
-            files = files.Select(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) ? f with { Content = PublisherClasses.PlainTables(f.Content) } : f).ToList();
+        // A publisher's project is plain LaTeX: no Lilia table hooks (NFR-3), and only the packages its
+        // publisher accepts, judged by the whole project's use (the body may be in other files).
+        if (LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass) is var publisherClass && PublisherClasses.Is(publisherClass))
+        {
+            var everything = string.Join("\n", files.Where(f => f.Path.EndsWith(".tex", StringComparison.Ordinal)).Select(f => f.Content));
+            files = files.Select(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) ? f with { Content = PublisherClasses.Finish(f.Content, publisherClass, everything) } : f).ToList();
+        }
         return ApplyCitationBackend(files, options);
     }
 

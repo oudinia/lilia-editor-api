@@ -1383,7 +1383,8 @@ public partial class RenderService : IRenderService
         // fail the compile with "Two \documentclass commands". Keep the first
         // (the assembled preamble's), comment out the rest.
         var emitted = DedupeDocumentClass(latex.ToString());
-        return Publishers.PublisherClasses.Is(LaTeXPreambleBuilder.ResolveClassName(doc)) ? Publishers.PublisherClasses.PlainTables(emitted) : emitted;
+        var cls = LaTeXPreambleBuilder.ResolveClassName(doc);
+        return Publishers.PublisherClasses.Is(cls) ? Publishers.PublisherClasses.Finish(emitted, cls) : emitted;
     }
 
     /// <summary>The Title block's keywords: an array, or one string split at commas or semicolons.</summary>
