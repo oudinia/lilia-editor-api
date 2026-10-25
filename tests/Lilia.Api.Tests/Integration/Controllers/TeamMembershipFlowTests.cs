@@ -149,6 +149,7 @@ public class TeamMembershipFlowTests : IntegrationTestBase
         // resolves the seeded ExistingMember instead of always
         // returning null (which would push us into the pending path).
         var (factory, bus) = WithMockBus(useRealUserService: true);
+        await using var disposeFactory = factory;
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", OwnerId);
         client.DefaultRequestHeaders.Add("X-Test-Email", OwnerEmail);
@@ -194,6 +195,7 @@ public class TeamMembershipFlowTests : IntegrationTestBase
         var team = await SeedTeamWithOwnerAsync(OwnerId);
 
         var (factory, bus) = WithMockBus();
+        await using var disposeFactory = factory;
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", OwnerId);
         client.DefaultRequestHeaders.Add("X-Test-Email", OwnerEmail);
@@ -249,6 +251,7 @@ public class TeamMembershipFlowTests : IntegrationTestBase
         }
 
         var (factory, bus) = WithMockBus();
+        await using var disposeFactory = factory;
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", OwnerId);
         client.DefaultRequestHeaders.Add("X-Test-Email", OwnerEmail);
@@ -282,6 +285,7 @@ public class TeamMembershipFlowTests : IntegrationTestBase
         var team = await SeedTeamWithOwnerAsync(OwnerId);
 
         var (factory, bus) = WithMockBus();
+        await using var disposeFactory = factory;
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", OwnerId);
         client.DefaultRequestHeaders.Add("X-Test-Email", OwnerEmail);
@@ -304,6 +308,7 @@ public class TeamMembershipFlowTests : IntegrationTestBase
         var team = await SeedTeamWithOwnerAsync(OwnerId);
 
         var (factory, bus) = WithMockBus();
+        await using var disposeFactory = factory;
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", ExistingMemberId);
         client.DefaultRequestHeaders.Add("X-Test-Email", ExistingMemberEmail);

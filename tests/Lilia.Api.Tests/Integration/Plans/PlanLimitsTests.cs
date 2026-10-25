@@ -29,6 +29,14 @@ public class PlanLimitsTests : IntegrationTestBase
             s.PostConfigure<EntitlementOptions>(o => { o.Enforce = true; o.StaffUserIds = [Staff]; })));
     }
 
+    // A factory per test (xUnit makes one instance per test) holds its own connection pool until it
+    // is disposed; undisposed, they ran the test database out of clients (53300, 25 Oct).
+    public override async Task DisposeAsync()
+    {
+        await _enforced.DisposeAsync();
+        await base.DisposeAsync();
+    }
+
     private static HttpClient As(WebApplicationFactory<Program> factory, string userId)
     {
         var c = factory.CreateClient();
@@ -170,7 +178,7 @@ public class PlanLimitsTests : IntegrationTestBase
         var off = await As(_enforced, author).GetFromJsonAsync<JsonElement>("/api/plan");
         off.GetProperty("ask").GetProperty("enforced").GetBoolean().Should().BeFalse("AI:EnforceCredits is off by default");
 
-        var aiOn = _enforced.WithWebHostBuilder(b => b.UseSetting("AI:EnforceCredits", "true"));
+        await using var aiOn = _enforced.WithWebHostBuilder(b => b.UseSetting("AI:EnforceCredits", "true"));
         var on = await As(aiOn, author).GetFromJsonAsync<JsonElement>("/api/plan");
         on.GetProperty("ask").GetProperty("enforced").GetBoolean().Should().BeTrue();
     }
