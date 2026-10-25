@@ -108,14 +108,22 @@ public class LaTeXExportService : ILaTeXExportService
         return (files.First(f => f.Path == "main.tex").Content, files.FirstOrDefault(f => f.Path == "references.bib")?.Content);
     }
 
-    /// <summary>The document's figure images written under <paramref name="dir"/>/figures (the marked-up PDF's compile).</summary>
+    /// <summary>
+    /// The document's figure images written under <paramref name="dir"/>/figures (the marked-up PDF's compile),
+    /// under both names: a submission's (fig1.png) and the draft's, which submissions kept before 26 Oct use.
+    /// </summary>
     public async Task WriteFiguresAsync(List<Block> blocks, string dir)
     {
+        var figureNames = FigureFile.SubmissionNames(blocks.OrderBy(b => b.SortOrder));
         foreach (var (path, bytes) in await CollectImagesAsync(blocks, strict: false))
         {
-            var full = Path.Combine(dir, path);
-            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            await File.WriteAllBytesAsync(full, bytes);
+            var name = path["figures/".Length..];
+            foreach (var file in figureNames.TryGetValue(name, out var to) ? new[] { name, to } : [name])
+            {
+                var full = Path.Combine(dir, "figures", file);
+                Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                await File.WriteAllBytesAsync(full, bytes);
+            }
         }
     }
 
@@ -163,6 +171,11 @@ public class LaTeXExportService : ILaTeXExportService
         var images = options.IncludeImages
             ? await CollectImagesAsync(blocks, strict: options.Submission)
             : [];
+        if (options.Submission)
+        {
+            var figureNames = FigureFile.SubmissionNames(blocks.OrderBy(b => b.SortOrder));
+            images = images.Select(i => figureNames.TryGetValue(i.Path["figures/".Length..], out var to) ? ($"figures/{to}", i.Bytes) : i).ToList();
+        }
 
         var projectFiles = GenerateProject(doc, blocks, bibEntries, options);
 
@@ -307,6 +320,10 @@ public class LaTeXExportService : ILaTeXExportService
             var everything = string.Join("\n", files.Where(f => f.Path.EndsWith(".tex", StringComparison.Ordinal)).Select(f => f.Content));
             files = files.Select(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) ? f with { Content = PublisherClasses.Finish(f.Content, publisherClass, everything) } : f).ToList();
         }
+        // A submission's figure files are named by their number (fig1.png), as publishers ask; the
+        // images are written under the same names (ExportToZipAsync, WriteFiguresAsync).
+        if (options.Submission && FigureFile.SubmissionNames(blocks.OrderBy(b => b.SortOrder)) is { Count: > 0 } figureNames)
+            files = files.Select(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) ? f with { Content = FigureFile.Rename(f.Content, figureNames) } : f).ToList();
         return ApplyCitationBackend(files, options);
     }
 

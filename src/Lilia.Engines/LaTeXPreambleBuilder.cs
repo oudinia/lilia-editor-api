@@ -30,6 +30,9 @@ public static class LaTeXPreambleBuilder
     /// </summary>
     public static bool UsesMulticols(Document doc) => doc.BalancedColumns || doc.Columns >= 3;
 
+    /// <summary>A column layout block writes <c>\begin{multicols}</c> in the body, whatever the page's columns.</summary>
+    private static bool HasColumnLayout(Document doc) => doc.Blocks?.Any(b => b.Type == BlockTypes.ColumnLayout) == true;
+
     /// <summary>
     /// Classes the DO App Platform container reliably provides. Anything
     /// outside this list (mnras, aastex, pnas, IEEEtran, etc.) requires a
@@ -308,7 +311,8 @@ public static class LaTeXPreambleBuilder
     {
         // A publisher class sets its own layout and refuses changes to it (acmart: "An attempt to
         // redefine \section detected", from placeins' [section]). Nothing of Lilia's layout is written.
-        if (Publishers.PublisherClasses.Is(ResolveClassName(doc))) return "";
+        // Only multicol, for a column layout block: it is a package, not a layout.
+        if (Publishers.PublisherClasses.Is(ResolveClassName(doc))) return HasColumnLayout(doc) && Publishers.PublisherClasses.AllowsMulticol(ResolveClassName(doc)) ? "\\usepackage{multicol}\n" : "";
 
         var sb = new StringBuilder();
 
@@ -437,7 +441,9 @@ public static class LaTeXPreambleBuilder
 
         // Balanced columns require multicol; the body wrapper is added
         // by BuildBodyOpener/Closer, but the package itself loads here.
-        if (UsesMulticols(doc))
+        // So does a column layout block (\begin{multicols} in the body): no class loaded multicol for it, and
+        // a document with one stopped on "Environment multicols undefined" (helper-command audit, 26 Oct).
+        if (UsesMulticols(doc) || HasColumnLayout(doc))
         {
             sb.AppendLine("\\usepackage{multicol}");
         }
