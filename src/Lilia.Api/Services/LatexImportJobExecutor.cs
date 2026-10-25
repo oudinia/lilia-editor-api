@@ -300,7 +300,14 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
 
         if (title.Length == 0 && author.Length == 0 && date.Length == 0) return null;
 
-        return ("title", new { title, author, date });
+        // A publisher paper's keywords, and ACM's CCS concepts and rights block (Overleaf import,
+        // 25 Oct 2026; PublisherFrontMatterReader), only when the paper had them.
+        var content = new Dictionary<string, object> { ["title"] = title, ["author"] = author, ["date"] = date };
+        if (doc.Metadata?.Keywords is { Length: > 0 } keywords)
+            content["keywords"] = keywords.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (doc.Metadata?.AcmCcs is { Length: > 0 } ccs) content["acmCcs"] = ccs;
+        if (doc.Metadata?.AcmRights is { Length: > 0 } rights) content["acmRights"] = rights;
+        return ("title", content);
     }
 
     // Mirrors EnumerateBlockReviews — same (type, content) mapping, different target shape.
