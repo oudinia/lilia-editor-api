@@ -146,6 +146,38 @@ public class ExportController : ControllerBase
     }
 
     /// <summary>
+    /// The IEEE PDF check (publisher templates phase 3, 25 Oct 2026): compiles the document with
+    /// pdfLaTeX, as Export PDF does, and reads the PDF against IEEE Xplore's PDF specification (version,
+    /// fonts embedded, no security, image resolution; links and bookmarks are off for IEEE by
+    /// construction). A compile, so seconds, not instant: the export page asks for it on a click.
+    /// </summary>
+    [HttpGet("pdf-check")]
+    [RequireDocumentAccess(Permissions.Read)]
+    public async Task<IActionResult> PdfCheck(Guid docId, CancellationToken ct)
+    {
+        var document = await _dbContext.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == docId, ct);
+        if (document == null) return NotFound();
+        try
+        {
+            var (pdf, _) = await _documentExportService.ExportToPdfWithEngineAsync(docId, "pdflatex", null, false);
+            if (pdf == null || pdf.Length < 100 || !pdf.AsSpan(0, 4).SequenceEqual("%PDF"u8))
+                return UnprocessableEntity(new { error = "no_pdf", message = "The document did not compile to a PDF; fix what the preview shows, then check again." });
+            var facts = await IeeePdfCheck.ReadAsync(pdf, ct);
+            var report = IeeePdfCheck.Judge(facts, document.PublisherProfile);
+            return Ok(new
+            {
+                report.Profile, report.Status, report.Findings, report.GuidelinesUrl,
+                spec = IeeePdfCheck.Spec,
+                pdf = new { facts.Version, facts.Pages, facts.PageSize, fonts = facts.Fonts.Count, images = facts.Images.Count },
+            });
+        }
+        catch (Lilia.Engines.TexSafety.UnsafeLatexException unsafeLatex)
+        {
+            return UnprocessableEntity(new { error = "unsafe_latex", message = unsafeLatex.Message });
+        }
+    }
+
+    /// <summary>
     /// Export document as a DOCX file
     /// </summary>
     [HttpGet("docx")]
