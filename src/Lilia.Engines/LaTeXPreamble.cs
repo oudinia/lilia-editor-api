@@ -304,7 +304,9 @@ public static partial class LaTeXPreamble
         IsBeamer(className)
             ? packages.Replace("\\usepackage{setspace}\n",
                 "% setspace is left out for beamer: it breaks beamer's footnotes.\n")
-            : packages;
+            : Publishers.PublisherClasses.Is(className)
+                ? Publishers.PublisherClasses.Packages(packages, className!)
+                : packages;
 
     /// <summary>True for beamer (and the beamer-based classes Lilia treats as decks).</summary>
     public static bool IsBeamer(string? className) =>
@@ -675,7 +677,8 @@ public static partial class LaTeXPreamble
     /// </summary>
     public static string TheoremEnvironmentsFor(string? className, IReadOnlyDictionary<string, string>? names = null)
     {
-        var envs = string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase)
+        // beamer, and publisher classes (llncs defines theorem, lemma…), keep the ones the class defines.
+        var envs = string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase) || Publishers.PublisherClasses.Is(className)
             ? GuardedTheoremEnvironments.Value
             : TheoremEnvironments;
         // In the document's language (DocumentLanguage.TheoremNames): \newtheorem{lemma}{Lemme}.
@@ -841,6 +844,19 @@ public static partial class LaTeXPreamble
     /// the fallback `article` class. Each shim is a no-op or minimal rendering
     /// that won't crash the compiler.
     /// </summary>
+    /// <summary>
+    /// <see cref="JournalShims"/> for a class. llncs defines <c>\keywords</c> with \providecommand late
+    /// (its own handles <c>\and</c> between keywords), so an earlier shim won and <c>\and</c> broke the
+    /// title's table ("Misplaced \crcr", 25 Oct 2026): for llncs both keyword shims (the command and the
+    /// environment, whose opening macro is also <c>\keywords</c>) are left out.
+    /// </summary>
+    public static string JournalShimsFor(string? className) =>
+        string.Equals(Publishers.PublisherClasses.Canonical(className), "llncs", StringComparison.Ordinal)
+            ? JournalShims.Replace("\\providecommand{\\keywords}[1]{\\paragraph*{Keywords:} #1}\n", "")
+                // \newenvironment{keywords} defines \keywords as well, which also hid llncs's.
+                .Replace("\\@ifundefined{keywords}{\\newenvironment{keywords}{\\paragraph*{Keywords:}}{}}{}\n", "")
+            : JournalShims;
+
     public const string JournalShims = @"% Shims for common journal-class commands (defined only if missing)
 \makeatletter
 \providecommand{\affiliation}[1]{}

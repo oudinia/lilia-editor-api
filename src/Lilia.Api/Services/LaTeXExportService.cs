@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Lilia.Core.Blocks;
 using Lilia.Engines;
+using Lilia.Engines.Publishers;
 using Lilia.Engines.Themes;
 
 namespace Lilia.Api.Services;
@@ -258,27 +259,9 @@ public class LaTeXExportService : ILaTeXExportService
         sb.Append(GeneratePackageLines(doc, options, usesNatbib, mainBlocks));
         sb.AppendLine();
 
-        // Document info
-        sb.AppendLine("% Document info");
-        AppendTitleMeta(sb, doc, blocks);
-        sb.AppendLine();
-
-        // Begin document
-        sb.AppendLine(@"\begin{document}");
-        sb.AppendLine();
-        sb.AppendLine(@"\maketitle");
-        sb.AppendLine();
-
-        // Abstract (if exists)
+        // Document info, \begin{document}, the title and the abstract (Lilia's, or a publisher class's).
         var abstractBlock = abstractInBody ? null : LeadAbstract(blocks);
-        if (abstractBlock != null)
-        {
-            var text = GetContentText(abstractBlock);
-            sb.AppendLine(@"\begin{abstract}");
-            sb.AppendLine(FormatInlineContent(text));
-            sb.AppendLine(@"\end{abstract}");
-            sb.AppendLine();
-        }
+        AppendFrontMatter(sb, doc, blocks, options, abstractBlock, inputAbstract: false);
 
         // Main content — strip a duplicate-title leading heading. LaTeX
         // imports often promote \title{X} into a top-level heading
@@ -305,7 +288,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine();
             sb.AppendLine("% Bibliography");
-            sb.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
+            sb.AppendLine($@"\bibliographystyle{{{PublisherClasses.BibliographyStyle(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             sb.AppendLine(@"\bibliography{references}");
         }
 
@@ -351,27 +334,11 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine("% Include preamble");
         main.AppendLine(@"\input{preamble}");
         main.AppendLine();
-        main.AppendLine("% Document info");
-        AppendTitleMeta(main, doc, blocks);
-        main.AppendLine();
-        main.AppendLine(@"\begin{document}");
-        main.AppendLine();
-        main.AppendLine(@"\maketitle");
-        main.AppendLine();
-
-        // Abstract
         var abstractBlock = LeadAbstract(blocks);
-        if (abstractBlock != null)
-        {
-            var text = GetContentText(abstractBlock);
-            main.AppendLine(@"\begin{abstract}");
-            main.AppendLine(FormatInlineContent(text));
-            main.AppendLine(@"\end{abstract}");
-            main.AppendLine();
-        }
+        AppendFrontMatter(main, doc, blocks, options, abstractBlock, inputAbstract: false);
 
-        // Table of contents for reports/books
-        if (options.DocumentClass != "article")
+        // Table of contents for reports/books (never in a publisher class: the venue decides)
+        if (options.DocumentClass != "article" && !IsPublisher(doc, options))
         {
             main.AppendLine(@"\tableofcontents");
             main.AppendLine(@"\newpage");
@@ -390,7 +357,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
-            main.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
+            main.AppendLine($@"\bibliographystyle{{{PublisherClasses.BibliographyStyle(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
 
@@ -452,21 +419,9 @@ public class LaTeXExportService : ILaTeXExportService
         main.AppendLine("% Include preamble");
         main.AppendLine(@"\input{preamble}");
         main.AppendLine();
-        main.AppendLine("% Document info");
-        AppendTitleMeta(main, doc, blocks);
-        main.AppendLine();
-        main.AppendLine(@"\begin{document}");
-        main.AppendLine();
-        main.AppendLine(@"\maketitle");
-        main.AppendLine();
+        AppendFrontMatter(main, doc, blocks, options, abstractBlock, inputAbstract: true);
 
-        if (abstractBlock != null)
-        {
-            main.AppendLine(@"\input{frontmatter/abstract}");
-            main.AppendLine();
-        }
-
-        if (options.DocumentClass != "article")
+        if (options.DocumentClass != "article" && !IsPublisher(doc, options))
         {
             main.AppendLine(@"\tableofcontents");
             main.AppendLine(@"\newpage");
@@ -483,7 +438,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
-            main.AppendLine($@"\bibliographystyle{{{BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
+            main.AppendLine($@"\bibliographystyle{{{PublisherClasses.BibliographyStyle(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
 
@@ -704,7 +659,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // Shims so journal-class-specific commands in imported bodies
         // (\begin{keywords}, \affiliation, etc.) don't abort compilation.
-        sb.Append(LaTeXPreamble.JournalShims);
+        sb.Append(LaTeXPreamble.JournalShimsFor(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)));
         sb.AppendLine();
         sb.Append(MathMacros.PreambleShortcuts);
         sb.Append(LaTeXPreamble.CvShims);
@@ -808,6 +763,60 @@ public class LaTeXExportService : ILaTeXExportService
     /// the document title with empty author and \today — matching the preview
     /// render path (RenderService.ResolveTitleMeta).
     /// </summary>
+    private static bool IsPublisher(Document doc, LaTeXExportOptions options) =>
+        PublisherClasses.Is(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass));
+
+    /// <summary>
+    /// "% Document info", <c>\begin{document}</c>, the title and the lead abstract. Lilia's order: title
+    /// meta, <c>\maketitle</c>, abstract. A publisher class writes its own (acmart puts the abstract before
+    /// <c>\maketitle</c>, elsarticle a frontmatter environment…; 25 Oct 2026). With
+    /// <paramref name="inputAbstract"/> (the Overleaf layout) Lilia's order inputs frontmatter/abstract.tex.
+    /// </summary>
+    private void AppendFrontMatter(StringBuilder sb, Document doc, List<Block> blocks, LaTeXExportOptions options,
+        Block? abstractBlock, bool inputAbstract)
+    {
+        string? AbstractEnv() => abstractBlock is null ? null
+            : $"\\begin{{abstract}}\n{FormatInlineContent(GetContentText(abstractBlock))}\n\\end{{abstract}}";
+        sb.AppendLine("% Document info");
+        if (PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) is { } publisher)
+        {
+            var (title, author, _) = TitleMeta(doc, blocks);
+            var (pre, body) = PublisherClasses.FrontMatter(publisher, title, author, AbstractEnv(),
+                RenderService.TitleKeywords(doc), FormatTitleMetaLatex, FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title)));
+            sb.Append(pre);
+            sb.AppendLine();
+            sb.Append(body);
+            sb.AppendLine();
+            return;
+        }
+        AppendTitleMeta(sb, doc, blocks);
+        sb.AppendLine();
+        sb.AppendLine(@"\begin{document}");
+        sb.AppendLine();
+        sb.AppendLine(@"\maketitle");
+        sb.AppendLine();
+        if (abstractBlock is null) return;
+        if (inputAbstract) sb.AppendLine(@"\input{frontmatter/abstract}");
+        else sb.AppendLine(AbstractEnv());
+        sb.AppendLine();
+    }
+
+    /// <summary>The title and author from a Title block if present, else the document title.</summary>
+    private static (string Title, string? Author, string? Date) TitleMeta(Document doc, List<Block> blocks)
+    {
+        string title = doc.Title ?? "";
+        string? author = null, date = null;
+        var titleBlock = blocks.FirstOrDefault(b => string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+        if (titleBlock?.Content != null && titleBlock.Content.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            var root = titleBlock.Content.RootElement;
+            if (root.TryGetProperty("title", out var tp) && !string.IsNullOrWhiteSpace(tp.GetString())) title = tp.GetString()!;
+            if (root.TryGetProperty("author", out var ap)) author = ap.GetString();
+            if (root.TryGetProperty("date", out var dp)) date = dp.GetString();
+        }
+        return (title, author, date);
+    }
+
     private static void AppendTitleMeta(StringBuilder sb, Document doc, List<Block> blocks)
     {
         string title = doc.Title ?? "", author = "", date = @"\today";

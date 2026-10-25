@@ -44,11 +44,9 @@ public static class LaTeXPreambleBuilder
         "memoir",
         "scrartcl", "scrbook", "scrreprt",
         "beamer", "beamerposter",
-        // Journal classes that work with Lilia's standard \maketitle/\section
-        // structure (no special frontmatter macros required). elsarticle /
-        // llncs / acmart need per-class frontmatter templates — add them with
-        // that work, not here.
-        "IEEEtran",
+        // Publisher classes (25 Oct 2026, publisher templates phase 1): each has its own front-matter
+        // writer and a slimmed preamble (Publishers/PublisherClasses.cs), installed in TeX Live.
+        "IEEEtran", "acmart", "elsarticle", "llncs",
     };
 
     /// <summary>
@@ -228,6 +226,15 @@ public static class LaTeXPreambleBuilder
         var usingStored = !string.IsNullOrWhiteSpace(stored) && SafeDocumentClasses.Contains(stored);
         var className = ResolveClassName(doc, fallbackClass);
 
+        // A publisher class takes only its own options (venue, stage): size, paper, orientation and
+        // columns are the publisher's, not the document's (publisher templates, 25 Oct 2026).
+        if (Publishers.PublisherClasses.Canonical(className) is { } publisher)
+        {
+            var own = (doc.LatexDocumentClassOptions ?? "").Split(',')
+                .Select(CleanClassOption).OfType<string>().Distinct().ToList();
+            return own.Count > 0 ? $"\\documentclass[{string.Join(",", own)}]{{{publisher}}}" : $"\\documentclass{{{publisher}}}";
+        }
+
         var classOpts = new List<string>();
         var fontSize = fontSizeOverride ?? $"{doc.FontSize}pt";
         if (!string.IsNullOrEmpty(fontSize)) classOpts.Add(fontSize);
@@ -294,6 +301,10 @@ public static class LaTeXPreambleBuilder
     /// </param>
     public static string BuildLayoutPreamble(Document doc, double? lineSpacingOverride = null)
     {
+        // A publisher class sets its own layout and refuses changes to it (acmart: "An attempt to
+        // redefine \section detected", from placeins' [section]). Nothing of Lilia's layout is written.
+        if (Publishers.PublisherClasses.Is(ResolveClassName(doc))) return "";
+
         var sb = new StringBuilder();
 
         // Margins via geometry
