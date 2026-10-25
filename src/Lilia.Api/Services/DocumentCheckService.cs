@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Lilia.Api.Mcp;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
 
@@ -36,7 +37,8 @@ public sealed partial class DocumentCheckService(
     ILaTeXRenderService latex,
     CheckMemoStore checks,
     IConfiguration config,
-    ILogger<DocumentCheckService> logger) : IDocumentCheckService
+    ILogger<DocumentCheckService> logger,
+    Lilia.Infrastructure.Data.LiliaDbContext? db = null) : IDocumentCheckService
 {
     private const int MaxProblems = 30;
 
@@ -86,7 +88,7 @@ public sealed partial class DocumentCheckService(
                 return seen with { Cached = true };
             }
             var result = await latex.ValidateAsync(source, engine);
-            var check = Judge(d, source, engine, result);
+            var check = Judge(d, source, engine, result, await PublisherAsync(d, source));
             if (ByVersion.Count >= MaxCachedVersions) ByVersion.Clear();
             ByVersion[key] = check;
             return check;
@@ -114,9 +116,25 @@ public sealed partial class DocumentCheckService(
         }
     }
 
+    /// <summary>
+    /// The publisher compliance check (PublisherCompliance) for a document with a publisher profile or
+    /// class, so Ask Lilia and a connected app see what the publisher would reject (25 Oct 2026).
+    /// Null for any other document, or without a database (tests).
+    /// </summary>
+    private async Task<Lilia.Engines.Publishers.ComplianceReport?> PublisherAsync(Lilia.Core.DTOs.DocumentDto d, string source)
+    {
+        if (db is null || (d.PublisherProfile is null && !Lilia.Engines.Publishers.PublisherClasses.Is(d.LatexDocumentClass))) return null;
+        var doc = await db.Documents.AsNoTracking()
+            .Include(x => x.Blocks.OrderBy(b => b.SortOrder))
+            .Include(x => x.BibliographyEntries)
+            .FirstOrDefaultAsync(x => x.Id == d.Id);
+        return doc is null ? null : Lilia.Engines.Publishers.PublisherCompliance.Check(doc, doc.Blocks.OrderBy(b => b.SortOrder).ToList(), source);
+    }
+
     private static string? ErrorOf(DocumentCheck c) => c.Problems.FirstOrDefault(p => p.Severity == "error")?.Message;
 
-    private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto d, string source, string engine, LatexValidationResult result)
+    private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto d, string source, string engine, LatexValidationResult result,
+        Lilia.Engines.Publishers.ComplianceReport? publisher = null)
     {
         // T1 (MCP-27/61, MCP-08): judge references and citations from the LaTeX actually emitted,
         // not the stored fields. A label the emitter never printed made "??" under a clean check,
@@ -204,6 +222,15 @@ public sealed partial class DocumentCheckService(
                         ? "It compiles, but a table is wider than its column and runs into the margin (wideTables)."
                         : null,
             url = EditorUrl(d.Id),
+            // What the publisher would reject or query, beside whether it compiles. Not in problems:
+            // most are the author's to supply (an abstract, keywords, a country), not LaTeX to repair.
+            publisher = publisher is null ? null : new
+            {
+                profile = publisher.Profile,
+                status = publisher.Status,
+                findings = publisher.Findings.Select(f => new { severity = f.Severity, code = f.Code, message = f.Message, blockId = f.BlockId }),
+                guidelines = publisher.GuidelinesUrl,
+            },
         };
         return new DocumentCheck(report, result.Valid, prints, listed, false);
     }

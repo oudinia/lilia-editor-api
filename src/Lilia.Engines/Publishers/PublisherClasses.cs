@@ -185,4 +185,39 @@ public static class PublisherClasses
         }
         return (pre.ToString(), body.ToString());
     }
+
+    /// <summary>
+    /// A publisher document's tables without Lilia's theme hooks (requirement NFR-3: plain LaTeX a
+    /// publisher's system accepts): the <c>\providecommand</c> fallbacks and <c>\liliaFewRows</c> go,
+    /// <c>\liliaHeadRow</c> goes, and <c>\liliaTableHead{x}</c> becomes <c>x</c>. A publisher document
+    /// never has a theme, so the hooks printed nothing; the PDF is the same.
+    /// </summary>
+    public static string PlainTables(string latex)
+    {
+        if (!latex.Contains(@"\lilia", StringComparison.Ordinal)) return latex;
+        foreach (var line in new[] { LatexText.HeadRowFallback, LatexText.TableHeadFallback, LatexText.FewRows })
+            latex = latex.Replace(line + "\n", "").Replace(line, "");
+        latex = latex.Replace(LatexText.HeadRow, "");
+        const string head = @"\liliaTableHead{";
+        var sb = new StringBuilder(latex.Length);
+        var at = 0;
+        while (latex.IndexOf(head, at, StringComparison.Ordinal) is var start and >= 0)
+        {
+            sb.Append(latex, at, start - at);
+            // The argument, braces balanced (a cell may hold \textbf{…} or maths), escaped braces skipped.
+            var i = start + head.Length;
+            var depth = 1;
+            for (; i < latex.Length && depth > 0; i++)
+            {
+                if (latex[i] == '\\') { i++; continue; }
+                if (latex[i] == '{') depth++;
+                else if (latex[i] == '}') depth--;
+            }
+            if (depth != 0) { sb.Append(latex, start, latex.Length - start); return sb.ToString(); }
+            sb.Append(latex, start + head.Length, i - 1 - (start + head.Length));
+            at = i;
+        }
+        sb.Append(latex, at, latex.Length - at);
+        return sb.ToString();
+    }
 }

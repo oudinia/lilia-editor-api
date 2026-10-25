@@ -73,8 +73,15 @@ If a step is not in this guide, say you are not sure rather than inventing a men
 - A card's **⋯** (or right-click): **Rename** (edit in place, Enter saves, Esc cancels),
   **Duplicate**, **Move to Trash** (owner), or **Remove from my documents** (a shared one; nothing is
   deleted). Each comes with **Undo** in the toast.
-- **New** → the chooser: **Draft with AI**, **Blank document** (title and class, then write),
-  **From structure** (a typed-block skeleton: paper, thesis, report, slides), **From template**.
+- **New** → the chooser: **Draft with AI**, **Blank document** (title and class, then write; **Publish
+  with…** there starts it for a journal or conference), **From structure** (a typed-block skeleton:
+  paper, thesis, report, slides), **From template**: Article, Thesis chapter, and a starter for each
+  publisher: **ACM conference paper**, **IEEE conference paper**, **Elsevier journal article**,
+  **Springer LNCS paper** (the venue already set; replace the sample text).
+- **Submitting to a publisher**: with a venue set, **Export → LaTeX** shows **Submission package for …**
+  (on by default) and the publisher check: what to fix, worst first (errors, warnings, notes), with the
+  publisher's guidelines. With errors it asks before downloading. The ZIP holds one main.tex, the
+  references, the compiled .bbl, the publisher's .bst, the figures and a manifest.
 
 ### The editor
 - **The tour**: the first document opens with four cards beside their controls (**Write in blocks**,
