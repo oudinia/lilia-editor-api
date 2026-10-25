@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using System.Text;
+using Lilia.Api.Filters;
 using Lilia.Api.Services;
+using Lilia.Core.Entities;
 using Lilia.Core.Interfaces;
 using Lilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -129,14 +131,9 @@ public class ExportController : ControllerBase
     /// submission ZIP and asks for confirmation when there are errors.
     /// </summary>
     [HttpGet("publisher-check")]
+    [RequireDocumentAccess(Permissions.Read)]
     public async Task<IActionResult> PublisherCheck(Guid docId)
     {
-        var userId = GetUserId();
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized(new { error = "No valid authentication token provided" });
-        if (await _documentService.GetDocumentAsync(docId, userId) == null)
-            return NotFound();
-
         var doc = await _dbContext.Documents
             .AsNoTracking()
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))

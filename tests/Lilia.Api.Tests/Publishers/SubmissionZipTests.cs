@@ -89,6 +89,20 @@ public class SubmissionZipTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task The_check_is_there_for_the_export_page_and_only_for_who_can_read()
+    {
+        var (api, id) = await AcmPaperAsync(cite: false);
+        var report = await api.GetFromJsonAsync<JsonElement>($"/api/documents/{id}/export/publisher-check");
+        report.GetProperty("profile").GetString().Should().Be("acm-sigconf-review");
+        report.GetProperty("status").GetString().Should().Be("passed");
+
+        var stranger = $"subzip-x-{Guid.NewGuid():N}"[..28];
+        await SeedUserAsync(stranger);
+        (await CreateClientAs(stranger).GetAsync($"/api/documents/{id}/export/publisher-check"))
+            .IsSuccessStatusCode.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task A_figure_without_its_image_stops_the_submission_naming_it()
     {
         var (api, id) = await AcmPaperAsync(cite: false);
