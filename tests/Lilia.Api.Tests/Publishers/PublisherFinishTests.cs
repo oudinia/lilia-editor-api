@@ -57,7 +57,7 @@ public class PublisherFinishTests
             doc.LatexDocumentClass.Should().Be(profile.DocumentClass, doc.TemplateName);
             (doc.LatexDocumentClassOptions ?? "").Should().Be(profile.ClassOptions, doc.TemplateName);
             var report = PublisherCompliance.Check(doc, doc.Blocks.OrderBy(b => b.SortOrder).ToList(), Export(doc));
-            report.Findings.Select(f => f.Code).Distinct().Should().Equal(["sample_text"], doc.TemplateName);
+            report.Findings.Where(f => f.Severity != "info").Select(f => f.Code).Distinct().Should().Equal(["sample_text"], doc.TemplateName);
         }
         LaunchTemplateSeeder.Build().Select(d => d.TemplateThumbnail).Should().OnlyHaveUniqueItems("the seed's version key is per template");
     }

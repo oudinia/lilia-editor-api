@@ -837,7 +837,8 @@ public class LaTeXExportService : ILaTeXExportService
         {
             var (title, author, _) = TitleMeta(doc, blocks);
             var (pre, body) = PublisherClasses.FrontMatter(publisher, title, author, AbstractEnv(),
-                RenderService.TitleKeywords(doc), FormatTitleMetaLatex, FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title)));
+                RenderService.TitleKeywords(doc), FormatTitleMetaLatex, FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title)),
+                RenderService.TitleText(doc, "acmCcs"), RenderService.TitleText(doc, "acmRights"));
             sb.Append(pre);
             sb.AppendLine();
             sb.Append(body);

@@ -138,7 +138,7 @@ public class PublisherProfileApiTests : IntegrationTestBase
     {
         var api = CreateClientAs(_userId);
         var ready = await SeedDocumentAsync(_userId, "Ready paper");
-        await SeedBlockAsync(ready.Id, "title", """{"title":"Ready paper","author":"Ada Lovelace\\\\Analytical Engines\\\\UK","keywords":["LaTeX"]}""", 0);
+        await SeedBlockAsync(ready.Id, "title", """{"title":"Ready paper","author":"Ada Lovelace\\\\Analytical Engines\\\\UK\\\\ada@engines.uk","keywords":["LaTeX"],"acmCcs":"\\ccsdesc[500]{Software and its engineering~Compilers}","acmRights":"\\setcopyright{acmlicensed}"}""", 0);
         await SeedBlockAsync(ready.Id, "abstract", """{"text":"It works."}""", 1);
         (await api.PutAsJsonAsync($"/api/documents/{ready.Id}", new { publisherProfile = "acm-sigconf-final" })).EnsureSuccessStatusCode();
         var draft = await SeedDocumentAsync(_userId, "Draft paper");

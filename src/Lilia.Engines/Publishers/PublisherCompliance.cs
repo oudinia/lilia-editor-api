@@ -127,6 +127,8 @@ public static partial class PublisherCompliance
                     findings.Add(new("info", "package_in_class", $"acmart already loads {package}: your \\usepackage{{{package}}} can go."));
         }
 
+        if (cls == "acmart") findings.AddRange(Taps(doc, blocks, profile, titleBlock, authors, own));
+
         findings = findings.DistinctBy(f => (f.Code, f.Message, f.BlockId)).ToList();
         var status = findings.Any(f => f.Severity == "error") ? "errors"
             : findings.Any(f => f.Severity == "warning") ? "warnings" : "passed";
@@ -148,6 +150,67 @@ public static partial class PublisherCompliance
         catch (JsonException) { return ""; }
     }
 
+    /// <summary>
+    /// ACM's TAPS rules ("LaTeX Best Practices for Submitting… to TAPS", ACM, last updated 30 May 2024),
+    /// beyond the general ones above: CCS concepts and the rights block in the final version, an email
+    /// per author, a description in every figure, the review format, and no redefined standard commands
+    /// or pushed-back spacing in the author's own LaTeX.
+    /// </summary>
+    private static IEnumerable<ComplianceFinding> Taps(Document doc, IReadOnlyList<Block> blocks, PublisherProfile? profile,
+        Block? titleBlock, IReadOnlyList<TitleAuthor> authors, List<(string Source, string? BlockId)> own)
+    {
+        var final = profile?.Stage == "final";
+        var titleId = titleBlock?.Id.ToString();
+        var ccs = Text(titleBlock, "acmCcs");
+        var rights = Text(titleBlock, "acmRights");
+
+        if (final && !AcmMetadata.HasConcepts(ccs))
+            yield return new("warning", "acm_ccs",
+                "ACM needs CCS concepts in a full-length paper: get them from ACM's CCS tool (dl.acm.org/ccs) and paste them in the title block. A paper of 2 pages or less may leave them out.", titleId);
+        if (final && !AcmMetadata.HasRights(rights))
+            yield return new("error", "acm_rights",
+                "The rights block is missing: paste the lines from ACM's eRights email (\\setcopyright, \\acmDOI, \\acmConference…) in the title block.", titleId);
+        foreach (var line in AcmMetadata.Ccs(ccs).Ignored.Concat(AcmMetadata.Rights(rights).Ignored))
+            yield return new("warning", "acm_metadata_line", $"This line isn't what ACM's tools produce and was left out: {line}", titleId);
+
+        if (final)
+            foreach (var a in authors.Where(a => !a.Lines.Any(PublisherClasses.IsEmail)))
+                yield return new("warning", "acm_email", $"ACM wants an email for each author: add one as a line under {a.Name}.", titleId);
+
+        foreach (var f in blocks.Where(b => b.Type == BlockTypes.Figure))
+            if (!IsDescription(Text(f, "alt")))
+                yield return new("warning", "acm_description",
+                    "ACM needs a description of every figure, for readers who can't see it: write one in the figure's alt text (not its caption again, not a file name).", f.Id.ToString());
+
+        if (profile?.Stage == "review" && !Options(doc.LatexDocumentClassOptions).Contains("manuscript"))
+            yield return new("info", "acm_review_format",
+                "ACM's TAPS guidance asks for review versions in the single-column manuscript format; follow your conference's call if it asks for sigconf, review.");
+
+        foreach (var (source, blockId) in own)
+        {
+            foreach (Match m in RedefinedCommand().Matches(source))
+                yield return new("warning", "acm_redefinition", $"{m.Value.Trim()} redefines a standard LaTeX command, which ACM returns for correction.", blockId);
+            if (NegativeSpace().Match(source) is { Success: true } neg)
+                yield return new("warning", "acm_spacing", $"{neg.Value.Trim()} pulls content together; ACM allows \\vspace only to space objects apart.", blockId);
+        }
+    }
+
+    /// <summary>
+    /// A figure's alt text is a description: not empty, and not a file name (an upload's default alt).
+    /// ACM's \Description is written from it (RenderService).
+    /// </summary>
+    public static bool IsDescription(string? alt) =>
+        !string.IsNullOrWhiteSpace(alt) && !FileName().IsMatch(alt.Trim());
+
+    [GeneratedRegex(@"^[^\s/\\]+\.(?:png|jpe?g|gif|svg|pdf|eps|webp|bmp|tiff?)$", RegexOptions.IgnoreCase)]
+    private static partial Regex FileName();
+
+    [GeneratedRegex(@"\\(?:renewcommand|def|let)\s*\{?\\(?:section|subsection|subsubsection|paragraph|caption|cite|ref|title|author|maketitle|footnote|emph|textbf|textit|includegraphics|item|label|thanks|abstract|baselinestretch|small|large|Large|normalsize)\b")]
+    private static partial Regex RedefinedCommand();
+
+    [GeneratedRegex(@"\\vspace\*?\{\s*-[^}]*\}")]
+    private static partial Regex NegativeSpace();
+
     private static HashSet<string> Options(string? options) =>
         (options ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
 
@@ -160,7 +223,7 @@ public static partial class PublisherCompliance
     private static bool HasText(Block b) =>
         (Text(b, "text") ?? Text(b, "content") ?? b.Content?.RootElement.GetRawText() ?? "").Trim('{', '}', ' ', '"').Length > 0;
 
-    [GeneratedRegex(@"\\usepackage(?:\[[^\]]*\])?\{(?:geometry|fullpage|times|mathptmx|lmodern|setspace|titlesec|savetrees|a4wide)\}|\\(?:new)?geometry\{|\\setlength\{?\\(?:textwidth|textheight|oddsidemargin|evensidemargin|topmargin|columnsep|baselineskip|parskip)\b|\\linespread\{|\\renewcommand\{?\\baselinestretch|\\(?:addtolength)\{?\\(?:textwidth|textheight)")]
+    [GeneratedRegex(@"\\usepackage(?:\[[^\]]*\])?\{(?:geometry|fullpage|times|mathptmx|lmodern|setspace|titlesec|savetrees|a4wide)\}|\\(?:new)?geometry\{|\\setlength\{?\\(?:textwidth|textheight|oddsidemargin|evensidemargin|topmargin|columnsep|baselineskip|parskip)\b|\\linespread\{|\\setstretch\{|\\renewcommand\{?\\baselinestretch|\\(?:addtolength)\{?\\(?:textwidth|textheight)")]
     private static partial Regex LayoutOverride();
 
     [GeneratedRegex(@"\\bibliographystyle\{[^}]*\}")]
