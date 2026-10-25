@@ -182,6 +182,14 @@ public class ImportMetadata
     /// </summary>
     public string? DocumentClassOptions { get; set; }
 
+    /// <summary>The \documentclass options as written (DocumentClassOptions has the font size,
+    /// paper and columns taken out): which venue a publisher paper was set for.</summary>
+    public string? RawClassOptions { get; set; }
+
+    /// <summary>ACM's CCS concepts and rights block as the paper had them (Overleaf import, 25 Oct 2026).</summary>
+    public string? AcmCcs { get; set; }
+    public string? AcmRights { get; set; }
+
     /// <summary>
     /// 10 / 11 / 12 — extracted from "10pt" / "11pt" / "12pt" in the
     /// \documentclass options. Null when the source didn't request a

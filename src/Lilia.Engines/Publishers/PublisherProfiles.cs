@@ -124,6 +124,34 @@ public static class PublisherProfiles
     public static PublisherProfile? AtStage(string? id, string stage) =>
         Find(id) is { } p ? All.FirstOrDefault(o => o.Family == p.Family && o.Stage == stage) : null;
 
+    /// <summary>
+    /// The venue a paper was set for, from its class and options as written (an import from Overleaf,
+    /// 25 Oct 2026): acmart [sigconf, review] → acm-sigconf-review, IEEEtran [journal] → ieee-journal,
+    /// revtex4-2 [aip, reprint] → aip-final… Null for a class with no venue. SIAM's dated class names
+    /// (siamart220329…) map to SIAM's venues, whose class is the one installed.
+    /// </summary>
+    public static string? FromClass(string? documentClass, string? options)
+    {
+        var cls = (documentClass ?? "").Trim();
+        var o = (options ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Split('=')[0].ToLowerInvariant()).ToHashSet();
+        var review = o.Contains("review");
+        return cls switch
+        {
+            "acmart" when o.Contains("acmsmall") || o.Contains("acmlarge") || o.Contains("acmtog") || o.Contains("manuscript")
+                => review || o.Contains("manuscript") ? "acm-journal-review" : "acm-journal-final",
+            "acmart" => review ? "acm-sigconf-review" : "acm-sigconf-final",
+            "IEEEtran" => o.Contains("journal") || o.Contains("transmag") ? "ieee-journal" : "ieee-conference",
+            "elsarticle" => o.Contains("review") ? "elsevier-review" : o.Contains("final") || o.Contains("5p") || o.Contains("3p") ? "elsevier-final" : "elsevier-preprint",
+            "llncs" => "lncs-submission",
+            "revtex4-2" or "revtex4-1" => (o.Contains("aip") ? "aip" : "aps") + (o.Contains("reprint") || o.Contains("twocolumn") ? "-final" : "-review"),
+            "amsart" => "ams-journal",
+            "iopjournal" => o.Contains("anonymous") ? "iop-review" : "iop-final",
+            _ when cls.StartsWith("siamart", StringComparison.Ordinal) => review ? "siam-review" : "siam-final",
+            _ => null,
+        };
+    }
+
     public static PublisherProfile? Find(string? id) =>
         string.IsNullOrWhiteSpace(id) ? null : All.FirstOrDefault(p => string.Equals(p.Id, id.Trim(), StringComparison.OrdinalIgnoreCase));
 

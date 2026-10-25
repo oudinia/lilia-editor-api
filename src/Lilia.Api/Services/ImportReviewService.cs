@@ -451,6 +451,18 @@ public class ImportReviewService : IImportReviewService
                             await _documents.UpdateDocumentAsync(documentId, ownerId, settings);
                         if (setup.NotApplied.Count > 0)
                             _logger.LogInformation("Import {SessionId}: page setup not applied: {Notes}", sessionId, string.Join("; ", setup.NotApplied));
+
+                        // A paper set for a publisher (acmart, IEEEtran… from Overleaf) arrives with its
+                        // venue: class, options and reference style as "Publish with…" sets them, and
+                        // the class version pinned (25 Oct 2026).
+                        if (Lilia.Engines.Publishers.PublisherProfiles.FromClass(parsed.Metadata.DocumentClass, parsed.Metadata.RawClassOptions) is { } venue)
+                        {
+                            var imported = await _context.Documents.FirstAsync(d => d.Id == documentId, ct);
+                            DocumentService.ApplyPublisherProfile(imported, venue);
+                            imported.PublisherTemplateVersion = await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(imported.LatexDocumentClass!);
+                            await _context.SaveChangesAsync(ct);
+                            _logger.LogInformation("Import {SessionId}: venue {Venue} from \\documentclass[{Options}]{{{Class}}}", sessionId, venue, parsed.Metadata.RawClassOptions, parsed.Metadata.DocumentClass);
+                        }
                     }
                     catch (Exception e)
                     {

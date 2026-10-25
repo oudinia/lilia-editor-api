@@ -446,8 +446,28 @@ public class LatexParser : ILatexParser
         return Task.FromResult(document);
     }
 
+    /// <summary>
+    /// The front-matter commands a publisher class writes, out of the body once read into the Title
+    /// block (PublisherFrontMatterReader): they leaked as paragraph text ("acmlicensed", "Computing
+    /// methodologies~…") or became raw blocks (CCSXML). elsarticle's frontmatter wrapper goes, its
+    /// contents (the abstract) stay.
+    /// </summary>
+    private string StripPublisherFrontMatter(string body, PublisherFrontMatterReader.Result front)
+    {
+        foreach (var env in new[] { "CCSXML", "keywords", "IEEEkeywords", "keyword" })
+            body = Regex.Replace(body, @"\\begin\{" + env + @"\}.*?\\end\{" + env + @"\}", "", RegexOptions.Singleline);
+        body = Regex.Replace(body, @"\\(?:begin|end)\{frontmatter\}", "");
+        body = Regex.Replace(body, @"\\ccsdesc(?:\[\d+\])?\{[^{}]*\}", "");
+        foreach (var line in (front.AcmRights ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            body = body.Replace(line, "");
+        foreach (var cmd in new[] { "keywords", "email", "institute", "address", "affil", "additionalaffiliation", "orcid", "authornote", "authorsaddresses", "shortauthors" })
+            body = StripBalancedCommand(body, cmd);
+        return body;
+    }
+
     private ImportDocument Parse(string content, string sourcePath, LatexImportOptions options)
     {
+        PublisherFrontMatterReader.Result? publisherFront = null;
         // For raw-text input ("input.tex" sentinel), default title to empty rather than the literal "input".
         var defaultTitle = sourcePath == "input.tex" ? string.Empty : Path.GetFileNameWithoutExtension(sourcePath);
 
@@ -541,12 +561,25 @@ public class LatexParser : ILatexParser
             if (docClassMatch.Groups[1].Success)
             {
                 var rawOptions = docClassMatch.Groups[1].Value.Trim();
+                document.Metadata.RawClassOptions = rawOptions;
                 var parsed = ClassOptionsParser.Parse(rawOptions);
                 document.Metadata.FontSize = parsed.FontSize;
                 document.Metadata.PaperSize = parsed.PaperSize;
                 document.Metadata.Columns = parsed.Columns;
                 document.Metadata.DocumentClassOptions = parsed.RemainingOptions;
             }
+        }
+
+        // A publisher paper's front matter (Overleaf import, 25 Oct 2026): authors with their
+        // affiliations and emails, keywords, ACM's CCS concepts and rights block, read the class's own
+        // way instead of being stripped (affiliations) or leaking into the body (\email, \keywords…).
+        publisherFront = PublisherFrontMatterReader.Read(content, document.Metadata.DocumentClass);
+        if (publisherFront is not null)
+        {
+            if (publisherFront.Authors.Count > 0) document.Metadata.Author = publisherFront.AuthorText;
+            if (publisherFront.Keywords.Count > 0) document.Metadata.Keywords = string.Join(", ", publisherFront.Keywords);
+            document.Metadata.AcmCcs = publisherFront.AcmCcs;
+            document.Metadata.AcmRights = publisherFront.AcmRights;
         }
 
         // Extract all \usepackage[...]{name1,name2,...} references.
@@ -698,6 +731,7 @@ public class LatexParser : ILatexParser
         documentContent = StripBalancedCommand(documentContent, "thanks");
         documentContent = StripBalancedCommand(documentContent, "affil");
         documentContent = StripBalancedCommand(documentContent, "affiliation");
+        if (publisherFront is not null) documentContent = StripPublisherFrontMatter(documentContent, publisherFront);
 
         // Also strip preamble commands that the metadata pass already captured so
         // they don't get dumped into the body as raw text.
