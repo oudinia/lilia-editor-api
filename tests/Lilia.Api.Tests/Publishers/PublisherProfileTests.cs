@@ -132,4 +132,32 @@ public class PublisherProfileApiTests : IntegrationTestBase
         bad.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await bad.Content.ReadAsStringAsync()).Should().Contain("invalid_publisher_profile");
     }
+
+    [Fact]
+    public async Task The_dashboard_lists_your_publisher_documents_with_their_verdict()
+    {
+        var api = CreateClientAs(_userId);
+        var ready = await SeedDocumentAsync(_userId, "Ready paper");
+        await SeedBlockAsync(ready.Id, "title", """{"title":"Ready paper","author":"Ada Lovelace\\\\Analytical Engines\\\\UK","keywords":["LaTeX"]}""", 0);
+        await SeedBlockAsync(ready.Id, "abstract", """{"text":"It works."}""", 1);
+        (await api.PutAsJsonAsync($"/api/documents/{ready.Id}", new { publisherProfile = "acm-sigconf-final" })).EnsureSuccessStatusCode();
+        var draft = await SeedDocumentAsync(_userId, "Draft paper");
+        (await api.PutAsJsonAsync($"/api/documents/{draft.Id}", new { publisherProfile = "ieee-conference" })).EnsureSuccessStatusCode();
+        await SeedDocumentAsync(_userId, "Not for a publisher");
+
+        var body = await api.GetFromJsonAsync<JsonElement>("/api/publishers/documents");
+        var rows = body.GetProperty("documents").EnumerateArray().ToDictionary(r => r.GetProperty("title").GetString()!);
+        rows.Keys.Should().BeEquivalentTo(["Ready paper", "Draft paper"], "only documents written for a publisher");
+        rows["Ready paper"].GetProperty("status").GetString().Should().Be("passed");
+        rows["Ready paper"].GetProperty("publisher").GetString().Should().Be("ACM");
+        rows["Draft paper"].GetProperty("status").GetString().Should().Be("errors");
+        rows["Draft paper"].GetProperty("errors").GetInt32().Should().BeGreaterThan(0);
+        rows["Draft paper"].GetProperty("first").GetString().Should().NotBeNullOrEmpty();
+
+        // Someone else sees none of them.
+        var other = $"pubdash-{Guid.NewGuid():N}"[..28];
+        await SeedUserAsync(other);
+        (await CreateClientAs(other).GetFromJsonAsync<JsonElement>("/api/publishers/documents"))
+            .GetProperty("documents").GetArrayLength().Should().Be(0);
+    }
 }
