@@ -95,7 +95,7 @@ public class PublisherClassTests
         acm.Should().NotContain(@"\usepackage{lmodern}").And.NotContain("amssymb").And.NotContain(@"\usepackage{parskip}").And.NotContain("colorlinks");
         acm.Should().Contain(@"\usepackage{amsmath}");
         LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "llncs").Should().Contain("\\let\\proof\\relax\n\\let\\endproof\\relax\n\\usepackage{amsmath,amssymb,amsfonts,amsthm}");
-        LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "IEEEtran").Should().Contain(@"\PassOptionsToPackage{hidelinks}{hyperref}");
+        LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "IEEEtran").Should().Contain(@"\PassOptionsToPackage{draft}{hyperref}", "IEEE Xplore accepts no links or bookmarks");
         LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "article").Should().Be(LaTeXPreamble.Packages);
         LaTeXPreamble.TheoremEnvironmentsFor("llncs").Should().Contain(@"\@ifundefined{theorem}", "llncs defines theorem itself");
         LaTeXPreamble.JournalShimsFor("llncs").Should().NotContain(@"\providecommand{\keywords}", "llncs defines \\keywords late, with its own \\and")

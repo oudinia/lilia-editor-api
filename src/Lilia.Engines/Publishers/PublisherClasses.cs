@@ -75,8 +75,15 @@ public static class PublisherClasses
         s = Drop(s, @"\usepackage{parskip}");
         // Lilia's blue links are not the publisher's: acmart sets its own; the others get plain links
         // (without either, hyperref draws coloured boxes around every link).
+        // IEEE Xplore accepts no links or bookmarks ("PDF Specification for IEEE Xplore" 4.02): hyperref's
+        // draft mode makes neither, and \ref, \cite and \cref still print.
         s = s.Replace(@"\PassOptionsToPackage{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}{hyperref}",
-            c == "acmart" ? "% acmart sets the links' look itself." : @"\PassOptionsToPackage{hidelinks}{hyperref}");
+            c switch
+            {
+                "acmart" => "% acmart sets the links' look itself.",
+                "IEEEtran" => @"\PassOptionsToPackage{draft}{hyperref}",
+                _ => @"\PassOptionsToPackage{hidelinks}{hyperref}",
+            });
         const string ams = @"\usepackage{amsmath,amssymb,amsfonts,amsthm}";
         s = c switch
         {
