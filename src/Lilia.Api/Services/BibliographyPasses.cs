@@ -52,16 +52,22 @@ internal static class BibliographyPasses
     // natbib's label: Short(Year)Long, split at the first "(" and the first ")" after it.
     private static readonly Regex NatbibLabel = new(@"^(?<short>[^()]*)\((?<year>[^()]*)\)(?<long>.*)$", RegexOptions.Compiled);
 
+    // A command the .bbl defines for itself (\providecommand \citenamefont [1]{#1}: REVTeX's styles).
+    private static readonly Regex BblDefines = new(@"\\(?:provide|new)command\s*\*?\s*\{?\\(?<name>[A-Za-z@]+)", RegexOptions.Compiled);
+    private static readonly Regex CommandName = new(@"\\(?<name>[A-Za-z@]+)", RegexOptions.Compiled);
+
     /// <summary>
     /// The <c>\bibcite</c> lines typesetting <paramref name="bbl"/> will write: <c>{n}</c> for an
     /// unlabelled item and the label itself for a labelled one, or natbib's
     /// <c>{{n}{year}{{short}}{{long}}}</c>. Items it cannot read are left out (TeX then asks for
-    /// the third pass).
+    /// the third pass): a label using a command the .bbl defines itself, which is not defined yet
+    /// when the .aux is read (REVTeX's <c>[{\citenamefont {Knuth}(1984)}]</c>, 25 Oct 2026).
     /// </summary>
     public static string Bibcites(string bbl, bool natbib)
     {
         // TeX reads a line end and the next line's indentation as one space.
         var text = Regex.Replace(bbl, @"\s*\n\s*", " ");
+        var ownCommands = BblDefines.Matches(text).Select(m => m.Groups["name"].Value).ToHashSet(StringComparer.Ordinal);
         var sb = new StringBuilder();
         int numbered = 0, all = 0;
         foreach (Match m in BibItem.Matches(text))
@@ -72,6 +78,9 @@ internal static class BibliographyPasses
             all++;
             if (!labelled) numbered++;
             if (key.Length == 0) continue;
+            if (CommandName.Matches(opt).Any(c => ownCommands.Contains(c.Groups["name"].Value))) continue;
+            // [{label}]: braces that protect the label; natbib reads what is inside.
+            if (opt.Length > 1 && opt[0] == '{' && opt[^1] == '}' && Balanced(opt[1..^1])) opt = opt[1..^1].Trim();
             if (natbib)
             {
                 if (!labelled) { sb.Append($"\\bibcite{{{key}}}{{{{{all}}}{{}}{{{{}}}}{{{{}}}}}}\n"); continue; }
@@ -85,6 +94,17 @@ internal static class BibliographyPasses
             }
         }
         return sb.ToString();
+    }
+
+    private static bool Balanced(string s)
+    {
+        var depth = 0;
+        foreach (var c in s)
+        {
+            if (c == '{') depth++;
+            else if (c == '}' && --depth < 0) return false;
+        }
+        return depth == 0;
     }
 
     private static readonly Regex LoadsNatbib = new(@"\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{[^}]*\bnatbib\b", RegexOptions.Compiled);

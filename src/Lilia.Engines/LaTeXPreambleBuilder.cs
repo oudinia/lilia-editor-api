@@ -47,6 +47,8 @@ public static class LaTeXPreambleBuilder
         // Publisher classes (25 Oct 2026, publisher templates phase 1): each has its own front-matter
         // writer and a slimmed preamble (Publishers/PublisherClasses.cs), installed in TeX Live.
         "IEEEtran", "acmart", "elsarticle", "llncs",
+        // Phase 2 (25 Oct 2026): APS and AIP journals. amsart is listed above.
+        "revtex4-2",
     };
 
     /// <summary>

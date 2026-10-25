@@ -34,7 +34,7 @@ public sealed record PublisherProfile(
 /// </summary>
 public static class PublisherProfiles
 {
-    public const string CatalogVersion = "2026-10-25.1";
+    public const string CatalogVersion = "2026-10-25.2";
 
     private static readonly string[] Full = ["title", "authors", "affiliations", "abstract", "keywords"];
 
@@ -73,6 +73,23 @@ public static class PublisherProfiles
         new("lncs-camera-ready", "Springer", "LNCS (camera-ready)", "proceedings", "final",
             "llncs", "", "splncs04", "llncs 2.26",
             Full, "https://www.springer.com/gp/computer-science/lncs/conference-proceedings-guidelines"),
+        // Phase 2 (25 Oct 2026). APS and AIP submit in preprint (single column, wide spacing), publish
+        // in reprint; the journal is an option (prl, prb…; jcp, apl…), here the family's default.
+        new("aps-review", "APS", "Physical Review (submission)", "journal", "review",
+            "revtex4-2", "aps,preprint", "apsrev4-2", "revtex4-2 4.2f",
+            ["title", "authors", "affiliations", "abstract"], "https://journals.aps.org/authors/latex-guidelines"),
+        new("aps-final", "APS", "Physical Review (reprint layout)", "journal", "final",
+            "revtex4-2", "aps,reprint", "apsrev4-2", "revtex4-2 4.2f",
+            ["title", "authors", "affiliations", "abstract"], "https://journals.aps.org/authors/latex-guidelines"),
+        new("aip-review", "AIP", "AIP journals (submission)", "journal", "review",
+            "revtex4-2", "aip,preprint", "aipnum4-2", "revtex4-2 4.2f",
+            ["title", "authors", "affiliations", "abstract"], "https://publishing.aip.org/resources/researchers/author-instructions/"),
+        new("aip-final", "AIP", "AIP journals (reprint layout)", "journal", "final",
+            "revtex4-2", "aip,reprint", "aipnum4-2", "revtex4-2 4.2f",
+            ["title", "authors", "affiliations", "abstract"], "https://publishing.aip.org/resources/researchers/author-instructions/"),
+        new("ams-journal", "AMS", "AMS journals and proceedings", "journal", "final",
+            "amsart", "", "amsplain", "amsart 2.20",
+            ["title", "authors", "affiliations", "abstract", "keywords"], "https://www.ams.org/publications/authors/tex/amslatex"),
     ];
 
     public static PublisherProfile? Find(string? id) =>

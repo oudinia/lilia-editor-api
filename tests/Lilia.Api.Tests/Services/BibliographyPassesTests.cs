@@ -14,6 +14,18 @@ namespace Lilia.Api.Tests.Services;
 public class BibliographyPassesTests
 {
     [Fact]
+    public void A_label_using_a_command_the_bbl_defines_is_left_to_the_third_pass_and_protecting_braces_are_read_through()
+    {
+        // REVTeX (apsrev4-2): the label's \citenamefont exists only once the .bbl is read, after the .aux.
+        var revtex = "\\providecommand \\citenamefont [1]{#1}%\n\\bibitem [{\\citenamefont {Knuth}(1984)}]{knuth84}%\n";
+        BibliographyPasses.Bibcites(revtex, natbib: true).Should().BeEmpty();
+
+        // [{label}] without such a command: natbib reads inside the braces.
+        BibliographyPasses.Bibcites("\\bibitem[{Knuth(1984)Knuth, D.}]{knuth84} x", natbib: true)
+            .Should().Be("\\bibcite{knuth84}{{1}{1984}{{Knuth}}{{Knuth, D.}}}\n");
+    }
+
+    [Fact]
     public void Numbered_items_cite_by_their_order_and_labelled_ones_by_their_label()
     {
         var bbl = "\\begin{thebibliography}{2}\n\n\\bibitem{knuth84}\nD. Knuth.\n\n\\bibitem[Lam94]{lamport94}\nL. Lamport.\n\n\\bibitem{goossens93}\nM. Goossens.\n\\end{thebibliography}\n";
