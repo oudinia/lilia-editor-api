@@ -660,6 +660,12 @@ public class DocumentService : IDocumentService
         }
 
         if (lookUpdate.Apply) document.Look = lookUpdate.Stored;
+        // Collaboration safeguard (publisher templates phase 3, 25 Oct 2026): the venue and its stage are
+        // the owner's to choose. A co-author changing them would change the class, the front matter and
+        // the reference style under everyone; the owner decides where the paper goes.
+        if (dto.PublisherProfile is not null && document.OwnerId != userId
+            && !string.Equals(dto.PublisherProfile, document.PublisherProfile ?? "", StringComparison.OrdinalIgnoreCase))
+            throw new PublisherOwnerOnlyException("Only the document's owner can choose its venue or stage.");
         ApplyPublisherProfile(document, dto.PublisherProfile);
         // The class version the venue was chosen with (the template update service): pinned when a
         // venue is set, cleared with it.
@@ -1509,3 +1515,6 @@ public sealed class DocumentLookException(string message) : Exception(message);
 
 /// <summary>An unknown publisher profile id in an update (400).</summary>
 public sealed class PublisherProfileException(string message) : Exception(message);
+
+/// <summary>A collaborator tried to change the venue or stage, which is the owner's to choose (403).</summary>
+public sealed class PublisherOwnerOnlyException(string message) : Exception(message);

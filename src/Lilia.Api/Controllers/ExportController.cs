@@ -113,6 +113,7 @@ public class ExportController : ControllerBase
 
         try
         {
+            if (options.Submission) options.SubmittedBy = userId;
             var zipStream = await _latexExportService.ExportToZipAsync(docId, options);
             var name = !options.Submission ? $"{sanitizedTitle}.zip"
                 : LaTeXExportService.TapsZipName(options.TapsAcronym, options.TapsPaperId) ?? $"{sanitizedTitle}-submission.zip";
