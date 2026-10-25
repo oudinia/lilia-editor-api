@@ -214,5 +214,19 @@
       "subject": "Tres formas de empezar tu primer documento",
       "preheader": "En blanco, con una plantilla o con un archivo que ya tienes."
     }
+  },
+  "two_step_code": {
+    "en": {
+      "subject": "Your Lilia sign-in code: {{code}}",
+      "preheader": "Enter it on the sign-in screen. It works for 10 minutes."
+    },
+    "fr": {
+      "subject": "Votre code de connexion à Lilia : {{code}}",
+      "preheader": "Saisissez-le sur l’écran de connexion. Il reste valable 10 minutes."
+    },
+    "es": {
+      "subject": "Tu código para iniciar sesión en Lilia: {{code}}",
+      "preheader": "Introdúcelo en la pantalla de inicio de sesión. Es válido durante 10 minutos."
+    }
   }
 }

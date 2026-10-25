@@ -38,7 +38,8 @@ public static partial class EmailTemplates
     public static RenderedEmail Render(string key, string? locale, IReadOnlyDictionary<string, string?> values, string? baseUrl = null)
     {
         var lang = Language(locale);
-        var subject = Subjects.Value.RootElement.GetProperty(key).GetProperty(lang).GetProperty("subject").GetString()!;
+        // Subjects take the same {{variables}} (the two-step code puts the code in it, 25 Oct).
+        var subject = Fill(Subjects.Value.RootElement.GetProperty(key).GetProperty(lang).GetProperty("subject").GetString()!, values, encode: false);
         var html = Fill(Read($"{lang}.{key}.html"), values, encode: true);
         var text = Fill(Read($"{lang}.{key}.txt"), values, encode: false);
         var origin = (baseUrl ?? DesignBaseUrl).TrimEnd('/');

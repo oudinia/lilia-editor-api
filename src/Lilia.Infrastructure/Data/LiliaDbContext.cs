@@ -120,6 +120,9 @@ public class LiliaDbContext : DbContext
     public DbSet<BlockValidation> BlockValidations => Set<BlockValidation>();
     public DbSet<BlockShape> BlockShapes => Set<BlockShape>();
     public DbSet<AdminAction> AdminActions => Set<AdminAction>();
+    public DbSet<TwoStepCode> TwoStepCodes => Set<TwoStepCode>();
+    public DbSet<TrustedDevice> TrustedDevices => Set<TrustedDevice>();
+    public DbSet<TwoStepSessionPass> TwoStepSessionPasses => Set<TwoStepSessionPass>();
     public DbSet<BlockShapeQueueItem> BlockShapeQueue => Set<BlockShapeQueueItem>();
     public DbSet<ChangelogEntry> ChangelogEntries => Set<ChangelogEntry>();
     public DbSet<AiRequest> AiRequests => Set<AiRequest>();

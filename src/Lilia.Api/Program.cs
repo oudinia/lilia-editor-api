@@ -543,6 +543,7 @@ builder.Services.AddHostedService<TrashPurgeBackgroundService>();
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<Lilia.Api.Services.BlockShapeWorker>();
 builder.Services.AddScoped<AccountDeletionService>();
+builder.Services.AddScoped<TwoStepService>();
 builder.Services.AddScoped<AccountSecurityService>();
 builder.Services.AddHostedService<AccountErasureBackgroundService>();
 builder.Services.AddHostedService<ImportReviewPurgeBackgroundService>();

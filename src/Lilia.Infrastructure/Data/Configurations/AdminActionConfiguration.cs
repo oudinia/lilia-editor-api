@@ -9,7 +9,7 @@ public class AdminActionConfiguration : IEntityTypeConfiguration<AdminAction>
     public void Configure(EntityTypeBuilder<AdminAction> builder)
     {
         builder.ToTable("admin_actions", t => t.HasCheckConstraint("ck_admin_action_action",
-            "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status')"));
+            "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status','two_step_off')"));
         builder.HasKey(a => a.Id);
         builder.Property(a => a.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(a => a.AdminEmail).HasColumnName("admin_email").HasMaxLength(255).IsRequired();

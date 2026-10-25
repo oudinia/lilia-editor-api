@@ -178,6 +178,15 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone
     bar that appears (**Discard** puts it back). The email is the sign-in address, shown, not edited here.
   - **Security**: **Change password** (current password, then the new one; you stay signed in). An
     account that signs in with Google or a link has no password to change.
+    - **Two-step sign-in** (off unless turned on): **Turn on with email codes** (a 6-digit code by
+      email) or **Turn on** with an authenticator app (scan, first code, recovery codes). When on, signing
+      in asks for a code from the app or the email; the code screen always offers **Send a code to my
+      email instead**, and **Not you, or no phone with you? Sign out and use another account**.
+    - **Trust this device for 30 days** (a box on the code screen): on that browser the password alone is
+      enough. **Trusted devices** lists them with **Forget** and **Forget all**; turning two-step off or
+      signing out everywhere forgets them.
+    - **Signed-in sessions**, each with **Sign out**, and **Sign out everywhere else**.
+    - Lost the phone and the email? Support can turn two-step off from the admin console.
   - **Plan**: the plan and its meters: **Documents**, **Imports this month**, **Ask Lilia this month**
     (a share of the month, with the day it renews). Article: plans-and-limits.
   - **Connected apps**: AI apps connected to Lilia (Claude…), each with **Disconnect**.
@@ -204,8 +213,8 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone
     **LaTeX-native editing** (show LaTeX commands and source), **Reset to defaults**, and
     **Troubleshooting → Clear cache & reload** (fetches the latest version of the app; documents are
     not affected).
-- Not in Settings yet, so don't offer them: notification emails, two-step sign-in, signed-in sessions,
-  changing the email address, paying for Pro.
+- Not in Settings yet, so don't offer them: notification emails, changing the email address, paying for
+  Pro.
 
 ### Plans and limits
 - **Free**: 3 documents the author owns (documents in the Trash and documents shared with them don't

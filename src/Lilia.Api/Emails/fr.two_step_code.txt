@@ -1,0 +1,17 @@
+Lilia
+
+Votre code de connexion
+
+Saisissez ce code pour finir de vous connecter en tant que {{recipient_email}}.
+
+{{code}}
+
+Il reste valable 10 minutes et ne sert qu’une fois.
+
+Vous n’avez pas demandé à vous connecter ? Quelqu’un connaît votre mot de passe. Ignorez ce message, puis changez votre mot de passe dans Paramètres → Sécurité. Ne communiquez jamais ce code : Lilia ne vous le demandera jamais.
+
+—
+Vous recevez ce message car quelqu’un s’est connecté à Lilia en tant que {{recipient_email}} et la connexion en deux étapes est activée.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

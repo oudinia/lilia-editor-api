@@ -67,6 +67,9 @@ public interface IEmailService
     /// </summary>
     Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale);
 
+    /// <summary>A two-step sign-in code (25 Oct 2026): six digits, valid 10 minutes, in the account's language.</summary>
+    Task SendTwoStepCodeAsync(string toEmail, string code, string? locale);
+
     /// <summary>To the owner: someone accepted their invitation ("Open sharing").</summary>
     Task SendInviteAcceptedAsync(string toEmail, string acceptedByName, string documentTitle, string sharingUrl);
 

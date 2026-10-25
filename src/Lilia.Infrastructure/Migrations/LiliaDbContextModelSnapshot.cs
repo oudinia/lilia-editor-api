@@ -146,7 +146,7 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.ToTable("admin_actions", null, t =>
                         {
-                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status')");
+                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status','two_step_off')");
                         });
                 });
 
@@ -7130,6 +7130,62 @@ namespace Lilia.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.TrustedDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("label");
+
+                    b.Property<DateTime>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_trusted_devices_token");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_trusted_devices_user");
+
+                    b.ToTable("trusted_devices", (string)null);
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.TwoFactor", b =>
                 {
                     b.Property<string>("Id")
@@ -7160,6 +7216,83 @@ namespace Lilia.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("two_factors", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.TwoStepCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_two_step_codes_user");
+
+                    b.ToTable("two_step_codes", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.TwoStepSessionPass", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("session_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("SessionId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_two_step_session_passes_user");
+
+                    b.ToTable("two_step_session_passes", (string)null);
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.TypstTranslationGap", b =>
@@ -8962,6 +9095,15 @@ namespace Lilia.Infrastructure.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.TrustedDevice", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.TwoFactor", b =>
                 {
                     b.HasOne("Lilia.Core.Entities.User", "User")
@@ -8971,6 +9113,24 @@ namespace Lilia.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.TwoStepCode", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.TwoStepSessionPass", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.User", b =>
