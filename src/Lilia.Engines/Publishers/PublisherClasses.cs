@@ -114,7 +114,7 @@ public static class PublisherClasses
     /// </summary>
     public static (string Preamble, string BodyStart) FrontMatter(
         string cls, string title, string? authorText, string? abstractEnv, IReadOnlyList<string> keywords,
-        Func<string, string> escape, string titleLatex)
+        Func<string, string> escape, string titleLatex, string? acmCcs = null, string? acmRights = null)
     {
         var authors = TitleAuthors.Parse(authorText);
         var pre = new StringBuilder();
@@ -125,10 +125,16 @@ public static class PublisherClasses
         switch (Canonical(cls))
         {
             case "acmart":
+                // TAPS (ACM, "LaTeX Best Practices"): rights and bibstrip from the eRights email, and the CCS
+                // concepts, as ACM's tools give them (AcmMetadata keeps only those commands).
+                if (AcmMetadata.Rights(acmRights).Accepted is { Length: > 0 } rights) pre.Append(rights);
                 pre.AppendLine($@"\title{{{titleLatex}}}");
-                foreach (var a in authors)
+                foreach (var author in authors)
                 {
-                    pre.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    pre.AppendLine($@"\author{{{escape(author.Name)}}}");
+                    // TAPS wants each author's \email: a line with an @ is one, not part of the affiliation.
+                    var emails = author.Lines.Where(IsEmail).ToList();
+                    var a = author with { Lines = author.Lines.Where(l => !IsEmail(l)).ToList() };
                     // ACM wants an affiliation per author: the lines under the name, the last one as the
                     // country. acmart stops on an empty \country ("No country present"), so: no lines, no
                     // \affiliation (it compiles); one line, the institution with an unknown country
@@ -139,7 +145,9 @@ public static class PublisherClasses
                         var country = a.Lines.Count > 1 ? escape(a.Lines[^1]) : @"\relax";
                         pre.AppendLine($@"\affiliation{{\institution{{{inst}}}\country{{{country}}}}}");
                     }
+                    foreach (var e in emails) pre.AppendLine($@"\email{{{escape(e.Trim())}}}");
                 }
+                if (AcmMetadata.Ccs(acmCcs).Accepted is { Length: > 0 } ccs) pre.Append(ccs);
                 body.AppendLine(@"\begin{document}");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
@@ -282,6 +290,10 @@ public static class PublisherClasses
         }
         return (pre.ToString(), body.ToString());
     }
+
+    /// <summary>An affiliation line that is an email address (TAPS's \email per author).</summary>
+    public static bool IsEmail(string line) =>
+        System.Text.RegularExpressions.Regex.IsMatch(line.Trim(), @"^[^\s@{}\\]+@[^\s@{}\\]+\.[^\s@{}\\]+$");
 
     /// <summary>
     /// A publisher document's LaTeX as it is sent: plain tables (<see cref="PlainTables"/>) and only the

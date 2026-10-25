@@ -1296,7 +1296,7 @@ public partial class RenderService : IRenderService
             }
             var (frontPre, frontBody) = Publishers.PublisherClasses.FrontMatter(publisher, titleText, authorText,
                 lead >= 0 ? renderedBlocks[lead] : null, TitleKeywords(doc), FormatTitleMetaLatex,
-                FormatTitleMetaLatex(TitleWithoutAnd(titleText)));
+                FormatTitleMetaLatex(TitleWithoutAnd(titleText)), TitleText(doc, "acmCcs"), TitleText(doc, "acmRights"));
             latex.Append(frontPre);
             latex.Append(frontBody);
             latex.AppendLine();
@@ -1387,6 +1387,14 @@ public partial class RenderService : IRenderService
         return Publishers.PublisherClasses.Is(cls) ? Publishers.PublisherClasses.Finish(emitted, cls) : emitted;
     }
 
+    /// <summary>A text field of the Title block (ACM's CCS concepts, its rights block), or null.</summary>
+    public static string? TitleText(Document doc, string field)
+    {
+        var title = doc.Blocks?.FirstOrDefault(b => string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
+        return title?.Content is { } c && c.RootElement.ValueKind == JsonValueKind.Object
+            && c.RootElement.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    }
+
     /// <summary>The Title block's keywords: an array, or one string split at commas or semicolons.</summary>
     public static IReadOnlyList<string> TitleKeywords(Document doc)
     {
@@ -1460,7 +1468,7 @@ public partial class RenderService : IRenderService
                 "heading" or "header" => RenderHeadingToLatex(content, block.Document?.LatexDocumentClass),
                 "paragraph" => RenderParagraphToLatex(content),
                 "equation" => RenderEquationToLatex(content),
-                "figure" or "image" => RenderFigureToLatex(content),
+                "figure" or "image" => RenderFigureToLatex(content, block.Document?.LatexDocumentClass),
                 "table" => RenderTableToLatex(content, useLongtable),
                 "code" => RenderCodeToLatex(content),
                 "list" => RenderListToLatex(content),
@@ -1897,8 +1905,12 @@ public partial class RenderService : IRenderService
     // One renderer for both emitters (EquationLatex).
     private static string RenderEquationToLatex(JsonElement content) => EquationLatex.Render(content);
 
-    private string RenderFigureToLatex(JsonElement content)
+    private string RenderFigureToLatex(JsonElement content, string? documentClass = null)
     {
+        // ACM's TAPS needs a \Description in every figure (accessibility): the figure's alt text. A file
+        // name is not a description (an upload's default alt): none is written, and the check says so.
+        var alt = content.TryGetProperty("alt", out var altEl) && altEl.ValueKind == JsonValueKind.String ? altEl.GetString() ?? "" : "";
+        var describe = Publishers.PublisherClasses.Canonical(documentClass) == "acmart" && Publishers.PublisherCompliance.IsDescription(alt);
         var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var c) ? c.GetString() ?? "" : "";
         var label = content.TryGetProperty("label", out var l) ? l.GetString() ?? "" : "";
@@ -1961,6 +1973,7 @@ public partial class RenderService : IRenderService
                 sb.AppendLine($@"\caption{{{InlineArgument(caption)}}}");
             if (!string.IsNullOrEmpty(label))
                 sb.AppendLine($@"\label{{{LabelKey.Effective("figure", label)}}}");
+            if (describe) sb.AppendLine($@"\Description{{{EscapeLatex(alt.Trim())}}}");
             sb.AppendLine($@"\end{{{figureEnv}}}");
         }
         else
@@ -1981,6 +1994,7 @@ public partial class RenderService : IRenderService
             {
                 sb.AppendLine($@"\label{{{LabelKey.Effective("figure", label)}}}");
             }
+            if (describe) sb.AppendLine($@"\Description{{{EscapeLatex(alt.Trim())}}}");
             sb.AppendLine($@"\end{{{figureEnv}}}");
         }
 

@@ -40,7 +40,8 @@ public class PublisherComplianceTests
     public void A_complete_ACM_paper_passes()
     {
         var report = Check(Acm());
-        report.Findings.Should().BeEmpty();
+        // Only a note: TAPS asks for the manuscript format in review (the conference's call may not).
+        report.Findings.Should().OnlyContain(f => f.Code == "acm_review_format" && f.Severity == "info");
         report.Status.Should().Be("passed");
         report.GuidelinesUrl.Should().Be(PublisherProfiles.Find("acm-sigconf-review")!.GuidelinesUrl);
     }

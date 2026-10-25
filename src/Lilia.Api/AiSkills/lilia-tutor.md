@@ -140,7 +140,10 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   needs (title, authors, affiliations, abstract, keywords; ACM also a country per author) and a link to
   the publisher's guidelines. **None — Lilia's own layout** goes back. Keywords are typed in the title
   block (click the title, **Keywords**, separated by commas). For ACM, an author's affiliation ends
-  with the country on its own line. Export → LaTeX gives a project the publisher accepts.
+  with the country on its own line. For ACM's final version (TAPS): an email line under each author, the
+  **CCS concepts** from ACM's CCS tool (dl.acm.org/ccs) and the **rights block** from ACM's eRights email,
+  both pasted in the title block (*ACM: CCS concepts*, *ACM: rights*), and a description of every figure in
+  its **alt text** (ACM prints it for readers who can't see the figure; a file name doesn't count). Export → LaTeX gives a project the publisher accepts.
 - **Document language** (in the document settings, under Class options; on a phone in **Page & settings**):
   what the PDF is typeset in: headings such as Contents, Figure and References, word breaks at line
   ends, and right to left for Arabic and Hebrew. **Automatic** (the default) reads it from the text and
