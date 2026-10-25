@@ -165,7 +165,7 @@ public class LaTeXExportService : ILaTeXExportService
             // unchanged: NFR-6), and the manifest says what this is, with every file's checksum.
             entries.RemoveAll(e => e.Path == "README.txt");
             var bst = PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass));
-            if (bibEntries.Count > 0 && bst is not null && await PublisherStyleFileAsync(bst) is { } bstBytes)
+            if (bibEntries.Count > 0 && bst is not null && PublisherClasses.MayShipStyle(bst) && await PublisherStyleFileAsync(bst) is { } bstBytes)
                 entries.Add(($"{bst}.bst", bstBytes));
             var main = projectFiles.First(f => f.Path == "main.tex").Content;
             var compliance = PublisherCompliance.Check(doc, blocks, main);

@@ -30,8 +30,10 @@ public static class PublisherClasses
     /// </summary>
     public const string PackagePolicyVersion = "lilia-publisher-2026-10-25";
 
-    // Phase 2 (25 Oct 2026): revtex4-2 (APS, AIP) and amsart (AMS). iopart and siamart are not in TeX Live.
-    private static readonly string[] Names = ["acmart", "IEEEtran", "elsarticle", "llncs", "revtex4-2", "amsart"];
+    // Phase 2 (25 Oct 2026): revtex4-2 (APS, AIP), amsart (AMS), and IOP's iopjournal and SIAM's
+    // siamart251216, which are not in TeX Live: installed unchanged in TEXMFLOCAL from IOP's and
+    // SIAM's sites (SOURCE.txt beside their docs). SIAM names the class by its release date.
+    private static readonly string[] Names = ["acmart", "IEEEtran", "elsarticle", "llncs", "revtex4-2", "amsart", "iopjournal", "siamart251216"];
 
     /// <summary>The class's canonical spelling when it is a publisher class, else null.</summary>
     public static string? Canonical(string? cls) =>
@@ -49,8 +51,16 @@ public static class PublisherClasses
         // APS; an AIP profile sets aipnum4-2 (PublisherProfiles).
         "revtex4-2" => "apsrev4-2",
         "amsart" => "amsplain",
+        "iopjournal" => "iopart-num",
+        "siamart251216" => "siamplain",
         _ => null,
     };
+
+    /// <summary>
+    /// Whether the style file may go into a submission ZIP on its own. SIAM's macros may be
+    /// distributed only as the whole set, so a SIAM ZIP carries the compiled .bbl, not siamplain.bst.
+    /// </summary>
+    public static bool MayShipStyle(string style) => style != "siamplain";
 
     /// <summary>Lilia's package list, slimmed for a publisher class (see the class summary).</summary>
     public static string Packages(string packages, string cls)
@@ -71,6 +81,8 @@ public static class PublisherClasses
             "acmart" => s.Replace(ams, @"\usepackage{amsmath}"),
             // llncs defines proof (and theorem…); amsthm's \proof would be "already defined".
             "llncs" => s.Replace(ams, "\\let\\proof\\relax\n\\let\\endproof\\relax\n" + ams),
+            // siamart loads ntheorem (theorem, proof…) and amsmath[leqno]: amsthm would clash with ntheorem.
+            "siamart251216" => s.Replace(ams, @"\usepackage{amsmath,amssymb,amsfonts}"),
             // REVTeX defines longtable* at \begin{document}, then caption loads ltcaption, which defines it
             // again ("Command \longtable* already defined"). Clearing REVTeX's just before ltcaption loads
             // keeps caption's long-table captions working (skipping ltcaption breaks \caption there).
@@ -218,6 +230,48 @@ public static class PublisherClasses
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
                 body.AppendLine(@"\maketitle");
+                break;
+
+            case "iopjournal":
+            {
+                // iopjournal typesets \title, \author and \affil where they stand (no \maketitle): the
+                // authors in one line with superscript numbers, one \affil per institution, then
+                // keywords and the abstract, as IOP's own template.
+                var institutes = new List<string>();
+                var names = new List<string>();
+                foreach (var a in authors)
+                {
+                    var inst = a.Lines.Count > 0 ? Line(a.Lines, ", ") : null;
+                    var n = 0;
+                    if (inst is not null)
+                    {
+                        var i = institutes.IndexOf(inst);
+                        if (i < 0) { institutes.Add(inst); i = institutes.Count - 1; }
+                        n = i + 1;
+                    }
+                    names.Add(escape(a.Name) + (n > 0 ? $"$^{{{n}}}$" : ""));
+                }
+                body.AppendLine(@"\begin{document}");
+                body.AppendLine($@"\title{{{titleLatex}}}");
+                var list = names.Count <= 1 ? string.Join("", names) : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
+                body.AppendLine($@"\author{{{list}}}");
+                for (var i = 0; i < institutes.Count; i++) body.AppendLine($@"\affil{{$^{{{i + 1}}}${institutes[i]}}}");
+                if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
+                if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
+                break;
+            }
+
+            case "siamart251216":
+                // SIAM: each author's affiliation in a \thanks, abstract and a keywords environment
+                // after \maketitle (SIAM's ex_article.tex).
+                pre.AppendLine($@"\title{{{titleLatex}}}");
+                if (authors.Count > 0)
+                    pre.AppendLine(@"\author{" + string.Join("\n\\and ", authors.Select(a =>
+                        escape(a.Name) + (a.Lines.Count > 0 ? $@"\thanks{{{Line(a.Lines, ", ")}.}}" : ""))) + "}");
+                body.AppendLine(@"\begin{document}");
+                body.AppendLine(@"\maketitle");
+                if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
+                if (kw.Count > 0) body.AppendLine($"\\begin{{keywords}}\n{string.Join(", ", kw)}\n\\end{{keywords}}");
                 break;
 
             default:
