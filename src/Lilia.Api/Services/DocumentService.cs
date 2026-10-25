@@ -661,6 +661,11 @@ public class DocumentService : IDocumentService
 
         if (lookUpdate.Apply) document.Look = lookUpdate.Stored;
         ApplyPublisherProfile(document, dto.PublisherProfile);
+        // The class version the venue was chosen with (the template update service): pinned when a
+        // venue is set, cleared with it.
+        if (document.PublisherProfile is null) document.PublisherTemplateVersion = null;
+        else if (dto.PublisherProfile is { Length: > 0 })
+            document.PublisherTemplateVersion = await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(document.LatexDocumentClass!);
 
         document.UpdatedAt = DateTime.UtcNow;
 

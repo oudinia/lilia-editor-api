@@ -99,7 +99,7 @@ public static class PublisherProfiles
             "revtex4-2", "aip,reprint", "aipnum4-2", "revtex4-2 4.2f",
             ["title", "authors", "affiliations", "abstract"], "https://publishing.aip.org/resources/researchers/author-instructions/"),
         new("ams-journal", "AMS", "AMS journals and proceedings", "journal", "final",
-            "amsart", "", "amsplain", "amsart 2.20",
+            "amsart", "", "amsplain", "amsart 2.20.6",
             ["title", "authors", "affiliations", "abstract", "keywords"], "https://www.ams.org/publications/authors/tex/amslatex"),
         // IOP and SIAM (25 Oct 2026): their classes come from the publishers (TEXMFLOCAL). IOP reviews
         // double-anonymous with [anonymous]; SIAM's [review] adds line numbers.

@@ -96,6 +96,22 @@ public class LaTeXExportService : ILaTeXExportService
         return main[..lineStart] + block + main[lineStart..];
     }
 
+    /// <summary>The folder of a TAPS ZIP that holds the source (ACM).</summary>
+    public const string TapsSourceFolder = "source";
+
+    /// <summary>
+    /// TAPS's name for the ZIP, <c>&lt;Proceeding Acronym&gt;-&lt;Paper ID&gt;.zip</c>, from what the author
+    /// typed (as TAPS's dashboard shows them), or null when either is missing. Kept to letters, digits,
+    /// and <c>' _ -</c>, so it is a safe file name.
+    /// </summary>
+    public static string? TapsZipName(string? acronym, string? paperId)
+    {
+        static string Clean(string? s) => System.Text.RegularExpressions.Regex.Replace((s ?? "").Trim(), @"[^A-Za-z0-9'_-]+", "");
+        var a = Clean(acronym);
+        var p = Clean(paperId);
+        return a.Length == 0 || p.Length == 0 ? null : $"{a}-{p}.zip";
+    }
+
     public async Task<Stream> ExportToZipAsync(Guid documentId, LaTeXExportOptions options)
     {
         // Untracked: an export only reads, and a class override must never be saved.
@@ -168,8 +184,15 @@ public class LaTeXExportService : ILaTeXExportService
             if (bibEntries.Count > 0 && bst is not null && PublisherClasses.MayShipStyle(bst) && await PublisherStyleFileAsync(bst) is { } bstBytes)
                 entries.Add(($"{bst}.bst", bstBytes));
             var main = projectFiles.First(f => f.Path == "main.tex").Content;
-            var compliance = PublisherCompliance.Check(doc, blocks, main);
-            entries.Add((SubmissionManifest.FileName, SubmissionManifest.Build(doc, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass), entries, compliance)));
+            var cls = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
+            var installed = PublisherClasses.Is(cls) ? await PublisherClassVersions.InstalledAsync(PublisherClasses.Canonical(cls)!) : null;
+            var compliance = PublisherCompliance.Check(doc, blocks, main, installed);
+            entries.Add((SubmissionManifest.FileName, SubmissionManifest.Build(doc, cls, entries, compliance, installedClassVersion: installed)));
+
+            // ACM's TAPS takes a ZIP whose source/ folder holds everything compiling needs ("LaTeX Best
+            // Practices": source/ mandatory, pdf/ and supplements/ optional). The manifest goes in with it.
+            if (PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) == "acmart")
+                entries = entries.Select(e => ($"{TapsSourceFolder}/{e.Path}", e.Bytes)).ToList();
         }
 
         // Build ZIP

@@ -1797,6 +1797,9 @@ namespace Lilia.Infrastructure.Migrations
                     b.Property<string>("PublisherProfile")
                         .HasColumnType("text");
 
+                    b.Property<string>("PublisherTemplateVersion")
+                        .HasColumnType("text");
+
                     b.Property<string>("SearchText")
                         .HasColumnType("text")
                         .HasColumnName("search_text");

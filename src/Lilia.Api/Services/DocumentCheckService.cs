@@ -128,7 +128,10 @@ public sealed partial class DocumentCheckService(
             .Include(x => x.Blocks.OrderBy(b => b.SortOrder))
             .Include(x => x.BibliographyEntries)
             .FirstOrDefaultAsync(x => x.Id == d.Id);
-        return doc is null ? null : Lilia.Engines.Publishers.PublisherCompliance.Check(doc, doc.Blocks.OrderBy(b => b.SortOrder).ToList(), source);
+        if (doc is null) return null;
+        var cls = Lilia.Engines.Publishers.PublisherClasses.Canonical(Lilia.Engines.LaTeXPreambleBuilder.ResolveClassName(doc));
+        var installed = cls is null ? null : await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(cls);
+        return Lilia.Engines.Publishers.PublisherCompliance.Check(doc, doc.Blocks.OrderBy(b => b.SortOrder).ToList(), source, installed);
     }
 
     private static string? ErrorOf(DocumentCheck c) => c.Problems.FirstOrDefault(p => p.Severity == "error")?.Message;

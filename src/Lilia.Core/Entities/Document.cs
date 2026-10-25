@@ -188,6 +188,9 @@ public class Document
     // (PublisherProfiles, 25 Oct 2026). Setting one sets the class and options; changing the class to
     // another one clears it. Null: no publisher.
     public string? PublisherProfile { get; set; }
+    // The publisher class's installed version when the venue was chosen ("2026/08/16 v2.20";
+    // PublisherClassVersions, 25 Oct 2026): a later class update is reported, never applied silently.
+    public string? PublisherTemplateVersion { get; set; }
     public string? LatexPackages { get; set; }
 
     /// <summary>

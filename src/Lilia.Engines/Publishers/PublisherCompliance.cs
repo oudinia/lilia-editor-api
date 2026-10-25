@@ -24,7 +24,7 @@ public sealed record ComplianceReport(string? Profile, string Status, IReadOnlyL
 /// </summary>
 public static partial class PublisherCompliance
 {
-    public static ComplianceReport Check(Document doc, IReadOnlyList<Block> blocks, string emittedLatex)
+    public static ComplianceReport Check(Document doc, IReadOnlyList<Block> blocks, string emittedLatex, string? installedClassVersion = null)
     {
         var profile = PublisherProfiles.Find(doc.PublisherProfile);
         var cls = PublisherClasses.Canonical(doc.LatexDocumentClass);
@@ -128,6 +128,17 @@ public static partial class PublisherCompliance
         }
 
         if (cls == "acmart") findings.AddRange(Taps(doc, blocks, profile, titleBlock, authors, own));
+
+        // ── The class's version (the template update service) ──
+        if (installedClassVersion is not null)
+        {
+            if (doc.PublisherTemplateVersion is { } chosen && !PublisherClassVersions.Same(chosen, installedClassVersion))
+                findings.Add(new("info", "template_updated",
+                    $"The {cls} class was updated since you chose this venue ({chosen} → {installedClassVersion}). Nothing changed in your document; check the preview and the PDF again."));
+            if (profile is not null && !PublisherClassVersions.Same(profile.TemplateVersion, installedClassVersion))
+                findings.Add(new("info", "template_unverified",
+                    $"Lilia verified this venue with {profile.TemplateVersion}; this server has {cls} {installedClassVersion}."));
+        }
 
         findings = findings.DistinctBy(f => (f.Code, f.Message, f.BlockId)).ToList();
         var status = findings.Any(f => f.Severity == "error") ? "errors"

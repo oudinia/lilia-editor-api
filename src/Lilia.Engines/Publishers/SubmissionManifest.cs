@@ -21,7 +21,7 @@ public static class SubmissionManifest
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     public static byte[] Build(Document doc, string className, IEnumerable<(string Path, byte[] Bytes)> files,
-        ComplianceReport? validation = null, DateTimeOffset? at = null)
+        ComplianceReport? validation = null, DateTimeOffset? at = null, string? installedClassVersion = null)
     {
         var profile = PublisherProfiles.Find(doc.PublisherProfile);
         var list = files.Where(f => f.Path != FileName).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
@@ -42,6 +42,9 @@ public static class SubmissionManifest
                 documentClass = profile?.DocumentClass ?? className,
                 classOptions = profile?.ClassOptions ?? doc.LatexDocumentClassOptions ?? "",
                 templateVersion = profile?.TemplateVersion,
+                // The class as installed when this was built, and as it was when the venue was chosen.
+                installedVersion = installedClassVersion,
+                chosenWith = doc.PublisherTemplateVersion,
                 bibliographyStyle = PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, className),
                 catalogVersion = PublisherProfiles.CatalogVersion,
             },
