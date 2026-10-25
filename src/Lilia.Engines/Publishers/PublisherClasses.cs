@@ -24,6 +24,12 @@ namespace Lilia.Engines.Publishers;
 /// </summary>
 public static class PublisherClasses
 {
+    /// <summary>
+    /// The rules above, as a version a submission's manifest records: a change to the packages a
+    /// publisher document loads changes it. Phase 2's package whitelist replaces it.
+    /// </summary>
+    public const string PackagePolicyVersion = "lilia-publisher-2026-10-25";
+
     private static readonly string[] Names = ["acmart", "IEEEtran", "elsarticle", "llncs"];
 
     /// <summary>The class's canonical spelling when it is a publisher class, else null.</summary>

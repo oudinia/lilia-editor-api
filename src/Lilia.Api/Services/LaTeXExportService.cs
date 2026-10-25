@@ -110,6 +110,19 @@ public class LaTeXExportService : ILaTeXExportService
         var blocks = doc.Blocks.ToList();
         var bibEntries = doc.BibliographyEntries?.ToList() ?? new List<BibliographyEntry>();
 
+        // A submission is one main.tex (publishers' systems take one file), with the .bbl.
+        if (options.Submission)
+        {
+            options.Structure = "single";
+            options.Arxiv = true;
+        }
+
+        // A submission's figures are real files or the export stops: a framed "Missing figure" is
+        // fine in a draft, never in what a publisher receives (publisher templates step 6).
+        var images = options.IncludeImages
+            ? await CollectImagesAsync(blocks, strict: options.Submission)
+            : [];
+
         var projectFiles = GenerateProject(doc, blocks, bibEntries, options);
 
         // arXiv-ready: compile the project (pdflatex pass 1 → BibTeX) and bundle
@@ -141,27 +154,60 @@ public class LaTeXExportService : ILaTeXExportService
                 projectFiles[ri] = new ProjectFile("README.txt", projectFiles[ri].Content + ArxivReadmeNote);
         }
 
+        var entries = projectFiles.Select(f => (f.Path, Bytes: Encoding.UTF8.GetBytes(f.Content))).ToList();
+        entries.AddRange(images);
+
+        if (options.Submission)
+        {
+            // Only what compiling needs: no README. The publisher's .bst rides along (from TeX Live,
+            // unchanged: NFR-6), and the manifest says what this is, with every file's checksum.
+            entries.RemoveAll(e => e.Path == "README.txt");
+            var bst = PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass));
+            if (bibEntries.Count > 0 && bst is not null && await PublisherStyleFileAsync(bst) is { } bstBytes)
+                entries.Add(($"{bst}.bst", bstBytes));
+            var main = projectFiles.First(f => f.Path == "main.tex").Content;
+            var compliance = PublisherCompliance.Check(doc, blocks, main);
+            entries.Add((SubmissionManifest.FileName, SubmissionManifest.Build(doc, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass), entries, compliance)));
+        }
+
         // Build ZIP
         var ms = new MemoryStream();
         using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var file in projectFiles)
+            foreach (var (path, bytes) in entries)
             {
-                var entry = archive.CreateEntry(file.Path, CompressionLevel.Optimal);
+                var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
                 using var entryStream = entry.Open();
-                var bytes = Encoding.UTF8.GetBytes(file.Content);
                 await entryStream.WriteAsync(bytes);
-            }
-
-            // Add images from storage
-            if (options.IncludeImages)
-            {
-                await AddImagesToArchive(archive, blocks);
             }
         }
 
         ms.Position = 0;
         return ms;
+    }
+
+    // A publisher's .bst as TeX Live ships it, read once per process.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]?> _styleFiles = new();
+
+    private static async Task<byte[]?> PublisherStyleFileAsync(string style)
+    {
+        if (_styleFiles.TryGetValue(style, out var kept)) return kept;
+        byte[]? bytes = null;
+        var dir = Path.Combine(Path.GetTempPath(), $"lilia-kpse-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var (exit, stdout, _) = await Lilia.Engines.TexSafety.TexProcessRunner.RunAsync("kpsewhich", $"{style}.bst", dir, 20);
+            var path = stdout.Trim();
+            if (exit == 0 && path.EndsWith($"{style}.bst", StringComparison.Ordinal) && File.Exists(path))
+                bytes = await File.ReadAllBytesAsync(path);
+        }
+        catch { /* no TeX here: the .bbl still lets the project compile */ }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* best effort */ }
+        }
+        return _styleFiles[style] = bytes;
     }
 
     private List<ProjectFile> GenerateProject(
@@ -1320,34 +1366,38 @@ public class LaTeXExportService : ILaTeXExportService
 
     // ── Image bundling ─────────────────────────────────────────────────
 
-    private async Task AddImagesToArchive(ZipArchive archive, List<Block> blocks)
+    /// <summary>
+    /// The figures' images, at the names the .tex includes them by (<see cref="FigureFile.Name"/>),
+    /// subfigures included. They were numbered by their place in the zip while the .tex named them
+    /// by their URL, and a subfigure's image was never packed. <paramref name="strict"/> (a
+    /// submission): an image that can't be read stops the export, naming it.
+    /// </summary>
+    private async Task<List<(string Path, byte[] Bytes)>> CollectImagesAsync(List<Block> blocks, bool strict)
     {
-        var imageIndex = 0;
-        foreach (var block in blocks.Where(b => b.Type == "figure"))
+        var images = new List<(string Path, byte[] Bytes)>();
+        var missing = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (block, src) in FigureFile.Sources(blocks))
         {
+            var filename = FigureFile.Name(src);
+            if (!seen.Add(filename)) continue;
             try
             {
-                var content = block.Content.RootElement;
-                var src = content.TryGetProperty("src", out var s) ? s.GetString() ?? "" : "";
-                if (string.IsNullOrEmpty(src)) continue;
-
-                var filename = ExtractImageFilename(src, imageIndex);
-
                 // The src may be a storage key or a URL path — extract the storage key
-                var storageKey = ExtractStorageKey(src);
-                if (string.IsNullOrEmpty(storageKey)) continue;
-
-                var imageStream = await _storageService.DownloadAsync(storageKey);
-                var entry = archive.CreateEntry($"figures/{filename}", CompressionLevel.Optimal);
-                using var entryStream = entry.Open();
-                await imageStream.CopyToAsync(entryStream);
-                imageIndex++;
+                var storageKey = ExtractStorageKey(src) ?? throw new FileNotFoundException(src);
+                await using var imageStream = await _storageService.DownloadAsync(storageKey);
+                using var copy = new MemoryStream();
+                await imageStream.CopyToAsync(copy);
+                images.Add(($"figures/{filename}", copy.ToArray()));
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to download image for block {BlockId}", block.Id);
+                missing.Add(filename);
             }
         }
+        if (strict && missing.Count > 0) throw new SubmissionFigureException(missing);
+        return images;
     }
 
     private static string? ExtractStorageKey(string src)

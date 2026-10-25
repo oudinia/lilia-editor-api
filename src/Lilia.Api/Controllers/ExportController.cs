@@ -109,8 +109,43 @@ public class ExportController : ControllerBase
 
         _logger.LogInformation("[Export] LaTeX zip export for document {DocId} by user {UserId}", docId, userId);
 
-        var zipStream = await _latexExportService.ExportToZipAsync(docId, options);
-        return File(zipStream, "application/zip", $"{sanitizedTitle}.zip");
+        try
+        {
+            var zipStream = await _latexExportService.ExportToZipAsync(docId, options);
+            return File(zipStream, "application/zip",
+                options.Submission ? $"{sanitizedTitle}-submission.zip" : $"{sanitizedTitle}.zip");
+        }
+        catch (SubmissionFigureException ex)
+        {
+            // A submission never ships a framed "Missing figure": say which images to upload again.
+            return UnprocessableEntity(new { error = "missing_figures", message = ex.Message, figures = ex.Figures });
+        }
+    }
+
+    /// <summary>
+    /// The publisher compliance check (publisher templates step 7): what a document with a publisher
+    /// profile or class still lacks or overrides, as error / warning / info findings. Read from the
+    /// document and the LaTeX the export writes; nothing is compiled. The export page shows it before a
+    /// submission ZIP and asks for confirmation when there are errors.
+    /// </summary>
+    [HttpGet("publisher-check")]
+    public async Task<IActionResult> PublisherCheck(Guid docId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(new { error = "No valid authentication token provided" });
+        if (await _documentService.GetDocumentAsync(docId, userId) == null)
+            return NotFound();
+
+        var doc = await _dbContext.Documents
+            .AsNoTracking()
+            .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
+            .Include(d => d.BibliographyEntries)
+            .FirstOrDefaultAsync(d => d.Id == docId);
+        if (doc == null) return NotFound();
+        var blocks = doc.Blocks.OrderBy(b => b.SortOrder).ToList();
+        var tex = _latexExportService.BuildSingleFileLatex(doc, blocks, doc.BibliographyEntries?.ToList() ?? new(), new LaTeXExportOptions());
+        return Ok(Lilia.Engines.Publishers.PublisherCompliance.Check(doc, blocks, tex));
     }
 
     /// <summary>

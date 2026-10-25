@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Lilia.Core.Entities;
 
 namespace Lilia.Engines;
 
@@ -23,6 +25,27 @@ public static class FigureFile
         filename = Regex.Replace(filename, @"[^a-zA-Z0-9._-]", "-");
         filename = Regex.Replace(filename, @"-+", "-");
         return filename.ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Every image the emitter includes, in order: a figure's own, or, when it has subfigures, theirs
+    /// instead (RenderService prints those and not the figure's src).
+    /// </summary>
+    public static IEnumerable<(Block Block, string Src)> Sources(IEnumerable<Block> blocks)
+    {
+        foreach (var block in blocks.Where(b => b.Type == "figure"))
+        {
+            var content = block.Content.RootElement;
+            if (content.ValueKind != JsonValueKind.Object) continue;
+            if (content.TryGetProperty("subfigures", out var subs) && subs.ValueKind == JsonValueKind.Array && subs.GetArrayLength() > 0)
+            {
+                foreach (var sub in subs.EnumerateArray())
+                    if (sub.ValueKind == JsonValueKind.Object && sub.TryGetProperty("src", out var ss) && ss.GetString() is { Length: > 0 } subSrc)
+                        yield return (block, subSrc);
+            }
+            else if (content.TryGetProperty("src", out var s) && s.GetString() is { Length: > 0 } src)
+                yield return (block, src);
+        }
     }
 
     /// <summary>The image, or a framed placeholder naming the missing file.</summary>

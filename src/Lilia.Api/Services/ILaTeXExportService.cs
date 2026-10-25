@@ -53,6 +53,14 @@ public class LaTeXExportOptions
     public bool Arxiv { get; set; }
 
     /// <summary>
+    /// A submission to the document's publisher (publisher templates step 6): one <c>main.tex</c>,
+    /// <c>references.bib</c>, <c>main.bbl</c>, the publisher's <c>.bst</c>, the figures, and
+    /// <c>lilia-export-manifest.json</c> with a SHA-256 per file. No README; a figure whose image
+    /// can't be read stops it (<see cref="SubmissionFigureException"/>). Bound from <c>?submission=true</c>.
+    /// </summary>
+    public bool Submission { get; set; }
+
+    /// <summary>
     /// Citation backend: <c>natbib</c> (default — BibTeX, most journal-compatible,
     /// arXiv-safe) or <c>biblatex</c> (modern, needs Biber). When
     /// <c>biblatex</c>, the export loads <c>biblatex</c> + <c>\addbibresource</c>,
@@ -77,4 +85,11 @@ public class LaTeXExportOptions
     /// </summary>
     [Microsoft.AspNetCore.Mvc.ModelBinding.BindNever]
     public bool CompileHere { get; set; }
+}
+
+/// <summary>A submission's figures whose images could not be read: the export stops instead of framing them.</summary>
+public sealed class SubmissionFigureException(IReadOnlyList<string> figures)
+    : Exception($"These figures have no image: {string.Join(", ", figures)}.")
+{
+    public IReadOnlyList<string> Figures { get; } = figures;
 }
