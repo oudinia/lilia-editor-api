@@ -187,6 +187,10 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message, error = "invalid_publisher_profile" });
         }
+        catch (PublisherOwnerOnlyException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message, error = "publisher_owner_only" });
+        }
         if (document == null) return NotFound();
         return Ok(document);
     }

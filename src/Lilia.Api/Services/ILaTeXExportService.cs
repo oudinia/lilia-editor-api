@@ -16,6 +16,15 @@ public interface ILaTeXExportService
         List<Lilia.Core.Entities.Block> blocks,
         List<Lilia.Core.Entities.BibliographyEntry> bibEntries,
         LaTeXExportOptions options);
+
+    /// <summary>The main.tex and references.bib a submission would hold now (the LaTeX diff).</summary>
+    (string MainTex, string? ReferencesBib) SubmissionSource(
+        Lilia.Core.Entities.Document doc,
+        List<Lilia.Core.Entities.Block> blocks,
+        List<Lilia.Core.Entities.BibliographyEntry> bibEntries);
+
+    /// <summary>The figure images, under dir/figures (the marked-up PDF's compile).</summary>
+    Task WriteFiguresAsync(List<Lilia.Core.Entities.Block> blocks, string dir);
 }
 
 public class LaTeXExportOptions
@@ -65,6 +74,14 @@ public class LaTeXExportOptions
     /// both). Bound from <c>?tapsAcronym=</c> and <c>?tapsPaperId=</c>; only the file name changes.
     /// </summary>
     public string? TapsAcronym { get; set; }
+
+    /// <summary>
+    /// Who is downloading a submission: set by the LaTeX export route, never bound from the query.
+    /// When set, the submission's main.tex and references.bib are kept (document_submissions), so
+    /// "what changed since the submission" is against what was really sent.
+    /// </summary>
+    [Microsoft.AspNetCore.Mvc.ModelBinding.BindNever]
+    public string? SubmittedBy { get; set; }
     public string? TapsPaperId { get; set; }
 
     /// <summary>

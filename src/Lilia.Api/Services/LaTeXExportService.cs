@@ -96,6 +96,29 @@ public class LaTeXExportService : ILaTeXExportService
         return main[..lineStart] + block + main[lineStart..];
     }
 
+    /// <summary>
+    /// The main.tex and references.bib a submission of this document would hold now (one file, the
+    /// publisher's class): what the LaTeX diff compares with a kept submission.
+    /// </summary>
+    public (string MainTex, string? ReferencesBib) SubmissionSource(Document doc, List<Block> blocks, List<BibliographyEntry> bibEntries)
+    {
+        var options = new LaTeXExportOptions { Structure = "single", Submission = true };
+        UseClassForThisExport(doc, options);
+        var files = GenerateProject(doc, blocks, bibEntries, options);
+        return (files.First(f => f.Path == "main.tex").Content, files.FirstOrDefault(f => f.Path == "references.bib")?.Content);
+    }
+
+    /// <summary>The document's figure images written under <paramref name="dir"/>/figures (the marked-up PDF's compile).</summary>
+    public async Task WriteFiguresAsync(List<Block> blocks, string dir)
+    {
+        foreach (var (path, bytes) in await CollectImagesAsync(blocks, strict: false))
+        {
+            var full = Path.Combine(dir, path);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            await File.WriteAllBytesAsync(full, bytes);
+        }
+    }
+
     /// <summary>The folder of a TAPS ZIP that holds the source (ACM).</summary>
     public const string TapsSourceFolder = "source";
 
@@ -188,6 +211,24 @@ public class LaTeXExportService : ILaTeXExportService
             var installed = PublisherClasses.Is(cls) ? await PublisherClassVersions.InstalledAsync(PublisherClasses.Canonical(cls)!) : null;
             var compliance = PublisherCompliance.Check(doc, blocks, main, installed);
             entries.Add((SubmissionManifest.FileName, SubmissionManifest.Build(doc, cls, entries, compliance, installedClassVersion: installed)));
+
+            // What was sent, kept for the LaTeX diff and the marked-up PDF (never changed afterwards).
+            if (options.SubmittedBy is { Length: > 0 } who && _context is not null)
+            {
+                _context.DocumentSubmissions.Add(new DocumentSubmission
+                {
+                    Id = Guid.NewGuid(),
+                    DocumentId = doc.Id,
+                    CreatedBy = who,
+                    CreatedAt = DateTime.UtcNow,
+                    Profile = doc.PublisherProfile,
+                    ClassVersion = installed,
+                    MainTex = main,
+                    ReferencesBib = projectFiles.FirstOrDefault(f => f.Path == "references.bib")?.Content,
+                    MainTexSha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(main))),
+                });
+                await _context.SaveChangesAsync();
+            }
 
             // ACM's TAPS takes a ZIP whose source/ folder holds everything compiling needs ("LaTeX Best
             // Practices": source/ mandatory, pdf/ and supplements/ optional). The manifest goes in with it.

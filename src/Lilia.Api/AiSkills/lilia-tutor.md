@@ -160,6 +160,12 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   - **Carnet**: essays, humanities, long reading on screen.
   - **Gazette**: newsletters, posters, outreach (never a paper).
   - **Exposition**: Beamer slides and posters on screen (slides only).
+- **Submissions and revisions**: each submission package downloaded is kept as it was. On **Export →
+  LaTeX**, *Last submission…* says when and by whom, and how many lines changed since; **Show the
+  changes** lists them, and **Marked-up PDF (latexdiff)** gives the PDF editors ask for with a revision
+  (additions and deletions marked). Every collaborator sees it. For ACM, the *Proceeding acronym* and
+  *Paper ID* fields name the ZIP as TAPS asks (`<acronym>-<id>.zip`, everything in `source/`). Only the
+  document's **owner** chooses its venue and stage (*Publish with…*); co-authors see it read-only.
 - **Export** opens the dialog: **PDF** (sharing and printing), **LaTeX** (one .tex, or a .zip
   project, flat or Overleaf-style), **Markdown**, **HTML**, **Lilia (LML)**, **Word (.docx)**.
   The arrow next to Export has **Word (.docx)** directly and **All formats…**.

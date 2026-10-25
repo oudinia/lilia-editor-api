@@ -2128,6 +2128,63 @@ namespace Lilia.Infrastructure.Migrations
                     b.ToTable("document_snapshots", (string)null);
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.DocumentSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("ClassVersion")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("class_version");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("MainTex")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("main_tex");
+
+                    b.Property<string>("MainTexSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("main_tex_sha256");
+
+                    b.Property<string>("Profile")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("profile");
+
+                    b.Property<string>("ReferencesBib")
+                        .HasColumnType("text")
+                        .HasColumnName("references_bib");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "CreatedAt")
+                        .HasDatabaseName("ix_document_submissions_document");
+
+                    b.ToTable("document_submissions", (string)null);
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.DocumentTable", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8285,6 +8342,15 @@ namespace Lilia.Infrastructure.Migrations
                     b.Navigation("Creator");
 
                     b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.DocumentSubmission", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.DocumentTable", b =>
