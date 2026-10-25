@@ -121,6 +121,17 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   heading levels carry a number — *Class default*, *None*, or levels 1 to 5 — and the table of contents
   lists the same levels; a Word import starts from what the Word file did. A view-only reader sees it read-only. (On a phone:
   **⋯ → Page & settings** and **⋯ → Look**.)
+- **Publish with…** (first in the document settings): writing for a journal or conference. Pick the
+  venue and stage: **ACM** SIGCONF or journals (review or final), **IEEE** conference or journal,
+  **Elsevier** preprint, double-spaced review or two-column final, **Springer LNCS** submission or
+  camera-ready. The document then prints in the publisher's own class (acmart, IEEEtran, elsarticle,
+  llncs) with its title block, abstract, keywords and reference style, and none of Lilia's layout or
+  theme; **Class options** and **Layout** are locked while it is set, and the top bar reads e.g.
+  *Article · ACM*. Under the choice: the class and options, the reference style, what the publisher
+  needs (title, authors, affiliations, abstract, keywords; ACM also a country per author) and a link to
+  the publisher's guidelines. **None — Lilia's own layout** goes back. Keywords are typed in the title
+  block (click the title, **Keywords**, separated by commas). For ACM, an author's affiliation ends
+  with the country on its own line. Export → LaTeX gives a project the publisher accepts.
 - **Document language** (in the document settings, under Class options; on a phone in **Page & settings**):
   what the PDF is typeset in: headings such as Contents, Figure and References, word breaks at line
   ends, and right to left for Arabic and Hebrew. **Automatic** (the default) reads it from the text and
@@ -322,6 +333,8 @@ taken from the web editor's locale files: refresh this table when the interface'
 | Undo AI changes | Annuler les modifications de l’IA | Deshacer los cambios de la IA |
 | Type & class | Type et classe | Tipo y clase |
 | Class options | Options de classe | Opciones de clase |
+| Publish with… · None — Lilia’s own layout | Publier avec… · Aucun — la mise en page de Lilia | Publicar con… · Ninguno: el diseño de Lilia |
+| Keywords | Mots-clés | Palabras clave |
 | Layout | Mise en page | Diseño |
 | Look | Style | Estilo |
 | Document theme | Thème du document | Tema del documento |
