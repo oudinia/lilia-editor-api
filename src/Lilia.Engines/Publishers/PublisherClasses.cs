@@ -30,7 +30,8 @@ public static class PublisherClasses
     /// </summary>
     public const string PackagePolicyVersion = "lilia-publisher-2026-10-25";
 
-    private static readonly string[] Names = ["acmart", "IEEEtran", "elsarticle", "llncs"];
+    // Phase 2 (25 Oct 2026): revtex4-2 (APS, AIP) and amsart (AMS). iopart and siamart are not in TeX Live.
+    private static readonly string[] Names = ["acmart", "IEEEtran", "elsarticle", "llncs", "revtex4-2", "amsart"];
 
     /// <summary>The class's canonical spelling when it is a publisher class, else null.</summary>
     public static string? Canonical(string? cls) =>
@@ -45,6 +46,9 @@ public static class PublisherClasses
         "IEEEtran" => "IEEEtran",
         "elsarticle" => "elsarticle-num",
         "llncs" => "splncs04",
+        // APS; an AIP profile sets aipnum4-2 (PublisherProfiles).
+        "revtex4-2" => "apsrev4-2",
+        "amsart" => "amsplain",
         _ => null,
     };
 
@@ -67,6 +71,12 @@ public static class PublisherClasses
             "acmart" => s.Replace(ams, @"\usepackage{amsmath}"),
             // llncs defines proof (and theorem…); amsthm's \proof would be "already defined".
             "llncs" => s.Replace(ams, "\\let\\proof\\relax\n\\let\\endproof\\relax\n" + ams),
+            // REVTeX defines longtable* at \begin{document}, then caption loads ltcaption, which defines it
+            // again ("Command \longtable* already defined"). Clearing REVTeX's just before ltcaption loads
+            // keeps caption's long-table captions working (skipping ltcaption breaks \caption there).
+            "revtex4-2" => s.TrimEnd() + "\n\\AddToHook{package/ltcaption/before}{"
+                + "\\expandafter\\let\\csname longtable*\\endcsname\\relax"
+                + "\\expandafter\\let\\csname endlongtable*\\endcsname\\relax}\n",
             _ => s,
         };
         return s;
@@ -179,6 +189,36 @@ public static class PublisherClasses
                 }
                 break;
             }
+
+            case "revtex4-2":
+                // REVTeX reads the front matter inside the body, the abstract before \maketitle, and an
+                // \affiliation after each \author it belongs to.
+                body.AppendLine(@"\begin{document}");
+                body.AppendLine($@"\title{{{titleLatex}}}");
+                foreach (var a in authors)
+                {
+                    body.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{{Line(a.Lines, ", ")}}}");
+                }
+                if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
+                if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
+                body.AppendLine(@"\maketitle");
+                break;
+
+            case "amsart":
+                // amsart: \address per author (lines broken with \\), and the abstract and \keywords
+                // before \maketitle, which prints them in the AMS layout.
+                pre.AppendLine($@"\title{{{titleLatex}}}");
+                foreach (var a in authors)
+                {
+                    pre.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    if (a.Lines.Count > 0) pre.AppendLine($@"\address{{{Line(a.Lines, @"\\")}}}");
+                }
+                body.AppendLine(@"\begin{document}");
+                if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
+                if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
+                body.AppendLine(@"\maketitle");
+                break;
 
             default:
                 throw new ArgumentException($"{cls} is not a publisher class");
