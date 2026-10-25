@@ -10,7 +10,7 @@ namespace Lilia.Engines.Publishers;
 /// country, abstract, keywords.</param>
 /// <param name="TemplateVersion">The class version installed in TeX Live, the one this profile was
 /// compiled against (requirement NFR-5: traceable to the official source).</param>
-public sealed record PublisherProfile(
+public sealed partial record PublisherProfile(
     string Id,
     string Publisher,
     string Venue,
@@ -21,7 +21,18 @@ public sealed record PublisherProfile(
     string BibliographyStyle,
     string TemplateVersion,
     IReadOnlyList<string> RequiredMetadata,
-    string GuidelinesUrl);
+    string GuidelinesUrl)
+{
+    /// <summary>
+    /// The venue without its stage (<c>acm-sigconf</c> for <c>acm-sigconf-review</c> and
+    /// <c>acm-sigconf-final</c>): profiles of one family are the same venue at different stages, which
+    /// the review / camera-ready switch moves between. A profile alone in its family has no switch.
+    /// </summary>
+    public string Family { get; } = StageSuffix().Replace(Id, "");
+
+    [System.Text.RegularExpressions.GeneratedRegex("-(review|final|submission|camera-ready|preprint)$")]
+    private static partial System.Text.RegularExpressions.Regex StageSuffix();
+}
 
 /// <summary>
 /// The publisher profiles (publisher templates phase 1, 25 Oct 2026), versioned with the code: changing
@@ -105,6 +116,13 @@ public static class PublisherProfiles
             "siamart251216", "", "siamplain", "siamart251216 v1.4.8",
             ["title", "authors", "affiliations", "abstract", "keywords"], "https://epubs.siam.org/journal-authors"),
     ];
+
+    /// <summary>
+    /// The profile for <paramref name="stage"/> (<c>review</c> or <c>final</c>) in the same family as
+    /// <paramref name="id"/>: the first in the catalogue's order. Null when the family has no such stage.
+    /// </summary>
+    public static PublisherProfile? AtStage(string? id, string stage) =>
+        Find(id) is { } p ? All.FirstOrDefault(o => o.Family == p.Family && o.Stage == stage) : null;
 
     public static PublisherProfile? Find(string? id) =>
         string.IsNullOrWhiteSpace(id) ? null : All.FirstOrDefault(p => string.Equals(p.Id, id.Trim(), StringComparison.OrdinalIgnoreCase));

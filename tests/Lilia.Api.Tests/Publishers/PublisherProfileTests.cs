@@ -68,6 +68,23 @@ public class PublisherProfileTests
         act.Should().Throw<PublisherProfileException>().WithMessage("*Unknown publisher profile*");
     }
 
+    [Fact]
+    public void A_venue_switches_between_review_and_camera_ready_within_its_family()
+    {
+        PublisherProfiles.Find("acm-sigconf-review")!.Family.Should().Be("acm-sigconf");
+        PublisherProfiles.AtStage("acm-sigconf-review", "final")!.Id.Should().Be("acm-sigconf-final");
+        PublisherProfiles.AtStage("lncs-camera-ready", "review")!.Id.Should().Be("lncs-submission");
+        PublisherProfiles.AtStage("elsevier-final", "review")!.Id.Should().Be("elsevier-preprint", "the first review profile of the family");
+        PublisherProfiles.AtStage("ieee-conference", "review").Should().BeNull("IEEE reviews in the final layout: one profile, no switch");
+
+        // Every family is one publisher and one class: a switch never changes either.
+        foreach (var family in PublisherProfiles.All.GroupBy(p => p.Family))
+        {
+            family.Select(p => p.Publisher).Distinct().Should().ContainSingle(family.Key);
+            family.Select(p => p.DocumentClass).Distinct().Should().ContainSingle(family.Key);
+        }
+    }
+
     public static TheoryData<string> Profiles() => new(PublisherProfiles.All.Select(p => p.Id));
 
     [Trait("Category", "RequiresTeX")]
@@ -101,6 +118,7 @@ public class PublisherProfileApiTests : IntegrationTestBase
         var list = await api.GetFromJsonAsync<JsonElement>("/api/publishers");
         list.GetProperty("catalogVersion").GetString().Should().Be(PublisherProfiles.CatalogVersion);
         list.GetProperty("profiles").GetArrayLength().Should().Be(PublisherProfiles.All.Count);
+        list.GetProperty("profiles")[0].GetProperty("family").GetString().Should().Be("acm-sigconf", "the web's stage switch reads it");
 
         var doc = await SeedDocumentAsync(_userId, "Paper");
         var put = await api.PutAsJsonAsync($"/api/documents/{doc.Id}", new { publisherProfile = "acm-sigconf-review" });
