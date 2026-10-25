@@ -121,7 +121,8 @@ public class DocumentService : IDocumentService
         string? search = null,
         Guid? labelId = null,
         string sortBy = "updatedAt",
-        string sortDir = "desc")
+        string sortDir = "desc",
+        string? scope = null)
     {
         // Ensure valid pagination params
         page = Math.Max(1, page);
@@ -149,6 +150,13 @@ public class DocumentService : IDocumentService
             .Where(d => visible.Contains(d.Id))
             // "Remove from my documents" — shared with them, but not listed.
             .Where(d => !_context.DocumentHides.Any(h => h.DocumentId == d.Id && h.UserId == userId));
+
+        // Home's "Shared with you" and Documents' Owned / Shared with me tabs: filtered here, so a
+        // page holds 20 of them rather than the shared ones among 20 of everything.
+        if (string.Equals(scope, "mine", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(d => d.OwnerId == userId);
+        else if (string.Equals(scope, "shared", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(d => d.OwnerId != userId);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

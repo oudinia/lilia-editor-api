@@ -35,6 +35,7 @@ public class DocumentsController : ControllerBase
     /// <param name="labelId">Filter by label ID</param>
     /// <param name="sortBy">Sort field: title, createdAt, updatedAt (default: updatedAt)</param>
     /// <param name="sortDir">Sort direction: asc, desc (default: desc)</param>
+    /// <param name="scope">mine (the user owns it), shared (someone else does), or empty for both</param>
     [HttpGet]
     public async Task<ActionResult<PaginatedResult<DocumentListDto>>> GetDocuments(
         [FromQuery] int page = 1,
@@ -42,7 +43,8 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] Guid? labelId = null,
         [FromQuery] string sortBy = "updatedAt",
-        [FromQuery] string sortDir = "desc")
+        [FromQuery] string sortDir = "desc",
+        [FromQuery] string? scope = null)
     {
         var sw = Stopwatch.StartNew();
 
@@ -50,7 +52,7 @@ public class DocumentsController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var result = await _documentService.GetDocumentsPaginatedAsync(
-            userId, page, pageSize, search, labelId, sortBy, sortDir);
+            userId, page, pageSize, search, labelId, sortBy, sortDir, scope);
 
         _logger.LogInformation(
             "[Documents] GET list: total={TotalMs}ms, count={DocumentCount}/{TotalCount}, page={Page}/{TotalPages}, search={Search}",
