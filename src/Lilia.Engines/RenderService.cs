@@ -995,6 +995,9 @@ public partial class RenderService : IRenderService
                 var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
                 if (string.IsNullOrWhiteSpace(name)) continue;
                 if (DefaultPreamblePackages.Contains(name)) continue;
+                // The citation package is the export's to choose (natbib, or biblatex as an option): an
+                // imported biblatex beside it stopped the compile ("\bibhang already defined"; 26 Oct 2026).
+                if (LaTeXPreamble.IsCitationPackage(name)) continue;
                 if (!emitted.Add(name)) continue;
                 var o = pkg.TryGetProperty("options", out var opel) ? opel.GetString() : null;
                 var load = string.IsNullOrWhiteSpace(o)
@@ -3086,6 +3089,10 @@ public partial class RenderService : IRenderService
     /// <summary>An optional argument's text, braced when it holds a ] that would end it early (MCP-60).</summary>
     public static string OptionalArgument(string latex) => latex.Contains(']') ? "{" + latex + "}" : latex;
 
+    private static readonly Regex DisplayMathEnvironment = new(
+        @"\\begin\{(equation|align|alignat|gather|multline|flalign|eqnarray|displaymath)(\*?)\}.*?\\end\{\1\2\}",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
     private string ProcessLatexText(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
@@ -3111,6 +3118,13 @@ public partial class RenderService : IRenderService
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         }, RegexOptions.Singleline);
+        // A display environment inside a block's text (an equation in a theorem, as Overleaf papers write
+        // them; 26 Oct 2026): maths too. Unprotected, ^ and _ became \textsuperscript and \_ and its line
+        // breaks paragraphs ("Missing $ inserted").
+        result = DisplayMathEnvironment.Replace(result, m => {
+            mathRegions.Add(m.Value);
+            return $"\x00MATH{mathRegions.Count - 1}\x00";
+        });
         result = Regex.Replace(result, @"\$\$(.+?)\$\$", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";

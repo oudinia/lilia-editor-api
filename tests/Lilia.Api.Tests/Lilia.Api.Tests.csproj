@@ -40,6 +40,10 @@
     </None>
     <!-- The five TikZ files of the .tex corpus (lilia/corpus/main_tex_files/tikz_*.tex):
          TikZ figures, step 1, must import, export, compile and draw each of them. -->
+    <!-- Six Overleaf projects written in each publisher's template (26 Oct 2026): the import's fidelity tests. -->
+    <None Update="Fixtures\overleaf-projects\*.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Fixtures\tikz-corpus\*.tex">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

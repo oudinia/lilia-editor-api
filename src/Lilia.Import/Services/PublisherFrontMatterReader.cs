@@ -88,7 +88,7 @@ public static partial class PublisherFrontMatterReader
         var result = new List<Author>();
         foreach (var part in SplitAnd(author))
         {
-            var name = Commands(part, "IEEEauthorblockN").Select(x => Clean(x.Arg)).FirstOrDefault() ?? Clean(part);
+            var name = Commands(part, "IEEEauthorblockN").Select(x => Clean(IeeeOrdinal().Replace(x.Arg, ""))).FirstOrDefault() ?? Clean(part);
             var lines = Commands(part, "IEEEauthorblockA").SelectMany(x => Plain(x.Arg)).ToList();
             if (name.Length > 0) result.Add(new Author(name, lines));
         }
@@ -100,14 +100,16 @@ public static partial class PublisherFrontMatterReader
     {
         var labelled = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var unlabelled = new List<string>();
-        var authors = new List<(string Name, string[] Labels)>();
+        var authors = new List<(string Name, string[] Labels, List<string> Emails)>();
         foreach (Match m in ElsevierCommand().Matches(src))
         {
             var cmd = m.Groups["cmd"].Value;
             var labels = m.Groups["opt"].Success ? m.Groups["opt"].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
             var arg = Balanced(src, m.Index + m.Length - 1);
             if (arg is null) continue;
-            if (cmd == "author") authors.Add((Clean(Regex.Replace(arg, @"\\(?:corref|fnref|ead)\{[^}]*\}", "")), labels));
+            if (cmd == "author") authors.Add((Clean(Regex.Replace(arg, @"\\(?:corref|fnref|ead)\{[^}]*\}", "")), labels, []));
+            // \ead{…} follows its author (\ead[url]{…} is a home page, not an email).
+            else if (cmd == "ead") { if (authors.Count > 0 && !labels.Contains("url")) authors[^1].Emails.Add(Clean(arg)); }
             else
             {
                 var lines = ElsevierAffiliation(arg).ToList();
@@ -116,7 +118,8 @@ public static partial class PublisherFrontMatterReader
             }
         }
         return authors.Where(a => a.Name.Length > 0).Select(a => new Author(a.Name,
-            a.Labels.Length > 0 ? a.Labels.SelectMany(l => labelled.GetValueOrDefault(l) ?? []).ToList() : [.. unlabelled])).ToList();
+            (a.Labels.Length > 0 ? a.Labels.SelectMany(l => labelled.GetValueOrDefault(l) ?? []).ToList() : [.. unlabelled])
+                .Concat(a.Emails).ToList())).ToList();
     }
 
     private static IEnumerable<string> ElsevierAffiliation(string arg)
@@ -128,21 +131,56 @@ public static partial class PublisherFrontMatterReader
         if (Field("country") is { Length: > 0 } c) yield return c;
     }
 
-    /// <summary>Springer LNCS: \author{A\inst{1} \and B\inst{2}} with \institute{X \and Y}.</summary>
+    /// <summary>
+    /// Springer LNCS: \author{A\inst{1} \and B\inst{2}} with \institute{X \and Y}. Emails sit in the institutes
+    /// (\email{a@x}, or one for several: \email{\{a,b\}@x}); each goes to the institute's author whose surname
+    /// it carries, or else to its authors in order.
+    /// </summary>
     private static List<Author> Llncs(string src)
     {
         var author = Commands(FrontPart(src), "author").Select(x => x.Arg).FirstOrDefault();
         if (author is null) return [];
-        var institutes = Commands(src, "institute").Select(x => SplitAnd(x.Arg).Select(i => string.Join(", ", Plain(Regex.Replace(i, @"\\email\{[^}]*\}|\\url\{[^}]*\}", "")))).ToList()).FirstOrDefault() ?? [];
-        return SplitAnd(author).Select(part =>
+        var instituteParts = Commands(src, "institute").Select(x => SplitAnd(x.Arg).ToList()).FirstOrDefault() ?? [];
+        var institutes = instituteParts.Select(i => string.Join(", ", Plain(Regex.Replace(i, @"\\email\{(?:[^{}]|\{[^{}]*\})*\}|\\url\{[^}]*\}", "")))).ToList();
+        var instituteEmails = instituteParts.Select(i => Commands(i, "email").SelectMany(e => EmailAddresses(e.Arg)).ToList()).ToList();
+        var authors = SplitAnd(author).Select(part =>
         {
             var numbers = Regex.Matches(part, @"\\inst\{([^}]*)\}").SelectMany(m => m.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries))
                 .Select(n => int.TryParse(n, out var i) ? i : 0).Where(i => i > 0 && i <= institutes.Count).ToList();
+            if (numbers.Count == 0 && institutes.Count == 1) numbers = [1];
             var name = Clean(Regex.Replace(part, @"\\inst\{[^}]*\}|\\orcidID\{[^}]*\}", ""));
-            var lines = numbers.Count > 0 ? numbers.Select(i => institutes[i - 1]).ToList() : institutes.Count == 1 ? [institutes[0]] : [];
-            return new Author(name, lines);
-        }).Where(a => a.Name.Length > 0).ToList();
+            return (Author: new Author(name, numbers.Select(i => institutes[i - 1]).ToList()), Numbers: numbers);
+        }).Where(a => a.Author.Name.Length > 0).ToList();
+
+        var emailOf = new Dictionary<Author, string>();
+        for (var inst = 1; inst <= instituteEmails.Count; inst++)
+        {
+            var members = authors.Where(a => a.Numbers.Contains(inst)).Select(a => a.Author).ToList();
+            var left = new List<string>();
+            foreach (var email in instituteEmails[inst - 1])
+            {
+                var local = Fold(email.Split('@')[0]);
+                var owner = members.FirstOrDefault(m => !emailOf.ContainsKey(m) && Fold(m.Name.Split(' ').Last()) is { Length: > 1 } surname && local.Contains(surname));
+                if (owner is not null) emailOf[owner] = email; else left.Add(email);
+            }
+            foreach (var (member, email) in members.Where(m => !emailOf.ContainsKey(m)).Zip(left)) emailOf[member] = email;
+        }
+        foreach (var (a, email) in emailOf) a.Lines.Add(email);
+        return authors.Select(a => a.Author).ToList();
     }
+
+    /// <summary>The addresses in an <c>\email</c>: <c>\{a,b\}@x</c> → a@x, b@x; otherwise as listed.</summary>
+    private static IEnumerable<string> EmailAddresses(string arg)
+    {
+        if (Regex.Match(arg, @"\\?\{([^{}]*?)\\?\}\s*@\s*(\S+)") is { Success: true } shared)
+            return shared.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(local => $"{local}@{shared.Groups[2].Value.Trim()}");
+        return Regex.Split(arg, @"[,;\s]+").Select(Clean).Where(e => e.Contains('@'));
+    }
+
+    /// <summary>Lower case letters only, accents off: "Novák" → "novak", "p.vanderberg" → "pvanderberg".</summary>
+    private static string Fold(string s) =>
+        new string(s.Normalize(NormalizationForm.FormD).Where(char.IsAsciiLetter).Select(char.ToLowerInvariant).ToArray());
 
     /// <summary>IOP: \author{A$^1$, B$^2$ and C$^{1,*}$} with \affil{$^1$Inst}.</summary>
     private static List<Author> Iop(string src)
@@ -190,6 +228,9 @@ public static partial class PublisherFrontMatterReader
         var raw = Commands(src, "keywords").Select(x => x.Arg).FirstOrDefault()
             ?? Environment(src, "IEEEkeywords") ?? Environment(src, "keyword") ?? Environment(src, "keywords");
         if (raw is null) return [];
+        // Elsevier's keyword environment ends with classification codes (\MSC[2020] 70J30 \sep 78A60, \PACS, \JEL):
+        // not keywords.
+        raw = Regex.Replace(raw, @"\\(?:MSC|PACS|JEL)\b.*", "", RegexOptions.Singleline);
         return Regex.Split(raw, @"\\sep|\\and|[,;]").Select(Clean).Where(k => k.Length > 0).ToList();
     }
 
@@ -344,6 +385,10 @@ public static partial class PublisherFrontMatterReader
 
     private static string StripComments(string s) => Regex.Replace(s, @"(?<!\\)%.*$", "", RegexOptions.Multiline);
 
-    [GeneratedRegex(@"\\(?<cmd>author|affiliation|address)\*?(?:\[(?<opt>[^\]]*)\])?\s*\{")]
+    [GeneratedRegex(@"\\(?<cmd>author|affiliation|address|ead)\*?(?:\[(?<opt>[^\]]*)\])?\s*\{")]
     private static partial Regex ElsevierCommand();
+
+    /// <summary>IEEE's template numbers its authors "1\textsuperscript{st} Name": the number is not part of the name.</summary>
+    [GeneratedRegex(@"^\s*\d+\s*(?:\\textsuperscript\s*\{[^{}]*\}|\$\^\{?[a-z]+\}?\$)\s*")]
+    private static partial Regex IeeeOrdinal();
 }

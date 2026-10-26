@@ -467,6 +467,141 @@ public class LatexParser : ILatexParser
 
     private ImportDocument Parse(string content, string sourcePath, LatexImportOptions options)
     {
+        // The paper's own macros (\newcommand{\station}…), for this parse: the parser is shared.
+        var outer = OwnMacros.Value;
+        OwnMacros.Value = MacrosDefinedIn(content);
+        try { return ParseCore(content, sourcePath, options); }
+        finally { OwnMacros.Value = outer; }
+    }
+
+    // ── What stays as written in text ────────────────────────────────────
+
+    private static readonly AsyncLocal<HashSet<string>?> OwnMacros = new();
+
+    /// <summary>siunitx's commands: Lilia's preamble loads siunitx, so <c>\SI{4}{\percent}</c> prints as written.</summary>
+    private static readonly HashSet<string> SiunitxCommands = new(StringComparer.Ordinal)
+    {
+        "SI", "si", "num", "qty", "unit", "ang", "SIrange", "numrange", "qtyrange", "SIlist", "numlist", "qtylist",
+        "qtyproduct", "numproduct", "complexnum", "complexqty", "tablenum",
+    };
+
+    private static readonly Regex MacroDefinitionStart = new(
+        @"\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*\\([A-Za-z@]+)\s*\}?\s*(?:\[[^\]]*\]\s*){0,2}|\\def\s*\\([A-Za-z@]+)\s*(?:#\d\s*)*|\\DeclareMathOperator\*?\s*\{\s*\\([A-Za-z@]+)\s*\}\s*",
+        RegexOptions.Compiled);
+
+    private static readonly Regex Structural = new(
+        @"\\item\b|\\(?:begin|end)\s*\{|(?<!\\)&|\\\\|\\(?:hline|section|subsection|chapter|cvsection)\b", RegexOptions.Compiled);
+
+    // What a macro that only formats or lays out its argument is made of (a CV's \resumeItem: \item, bold,
+    // spacing, a colon).
+    private static readonly Regex FormattingOnly = new(
+        @"#\d|\\(?:textcolor|color|colorbox)\s*\{[^{}]*\}|\\[vh]space\*?\s*\{[^{}]*\}|\\(?:begin|end)\s*\{[^{}]*\}(?:\[[^\]]*\])?|\\\\"
+        + @"|\\(?:textbf|textit|emph|textsf|texttt|textsc|textrm|textmd|textup|textsl|underline|mbox|text|bfseries|itshape|sffamily|ttfamily|scshape"
+        + @"|tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|relax|xspace|ignorespaces|unskip"
+        + @"|item|hfill|vfill|noindent|newline|linebreak|par|quad|qquad|centering|raggedright|raggedleft)\b|[{}\s:;,.|()\-–—*]",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// The commands a source defines itself that add something of their own (text, units, symbols):
+    /// <c>\newcommand{\system}{\textsc{Blockwise}}</c>, <c>\newcommand{\conc}[1]{\SI{#1}{\milli\gram\per\liter}}</c>.
+    /// Their uses stay as written (the custom preamble keeps the definitions): flattened, <c>\system{}</c>
+    /// became nothing and <c>\conc{25}</c> a bare 25. One that only formats its argument
+    /// (<c>\textsf{#1}</c>), or passes it to another of the paper's macros, still becomes its argument, so the
+    /// editor shows text, not commands.
+    /// </summary>
+    private static HashSet<string> MacrosDefinedIn(string source)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var defined = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match m in MacroDefinitionStart.Matches(source))
+        {
+            var name = m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Success ? m.Groups[2].Value : m.Groups[3].Value;
+            var open = m.Index + m.Length;
+            if (open >= source.Length || source[open] != '{') continue;
+            var close = MatchingCloseBrace(source, open);
+            if (close < 0) continue;
+            defined[name] = source[(open + 1)..close];
+        }
+        foreach (var (name, body) in defined)
+        {
+            // Layout (a CV's \resumePOR: \item, a tabular*, &): flattened to its arguments as before.
+            if (Structural.IsMatch(body)) continue;
+            var rest = FormattingOnly.Replace(body, "");
+            // Calls to the paper's other macros are forwarding, not content.
+            rest = Regex.Replace(rest, @"\\([A-Za-z@]+)", m => defined.ContainsKey(m.Groups[1].Value) ? "" : m.Value);
+            if (rest.Length > 0) names.Add(name);
+        }
+        return names;
+    }
+
+    private static int MatchingCloseBrace(string s, int open)
+    {
+        var depth = 0;
+        for (var i = open; i < s.Length; i++)
+        {
+            if (s[i] == '\\') { i++; continue; }
+            if (s[i] == '{') depth++;
+            else if (s[i] == '}' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Sets aside, as written, every use of a command whose output the text flattener must not touch:
+    /// siunitx's (<c>\SI{25}{\milli\gram\per\liter}</c> came out as <c>25{\milli…</c> and stopped the
+    /// compile) and the paper's own macros (<c>\station{R1}</c> became "R1", <c>\system{}</c> nothing), whose
+    /// definitions the custom preamble keeps. Each use with all its <c>[…]</c> and <c>{…}</c> arguments.
+    /// </summary>
+    private static string SetAsideVerbatimCommands(string text, Func<string, string> stash)
+    {
+        var own = OwnMacros.Value;
+        return StashCommandsWithArguments(text, name => SiunitxCommands.Contains(name) || own?.Contains(name) == true, stash);
+    }
+
+    private static string StashCommandsWithArguments(string text, Func<string, bool> keep, Func<string, string> stash)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        var i = 0;
+        while (i < text.Length)
+        {
+            var at = text.IndexOf('\\', i);
+            if (at < 0) { sb.Append(text, i, text.Length - i); break; }
+            sb.Append(text, i, at - i);
+            var j = at + 1;
+            while (j < text.Length && (char.IsAsciiLetter(text[j]) || text[j] == '@')) j++;
+            var name = text[(at + 1)..j];
+            if (name.Length == 0 || !keep(name))
+            {
+                // Not one of them (or an escaped character): copy the backslash and what follows it.
+                var end = name.Length == 0 ? Math.Min(at + 2, text.Length) : j;
+                sb.Append(text, at, end - at);
+                i = end;
+                continue;
+            }
+            // Its arguments: any run of [..] and {..}, braces balanced.
+            var k = j;
+            while (k < text.Length && (text[k] == '[' || text[k] == '{'))
+            {
+                var close = text[k] == '[' ? ']' : '}';
+                var depth = 0;
+                var m = k;
+                for (; m < text.Length; m++)
+                {
+                    if (text[m] == '\\') { m++; continue; }
+                    if (text[m] == text[k]) depth++;
+                    else if (text[m] == close && --depth == 0) break;
+                }
+                if (m >= text.Length) break;
+                k = m + 1;
+            }
+            sb.Append(stash(text[at..k]));
+            i = k;
+        }
+        return sb.ToString();
+    }
+
+    private ImportDocument ParseCore(string content, string sourcePath, LatexImportOptions options)
+    {
         PublisherFrontMatterReader.Result? publisherFront = null;
         // For raw-text input ("input.tex" sentinel), default title to empty rather than the literal "input".
         var defaultTitle = sourcePath == "input.tex" ? string.Empty : Path.GetFileNameWithoutExtension(sourcePath);
@@ -816,6 +951,169 @@ public class LatexParser : ILatexParser
         ExtractInlineReferences(document, harvestedCites, harvestedLabels);
 
         return document;
+    }
+
+    // ── Lists ────────────────────────────────────────────────────────────
+
+    private static readonly Regex ListBoundary = new(@"\\(begin|end)\{(itemize|enumerate|description)\}", RegexOptions.Compiled);
+
+    /// <summary>The first list environment, to its own <c>\end</c> (nested lists counted).</summary>
+    private static Match BalancedListMatch(string text)
+    {
+        var open = Regex.Match(text, @"\\begin\{(itemize|enumerate|description)\}");
+        if (!open.Success) return Match.Empty;
+        var depth = 0;
+        for (var m = ListBoundary.Match(text, open.Index); m.Success; m = m.NextMatch())
+        {
+            depth += m.Groups[1].Value == "begin" ? 1 : -1;
+            if (depth == 0)
+            {
+                var end = m.Index + m.Length;
+                return new Regex(@"\G\\begin\{(itemize|enumerate|description)\}([\s\S]*)\\end\{(?:itemize|enumerate|description)\}")
+                    .Match(text[..end], open.Index);
+            }
+        }
+        return Match.Empty;
+    }
+
+    /// <summary>
+    /// A list's items, split at its own <c>\item</c>s (not a nested list's); a nested list becomes the
+    /// item's children. Each item's text is normalised like a paragraph's (2026-04-25).
+    /// </summary>
+    private List<ImportListItem> ReadListItems(string body, bool numbered)
+    {
+        // Split at depth-0 \item.
+        var starts = new List<int>();
+        var depth = 0;
+        foreach (Match m in Regex.Matches(body, @"\\(begin|end)\{(?:itemize|enumerate|description)\}|\\item\b"))
+        {
+            if (m.Value.StartsWith(@"\begin", StringComparison.Ordinal)) depth++;
+            else if (m.Value.StartsWith(@"\end", StringComparison.Ordinal)) depth--;
+            else if (depth == 0) starts.Add(m.Index);
+        }
+        var items = new List<ImportListItem>();
+        for (var k = 0; k < starts.Count; k++)
+        {
+            var from = starts[k] + @"\item".Length;
+            var raw = body[from..(k + 1 < starts.Count ? starts[k + 1] : body.Length)];
+            // A nested list inside the item: its items are this one's children.
+            var children = new List<ImportListItem>();
+            var nested = BalancedListMatch(raw);
+            var own = raw;
+            if (nested.Success)
+            {
+                children = ReadListItems(nested.Groups[2].Value, nested.Groups[1].Value == "enumerate");
+                own = raw.Remove(nested.Index, nested.Length);
+            }
+            var itemText = own.Trim();
+            // \item[label] (description list) — strip the optional [label].
+            var optMatch = Regex.Match(itemText, @"^\[([^\]]*)\]\s*");
+            string? marker = null;
+            if (optMatch.Success)
+            {
+                marker = optMatch.Groups[1].Value;
+                itemText = itemText[optMatch.Length..];
+            }
+            if (string.IsNullOrWhiteSpace(itemText) && children.Count == 0) continue;
+            items.Add(new ImportListItem
+            {
+                Text = NormaliseInlineCommands(itemText),
+                IsNumbered = numbered,
+                ListMarker = marker,
+                Formatting = ParseLatexFormatting(itemText),
+                Children = children,
+            });
+        }
+        return items;
+    }
+
+    // ── Image figures ────────────────────────────────────────────────────
+
+    private static readonly Regex SubfigureEnv = new(
+        @"\\begin\{subfigure\}(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}([\s\S]*?)\\end\{subfigure\}", RegexOptions.Compiled);
+    private static readonly Regex LabelCommand = new(@"\\label\{([^}]+)\}", RegexOptions.Compiled);
+    private static readonly Regex IncludeGraphics = new(@"\\includegraphics\*?(?:\[([^\]]*)\])?\{([^}]+)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// An image figure as an Overleaf paper writes it (26 Oct 2026, the six test projects): the image, the
+    /// caption with its references and maths, the <c>\label</c> (also when it sits inside the caption, as
+    /// REVTeX's template has it), ACM's <c>\Description</c>, the width, and subfigures with their own image,
+    /// caption and label. Before, only the image and the caption (flattened to plain text) were kept, so
+    /// every reference to a figure printed ??.
+    /// </summary>
+    private ImportImage ReadImageFigure(string figContent, bool pageWide, int order)
+    {
+        var subfigures = new List<ImportSubfigure>();
+        foreach (Match sub in SubfigureEnv.Matches(figContent))
+        {
+            var body = sub.Groups[1].Value;
+            var (subCaption, subLabel) = CaptionAndLabel(body);
+            subfigures.Add(new ImportSubfigure
+            {
+                Filename = IncludeGraphics.Match(body) is { Success: true } g ? g.Groups[2].Value.Trim() : null,
+                Caption = subCaption,
+                Label = subLabel,
+            });
+        }
+        // What belongs to the figure itself: everything outside its subfigures.
+        var own = SubfigureEnv.Replace(figContent, "");
+        var (caption, label) = CaptionAndLabel(own);
+        var graphics = IncludeGraphics.Match(own);
+        var description = MatchBalanced(own, "Description");
+        return new ImportImage
+        {
+            Order = order,
+            Filename = subfigures.Count == 0 && graphics.Success ? graphics.Groups[2].Value.Trim() : null,
+            Caption = caption,
+            Label = label,
+            AltText = description.HasValue
+                ? StripInlineCommandsForPlainText(Regex.Replace(description.Value.Inner, @"\s+", " "))
+                : caption is null ? null : StripInlineCommandsForPlainText(caption),
+            Description = description.HasValue ? Regex.Replace(description.Value.Inner, @"\s+", " ").Trim() : null,
+            Width = graphics.Success ? WidthOf(graphics.Groups[1].Value) : null,
+            Subfigures = subfigures,
+            Span = pageWide ? "page" : "column",
+            Data = []
+        };
+    }
+
+    /// <summary>One <c>key=value</c> of lstlisting's options, braced (<c>caption={A, b}</c>) or not.</summary>
+    private static string? ListingOption(string options, string key)
+    {
+        var m = Regex.Match(options, @"(?:^|[\[,])\s*" + key + @"\s*=\s*(?:\{((?:[^{}]|\{[^{}]*\})*)\}|([^,\]]*))");
+        if (!m.Success) return null;
+        var value = (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value).Trim();
+        return value.Length > 0 ? value : null;
+    }
+
+    /// <summary>A float's caption (LaTeX text, its <c>\label</c> taken out) and label (in or after the caption).</summary>
+    private (string? Caption, string? Label) CaptionAndLabel(string body)
+    {
+        var captionMatch = MatchBalanced(body, "caption");
+        string? caption = null;
+        string? label = null;
+        if (captionMatch.HasValue)
+        {
+            var inner = captionMatch.Value.Inner;
+            if (LabelCommand.Match(inner) is { Success: true } inCaption)
+            {
+                label = inCaption.Groups[1].Value.Trim();
+                inner = inner.Remove(inCaption.Index, inCaption.Length);
+            }
+            caption = NormaliseInlineCommands(Regex.Replace(inner, @"\s+", " ").Trim());
+        }
+        label ??= LabelCommand.Match(body) is { Success: true } l ? l.Groups[1].Value.Trim() : null;
+        return (caption, label);
+    }
+
+    /// <summary><c>width=0.8\textwidth</c> → 0.8, <c>width=\linewidth</c> → 1; null for an absolute width.</summary>
+    private static double? WidthOf(string options)
+    {
+        var m = Regex.Match(options, @"width\s*=\s*([0-9]*\.?[0-9]*)\s*\\(?:textwidth|linewidth|columnwidth|hsize)");
+        if (!m.Success) return null;
+        return m.Groups[1].Value.Length == 0
+            ? 1.0
+            : double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var f) ? f : null;
     }
 
     // ── TikZ pictures ────────────────────────────────────────────────────
@@ -1302,6 +1600,11 @@ public class LatexParser : ILatexParser
             mathSpans.Add(m.Value);
             return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
         });
+        text = SetAsideVerbatimCommands(text, written =>
+        {
+            mathSpans.Add(written);
+            return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
+        });
         text = NormaliseInlineCommandsOutsideMath(text);
         return mathSpans.Count == 0
             ? text
@@ -1316,6 +1619,12 @@ public class LatexParser : ILatexParser
 
     private string NormaliseInlineCommandsOutsideMath(string text)
     {
+
+        // biblatex's citations in the natbib form Lilia keeps (the export writes them back for biblatex):
+        // \textcite became the bare key, the citation lost.
+        // (\Textcite and \Parencite lose their capital: natbib's \Citet is not among the preserved commands.)
+        text = Regex.Replace(text, @"\\(textcite|Textcite|parencite|Parencite|autocite|Autocite)(?![A-Za-z])", m =>
+            m.Groups[1].Value is "textcite" or "Textcite" ? @"\citet" : @"\citep");
 
         // Normalise escaped TeX marks first.
         text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
@@ -1693,7 +2002,9 @@ public class LatexParser : ILatexParser
             }
 
             // Lists — itemize / enumerate / description (P0-1)
-            var listMatch = Regex.Match(remaining, @"\\begin\{(itemize|enumerate|description)\}([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
+            // Matched to its own \end, not the first one: a nested list's \end{itemize} ended the outer
+            // list, and its items leaked into a paragraph as "\item … itemize" (26 Oct 2026).
+            var listMatch = BalancedListMatch(remaining);
             if (listMatch.Success)
                 matches.Add((listMatch, "list"));
 
@@ -1829,7 +2140,11 @@ public class LatexParser : ILatexParser
                         var starred = firstMatch.match.Groups[2].Value == "*";
                         var rawLatex = firstMatch.match.Groups[3].Value.Trim();
                         // P1-4: lift \label{...} out of the equation body so the editor can store it as block metadata.
+                        // Not when several lines each have one (align, gather): the block holds one label, and
+                        // lifting the first dropped the others, so \eqref to them printed ??. They stay on their
+                        // lines; the export keeps a body's own labels (EquationLatex).
                         var labelExtract = Regex.Match(rawLatex, @"\\label\{([^}]+)\}");
+                        if (Regex.Matches(rawLatex, @"\\label\{").Count > 1) labelExtract = Match.Empty;
                         if (labelExtract.Success)
                         {
                             rawLatex = rawLatex.Replace(labelExtract.Value, "").Trim();
@@ -1877,10 +2192,14 @@ public class LatexParser : ILatexParser
 
                         // P0-5: extract language. lstlisting uses [language=X]; minted uses {lang}; verbatim has none.
                         string? lang = null;
+                        string? listingCaption = null, listingLabel = null;
                         if (envName == "lstlisting" && bracketArg.Length > 0)
                         {
                             var langMatch = Regex.Match(bracketArg, @"language\s*=\s*([A-Za-z0-9+#\-]+)", RegexOptions.IgnoreCase);
                             if (langMatch.Success) lang = langMatch.Groups[1].Value.ToLowerInvariant();
+                            // caption={…} and label={…}: a listing referred to as Listing~\ref{lst:x}.
+                            listingCaption = ListingOption(bracketArg, "caption") is { } c ? NormaliseInlineCommands(c) : null;
+                            listingLabel = ListingOption(bracketArg, "label");
                         }
                         else if (envName == "minted" && braceArg.Length > 0)
                         {
@@ -1893,6 +2212,8 @@ public class LatexParser : ILatexParser
                             Order = elementOrder++,
                             Text = body,
                             Language = lang,
+                            Caption = listingCaption,
+                            Label = listingLabel,
                             DetectionReason = CodeBlockDetectionReason.StyleName
                         });
                     }
@@ -1925,17 +2246,26 @@ public class LatexParser : ILatexParser
                             document.Elements.Add(TikzFigureFrom(firstMatch.match.Value, figContent, firstMatch.type == "figure*", tikz, elementOrder++));
                             break;
                         }
-                        var graphicsMatch = Regex.Match(figContent, @"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}");
-                        var captionInner = MatchBalanced(figContent, "caption");
-
-                        document.Elements.Add(new ImportImage
+                        // An algorithm drawn in a figure (IEEE's template puts algorithmic in a figure):
+                        // an algorithm block, not an empty image.
+                        if (!figContent.Contains(@"\includegraphics", StringComparison.Ordinal)
+                            && Regex.Match(figContent, @"\\begin\{algorithmic\}(\[[^\]]*\])?([\s\S]*?)\\end\{algorithmic\}") is { Success: true } inFigure)
                         {
-                            Order = elementOrder++,
-                            Filename = graphicsMatch.Success ? graphicsMatch.Groups[1].Value : null,
-                            AltText = captionInner.HasValue ? StripInlineCommandsForPlainText(captionInner.Value.Inner) : null,
-                            Span = firstMatch.type == "figure*" ? "page" : "column",
-                            Data = []
-                        });
+                            var figCaption = MatchBalanced(figContent, "caption");
+                            var figLabel = Regex.Match(figContent, @"\\label\{([^}]+)\}");
+                            var algoCode = inFigure.Groups[2].Value.Trim();
+                            document.Elements.Add(new ImportAlgorithm
+                            {
+                                Order = elementOrder++,
+                                Caption = figCaption.HasValue ? StripInlineCommandsForPlainText(figCaption.Value.Inner) : null,
+                                Label = figLabel.Success ? figLabel.Groups[1].Value.Trim() : null,
+                                Code = algoCode,
+                                Lines = ParseAlgorithmicLines(algoCode),
+                                LineNumbers = inFigure.Groups[1].Value.Contains("1", StringComparison.Ordinal),
+                            });
+                            break;
+                        }
+                        document.Elements.Add(ReadImageFigure(figContent, firstMatch.type == "figure*", elementOrder++));
                     }
                     break;
 
@@ -1994,36 +2324,12 @@ public class LatexParser : ILatexParser
                     {
                         var listKind = firstMatch.match.Groups[1].Value; // itemize | enumerate | description
                         var body = firstMatch.match.Groups[2].Value;
-                        var isNumbered = listKind == "enumerate";
                         var listGroup = elementOrder;             // unique per list environment
-                        // Split on \item — first split is preamble (whitespace) and is dropped.
-                        var items = Regex.Split(body, @"\\item\b").Skip(1);
-                        foreach (var raw in items)
+                        foreach (var item in ReadListItems(body, listKind == "enumerate"))
                         {
-                            var itemText = raw.Trim();
-                            // \item[label] (description list) — strip the optional [label].
-                            var optMatch = Regex.Match(itemText, @"^\[([^\]]*)\]\s*");
-                            string? marker = null;
-                            if (optMatch.Success)
-                            {
-                                marker = optMatch.Groups[1].Value;
-                                itemText = itemText[optMatch.Length..];
-                            }
-                            if (string.IsNullOrWhiteSpace(itemText)) continue;
-                            // 2026-04-25 fix: list items must run through the
-                            // same inline-normalisation pipeline as paragraphs,
-                            // otherwise \textbf{…}, \textit{…}, \hfill, \\, etc.
-                            // leak into the block text verbatim.
-                            var normalisedItem = NormaliseInlineCommands(itemText);
-                            document.Elements.Add(new ImportListItem
-                            {
-                                Order = elementOrder++,
-                                Text = normalisedItem,
-                                IsNumbered = isNumbered,
-                                ListGroup = listGroup,
-                                ListMarker = marker,
-                                Formatting = ParseLatexFormatting(itemText),
-                            });
+                            item.Order = elementOrder++;
+                            item.ListGroup = listGroup;
+                            document.Elements.Add(item);
                         }
                     }
                     break;
