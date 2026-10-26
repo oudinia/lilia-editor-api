@@ -47,15 +47,17 @@ public static partial class PublisherCompliance
         var titleBlock = blocks.FirstOrDefault(b => b.Type == BlockTypes.Title);
         var title = Text(titleBlock, "title") is { Length: > 0 } t ? t : doc.Title;
         var authors = TitleAuthors.Parse(Text(titleBlock, "author"));
+        // An email line is the author's email, not a line of the address.
+        static int Address(TitleAuthor a) => a.Lines.Count(l => !PublisherClasses.IsEmail(l));
         if (required.Contains("title") && (string.IsNullOrWhiteSpace(title) || title.Trim() == "Untitled"))
             findings.Add(new("error", "title", "The document has no title.", titleBlock?.Id.ToString()));
         if (required.Contains("authors") && authors.Count == 0)
             findings.Add(new("error", "authors", "No author is given in the title block.", titleBlock?.Id.ToString()));
         if (required.Contains("affiliations"))
-            foreach (var a in authors.Where(a => a.Lines.Count == 0))
+            foreach (var a in authors.Where(a => Address(a) == 0))
                 findings.Add(new("warning", "affiliation", $"{a.Name} has no affiliation (a line under the name in the title block).", titleBlock?.Id.ToString()));
         if (required.Contains("country"))
-            foreach (var a in authors.Where(a => a.Lines.Count < 2))
+            foreach (var a in authors.Where(a => Address(a) < 2))
                 findings.Add(new("warning", "country",
                     $"ACM wants a country for each author: put it as the last line of {a.Name}'s affiliation.", titleBlock?.Id.ToString()));
         if (required.Contains("abstract") && !blocks.Any(b => b.Type == BlockTypes.Abstract && HasText(b)))
@@ -93,6 +95,28 @@ public static partial class PublisherCompliance
                     findings.Add(new("info", "figure_format", $"{name}: EPS is converted to PDF when compiled; a PDF of it is safer.", f.Id.ToString()));
             }
         }
+
+        // ── Figures and tables the text never refers to ──
+        // Elsevier, IEEE and Springer ask that each be cited in the text, in order. Only a captioned one is
+        // numbered, so only those count; a label is matched as written and as the export writes it.
+        var referred = audit.References.SelectMany(r => r.Key.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToHashSet(StringComparer.Ordinal);
+        int figures = 0, tables = 0;
+        foreach (var b in blocks.Where(b => b.Type is BlockTypes.Figure or BlockTypes.Table && HasCaption(b)))
+        {
+            var isFigure = b.Type == BlockTypes.Figure;
+            var n = isFigure ? ++figures : ++tables;
+            var keys = Labels(b).SelectMany(l => new[] { l, LabelKey.Safe(l), LabelKey.Effective(b.Type, l) }).Where(k => k.Length > 0);
+            if (!keys.Any(referred.Contains))
+                findings.Add(new("warning", isFigure ? "figure_unreferenced" : "table_unreferenced",
+                    $"{(isFigure ? "Figure" : "Table")} {n} is never referred to in the text: publishers ask that each one be cited (a reference to its label).",
+                    b.Id.ToString()));
+        }
+
+        // ── Layout the class refuses ──
+        if (!PublisherClasses.AllowsMulticol(cls ?? "") && blocks.FirstOrDefault(b => b.Type == BlockTypes.ColumnLayout) is { } columns)
+            findings.Add(new("info", "column_layout",
+                "REVTeX doesn't allow column layouts: their text prints in the page's own columns.", columns.Id.ToString()));
 
         // ── Sample text left from a template ──
         foreach (var b in blocks)
@@ -242,4 +266,17 @@ public static partial class PublisherCompliance
 
     [GeneratedRegex(@"(?i)\b(?:lorem ipsum|insert (?:your )?title here|your name here|author name|title of the paper|ACM Reference Format:? [A-Z]\. Author)\b")]
     private static partial Regex SampleText();
+
+    private static bool HasCaption(Block b) => Text(b, "caption") is { Length: > 0 } c && c.Trim().Length > 0;
+
+    /// <summary>A figure's or table's label, and its subfigures'.</summary>
+    private static IEnumerable<string> Labels(Block b)
+    {
+        if (Text(b, "label") is { Length: > 0 } l) yield return l;
+        if (b.Content?.RootElement is { ValueKind: JsonValueKind.Object } root
+            && root.TryGetProperty("subfigures", out var subs) && subs.ValueKind == JsonValueKind.Array)
+            foreach (var sub in subs.EnumerateArray())
+                if (sub.ValueKind == JsonValueKind.Object && sub.TryGetProperty("label", out var sl) && sl.GetString() is { Length: > 0 } subLabel)
+                    yield return subLabel;
+    }
 }

@@ -87,7 +87,7 @@ public class SubmissionZipTests : IntegrationTestBase
         Encoding.UTF8.GetString(entries["main.tex"]).Should().Contain(@"\documentclass[sigconf,review,anonymous]{acmart}");
         ManifestMatches(entries);
         JsonDocument.Parse(entries[SubmissionManifest.FileName]).RootElement.GetProperty("validation").GetProperty("status")
-            .GetString().Should().Be("passed", "the paper has everything ACM asks for");
+            .GetString().Should().Be("passed", Encoding.UTF8.GetString(entries[SubmissionManifest.FileName]));
     }
 
     [Fact]

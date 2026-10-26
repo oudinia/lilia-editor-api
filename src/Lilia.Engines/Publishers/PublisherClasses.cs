@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Text;
 
 namespace Lilia.Engines.Publishers;
@@ -123,7 +124,11 @@ public static class PublisherClasses
         string cls, string title, string? authorText, string? abstractEnv, IReadOnlyList<string> keywords,
         Func<string, string> escape, string titleLatex, string? acmCcs = null, string? acmRights = null)
     {
-        var authors = TitleAuthors.Parse(authorText);
+        // An affiliation line that is an email address is the author's email (the title editor's Email
+        // field writes it as one): each class gets it in its own command, not as a line of the address.
+        var parsed = TitleAuthors.Parse(authorText);
+        var authors = parsed.Select(a => a with { Lines = a.Lines.Where(l => !IsEmail(l)).ToList() }).ToList();
+        var emailsOf = parsed.Select(a => a.Lines.Where(IsEmail).Select(l => escape(l.Trim())).ToList()).ToList();
         var pre = new StringBuilder();
         var body = new StringBuilder();
         var kw = keywords.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => escape(k.Trim())).ToList();
@@ -136,12 +141,9 @@ public static class PublisherClasses
                 // concepts, as ACM's tools give them (AcmMetadata keeps only those commands).
                 if (AcmMetadata.Rights(acmRights).Accepted is { Length: > 0 } rights) pre.Append(rights);
                 pre.AppendLine($@"\title{{{titleLatex}}}");
-                foreach (var author in authors)
+                foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
-                    pre.AppendLine($@"\author{{{escape(author.Name)}}}");
-                    // TAPS wants each author's \email: a line with an @ is one, not part of the affiliation.
-                    var emails = author.Lines.Where(IsEmail).ToList();
-                    var a = author with { Lines = author.Lines.Where(l => !IsEmail(l)).ToList() };
+                    pre.AppendLine($@"\author{{{escape(a.Name)}}}");
                     // ACM wants an affiliation per author: the lines under the name, the last one as the
                     // country. acmart stops on an empty \country ("No country present"), so: no lines, no
                     // \affiliation (it compiles); one line, the institution with an unknown country
@@ -152,7 +154,8 @@ public static class PublisherClasses
                         var country = a.Lines.Count > 1 ? escape(a.Lines[^1]) : @"\relax";
                         pre.AppendLine($@"\affiliation{{\institution{{{inst}}}\country{{{country}}}}}");
                     }
-                    foreach (var e in emails) pre.AppendLine($@"\email{{{escape(e.Trim())}}}");
+                    // TAPS wants each author's \email.
+                    foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                 }
                 if (AcmMetadata.Ccs(acmCcs).Accepted is { Length: > 0 } ccs) pre.Append(ccs);
                 body.AppendLine(@"\begin{document}");
@@ -164,8 +167,12 @@ public static class PublisherClasses
             case "IEEEtran":
                 pre.AppendLine($@"\title{{{titleLatex}}}");
                 if (authors.Count > 0)
-                    pre.AppendLine(@"\author{" + string.Join("\n\\and\n", authors.Select(a =>
-                        $@"\IEEEauthorblockN{{{escape(a.Name)}}}" + (a.Lines.Count > 0 ? $@"\IEEEauthorblockA{{{Line(a.Lines, @"\\")}}}" : ""))) + "}");
+                    // The email stays a line of the author block, as in IEEE's template.
+                    pre.AppendLine(@"\author{" + string.Join("\n\\and\n", authors.Zip(emailsOf).Select(x =>
+                    {
+                        var lines = x.First.Lines.Select(escape).Concat(x.Second).ToList();
+                        return $@"\IEEEauthorblockN{{{escape(x.First.Name)}}}" + (lines.Count > 0 ? $@"\IEEEauthorblockA{{{string.Join(@"\\", lines)}}}" : "");
+                    })) + "}");
                 else pre.AppendLine(@"\author{}");
                 body.AppendLine(@"\begin{document}");
                 body.AppendLine(@"\maketitle");
@@ -177,9 +184,10 @@ public static class PublisherClasses
                 body.AppendLine(@"\begin{document}");
                 body.AppendLine(@"\begin{frontmatter}");
                 body.AppendLine($@"\title{{{titleLatex}}}");
-                foreach (var a in authors)
+                foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     body.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    foreach (var e in emails) body.AppendLine($@"\ead{{{e}}}");
                     if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{organization={{{Line(a.Lines, ", ")}}}}}");
                 }
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
@@ -190,24 +198,29 @@ public static class PublisherClasses
             case "llncs":
             {
                 pre.AppendLine($@"\title{{{titleLatex}}}");
-                // \institute lists each affiliation once; authors point to theirs with \inst{n}.
+                // \institute lists each affiliation once; authors point to theirs with \inst{n}. Emails go
+                // under their institute (\email), as in Springer's template.
                 var institutes = new List<string>();
+                var instEmails = new List<List<string>>();
                 var names = new List<string>();
-                foreach (var a in authors)
+                foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
-                    var inst = a.Lines.Count > 0 ? Line(a.Lines, ", ") : null;
+                    var inst = a.Lines.Count > 0 ? Line(a.Lines, ", ") : emails.Count > 0 ? "" : null;
                     var n = 0;
                     if (inst is not null)
                     {
                         var i = institutes.IndexOf(inst);
-                        if (i < 0) { institutes.Add(inst); i = institutes.Count - 1; }
+                        if (i < 0) { institutes.Add(inst); instEmails.Add([]); i = institutes.Count - 1; }
+                        instEmails[i].AddRange(emails);
                         n = i + 1;
                     }
                     names.Add(escape(a.Name) + (n > 0 ? $@"\inst{{{n}}}" : ""));
                 }
                 pre.AppendLine($@"\author{{{string.Join(@" \and ", names)}}}");
+                var institutesText = institutes.Select((inst, i) => instEmails[i].Count == 0 ? inst
+                    : (inst.Length > 0 ? inst + @"\\ " : "") + $@"\email{{{string.Join(", ", instEmails[i])}}}");
                 // llncs prints \inst numbers only with more than one institute; one is fine as is.
-                pre.AppendLine(institutes.Count > 0 ? $@"\institute{{{string.Join(@" \and ", institutes)}}}" : @"\institute{}");
+                pre.AppendLine(institutes.Count > 0 ? $@"\institute{{{string.Join(@" \and ", institutesText)}}}" : @"\institute{}");
                 body.AppendLine(@"\begin{document}");
                 body.AppendLine(@"\maketitle");
                 if (abstractEnv is not null)
@@ -225,9 +238,10 @@ public static class PublisherClasses
                 // \affiliation after each \author it belongs to.
                 body.AppendLine(@"\begin{document}");
                 body.AppendLine($@"\title{{{titleLatex}}}");
-                foreach (var a in authors)
+                foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     body.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    foreach (var e in emails) body.AppendLine($@"\email{{{e}}}");
                     if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{{Line(a.Lines, ", ")}}}");
                 }
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
@@ -239,10 +253,11 @@ public static class PublisherClasses
                 // amsart: \address per author (lines broken with \\), and the abstract and \keywords
                 // before \maketitle, which prints them in the AMS layout.
                 pre.AppendLine($@"\title{{{titleLatex}}}");
-                foreach (var a in authors)
+                foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
                     if (a.Lines.Count > 0) pre.AppendLine($@"\address{{{Line(a.Lines, @"\\")}}}");
+                    foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                 }
                 body.AppendLine(@"\begin{document}");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
@@ -274,6 +289,8 @@ public static class PublisherClasses
                 var list = names.Count <= 1 ? string.Join("", names) : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
                 body.AppendLine($@"\author{{{list}}}");
                 for (var i = 0; i < institutes.Count; i++) body.AppendLine($@"\affil{{$^{{{i + 1}}}${institutes[i]}}}");
+                // iopjournal's \email prints one "E-mail:" line where it stands.
+                if (emailsOf.SelectMany(e => e).ToList() is { Count: > 0 } all) body.AppendLine($@"\email{{{string.Join(", ", all)}}}");
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 break;
@@ -284,8 +301,14 @@ public static class PublisherClasses
                 // after \maketitle (SIAM's ex_article.tex).
                 pre.AppendLine($@"\title{{{titleLatex}}}");
                 if (authors.Count > 0)
-                    pre.AppendLine(@"\author{" + string.Join("\n\\and ", authors.Select(a =>
-                        escape(a.Name) + (a.Lines.Count > 0 ? $@"\thanks{{{Line(a.Lines, ", ")}.}}" : ""))) + "}");
+                    // The email in the \thanks, in brackets after the address, as SIAM's ex_article.tex.
+                    pre.AppendLine(@"\author{" + string.Join("\n\\and ", authors.Zip(emailsOf).Select(x =>
+                    {
+                        var (a, emails) = x;
+                        var mail = emails.Count > 0 ? $@"(\email{{{string.Join("}, \\email{", emails)}}})" : "";
+                        var note = string.Join(" ", new[] { a.Lines.Count > 0 ? Line(a.Lines, ", ") : "", mail }.Where(t => t.Length > 0));
+                        return escape(a.Name) + (note.Length > 0 ? $@"\thanks{{{note}.}}" : "");
+                    })) + "}");
                 body.AppendLine(@"\begin{document}");
                 body.AppendLine(@"\maketitle");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
@@ -307,8 +330,145 @@ public static class PublisherClasses
     /// packages its publisher accepts, where it publishes a list (<see cref="PublisherPackages"/>).
     /// <paramref name="everything"/>: the whole project's LaTeX when the body is in other files.
     /// </summary>
-    public static string Finish(string latex, string cls, string? everything = null) =>
-        PublisherPackages.KeepAccepted(PlainTables(latex), cls, everything is null ? null : PlainTables(everything));
+    public static string Finish(string latex, string cls, string? everything = null)
+    {
+        var all = Plain(everything ?? latex, cls);
+        // The package check reads the project as sent: pruned the same way, so its positions match.
+        return NoBlankRuns(PublisherPackages.KeepAccepted(OnlyUsedShims(Plain(latex, cls), all), cls,
+            everything is null ? null : OnlyUsedShims(all, all)));
+    }
+
+    // Before \begin{document}: no run of blank lines where shims and packages were taken out.
+    private static string NoBlankRuns(string latex) =>
+        latex.IndexOf(@"\begin{document}", StringComparison.Ordinal) is var end and > 0
+            ? Regex.Replace(latex[..end], @"\n(?:[ \t]*\n){2,}", "\n\n") + latex[end..]
+            : latex;
+
+    private static string Plain(string latex, string cls) =>
+        PlainColumnBreaks(PlainTables(AllowsMulticol(cls) ? latex : WithoutColumnLayouts(latex)));
+
+    /// <summary>REVTeX refuses multicol ("The multicol package cannot be used with revtex4-2").</summary>
+    public static bool AllowsMulticol(string cls) => Canonical(cls) != "revtex4-2";
+
+    /// <summary>
+    /// A column layout's text in the page's own columns, where the class refuses multicol: the
+    /// <c>\begin{multicols}</c> and <c>\end{multicols}</c> lines go (a column break then moves to the next
+    /// column of a two-column page, <see cref="PlainColumnBreaks"/>).
+    /// </summary>
+    public static string WithoutColumnLayouts(string latex) =>
+        Regex.Replace(latex, @"^[ \t]*\\(?:begin\{multicols\*?\}\{\d+\}|end\{multicols\*?\})[ \t]*\r?\n", "", RegexOptions.Multiline);
+
+    // A shim the preamble writes on one line: \providecommand{\name}…, or \@ifundefined{name}{\newenvironment
+    // {name}…}, {\newtheorem{name}…} or {\newcommand{\name}…}.
+    private static readonly Regex ProvideLine = new(@"^\s*\\providecommand\*?\{?\\(?<name>[A-Za-z@]+)\}?", RegexOptions.Compiled);
+    private static readonly Regex IfUndefinedLine = new(
+        @"^\s*\\@ifundefined\{[^{}]+\}\{\\(?<kind>newenvironment|newtheorem\*?|newcommand)\{\\?(?<name>[^{}]+)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The preamble without the shims the document never uses (the helper-command audit, 26 Oct 2026). Lilia
+    /// writes the same preamble for every document: commands of CV, beamer, newspaper and journal classes,
+    /// 38 theorem environments, its maths shortcuts. A publisher receives only those its LaTeX uses, and
+    /// none of Lilia's comments about them. <paramref name="everything"/>: the whole project's LaTeX (the
+    /// body may be in other files). A shim used only by another shim goes when that one goes.
+    /// </summary>
+    public static string OnlyUsedShims(string latex, string everything)
+    {
+        var start = latex.IndexOf(@"\documentclass", StringComparison.Ordinal);
+        var end = latex.IndexOf(@"\begin{document}", StringComparison.Ordinal);
+        if (start < 0 || end < start) return latex;
+        var lines = latex[start..end].Split('\n').ToList();
+
+        // The shims, each with what using it looks like.
+        var shims = new Dictionary<int, Regex>();
+        var names = new Dictionary<int, string>();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (!Balanced(lines[i])) continue;
+            if (ProvideLine.Match(lines[i]) is { Success: true } p)
+                (names[i], shims[i]) = (p.Groups["name"].Value, new Regex($@"\\{Regex.Escape(p.Groups["name"].Value)}(?![A-Za-z@])"));
+            else if (IfUndefinedLine.Match(lines[i]) is { Success: true } u)
+                (names[i], shims[i]) = (u.Groups["name"].Value, u.Groups["kind"].Value == "newcommand"
+                    ? new Regex($@"\\{Regex.Escape(u.Groups["name"].Value)}(?![A-Za-z@])")
+                    : new Regex($@"\\begin\{{{Regex.Escape(u.Groups["name"].Value)}\}}"));
+        }
+
+        var dropped = new HashSet<int>();
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            // Where a use counts: everything but the shims, and the comments.
+            var uses = everything;
+            foreach (var i in shims.Keys) uses = uses.Replace(lines[i], "", StringComparison.Ordinal);
+            uses = Regex.Replace(uses, @"(?<!\\)%.*$", "", RegexOptions.Multiline);
+            foreach (var (i, use) in shims)
+            {
+                if (dropped.Contains(i)) continue;
+                // Used by the document, or by another shim still kept (not one of the same name: the CV
+                // \email and the journal \email are not uses of each other).
+                if (use.IsMatch(uses) || shims.Keys.Any(k => !dropped.Contains(k) && names[k] != names[i] && use.IsMatch(lines[k]))) continue;
+                dropped.Add(i);
+                changed = true;
+            }
+        }
+
+        // A second shim of a name already provided does nothing (\providecommand keeps the first).
+        var provided = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var i in shims.Keys.Order())
+            if (!dropped.Contains(i) && !provided.Add(names[i])) dropped.Add(i);
+
+        // Lilia's comments go with them (a whole-line comment; the class's and packages' own lines stay).
+        var preamble = string.Join("\n", lines
+            .Where((l, i) => !dropped.Contains(i) && !(i > 0 && l.TrimStart().StartsWith('%')))
+            .Select(l => l.StartsWith(@"\usepackage", StringComparison.Ordinal) ? Regex.Replace(l, @"\s+(?<!\\)%.*$", "") : l));
+        // What is left empty: \makeatletter … \makeatother, \AtBeginDocument{% … }.
+        preamble = Regex.Replace(preamble, @"\\makeatletter\n(?:\s*\n)*\\makeatother\n", "");
+        preamble = Regex.Replace(preamble, @"\\AtBeginDocument\{%\n\}\n", "");
+        preamble = Regex.Replace(preamble, @"\n(?:[ \t]*\n){2,}", "\n\n");
+        return latex[..start] + preamble + latex[end..];
+    }
+
+    private static bool Balanced(string line)
+    {
+        var depth = 0;
+        for (var i = 0; i < line.Length; i++)
+        {
+            if (line[i] == '\\') { i++; continue; }
+            if (line[i] == '%') break;
+            if (line[i] == '{') depth++;
+            else if (line[i] == '}' && --depth < 0) return false;
+        }
+        return depth == 0;
+    }
+
+    /// <summary>The column break's definition, as the preamble writes it.</summary>
+    internal const string ColumnBreakDefinition =
+        @"\providecommand{\liliaColumnBreak}{\ifdefined\columnbreak\columnbreak\else\if@twocolumn\newpage\fi\fi}";
+
+    /// <summary>
+    /// The column break block in plain LaTeX (the helper-command audit, 26 Oct 2026): <c>\columnbreak</c>
+    /// inside a multi-column layout, the next column in a two-column class, nothing in one column, as
+    /// <c>\liliaColumnBreak</c> decided when the document compiled.
+    /// </summary>
+    public static string PlainColumnBreaks(string latex)
+    {
+        if (!latex.Contains(@"\liliaColumnBreak", StringComparison.Ordinal)) return latex;
+        latex = latex.Replace(ColumnBreakDefinition + "\n", "").Replace(ColumnBreakDefinition, "");
+        var sb = new StringBuilder(latex.Length);
+        var depth = 0;
+        foreach (Match m in Regex.Matches(latex, @"\\begin\{multicols\*?\}|\\end\{multicols\*?\}|\\liliaColumnBreak\b|[^\\]+|\\"))
+        {
+            var t = m.Value;
+            if (t.StartsWith(@"\begin{multicols", StringComparison.Ordinal)) depth++;
+            else if (t.StartsWith(@"\end{multicols", StringComparison.Ordinal)) depth = Math.Max(0, depth - 1);
+            else if (t == @"\liliaColumnBreak")
+            {
+                sb.Append(depth > 0 ? @"\columnbreak" : @"\csname if@twocolumn\endcsname\newpage\fi");
+                continue;
+            }
+            sb.Append(t);
+        }
+        return sb.ToString();
+    }
 
     /// <summary>
     /// A publisher document's tables without Lilia's theme hooks (requirement NFR-3: plain LaTeX a

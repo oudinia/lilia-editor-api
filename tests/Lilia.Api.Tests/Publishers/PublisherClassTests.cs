@@ -30,7 +30,7 @@ public class PublisherClassTests
             B("title", new { title = "Visual Blocks for Real LaTeX", author, date = "", keywords }),
             B("abstract", new { text = "We show that blocks can emit **valid** LaTeX for publishers, with $x^2$." }),
             B("heading", new { text = "Introduction", level = 1 }),
-            B("paragraph", new { text = "As shown by @cite{knuth84}, typesetting matters; see Theorem~(thm:a) and Equation~(eq:x)." }),
+            B("paragraph", new { text = "As shown by @cite{knuth84}, typesetting matters; see Theorem~(thm:a), Equation~(eq:x) and Table~(tab:y)." }),
             B("equation", new { latex = "E = mc^2", label = "eq:x", mode = "display" }),
             B("theorem", new { theoremType = "theorem", text = "Every block maps to LaTeX.", label = "thm:a" }),
             B("theorem", new { theoremType = "proof", text = "By construction." }),
