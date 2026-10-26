@@ -30,6 +30,10 @@ namespace Lilia.Engines;
 /// </summary>
 public static partial class LaTeXPreamble
 {
+    /// <summary>A citation package the export chooses itself, never carried over from an imported preamble.</summary>
+    public static bool IsCitationPackage(string name) =>
+        name is "biblatex" or "natbib";
+
     /// <summary>
     /// Every package name the preamble actually loads, read out of the preamble
     /// itself.

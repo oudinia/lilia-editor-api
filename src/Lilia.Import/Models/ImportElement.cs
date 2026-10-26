@@ -173,6 +173,12 @@ public class ImportCodeBlock : ImportElement
     /// </summary>
     public string? Language { get; set; }
 
+    /// <summary>A listing's caption (<c>caption=</c> in lstlisting's options).</summary>
+    public string? Caption { get; set; }
+
+    /// <summary>A listing's label (<c>label=</c>), so <c>\ref</c> to it resolves.</summary>
+    public string? Label { get; set; }
+
     /// <summary>
     /// Original style ID that triggered code detection.
     /// </summary>
@@ -314,6 +320,14 @@ public class ImportTableCell
 /// <summary>
 /// An image element that will become a Figure block with an Asset in Lilia.
 /// </summary>
+/// <summary>One panel of a figure: its image, caption and label.</summary>
+public class ImportSubfigure
+{
+    public string? Filename { get; set; }
+    public string? Caption { get; set; }
+    public string? Label { get; set; }
+}
+
 public class ImportImage : ImportElement
 {
     public override ImportElementType Type => ImportElementType.Image;
@@ -342,6 +356,21 @@ public class ImportImage : ImportElement
     /// Layout span: "column" (default) or "page" (\begin{figure*}).
     /// </summary>
     public string Span { get; set; } = "column";
+
+    /// <summary>The figure's caption, as LaTeX text (references and maths kept). Null: the alt text is the caption.</summary>
+    public string? Caption { get; set; }
+
+    /// <summary>The figure's <c>\label</c>, so references to it resolve.</summary>
+    public string? Label { get; set; }
+
+    /// <summary>A description for readers who can't see the figure (ACM's <c>\Description</c>).</summary>
+    public string? Description { get; set; }
+
+    /// <summary>The width as a fraction of the line (<c>width=0.8\linewidth</c> → 0.8), when the source gave one.</summary>
+    public double? Width { get; set; }
+
+    /// <summary>The panels of a figure made of subfigures (<c>subcaption</c>'s <c>subfigure</c>), in order.</summary>
+    public List<ImportSubfigure> Subfigures { get; set; } = [];
 
     /// <summary>
     /// Width in EMUs (English Metric Units) or null if not specified.
@@ -401,6 +430,9 @@ public class ImportListItem : ImportElement
     public int? ListGroup { get; set; }
 
     public bool IsNumbered { get; set; }
+
+    /// <summary>The items of a list nested in this one (an itemize inside an item), in order.</summary>
+    public List<ImportListItem> Children { get; set; } = [];
 
     /// <summary>
     /// List number/bullet text (e.g., "1.", "a)", "•").

@@ -701,6 +701,9 @@ public class LaTeXExportService : ILaTeXExportService
                 var name = pkg.TryGetProperty("name", out var n) ? n.GetString() : null;
                 if (string.IsNullOrWhiteSpace(name)) continue;
                 if (DefaultPreamblePackages.Contains(name)) continue; // avoid option clash
+                // The citation package is the export's to choose (natbib, or biblatex as an option): an
+                // imported biblatex beside it stopped the compile ("\bibhang already defined"; 26 Oct 2026).
+                if (LaTeXPreamble.IsCitationPackage(name)) continue;
                 if (!emitted.Add(name)) continue;
                 var opts = pkg.TryGetProperty("options", out var o) ? o.GetString() : null;
                 var load = string.IsNullOrWhiteSpace(opts)

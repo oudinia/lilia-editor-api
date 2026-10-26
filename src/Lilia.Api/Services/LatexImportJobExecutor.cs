@@ -224,7 +224,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             // Phase 7 — Auto-finalize if gate passes. INSERT...SELECT inside FinalizeAsync.
             if (shouldAutoFinalize)
             {
-                var title = string.IsNullOrWhiteSpace(parsed.Title) ? loaded.DocumentTitle : parsed.Title;
+                var title = string.IsNullOrWhiteSpace(parsed.Title) ? loaded.DocumentTitle : DocumentName(parsed.Title);
                 var finalized = await _reviewService.FinalizeFromStagingAsync(sessionId, loaded.OwnerId, title, force: true, ct);
                 documentId = finalized.Document.Id;
                 documentTitle = finalized.Document.Title;
@@ -275,6 +275,57 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             EnumerateRevBlocks(revDocId, doc),
             ct);
     }
+
+    /// <summary>
+    /// The document's name from its LaTeX title: plain text, the <c>\thanks</c> notes out and a <c>\\</c>
+    /// line break as a space ("Field Report: Water Quality…\\in the Upper Rhône" was the name, as typed).
+    /// The title block keeps the title as written.
+    /// </summary>
+    /// <summary>
+    /// An image figure's block: image, caption, label, description, width and subfigures, each written
+    /// only when the source had it (26 Oct 2026). It was image and caption only, so references to the
+    /// figure printed ??.
+    /// </summary>
+    internal static Dictionary<string, object> FigureContent(ImportImage img)
+    {
+        var content = new Dictionary<string, object>
+        {
+            ["src"] = img.Filename ?? "",
+            ["caption"] = img.Caption ?? img.AltText ?? "",
+            ["alt"] = img.AltText ?? "",
+        };
+        if (img.Label is { Length: > 0 } label) content["label"] = label;
+        if (img.Width is { } width) content["width"] = width;
+        if (img.Span == "page") content["span"] = "page";
+        if (img.Subfigures.Count > 0)
+            content["subfigures"] = img.Subfigures.Select(s => new Dictionary<string, object>
+            {
+                ["src"] = s.Filename ?? "",
+                ["caption"] = s.Caption ?? "",
+                ["label"] = s.Label ?? "",
+            }).ToList();
+        return content;
+    }
+
+    /// <summary>A code block, with a listing's caption and label when it had them.</summary>
+    private static Dictionary<string, object> CodeContent(ImportCodeBlock c)
+    {
+        var content = new Dictionary<string, object> { ["code"] = c.Text, ["language"] = c.Language ?? "" };
+        if (c.Caption is { Length: > 0 } caption) content["caption"] = caption;
+        if (c.Label is { Length: > 0 } label) content["label"] = label;
+        return content;
+    }
+
+    /// <summary>A list item: its text, or {text, children} when a list is nested in it.</summary>
+    private static object ListItemContent(ImportListItem item) =>
+        item.Children.Count == 0
+            ? item.Text
+            : new Dictionary<string, object> { ["text"] = item.Text, ["children"] = item.Children.Select(ListItemContent).ToList() };
+
+    internal static string DocumentName(string latexTitle) =>
+        Lilia.Engines.TitleAuthors.Parse(latexTitle) is { Count: > 0 } parsed
+            ? string.Join(" ", new[] { parsed[0].Name }.Concat(parsed[0].Lines)).Trim()
+            : latexTitle.Trim();
 
     /// <summary>
     /// The title block a LaTeX preamble implies, or null if it implies none.
@@ -410,10 +461,10 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         {
             if (elements[i] is ImportListItem { ListGroup: { } group } first)
             {
-                var items = new List<string> { first.Text };
+                var items = new List<object> { ListItemContent(first) };
                 while (i + 1 < elements.Count && elements[i + 1] is ImportListItem { ListGroup: var g } next && g == group)
                 {
-                    items.Add(next.Text);
+                    items.Add(ListItemContent(next));
                     i++;
                 }
                 blocks.Add(("list", new { items, ordered = first.IsNumbered }));
@@ -431,7 +482,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         ImportHeading h => ("heading", HeadingContent(h)),
         ImportParagraph p => ("paragraph", new { text = p.Text }),
         ImportEquation eq => ("equation", EquationBlockContent.From(eq)),
-        ImportCodeBlock c => ("code", new { code = c.Text, language = c.Language ?? "" }),
+        ImportCodeBlock c => ("code", CodeContent(c)),
         // A cell with a note is {content, note}; group headers and row groups are written when
         // the table has them (ImportTableLayout), so other tables import as before.
         ImportTable t => ("table", ImportTableLayout.WithLayout(t, new Dictionary<string, object>
@@ -451,11 +502,14 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         // content.src so StageZipAssetsAsync can rewrite it to the R2 URL
         // at finalize. Previously src was hard-coded empty, discarding
         // the filename and producing placeholder figure blocks.
-        ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
+        ImportImage img => ("figure", FigureContent(img)),
         // A TikZ picture is a figure whose drawing is source (TikzFigure). Before the passthrough
         // case it derives from, which would make it a code block.
         ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
-        ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
+        // An environment the parser doesn't model (ACM's acks, Elsevier's highlights, LNCS's credits, a
+        // user's own): raw LaTeX, which the export writes as is. As a code block it printed as a listing
+        // of its own source (26 Oct 2026, the Overleaf test projects).
+        ImportLatexPassthrough lp => ("embed", new { engine = "latex", code = lp.LatexCode }),
         // quote / quotation / verse and algorithm floats used to fall through to
         // the empty-paragraph default below: the parser recognised them, and the
         // import threw their whole content away. They map to the blocks the
