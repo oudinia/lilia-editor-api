@@ -169,6 +169,14 @@ public sealed class CompileCache
             Interlocked.Increment(ref Hits);
             return (entry, true);
         }
+        catch (OperationCanceledException) when (!ReferenceEquals(running, mine)
+            && !Lilia.Engines.CompileSlots.Abandoned.IsCancellationRequested)
+        {
+            // The compile this joined was stopped because ITS request went away (CompileSlots); this one
+            // is still wanted, so it compiles for itself (taking the stopped one out of the way first).
+            _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Entry>>>(scoped, running));
+            return await GetOrCompileAsync(key, compile);
+        }
         finally
         {
             if (ReferenceEquals(running, mine)) _inFlight.TryRemove(new KeyValuePair<string, Lazy<Task<Entry>>>(scoped, mine));

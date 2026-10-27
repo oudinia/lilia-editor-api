@@ -532,6 +532,11 @@ builder.Services.AddSingleton<IEngineRequirementSource, RegexOnlyEngineRequireme
 builder.Services.AddSingleton<IEngineResolver, EngineResolver>();
 builder.Services.AddSingleton<ILatexVerifier, LatexVerifier>();
 builder.Services.AddSingleton<ICompilationQueueService, CompilationQueueService>();
+// How many TeX and Typst processes run at once, and how long a PDF request waits for one
+// (CompileSlots). Unset: three quarters of the cores, and a minute.
+Lilia.Engines.CompileSlots.Configure(
+    builder.Configuration.GetValue<int?>("Compilation:Slots"),
+    builder.Configuration.GetValue<int?>("Compilation:MaxWaitSeconds"));
 builder.Services.AddScoped<ITypstRenderService, TypstRenderService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();
 builder.Services.AddScoped<IMathAstService, MathAstService>();

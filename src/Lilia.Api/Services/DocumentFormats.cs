@@ -132,6 +132,8 @@ public sealed class DocumentFormats
         if (_failures.TryGetValue(path, out var failedAt) && DateTime.UtcNow - failedAt < RetryAfter) return null;
         _builds.GetOrAdd(path, p => Task.Run(async () =>
         {
+            // Every later compile uses the format: the request that started the build may go away.
+            Lilia.Engines.CompileSlots.Detach();
             try
             {
                 var ok = await build(dump, engine, p);
