@@ -149,6 +149,10 @@ public class TypstCompileService : ITypstCompileService
                 }
             }
 
+            // One of the machine's compile slots, as LaTeX's (CompileSlots); a request the browser gave up
+            // on stops here or, once running, below.
+            ct = Lilia.Engines.CompileSlots.With(ct);
+            using var slot = await Lilia.Engines.CompileSlots.EnterAsync(ct);
             var stopwatch = Stopwatch.StartNew();
             var psi = new ProcessStartInfo
             {
@@ -183,7 +187,13 @@ public class TypstCompileService : ITypstCompileService
             {
                 await proc.WaitForExitAsync(timeoutCts.Token);
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // The caller gave up: stop the compile rather than let it finish for nobody.
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                throw;
+            }
+            catch (OperationCanceledException)
             {
                 try { proc.Kill(entireProcessTree: true); } catch { }
                 _telemetry.Record(new ImportTelemetryRecord

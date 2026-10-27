@@ -171,6 +171,8 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
         await foreach (var request in _channel.Reader.ReadAllAsync(cancellationToken))
         {
             await _workerSemaphore.WaitAsync(cancellationToken);
+            // …and one of the machine's compile slots, shared with the API's own compiles (CompileSlots).
+            var slot = await CompileSlots.EnterAsync(cancellationToken);
             Interlocked.Increment(ref _activeCompilations);
 
             try
@@ -208,6 +210,7 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
             finally
             {
                 Interlocked.Decrement(ref _activeCompilations);
+                slot.Dispose();
                 _workerSemaphore.Release();
             }
         }

@@ -121,28 +121,8 @@ public record LatexValidationResult(
 public class LaTeXRenderService : ILaTeXRenderService
 {
     private readonly ILogger<LaTeXRenderService> _logger;
-    /// <summary>
-    /// Process-wide bound on concurrent LaTeX compiles.
-    ///
-    /// <para><b>This is NOT replaced by queue concurrency, despite what P2.4
-    /// stage 2 originally proposed.</b> The plan reads "replace
-    /// <c>LaTeXRenderService._semaphore</c> with queue concurrency: the semaphore
-    /// bounds one process, a prefetch count bounds the cluster." That only holds
-    /// if <i>every</i> compile goes through the queue — and stage 3 deliberately
-    /// keeps per-block validation synchronous, because the author is waiting and
-    /// the problem there is latency, not reliability.</para>
-    ///
-    /// <para>So the paths this guards are not all queueable. Removing it would
-    /// leave validation — the hottest path in the system, called on every block
-    /// blur — with no bound at all, while the queue bounded only exports. The
-    /// two are complementary, not alternatives: the queue bounds how much work
-    /// is <i>admitted</i>, this bounds how many <c>pdflatex</c> processes exist
-    /// at once, which is the actual scarce resource.</para>
-    ///
-    /// <para>Queue concurrency is therefore set BELOW this number, so the two
-    /// cannot add up to more compiles than the box was sized for.</para>
-    /// </summary>
-    private static readonly SemaphoreSlim _semaphore = new(3, 3); // Max 3 concurrent compilations
+    // Every compile here waits for one of the machine's compile slots (Lilia.Engines.CompileSlots),
+    // shared with Typst and the compilation queue: one number bounds how many engines run at once.
 
     private const string PrecompiledFormatPath = "/tmp/lilia-latex-preamble/lilia-preamble";
     private static bool? _formatFileExists;
@@ -285,7 +265,7 @@ public class LaTeXRenderService : ILaTeXRenderService
 
     public async Task<string> RenderToSvgAsync(string latexFragment, bool displayMode = true)
     {
-        await _semaphore.WaitAsync();
+        var slot = await Lilia.Engines.CompileSlots.EnterAsync();
         try
         {
             var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-svg-{Guid.NewGuid():N}");
@@ -349,7 +329,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
         finally
         {
-            _semaphore.Release();
+            slot.Dispose();
         }
     }
 
@@ -520,8 +500,9 @@ public class LaTeXRenderService : ILaTeXRenderService
             return FromCache(kept);
         }
 
+        Lilia.Engines.CompileLine.Slot slot;
         using (Lilia.Core.Diagnostics.Timing.Measure("tex.queue"))
-            await _semaphore.WaitAsync();
+            slot = await Lilia.Engines.CompileSlots.EnterAsync();
         try
         {
             // Double-check after acquiring semaphore (another thread may have cached it)
@@ -732,7 +713,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         }
         finally
         {
-            _semaphore.Release();
+            slot.Dispose();
         }
     }
 
@@ -935,13 +916,14 @@ public class LaTeXRenderService : ILaTeXRenderService
             Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(latex);
 
             // An unchanged document is not compiled again (CompileCache): the key is the .tex, the
-            // engine and every file beside it. Only a miss takes one of the three compile slots.
+            // engine and every file beside it. Only a miss takes one of the compile slots.
             var key = CompileCache.Key(latex, engine, tolerant, tmpDir);
             var sw = Stopwatch.StartNew();
             var (entry, hit) = await CompileCache.Shared.GetOrCompileAsync(key, async () =>
             {
+                Lilia.Engines.CompileLine.Slot slot;
                 using (Lilia.Core.Diagnostics.Timing.Measure("tex.queue"))
-                    await _semaphore.WaitAsync();
+                    slot = await Lilia.Engines.CompileSlots.EnterAsync();
                 try
                 {
                     using var compiling = Lilia.Core.Diagnostics.Timing.Measure("tex.compile");
@@ -950,7 +932,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 }
                 finally
                 {
-                    _semaphore.Release();
+                    slot.Dispose();
                 }
             });
             if (hit) Lilia.Core.Diagnostics.Timing.Mark("tex.cache hit");
@@ -1120,7 +1102,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         engine = ResolveEngine(engine);
         var useFormat = formatPath is not null && engine == "pdflatex" && File.Exists(formatPath + ".fmt");
 
-        await _semaphore.WaitAsync(ct);
+        var slot = await Lilia.Engines.CompileSlots.EnterAsync(ct);
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-tikz-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
         try
@@ -1181,7 +1163,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         finally
         {
             try { Directory.Delete(tmpDir, true); } catch { }
-            _semaphore.Release();
+            slot.Dispose();
         }
     }
 
@@ -1194,7 +1176,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         if (engine != "pdflatex") return false;
         Lilia.Engines.TexSafety.TexSourceGuard.ThrowIfUnsafe(preamble);
 
-        await _semaphore.WaitAsync(ct);
+        var slot = await Lilia.Engines.CompileSlots.EnterAsync(ct);
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-fmt-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
         try
@@ -1233,7 +1215,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         finally
         {
             try { Directory.Delete(tmpDir, true); } catch { }
-            _semaphore.Release();
+            slot.Dispose();
         }
     }
 
@@ -1270,5 +1252,6 @@ public class LaTeXRenderService : ILaTeXRenderService
     // One hardened launcher for every TeX process: shell escape off, scrubbed environment, optional other user.
     private static Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
         string command, string arguments, string workingDir, int timeoutSeconds, CancellationToken ct = default) =>
-        Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds, ct);
+        Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds,
+            Lilia.Engines.CompileSlots.With(ct));
 }

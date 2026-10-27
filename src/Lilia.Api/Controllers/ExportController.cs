@@ -249,6 +249,11 @@ public class ExportController : ControllerBase
         _logger.LogInformation("[Export] PDF export for document {DocId} by user {UserId} (engine={Engine}, look={Look}, printSafe={PrintSafe})",
             docId, userId, engine, look ?? "document", printSafe);
 
+        // The compile stops when the browser goes away (the preview asks again after each edit), waits
+        // for a slot at most a minute, and its place in line can be read with the preview's ticket
+        // (CompileSlots, GET /api/compile/place).
+        using var compileRequest = Lilia.Engines.CompileSlots.ForRequest(
+            HttpContext.RequestAborted, CompileController.TicketOf(userId, Request.Headers[CompileController.TicketHeader]));
         try
         {
             var (pdfBytes, engineUsed) = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine, look, printSafe);
@@ -269,6 +274,20 @@ public class ExportController : ControllerBase
             // Refused by the sandbox's guard: about the document, not a server failure (18 Oct).
             _logger.LogInformation("[Export] PDF of {DocId} refused: {Reason}", docId, unsafeLatex.Message);
             return UnprocessableEntity(new { message = unsafeLatex.Message, error = "unsafe_latex" });
+        }
+        catch (Lilia.Engines.CompileBusyException busy)
+        {
+            // Every slot stayed taken for a minute: the preview tries again by itself.
+            _logger.LogWarning("[Export] PDF of {DocId} not compiled: {Running} compiling, {Waiting} waiting", docId, busy.Running, busy.Waiting);
+            Response.Headers.RetryAfter = CompileController.RetryAfterSeconds.ToString();
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = busy.Message, error = "compile_busy", retryAfterSeconds = CompileController.RetryAfterSeconds });
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            // Nobody is waiting for this PDF any more; its compile was stopped.
+            _logger.LogInformation("[Export] PDF of {DocId} abandoned by the browser", docId);
+            return StatusCode(499);
         }
         catch (Exception ex)
         {
