@@ -17,6 +17,11 @@ namespace Lilia.Engines;
 /// and its place in line can be asked for by ticket (<see cref="PlaceOf"/>), which the preview shows
 /// as "3rd in line". Every other caller waits as long as it takes, as before.</para>
 ///
+/// <para>Typst has a line of its own (<see cref="TypstLine"/>, a quarter of the cores, or
+/// <c>Compilation:TypstSlots</c>): a Typst PDF takes under a second, and in one shared line it waited
+/// behind 3-second LaTeX compiles (27 Oct: prose papers went from 0.7 s to 58 s under load). The two
+/// lines together match the machine.</para>
+///
 /// <para>Waiting is in arrival order: <see cref="SemaphoreSlim"/> serves async waiters first come, first
 /// served.</para>
 /// </summary>
@@ -25,26 +30,38 @@ public static class CompileSlots
     /// <summary>Three quarters of the cores, at least 2: room left for the API, the database calls and the web server.</summary>
     public static int DefaultSlots(int cores) => Math.Max(2, cores * 3 / 4);
 
-    /// <summary>This process's line.</summary>
+    /// <summary>A quarter of the cores, at least 1: Typst's own line.</summary>
+    public static int DefaultTypstSlots(int cores) => Math.Max(1, cores / 4);
+
+    /// <summary>This process's line for TeX (every engine, and the compilation queue).</summary>
     public static CompileLine Line { get; private set; } = new(DefaultSlots(Environment.ProcessorCount), TimeSpan.FromSeconds(60));
 
-    public static int Slots => Line.Slots;
-    public static int WaitingCount => Line.WaitingCount;
-    public static int RunningCount => Line.RunningCount;
+    /// <summary>This process's line for Typst.</summary>
+    public static CompileLine TypstLine { get; private set; } = new(DefaultTypstSlots(Environment.ProcessorCount), TimeSpan.FromSeconds(60));
+
+    public static int Slots => Line.Slots + TypstLine.Slots;
+    public static int WaitingCount => Line.WaitingCount + TypstLine.WaitingCount;
+    public static int RunningCount => Line.RunningCount + TypstLine.RunningCount;
 
     internal sealed record Request(CancellationToken Abandoned, string? Ticket);
     private static readonly AsyncLocal<Request?> Ambient = new();
     internal static Request? Current => Ambient.Value;
 
-    /// <summary>Set the size at startup, before any compile. Only an idle line is replaced.</summary>
-    public static void Configure(int? slots, int? maxWaitSeconds)
+    /// <summary>Set the sizes at startup, before any compile. Only an idle line is replaced.</summary>
+    public static void Configure(int? slots, int? maxWaitSeconds, int? typstSlots = null)
     {
-        var size = slots is > 0 ? slots.Value : Line.Slots;
         var wait = maxWaitSeconds is > 0 ? TimeSpan.FromSeconds(maxWaitSeconds.Value) : Line.MaxWait;
-        if (size == Line.Slots && wait == Line.MaxWait) return;
-        if (Line.RunningCount > 0 || Line.WaitingCount > 0)
-            throw new InvalidOperationException("The compile line can only be resized while no compile is running.");
-        Line = new CompileLine(size, wait);
+        Line = Resized(Line, slots, wait);
+        TypstLine = Resized(TypstLine, typstSlots, wait);
+    }
+
+    private static CompileLine Resized(CompileLine line, int? slots, TimeSpan wait)
+    {
+        var size = slots is > 0 ? slots.Value : line.Slots;
+        if (size == line.Slots && wait == line.MaxWait) return line;
+        if (line.RunningCount > 0 || line.WaitingCount > 0)
+            throw new InvalidOperationException("A compile line can only be resized while no compile is running.");
+        return new CompileLine(size, wait);
     }
 
     /// <summary>
@@ -70,11 +87,14 @@ public static class CompileSlots
     /// <summary><paramref name="ct"/> when the caller has one, else the request's own.</summary>
     public static CancellationToken With(CancellationToken ct) => ct.CanBeCanceled ? ct : Abandoned;
 
-    /// <inheritdoc cref="CompileLine.EnterAsync"/>
+    /// <summary>A slot for a TeX engine. <inheritdoc cref="CompileLine.EnterAsync"/></summary>
     public static Task<CompileLine.Slot> EnterAsync(CancellationToken ct = default) => Line.EnterAsync(ct);
 
-    /// <inheritdoc cref="CompileLine.PlaceOf"/>
-    public static int? PlaceOf(string ticket) => Line.PlaceOf(ticket);
+    /// <summary>A slot for Typst. <inheritdoc cref="CompileLine.EnterAsync"/></summary>
+    public static Task<CompileLine.Slot> EnterTypstAsync(CancellationToken ct = default) => TypstLine.EnterAsync(ct);
+
+    /// <summary>Where the ticket stands, in whichever line it is in. <inheritdoc cref="CompileLine.PlaceOf"/></summary>
+    public static int? PlaceOf(string ticket) => Line.PlaceOf(ticket) ?? TypstLine.PlaceOf(ticket);
 
     private sealed class Restore(Request? previous) : IDisposable
     {

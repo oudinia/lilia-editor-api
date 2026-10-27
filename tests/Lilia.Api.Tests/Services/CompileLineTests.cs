@@ -22,6 +22,20 @@ public class CompileLineTests
     public void The_default_is_three_quarters_of_the_cores_and_never_fewer_than_two(int cores, int slots) =>
         CompileSlots.DefaultSlots(cores).Should().Be(slots);
 
+    [Theory]
+    [InlineData(8, 2)]
+    [InlineData(4, 1)]
+    [InlineData(2, 1)]
+    public void Typst_has_a_quarter_of_the_cores_and_never_fewer_than_one(int cores, int slots) =>
+        CompileSlots.DefaultTypstSlots(cores).Should().Be(slots);
+
+    [Fact]
+    public void Typst_waits_in_a_line_of_its_own_so_a_quick_compile_never_queues_behind_LaTeX()
+    {
+        CompileSlots.TypstLine.Should().NotBeSameAs(CompileSlots.Line);
+        CompileSlots.Slots.Should().Be(CompileSlots.Line.Slots + CompileSlots.TypstLine.Slots);
+    }
+
     [Fact]
     public async Task A_request_knows_its_place_in_line_and_moves_up_as_slots_free()
     {

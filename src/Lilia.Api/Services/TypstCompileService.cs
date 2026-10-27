@@ -149,10 +149,10 @@ public class TypstCompileService : ITypstCompileService
                 }
             }
 
-            // One of the machine's compile slots, as LaTeX's (CompileSlots); a request the browser gave up
-            // on stops here or, once running, below.
+            // One of Typst's compile slots (CompileSlots.TypstLine: its own, so a sub-second compile never
+            // waits behind LaTeX); a request the browser gave up on stops here or, once running, below.
             ct = Lilia.Engines.CompileSlots.With(ct);
-            using var slot = await Lilia.Engines.CompileSlots.EnterAsync(ct);
+            using var slot = await Lilia.Engines.CompileSlots.EnterTypstAsync(ct);
             var stopwatch = Stopwatch.StartNew();
             var psi = new ProcessStartInfo
             {
