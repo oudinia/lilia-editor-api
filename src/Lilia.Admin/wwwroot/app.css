@@ -48,6 +48,7 @@ h2::before { content: ""; width: 8px; height: 8px; border-radius: 2px; backgroun
 .side .brand { font: 700 15px/1 var(--display); letter-spacing: .22em; text-transform: uppercase; padding: 6px 10px 22px; display: flex; align-items: center; gap: 10px; }
 .side .brand::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px rgba(45, 212, 191, .18), 0 0 14px var(--teal); animation: pulse 2.4s ease-in-out infinite; }
 .side .brand span { color: var(--cyan); }
+.nav-links { display: flex; flex-direction: column; gap: 3px; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(45, 212, 191, 0), 0 0 22px var(--teal); } }
 .side a { position: relative; color: var(--muted); padding: 9px 12px; border-radius: 9px; font-weight: 500; transition: background .15s, color .15s; }
 .side a:hover { color: var(--ink); background: rgba(148, 163, 184, .06); text-shadow: none; }
@@ -134,18 +135,27 @@ button[type=submit], .filters button.on { color: #03141a; font-weight: 600; bord
 
 @media (prefers-reduced-motion: reduce) { .side .brand::before { animation: none; } }
 
-/* Phones: the menu on top, tables scroll sideways inside their panel. */
+/* Phones: the brand, then the menu as a 3 × 2 grid, all six in view (it wrapped Actions onto a row
+   of its own, 29 Oct), then the links in small print; tables scroll sideways inside their panel. */
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; }
-  .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px; }
-  .side .brand { width: 100%; padding: 4px 8px 10px; }
+  /* minmax(0, …): a column of 1fr grows to its widest content (the menu, a table), so the whole page
+     scrolled sideways; now the menu and the tables scroll inside it. */
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .side, .main { min-width: 0; }
+  .side { position: static; height: auto; gap: 8px; padding: 12px 16px 10px; }
+  .side .brand { padding: 2px 0; }
+  .nav-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .nav-links a { text-align: center; white-space: nowrap; padding: 8px 4px; }
   .side a.active::before { display: none; }
-  .side-foot { margin: 0; flex-direction: row; flex-wrap: wrap; width: 100%; border: 0; padding: 0; }
+  .side a.active { background: rgba(34, 211, 238, .14); box-shadow: inset 0 -2px 0 var(--cyan); }
+  .side-foot { margin: 0; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; border: 0; padding: 0; font-size: 12px; }
+  .side-foot a { padding: 2px 0; }
+  .side-foot .who { padding: 0; }
   .main { padding: 22px 16px 56px; }
   h1 { font-size: 24px; }
   table { display: block; overflow-x: auto; white-space: nowrap; }
   td.msg { white-space: normal; min-width: 240px; }
-  .cols, .charts { grid-template-columns: 1fr; }
+  .cols, .charts { grid-template-columns: minmax(0, 1fr); }
   .funnel .step { grid-template-columns: 1fr 90px; }
   .funnel .track { grid-column: 1 / -1; order: 3; }
 }
