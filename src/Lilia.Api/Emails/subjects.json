@@ -228,5 +228,19 @@
       "subject": "Tu código para iniciar sesión en Lilia: {{code}}",
       "preheader": "Introdúcelo en la pantalla de inicio de sesión. Es válido durante 10 minutos."
     }
+  },
+  "erased": {
+    "en": {
+      "subject": "Your Lilia account is erased",
+      "preheader": "Your account and its documents were erased on {{date}}."
+    },
+    "fr": {
+      "subject": "Votre compte Lilia est effacé",
+      "preheader": "Votre compte et ses documents ont été effacés le {{date}}."
+    },
+    "es": {
+      "subject": "Tu cuenta de Lilia está borrada",
+      "preheader": "Tu cuenta y sus documentos se borraron el {{date}}."
+    }
   }
 }

@@ -1,8 +1,12 @@
 namespace Lilia.Api.Services;
 
+/// <summary>Who did it, as the sharing and team emails show them: a name, an address, and initials from the name.</summary>
+public sealed record EmailActor(string Name, string? Email);
+
 public interface IEmailService
 {
-    Task SendDocumentInviteAsync(string toEmail, string inviterName, string documentTitle, string role, string documentUrl);
+    /// <summary>To someone without an account: an invitation to a document (sign-up, then the document).</summary>
+    Task SendDocumentInviteAsync(string toEmail, EmailActor inviter, string documentTitle, string role, string documentUrl, string? locale);
     Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null);
     /// <summary>
     /// An account email (export ready, account closed…): routed as <c>EmailKind.Account</c>, so it
@@ -14,34 +18,28 @@ public interface IEmailService
     Task SendWelcomeAsync(string toEmail, string? firstName, string? locale);
     /// <summary>The day-3 tip to someone who hasn't started a document; <paramref name="tipsUrl"/> turns tips off in one click.</summary>
     Task SendGettingStartedAsync(string toEmail, string? firstName, string? locale, string tipsUrl);
-    /// <summary>
-    /// New default team announcement — sent on user.created right after
-    /// the welcome (or as a standalone test from /api/teams/test-welcome).
-    /// </summary>
-    Task SendTeamWelcomeAsync(string toEmail, string? firstName, string teamCodename);
+    /// <summary>To someone who created a team: it is ready, with its code.</summary>
+    Task SendTeamWelcomeAsync(string toEmail, string teamName, string teamCodename, string teamUrl, string? locale);
 
     /// <summary>
     /// Doc-share notification for the by-id path (someone added you to a
     /// document via user-search). Different from <c>SendDocumentInviteAsync</c>
     /// which fires from the email-invite path with a sign-up URL.
     /// </summary>
-    Task SendDocumentSharedAsync(string toEmail, string? recipientName, string inviterName,
-        string documentTitle, string permission, string documentUrl);
+    Task SendDocumentSharedAsync(string toEmail, EmailActor inviter, string documentTitle, string role, string documentUrl, string? locale);
 
     /// <summary>
     /// Team-invite email — "X invited you to <team-codename>". Fired from
     /// the Wolverine handler that subscribes to TeamInviteCreatedEvent.
     /// </summary>
-    Task SendTeamInviteAsync(string toEmail, string inviterName, string teamName,
-        string role, string acceptUrl);
+    Task SendTeamInviteAsync(string toEmail, EmailActor inviter, string teamName, string role, string acceptUrl, string? locale);
 
     /// <summary>
     /// Removal notice — "You've been removed from <team-codename>".
     /// Fired from the Wolverine handler subscribing to
     /// TeamMemberRemovedEvent. Mirror of SendTeamInviteAsync.
     /// </summary>
-    Task SendTeamMemberRemovedAsync(string toEmail, string? recipientName,
-        string removerName, string teamName);
+    Task SendTeamMemberRemovedAsync(string toEmail, EmailActor removedBy, string teamName, string? locale);
 
     /// <summary>
     /// Stytch BYOM — email verification for first-time sign-up. Fired
@@ -71,11 +69,20 @@ public interface IEmailService
     Task SendTwoStepCodeAsync(string toEmail, string code, string? locale);
 
     /// <summary>To the owner: someone accepted their invitation ("Open sharing").</summary>
-    Task SendInviteAcceptedAsync(string toEmail, string acceptedByName, string documentTitle, string sharingUrl);
+    Task SendInviteAcceptedAsync(string toEmail, EmailActor joined, string documentTitle, string? role, string sharingUrl, string? locale);
 
     /// <summary>To a collaborator: their access changed, old and new ("Open document").</summary>
-    Task SendAccessChangedAsync(string toEmail, string changedByName, string documentTitle, string oldRole, string newRole, string documentUrl);
+    Task SendAccessChangedAsync(string toEmail, EmailActor changedBy, string documentTitle, string oldRole, string newRole, string documentUrl, string? locale);
 
-    /// <summary>To a former collaborator: their access was removed (no button). Replies reach <paramref name="replyTo"/> when the owner allows it.</summary>
-    Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle, string? replyTo = null);
+    /// <summary>To a former collaborator: their access was removed (no button). Replies reach the owner when they allow it.</summary>
+    Task SendAccessRemovedAsync(string toEmail, EmailActor removedBy, string documentTitle, bool allowReply, string? locale);
+
+    /// <summary>The account export is ready to download (Settings → Your data), until <paramref name="expiresAt"/>.</summary>
+    Task SendExportReadyAsync(string toEmail, string? locale, DateTime requestedAt, DateTime expiresAt, string fileName, int documents, long bytes);
+
+    /// <summary>The account is closed; it can be restored until <paramref name="eraseOn"/>.</summary>
+    Task SendAccountClosedAsync(string toEmail, string? locale, DateTime closedAt, DateTime eraseOn);
+
+    /// <summary>The account and its documents are erased.</summary>
+    Task SendAccountErasedAsync(string toEmail, string? locale, DateTime erasedAt);
 }

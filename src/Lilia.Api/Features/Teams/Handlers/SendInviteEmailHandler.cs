@@ -1,5 +1,7 @@
 using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
+using Lilia.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Features.Teams.Handlers;
 
@@ -18,6 +20,7 @@ public class SendInviteEmailHandler
         TeamInviteCreatedEvent evt,
         IEmailService email,
         EmailSettings settings,
+        LiliaDbContext db,
         ILogger<SendInviteEmailHandler> logger)
     {
         var inviterName = string.IsNullOrWhiteSpace(evt.InvitedByName) ? "A teammate" : evt.InvitedByName!;
@@ -29,12 +32,19 @@ public class SendInviteEmailHandler
 
         try
         {
+            // Their language when they have an account, else the inviter's.
+            var invited = evt.InvitedEmail.Trim().ToLower();
+            var to = await db.Users.AsNoTracking().Where(u => u.Email.ToLower() == invited)
+                .Select(u => new { u.Locale }).FirstOrDefaultAsync();
+            var by = await db.Users.AsNoTracking().Where(u => u.Id == evt.InvitedByUserId)
+                .Select(u => new { u.Email, u.Locale }).FirstOrDefaultAsync();
             await email.SendTeamInviteAsync(
                 toEmail: evt.InvitedEmail,
-                inviterName: inviterName,
+                inviter: new EmailActor(inviterName, by?.Email),
                 teamName: evt.TeamName,
                 role: evt.Role,
-                acceptUrl: acceptUrl);
+                acceptUrl: acceptUrl,
+                locale: to?.Locale ?? by?.Locale);
         }
         catch (Exception ex)
         {

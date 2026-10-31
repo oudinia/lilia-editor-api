@@ -1,0 +1,23 @@
+Lilia
+
+You were removed from a team
+
+{{actor_name}} removed you from this team on {{date}}.
+
+  {{team_name}}
+  No longer a member
+  Owned by {{actor_name}} <{{actor_email}}>
+
+What this means
+- The team’s documents no longer appear in your documents.
+- Your own documents and your plan are not affected.
+
+{{#if reply_to_owner}}
+Think this was a mistake? You can reply to this email to reach {{actor_name}}.
+{{/if}}
+
+—
+You’re receiving this because {{recipient_email}} was a member of a team on Lilia.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

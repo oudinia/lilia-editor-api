@@ -410,7 +410,8 @@ public class CollaboratorService : ICollaboratorService
             var pendingEmailSent = true;
             try
             {
-                await _emailService.SendDocumentInviteAsync(dto.Email, inviterName, document.Title, dto.Role, inviteUrl);
+                // No account yet, so no language of their own: the inviter's.
+                await _emailService.SendDocumentInviteAsync(dto.Email, new EmailActor(inviterName, inviter?.Email), document.Title, dto.Role, inviteUrl, inviter?.Locale);
             }
             catch (Exception ex)
             {

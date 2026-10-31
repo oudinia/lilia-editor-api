@@ -1,0 +1,22 @@
+Lilia
+
+{{actor_name}} compartió un documento contigo
+
+  {{doc_title}}
+  {{role_line}}
+  Compartido por {{actor_name}} <{{actor_email}}>
+
+{{#if personal_note}}
+“{{personal_note}}”
+{{/if}}
+
+Abrir el documento:
+{{action_url}}
+
+También lo encontrarás en Compartidos contigo, en tus documentos. Los documentos compartidos nunca cuentan para tu plan.
+
+—
+Recibes este mensaje porque {{actor_name}} compartió un documento con {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

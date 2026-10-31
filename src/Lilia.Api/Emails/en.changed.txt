@@ -1,0 +1,19 @@
+Lilia
+
+Your access to a document changed
+
+{{actor_name}} changed what you can do in this document.
+
+  {{doc_title}}
+  {{role_line}}
+  {{previous_role}}
+  Owned by {{actor_name}} <{{actor_email}}>
+
+Open the document:
+{{action_url}}
+
+—
+You’re receiving this because a document was shared with {{recipient_email}} on Lilia.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

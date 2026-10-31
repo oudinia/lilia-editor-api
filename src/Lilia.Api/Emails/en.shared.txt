@@ -1,0 +1,22 @@
+Lilia
+
+{{actor_name}} shared a document with you
+
+  {{doc_title}}
+  {{role_line}}
+  Shared by {{actor_name}} <{{actor_email}}>
+
+{{#if personal_note}}
+“{{personal_note}}”
+{{/if}}
+
+Open the document:
+{{action_url}}
+
+You’ll also find it under Shared with you in your documents. Shared documents never count toward your plan.
+
+—
+You’re receiving this because {{actor_name}} shared a document with {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

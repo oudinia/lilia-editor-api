@@ -1,0 +1,19 @@
+Lilia
+
+Cambió tu acceso a un documento
+
+{{actor_name}} cambió lo que puedes hacer en este documento.
+
+  {{doc_title}}
+  {{role_line}}
+  {{previous_role}}
+  Propiedad de {{actor_name}} <{{actor_email}}>
+
+Abrir el documento:
+{{action_url}}
+
+—
+Recibes este mensaje porque se compartió un documento con {{recipient_email}} en Lilia.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
@@ -31,6 +32,14 @@ public static partial class EmailTemplates
         two = two.Length >= 2 ? two[..2] : two;
         return Languages.Contains(two) ? two : "en";
     }
+
+    /// <summary>A day as the emails write it: 31 October 2026, 31 octobre 2026, 31 de octubre de 2026.</summary>
+    public static string Date(DateTime utc, string? locale) => Language(locale) switch
+    {
+        "fr" => utc.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR")),
+        "es" => utc.ToString("d 'de' MMMM 'de' yyyy", CultureInfo.GetCultureInfo("es-ES")),
+        _ => utc.ToString("d MMMM yyyy", CultureInfo.InvariantCulture),
+    };
 
     public static bool Exists(string key) =>
         typeof(EmailTemplates).Assembly.GetManifestResourceNames().Contains($"Emails.en.{key}.html");

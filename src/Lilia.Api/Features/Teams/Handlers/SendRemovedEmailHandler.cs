@@ -1,5 +1,7 @@
 using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
+using Lilia.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Features.Teams.Handlers;
 
@@ -19,6 +21,7 @@ public class SendRemovedEmailHandler
     public async Task Handle(
         TeamMemberRemovedEvent evt,
         IEmailService email,
+        LiliaDbContext db,
         ILogger<SendRemovedEmailHandler> logger)
     {
         if (string.IsNullOrEmpty(evt.RemovedUserEmail))
@@ -31,11 +34,16 @@ public class SendRemovedEmailHandler
 
         try
         {
+            var people = await db.Users.AsNoTracking()
+                .Where(u => u.Id == evt.RemovedUserId || u.Id == evt.RemovedByUserId)
+                .Select(u => new { u.Id, u.Email, u.Locale }).ToListAsync();
+            var to = people.FirstOrDefault(u => u.Id == evt.RemovedUserId);
+            var by = people.FirstOrDefault(u => u.Id == evt.RemovedByUserId);
             await email.SendTeamMemberRemovedAsync(
                 toEmail: evt.RemovedUserEmail,
-                recipientName: evt.RemovedUserName,
-                removerName: removerName,
-                teamName: evt.TeamName);
+                removedBy: new EmailActor(removerName, by?.Email),
+                teamName: evt.TeamName,
+                locale: to?.Locale ?? by?.Locale);
         }
         catch (Exception ex)
         {

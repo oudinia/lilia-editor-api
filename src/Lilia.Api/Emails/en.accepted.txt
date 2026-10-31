@@ -1,0 +1,19 @@
+Lilia
+
+{{actor_name}} joined your document
+
+{{actor_name}} <{{actor_email}}>
+
+  {{doc_title}}
+  {{role_line}}
+
+Open the document:
+{{action_url}}
+
+You can change what they can do, or remove them, from Share in the document.
+
+—
+You’re receiving this because you invited {{actor_email}} to a document on Lilia.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

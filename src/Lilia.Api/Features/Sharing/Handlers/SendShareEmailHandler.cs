@@ -1,5 +1,7 @@
 using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
+using Lilia.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Features.Sharing.Handlers;
 
@@ -19,6 +21,7 @@ public class SendShareEmailHandler
         DocumentSharedEvent evt,
         IEmailService email,
         EmailSettings settings,
+        LiliaDbContext db,
         ILogger<SendShareEmailHandler> logger)
     {
         if (string.IsNullOrEmpty(evt.SharedWithEmail))
@@ -32,13 +35,19 @@ public class SendShareEmailHandler
 
         try
         {
+            // The recipient has an account: their language, else the sharer's.
+            var people = await db.Users.AsNoTracking()
+                .Where(u => u.Id == evt.SharedWithUserId || u.Id == evt.SharedByUserId)
+                .Select(u => new { u.Id, u.Email, u.Locale }).ToListAsync();
+            var to = people.FirstOrDefault(u => u.Id == evt.SharedWithUserId);
+            var by = people.FirstOrDefault(u => u.Id == evt.SharedByUserId);
             await email.SendDocumentSharedAsync(
                 toEmail: evt.SharedWithEmail,
-                recipientName: null,
-                inviterName: inviterName,
+                inviter: new EmailActor(inviterName, by?.Email),
                 documentTitle: evt.DocumentTitle,
-                permission: evt.Permission,
-                documentUrl: url);
+                role: evt.Permission,
+                documentUrl: url,
+                locale: to?.Locale ?? by?.Locale);
         }
         catch (Exception ex)
         {

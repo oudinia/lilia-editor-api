@@ -1,0 +1,21 @@
+Lilia
+
+Tu exportación está lista
+
+Reunimos tus documentos en un solo archivo, como pediste en Tus datos el {{date}}.
+
+  {{export_name}}
+  {{export_meta}}
+
+Descargar:
+{{action_url}}
+
+Solo se puede descargar desde tu cuenta, después de iniciar sesión. El enlace es válido hasta el {{expires_on}}.
+
+¿No la pediste tú? Puede que alguien esté usando tu cuenta. Cambia tu contraseña en la sección Seguridad.
+
+—
+Recibes este mensaje porque se pidió una exportación de tus datos de Lilia para {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}
