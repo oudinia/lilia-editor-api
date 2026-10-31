@@ -75,10 +75,11 @@ public class NoticeEmailsTests
 
         var shared = outbox.Sent[1];
         shared.Subject.Should().Contain("Ana Ruiz").And.Contain("Field notes");
-        shared.Text.Should().Contain("Peut lire").And.Contain("ana@lilia.test");
+        shared.Text.Should().Contain("Vous pouvez lire").And.Contain("ana@lilia.test");
         shared.Html.Should().Contain(">AR<", "the disc shows the sharer's initials");
 
-        outbox.Sent[3].Text.Should().Contain("Maintenant : Peut modifier").And.Contain("Avant : Peut lire");
+        outbox.Sent[2].Text.Should().Contain("Peut modifier", "the owner reads the role of who joined");
+        outbox.Sent[3].Text.Should().Contain("Vous pouvez modifier").And.Contain("Vous pouviez lire");
         outbox.Sent[8].Text.Should().Contain("31 octobre 2026").And.Contain("7 novembre 2026").And.Contain("12 documents · 3 Mo");
         outbox.Sent[9].Text.Should().Contain("30 novembre 2026");
         outbox.Sent[10].Subject.Should().Be("Votre compte Lilia est effacé");
@@ -111,6 +112,12 @@ public class NoticeEmailsTests
      InlineData("owner", "de", "Owner")]
     public void Roles_read_as_the_share_drawer_says_them(string role, string lang, string expected) =>
         EmailService.RoleLine(role, lang).Should().Be(expected);
+
+    [Theory]
+    [InlineData("editor", "en", false, "You can edit"), InlineData("viewer", "fr", true, "Vous pouviez lire"),
+     InlineData("member", "es", false, "Puedes editar"), InlineData("owner", "en", true, "You were the owner")]
+    public void The_reader_role_is_said_to_them(string role, string lang, bool past, string expected) =>
+        EmailService.YourRole(role, lang, past).Should().Be(expected);
 
     [Theory]
     [InlineData("Nadia Benali", 2, "NB"), InlineData("ana@example.org", 2, "A"), InlineData("Quality lab", 1, "Q"), InlineData("", 2, "?")]

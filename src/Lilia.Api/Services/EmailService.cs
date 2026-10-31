@@ -133,7 +133,7 @@ public class EmailService : IEmailService
         SendNoticeAsync("invitation", toEmail, locale, inviter, null, new()
         {
             ["doc_title"] = documentTitle,
-            ["role_line"] = RoleLine(role, locale),
+            ["role_line"] = YourRole(role, locale),
             ["action_url"] = documentUrl,
         });
 
@@ -141,7 +141,7 @@ public class EmailService : IEmailService
         SendNoticeAsync("shared", toEmail, locale, inviter, null, new()
         {
             ["doc_title"] = documentTitle,
-            ["role_line"] = RoleLine(role, locale),
+            ["role_line"] = YourRole(role, locale),
             ["action_url"] = documentUrl,
         });
 
@@ -153,22 +153,14 @@ public class EmailService : IEmailService
             ["action_url"] = sharingUrl,
         });
 
-    public Task SendAccessChangedAsync(string toEmail, EmailActor changedBy, string documentTitle, string oldRole, string newRole, string documentUrl, string? locale)
-    {
-        var (now, before) = EmailTemplates.Language(locale) switch
-        {
-            "fr" => ("Maintenant\u00A0: ", "Avant\u00A0: "),
-            "es" => ("Ahora: ", "Antes: "),
-            _ => ("Now: ", "Before: "),
-        };
-        return SendNoticeAsync("changed", toEmail, locale, changedBy, null, new()
+    public Task SendAccessChangedAsync(string toEmail, EmailActor changedBy, string documentTitle, string oldRole, string newRole, string documentUrl, string? locale) =>
+        SendNoticeAsync("changed", toEmail, locale, changedBy, null, new()
         {
             ["doc_title"] = documentTitle,
-            ["role_line"] = now + RoleLine(newRole, locale),
-            ["previous_role"] = before + RoleLine(oldRole, locale),
+            ["role_line"] = YourRole(newRole, locale),
+            ["previous_role"] = YourRole(oldRole, locale, past: true),
             ["action_url"] = documentUrl,
         });
-    }
 
     /// <summary>No button. When the owner allows replies, Reply-To is them and the email says so.</summary>
     public Task SendAccessRemovedAsync(string toEmail, EmailActor removedBy, string documentTitle, bool allowReply, string? locale) =>
@@ -184,7 +176,7 @@ public class EmailService : IEmailService
         {
             ["team_name"] = teamName,
             ["team_initial"] = Initials(teamName, 1),
-            ["role_line"] = RoleLine(role, locale),
+            ["role_line"] = YourRole(role, locale),
             ["action_url"] = acceptUrl,
         });
 
@@ -231,6 +223,37 @@ public class EmailService : IEmailService
             ("commenter" or "comment", "fr") => "Peut commenter", ("commenter" or "comment", "es") => "Puede comentar", ("commenter" or "comment", _) => "Can comment",
             ("viewer", "fr") => "Peut lire", ("viewer", "es") => "Puede ver", ("viewer", _) => "Can view",
             _ => role,
+        };
+    }
+
+    /// <summary>
+    /// The reader's own role, as the designs' samples put it: "You can edit", and in the access-changed
+    /// email what they had: "You could comment".
+    /// </summary>
+    public static string YourRole(string role, string? locale, bool past = false)
+    {
+        var lang = EmailTemplates.Language(locale);
+        var verb = RoleNames.Normalize(role) switch
+        {
+            "editor" => lang switch { "fr" => "modifier", "es" => "editar", _ => "edit" },
+            "commenter" or "comment" => lang switch { "fr" => "commenter", "es" => "comentar", _ => "comment" },
+            "viewer" => lang switch { "fr" => "lire", "es" => "ver", _ => "view" },
+            _ => null,
+        };
+        if (verb is null)
+            return RoleNames.Normalize(role) == "owner"
+                ? (lang, past) switch
+                {
+                    ("fr", false) => "Vous êtes propriétaire", ("fr", true) => "Vous étiez propriétaire",
+                    ("es", false) => "Eres propietario", ("es", true) => "Eras propietario",
+                    (_, false) => "You’re the owner", (_, true) => "You were the owner",
+                }
+                : RoleLine(role, locale);
+        return (lang, past) switch
+        {
+            ("fr", false) => $"Vous pouvez {verb}", ("fr", true) => $"Vous pouviez {verb}",
+            ("es", false) => $"Puedes {verb}", ("es", true) => $"Podías {verb}",
+            (_, false) => $"You can {verb}", (_, true) => $"You could {verb}",
         };
     }
 
