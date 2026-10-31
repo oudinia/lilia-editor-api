@@ -84,8 +84,7 @@ public class AccountDeletionService
         _logger.LogInformation("[AccountDeletion] {UserId}: {Count} cached entries removed", userId, purged);
         var erasedOn = user.DeletionRequestedAt.Value.AddDays(RestoreDays);
         _logger.LogInformation("[AccountDeletion] {UserId} asked to delete; erasure on {Date:yyyy-MM-dd}", userId, erasedOn);
-        await SendAsync(user.Email, "Your Lilia account is closed",
-            $"Your account is closed and will be erased on {erasedOn:d MMMM yyyy}. To keep it, sign in to Lilia before then and choose Restore.");
+        await SendAsync(e => e.SendAccountClosedAsync(user.Email, user.Locale, user.DeletionRequestedAt.Value, erasedOn), user.Email);
         return (DeletionRefusal.None, erasedOn);
     }
 
@@ -144,6 +143,7 @@ public class AccountDeletionService
         _db.UserPreferences.RemoveRange(_db.UserPreferences.Where(p => p.UserId == userId));
         var user = await _db.Users.FirstAsync(u => u.Id == userId, ct);
         var email = user.Email;
+        var locale = user.Locale;
         user.Email = $"erased-{Guid.NewGuid():N}@erased.invalid";
         user.Name = "Deleted user";
         user.Image = null;
@@ -162,7 +162,7 @@ public class AccountDeletionService
         try { if (Directory.Exists(exports)) Directory.Delete(exports, recursive: true); } catch (IOException) { }
         await DeleteFromStytchAsync(userId);
         _logger.LogInformation("[AccountDeletion] {UserId} erased: {Count} documents", userId, docs.Count);
-        await SendAsync(email, "Your Lilia account is erased", "Your Lilia account and its documents are erased.");
+        await SendAsync(e => e.SendAccountErasedAsync(email, locale, DateTime.UtcNow), email);
     }
 
     /// <summary>The sign-in identity goes too, when the Stytch admin credentials are configured.</summary>
@@ -182,10 +182,10 @@ public class AccountDeletionService
         catch (Exception ex) { _logger.LogWarning(ex, "[AccountDeletion] Stytch delete for {UserId} failed", userId); }
     }
 
-    private async Task SendAsync(string to, string subject, string text)
+    private async Task SendAsync(Func<IEmailService, Task> send, string to)
     {
         if (_email is null || string.IsNullOrEmpty(to)) return;
-        try { await _email.SendAccountEmailAsync(to, subject, $"<p>{System.Net.WebUtility.HtmlEncode(text)}</p>", text); }
+        try { await send(_email); }
         catch (Exception ex) { _logger.LogWarning(ex, "[AccountDeletion] email not sent"); }
     }
 }

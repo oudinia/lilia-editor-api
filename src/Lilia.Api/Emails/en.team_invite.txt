@@ -1,0 +1,18 @@
+Lilia
+
+{{actor_name}} invited you to a team
+
+  {{team_name}}
+  {{role_line}}
+  Invited by {{actor_name}} <{{actor_email}}>
+
+Accept the invitation:
+{{action_url}}
+
+If you don’t want to join, you can ignore this email.
+
+—
+You’re receiving this because {{actor_name}} invited {{recipient_email}} to a team on Lilia.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

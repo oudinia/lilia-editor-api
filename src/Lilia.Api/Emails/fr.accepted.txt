@@ -1,0 +1,19 @@
+Lilia
+
+{{actor_name}} a rejoint votre document
+
+{{actor_name}} <{{actor_email}}>
+
+  {{doc_title}}
+  {{role_line}}
+
+Ouvrir le document:
+{{action_url}}
+
+Vous pouvez changer ses droits, ou lui retirer l’accès, depuis Partager dans le document.
+
+—
+Vous recevez ce message car vous avez invité {{actor_email}} à un document sur Lilia.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

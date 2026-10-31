@@ -1,0 +1,18 @@
+Lilia
+
+Votre compte est fermé
+
+Comme vous l’avez demandé, nous avons fermé le compte Lilia de {{recipient_email}} le {{date}}.
+
+Et maintenant
+- Jusqu’au {{erase_date}}, rien n’est supprimé. Connectez-vous et choisissez Restaurer pour tout retrouver tel quel.
+- Le {{erase_date}}, votre compte et vos documents seront définitivement effacés.
+- Les documents que d’autres ont partagés avec vous restent chez leurs propriétaires.
+
+Vous avez changé d’avis ? Connectez-vous pour le restaurer (https://editor.liliaeditor.com/sign-in).
+
+—
+Vous recevez ce message car le compte Lilia de {{recipient_email}} a été fermé.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

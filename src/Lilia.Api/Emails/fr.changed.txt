@@ -1,0 +1,19 @@
+Lilia
+
+Votre accès à un document a changé
+
+{{actor_name}} a modifié ce que vous pouvez faire dans ce document.
+
+  {{doc_title}}
+  {{role_line}}
+  {{previous_role}}
+  Appartient à {{actor_name}} <{{actor_email}}>
+
+Ouvrir le document:
+{{action_url}}
+
+—
+Vous recevez ce message car un document a été partagé avec {{recipient_email}} sur Lilia.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

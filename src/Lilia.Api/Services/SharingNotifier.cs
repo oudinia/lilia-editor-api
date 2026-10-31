@@ -65,7 +65,12 @@ public sealed class SharingNotifier : ISharingNotifier
                 $"{who} accepted your invitation to \"{doc.Title}\"", "They can open it now.", link);
 
             if (!recentlyEmailed && !string.IsNullOrEmpty(owner.Email))
-                await _email.SendInviteAcceptedAsync(owner.Email, who, doc.Title, $"{_settings.BaseUrl}{link}");
+            {
+                var role = await _db.DocumentCollaborators.AsNoTracking()
+                    .Where(c => c.DocumentId == documentId && c.UserId == acceptedUserId)
+                    .Select(c => c.Role.Name).FirstOrDefaultAsync();
+                await _email.SendInviteAcceptedAsync(owner.Email, new EmailActor(who, joined?.Email), doc.Title, role, $"{_settings.BaseUrl}{link}", owner.Locale);
+            }
         }
         catch (Exception ex)
         {
@@ -87,7 +92,7 @@ public sealed class SharingNotifier : ISharingNotifier
             await _notifications.CreateAsync(targetUserId, RoleChanged,
                 $"{who} changed your access to \"{doc.Title}\"", $"{RoleWords(oldRole)} → {RoleWords(newRole)}", link);
             if (!string.IsNullOrEmpty(target.Email))
-                await _email.SendAccessChangedAsync(target.Email, who, doc.Title, RoleWords(oldRole), RoleWords(newRole), $"{_settings.BaseUrl}{link}");
+                await _email.SendAccessChangedAsync(target.Email, new EmailActor(who, by?.Email), doc.Title, oldRole, newRole, $"{_settings.BaseUrl}{link}", target.Locale);
         }
         catch (Exception ex)
         {
@@ -108,7 +113,7 @@ public sealed class SharingNotifier : ISharingNotifier
             await _notifications.CreateAsync(targetUserId, AccessRemoved,
                 $"{who} removed your access to \"{doc.Title}\"", null, null);
             if (!string.IsNullOrEmpty(target.Email))
-                await _email.SendAccessRemovedAsync(target.Email, who, doc.Title, allowReply ? by?.Email : null);
+                await _email.SendAccessRemovedAsync(target.Email, new EmailActor(who, by?.Email), doc.Title, allowReply, target.Locale);
         }
         catch (Exception ex)
         {

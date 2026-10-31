@@ -1,0 +1,21 @@
+Lilia
+
+Your export is ready
+
+We gathered your documents into one file, as you asked in Your data on {{date}}.
+
+  {{export_name}}
+  {{export_meta}}
+
+Download:
+{{action_url}}
+
+Only you can download it, after signing in. The link is valid until {{expires_on}}.
+
+Didn’t ask for this? Someone may be using your account. Change your password in the Security section.
+
+—
+You’re receiving this because an export of your Lilia data was requested for {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

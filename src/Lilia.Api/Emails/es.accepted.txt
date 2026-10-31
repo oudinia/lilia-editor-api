@@ -1,0 +1,19 @@
+Lilia
+
+{{actor_name}} se unió a tu documento
+
+{{actor_name}} <{{actor_email}}>
+
+  {{doc_title}}
+  {{role_line}}
+
+Abrir el documento:
+{{action_url}}
+
+Puedes cambiar lo que puede hacer, o quitarle el acceso, desde Compartir en el documento.
+
+—
+Recibes este mensaje porque invitaste a {{actor_email}} a un documento en Lilia.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

@@ -1,0 +1,17 @@
+Lilia
+
+Votre équipe est prête
+
+{{team_name}} est créée et vous en êtes propriétaire. Prochaine étape : invitez les personnes avec qui vous écrivez.
+
+  {{team_name}}
+  Code {{team_codename}} · Propriétaire
+
+Ouvrir l’équipe:
+{{action_url}}
+
+—
+Vous recevez ce message car vous avez créé une équipe sur Lilia avec {{recipient_email}}.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

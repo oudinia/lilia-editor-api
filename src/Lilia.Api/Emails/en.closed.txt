@@ -1,0 +1,18 @@
+Lilia
+
+Your account is closed
+
+As you asked, we closed the Lilia account for {{recipient_email}} on {{date}}.
+
+What happens next
+- Until {{erase_date}}, nothing is deleted. Sign in and choose Restore to keep everything as it was.
+- On {{erase_date}}, your account and your documents are erased for good.
+- Documents others shared with you stay with their owners.
+
+Changed your mind? Sign in to restore it (https://editor.liliaeditor.com/sign-in).
+
+—
+You’re receiving this because the Lilia account for {{recipient_email}} was closed.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

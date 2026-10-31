@@ -89,15 +89,12 @@ public class EmailGatewayTests
         var resend = new FakeProvider("resend");
         var smtp = new FakeProvider("smtp");
         var settings = new EmailSettings { AccountRoute = "resend", NotificationRoute = "smtp" };
-        var service = new EmailService(settings, NullLogger<EmailService>.Instance,
-            new StringLocalizer<EmailService>(new Microsoft.Extensions.Localization.ResourceManagerStringLocalizerFactory(
-                Options.Create(new LocalizationOptions()), NullLoggerFactory.Instance)),
-            Gateway(settings, resend, smtp));
+        var service = new EmailService(settings, NullLogger<EmailService>.Instance, Gateway(settings, resend, smtp));
 
         await service.SendStytchMagicLinkLoginAsync("ada@lilia.test", "https://editor.liliaeditor.com/auth/callback?token=t", "en");
         await service.SendStytchPasswordResetAsync("ada@lilia.test", "https://editor.liliaeditor.com/reset-password?token=t", "fr");
         await service.SendAccountEmailAsync("ada@lilia.test", "Your Lilia export is ready", "<p>ready</p>");
-        await service.SendAccessChangedAsync("ada@lilia.test", "Nadia", "Thesis", "viewer", "editor", "https://editor.liliaeditor.com/d/1");
+        await service.SendAccessChangedAsync("ada@lilia.test", new EmailActor("Nadia", "nadia@lilia.test"), "Thesis", "viewer", "editor", "https://editor.liliaeditor.com/d/1", "en");
 
         resend.Sent.Select(e => e.Kind).Should().AllBeEquivalentTo(EmailKind.Account).And.HaveCount(3);
         smtp.Sent.Should().ContainSingle().Which.Subject.Should().Contain("Thesis");

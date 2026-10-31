@@ -1,0 +1,18 @@
+Lilia
+
+Votre compte est effacé
+
+Comme prévu, nous avons effacé le compte Lilia de {{recipient_email}} le {{date}}.
+
+Ce que cela signifie
+- Votre compte, vos documents et leur historique sont supprimés. Ils ne peuvent pas être restaurés.
+- Les fichiers que vous avez téléchargés de Lilia restent à vous.
+- Les documents que d’autres ont partagés avec vous restent chez leurs propriétaires.
+
+Envie d’écrire à nouveau avec Lilia ? Créez un nouveau compte (https://editor.liliaeditor.com/sign-up).
+
+—
+Vous recevez ce message car le compte Lilia de {{recipient_email}} a été effacé.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

@@ -1,0 +1,23 @@
+Lilia
+
+Se retiró tu acceso a un documento
+
+{{actor_name}} retiró tu acceso a este documento el {{date}}.
+
+  {{doc_title}}
+  Ya no se comparte contigo
+  Propiedad de {{actor_name}} <{{actor_email}}>
+
+Qué significa
+- Ya no aparece en tus documentos y su enlace ya no se abrirá para ti.
+- Tus propios documentos y tu plan no se ven afectados.
+
+{{#if reply_to_owner}}
+¿Crees que es un error? Responde a este mensaje para contactar con {{actor_name}}.
+{{/if}}
+
+—
+Recibes este mensaje porque se compartió un documento con {{recipient_email}} en Lilia.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

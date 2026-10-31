@@ -1,0 +1,17 @@
+Lilia
+
+Your team is ready
+
+{{team_name}} is set up and you’re its owner. Next, invite the people you write with.
+
+  {{team_name}}
+  Code {{team_codename}} · You’re the owner
+
+Open the team:
+{{action_url}}
+
+—
+You’re receiving this because you created a team on Lilia with {{recipient_email}}.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

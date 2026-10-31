@@ -1,0 +1,23 @@
+Lilia
+
+Ya no formas parte de un equipo
+
+{{actor_name}} te quitó de este equipo el {{date}}.
+
+  {{team_name}}
+  Ya no eres miembro
+  Propiedad de {{actor_name}} <{{actor_email}}>
+
+Qué significa
+- Los documentos del equipo ya no aparecen en tus documentos.
+- Tus propios documentos y tu plan no se ven afectados.
+
+{{#if reply_to_owner}}
+¿Crees que es un error? Responde a este mensaje para contactar con {{actor_name}}.
+{{/if}}
+
+—
+Recibes este mensaje porque {{recipient_email}} formaba parte de un equipo en Lilia.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

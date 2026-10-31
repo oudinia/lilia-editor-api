@@ -1,0 +1,22 @@
+Lilia
+
+{{actor_name}} a partagé un document avec vous
+
+  {{doc_title}}
+  {{role_line}}
+  Partagé par {{actor_name}} <{{actor_email}}>
+
+{{#if personal_note}}
+“{{personal_note}}”
+{{/if}}
+
+Ouvrir le document:
+{{action_url}}
+
+Première fois sur Lilia ? En ouvrant le document, vous créez votre compte gratuit en une minute environ. Les documents partagés avec vous ne comptent jamais dans votre forfait.
+
+—
+Vous recevez ce message car {{actor_name}} a partagé un document avec {{recipient_email}}. Si vous ne l’attendiez pas, vous pouvez l’ignorer.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

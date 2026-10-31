@@ -1,0 +1,23 @@
+Lilia
+
+Your access to a document was removed
+
+{{actor_name}} removed your access to this document on {{date}}.
+
+  {{doc_title}}
+  No longer shared with you
+  Owned by {{actor_name}} <{{actor_email}}>
+
+What this means
+- It no longer appears in your documents, and its link won’t open for you.
+- Your own documents and your plan are not affected.
+
+{{#if reply_to_owner}}
+Think this was a mistake? You can reply to this email to reach {{actor_name}}.
+{{/if}}
+
+—
+You’re receiving this because a document was shared with {{recipient_email}} on Lilia.
+
+Help: https://editor.liliaeditor.com/help
+{{publisher_line}}

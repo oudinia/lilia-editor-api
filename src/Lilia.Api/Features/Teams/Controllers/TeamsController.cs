@@ -75,7 +75,7 @@ public class TeamsController : ControllerBase
         var codename = req.Codename ?? _codenameGenerator.Generate();
         try
         {
-            await _email.SendTeamWelcomeAsync(req.Email, req.FirstName, codename);
+            await _email.SendTeamWelcomeAsync(req.Email, codename, codename, $"{(config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/')}/teams", null);
             return Ok(new { sent = true, to = req.Email, codename });
         }
         catch (Exception ex)

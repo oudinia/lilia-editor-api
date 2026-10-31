@@ -1,0 +1,23 @@
+Lilia
+
+Votre accès à un document a été retiré
+
+{{actor_name}} a retiré votre accès à ce document le {{date}}.
+
+  {{doc_title}}
+  N’est plus partagé avec vous
+  Appartient à {{actor_name}} <{{actor_email}}>
+
+Ce que cela change
+- Il n’apparaît plus dans vos documents et son lien ne s’ouvrira plus pour vous.
+- Vos propres documents et votre forfait ne sont pas concernés.
+
+{{#if reply_to_owner}}
+Vous pensez que c’est une erreur ? Répondez à ce message pour joindre {{actor_name}}.
+{{/if}}
+
+—
+Vous recevez ce message car un document a été partagé avec {{recipient_email}} sur Lilia.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}

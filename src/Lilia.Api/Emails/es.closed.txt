@@ -1,0 +1,18 @@
+Lilia
+
+Tu cuenta está cerrada
+
+Como pediste, cerramos la cuenta de Lilia de {{recipient_email}} el {{date}}.
+
+Qué pasa ahora
+- Hasta el {{erase_date}} no se borra nada. Inicia sesión y elige Restaurar para recuperarlo todo tal como estaba.
+- El {{erase_date}}, tu cuenta y tus documentos se borrarán para siempre.
+- Los documentos que otros compartieron contigo siguen con sus propietarios.
+
+¿Cambiaste de idea? Inicia sesión para restaurarla (https://editor.liliaeditor.com/sign-in).
+
+—
+Recibes este mensaje porque se cerró la cuenta de Lilia de {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

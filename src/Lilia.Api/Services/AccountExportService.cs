@@ -136,7 +136,7 @@ public class AccountExportService
             job.Metadata = JsonDocument.Parse(JsonSerializer.Serialize(new { documents = docs.Count, latexSkipped = skipped.Count }));
             job.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
-            await NotifyAsync(user.Email);
+            await NotifyAsync(user.Email, user.Locale, job, docs.Count, new FileInfo(path).Length);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -147,15 +147,13 @@ public class AccountExportService
         }
     }
 
-    private async Task NotifyAsync(string email)
+    private async Task NotifyAsync(string email, string? locale, Job job, int documents, long bytes)
     {
         if (_email is null || string.IsNullOrEmpty(email)) return;
-        var link = $"{(_config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/')}/settings/data";
         try
         {
-            await _email.SendAccountEmailAsync(email, "Your Lilia export is ready",
-                $"<p>Your export is ready. Download it from <a href=\"{link}\">Settings → Your data</a> within 7 days.</p>",
-                $"Your export is ready. Download it from Settings → Your data within 7 days: {link}");
+            await _email.SendExportReadyAsync(email, locale, job.CreatedAt, job.ExpiresAt ?? DateTime.UtcNow + Lifetime,
+                job.ResultFileName ?? "lilia-export.zip", documents, bytes);
         }
         catch (Exception ex) { _logger.LogWarning(ex, "[AccountExport] ready email not sent"); }
     }

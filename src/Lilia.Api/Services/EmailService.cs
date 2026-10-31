@@ -1,7 +1,7 @@
 using System.Text;
-using Microsoft.Extensions.Localization;
 
 using Lilia.Api.Services.Email;
+using Lilia.Core.Entities;
 
 namespace Lilia.Api.Services;
 
@@ -60,73 +60,12 @@ public class EmailService : IEmailService
     private readonly EmailGateway _gateway;
     private readonly EmailSettings _settings;
     private readonly ILogger<EmailService> _logger;
-    private readonly IStringLocalizer<EmailService> _localizer;
 
-    public EmailService(EmailSettings settings, ILogger<EmailService> logger, IStringLocalizer<EmailService> localizer, EmailGateway gateway)
+    public EmailService(EmailSettings settings, ILogger<EmailService> logger, EmailGateway gateway)
     {
         _settings = settings;
         _logger = logger;
-        _localizer = localizer;
         _gateway = gateway;
-    }
-
-    public async Task SendDocumentInviteAsync(string toEmail, string inviterName, string documentTitle, string role, string documentUrl)
-    {
-        var subject = string.Format(_localizer["InviteSubject"].Value, inviterName, documentTitle);
-        var html = BuildInviteHtml(inviterName, documentTitle, role, documentUrl);
-        var text = string.Format(_localizer["InvitePlainText"].Value, inviterName, documentTitle, role, documentUrl);
-
-        await SendEmailAsync(toEmail, subject, html, text);
-    }
-
-    public async Task SendTeamWelcomeAsync(string toEmail, string? firstName, string teamCodename)
-    {
-        // Sent on user.created right after the welcome — announces the
-        // auto-generated default team so the user knows they already
-        // have a workspace to play in. Code is a research-lab-style
-        // codename like "Cobalt Photon A7B" from TeamCodenameGenerator.
-        var greeting = string.IsNullOrWhiteSpace(firstName) ? "Hi there" : $"Hi {firstName}";
-        var subject = $"Your team is ready — {teamCodename}";
-        var html = $$"""
-        <!DOCTYPE html>
-        <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
-            <tr><td align="center">
-              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                <tr><td style="padding:32px 32px 0;">
-                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
-                </td></tr>
-                <tr><td style="padding:24px 32px;">
-                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{greeting}},</p>
-                  <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#333;">
-                    Your default team is ready. Codename:
-                  </p>
-                  <p style="margin:0 0 20px;font-size:18px;font-weight:600;line-height:1.4;color:#1976d2;font-family:ui-monospace,SFMono-Regular,monospace;">
-                    {{teamCodename}}
-                  </p>
-                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
-                    Every document you create lives in this team by default. You can rename it,
-                    invite up to 2 collaborators on the free plan, or roll a fresh codename
-                    from your team settings.
-                  </p>
-                  <a href="{{_settings.BaseUrl}}/latex/docs"
-                     style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
-                    Open Lilia
-                  </a>
-                </td></tr>
-                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
-                  <p style="margin:0;font-size:12px;color:#999;">— The Lilia team</p>
-                </td></tr>
-              </table>
-            </td></tr>
-          </table>
-        </body>
-        </html>
-        """;
-        var text = $"{greeting},\n\nYour default team is ready. Codename: {teamCodename}\n\nEvery document you create lives in this team by default. Open Lilia: {_settings.BaseUrl}/latex/docs\n\n— The Lilia team";
-        await SendEmailAsync(toEmail, subject, html, text);
     }
 
     public Task SendEmailAsync(string to, string subject, string htmlBody, string? textBody = null) =>
@@ -187,266 +126,189 @@ public class EmailService : IEmailService
         return text + $"\n\nSame links on {host}:\n" + string.Join("\n", links.Select(u => also + u[b.Length..]));
     }
 
-    private string BuildInviteHtml(string inviterName, string documentTitle, string role, string documentUrl)
-    {
-        var inviteBody = string.Format(_localizer["InviteBody"].Value, System.Net.WebUtility.HtmlEncode(inviterName));
-        var roleLabel = _localizer["InviteRole"].Value;
-        var buttonText = _localizer["InviteButton"].Value;
-        var footerText = _localizer["InviteFooter"].Value;
+    // ── Sharing and teams (17 Oct designs): in the reader's language, the caller picks it ──
 
-        return $"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
-            <tr>
-              <td align="center">
-                <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                  <tr>
-                    <td style="padding:32px 32px 0;">
-                      <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:24px 32px;">
-                      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">
-                        {inviteBody}
-                      </p>
-                      <div style="background-color:#f0f4ff;border-radius:8px;padding:16px 20px;margin:0 0 20px;">
-                        <p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#1a1a1a;">
-                          {System.Net.WebUtility.HtmlEncode(documentTitle)}
-                        </p>
-                        <p style="margin:0;font-size:13px;color:#666;">
-                          {roleLabel} <strong>{System.Net.WebUtility.HtmlEncode(role)}</strong>
-                        </p>
-                      </div>
-                      <a href="{System.Net.WebUtility.HtmlEncode(documentUrl)}"
-                         style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
-                        {buttonText}
-                      </a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:20px 32px;border-top:1px solid #eee;">
-                      <p style="margin:0;font-size:12px;color:#999;">
-                        {footerText}
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-        """;
+    /// <summary>To someone without an account: the invitation opens sign-up, then the document.</summary>
+    public Task SendDocumentInviteAsync(string toEmail, EmailActor inviter, string documentTitle, string role, string documentUrl, string? locale) =>
+        SendNoticeAsync("invitation", toEmail, locale, inviter, null, new()
+        {
+            ["doc_title"] = documentTitle,
+            ["role_line"] = YourRole(role, locale),
+            ["action_url"] = documentUrl,
+        });
+
+    public Task SendDocumentSharedAsync(string toEmail, EmailActor inviter, string documentTitle, string role, string documentUrl, string? locale) =>
+        SendNoticeAsync("shared", toEmail, locale, inviter, null, new()
+        {
+            ["doc_title"] = documentTitle,
+            ["role_line"] = YourRole(role, locale),
+            ["action_url"] = documentUrl,
+        });
+
+    public Task SendInviteAcceptedAsync(string toEmail, EmailActor joined, string documentTitle, string? role, string sharingUrl, string? locale) =>
+        SendNoticeAsync("accepted", toEmail, locale, joined, null, new()
+        {
+            ["doc_title"] = documentTitle,
+            ["role_line"] = role is null ? null : RoleLine(role, locale),
+            ["action_url"] = sharingUrl,
+        });
+
+    public Task SendAccessChangedAsync(string toEmail, EmailActor changedBy, string documentTitle, string oldRole, string newRole, string documentUrl, string? locale) =>
+        SendNoticeAsync("changed", toEmail, locale, changedBy, null, new()
+        {
+            ["doc_title"] = documentTitle,
+            ["role_line"] = YourRole(newRole, locale),
+            ["previous_role"] = YourRole(oldRole, locale, past: true),
+            ["action_url"] = documentUrl,
+        });
+
+    /// <summary>No button. When the owner allows replies, Reply-To is them and the email says so.</summary>
+    public Task SendAccessRemovedAsync(string toEmail, EmailActor removedBy, string documentTitle, bool allowReply, string? locale) =>
+        SendNoticeAsync("removed", toEmail, locale, removedBy, allowReply ? removedBy.Email : null, new()
+        {
+            ["doc_title"] = documentTitle,
+            ["date"] = EmailTemplates.Date(DateTime.UtcNow, locale),
+            ["reply_to_owner"] = allowReply && !string.IsNullOrWhiteSpace(removedBy.Email) ? "1" : null,
+        });
+
+    public Task SendTeamInviteAsync(string toEmail, EmailActor inviter, string teamName, string role, string acceptUrl, string? locale) =>
+        SendNoticeAsync("team_invite", toEmail, locale, inviter, null, new()
+        {
+            ["team_name"] = teamName,
+            ["team_initial"] = Initials(teamName, 1),
+            ["role_line"] = YourRole(role, locale),
+            ["action_url"] = acceptUrl,
+        });
+
+    public Task SendTeamWelcomeAsync(string toEmail, string teamName, string teamCodename, string teamUrl, string? locale) =>
+        SendNoticeAsync("team_ready", toEmail, locale, null, null, new()
+        {
+            ["team_name"] = teamName,
+            ["team_initial"] = Initials(teamName, 1),
+            ["team_codename"] = teamCodename,
+            ["action_url"] = teamUrl,
+        });
+
+    public Task SendTeamMemberRemovedAsync(string toEmail, EmailActor removedBy, string teamName, string? locale) =>
+        SendNoticeAsync("team_removed", toEmail, locale, removedBy, null, new()
+        {
+            ["team_name"] = teamName,
+            ["team_initial"] = Initials(teamName, 1),
+            ["date"] = EmailTemplates.Date(DateTime.UtcNow, locale),
+        });
+
+    private Task SendNoticeAsync(string key, string toEmail, string? locale, EmailActor? actor, string? replyTo, Dictionary<string, string?> values)
+    {
+        values["recipient_email"] = toEmail;
+        values["publisher_line"] = _settings.PublisherLine;
+        if (actor is not null)
+        {
+            values["actor_name"] = actor.Name;
+            values["actor_email"] = actor.Email;
+            values["actor_initials"] = Initials(actor.Name, 2);
+        }
+        var email = EmailTemplates.Render(key, locale, values, _settings.BaseUrl);
+        return SendEmailCoreAsync(toEmail, email.Subject, email.Html, email.Text, replyTo, EmailKind.Notification);
     }
 
-    // ── Sharing notices (Olivia, 10 Oct): two or three lines, at most one button ──
-
-    public Task SendInviteAcceptedAsync(string toEmail, string acceptedByName, string documentTitle, string sharingUrl) =>
-        SendEmailAsync(toEmail,
-            $"{acceptedByName} joined \"{documentTitle}\"",
-            NoticeHtml(
-                $"<strong>{Enc(acceptedByName)}</strong> accepted your invitation to <strong>{Enc(documentTitle)}</strong>.",
-                "They can open it now. See who has access, or change it, in Share.",
-                "Open sharing", sharingUrl,
-                "You're receiving this because you shared a document on Lilia."),
-            $"{acceptedByName} accepted your invitation to \"{documentTitle}\".\n\nOpen sharing: {sharingUrl}\n\n— Lilia");
-
-    public Task SendAccessChangedAsync(string toEmail, string changedByName, string documentTitle, string oldRole, string newRole, string documentUrl) =>
-        SendEmailAsync(toEmail,
-            $"Your access to \"{documentTitle}\" changed",
-            NoticeHtml(
-                $"<strong>{Enc(changedByName)}</strong> changed your access to <strong>{Enc(documentTitle)}</strong>.",
-                $"{Enc(oldRole)} → <strong>{Enc(newRole)}</strong>",
-                "Open document", documentUrl,
-                "You're receiving this because a document was shared with you on Lilia."),
-            $"{changedByName} changed your access to \"{documentTitle}\": {oldRole} → {newRole}.\n\nOpen document: {documentUrl}\n\n— Lilia");
-
-    public Task SendAccessRemovedAsync(string toEmail, string removedByName, string documentTitle, string? replyTo = null) =>
-        SendEmailCoreAsync(toEmail,
-            $"Your access to \"{documentTitle}\" was removed",
-            NoticeHtml(
-                $"<strong>{Enc(removedByName)}</strong> removed your access to <strong>{Enc(documentTitle)}</strong>.",
-                replyTo is null
-                    ? "It no longer appears in your documents."
-                    : $"It no longer appears in your documents. You can reply to this email to reach {Enc(removedByName)}.",
-                null, null,
-                "You're receiving this because a document was shared with you on Lilia."),
-            $"{removedByName} removed your access to \"{documentTitle}\".\n\n— Lilia",
-            replyTo, EmailKind.Notification);
-
-    private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
-
-    /// <summary>The sharing notices' one layout: the share email's card, a line, a second line, maybe a button.</summary>
-    private static string NoticeHtml(string lineHtml, string secondHtml, string? button, string? url, string footer) => $$"""
-        <!DOCTYPE html>
-        <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
-            <tr><td align="center">
-              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                <tr><td style="padding:32px 32px 0;">
-                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
-                </td></tr>
-                <tr><td style="padding:24px 32px;">
-                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{lineHtml}}</p>
-                  <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#555;">{{secondHtml}}</p>
-                  {{(button is null || url is null ? "" : $"<a href=\"{Enc(url)}\" style=\"display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;\">{Enc(button)}</a>")}}
-                </td></tr>
-                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
-                  <p style="margin:0;font-size:12px;color:#999;">{{footer}}</p>
-                </td></tr>
-              </table>
-            </td></tr>
-          </table>
-        </body>
-        </html>
-        """;
-
-    public async Task SendDocumentSharedAsync(string toEmail, string? recipientName, string inviterName,
-        string documentTitle, string permission, string documentUrl)
+    /// <summary>The share drawer's words for a role, in the email's language: Can edit, Peut modifier, Puede editar.</summary>
+    public static string RoleLine(string role, string? locale)
     {
-        // By-id share path — the recipient already has an account (we found
-        // them via user-search), so we link straight to the doc rather than
-        // to sign-up. No localization yet; mirrors SendTeamWelcomeAsync.
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "Hi" : $"Hi {recipientName}";
-        var subject = $"{inviterName} shared \"{documentTitle}\" with you";
-        var html = $$"""
-        <!DOCTYPE html>
-        <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
-            <tr><td align="center">
-              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                <tr><td style="padding:32px 32px 0;">
-                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
-                </td></tr>
-                <tr><td style="padding:24px 32px;">
-                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{greeting}},</p>
-                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
-                    <strong>{{System.Net.WebUtility.HtmlEncode(inviterName)}}</strong> shared a document with you on Lilia:
-                  </p>
-                  <p style="margin:0 0 20px;font-size:17px;font-weight:600;line-height:1.4;color:#1a1a1a;">
-                    {{System.Net.WebUtility.HtmlEncode(documentTitle)}}
-                  </p>
-                  <p style="margin:0 0 20px;font-size:14px;color:#666;">
-                    Your access level: <strong>{{System.Net.WebUtility.HtmlEncode(permission)}}</strong>
-                  </p>
-                  <a href="{{System.Net.WebUtility.HtmlEncode(documentUrl)}}"
-                     style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
-                    Open document
-                  </a>
-                </td></tr>
-                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
-                  <p style="margin:0;font-size:12px;color:#999;">
-                    You're receiving this because someone shared a document with you on Lilia.
-                  </p>
-                </td></tr>
-              </table>
-            </td></tr>
-          </table>
-        </body>
-        </html>
-        """;
-        var text = $"{greeting},\n\n{inviterName} shared a document with you on Lilia:\n\n{documentTitle}\n\nYour access level: {permission}\n\nOpen document: {documentUrl}";
-        await SendEmailAsync(toEmail, subject, html, text);
+        var lang = EmailTemplates.Language(locale);
+        var normalized = RoleNames.Normalize(role);
+        return (normalized, lang) switch
+        {
+            ("owner", "fr") => "Propriétaire", ("owner", "es") => "Propietario", ("owner", _) => "Owner",
+            ("editor", "fr") => "Peut modifier", ("editor", "es") => "Puede editar", ("editor", _) => "Can edit",
+            ("commenter" or "comment", "fr") => "Peut commenter", ("commenter" or "comment", "es") => "Puede comentar", ("commenter" or "comment", _) => "Can comment",
+            ("viewer", "fr") => "Peut lire", ("viewer", "es") => "Puede ver", ("viewer", _) => "Can view",
+            _ => role,
+        };
     }
 
-    public async Task SendTeamMemberRemovedAsync(string toEmail, string? recipientName,
-        string removerName, string teamName)
+    /// <summary>
+    /// The reader's own role, as the designs' samples put it: "You can edit", and in the access-changed
+    /// email what they had: "You could comment".
+    /// </summary>
+    public static string YourRole(string role, string? locale, bool past = false)
     {
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "Hi" : $"Hi {recipientName}";
-        var subject = $"You were removed from {teamName} on Lilia";
-        var html = $$"""
-        <!DOCTYPE html>
-        <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
-            <tr><td align="center">
-              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                <tr><td style="padding:32px 32px 0;">
-                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
-                </td></tr>
-                <tr><td style="padding:24px 32px;">
-                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">{{greeting}},</p>
-                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
-                    <strong>{{System.Net.WebUtility.HtmlEncode(removerName)}}</strong> removed you from the team:
-                  </p>
-                  <p style="margin:0 0 20px;font-size:17px;font-weight:600;line-height:1.4;color:#1a1a1a;font-family:ui-monospace,SFMono-Regular,monospace;">
-                    {{System.Net.WebUtility.HtmlEncode(teamName)}}
-                  </p>
-                  <p style="margin:0;font-size:14px;color:#666;">
-                    Documents you owned personally are unaffected. If this was unexpected, reach out to the team owner.
-                  </p>
-                </td></tr>
-                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
-                  <p style="margin:0;font-size:12px;color:#999;">
-                    You're receiving this because your team membership changed on Lilia.
-                  </p>
-                </td></tr>
-              </table>
-            </td></tr>
-          </table>
-        </body>
-        </html>
-        """;
-        var text = $"{greeting},\n\n{removerName} removed you from the team:\n\n{teamName}\n\nDocuments you owned personally are unaffected.";
-        await SendEmailAsync(toEmail, subject, html, text);
+        var lang = EmailTemplates.Language(locale);
+        var verb = RoleNames.Normalize(role) switch
+        {
+            "editor" => lang switch { "fr" => "modifier", "es" => "editar", _ => "edit" },
+            "commenter" or "comment" => lang switch { "fr" => "commenter", "es" => "comentar", _ => "comment" },
+            "viewer" => lang switch { "fr" => "lire", "es" => "ver", _ => "view" },
+            _ => null,
+        };
+        if (verb is null)
+            return RoleNames.Normalize(role) == "owner"
+                ? (lang, past) switch
+                {
+                    ("fr", false) => "Vous êtes propriétaire", ("fr", true) => "Vous étiez propriétaire",
+                    ("es", false) => "Eres propietario", ("es", true) => "Eras propietario",
+                    (_, false) => "You’re the owner", (_, true) => "You were the owner",
+                }
+                : RoleLine(role, locale);
+        return (lang, past) switch
+        {
+            ("fr", false) => $"Vous pouvez {verb}", ("fr", true) => $"Vous pouviez {verb}",
+            ("es", false) => $"Puedes {verb}", ("es", true) => $"Podías {verb}",
+            (_, false) => $"You can {verb}", (_, true) => $"You could {verb}",
+        };
     }
 
-    public async Task SendTeamInviteAsync(string toEmail, string inviterName, string teamName,
-        string role, string acceptUrl)
+    /// <summary>"Nadia Benali" → "NB", "ana@example.org" → "A": the disc beside a name.</summary>
+    public static string Initials(string? name, int max)
     {
-        var subject = $"{inviterName} invited you to {teamName} on Lilia";
-        var html = $$"""
-        <!DOCTYPE html>
-        <html>
-        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;padding:40px 20px;">
-            <tr><td align="center">
-              <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                <tr><td style="padding:32px 32px 0;">
-                  <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#1a1a1a;">Lilia</h1>
-                </td></tr>
-                <tr><td style="padding:24px 32px;">
-                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#333;">Hi,</p>
-                  <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#333;">
-                    <strong>{{System.Net.WebUtility.HtmlEncode(inviterName)}}</strong> invited you to join their team on Lilia:
-                  </p>
-                  <p style="margin:0 0 16px;font-size:18px;font-weight:600;line-height:1.4;color:#1976d2;font-family:ui-monospace,SFMono-Regular,monospace;">
-                    {{System.Net.WebUtility.HtmlEncode(teamName)}}
-                  </p>
-                  <p style="margin:0 0 24px;font-size:14px;color:#666;">
-                    Your role: <strong>{{System.Net.WebUtility.HtmlEncode(role)}}</strong>
-                  </p>
-                  <a href="{{System.Net.WebUtility.HtmlEncode(acceptUrl)}}"
-                     style="display:inline-block;background-color:#1976d2;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:500;">
-                    Accept invite
-                  </a>
-                </td></tr>
-                <tr><td style="padding:20px 32px;border-top:1px solid #eee;">
-                  <p style="margin:0;font-size:12px;color:#999;">
-                    You're receiving this because someone invited you to a team on Lilia.
-                  </p>
-                </td></tr>
-              </table>
-            </td></tr>
-          </table>
-        </body>
-        </html>
-        """;
-        var text = $"Hi,\n\n{inviterName} invited you to join their team on Lilia:\n\n{teamName}\n\nYour role: {role}\n\nAccept invite: {acceptUrl}";
-        await SendEmailAsync(toEmail, subject, html, text);
+        var source = (name ?? "").Trim();
+        if (source.Contains('@')) { source = source[..source.IndexOf('@')]; max = 1; }
+        var words = source.Split([' ', '.', '-', '_'], StringSplitOptions.RemoveEmptyEntries);
+        var initials = string.Concat(words.Take(max).Select(w => char.ToUpperInvariant(w[0])));
+        return initials.Length > 0 ? initials : "?";
+    }
+
+    // ── Account notices (17 Oct designs): the export, closing, erasing ──
+
+    public Task SendExportReadyAsync(string toEmail, string? locale, DateTime requestedAt, DateTime expiresAt, string fileName, int documents, long bytes)
+    {
+        var lang = EmailTemplates.Language(locale);
+        var megabytes = Math.Max(1, (int)Math.Round(bytes / 1_048_576.0));
+        var meta = lang switch
+        {
+            "fr" => $"{documents} document{(documents == 1 ? "" : "s")} · {megabytes} Mo",
+            "es" => $"{documents} documento{(documents == 1 ? "" : "s")} · {megabytes} MB",
+            _ => $"{documents} document{(documents == 1 ? "" : "s")} · {megabytes} MB",
+        };
+        return SendAccountTemplateAsync("export", toEmail, locale, new()
+        {
+            ["action_url"] = _settings.BaseUrl.TrimEnd('/') + "/settings/data",
+            ["date"] = EmailTemplates.Date(requestedAt, locale),
+            ["expires_on"] = EmailTemplates.Date(expiresAt, locale),
+            ["export_name"] = fileName,
+            ["export_meta"] = meta,
+        });
+    }
+
+    public Task SendAccountClosedAsync(string toEmail, string? locale, DateTime closedAt, DateTime eraseOn) =>
+        SendAccountTemplateAsync("closed", toEmail, locale, new()
+        {
+            ["date"] = EmailTemplates.Date(closedAt, locale),
+            ["erase_date"] = EmailTemplates.Date(eraseOn, locale),
+        });
+
+    /// <summary>Thirty days later: the "closed" layout, nothing left to restore.</summary>
+    public Task SendAccountErasedAsync(string toEmail, string? locale, DateTime erasedAt) =>
+        SendAccountTemplateAsync("erased", toEmail, locale, new()
+        {
+            ["date"] = EmailTemplates.Date(erasedAt, locale),
+        });
+
+    private Task SendAccountTemplateAsync(string key, string toEmail, string? locale, Dictionary<string, string?> values)
+    {
+        values["recipient_email"] = toEmail;
+        values["publisher_line"] = _settings.PublisherLine;
+        var email = EmailTemplates.Render(key, locale, values, _settings.BaseUrl);
+        return SendAccountEmailAsync(toEmail, email.Subject, email.Html, email.Text);
     }
 
     // ─────────────────────────────────────────────────────────────────

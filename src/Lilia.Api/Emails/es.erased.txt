@@ -1,0 +1,18 @@
+Lilia
+
+Tu cuenta está borrada
+
+Como estaba previsto, borramos la cuenta de Lilia de {{recipient_email}} el {{date}}.
+
+Qué significa
+- Tu cuenta, tus documentos y su historial están borrados. No se pueden restaurar.
+- Los archivos que descargaste de Lilia siguen siendo tuyos.
+- Los documentos que otros compartieron contigo siguen con sus propietarios.
+
+¿Quieres volver a escribir con Lilia? Crea una cuenta nueva (https://editor.liliaeditor.com/sign-up).
+
+—
+Recibes este mensaje porque se borró la cuenta de Lilia de {{recipient_email}}.
+
+Ayuda: https://editor.liliaeditor.com/help
+{{publisher_line}}

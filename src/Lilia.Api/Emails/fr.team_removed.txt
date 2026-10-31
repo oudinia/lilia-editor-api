@@ -1,0 +1,23 @@
+Lilia
+
+Vous ne faites plus partie d’une équipe
+
+{{actor_name}} a mis fin à votre participation à cette équipe le {{date}}.
+
+  {{team_name}}
+  Vous n’êtes plus membre
+  Appartient à {{actor_name}} <{{actor_email}}>
+
+Ce que cela change
+- Les documents de l’équipe n’apparaissent plus dans vos documents.
+- Vos propres documents et votre forfait ne sont pas concernés.
+
+{{#if reply_to_owner}}
+Vous pensez que c’est une erreur ? Répondez à ce message pour joindre {{actor_name}}.
+{{/if}}
+
+—
+Vous recevez ce message car {{recipient_email}} faisait partie d’une équipe sur Lilia.
+
+Aide: https://editor.liliaeditor.com/help
+{{publisher_line}}
