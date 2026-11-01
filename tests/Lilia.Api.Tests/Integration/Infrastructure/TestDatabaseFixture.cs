@@ -17,15 +17,12 @@ namespace Lilia.Api.Tests.Integration.Infrastructure;
 /// </summary>
 public class TestDatabaseFixture : IAsyncLifetime
 {
-    private string? _database;
-
     public string ConnectionString { get; private set; } = null!;
     public LiliaWebApplicationFactory Factory { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
-        _database = await SharedPostgres.CloneAsync();
-        ConnectionString = SharedPostgres.ConnectionStringFor(_database);
+        ConnectionString = SharedPostgres.ConnectionStringFor(await SharedPostgres.CloneAsync());
         Factory = new LiliaWebApplicationFactory(ConnectionString);
     }
 
@@ -41,7 +38,10 @@ public class TestDatabaseFixture : IAsyncLifetime
             try { await Factory.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(60)); }
             catch (TimeoutException) { /* the database goes with the container at the end of the run */ }
         }
-        if (_database is not null) await SharedPostgres.DropAsync(_database);
+        // The class's idle connections close (Postgres refused the run at its connection limit while
+        // finished classes' pools held theirs). The database itself stays until the container goes at
+        // the end of the run: nothing more to do, and nothing to race a stopping host for.
+        if (ConnectionString is not null) NpgsqlConnection.ClearPool(new NpgsqlConnection(ConnectionString));
     }
 }
 
@@ -57,6 +57,8 @@ internal static class SharedPostgres
     // Testcontainers' reaper removes the container when the test process ends.
     private static readonly PostgreSqlContainer Container = new PostgreSqlBuilder()
         .WithImage("postgres:18-alpine")
+        // A host per class, each with its own pool: well past Postgres's default of 100.
+        .WithCommand("-c", "max_connections=1000")
         .WithCreateParameterModifier(p =>
         {
             foreach (var binding in p.HostConfig.PortBindings?.Values.SelectMany(b => b) ?? [])
@@ -109,19 +111,5 @@ internal static class SharedPostgres
         }
         finally { OneCopyAtATime.Release(); }
         return name;
-    }
-
-    /// <summary>Best effort: a database left behind goes with the container.</summary>
-    public static async Task DropAsync(string database)
-    {
-        try
-        {
-            NpgsqlConnection.ClearPool(new NpgsqlConnection(ConnectionStringFor(database)));
-            await using var admin = new NpgsqlConnection(Container.GetConnectionString());
-            await admin.OpenAsync();
-            await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {database} WITH (FORCE)", admin);
-            await drop.ExecuteNonQueryAsync();
-        }
-        catch (Exception) { }
     }
 }
