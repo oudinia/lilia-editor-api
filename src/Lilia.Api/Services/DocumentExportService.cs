@@ -308,6 +308,7 @@ public class DocumentExportService : IDocumentExportService
     {
         // engineHint = "typst"     → Typst only, throw if it fails
         // engineHint = "pdflatex"  → skip Typst, go straight to pdflatex
+        // engineHint = "tagged"    → the accessible PDF: LaTeX made tagged PDF/UA-2 (TaggedPdf), LuaLaTeX
         // null / "auto" / anything else → existing behavior (Typst first,
         //                                  silent fallback to pdflatex)
         var hint = (engineHint ?? "auto").Trim().ToLowerInvariant();
@@ -329,7 +330,8 @@ public class DocumentExportService : IDocumentExportService
         //
         // So: an explicit LaTeX engine in the query skips Typst, and so does a
         // document that has chosen a non-default engine for itself.
-        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex"
+        var tagged = hint == "tagged";
+        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex" || tagged
                          || documentEngine is "xelatex" or "lualatex";
 
         // This export's look (Export PDF: Look ▾ / Print-safe). Null: the document's own.
@@ -393,6 +395,7 @@ public class DocumentExportService : IDocumentExportService
             // Compiled here: a theme this server cannot print fails the export with a message.
             CompileHere = true,
             LookOverride = lookOverride,
+            Tagged = tagged,
         };
         Stream projectStream;
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.project"))
@@ -421,11 +424,25 @@ public class DocumentExportService : IDocumentExportService
         // or what only LuaLaTeX runs (Arabic and Hebrew's bidi=basic): LuaLaTeX (DocumentLanguage).
         else if (EngineDetector.RequiresLua(latex) || (detected == LatexEngine.Lualatex && engine == "pdflatex")) engine = "lualatex";
 
+        if (tagged)
+        {
+            // XeLaTeX (Chinese, Japanese, Korean) has no tagging: say so rather than hand back an untagged PDF.
+            if (engine == "xelatex")
+                throw new TaggedPdfUnavailableException("An accessible PDF isn't available yet for a document with Chinese, Japanese or Korean text.");
+            // The language as the export resolved it ("auto" is detected from the text: DocumentLanguage).
+            var doc = await _context.Documents.AsNoTracking().Include(d => d.Blocks).FirstAsync(d => d.Id == documentId);
+            var made = TaggedPdf.Apply(latex, DocumentLanguage.For(doc).Code, doc.Title);
+            latex = made.Latex;
+            engine = TaggedPdf.Engine;
+            _logger.LogInformation("[Export] Accessible PDF of {DocumentId}: left out {Dropped}; used but not yet tagged by LaTeX: {Untaggable}",
+                documentId, string.Join(", ", made.Dropped), made.Untaggable.Count == 0 ? "none" : string.Join(", ", made.Untaggable));
+        }
+
         byte[] pdflatexPdf;
         string? aux;
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.compile"))
             (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
-                latex, timeout: 60, engine: engine,
+                latex, timeout: tagged ? TaggedPdf.PassTimeoutSeconds : 60, engine: engine,
                 materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.labels"))
             await KeepLabelNumbersAsync(documentId, aux);
@@ -1667,3 +1684,6 @@ public class DocumentExportService : IDocumentExportService
 
     #endregion
 }
+
+/// <summary>The accessible PDF can't be made for this document (TaggedPdf): the reason is for the person.</summary>
+public sealed class TaggedPdfUnavailableException(string message) : Exception(message);

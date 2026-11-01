@@ -175,6 +175,10 @@ public class ExportController : ControllerBase
                 pdf = new { facts.Version, facts.Pages, facts.PageSize, fonts = facts.Fonts.Count, images = facts.Images.Count },
             });
         }
+        catch (TaggedPdfUnavailableException notTaggable)
+        {
+            return UnprocessableEntity(new { message = notTaggable.Message, error = "accessible_pdf_unavailable" });
+        }
         catch (Lilia.Engines.TexSafety.UnsafeLatexException unsafeLatex)
         {
             return UnprocessableEntity(new { error = "unsafe_latex", message = unsafeLatex.Message });
@@ -208,14 +212,18 @@ public class ExportController : ControllerBase
     /// "auto" (default — Typst with pdflatex fallback), "typst", or "pdflatex".
     /// <c>look</c> (a theme id) and <c>printSafe=true</c> (white paper, dark grounds to their light
     /// pair) change the look of this export only; the document keeps its own.
+    /// <c>accessible=true</c>: the accessible PDF, tagged to PDF/UA-2 for screen readers (TaggedPdf).
     /// </summary>
     [HttpGet("pdf")]
     public async Task<IActionResult> ExportPdf(
         Guid docId,
         [FromQuery] string engine = "auto",
         [FromQuery] string? look = null,
-        [FromQuery] bool printSafe = false)
+        [FromQuery] bool printSafe = false,
+        [FromQuery] bool accessible = false)
     {
+        // An engine of its own, so the cache and the browser's copy keep it apart from the usual PDF.
+        if (accessible) engine = "tagged";
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized(new { error = "No valid authentication token provided" });
