@@ -61,6 +61,7 @@ public class TaggedPdfTests
         var made = TaggedPdf.Apply(Sample, "fr", "Rivières & saisons");
 
         made.Latex.Should().StartWith(@"\DocumentMetadata{lang=fr, pdfversion=2.0, pdfstandard=ua-2, tagging=on");
+        made.Latex.Should().Contain(@"\PassOptionsToPackage{protrusion=false}{microtype}");
         made.Latex.Should().Contain(@"\hypersetup{pdftitle={Rivières \& saisons}, pdfdisplaydoctitle=true}");
         TaggedPdf.Apply(Sample, null, null).Latex.Should().StartWith(@"\DocumentMetadata{lang=en,");
     }
@@ -138,6 +139,8 @@ public class TaggedPdfTests
             B("heading", new { text = "Méthode", level = 1 }),
             B("paragraph", new { text = "Du texte ~~barré~~, ==surligné sur plusieurs mots== et $E = mc^2$." }),
             B("equation", new { latex = @"\bar{T} = \frac{1}{52}\sum_{i=1}^{52} T_i" }),
+            // With microtype's protrusion, this one stopped LuaTeX under the MathML tagging (1 Nov).
+            B("equation", new { latex = @"\min_{\theta}\; \frac{1}{N}\sum_{i=1}^{N} \ell\bigl(f_{\theta}(x_i),\, y_i\bigr)" }),
             B("theorem", new { text = "La moyenne existe.", theoremType = "theorem" }),
             B("theorem", new { text = "Elle est bornée.", theoremType = "proof" }),
             B("theorem", new { text = "Une rivière est profonde au-delà de 3 m.", theoremType = "definition", numbered = false }),

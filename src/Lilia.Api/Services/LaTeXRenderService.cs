@@ -1049,6 +1049,14 @@ public class LaTeXRenderService : ILaTeXRenderService
             var pdf = await File.ReadAllBytesAsync(pdfPath);
             var log = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
 
+            // A PDF the engine never finished (an error after the last page, as the accessible PDF
+            // met on 1 Nov) has no %%EOF and opens nowhere: the error, not the file.
+            if (!System.Text.Encoding.ASCII.GetString(pdf, Math.Max(0, pdf.Length - 1024), Math.Min(1024, pdf.Length)).Contains("%%EOF"))
+            {
+                var errorLines = log.Split('\n').Where(l => l.StartsWith("!") || l.Contains("Error")).Take(5);
+                throw new InvalidOperationException($"LaTeX compilation failed:\n{string.Join("\n", errorLines)}");
+            }
+
             // Read the .aux before the finally block deletes the directory. It
             // carries one \newlabel per block label, which is where the page map
             // comes from — see AuxPageMap. Accurate only because the loop above

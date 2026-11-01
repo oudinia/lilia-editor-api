@@ -442,7 +442,7 @@ public class DocumentExportService : IDocumentExportService
         string? aux;
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.compile"))
             (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
-                latex, timeout: 60, engine: engine,
+                latex, timeout: tagged ? TaggedPdf.PassTimeoutSeconds : 60, engine: engine,
                 materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.labels"))
             await KeepLabelNumbersAsync(documentId, aux);

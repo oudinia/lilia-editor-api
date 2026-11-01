@@ -20,7 +20,9 @@ namespace Lilia.Engines;
 /// <item>the kernel defines theorem* with every \newtheorem, so our own \newtheorem* is skipped;</item>
 /// <item>a theorem or proof straight after a displayed equation stopped the compile ("automatic
 /// begin and end para hooks differ"): each starts with \par, as it starts a paragraph anyway;</item>
-/// <item>inputenc, fontenc and lmodern go (LuaLaTeX sets Latin Modern in Unicode itself).</item>
+/// <item>inputenc, fontenc and lmodern go (LuaLaTeX sets Latin Modern in Unicode itself);</item>
+/// <item>microtype keeps its font expansion but not protrusion, which beside the MathML tagging
+/// stopped LuaTeX on an equation ("trying to delete an attribute reference of a non attribute node").</item>
 /// </list>
 /// <para>Not lua-ul's \highLight: it needs luacolor, and luacolor beside coloured links wrote an
 /// invalid PDF ("Unknown operator 'rgb'").</para>
@@ -29,6 +31,12 @@ public static class TaggedPdf
 {
     /// <summary>The engine a tagged PDF is compiled with: MathML for the maths needs LuaTeX.</summary>
     public const string Engine = "lualatex";
+
+    /// <summary>
+    /// Seconds per LuaLaTeX pass. The MathML makes a tagged pass about ten times a pdfLaTeX one
+    /// (a 19-page paper with 9 equations: 39 s against 3.8 s, 1 Nov); the usual 60 stopped it.
+    /// </summary>
+    public const int PassTimeoutSeconds = 150;
 
     /// <param name="Latex">The source to compile.</param>
     /// <param name="Dropped">Packages left out because the document does not use them.</param>
@@ -135,7 +143,8 @@ public static class TaggedPdf
 
         var sb = new StringBuilder();
         sb.Append("\\DocumentMetadata{lang=").Append(lang)
-          .Append(", pdfversion=2.0, pdfstandard=ua-2, tagging=on, tagging-setup={math/setup=mathml-SE}}\n");
+          .Append(", pdfversion=2.0, pdfstandard=ua-2, tagging=on, tagging-setup={math/setup=mathml-SE}}\n")
+          .Append("\\PassOptionsToPackage{protrusion=false}{microtype}\n");
         sb.Append(string.Join("\n", output).TrimEnd('\n')).Append('\n');
         if (luaUl) sb.Append("% Strike and underline that LuaLaTeX can break across lines (the accessible PDF)\n\\usepackage{lua-ul}\n");
         // PDF/UA: the title in the file, shown as the window's title.
