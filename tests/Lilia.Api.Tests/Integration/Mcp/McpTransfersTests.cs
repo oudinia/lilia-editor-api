@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Mcp;
 /// "import and export must not consume too many tokens"): the app gets links; the file goes
 /// between the author's browser and Lilia.
 /// </summary>
-[Collection("Integration")]
 public class McpTransfersTests : IntegrationTestBase
 {
     public McpTransfersTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -23,7 +23,6 @@ namespace Lilia.Api.Tests.Integration.LatexStaging;
 /// HTTP surface; everything else drives <see cref="ILatexImportJobExecutor"/>
 /// directly so we can assert on post-state without polling.
 /// </summary>
-[Collection("Integration")]
 public class LatexStagingImportTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

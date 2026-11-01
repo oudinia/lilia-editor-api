@@ -8,7 +8,6 @@ using Lilia.Engines;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
-[Collection("Integration")]
 public class DocumentsControllerTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

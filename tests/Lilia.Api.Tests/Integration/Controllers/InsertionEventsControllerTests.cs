@@ -22,7 +22,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 ///   - Stats/top window clamps + limit clamps
 ///   - Stats/sources aggregates by source
 /// </summary>
-[Collection("Integration")]
 public class InsertionEventsControllerTests : IntegrationTestBase
 {
     public InsertionEventsControllerTests(TestDatabaseFixture fixture) : base(fixture) { }

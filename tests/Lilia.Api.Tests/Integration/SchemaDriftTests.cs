@@ -17,7 +17,6 @@ namespace Lilia.Api.Tests.Integration;
 /// ConsolidatedSchema migration was marked as applied without actually running it.
 /// This left gaps where EF Core expected columns the DB didn't have.
 /// </summary>
-[Collection("Integration")]
 public class SchemaDriftTests : IntegrationTestBase
 {
     public SchemaDriftTests(TestDatabaseFixture fixture) : base(fixture) { }

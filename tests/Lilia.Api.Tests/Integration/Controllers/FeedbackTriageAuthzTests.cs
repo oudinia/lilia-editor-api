@@ -10,7 +10,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// Feedback triage is for operators (16 Oct): list, change and stats asked only for a login, so any
 /// signed-in account could read, change and count everyone's feedback. An author still reads their own.
 /// </summary>
-[Collection("Integration")]
 public class FeedbackTriageAuthzTests : IntegrationTestBase
 {
     public FeedbackTriageAuthzTests(TestDatabaseFixture fixture) : base(fixture) { }

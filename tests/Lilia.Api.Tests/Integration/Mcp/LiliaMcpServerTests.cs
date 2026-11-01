@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Mcp;
 /// now"). JSON-RPC over Streamable HTTP, signed in like the rest of /api, and every document tool
 /// limited to what the signed-in author may open.
 /// </summary>
-[Collection("Integration")]
 public class LiliaMcpServerTests : IntegrationTestBase
 {
     public LiliaMcpServerTests(TestDatabaseFixture fixture) : base(fixture) { }

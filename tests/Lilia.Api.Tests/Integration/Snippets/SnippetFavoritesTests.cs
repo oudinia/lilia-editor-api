@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Snippets;
 /// the flag on that row, so it became a favourite for everyone (found by the
 /// e2e run with a second user). Favourites of system snippets are per user.
 /// </summary>
-[Collection("Integration")]
 public class SnippetFavoritesTests : IntegrationTestBase
 {
     private const string Alice = "test_user_001";

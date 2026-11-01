@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.LatexCatalog;
 /// letters came out unsupported and a plain .tex read as a third covered (e2e import report spec,
 /// 15 Oct 2026). BackfillCatalogRowsMissingOnFreshDatabases writes them.
 /// </summary>
-[Collection("Integration")]
 public class CatalogOnFreshDatabaseTests : IntegrationTestBase
 {
     public CatalogOnFreshDatabaseTests(TestDatabaseFixture fixture) : base(fixture) { }

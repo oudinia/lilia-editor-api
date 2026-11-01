@@ -24,7 +24,6 @@ namespace Lilia.Api.Tests.Integration.LatexValidation;
 /// anyone needs to see the failure by hand.
 /// </para>
 /// </summary>
-[Collection("Integration")]
 public class PageOverflowTests : IntegrationTestBase
 {
     private readonly ITestOutputHelper _out;

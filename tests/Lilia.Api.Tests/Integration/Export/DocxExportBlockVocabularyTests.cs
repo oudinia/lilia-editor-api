@@ -23,7 +23,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// anywhere. Every one of them would have been caught by asserting that what
 /// went into the database comes out of the file.</para>
 /// </summary>
-[Collection("Integration")]
 public class DocxExportBlockVocabularyTests : IntegrationTestBase
 {
     private readonly string _userId = $"docx-v-{Guid.NewGuid():N}"[..28];

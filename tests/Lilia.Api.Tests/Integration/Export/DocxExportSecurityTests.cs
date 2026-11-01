@@ -23,7 +23,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// belonging to this document. Everything else is skipped, and the figure
 /// keeps its caption.</para>
 /// </summary>
-[Collection("Integration")]
 public class DocxExportSecurityTests : IntegrationTestBase
 {
     private readonly string _userId = $"docx-s-{Guid.NewGuid():N}"[..28];

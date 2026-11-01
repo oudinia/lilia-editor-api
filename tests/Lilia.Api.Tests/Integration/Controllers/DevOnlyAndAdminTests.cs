@@ -19,7 +19,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// exist in a Production API, and the Typst coverage admin routes and the compile-queue
 /// metrics need an admin, not just a login.
 /// </summary>
-[Collection("Integration")]
 public class DevOnlyAndAdminTests : IntegrationTestBase
 {
     public DevOnlyAndAdminTests(TestDatabaseFixture fixture) : base(fixture) { }

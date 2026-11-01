@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// between blocks and named groups, scoped to a document and a single
 /// dimension. First user is the layout dimension (multi-column regions).
 /// </summary>
-[Collection("Integration")]
 public class BlockGroupsControllerTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

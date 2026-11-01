@@ -108,7 +108,6 @@ public class PublisherFrontMatterReaderTests
 }
 
 /// <summary>Open in Overleaf: a ten-minute link to the project for Overleaf to fetch.</summary>
-[Collection("Integration")]
 public class OverleafLinkTests : IntegrationTestBase
 {
     private readonly string _userId = $"overleaf-{Guid.NewGuid():N}"[..28];

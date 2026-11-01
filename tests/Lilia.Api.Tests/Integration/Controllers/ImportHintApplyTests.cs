@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// Applying a review hint makes the change it offers (16 Oct): before, Apply only marked the hint
 /// applied and "looks like a heading" left the paragraph a paragraph.
 /// </summary>
-[Collection("Integration")]
 public class ImportHintApplyTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_hint_owner";

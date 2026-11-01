@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # CI on this machine (11 Oct 2026: the user prefers it to GitHub's for now).
 # The same checks as .github/workflows/tests.yml and ef-migrations-check.yml:
-#   tests       every test but Category=RequiresTeX (those run nightly: ops/tex-tests.sh),
+#   tests       every test but Category=RequiresTeX and Category=Nightly (both run nightly:
+#               ops/tex-tests.sh; Nightly holds measures and full audits, 1 Nov 2026),
 #               with a 3-minute hang guard so a stuck test is named, not waited on
 #   admin       the admin console's tests (tests/Lilia.Admin.Tests)
 #   migrations  the EF model has no change missing a migration, and every
@@ -22,7 +23,7 @@ fail=0
 
 tests() {
   local log="$LOG_DIR/$BRANCH-tests.log" t=$SECONDS
-  timeout 1500 dotnet test tests/Lilia.Api.Tests --filter "Category!=RequiresTeX" \
+  timeout 1500 dotnet test tests/Lilia.Api.Tests --filter "Category!=RequiresTeX&Category!=Nightly" \
     --blame-hang-timeout 3m --logger "console;verbosity=minimal" >"$log" 2>&1
   # The summary line is the verdict (a pipe's exit code has lied before).
   local summary

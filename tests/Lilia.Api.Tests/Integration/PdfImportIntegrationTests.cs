@@ -11,7 +11,6 @@ using Moq;
 
 namespace Lilia.Api.Tests.Integration;
 
-[Collection("Integration")]
 public class PdfImportIntegrationTests : IntegrationTestBase
 {
     private readonly string _userId = $"pdf-test-{Guid.NewGuid():N}"[..28];

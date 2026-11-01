@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// end: who may ask what, the context the model is sent, and the real compile before a proposal
 /// is shown. The model is scripted (no AI is called); TeX is real.
 /// </summary>
-[Collection("Integration")]
 public class TikzAskEndpointTests : FourCallersTestBase, IDisposable
 {
     private readonly ScriptedChatClient _chat = new();

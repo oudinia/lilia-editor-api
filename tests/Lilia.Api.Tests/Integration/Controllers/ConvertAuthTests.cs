@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// block/validate and latex-to-blocks answered anyone. Found by the cloud session's
 /// auth probe (2 Oct 2026).</para>
 /// </summary>
-[Collection("Integration")]
 public class ConvertAuthTests : IntegrationTestBase
 {
     public ConvertAuthTests(TestDatabaseFixture fixture) : base(fixture) { }

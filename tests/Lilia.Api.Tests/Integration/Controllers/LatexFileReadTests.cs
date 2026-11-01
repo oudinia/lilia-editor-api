@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// name came back in a PDF from <c>\input{/etc/hostname}</c>. The public formula endpoint does this
 /// with no login; the raw render endpoint did it for any signed-in user.
 /// </summary>
-[Collection("Integration")]
 public class LatexFileReadTests : FourCallersTestBase
 {
     public LatexFileReadTests(TestDatabaseFixture fixture) : base(fixture) { }

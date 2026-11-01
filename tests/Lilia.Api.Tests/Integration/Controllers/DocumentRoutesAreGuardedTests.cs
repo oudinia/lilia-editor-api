@@ -22,7 +22,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// saw it check access itself (<c>HasAccessAsync</c>, an owner filter in the query) or that it is
 /// public on purpose. Prefer the attribute: it runs before binding and before any compile.</para>
 /// </summary>
-[Collection("Integration")]
 public class DocumentRoutesAreGuardedTests : IntegrationTestBase
 {
     public DocumentRoutesAreGuardedTests(TestDatabaseFixture fixture) : base(fixture) { }

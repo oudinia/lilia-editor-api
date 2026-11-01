@@ -18,7 +18,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// login cannot be just through the authenticator app, the choice of receiving code by email is
 /// important. Also, if the user trusts his laptop or tablet, he should be able to only have to login."
 /// </summary>
-[Collection("Integration")]
 public class TwoStepEmailTests : IntegrationTestBase, IDisposable
 {
     private readonly RecordingEmailService _mail = new();

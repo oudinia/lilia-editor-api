@@ -10,7 +10,6 @@ namespace Lilia.Api.Tests.Integration.Messaging;
 /// The API host, with no Wolverine setting at all, runs Solo: no leadership lock, no control
 /// queue. The test factory no longer sets Wolverine:Solo, so this is the production default.
 /// </summary>
-[Collection("Integration")]
 public class MessageStoreModeTests : IntegrationTestBase
 {
     public MessageStoreModeTests(TestDatabaseFixture fixture) : base(fixture) { }

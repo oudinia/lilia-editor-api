@@ -20,7 +20,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// Team access stops at editing: deleting the document, managing its
 /// sharing and transferring it stay with its owner.
 /// </summary>
-[Collection("Integration")]
 public class TeamDocumentAccessTests : IntegrationTestBase
 {
     private const string OwnerId = "team_doc_owner";

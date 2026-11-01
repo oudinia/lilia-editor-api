@@ -93,7 +93,6 @@ public class IeeePdfCheckTests
 }
 
 /// <summary>GET …/export/pdf-check, as the export page calls it.</summary>
-[Collection("Integration")]
 public class IeeePdfCheckApiTests : IntegrationTestBase
 {
     private readonly string _userId = $"ieeepdf-{Guid.NewGuid():N}"[..28];

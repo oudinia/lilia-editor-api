@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// whether two identical calls agree. A document exporter that is occasionally
 /// wrong about its own MIME type is not something anyone can build on.</para>
 /// </summary>
-[Collection("Integration")]
 public class DocxExportContractTests : IntegrationTestBase
 {
     private const string DocxMediaType =

@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Integration.LatexValidation;
 /// A unit test over a captured log proves the regex; only this proves the
 /// warning survives the compile, the classifier, the cache and the JSON.
 /// </summary>
-[Collection("Integration")]
 public class SilentTextLossTests : IntegrationTestBase
 {
     private readonly ITestOutputHelper _out;

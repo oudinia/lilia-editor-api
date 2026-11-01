@@ -8,7 +8,6 @@ using Lilia.Core.Entities;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
-[Collection("Integration")]
 public class BlockTypesControllerTests : IntegrationTestBase
 {
     public BlockTypesControllerTests(TestDatabaseFixture fixture) : base(fixture) { }

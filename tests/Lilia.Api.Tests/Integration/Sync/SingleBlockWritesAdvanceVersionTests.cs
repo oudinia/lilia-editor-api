@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Integration.Sync;
 /// instead of silently deleting or overwriting what was written elsewhere.
 /// Real Postgres.
 /// </summary>
-[Collection("Integration")]
 public class SingleBlockWritesAdvanceVersionTests : IntegrationTestBase
 {
     public SingleBlockWritesAdvanceVersionTests(TestDatabaseFixture fixture) : base(fixture) { }

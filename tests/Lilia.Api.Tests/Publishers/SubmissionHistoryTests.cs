@@ -37,7 +37,6 @@ public class LatexDiffTests
 }
 
 /// <summary>Kept submissions, the diff since one, the marked-up PDF, and who may change the venue.</summary>
-[Collection("Integration")]
 public class SubmissionHistoryTests : IntegrationTestBase
 {
     private readonly string _owner = $"subhist-{Guid.NewGuid():N}"[..28];

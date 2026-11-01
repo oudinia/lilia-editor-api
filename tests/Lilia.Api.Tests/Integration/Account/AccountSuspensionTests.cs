@@ -10,7 +10,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// An account suspended from the admin console (Banned, BanReason "suspended") is refused by the
 /// API with ACCOUNT_SUSPENDED; a suspension that has expired is not.
 /// </summary>
-[Collection("Integration")]
 public class AccountSuspensionTests : IntegrationTestBase
 {
     public AccountSuspensionTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Security;
 /// and a plain reason — not a 500, and not an out-of-memory. Each bomb weighs
 /// tens of kilobytes and decompresses to 60 MB.
 /// </summary>
-[Collection("Integration")]
 public class ZipBombUploadTests : IntegrationTestBase
 {
     private const string UserId = "test_user_zip_bomb";

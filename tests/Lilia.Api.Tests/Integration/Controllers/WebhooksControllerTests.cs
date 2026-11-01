@@ -47,7 +47,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// logs, so no email is sent. To exercise the email path we point
 /// Stytch:ApiBase at a local stub server that returns a token.
 /// </summary>
-[Collection("Integration")]
 public class WebhooksControllerTests : IntegrationTestBase
 {
     private const string TestSecret = "whsec_" + "c2VjcmV0LWtleS1mb3Itc3ZpeC1obWFjLXRlc3Q="; // base64 of arbitrary bytes

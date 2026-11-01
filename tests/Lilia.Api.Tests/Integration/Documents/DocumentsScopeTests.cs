@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// what someone else owns and shared with them, nothing lists both. Home's "Shared with you" read the
 /// 100 newest documents and kept the shared ones, so a document shared with you below those never showed.
 /// </summary>
-[Collection("Integration")]
 public class DocumentsScopeTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";

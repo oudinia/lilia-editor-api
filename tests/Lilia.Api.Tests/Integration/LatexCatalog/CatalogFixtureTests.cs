@@ -25,7 +25,6 @@ namespace Lilia.Api.Tests.Integration.LatexCatalog;
 /// PublicCoverageController.ImplementationStatus — keep it in sync
 /// when adding or removing fixtures here.
 /// </summary>
-[Collection("Integration")]
 public class CatalogFixtureTests : IntegrationTestBase
 {
     public CatalogFixtureTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -143,7 +143,6 @@ public class PublisherPolishTests
 }
 
 /// <summary>The submission ZIP's figures, under their numbers, and the LaTeX that includes them.</summary>
-[Collection("Integration")]
 public class SubmissionFigureNamesTests : IntegrationTestBase
 {
     public SubmissionFigureNamesTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -5,7 +5,6 @@ using Lilia.Api.Tests.Integration.Infrastructure;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
-[Collection("Integration")]
 public class LaTeXScenarioTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

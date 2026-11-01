@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// Run with: dotnet test --filter "Category=RequiresLatex"
 /// Skip with: dotnet test --filter "Category!=RequiresLatex"
 /// </summary>
-[Collection("Integration")]
 [Trait("Category", "RequiresLatex")]
 public class LaTeXValidationControllerTests : IntegrationTestBase
 {

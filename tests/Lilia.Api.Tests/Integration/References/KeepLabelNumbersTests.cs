@@ -17,7 +17,6 @@ namespace Lilia.Api.Tests.Integration.References;
 /// labels leaves the last good numbers alone; and nothing here can fail the
 /// export, because the PDF is what was asked for.</para>
 /// </summary>
-[Collection("Integration")]
 public class KeepLabelNumbersTests : IntegrationTestBase
 {
     public KeepLabelNumbersTests(TestDatabaseFixture fixture) : base(fixture) { }

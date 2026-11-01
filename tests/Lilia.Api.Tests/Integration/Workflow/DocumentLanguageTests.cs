@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Workflow;
 /// script needs; auto reads the language from the text; a document that loads babel itself keeps it.
 /// Real TeX, real PDFs, read back with pdftotext.
 /// </summary>
-[Collection("Integration")]
 [Trait("Category", "RequiresTeX")]
 public class DocumentLanguageTests : IntegrationTestBase
 {

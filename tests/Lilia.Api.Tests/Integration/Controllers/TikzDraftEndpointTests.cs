@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// <c>X-Draw-Ms</c>; <c>GET …/figure/colours</c> resolves the theme colour names for the figure
 /// (Index: its chapter); <c>GET /api/themes</c> carries each theme's <c>tikzColours</c>.
 /// </summary>
-[Collection("Integration")]
 public class TikzDraftEndpointTests : FourCallersTestBase
 {
     public TikzDraftEndpointTests(TestDatabaseFixture fixture) : base(fixture) { }

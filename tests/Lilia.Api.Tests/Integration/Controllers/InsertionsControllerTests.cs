@@ -22,7 +22,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 ///   - Tokens with coverage_level=unsupported|none → hidden
 ///   - Telemetry-shape: insert_template surfaces correctly when set
 /// </summary>
-[Collection("Integration")]
 public class InsertionsControllerTests : IntegrationTestBase
 {
     public InsertionsControllerTests(TestDatabaseFixture fixture) : base(fixture) { }

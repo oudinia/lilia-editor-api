@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// class lock), and the PDF a themed document produces, through the preview compile and the
 /// export with its per-export look and print-safe options.
 /// </summary>
-[Collection("Integration")]
 public class DocumentThemesApiTests : IntegrationTestBase
 {
     private readonly string _userId = $"themes-{Guid.NewGuid():N}"[..28];

@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.LatexValidation;
 /// without an author came back with a warning, so the rail's Validate dot lit
 /// for nothing the author did.</para>
 /// </summary>
-[Collection("Integration")]
 public class ValidateWarnsOnlyForTheAuthorsContentTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

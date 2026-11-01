@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// Settings → Profile (launch redesign 3a): the name collaborators see is the author's to set, and a
 /// sign-in whose token carries no name doesn't wipe it.
 /// </summary>
-[Collection("Integration")]
 public class ProfileTests : IntegrationTestBase
 {
     public ProfileTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -23,7 +23,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// the absence of the other two — a weaker assertion, and called out as such
 /// rather than dressed up.</para>
 /// </summary>
-[Collection("Integration")]
 public class PdfExportEngineTests : IntegrationTestBase
 {
     private readonly string _userId = $"pdf-eng-{Guid.NewGuid():N}"[..28];

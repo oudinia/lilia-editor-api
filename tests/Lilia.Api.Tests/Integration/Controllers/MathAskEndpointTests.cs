@@ -18,7 +18,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// photo reaches the model as an image, the document's shortcuts are offered to it, and each formula
 /// is checked by real TeX with the document's preamble. The model is scripted (no AI is called).
 /// </summary>
-[Collection("Integration")]
 public class MathAskEndpointTests : FourCallersTestBase, IDisposable
 {
     private readonly ScriptedChatClient _chat = new();

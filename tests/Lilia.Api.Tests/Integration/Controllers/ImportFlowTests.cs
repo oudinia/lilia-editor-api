@@ -27,7 +27,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// Handoff reference: lilia-docs/specs/import-ui-handoff-2026-04-24.md
 /// §5 #6 ("no integration test in tests/Lilia.Api.Tests").
 /// </summary>
-[Collection("Integration")]
 public class ImportFlowTests : IntegrationTestBase
 {
     private const string UserId = "test_user_flow_owner";

@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.LatexCatalog;
 /// Phase-2 tests for the catalog service — exercises lookup, auto-insert
 /// of unknown tokens, bulk usage upsert, and the coverage aggregate.
 /// </summary>
-[Collection("Integration")]
 public class LatexCatalogServiceTests : IntegrationTestBase
 {
     public LatexCatalogServiceTests(TestDatabaseFixture fixture) : base(fixture) { }

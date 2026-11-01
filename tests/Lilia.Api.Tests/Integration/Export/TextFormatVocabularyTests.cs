@@ -22,7 +22,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// what is untested is the <b>vocabulary</b> — whether each block type an
 /// article is built from actually reaches each output.</para>
 /// </summary>
-[Collection("Integration")]
 public class TextFormatVocabularyTests : IntegrationTestBase
 {
     private readonly string _userId = $"txt-fmt-{Guid.NewGuid():N}"[..28];

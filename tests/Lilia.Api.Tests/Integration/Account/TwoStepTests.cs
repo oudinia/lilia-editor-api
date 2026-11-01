@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// the authenticator, then enforced: a password alone no longer reaches the account. Connected apps
 /// and development identities (the test copy) are let through.
 /// </summary>
-[Collection("Integration")]
 public class TwoStepTests : IntegrationTestBase
 {
     public TwoStepTests(TestDatabaseFixture fixture) : base(fixture) { }

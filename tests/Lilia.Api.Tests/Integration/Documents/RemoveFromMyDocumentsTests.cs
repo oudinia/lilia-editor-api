@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// no one else's list changes, the share still opens it, and Undo brings it
 /// back. The owner trashes instead.
 /// </summary>
-[Collection("Integration")]
 public class RemoveFromMyDocumentsTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";

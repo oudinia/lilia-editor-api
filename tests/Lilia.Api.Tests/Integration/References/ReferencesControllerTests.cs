@@ -23,7 +23,6 @@ namespace Lilia.Api.Tests.Integration.References;
 /// numbers are served with their date and cost no compile; asking for fresh
 /// numbers compiles; and a failed compile costs the numbers, not the index.</para>
 /// </summary>
-[Collection("Integration")]
 public class ReferencesControllerTests : IntegrationTestBase
 {
     public ReferencesControllerTests(TestDatabaseFixture fixture) : base(fixture) { }

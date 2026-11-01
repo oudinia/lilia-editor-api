@@ -6,8 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Lilia.Api.Tests.Integration.Infrastructure;
 
-[Collection("Integration")]
-public abstract class IntegrationTestBase : IAsyncLifetime
+// Each test class has its own database and host (TestDatabaseFixture), so classes run in parallel (1 Nov 2026).
+[Trait("Category", "Integration")]
+public abstract class IntegrationTestBase : IAsyncLifetime, IClassFixture<TestDatabaseFixture>
 {
     protected readonly TestDatabaseFixture Fixture;
     protected readonly HttpClient Client;

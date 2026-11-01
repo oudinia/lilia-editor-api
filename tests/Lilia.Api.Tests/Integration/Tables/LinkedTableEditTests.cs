@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Tables;
 /// the block in each paper that links it; a copy is its own table and does not.
 /// Until now the update wrote the table row only, so the promise was false.
 /// </summary>
-[Collection("Integration")]
 public class LinkedTableEditTests : IntegrationTestBase
 {
     private const string Author = "test_user_tables_link";

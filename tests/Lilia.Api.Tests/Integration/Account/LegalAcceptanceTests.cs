@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// Which version of the Terms an author accepted (launch redesign 2c, gate A): recorded at sign-up
 /// and with OK on the notice that the Terms changed; never lowered; nobody else's.
 /// </summary>
-[Collection("Integration")]
 public class LegalAcceptanceTests : IntegrationTestBase
 {
     public LegalAcceptanceTests(TestDatabaseFixture fixture) : base(fixture) { }

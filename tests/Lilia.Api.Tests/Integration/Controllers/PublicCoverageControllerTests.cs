@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// Pair with CatalogFixtureTests (parser end-to-end proofs) and
 /// CatalogIntegrityTests (catalog ↔ parser contract).
 /// </summary>
-[Collection("Integration")]
 public class PublicCoverageControllerTests : IntegrationTestBase
 {
     public PublicCoverageControllerTests(TestDatabaseFixture fixture) : base(fixture) { }

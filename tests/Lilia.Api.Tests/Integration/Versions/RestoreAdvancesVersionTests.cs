@@ -19,7 +19,6 @@ namespace Lilia.Api.Tests.Integration.Versions;
 /// left the version where it was. The edit came back. History → Restore had
 /// the same hole with any open tab.</para>
 /// </summary>
-[Collection("Integration")]
 public class RestoreAdvancesVersionTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";

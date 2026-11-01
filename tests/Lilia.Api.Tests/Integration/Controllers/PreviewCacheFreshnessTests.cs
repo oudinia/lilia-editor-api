@@ -9,7 +9,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// A cached preview follows the document (16 Oct): the full HTML preview kept a block's old text
 /// after an edit, and every preview kept the old title after a rename, for up to an hour.
 /// </summary>
-[Collection("Integration")]
 public class PreviewCacheFreshnessTests : IntegrationTestBase
 {
     public PreviewCacheFreshnessTests(TestDatabaseFixture fixture) : base(fixture) { }

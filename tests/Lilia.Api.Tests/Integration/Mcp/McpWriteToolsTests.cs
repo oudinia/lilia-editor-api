@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Mcp;
 /// own writes, for an owner or editor only; an app needs the documents:write scope (edits allowed
 /// on the consent page); a version is saved before an app's first change.
 /// </summary>
-[Collection("Integration")]
 public class McpWriteToolsTests : IntegrationTestBase
 {
     public McpWriteToolsTests(TestDatabaseFixture fixture) : base(fixture) { }

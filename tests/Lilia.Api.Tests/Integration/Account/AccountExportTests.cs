@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// of the author's documents, as Lilia's data and as LaTeX, with their profile; only its owner can
 /// download it.
 /// </summary>
-[Collection("Integration")]
 public class AccountExportTests : IntegrationTestBase
 {
     public AccountExportTests(TestDatabaseFixture fixture) : base(fixture) { }

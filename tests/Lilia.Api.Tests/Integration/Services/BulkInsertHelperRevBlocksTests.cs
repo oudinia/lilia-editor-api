@@ -17,7 +17,6 @@ namespace Lilia.Api.Tests.Integration.Services;
 /// LatexImportJobExecutor later is a one-line change, not a debug
 /// session.
 /// </summary>
-[Collection("Integration")]
 public class BulkInsertHelperRevBlocksTests : IntegrationTestBase
 {
     public BulkInsertHelperRevBlocksTests(TestDatabaseFixture fixture) : base(fixture) { }

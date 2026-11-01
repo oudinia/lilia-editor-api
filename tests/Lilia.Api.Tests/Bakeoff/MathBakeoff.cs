@@ -21,7 +21,6 @@ namespace Lilia.Api.Tests.Bakeoff;
 /// (<see cref="MathAskRunner"/>). A reading counts as right when TeX prints it exactly as it printed
 /// the original, whatever its spelling (\dfrac or \frac, spaces). Tokens, cost and time are kept.</para>
 /// </summary>
-[Collection("Integration")]
 [Trait("Category", "Bakeoff")]
 public class MathBakeoff : IntegrationTestBase
 {

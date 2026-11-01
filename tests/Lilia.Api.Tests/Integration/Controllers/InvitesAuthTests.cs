@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// They had no attribute and returned 401 only because the handler checked the user
 /// id itself (cloud session auth probe, 2 Oct 2026): one refactor away from open.
 /// </summary>
-[Collection("Integration")]
 public class InvitesAuthTests : IntegrationTestBase
 {
     public InvitesAuthTests(TestDatabaseFixture fixture) : base(fixture) { }

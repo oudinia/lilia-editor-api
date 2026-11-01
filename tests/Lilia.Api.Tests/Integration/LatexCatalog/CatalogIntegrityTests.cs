@@ -20,7 +20,6 @@ namespace Lilia.Api.Tests.Integration.LatexCatalog;
 /// See lilia-docs/technical/latex-coverage-architecture.md for the
 /// target architecture this test guards.
 /// </summary>
-[Collection("Integration")]
 public class CatalogIntegrityTests : IntegrationTestBase
 {
     public CatalogIntegrityTests(TestDatabaseFixture fixture) : base(fixture) { }

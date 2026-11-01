@@ -76,7 +76,14 @@ public class PublisherBlocksAuditTests
         new LaTeXExportService(null!, null!, NullLogger<LaTeXExportService>.Instance)
             .BuildSingleFileLatex(doc, doc.Blocks.OrderBy(b => b.SortOrder).ToList(), doc.BibliographyEntries.ToList(), new LaTeXExportOptions());
 
+    // All 21 venues, two compiles each, take about 4 minutes: nightly (1 Nov 2026). Each CI run compiles
+    // one venue, ACM's conference review (the class with the most options).
+    [Fact]
+    public Task Every_block_compiles_in_one_venue_as_plain_LaTeX() =>
+        Every_block_compiles_in_every_venue_as_plain_LaTeX("acm-sigconf-review");
+
     [Theory]
+    [Trait("Category", "Nightly")]
     [MemberData(nameof(Venues))]
     public async Task Every_block_compiles_in_every_venue_as_plain_LaTeX(string venue)
     {

@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// does not draw; <c>?lastGood=true</c>; read access like every document route; the guard before
 /// any compile; and the figure listed as an issue on its block.
 /// </summary>
-[Collection("Integration")]
 public class TikzFigureEndpointTests : FourCallersTestBase
 {
     public TikzFigureEndpointTests(TestDatabaseFixture fixture) : base(fixture) { }
