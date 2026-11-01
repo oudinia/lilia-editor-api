@@ -54,6 +54,12 @@ public class LaTeXExportOptions
     public bool IncludeImages { get; set; } = true;
 
     /// <summary>
+    /// For the accessible PDF (TaggedPdf, PROD-40): each figure's description goes on its images and
+    /// TikZ pictures as alt=, which only the tagged compile understands. Set by the PDF export only.
+    /// </summary>
+    public bool Tagged { get; set; }
+
+    /// <summary>
     /// arXiv-ready export: also compile the project (pdflatex + BibTeX) and
     /// bundle the resulting <c>main.bbl</c> in the ZIP, so the submission
     /// compiles with pdflatex alone (arXiv's safest path) without re-running

@@ -340,6 +340,9 @@ public class LaTeXExportService : ILaTeXExportService
     private readonly RenderService _check = new(null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<RenderService>.Instance);
     private Document? _doc;
 
+    // The accessible PDF's export (LaTeXExportOptions.Tagged): figures carry their alt text.
+    private bool _tagged;
+
     /// <summary>
     /// References written as text in a bibliography block (<c>@cite[key] Author - Title</c>), as
     /// <c>@misc</c> entries in the .bib beside the document's own. The check printed them; the
@@ -368,6 +371,7 @@ public class LaTeXExportService : ILaTeXExportService
         _doc = doc;
         _headingClass = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
         _longtableAllowed = RenderService.SupportsLongtable(doc);
+        _tagged = options.Tagged;
     }
 
     // ── Single-file structure ──────────────────────────────────────────
@@ -1094,6 +1098,7 @@ public class LaTeXExportService : ILaTeXExportService
             if (block.Type == "bibliography") return "";
             if (_doc is not null && block.Document is null) block.Document = _doc;
             var latex = _check.RenderBlockToLatex(block, _longtableAllowed && RenderService.IsLongTable(block));
+            if (_tagged && block.Type is "figure" or "image") latex = TaggedPdf.WithAlt(latex, TaggedPdf.AltOf(content));
             return latex.StartsWith("% Unknown block type", StringComparison.Ordinal) ? RenderUnknownBlock(block) : latex;
         }
         catch (Exception ex)
