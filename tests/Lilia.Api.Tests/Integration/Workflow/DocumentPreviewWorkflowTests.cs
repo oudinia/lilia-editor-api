@@ -19,7 +19,6 @@ namespace Lilia.Api.Tests.Integration.Workflow;
 /// <para>They also guard the compile caches of 18 Oct (API #330–#333): an unchanged document is not
 /// compiled again, and an edit is never answered with the PDF from before it.</para>
 /// </summary>
-[Collection("Integration")]
 public class DocumentPreviewWorkflowTests : IntegrationTestBase
 {
     private readonly string _userId = $"workflow-{Guid.NewGuid():N}"[..28];

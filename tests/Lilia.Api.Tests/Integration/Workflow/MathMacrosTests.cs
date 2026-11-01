@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Workflow;
 /// One set of maths macros for the editor and the PDF (18 Oct). The editor asks the server for the
 /// macros it renders with; the PDF defines the same shortcuts, after the author's own preamble.
 /// </summary>
-[Collection("Integration")]
 public class MathMacrosTests : IntegrationTestBase
 {
     private readonly string _userId = $"mathmacros-{Guid.NewGuid():N}"[..28];

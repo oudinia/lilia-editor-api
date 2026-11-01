@@ -104,7 +104,6 @@ public class PublisherProfileTests
 }
 
 /// <summary>The profile through the API: GET /api/publishers, and PUT on a document.</summary>
-[Collection("Integration")]
 public class PublisherProfileApiTests : IntegrationTestBase
 {
     private readonly string _userId = $"pubprof-{Guid.NewGuid():N}"[..28];

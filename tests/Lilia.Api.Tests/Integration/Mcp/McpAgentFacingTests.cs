@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Mcp;
 /// <summary>
 /// MCP hardening T3 (cloud session's handoff, 12 Oct): what agents are told and what they can write.
 /// </summary>
-[Collection("Integration")]
 public class McpAgentFacingTests : IntegrationTestBase
 {
     public McpAgentFacingTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Tables;
 /// Each test uses its own user: cleanup does not delete tables, and the trash
 /// listing is per user, so a shared author would see other tests' tables.
 /// </remarks>
-[Collection("Integration")]
 public class TablesTrashTests : IntegrationTestBase
 {
     public TablesTrashTests(TestDatabaseFixture fixture) : base(fixture) { }

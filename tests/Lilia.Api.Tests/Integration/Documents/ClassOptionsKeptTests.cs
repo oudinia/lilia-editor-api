@@ -9,7 +9,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// Changing orientation keeps the class options the popover does not own (5 Oct review): the options
 /// string was rebuilt from twoside, titlepage and landscape only, so fleqn or draft vanished.
 /// </summary>
-[Collection("Integration")]
 public class ClassOptionsKeptTests : FourCallersTestBase
 {
     public ClassOptionsKeptTests(TestDatabaseFixture fixture) : base(fixture) { }

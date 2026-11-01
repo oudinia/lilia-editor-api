@@ -23,7 +23,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// running the actual Wolverine handlers (which would try to send
 /// real emails via Resend in test).
 /// </summary>
-[Collection("Integration")]
 public class TeamMembershipFlowTests : IntegrationTestBase
 {
     public TeamMembershipFlowTests(TestDatabaseFixture fixture) : base(fixture) { }

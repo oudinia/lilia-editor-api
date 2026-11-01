@@ -10,7 +10,6 @@ namespace Lilia.Api.Tests.Publishers;
 
 /// <summary>The template update service (phase 3, 25 Oct 2026): installed class versions, pinned per document.</summary>
 // With PublisherTemplatePinTests, which swaps the version reader process-wide: never at the same time.
-[Collection("Integration")]
 public class PublisherClassVersionsTests
 {
     [Theory]
@@ -64,7 +63,6 @@ public class PublisherClassVersionsTests
 }
 
 /// <summary>A document pins the class version when its venue is chosen; GET /api/publishers says what is installed.</summary>
-[Collection("Integration")]
 public class PublisherTemplatePinTests : IntegrationTestBase
 {
     private readonly string _userId = $"pubpin-{Guid.NewGuid():N}"[..28];

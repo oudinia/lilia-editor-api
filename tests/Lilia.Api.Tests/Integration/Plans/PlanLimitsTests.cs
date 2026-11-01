@@ -17,7 +17,6 @@ namespace Lilia.Api.Tests.Integration.Plans;
 /// nothing is created until there's room. Limits are off until <c>Entitlements:Enforce</c> is set,
 /// and staff accounts (the owner's, which holds the connector's test documents) hold Beta.
 /// </summary>
-[Collection("Integration")]
 public class PlanLimitsTests : IntegrationTestBase
 {
     private const string Staff = "plan-staff";

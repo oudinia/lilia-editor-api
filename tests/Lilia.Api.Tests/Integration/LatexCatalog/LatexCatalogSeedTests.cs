@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.LatexCatalog;
 /// landed core rows, and the unique index on (name, kind, package_slug)
 /// enforces the idempotency contract.
 /// </summary>
-[Collection("Integration")]
 public class LatexCatalogSeedTests : IntegrationTestBase
 {
     public LatexCatalogSeedTests(TestDatabaseFixture fixture) : base(fixture) { }

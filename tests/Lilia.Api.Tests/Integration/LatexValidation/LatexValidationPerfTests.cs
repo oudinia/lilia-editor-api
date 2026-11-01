@@ -26,7 +26,6 @@ namespace Lilia.Api.Tests.Integration.LatexValidation;
 /// generous upper bounds — the assertions catch true regressions; the logs
 /// are the artefact for tuning.
 /// </summary>
-[Collection("Integration")]
 public class LatexValidationPerfTests : IntegrationTestBase
 {
     private readonly ITestOutputHelper _out;

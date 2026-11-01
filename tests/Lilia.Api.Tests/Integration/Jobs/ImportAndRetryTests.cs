@@ -15,7 +15,6 @@ namespace Lilia.Api.Tests.Integration.Jobs;
 /// PENDING and left it there — nothing re-ran imports; an export retry made a
 /// new job and left the old one PENDING too.
 /// </summary>
-[Collection("Integration")]
 public class ImportAndRetryTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

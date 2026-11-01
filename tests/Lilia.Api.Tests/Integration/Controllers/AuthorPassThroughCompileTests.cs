@@ -6,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Lilia.Api.Tests.Integration.Controllers;
 
 /// <summary>A real compile of a title whose author uses commands: they print as formatting, not as text.</summary>
-[Collection("Integration")]
 public class AuthorPassThroughCompileTests : FourCallersTestBase
 {
     public AuthorPassThroughCompileTests(TestDatabaseFixture fixture) : base(fixture) { }

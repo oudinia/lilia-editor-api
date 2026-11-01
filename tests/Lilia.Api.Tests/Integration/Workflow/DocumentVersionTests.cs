@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Integration.Workflow;
 /// state management in the front end?"). A version is the hash of the blocks' hashes, which the
 /// database keeps itself; the PDF and the check are cached by it, and the PDF's ETag is it.
 /// </summary>
-[Collection("Integration")]
 public class DocumentVersionTests : IntegrationTestBase
 {
     private readonly string _userId = $"versions-{Guid.NewGuid():N}"[..28];

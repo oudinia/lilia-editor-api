@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Mcp;
 /// metadata names Stytch as the authorization server, and a connected app's token works at
 /// /api/mcp and nowhere else.
 /// </summary>
-[Collection("Integration")]
 public class McpOAuthTests : IntegrationTestBase
 {
     public McpOAuthTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -19,7 +19,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// <c>null</c> "handled at document level", so the block was gone before the
 /// exporter ran. Only a test that starts from the database catches that.</para>
 /// </summary>
-[Collection("Integration")]
 public class DocxExportIntegrationTests : IntegrationTestBase
 {
     private readonly string _userId = $"docx-test-{Guid.NewGuid():N}"[..28];

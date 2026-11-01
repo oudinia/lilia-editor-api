@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Publishers;
 /// gives one main.tex, references.bib, main.bbl, the publisher's .bst and the figures, with
 /// lilia-export-manifest.json and a SHA-256 per file; no README; a figure without its image stops it.
 /// </summary>
-[Collection("Integration")]
 public class SubmissionZipTests : IntegrationTestBase
 {
     private readonly string _userId = $"subzip-{Guid.NewGuid():N}"[..28];

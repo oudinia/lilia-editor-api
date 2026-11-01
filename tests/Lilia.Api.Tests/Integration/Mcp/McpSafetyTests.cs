@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Mcp;
 /// MCP hardening T0 (cloud session's handoff, 12 Oct): unsafe LaTeX refused when it is written,
 /// a per-user rate limit on the connector, and a check that says what happened.
 /// </summary>
-[Collection("Integration")]
 public class McpSafetyTests : IntegrationTestBase
 {
     public McpSafetyTests(TestDatabaseFixture fixture) : base(fixture) { }

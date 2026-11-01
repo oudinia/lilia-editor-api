@@ -10,7 +10,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// a stranger with a rendered PDF or PNG of someone else's document, its validation findings or
 /// its block ids, and a render costs CPU, so the check must come before the compile.
 /// </summary>
-[Collection("Integration")]
 public class LatexRenderAuthzTests : FourCallersTestBase
 {
     public LatexRenderAuthzTests(TestDatabaseFixture fixture) : base(fixture) { }

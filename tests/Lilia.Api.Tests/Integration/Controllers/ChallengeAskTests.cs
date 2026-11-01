@@ -17,7 +17,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// with the dock's Edit switch on; while it runs, the author's answers stay with it whatever they
 /// say. The model is scripted (no AI is called).
 /// </summary>
-[Collection("Integration")]
 public class ChallengeAskTests : FourCallersTestBase, IDisposable
 {
     private readonly ScriptedChatClient _chat = new();

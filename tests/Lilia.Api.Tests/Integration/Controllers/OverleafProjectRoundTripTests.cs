@@ -17,7 +17,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// with its venue, every cross-reference resolves (each figure kept its label: before, every "see
 /// Figure 2" printed ??), and its LaTeX export compiles in its class (two failed: siunitx).
 /// </summary>
-[Collection("Integration")]
 public class OverleafProjectRoundTripTests : IntegrationTestBase
 {
     public OverleafProjectRoundTripTests(TestDatabaseFixture fixture) : base(fixture) { }

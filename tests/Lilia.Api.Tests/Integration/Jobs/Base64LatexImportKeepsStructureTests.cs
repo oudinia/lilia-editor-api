@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Jobs;
 /// what the upload path keeps. It had its own copy of the element → block mapping, which had drifted:
 /// a heading lost its \label (LaTeX coverage refs.section-ref, 15 Oct), and each \item became a list.
 /// </summary>
-[Collection("Integration")]
 public class Base64LatexImportKeepsStructureTests : IntegrationTestBase
 {
     public Base64LatexImportKeepsStructureTests(TestDatabaseFixture fixture) : base(fixture) { }

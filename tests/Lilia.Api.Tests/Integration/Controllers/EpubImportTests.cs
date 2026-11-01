@@ -21,7 +21,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// chapters, the way the e2e suite makes one, so these tests round-trip
 /// the real format rather than a fixture that could drift from it.
 /// </summary>
-[Collection("Integration")]
 public class EpubImportTests : IntegrationTestBase
 {
     private const string UserId = "test_user_epub_import";

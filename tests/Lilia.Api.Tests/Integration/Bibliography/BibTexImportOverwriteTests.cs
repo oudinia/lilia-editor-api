@@ -13,7 +13,6 @@ namespace Lilia.Api.Tests.Integration.Bibliography;
 /// import never reached this code at all (it sent `bibtex`, not
 /// `bibTexContent`: every import was a 400). Real Postgres.
 /// </summary>
-[Collection("Integration")]
 public class BibTexImportOverwriteTests : IntegrationTestBase
 {
     public BibTexImportOverwriteTests(TestDatabaseFixture fixture) : base(fixture) { }

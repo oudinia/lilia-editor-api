@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Tables;
 /// "remembers where it came from" at insert). <c>copied_from</c> was recorded
 /// already; now it is read back.
 /// </summary>
-[Collection("Integration")]
 public class TableProvenanceTests : IntegrationTestBase
 {
     private const string Author = "test_user_tables_provenance";

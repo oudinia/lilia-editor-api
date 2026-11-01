@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Integration.Account;
 /// The account closes at once, can be restored for 30 days, then is erased: its documents and shares
 /// go, and the user row is anonymised.
 /// </summary>
-[Collection("Integration")]
 public class AccountDeletionTests : IntegrationTestBase
 {
     public AccountDeletionTests(TestDatabaseFixture fixture) : base(fixture) { }

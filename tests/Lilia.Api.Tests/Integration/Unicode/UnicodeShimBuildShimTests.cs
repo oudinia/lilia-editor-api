@@ -20,7 +20,6 @@ namespace Lilia.Api.Tests.Integration.Unicode;
 /// <para>On real Postgres, through the service's real loader. The in-memory
 /// provider cannot map this context.</para>
 /// </summary>
-[Collection("Integration")]
 public class UnicodeShimBuildShimTests : IntegrationTestBase
 {
     public UnicodeShimBuildShimTests(TestDatabaseFixture fixture) : base(fixture) { }
@@ -153,7 +152,6 @@ public class UnicodeShimBuildShimTests : IntegrationTestBase
 /// check calls. The point of extracting it rather than writing a second
 /// classifier is that the two cannot disagree — this is the test that says so.
 /// </summary>
-[Collection("Integration")]
 public class UnicodeClassifyParityTests : IntegrationTestBase
 {
     public UnicodeClassifyParityTests(TestDatabaseFixture fixture) : base(fixture) { }

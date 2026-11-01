@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.LatexValidation;
 /// (Olivia, 6 Oct 2026): the document pass lists it with the block it belongs to, and the slide
 /// block's own validation reports it with the same frame number.
 /// </summary>
-[Collection("Integration")]
 public class FrameOverflowValidationTests : IntegrationTestBase
 {
     private readonly string _userId = $"frames-{Guid.NewGuid():N}"[..28];

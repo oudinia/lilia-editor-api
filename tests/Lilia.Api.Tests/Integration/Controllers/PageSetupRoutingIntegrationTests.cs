@@ -9,7 +9,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// End to end: which engine renders the preview, and whether the LaTeX export follows the document's
 /// own size and paper (5 Oct review).
 /// </summary>
-[Collection("Integration")]
 public class PageSetupRoutingIntegrationTests : FourCallersTestBase
 {
     public PageSetupRoutingIntegrationTests(TestDatabaseFixture fixture) : base(fixture) { }

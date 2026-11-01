@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// ran for a stranger and a viewer; ai-augment sends the document's text to the model. Apply and
 /// dismiss took a finding id without tying it to the document in the route.
 /// </summary>
-[Collection("Integration")]
 public class DocumentHintsAuthzTests : FourCallersTestBase
 {
     public DocumentHintsAuthzTests(TestDatabaseFixture fixture) : base(fixture) { }

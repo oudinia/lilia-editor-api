@@ -7,7 +7,6 @@ using Lilia.Core.DTOs;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
-[Collection("Integration")]
 public class BlocksControllerTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

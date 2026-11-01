@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Sharing;
 /// document must not copy it either: an expired link reads as 404, so the copy
 /// has to be refused the same way.
 /// </summary>
-[Collection("Integration")]
 public class PublicLinkCopyTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";

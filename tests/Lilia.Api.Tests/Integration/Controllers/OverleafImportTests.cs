@@ -21,7 +21,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// available; otherwise synthesises a minimal fixture zip in-memory so
 /// the suite runs on CI boxes that don't carry that asset.
 /// </summary>
-[Collection("Integration")]
 public class OverleafImportTests : IntegrationTestBase
 {
     private const string UserId = "test_overleaf_user";

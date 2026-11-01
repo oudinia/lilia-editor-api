@@ -57,4 +57,4 @@ jobs:
         run: dotnet build tests/Lilia.Api.Tests --no-restore --verbosity quiet
 
       - name: Test (everything but RequiresTeX)
-        run: dotnet test tests/Lilia.Api.Tests --no-build --filter "Category!=RequiresTeX" --logger "console;verbosity=minimal"
+        run: dotnet test tests/Lilia.Api.Tests --no-build --filter "Category!=RequiresTeX&Category!=Nightly" --logger "console;verbosity=minimal"

@@ -11,7 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
-[Collection("Integration")]
 public class PreferencesControllerTests : IntegrationTestBase
 {
     private const string UserId = "test_user_001";

@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// set_document_settings goes through this same update, so it needs them to
 /// stick.
 /// </summary>
-[Collection("Integration")]
 public class SettingsDialogSaveTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";

@@ -16,7 +16,6 @@ namespace Lilia.Api.Tests.Integration.References;
 /// export does — so after the preview an author already looks at, the editor
 /// shows "table 1" instead of the pending slot. Real Postgres, real typst.
 /// </summary>
-[Collection("Integration")]
 public class TypstPreviewKeepsNumbersTests : IntegrationTestBase
 {
     public TypstPreviewKeepsNumbersTests(TestDatabaseFixture fixture) : base(fixture) { }

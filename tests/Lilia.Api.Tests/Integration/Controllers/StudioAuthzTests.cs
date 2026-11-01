@@ -10,7 +10,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// access check on any of its 13 routes: a stranger could read, edit and delete another
 /// user's blocks, and a viewer could edit.
 /// </summary>
-[Collection("Integration")]
 public class StudioAuthzTests : FourCallersTestBase
 {
     public StudioAuthzTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -20,7 +20,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// export DTO accepts. Using the DTO shape is how a green suite came to sit on
 /// top of a Word export that dropped every table's headings.</para>
 /// </summary>
-[Collection("Integration")]
 public class LatexExportVocabularyTests : IntegrationTestBase
 {
     private readonly string _userId = $"tex-voc-{Guid.NewGuid():N}"[..28];

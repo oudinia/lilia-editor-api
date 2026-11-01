@@ -64,7 +64,6 @@ public class PublisherFinishTests
 }
 
 /// <summary>The document check (Ask Lilia, check_document) says what the publisher would reject.</summary>
-[Collection("Integration")]
 public class PublisherCheckDocumentTests : IntegrationTestBase
 {
     private readonly string _userId = $"pubchk-{Guid.NewGuid():N}"[..28];

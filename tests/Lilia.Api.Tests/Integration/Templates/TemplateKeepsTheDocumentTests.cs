@@ -21,7 +21,6 @@ namespace Lilia.Api.Tests.Integration.Templates;
 /// the bibliography and block nesting. Using the template dropped them again
 /// on the way out, so a document made from a thesis template was an article.</para>
 /// </summary>
-[Collection("Integration")]
 public class TemplateKeepsTheDocumentTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";

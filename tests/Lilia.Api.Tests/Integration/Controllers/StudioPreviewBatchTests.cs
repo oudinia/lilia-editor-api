@@ -18,7 +18,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 ///   - Skips uncached blocks rather than throwing
 ///   - Owner-only — 404 for other users
 /// </summary>
-[Collection("Integration")]
 public class StudioPreviewBatchTests : IntegrationTestBase
 {
     private const string UserId = "test_studio_batch_user";

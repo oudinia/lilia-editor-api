@@ -19,7 +19,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// blocks. It also named the copy "(Copy)"; the design says "(copy)", a suffix
 /// so the two sort together (Olivia, documents-actions handoff).</para>
 /// </summary>
-[Collection("Integration")]
 public class DuplicateKeepsTheDocumentTests : IntegrationTestBase
 {
     private const string OwnerId = "test_user_001";
@@ -139,7 +138,6 @@ public class DuplicateKeepsTheDocumentTests : IntegrationTestBase
 /// The document says what its reader may do, as the list does, so the editor's
 /// ⋯ can show only actions that will succeed (documents-actions handoff §4).
 /// </summary>
-[Collection("Integration")]
 public class DocumentCarriesTheReadersRoleTests : IntegrationTestBase
 {
     public DocumentCarriesTheReadersRoleTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -9,7 +9,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// The route is absolute, so it lives under api/documents although the controller is api/typst,
 /// and it called the renderer without any access check: a stranger got the document's source.
 /// </summary>
-[Collection("Integration")]
 public class TypstExportAuthzTests : FourCallersTestBase
 {
     public TypstExportAuthzTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Kb;
 /// "user documentation at different levels and a knowledge base for AI"). Seeded from the
 /// embedded articles into kb_articles, keyed by (slug, lang).
 /// </summary>
-[Collection("Integration")]
 public class KbLanguagesAndLevelsTests : IntegrationTestBase
 {
     public KbLanguagesAndLevelsTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -14,7 +14,6 @@ namespace Lilia.Api.Tests.Integration.Templates;
 /// a template is made only from a document the caller may read (as Duplicate).
 /// Found by the e2e run with a second user.
 /// </summary>
-[Collection("Integration")]
 public class TemplateAccessTests : IntegrationTestBase
 {
     private const string Owner = "test_user_001";

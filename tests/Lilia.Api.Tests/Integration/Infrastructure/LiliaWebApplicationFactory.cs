@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Lilia.Api.Tests.Integration.Infrastructure;
 
@@ -58,8 +59,27 @@ public class LiliaWebApplicationFactory : WebApplicationFactory<Program>
             var userServiceDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IUserService));
             if (userServiceDescriptor != null) services.Remove(userServiceDescriptor);
             services.AddSingleton<IUserService, NoOpUserService>();
+
+            // Ask Lilia's routing, once for the whole run (1 Nov 2026). Every host loaded the E5 model
+            // and embedded every example at start (SemanticWarmUp); with the classes in parallel that
+            // was a dozen copies in one process (4.4 GB) and the run crashed. One shared router routes
+            // exactly as the one host of the serial run did.
+            services.RemoveAll<IAskLiliaRouter>();
+            services.AddSingleton(SharedRouting.Router.Value);
+            var warmUp = services.Where(d => d.ImplementationType == typeof(Lilia.Api.Services.Semantic.SemanticWarmUp)).ToList();
+            foreach (var d in warmUp) services.Remove(d);
         });
     }
+}
+
+internal static class SharedRouting
+{
+    public static readonly Lazy<IAskLiliaRouter> Router = new(() => new Lilia.Api.Services.Semantic.SemanticAskRouter(
+        new AskLiliaRouter(),
+        new Lilia.Api.Services.Semantic.E5Embedder(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/share/lilia/models",
+                Lilia.Api.Services.Semantic.E5Embedder.ModelName),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Lilia.Api.Services.Semantic.E5Embedder>.Instance)));
 }
 
 public class NoOpUserService : IUserService

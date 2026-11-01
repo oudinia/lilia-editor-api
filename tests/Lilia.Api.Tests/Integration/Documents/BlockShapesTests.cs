@@ -11,7 +11,6 @@ namespace Lilia.Api.Tests.Integration.Documents;
 /// block_shapes stays current as the document lives, whichever path writes the block: the
 /// triggers queue it, the processor shapes it, deleting the block deletes its shape.
 /// </summary>
-[Collection("Integration")]
 public class BlockShapesTests : IntegrationTestBase
 {
     public BlockShapesTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Tests.Integration.Controllers;
 
-[Collection("Integration")]
 public class SharingControllerTests : IntegrationTestBase
 {
     // The default Client authenticates as this user (TestAuthHandler fallback).

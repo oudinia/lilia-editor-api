@@ -13,7 +13,10 @@ namespace Lilia.Api.Tests.Services;
 /// two together (<see cref="SemanticAskRouter.Decide"/>), on 132 messages written the way people
 /// write, in English, French and Spanish, and never used as examples. Runs when the model is
 /// installed (ops/models.sh); prints the table, and holds the combination to what it measured.
+/// <para>A measure, not a check of a change: 2 minutes (the model embeds 396 messages), so it runs
+/// nightly (1 Nov 2026).</para>
 /// </summary>
+[Trait("Category", "Nightly")]
 public class RoutingMeasureTests
 {
     private readonly ITestOutputHelper _out;

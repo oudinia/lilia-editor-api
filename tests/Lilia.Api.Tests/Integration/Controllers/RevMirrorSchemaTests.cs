@@ -22,7 +22,6 @@ namespace Lilia.Api.Tests.Integration.Controllers;
 /// integration, no service-layer calls. When the dual-write ships,
 /// it will add its own end-to-end tests alongside these.
 /// </summary>
-[Collection("Integration")]
 public class RevMirrorSchemaTests : IntegrationTestBase
 {
     public RevMirrorSchemaTests(TestDatabaseFixture fixture) : base(fixture) { }

@@ -19,7 +19,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// about 627 KB, which is why a document with no mathematics does not carry
 /// it.</para>
 /// </summary>
-[Collection("Integration")]
 public class HtmlExportMathTests : IntegrationTestBase
 {
     private readonly string _userId = $"html-math-{Guid.NewGuid():N}"[..28];

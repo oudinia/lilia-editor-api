@@ -12,7 +12,6 @@ namespace Lilia.Api.Tests.Integration.Recent;
 /// switcher. Only the user's own acts: an untouched starter clone is not one.
 /// </summary>
 /// <remarks>Audit rows and tables survive the per-test cleanup, so every test has its own user.</remarks>
-[Collection("Integration")]
 public class RecentActivityTests : IntegrationTestBase
 {
     public RecentActivityTests(TestDatabaseFixture fixture) : base(fixture) { }

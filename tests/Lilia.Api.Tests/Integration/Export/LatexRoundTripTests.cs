@@ -29,7 +29,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// it is named below rather than hidden behind a passing assertion.</item>
 /// </list>
 /// </summary>
-[Collection("Integration")]
 public class LatexRoundTripTests : IntegrationTestBase
 {
     private readonly string _userId = $"rt-{Guid.NewGuid():N}"[..28];

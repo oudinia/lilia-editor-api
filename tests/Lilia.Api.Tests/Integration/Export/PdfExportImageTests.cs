@@ -22,7 +22,6 @@ namespace Lilia.Api.Tests.Integration.Export;
 /// because the defect lived in the gap between the project the exporter builds
 /// and the directory the compiler reads.</para>
 /// </summary>
-[Collection("Integration")]
 public class PdfExportImageTests : IntegrationTestBase
 {
     private readonly string _userId = $"pdf-img-{Guid.NewGuid():N}"[..28];
