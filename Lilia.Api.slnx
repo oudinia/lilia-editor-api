@@ -7,6 +7,7 @@
     <Project Path="src/Lilia.Engines/Lilia.Engines.csproj" />
     <Project Path="src/Lilia.Tools.Api/Lilia.Tools.Api.csproj" />
     <Project Path="src/Lilia.Features.Library/Lilia.Features.Library.csproj" />
+    <Project Path="src/Lilia.Features.Sharing/Lilia.Features.Sharing.csproj" />
     <Project Path="src/Lilia.Import/Lilia.Import.csproj" />
     <Project Path="src/Lilia.Infrastructure/Lilia.Infrastructure.csproj" />
   </Folder>

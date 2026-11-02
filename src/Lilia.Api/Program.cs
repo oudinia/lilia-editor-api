@@ -96,6 +96,9 @@ if (builder.Configuration.GetValue<bool>("Network:IPv4Only"))
 builder.Host.UseWolverine(opts =>
 {
     opts.Discovery.IncludeAssembly(typeof(Program).Assembly);
+    // The slices that are projects of their own (2 Nov 2026): their handlers live in their assemblies.
+    // Without this, the share email's handler would never run, and nothing would say so.
+    opts.Discovery.IncludeAssembly(typeof(Lilia.Api.Features.Sharing.Handlers.SendShareEmailHandler).Assembly);
 
     // One node, no leader election, unless Wolverine:Solo=false. See MessageStoreSettings.
     MessageStoreSettings.Apply(opts.Durability, builder.Configuration);

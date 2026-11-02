@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Sharing slice (collaborators, invites, sharing, comments, notifications) as its own project: step 1
+    of its bounded context (2 Nov 2026, lilia-docs reports/2026-11-02-bounded-contexts.md). A change here
+    compiles this project, not the whole API. It uses the rest of the API only through Lilia.Api.Contracts;
+    Lilia.Api references it, registers its services, and tells Wolverine to look here for handlers.
+    Namespaces are unchanged (Lilia.Api.Controllers, Lilia.Api.Services, Lilia.Api.Features.Sharing.Handlers).
+  -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lilia.Api.Contracts\Lilia.Api.Contracts.csproj" />
+    <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
+    <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Publishing DocumentSharedEvent and handling it (Wolverine). -->
+    <PackageReference Include="WolverineFx" Version="5.39.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lilia.Api.Tests" />
+  </ItemGroup>
+
+  <!-- The implicit usings of the web SDK, which Lilia.Api has: the slice's files were written there. -->
+  <ItemGroup>
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Its messages (Resources/Services/SharedMessages.*.resx) keep the names they had in Lilia.Api, so
+         IStringLocalizer<SharedMessages> finds them: see Properties/AssemblyInfo.cs. -->
+    <RootNamespace>Lilia.Api</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
