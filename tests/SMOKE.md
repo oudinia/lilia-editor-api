@@ -77,7 +77,7 @@ Expected: all return 200 with JSON arrays / objects. If any return 500, check th
 
 1. **Check the API console** for the exception. `EF Core LINQ translation` errors are common and indicate prod-shape bugs that don't reproduce against an empty Testcontainers DB.
 2. **Open or reuse a Jira ticket** — usually a one-line LINQ rewrite to push the projection client-side.
-3. **Add a regression test** in `tests/Lilia.Api.Tests/Integration/Controllers/` that proves the fix.
+3. **Add a regression test** in `tests/Lilia.Api.Tests/Features/<Slice>/` that proves the fix.
 4. **Ship the fix in the PR alongside the test.**
 
 Example bug found 2026-05-06 by this exact procedure: `InsertionEventsController.GetTopTokens` and `GetSourceMix` had `g.Select(x => x.UserId).Distinct().Count()` inside a `GroupBy.Select`, which Npgsql can't translate. Fixed by projecting (token, userId) tuples then grouping in memory. See LILIA-125 for the full story.

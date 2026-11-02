@@ -1,0 +1,104 @@
+using System.Reflection;
+using FluentAssertions;
+using Lilia.Core.Entities;
+
+namespace Lilia.Api.Tests.Features.Export;
+
+/// <summary>
+/// Tier 2 of the export-side defence-in-depth strategy: every canonical
+/// user-content block type must have a case branch in both
+/// <c>LaTeXExportService.RenderBlock</c> and
+/// <c>DocxExportService.ConvertBlockSync</c>.
+///
+/// Mirror of <c>EnvironmentHandlerCoverageTests</c> on the import side.
+/// Pre-fix, adding a new block type to <c>BlockTypes</c> didn't fail
+/// any test if the exporters silently fell back to plain text. This
+/// gate catches "added block type, forgot exporter case" the day the
+/// new constant lands.
+///
+/// Verticals (slide, inv-*, frontMatter/backMatter, etc.) are skipped
+/// per <see cref="VerticalTypes"/> — those exporters live in their own
+/// pipelines and aren't expected on the general LaTeX/DOCX paths.
+/// </summary>
+public class ExportHandlerCoverageTests
+{
+    /// <summary>
+    /// Block types we require the general LaTeX + DOCX exporters to
+    /// handle. Anything in <see cref="BlockTypes"/> NOT in this set is
+    /// allowed to fall through (vertical-specific or alias).
+    /// </summary>
+    private static readonly HashSet<string> RequiredCoverage = new(StringComparer.OrdinalIgnoreCase)
+    {
+        BlockTypes.Paragraph,
+        BlockTypes.Heading,
+        BlockTypes.Equation,
+        BlockTypes.Figure,
+        BlockTypes.Table,
+        BlockTypes.Code,
+        BlockTypes.List,
+        BlockTypes.Blockquote,
+        BlockTypes.Theorem,
+        BlockTypes.Abstract,
+        BlockTypes.Bibliography,
+        BlockTypes.TableOfContents,
+        BlockTypes.PageBreak,
+    };
+
+    private static readonly string LatexExportPath = ResolveSourcePath(
+        "src/Lilia.Api/Services/LaTeXExportService.cs");
+    private static readonly string DocxExportPath = ResolveSourcePath(
+        "src/Lilia.Import/Services/DocxExportService.cs");
+
+    public static IEnumerable<object[]> RequiredBlockTypes() =>
+        RequiredCoverage.Select(t => new object[] { t });
+
+    // Measured by exporting, not by reading the source: since run 2 (MCP-76) the export renders
+    // body blocks with the check emitter, so its cases are no longer arms in its own switch.
+    [Theory]
+    [MemberData(nameof(RequiredBlockTypes))]
+    public void Latex_exporter_has_case_for_block_type(string blockType)
+    {
+        var doc = new Document { Id = Guid.NewGuid(), Title = "T", LatexDocumentClass = "article", Language = "en", PaperSize = "a4", FontFamily = "serif", FontSize = 11 };
+        var block = new Block
+        {
+            Id = Guid.NewGuid(), DocumentId = doc.Id, Type = blockType, SortOrder = 0,
+            Content = System.Text.Json.JsonDocument.Parse("{}"),
+        };
+        var tex = new Lilia.Api.Services.LaTeXExportService(null!, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<Lilia.Api.Services.LaTeXExportService>.Instance)
+            .BuildSingleFileLatex(doc, [block], [], new Lilia.Api.Services.LaTeXExportOptions());
+        tex.Should().NotContain($"Unsupported block type for LaTeX export: {blockType}",
+            $"the LaTeX export must have a case for '{blockType}' — without it the block " +
+            "exports as no content.");
+    }
+
+    [Theory]
+    [MemberData(nameof(RequiredBlockTypes))]
+    public void Docx_exporter_has_case_for_block_type(string blockType)
+    {
+        var src = File.ReadAllText(DocxExportPath);
+        // DocxExportService lowercases via .ToLowerInvariant() then
+        // matches; check the lowercased form.
+        var lower = blockType.ToLowerInvariant();
+        var pattern = $"\"{lower}\"\\s*=>";
+        src.Should().MatchRegex(pattern,
+            $"DocxExportService.ConvertBlockSync should have a case for '{lower}' " +
+            "(BlockType is lowercased before the switch). Without it the block " +
+            "falls to ConvertParagraph and exports as plain text — silent " +
+            "fallback that loses structure.");
+    }
+
+    private static string ResolveSourcePath(string relative)
+    {
+        // Walk up from the test bin dir until we hit the repo root
+        // (the directory that contains src/).
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 8; i++)
+        {
+            var candidate = Path.Combine(dir, relative);
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir) ?? dir;
+        }
+        throw new FileNotFoundException(
+            $"Could not locate {relative} from test bin dir {AppContext.BaseDirectory}");
+    }
+}
