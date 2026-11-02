@@ -54,7 +54,8 @@ internal static class SharedPostgres
 
     // Loopback only (19 Oct): Docker publishes on every interface by default and its rules go around
     // ufw, so each test run's database (default password) was reachable from the internet for minutes.
-    // Testcontainers' reaper removes the container when the test process ends.
+    // Removed when the test process exits (StartAsync): Testcontainers' own cleaner, Ryuk, is off on
+    // this server (~/.testcontainers.properties), and ops/ci-local.sh sweeps whatever a crash left.
     private static readonly PostgreSqlContainer Container = new PostgreSqlBuilder()
         .WithImage("postgres:18-alpine")
         // A host per class, each with its own pool: well past Postgres's default of 100.
@@ -74,6 +75,10 @@ internal static class SharedPostgres
     private static async Task StartAsync()
     {
         await Container.StartAsync();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { Container.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(30)); } catch (Exception) { }
+        };
         await using (var admin = new NpgsqlConnection(Container.GetConnectionString()))
         {
             await admin.OpenAsync();

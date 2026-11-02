@@ -8,6 +8,9 @@
 #   migrations  the EF model has no change missing a migration, and every
 #               migration has its .Designer.cs
 #
+# Built once, then the three checks run side by side (2 Nov 2026: 449 s, of which two more builds of
+# the same code and the admin and migrations checks waiting for the tests).
+#
 # Integration tests start their own Postgres (Testcontainers); nothing here
 # touches Neon or the API on 5001. Prints one line per check and a verdict;
 # exits non-zero on any failure. Logs: $CI_LOG_DIR/api-<branch>-<check>.log.
@@ -21,9 +24,22 @@ BRANCH=api-$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
 START=$SECONDS
 fail=0
 
+build() {
+  local log="$LOG_DIR/$BRANCH-build.log" t=$SECONDS
+  # The API's tests build the API and everything it uses; the admin's add the admin console.
+  if timeout 900 dotnet build -v q tests/Lilia.Api.Tests >"$log" 2>&1 \
+     && timeout 600 dotnet build -v q tests/Lilia.Admin.Tests >>"$log" 2>&1; then
+    echo "pass build $((SECONDS - t))s"
+  else
+    echo "FAIL build $((SECONDS - t))s  ($log)"
+    grep -E "error [A-Z]+[0-9]+" "$log" | sort -u | head -10 | sed 's/^/     /'
+    return 1
+  fi
+}
+
 tests() {
   local log="$LOG_DIR/$BRANCH-tests.log" t=$SECONDS
-  timeout 1500 dotnet test tests/Lilia.Api.Tests --filter "Category!=RequiresTeX&Category!=Nightly" \
+  timeout 1500 dotnet test tests/Lilia.Api.Tests --no-build --filter "Category!=RequiresTeX&Category!=Nightly" \
     --blame-hang-timeout 3m --logger "console;verbosity=minimal" >"$log" 2>&1
   # The summary line is the verdict (a pipe's exit code has lied before).
   local summary
@@ -54,7 +70,7 @@ migrations() {
     echo "FAIL migrations: no .Designer.cs for$orphans"; return 1
   fi
   if dotnet ef migrations has-pending-model-changes --project src/Lilia.Infrastructure \
-       --startup-project src/Lilia.Api >"$log" 2>&1; then
+       --startup-project src/Lilia.Api --no-build >"$log" 2>&1; then
     echo "pass migrations $((SECONDS - t))s"
   else
     echo "FAIL migrations $((SECONDS - t))s: model changes without a migration  ($log)"; return 1
@@ -64,7 +80,7 @@ migrations() {
 # The admin console (src/Lilia.Admin, 16 Oct 2026): its own test project, its own Postgres.
 admin() {
   local log="$LOG_DIR/$BRANCH-admin.log" t=$SECONDS summary
-  timeout 600 dotnet test tests/Lilia.Admin.Tests --blame-hang-timeout 3m --logger "console;verbosity=minimal" >"$log" 2>&1
+  timeout 600 dotnet test tests/Lilia.Admin.Tests --no-build --blame-hang-timeout 3m --logger "console;verbosity=minimal" >"$log" 2>&1
   summary=$(grep -E "^(Passed|Failed)! " "$log" | tail -1)
   if ! grep -qE "Test Run Aborted|test run was aborted" "$log" && [[ "$summary" == Passed!*"Failed:     0,"* ]]; then
     echo "pass admin $((SECONDS - t))s  ${summary#*- }"
@@ -75,9 +91,15 @@ admin() {
   fi
 }
 
-tests || fail=1
-admin || fail=1
-migrations || fail=1
+if ! build; then echo "LOCAL CI: FAIL ($((SECONDS - START))s)"; exit 1; fi
+# Side by side, each into its own result file; printed in a fixed order once all three are done.
+RES=$(mktemp -d)
+{ tests >"$RES/1" 2>&1; echo $? >"$RES/1.code"; } &
+{ admin >"$RES/2" 2>&1; echo $? >"$RES/2.code"; } &
+{ migrations >"$RES/3" 2>&1; echo $? >"$RES/3.code"; } &
+wait
+for i in 1 2 3; do cat "$RES/$i"; [ "$(cat "$RES/$i.code")" = 0 ] || fail=1; done
+rm -rf "$RES"
 # Ryuk, Testcontainers' cleaner, is off (~/.testcontainers.properties): it listened on every interface
 # and deletes any container it is asked to (19 Oct). A test database a crashed run left behind goes here.
 docker ps -aq --filter label=org.testcontainers=true 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
