@@ -24,6 +24,9 @@ set -u
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$HOME/.local/bin:$PATH"
 export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"  # dotnet-ef finds the runtime by it
+# The always-on test Postgres (lilia-test-pg), when this machine has one: the database tests use it
+# instead of starting a container of their own (TestDatabaseFixture).
+[ -f "$HOME/.config/lilia/test-pg.env" ] && { set -a; . "$HOME/.config/lilia/test-pg.env"; set +a; }
 LOG_DIR=${CI_LOG_DIR:-/tmp/claude-1001/ci-local}
 mkdir -p "$LOG_DIR"
 BRANCH=api-$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
