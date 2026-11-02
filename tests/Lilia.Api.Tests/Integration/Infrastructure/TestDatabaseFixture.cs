@@ -20,12 +20,15 @@ namespace Lilia.Api.Tests.Integration.Infrastructure;
 /// </summary>
 public class TestDatabaseFixture : IAsyncLifetime
 {
+    private string? _database;
+
     public string ConnectionString { get; private set; } = null!;
     public LiliaWebApplicationFactory Factory { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
-        ConnectionString = SharedPostgres.ConnectionStringFor(await SharedPostgres.CloneAsync());
+        _database = await SharedPostgres.CloneAsync();
+        ConnectionString = SharedPostgres.ConnectionStringFor(_database);
         Factory = new LiliaWebApplicationFactory(ConnectionString);
     }
 
@@ -42,9 +45,11 @@ public class TestDatabaseFixture : IAsyncLifetime
             catch (TimeoutException) { /* the database goes with the container at the end of the run */ }
         }
         // The class's idle connections close (Postgres refused the run at its connection limit while
-        // finished classes' pools held theirs). The database itself stays until the container goes at
-        // the end of the run: nothing more to do, and nothing to race a stopping host for.
+        // finished classes' pools held theirs), then its copy goes: without FORCE, so a connection a
+        // stopping host still holds makes the drop fail, not the host. The next run's start sweeps
+        // what is left (an exit-time drop never ran: the test host ends first, 120 copies stayed).
         if (ConnectionString is not null) NpgsqlConnection.ClearPool(new NpgsqlConnection(ConnectionString));
+        if (_database is not null) await SharedPostgres.DropAsync(_database);
     }
 }
 
@@ -56,8 +61,8 @@ public class TestDatabaseFixture : IAsyncLifetime
 /// LILIA_TEST_PG (~/.config/lilia/test-pg.env, which ops/ci-local.sh and lilia test read). Starting a
 /// container and migrating it took most of a small run (a 7-second class took 52 s). The template is
 /// named by the migrations it holds, so a branch that adds one gets its own and no branch sees another's
-/// schema; an unchanged one is ready at once. A run's copies go when it ends, a crashed run's at the
-/// next start.</para>
+/// schema; an unchanged one is ready at once. A class's copy goes when the class is done, and a
+/// copy that couldn't go (a crashed run's) is swept by a start an hour later.</para>
 ///
 /// <para>Without LILIA_TEST_PG, or when that server doesn't answer, a container of its own for the
 /// run, as before (Testcontainers).</para>
@@ -113,19 +118,6 @@ internal static class SharedPostgres
         }
         finally { await Exec(admin, "SELECT pg_advisory_unlock(72017)"); }
 
-        // This run's copies, when it ends: by then every class's host is gone.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-        {
-            try
-            {
-                NpgsqlConnection.ClearAllPools();
-                using var c = new NpgsqlConnection(_admin);
-                c.Open();
-                foreach (var name in Names(c, Run + "_%").GetAwaiter().GetResult())
-                    using (var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {name} WITH (FORCE)", c)) drop.ExecuteNonQuery();
-            }
-            catch (Exception) { /* the next run's start drops what is left */ }
-        };
     }
 
     // The always-on server, when there is one and it answers.
@@ -195,6 +187,18 @@ internal static class SharedPostgres
 
     public static string ConnectionStringFor(string database) =>
         new NpgsqlConnectionStringBuilder(_admin ?? "Host=localhost") { Database = database }.ConnectionString;
+
+    /// <summary>A class's copy, when the class is done. Best effort: what stays is swept at a later start.</summary>
+    public static async Task DropAsync(string database)
+    {
+        try
+        {
+            await using var admin = new NpgsqlConnection(_admin);
+            await admin.OpenAsync();
+            await Exec(admin, $"DROP DATABASE IF EXISTS {database}");
+        }
+        catch (Exception) { }
+    }
 
     /// <summary>A fresh database with the migrated schema, for one test class.</summary>
     public static async Task<string> CloneAsync()
