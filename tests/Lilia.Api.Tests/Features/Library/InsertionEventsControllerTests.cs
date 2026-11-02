@@ -4,6 +4,7 @@ using FluentAssertions;
 using Lilia.Api.Controllers;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Lilia.Core.Entities;
+using Lilia.Api.Features.Library.Controllers;
 
 namespace Lilia.Api.Tests.Features.Library;
 
