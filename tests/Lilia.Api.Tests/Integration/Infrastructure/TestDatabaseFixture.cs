@@ -75,9 +75,12 @@ internal static class SharedPostgres
     private static async Task StartAsync()
     {
         await Container.StartAsync();
+        // Synchronously, with Docker's own command: the test host's exit doesn't wait for an async
+        // dispose, and the container outlived the run (2 Nov).
+        var id = Container.Id;
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
-            try { Container.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(30)); } catch (Exception) { }
+            try { System.Diagnostics.Process.Start("docker", $"rm -f {id}")?.WaitForExit(15000); } catch (Exception) { }
         };
         await using (var admin = new NpgsqlConnection(Container.GetConnectionString()))
         {
