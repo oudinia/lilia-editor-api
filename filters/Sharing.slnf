@@ -1,0 +1,9 @@
+{
+  "solution": {
+    "path": "../Lilia.Api.slnx",
+    "projects": [
+      "src/Lilia.Features.Sharing/Lilia.Features.Sharing.csproj",
+      "src/Lilia.Api.Contracts/Lilia.Api.Contracts.csproj"
+    ]
+  }
+}

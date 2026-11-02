@@ -51,6 +51,7 @@
     <!-- The slices as projects (2 Nov 2026, the pilot): the shared contracts, then each slice. -->
     <ProjectReference Include="..\Lilia.Api.Contracts\Lilia.Api.Contracts.csproj" />
     <ProjectReference Include="..\Lilia.Features.Library\Lilia.Features.Library.csproj" />
+    <ProjectReference Include="..\Lilia.Features.Sharing\Lilia.Features.Sharing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
