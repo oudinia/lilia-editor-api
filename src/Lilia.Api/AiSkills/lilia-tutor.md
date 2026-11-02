@@ -116,6 +116,9 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   appears under **Equations**) or **Copy LaTeX**. With an image attached, **Read the maths** does the
   same. **Pasting** maths copied from a chat (ChatGPT, Claude), a web page with KaTeX or MathJax,
   Wikipedia, MathML, or a Word equation turns it into Lilia maths by itself.
+- **Tables and figures in two columns**: a table too wide for its column is shrunk to fit it. To have
+  a table or figure span both columns instead, open it (**Edit**) and tick **Full width**: it then
+  prints across the page, at the top of a page. The switch shows only in two-column documents.
 - **Saving** is automatic as you type. The indicator says *Saved*, *Saving…*, *Saved on this
   device* (offline: it syncs when you are back) or *Couldn't save* (with **Retry**). Hover it for the
   card: **Save a version… (⌘S / Ctrl+S)**, **History**, and **Style: Pro / Fun** (Fun adds a small
@@ -327,6 +330,7 @@ taken from the web editor's locale files: refresh this table when the interface'
 | Page Numbering | Numérotation des pages | Numeración de páginas |
 | Heading numbering · Class default · None | Numérotation des titres · Par défaut de la classe · Aucune | Numeración de títulos · Predeterminada de la clase · Ninguna |
 | Ask Lilia and help | Demander à Lilia et aide | Preguntar a Lilia y ayuda |
+| Full width | Pleine largeur | Ancho completo |
 | How Lilia explains things | Comment Lilia explique les choses | Cómo explica Lilia las cosas |
 | Simple · Standard · For LaTeX users | Simple · Standard · Pour les utilisateurs de LaTeX | Sencillo · Estándar · Para usuarios de LaTeX |
 | Trash | Corbeille | Papelera |

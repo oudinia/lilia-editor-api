@@ -2270,6 +2270,12 @@ public partial class RenderService : IRenderService
                 sb.AppendLine(@"\renewcommand{\arraystretch}{1.3}");
                 if (!string.IsNullOrEmpty(caption)) sb.AppendLine(captionCommand);
                 if (!string.IsNullOrEmpty(label)) sb.AppendLine($@"\label{{{label}}}");
+                // Never wider than its column (2 Nov, the owner's screenshot: a four-column table in a
+                // two-column paper printed over the listing beside it). A tabular doesn't shrink on its
+                // own; this scales it down to the line only when it is wider, and leaves a table that
+                // fits as it is. To have it span both columns instead, the author sets Full width (table*).
+                // Opened before the theme's markers, which must stay right before the tabular.
+                sb.AppendLine(FitToLine.Open);
                 AppendThemeMarkers(sb, hasHeaders, rowList);
                 if (RowColoursLatex(content) is { } rowColours) sb.AppendLine(rowColours);
                 // Notes print under the table, not at the page foot: threeparttable.
@@ -2370,6 +2376,7 @@ public partial class RenderService : IRenderService
                     sb.AppendLine(layout.NotesList());
                     sb.AppendLine(@"\end{threeparttable}");
                 }
+                sb.AppendLine(FitToLine.Close);
                 sb.AppendLine(IsFullWidth(content) ? @"\end{table*}" : @"\end{table}");
             }
         }
