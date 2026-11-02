@@ -488,6 +488,10 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddSingleton<
     Lilia.Api.Features.Teams.Services.ITeamCodenameGenerator,
     Lilia.Api.Features.Teams.Services.TeamCodenameGenerator>();
+// What one context may know of another's records, asked by id (2 Nov 2026, the bounded contexts, step 2).
+builder.Services.AddScoped<Lilia.Api.Directories.IDocumentDirectory, Lilia.Api.Services.Directories.DocumentDirectory>();
+builder.Services.AddScoped<Lilia.Api.Directories.IPeopleDirectory, Lilia.Api.Services.Directories.PeopleDirectory>();
+builder.Services.AddScoped<Lilia.Api.Directories.ITeamDirectory, Lilia.Api.Features.Teams.Services.TeamDirectory>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<ISharingService, SharingService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();

@@ -1,3 +1,4 @@
+using Lilia.Api.Directories;
 using Lilia.Core.DTOs;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,50 +8,37 @@ namespace Lilia.Api.Services;
 public class SharingService : ISharingService
 {
     private readonly LiliaDbContext _context;
+    private readonly IDocumentDirectory _documents;
+    private readonly IPeopleDirectory _people;
     private readonly ICollaboratorService _collaboratorService;
 
     // Avatar-stack cap for the "Shared by me" card; counts carry the rest.
     private const int TopCollaborators = 5;
 
-    public SharingService(LiliaDbContext context, ICollaboratorService collaboratorService)
+    public SharingService(LiliaDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ICollaboratorService collaboratorService)
     {
         _context = context;
+        _documents = documents;
+        _people = people;
         _collaboratorService = collaboratorService;
     }
 
     public async Task<List<SharedByMeDto>> GetSharedByMeAsync(string ownerUserId)
     {
-        var docs = await _context.Documents
-            .Where(d => d.OwnerId == ownerUserId
-                && d.DeletedAt == null
-                && !d.IsTemplate
-                && !d.IsPlayground)
-            .Select(d => new
-            {
-                d.Id,
-                d.Title,
-                d.UpdatedAt,
-                d.LastOpenedAt,
-                d.IsPublic,
-                d.ShareLink
-            })
-            .ToListAsync();
+        var docs = await _documents.ShareableOwnedByAsync(ownerUserId);
 
         var docIds = docs.Select(d => d.Id).ToList();
 
-        var collaborators = await _context.DocumentCollaborators
+        var shares = await _context.DocumentCollaborators
             .Where(c => docIds.Contains(c.DocumentId))
-            .Select(c => new
-            {
-                c.DocumentId,
-                c.UserId,
-                c.User.Name,
-                c.User.Email,
-                c.User.Image,
-                Role = c.Role.Name,
-                c.CreatedAt
-            })
+            .Select(c => new { c.DocumentId, c.UserId, Role = c.Role.Name, c.CreatedAt })
             .ToListAsync();
+        // Names and pictures from Accounts; a share whose account is gone isn't counted (as the join had it).
+        var people = await _people.FindManyAsync(shares.Select(c => c.UserId));
+        var collaborators = shares
+            .Where(c => people.ContainsKey(c.UserId))
+            .Select(c => new { c.DocumentId, c.UserId, people[c.UserId].Name, people[c.UserId].Email, people[c.UserId].Image, c.Role, c.CreatedAt })
+            .ToList();
 
         var pendingCounts = await _context.DocumentPendingInvites
             .Where(p => docIds.Contains(p.DocumentId) && p.Status == "pending")
@@ -79,7 +67,7 @@ public class SharingService : ISharingService
                 d.UpdatedAt,
                 d.LastOpenedAt,
                 d.IsPublic,
-                d.ShareLink != null,
+                d.HasShareLink,
                 docCollabs.Count,
                 pendingCount,
                 docCollabs
@@ -96,37 +84,35 @@ public class SharingService : ISharingService
 
     public async Task<List<SharedPersonDto>> GetPeopleAsync(string ownerUserId)
     {
-        var activeRows = await _context.DocumentCollaborators
-            .Where(c => c.Document.OwnerId == ownerUserId
-                && c.Document.DeletedAt == null
-                && !c.Document.IsTemplate
-                && !c.Document.IsPlayground)
+        // The owner's shareable documents come from Documents, the people from Accounts.
+        var titles = (await _documents.ShareableOwnedByAsync(ownerUserId)).ToDictionary(d => d.Id, d => d.Title);
+        var docIds = titles.Keys.ToList();
+
+        var shares = await _context.DocumentCollaborators
+            .Where(c => docIds.Contains(c.DocumentId))
+            .Select(c => new { c.UserId, c.DocumentId, Role = c.Role.Name })
+            .ToListAsync();
+        var cards = await _people.FindManyAsync(shares.Select(c => c.UserId));
+        var activeRows = shares
+            .Where(c => cards.ContainsKey(c.UserId))
             .Select(c => new
             {
                 c.UserId,
-                c.User.Name,
-                c.User.Email,
-                c.User.Image,
+                cards[c.UserId].Name,
+                cards[c.UserId].Email,
+                cards[c.UserId].Image,
                 c.DocumentId,
-                Title = c.Document.Title,
-                Role = c.Role.Name
+                Title = titles[c.DocumentId],
+                c.Role
             })
-            .ToListAsync();
+            .ToList();
 
-        var pendingRows = await _context.DocumentPendingInvites
-            .Where(p => p.Status == "pending"
-                && p.Document.OwnerId == ownerUserId
-                && p.Document.DeletedAt == null
-                && !p.Document.IsTemplate
-                && !p.Document.IsPlayground)
-            .Select(p => new
-            {
-                p.Email,
-                p.DocumentId,
-                Title = p.Document.Title,
-                p.Role
-            })
-            .ToListAsync();
+        var pendingRows = (await _context.DocumentPendingInvites
+                .Where(p => p.Status == "pending" && docIds.Contains(p.DocumentId))
+                .Select(p => new { p.Email, p.DocumentId, p.Role })
+                .ToListAsync())
+            .Select(p => new { p.Email, p.DocumentId, Title = titles[p.DocumentId], p.Role })
+            .ToList();
 
         // Merge by email (case-insensitive): a registered collaborator and a
         // lingering pending row for the same address are one person.
@@ -173,7 +159,7 @@ public class SharingService : ISharingService
 
     public async Task<InviteResultDto> ResendInviteAsync(string ownerUserId, ResendInviteDto dto)
     {
-        var doc = await _context.Documents.FindAsync(dto.DocumentId);
+        var doc = await _documents.FindAsync(dto.DocumentId);
         if (doc == null)
             return new InviteResultDto(false, false, dto.Email, "Document not found.");
         if (doc.OwnerId != ownerUserId)
