@@ -1016,6 +1016,14 @@ public class LaTeXRenderService : ILaTeXRenderService
             else
             {
                 exitCode = await Pass();
+                // A third pass when LaTeX asks for one ("Label(s) may have changed"): a contents that
+                // moves the pages after it left the second pass's references, and the accessible PDF's
+                // tags, one pass stale. veraPDF failed a tagged PDF with a contents on it (2 Nov).
+                if (File.Exists(logPath) && BibliographyPasses.NeedsRerun(await File.ReadAllTextAsync(logPath)))
+                {
+                    Lilia.Core.Diagnostics.Timing.Mark("tex.pass 3");
+                    exitCode = await Pass();
+                }
             }
 
             // In tolerant mode, accept whatever PDF was produced even if
