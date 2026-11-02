@@ -1,3 +1,4 @@
+using Lilia.Api.Directories;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Api.Services;
@@ -32,12 +33,16 @@ namespace Lilia.Api.Controllers;
 public class InvitesController : ControllerBase
 {
     private readonly LiliaDbContext _context;
+    private readonly IDocumentDirectory _documents;
+    private readonly IPeopleDirectory _people;
 
     private readonly ISharingNotifier? _sharingNotifier;
 
-    public InvitesController(LiliaDbContext context, ISharingNotifier? sharingNotifier = null)
+    public InvitesController(LiliaDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ISharingNotifier? sharingNotifier = null)
     {
         _context = context;
+        _documents = documents;
+        _people = people;
         _sharingNotifier = sharingNotifier;
     }
 
@@ -49,12 +54,15 @@ public class InvitesController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<InviteResolveDto>> Resolve(Guid token)
     {
-        var invite = await _context.DocumentPendingInvites
-            .Include(i => i.Document)
-            .Include(i => i.Inviter)
+        var invite = await _context.DocumentPendingInvites.AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == token);
-
         if (invite == null) return NotFound();
+
+        // A trashed document's invite is not found, as the join with documents had it.
+        var document = await _documents.FindAsync(invite.DocumentId);
+        if (document == null) return NotFound();
+        var inviter = await _people.FindAsync(invite.InvitedBy);
+        if (inviter == null) return NotFound();
 
         // Expired invites still resolve so the landing page can show a
         // "this invite expired" state instead of a generic 404 — useful
@@ -66,9 +74,9 @@ public class InvitesController : ControllerBase
         return Ok(new InviteResolveDto(
             invite.Id,
             invite.Email,
-            invite.Document.Id,
-            invite.Document.Title,
-            invite.Inviter.Name ?? invite.Inviter.Email ?? "Someone",
+            document.Id,
+            document.Title,
+            inviter.Name ?? inviter.Email ?? "Someone",
             invite.Role,
             status,
             invite.CreatedAt,
@@ -101,7 +109,7 @@ public class InvitesController : ControllerBase
         // this check anyone with the token could accept on behalf of
         // the actual invitee. Email match is the binding contract for
         // a per-email invite — guard it server-side.
-        var user = await _context.Users.FindAsync(userId);
+        var user = await _people.FindAsync(userId);
         if (user == null) return Unauthorized();
         if (!string.Equals(user.Email, invite.Email, StringComparison.OrdinalIgnoreCase))
             return Forbid();
@@ -144,7 +152,7 @@ public class InvitesController : ControllerBase
         var invite = await _context.DocumentPendingInvites.FindAsync(token);
         if (invite == null) return NotFound();
 
-        var user = await _context.Users.FindAsync(userId);
+        var user = await _people.FindAsync(userId);
         if (user == null) return Unauthorized();
         if (!string.Equals(user.Email, invite.Email, StringComparison.OrdinalIgnoreCase))
             return Forbid();

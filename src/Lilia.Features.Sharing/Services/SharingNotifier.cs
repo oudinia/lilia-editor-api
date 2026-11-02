@@ -1,3 +1,4 @@
+using Lilia.Api.Directories;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -30,14 +31,18 @@ public sealed class SharingNotifier : ISharingNotifier
     public static readonly TimeSpan AcceptEmailWindow = TimeSpan.FromHours(1);
 
     private readonly LiliaDbContext _db;
+    private readonly IDocumentDirectory _documents;
+    private readonly IPeopleDirectory _people;
     private readonly INotificationService _notifications;
     private readonly IEmailService _email;
     private readonly EmailSettings _settings;
     private readonly ILogger<SharingNotifier> _logger;
 
-    public SharingNotifier(LiliaDbContext db, INotificationService notifications, IEmailService email, EmailSettings settings, ILogger<SharingNotifier> logger)
+    public SharingNotifier(LiliaDbContext db, IDocumentDirectory documents, IPeopleDirectory people, INotificationService notifications, IEmailService email, EmailSettings settings, ILogger<SharingNotifier> logger)
     {
         _db = db;
+        _documents = documents;
+        _people = people;
         _notifications = notifications;
         _email = email;
         _settings = settings;
@@ -48,9 +53,9 @@ public sealed class SharingNotifier : ISharingNotifier
     {
         try
         {
-            var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId);
-            var owner = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == inviterUserId);
-            var joined = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == acceptedUserId);
+            var doc = await _documents.FindAsync(documentId);
+            var owner = await _people.FindAsync(inviterUserId);
+            var joined = await _people.FindAsync(acceptedUserId);
             if (doc is null || owner is null) return;
             var who = Name(joined?.Name, joined?.Email);
             var link = $"/d/{documentId}?share=open&flash={Uri.EscapeDataString(acceptedUserId)}";
@@ -83,9 +88,9 @@ public sealed class SharingNotifier : ISharingNotifier
         if (string.Equals(RoleNames.Normalize(oldRole), RoleNames.Normalize(newRole), StringComparison.OrdinalIgnoreCase)) return;
         try
         {
-            var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId);
-            var target = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId);
-            var by = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == changedByUserId);
+            var doc = await _documents.FindAsync(documentId);
+            var target = await _people.FindAsync(targetUserId);
+            var by = await _people.FindAsync(changedByUserId);
             if (doc is null || target is null) return;
             var who = Name(by?.Name, by?.Email);
             var link = $"/d/{documentId}";
@@ -104,9 +109,9 @@ public sealed class SharingNotifier : ISharingNotifier
     {
         try
         {
-            var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId);
-            var target = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId);
-            var by = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == removedByUserId);
+            var doc = await _documents.FindAsync(documentId);
+            var target = await _people.FindAsync(targetUserId);
+            var by = await _people.FindAsync(removedByUserId);
             if (doc is null || target is null) return;
             var who = Name(by?.Name, by?.Email);
             // Nothing to open: the row says who removed you.

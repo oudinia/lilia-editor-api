@@ -1,3 +1,4 @@
+using Lilia.Api.Directories;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
@@ -21,11 +22,15 @@ public class CommentsController : ControllerBase
 {
     private readonly LiliaDbContext _db;
     private readonly IDocumentService _documentService;
+    private readonly IDocumentDirectory _documents;
+    private readonly IPeopleDirectory _people;
     private readonly ILogger<CommentsController> _logger;
 
-    public CommentsController(LiliaDbContext db, IDocumentService documentService, ILogger<CommentsController> logger)
+    public CommentsController(LiliaDbContext db, IDocumentService documentService, IDocumentDirectory documents, IPeopleDirectory people, ILogger<CommentsController> logger)
     {
         _db = db;
+        _documents = documents;
+        _people = people;
         _documentService = documentService;
         _logger = logger;
     }
@@ -49,9 +54,7 @@ public class CommentsController : ControllerBase
             return Forbid();
 
         var query = _db.Comments
-            .Include(c => c.User)
             .Include(c => c.Replies)
-                .ThenInclude(r => r.User)
             .Where(c => c.DocumentId == docId);
 
         if (blockId.HasValue)
@@ -64,8 +67,7 @@ public class CommentsController : ControllerBase
             .OrderByDescending(c => c.CreatedAt)
             .ToListAsync();
 
-        var dtos = comments.Select(MapToDto).ToList();
-        return Ok(dtos);
+        return Ok(await ToDtosAsync(comments));
     }
 
     /// <summary>
@@ -81,14 +83,12 @@ public class CommentsController : ControllerBase
             return Forbid();
 
         var comment = await _db.Comments
-            .Include(c => c.User)
             .Include(c => c.Replies)
-                .ThenInclude(r => r.User)
             .FirstOrDefaultAsync(c => c.Id == commentId && c.DocumentId == docId);
 
         if (comment == null) return NotFound();
 
-        return Ok(MapToDto(comment));
+        return Ok((await ToDtosAsync([comment]))[0]);
     }
 
     /// <summary>
@@ -110,9 +110,7 @@ public class CommentsController : ControllerBase
         // before inserting — otherwise the FK violation bubbles up as a 500.
         if (dto.BlockId.HasValue)
         {
-            var blockExists = await _db.Blocks
-                .AnyAsync(b => b.Id == dto.BlockId.Value && b.DocumentId == docId);
-            if (!blockExists)
+            if (!await _documents.HasBlockAsync(docId, dto.BlockId.Value))
                 return NotFound("Block not found in this document.");
         }
 
@@ -131,16 +129,14 @@ public class CommentsController : ControllerBase
         _db.Comments.Add(comment);
         await _db.SaveChangesAsync();
 
-        // Reload with User navigation property
         var created = await _db.Comments
-            .Include(c => c.User)
             .Include(c => c.Replies)
             .FirstAsync(c => c.Id == comment.Id);
 
         _logger.LogInformation("Comment {CommentId} created on document {DocumentId} by user {UserId}",
             comment.Id, docId, userId);
 
-        return CreatedAtAction(nameof(GetComment), new { docId, commentId = comment.Id }, MapToDto(created));
+        return CreatedAtAction(nameof(GetComment), new { docId, commentId = comment.Id }, (await ToDtosAsync([created]))[0]);
     }
 
     /// <summary>
@@ -156,15 +152,13 @@ public class CommentsController : ControllerBase
             return Forbid();
 
         var comment = await _db.Comments
-            .Include(c => c.User)
             .Include(c => c.Replies)
-                .ThenInclude(r => r.User)
             .FirstOrDefaultAsync(c => c.Id == commentId && c.DocumentId == docId);
 
         if (comment == null) return NotFound();
 
         // Only comment author or document owner can update
-        var document = await _db.Documents.FindAsync(docId);
+        var document = await _documents.FindAsync(docId);
         if (comment.UserId != userId && document?.OwnerId != userId)
             return Forbid();
 
@@ -177,7 +171,7 @@ public class CommentsController : ControllerBase
         comment.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        return Ok(MapToDto(comment));
+        return Ok((await ToDtosAsync([comment]))[0]);
     }
 
     /// <summary>
@@ -199,7 +193,7 @@ public class CommentsController : ControllerBase
         if (comment == null) return NotFound();
 
         // Only comment author or document owner can delete
-        var document = await _db.Documents.FindAsync(docId);
+        var document = await _documents.FindAsync(docId);
         if (comment.UserId != userId && document?.OwnerId != userId)
             return Forbid();
 
@@ -245,15 +239,12 @@ public class CommentsController : ControllerBase
         _db.CommentReplies.Add(reply);
         await _db.SaveChangesAsync();
 
-        // Reload with User navigation property
-        var created = await _db.CommentReplies
-            .Include(r => r.User)
-            .FirstAsync(r => r.Id == reply.Id);
+        var author = await _people.FindAsync(userId);
 
         _logger.LogInformation("Reply {ReplyId} added to comment {CommentId} by user {UserId}",
             reply.Id, commentId, userId);
 
-        return CreatedAtAction(nameof(GetComment), new { docId, commentId }, MapReplyToDto(created));
+        return CreatedAtAction(nameof(GetComment), new { docId, commentId }, MapReplyToDto(reply, author?.Name));
     }
 
     /// <summary>
@@ -310,31 +301,34 @@ public class CommentsController : ControllerBase
         return Ok(new { total, resolved, unresolved = total - resolved });
     }
 
-    private static CommentDto MapToDto(Comment c)
+    /// <summary>The comments with their authors' names, which come from Accounts (one lookup for them all).</summary>
+    private async Task<List<CommentDto>> ToDtosAsync(IReadOnlyCollection<Comment> comments)
     {
-        return new CommentDto(
+        var people = await _people.FindManyAsync(comments.Select(c => c.UserId).Concat(comments.SelectMany(c => c.Replies.Select(r => r.UserId))));
+        string? NameOf(string userId) => people.GetValueOrDefault(userId)?.Name;
+        return comments.Select(c => new CommentDto(
             Id: c.Id,
             DocumentId: c.DocumentId,
             BlockId: c.BlockId,
             UserId: c.UserId,
-            UserName: c.User?.Name,
+            UserName: NameOf(c.UserId),
             Content: c.Content,
             Resolved: c.Resolved,
             Replies: c.Replies
                 .OrderBy(r => r.CreatedAt)
-                .Select(MapReplyToDto)
+                .Select(r => MapReplyToDto(r, NameOf(r.UserId)))
                 .ToList(),
             CreatedAt: c.CreatedAt,
             UpdatedAt: c.UpdatedAt
-        );
+        )).ToList();
     }
 
-    private static CommentReplyDto MapReplyToDto(CommentReply r)
+    private static CommentReplyDto MapReplyToDto(CommentReply r, string? userName)
     {
         return new CommentReplyDto(
             Id: r.Id,
             UserId: r.UserId,
-            UserName: r.User?.Name,
+            UserName: userName,
             Content: r.Content,
             CreatedAt: r.CreatedAt
         );

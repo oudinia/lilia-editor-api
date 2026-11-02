@@ -1,3 +1,4 @@
+using Lilia.Api.Directories;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -12,6 +13,9 @@ public class SharedMessages { }
 public class CollaboratorService : ICollaboratorService
 {
     private readonly LiliaDbContext _context;
+    private readonly IDocumentDirectory _documents;
+    private readonly IPeopleDirectory _people;
+    private readonly ITeamDirectory _teams;
     private readonly IEmailService _emailService;
     private readonly EmailSettings _emailSettings;
     private readonly INotificationService _notificationService;
@@ -24,10 +28,13 @@ public class CollaboratorService : ICollaboratorService
     /// <summary>An invite expires after 14 days (Olivia's spec, confirmed by the user, 10 Oct); it was 30.</summary>
     public static readonly TimeSpan InviteLifetime = TimeSpan.FromDays(14);
 
-    public CollaboratorService(LiliaDbContext context, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null, ISharingNotifier? sharingNotifier = null)
+    public CollaboratorService(LiliaDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ITeamDirectory teams, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null, ISharingNotifier? sharingNotifier = null)
     {
         _sharingNotifier = sharingNotifier;
         _context = context;
+        _documents = documents;
+        _people = people;
+        _teams = teams;
         _emailService = emailService;
         _emailSettings = emailSettings;
         _notificationService = notificationService;
@@ -38,44 +45,41 @@ public class CollaboratorService : ICollaboratorService
 
     public async Task<CollaboratorListDto> GetCollaboratorsAsync(Guid documentId)
     {
-        var userCollaborators = await _context.DocumentCollaborators
-            .Include(dc => dc.User)
-            .Include(dc => dc.Role)
+        var userRows = await _context.DocumentCollaborators
             .Where(dc => dc.DocumentId == documentId)
-            .Select(dc => new UserCollaboratorDto(
-                dc.Id,
-                dc.UserId,
-                dc.User.Name,
-                dc.User.Email,
-                dc.User.Image,
-                dc.Role.Name,
-                dc.RoleId,
-                dc.CreatedAt
-            ))
+            .Select(dc => new { dc.Id, dc.UserId, Role = dc.Role.Name, dc.RoleId, dc.CreatedAt })
             .ToListAsync();
+        // Names and pictures come from Accounts; a share whose account is gone isn't listed (as the join had it).
+        var people = await _people.FindManyAsync(userRows.Select(r => r.UserId));
+        var userCollaborators = userRows
+            .Where(r => people.ContainsKey(r.UserId))
+            .Select(r =>
+            {
+                var p = people[r.UserId];
+                return new UserCollaboratorDto(r.Id, r.UserId, p.Name, p.Email, p.Image, r.Role, r.RoleId, r.CreatedAt);
+            })
+            .ToList();
 
-        var groupCollaborators = await _context.DocumentGroups
-            .Include(dg => dg.Group)
-                .ThenInclude(g => g.Members)
-            .Include(dg => dg.Role)
+        var groupRows = await _context.DocumentGroups
             .Where(dg => dg.DocumentId == documentId)
-            .Select(dg => new GroupCollaboratorDto(
-                dg.Id,
-                dg.GroupId,
-                dg.Group.Name,
-                dg.Role.Name,
-                dg.RoleId,
-                dg.Group.Members.Count,
-                dg.CreatedAt
-            ))
+            .Select(dg => new { dg.Id, dg.GroupId, Role = dg.Role.Name, dg.RoleId, dg.CreatedAt })
             .ToListAsync();
+        var groups = await _teams.FindGroupsAsync(groupRows.Select(r => r.GroupId));
+        var groupCollaborators = groupRows
+            .Where(r => groups.ContainsKey(r.GroupId))
+            .Select(r =>
+            {
+                var g = groups[r.GroupId];
+                return new GroupCollaboratorDto(r.Id, r.GroupId, g.Name, r.Role, r.RoleId, g.MemberCount, r.CreatedAt);
+            })
+            .ToList();
 
         return new CollaboratorListDto(userCollaborators, groupCollaborators);
     }
 
     public async Task<UserCollaboratorDto?> AddUserCollaboratorAsync(Guid documentId, string userId, AddUserCollaboratorDto dto, bool silent = false)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null) return null;
 
         // Only owner can manage collaborators
@@ -84,7 +88,7 @@ public class CollaboratorService : ICollaboratorService
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
-        var targetUser = await _context.Users.FindAsync(dto.UserId);
+        var targetUser = await _people.FindAsync(dto.UserId);
         if (targetUser == null) return null;
 
         // Check if already a collaborator
@@ -128,7 +132,7 @@ public class CollaboratorService : ICollaboratorService
             string? inviterName = null;
             try
             {
-                var inviterUser = await _context.Users.FindAsync(userId);
+                var inviterUser = await _people.FindAsync(userId);
                 inviterName = inviterUser?.Name ?? inviterUser?.Email ?? "Someone";
                 await _notificationService.CreateAsync(
                     dto.UserId,
@@ -151,7 +155,7 @@ public class CollaboratorService : ICollaboratorService
             {
                 if (inviterName is null)
                 {
-                    var inviter = await _context.Users.FindAsync(userId);
+                    var inviter = await _people.FindAsync(userId);
                     inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
                 }
                 await _bus.PublishAsync(new Events.Common.DocumentSharedEvent(
@@ -179,7 +183,7 @@ public class CollaboratorService : ICollaboratorService
 
     public async Task<GroupCollaboratorDto?> AddGroupCollaboratorAsync(Guid documentId, string userId, AddGroupCollaboratorDto dto)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null) return null;
 
         if (document.OwnerId != userId) return null;
@@ -187,9 +191,7 @@ public class CollaboratorService : ICollaboratorService
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
 
-        var group = await _context.Groups
-            .Include(g => g.Members)
-            .FirstOrDefaultAsync(g => g.Id == dto.GroupId);
+        var group = await _teams.FindGroupAsync(dto.GroupId);
         if (group == null) return null;
 
         // Check if already shared with group
@@ -207,7 +209,7 @@ public class CollaboratorService : ICollaboratorService
                 group.Name,
                 role.Name,
                 role.Id,
-                group.Members.Count,
+                group.MemberCount,
                 existing.CreatedAt
             );
         }
@@ -230,22 +232,22 @@ public class CollaboratorService : ICollaboratorService
             group.Name,
             role.Name,
             role.Id,
-            group.Members.Count,
+            group.MemberCount,
             documentGroup.CreatedAt
         );
     }
 
     public async Task<UserCollaboratorDto?> UpdateUserCollaboratorRoleAsync(Guid documentId, string targetUserId, string userId, UpdateCollaboratorRoleDto dto)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null || document.OwnerId != userId) return null;
 
         var collaborator = await _context.DocumentCollaborators
-            .Include(dc => dc.User)
             .Include(dc => dc.Role)
             .FirstOrDefaultAsync(dc => dc.DocumentId == documentId && dc.UserId == targetUserId);
 
         if (collaborator == null) return null;
+        var person = await _people.FindAsync(targetUserId);
 
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
@@ -259,9 +261,9 @@ public class CollaboratorService : ICollaboratorService
         return new UserCollaboratorDto(
             collaborator.Id,
             collaborator.UserId,
-            collaborator.User?.Name,
-            collaborator.User?.Email,
-            collaborator.User?.Image,
+            person?.Name,
+            person?.Email,
+            person?.Image,
             role.Name,
             role.Id,
             collaborator.CreatedAt
@@ -270,15 +272,16 @@ public class CollaboratorService : ICollaboratorService
 
     public async Task<GroupCollaboratorDto?> UpdateGroupCollaboratorRoleAsync(Guid documentId, Guid groupId, string userId, UpdateCollaboratorRoleDto dto)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null || document.OwnerId != userId) return null;
 
         var documentGroup = await _context.DocumentGroups
-            .Include(dg => dg.Group)
-                .ThenInclude(g => g.Members)
             .FirstOrDefaultAsync(dg => dg.DocumentId == documentId && dg.GroupId == groupId);
 
         if (documentGroup == null) return null;
+        // The join this replaces dropped a share whose group is gone.
+        var group = await _teams.FindGroupAsync(groupId);
+        if (group == null) return null;
 
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleNames.Normalize(dto.Role));
         if (role == null) return null;
@@ -289,17 +292,17 @@ public class CollaboratorService : ICollaboratorService
         return new GroupCollaboratorDto(
             documentGroup.Id,
             documentGroup.GroupId,
-            documentGroup.Group.Name,
+            group.Name,
             role.Name,
             role.Id,
-            documentGroup.Group.Members.Count,
+            group.MemberCount,
             documentGroup.CreatedAt
         );
     }
 
     public async Task<bool> SendRemovalNoticeAsync(Guid documentId, string targetUserId, string userId, bool allowReply)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null || document.OwnerId != userId) return false;
         // Undone in the meantime: they have access, so there is nothing to tell.
         if (await _context.DocumentCollaborators.AnyAsync(dc => dc.DocumentId == documentId && dc.UserId == targetUserId)) return false;
@@ -310,7 +313,7 @@ public class CollaboratorService : ICollaboratorService
 
     public async Task<bool> RemoveUserCollaboratorAsync(Guid documentId, string targetUserId, string userId, bool notify = false, bool allowReply = false)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null || document.OwnerId != userId) return false;
 
         var collaborator = await _context.DocumentCollaborators
@@ -330,7 +333,7 @@ public class CollaboratorService : ICollaboratorService
 
     public async Task<bool> RemoveGroupCollaboratorAsync(Guid documentId, Guid groupId, string userId)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null || document.OwnerId != userId) return false;
 
         var documentGroup = await _context.DocumentGroups
@@ -346,18 +349,18 @@ public class CollaboratorService : ICollaboratorService
 
     public async Task<InviteResultDto> InviteByEmailAsync(Guid documentId, string inviterUserId, InviteCollaboratorDto dto)
     {
-        var document = await _context.Documents.FindAsync(documentId);
+        var document = await _documents.FindAsync(documentId);
         if (document == null)
             return new InviteResultDto(false, false, dto.Email, _localizer["DocumentNotFound"].Value);
 
         if (document.OwnerId != inviterUserId)
             return new InviteResultDto(false, false, dto.Email, _localizer["OnlyOwnerCanInvite"].Value);
 
-        var inviter = await _context.Users.FindAsync(inviterUserId);
+        var inviter = await _people.FindAsync(inviterUserId);
         var inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
         var documentUrl = $"{_emailSettings.BaseUrl}/documents/{documentId}";
 
-        var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+        var targetUser = await _people.FindByEmailAsync(dto.Email);
 
         // Prevent inviting yourself — guard runs before pending row
         // creation so we don't accumulate noise.
