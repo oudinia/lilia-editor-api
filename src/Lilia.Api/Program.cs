@@ -1,3 +1,4 @@
+using Lilia.Api.Features.Platform.Contracts;
 using Lilia.Api.Mcp;
 using Lilia.Engines;
 using System.Text.Json;
@@ -21,6 +22,10 @@ using Microsoft.Extensions.AI;
 using Serilog;
 using Wolverine;
 using Wolverine.Postgresql;
+using Lilia.Api.Features.Library.Services;
+using Lilia.Api.Features.Platform.Services;
+using Lilia.Api.Features.References.Services;
+using Lilia.Api.Features.Teams.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -247,7 +252,7 @@ builder.Services.AddControllers(options =>
     {
         var provider = manager.FeatureProviders.OfType<Microsoft.AspNetCore.Mvc.Controllers.ControllerFeatureProvider>().FirstOrDefault();
         if (provider is not null) manager.FeatureProviders.Remove(provider);
-        manager.FeatureProviders.Add(new Lilia.Api.Security.DevOnlyControllerFeatureProvider(builder.Environment, builder.Configuration));
+        manager.FeatureProviders.Add(new Lilia.Api.Features.Platform.DevOnlyControllerFeatureProvider(builder.Environment, builder.Configuration));
     })
     .AddJsonOptions(options =>
     {

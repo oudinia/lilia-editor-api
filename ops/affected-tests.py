@@ -185,6 +185,9 @@ def select(changed):
                       for f in test_files)
     if not classes:
         return {**out, "mode": "fast", "why": "code changed but no test names what it reaches: the fast lane"}
+    # The slices' boundary test reads the source, not a type: it names nothing a change reaches.
+    if any(c.startswith("src/Lilia.Api/") for c in changed):
+        classes.add("Lilia.Api.Tests.Shared.SliceBoundaryTests.")
     if len(classes) > 0.7 * all_classes:
         return {**out, "mode": "all", "why": f"{len(classes)} of {all_classes} test classes reached: all of them"}
     return {**out, "mode": "some", "classes": sorted(classes),

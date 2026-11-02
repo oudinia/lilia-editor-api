@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Lilia.Api.Services;
 
 namespace Lilia.Api.Features.Teams.Services;
 

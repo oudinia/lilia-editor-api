@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Claims;
 using FluentAssertions;
 using Lilia.Api.Controllers;
+using Lilia.Api.Features.Platform;
 using Lilia.Api.Security;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Moq;
+using Lilia.Api.Features.Platform.Controllers;
 
 namespace Lilia.Api.Tests.Features.Platform;
 

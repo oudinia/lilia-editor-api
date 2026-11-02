@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Lilia.Api.Features.References.Controllers;
 
 namespace Lilia.Api.Tests.Features.References;
 

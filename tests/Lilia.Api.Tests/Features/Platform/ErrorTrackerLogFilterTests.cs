@@ -1,7 +1,8 @@
 using FluentAssertions;
-using Lilia.Api.Services;
+using Lilia.Api.Features.Platform.Services;
 using Serilog.Events;
 using Serilog.Parsing;
+using Lilia.Api.Features.Platform.Controllers;
 
 namespace Lilia.Api.Tests.Features.Platform;
 
@@ -32,10 +33,15 @@ public class ErrorTrackerLogFilterTests
 
     [Theory]
     [InlineData("Lilia.Api.Filters.ExceptionLoggingFilter")]
-    [InlineData("Lilia.Api.Controllers.LogController")]
     [InlineData("Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware")]
     [InlineData("Serilog.AspNetCore.RequestLoggingMiddleware")]
     [InlineData("Microsoft.EntityFrameworkCore.Database.Command")]
     public void Errors_already_captured_another_way_are_not_sent_twice(string source) =>
         ErrorTrackerLogFilter.IsAlreadyReported(From(source)).Should().BeTrue();
+
+    // The browser's errors: by the controller's type, so the filter follows it when it moves (2 Nov,
+    // LogController went to Features/Platform and its old name in a string would have matched nothing).
+    [Fact]
+    public void Browser_errors_sent_through_the_log_controller_are_not_sent_twice() =>
+        ErrorTrackerLogFilter.IsAlreadyReported(From(typeof(LogController).FullName)).Should().BeTrue();
 }
