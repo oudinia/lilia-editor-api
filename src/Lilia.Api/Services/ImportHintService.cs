@@ -40,12 +40,14 @@ public interface IImportHintService
 public class ImportHintService : IImportHintService
 {
     private readonly LiliaDbContext _context;
+    private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
     private readonly BulkInsertHelper _bulk;
     private readonly ILogger<ImportHintService> _logger;
 
-    public ImportHintService(LiliaDbContext context, BulkInsertHelper bulk, ILogger<ImportHintService> logger)
+    public ImportHintService(LiliaDbContext context, Lilia.Api.Directories.ISharingDirectory sharing, BulkInsertHelper bulk, ILogger<ImportHintService> logger)
     {
         _context = context;
+        _sharing = sharing;
         _bulk = bulk;
         _logger = logger;
     }
@@ -232,8 +234,8 @@ public class ImportHintService : IImportHintService
             .FirstOrDefaultAsync(x => x.Id == documentId, ct);
         if (d is null) return false;
         if (d.OwnerId == userId) return true;
-        return await _context.DocumentCollaborators
-            .AnyAsync(c => c.DocumentId == documentId && c.UserId == userId, ct);
+        // Shared with them directly, at any role (Sharing's to say).
+        return await _sharing.RoleOfAsync(documentId, userId, ct) is not null;
     }
 
     // ─── Bulk-insert via COPY ────────────────────────────────────────────

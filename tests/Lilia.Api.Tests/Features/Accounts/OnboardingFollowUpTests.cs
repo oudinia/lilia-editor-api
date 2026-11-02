@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using FluentAssertions;
 using Lilia.Api.Features.Onboarding;
@@ -33,7 +34,9 @@ public class OnboardingFollowUpTests : IntegrationTestBase
     private async Task<int> RunAsync(DateTime? now = null)
     {
         await using var db = CreateDbContext();
-        var followUp = new OnboardingFollowUp(db, _mail, new At(now ?? Now), NullLogger<OnboardingFollowUp>.Instance,
+        using var scope = Fixture.Factory.Services.CreateScope();
+        var sharing = scope.ServiceProvider.GetRequiredService<Lilia.Api.Directories.ISharingDirectory>();
+        var followUp = new OnboardingFollowUp(db, sharing, _mail, new At(now ?? Now), NullLogger<OnboardingFollowUp>.Instance,
             new EmailSettings { BaseUrl = "https://editor.liliaeditor.com" });
         return await followUp.SendDueAsync();
     }

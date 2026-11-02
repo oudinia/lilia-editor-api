@@ -20,11 +20,13 @@ public class UsersController : ControllerBase
     private const int SearchMaxPerMinute = 10;
 
     private readonly LiliaDbContext _context;
+    private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
     private readonly ILogger<UsersController> _logger;
 
-    public UsersController(LiliaDbContext context, ILogger<UsersController> logger)
+    public UsersController(LiliaDbContext context, Lilia.Api.Directories.ISharingDirectory sharing, ILogger<UsersController> logger)
     {
         _context = context;
+        _sharing = sharing;
         _logger = logger;
     }
 
@@ -86,18 +88,18 @@ public class UsersController : ControllerBase
             .Where(gm => myGroupIds.Contains(gm.GroupId))
             .Select(gm => gm.UserId);
 
-        // Documents where the requester is owner or collaborator.
-        var myDocIds = _context.Documents
+        // Documents where the requester is owner or collaborator (the shares are Sharing's to say).
+        var owned = await _context.Documents
             .Where(d => d.OwnerId == userId)
             .Select(d => d.Id)
-            .Union(_context.DocumentCollaborators
-                .Where(dc => dc.UserId == userId)
-                .Select(dc => dc.DocumentId));
+            .ToListAsync(ct);
+        var myDocIds = owned.Union(await _sharing.DocumentsSharedWithAsync(userId, throughGroups: false, ct)).ToList();
 
         // Other participants on those documents.
-        var docPeers = _context.DocumentCollaborators
-            .Where(dc => myDocIds.Contains(dc.DocumentId))
-            .Select(dc => dc.UserId);
+        var shareIds = await _sharing.PeopleSharedWithAsync(myDocIds, ct);
+        var docPeers = _context.Users
+            .Where(u => shareIds.Contains(u.Id))
+            .Select(u => u.Id);
 
         var docOwners = _context.Documents
             .Where(d => myDocIds.Contains(d.Id))

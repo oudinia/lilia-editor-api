@@ -11,13 +11,14 @@ public class UserService : IUserService
     private readonly IDocumentService _documentService;
     private readonly ILogger<UserService> _logger;
 
-    private readonly ISharingNotifier? _sharingNotifier;
+    // Sharing's part at sign-up: invitations sent to this address become shares (2 Nov 2026, step 3).
+    private readonly Lilia.Api.Directories.ISharingAccounts? _sharingAccounts;
     private readonly Wolverine.IMessageBus? _bus;
 
-    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger, ISharingNotifier? sharingNotifier = null,
+    public UserService(LiliaDbContext context, IDocumentService documentService, ILogger<UserService> logger, Lilia.Api.Directories.ISharingAccounts? sharingAccounts = null,
         Wolverine.IMessageBus? bus = null)
     {
-        _sharingNotifier = sharingNotifier;
+        _sharingAccounts = sharingAccounts;
         _bus = bus;
         _context = context;
         _documentService = documentService;
@@ -133,56 +134,10 @@ public class UserService : IUserService
         // Accept any pending invites for this email
         if (!string.IsNullOrEmpty(dto.Email))
         {
-            await AcceptPendingInvitesAsync(dto.Id, dto.Email);
+            if (_sharingAccounts is not null) await _sharingAccounts.ClaimInvitesAsync(dto.Id, dto.Email);
         }
 
         return MapToDto(user!);
-    }
-
-    private async Task AcceptPendingInvitesAsync(string userId, string email)
-    {
-        var pendingInvites = await _context.DocumentPendingInvites
-            .Where(pi => pi.Email == email && pi.Status == "pending" && pi.ExpiresAt > DateTime.UtcNow)
-            .ToListAsync();
-
-        var joined = new List<(Guid DocumentId, string Inviter)>();
-        foreach (var invite in pendingInvites)
-        {
-            // Find the role by name
-            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == invite.Role);
-            if (role == null) continue;
-
-            // Check if already a collaborator
-            var existing = await _context.DocumentCollaborators
-                .AnyAsync(dc => dc.DocumentId == invite.DocumentId && dc.UserId == userId);
-            if (existing)
-            {
-                invite.Status = "accepted";
-                continue;
-            }
-
-            var collaborator = new DocumentCollaborator
-            {
-                Id = Guid.NewGuid(),
-                DocumentId = invite.DocumentId,
-                UserId = userId,
-                RoleId = role.Id,
-                InvitedBy = invite.InvitedBy,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.DocumentCollaborators.Add(collaborator);
-            invite.Status = "accepted";
-            joined.Add((invite.DocumentId, invite.InvitedBy));
-        }
-
-        if (pendingInvites.Count > 0)
-        {
-            await _context.SaveChangesAsync();
-        }
-        // Signing up accepted these: each owner hears about it (Olivia, 10 Oct).
-        if (_sharingNotifier is not null)
-            foreach (var (documentId, inviter) in joined)
-                await _sharingNotifier.InviteAcceptedAsync(documentId, inviter, userId);
     }
 
     public async Task<UserDto?> GetUserByEmailAsync(string email)

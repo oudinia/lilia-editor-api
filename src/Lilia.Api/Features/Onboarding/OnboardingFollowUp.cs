@@ -12,8 +12,8 @@ namespace Lilia.Api.Features.Onboarding;
 /// "Don't send me tips", never to an account from before onboarding, closing or banned, and never
 /// past day 10. reports/2026-10-21-welcome-onboarding.md
 /// </summary>
-public sealed class OnboardingFollowUp(LiliaDbContext db, IEmailService email, TimeProvider clock, ILogger<OnboardingFollowUp> logger,
-    EmailSettings settings)
+public sealed class OnboardingFollowUp(LiliaDbContext db, Lilia.Api.Directories.ISharingDirectory sharing, IEmailService email, TimeProvider clock,
+    ILogger<OnboardingFollowUp> logger, EmailSettings settings)
 {
     public static readonly TimeSpan After = TimeSpan.FromDays(3);
     public static readonly TimeSpan Until = TimeSpan.FromDays(10);
@@ -32,12 +32,14 @@ public sealed class OnboardingFollowUp(LiliaDbContext db, IEmailService email, T
                 && o.CreatedAt <= newest && o.CreatedAt >= oldest && o.CreatedAt >= OnboardingSteps.LaunchedAt)
             .Join(db.Users.Where(u => u.DeletionRequestedAt == null && !u.Banned), o => o.UserId, u => u.Id,
                 (o, u) => new { o.UserId, o.TimeZone, u.Email, u.Name, u.Locale })
-            // Nothing of their own, nothing shared with them: they really haven't started.
-            .Where(x => !db.Documents.IgnoreQueryFilters().Any(d => d.OwnerId == x.UserId)
-                && !db.DocumentCollaborators.Any(c => c.UserId == x.UserId))
+            // Nothing of their own…
+            .Where(x => !db.Documents.IgnoreQueryFilters().Any(d => d.OwnerId == x.UserId))
             .OrderBy(x => x.UserId)
-            .Take(MaxPerRun * 4)
             .ToListAsync(ct);
+        // …and nothing shared with them (Sharing's to say): they really haven't started. Within the
+        // window's few days of sign-ups, so read whole before the cap.
+        var started = await sharing.WithSharesAsync(due.Select(x => x.UserId), ct);
+        due = due.Where(x => !started.Contains(x.UserId)).Take(MaxPerRun * 4).ToList();
 
         var sent = 0;
         foreach (var x in due)

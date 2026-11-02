@@ -8,7 +8,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Lilia.Api.Tests.Features.Sharing;
 
 /// <summary>
-/// Sharing reads only its own tables (2 Nov 2026, the bounded contexts, step 2). A document's title and
+/// Sharing reads only its own tables (2 Nov 2026, the bounded contexts, step 2), and only Sharing reads
+/// them (step 3). A document's title and
 /// owner, a person's name and email, a group's name come through <c>IDocumentDirectory</c>,
 /// <c>IPeopleDirectory</c> and <c>ITeamDirectory</c>, never from the documents, users or groups tables,
 /// directly or through a navigation (<c>c.User.Name</c>, <c>.Include(i =&gt; i.Document)</c>).
@@ -60,13 +61,40 @@ public class SharingTablesTests
         found.Should().BeEmpty("a share keeps the ids; names come from the directories");
     }
 
-    private static List<string> Uses(Regex pattern, IReadOnlySet<string> names)
+    [Fact]
+    public void No_code_outside_Sharing_names_its_tables()
     {
-        var dir = Path.Combine(RepoRoot(), "src", "Lilia.Features.Sharing");
+        // Step 3 (2 Nov 2026): access, the document list, people search, sign-up, account deletion, the
+        // onboarding email and the import hints ask ISharingDirectory or ISharingAccounts instead.
+        var own = typeof(LiliaDbContext).GetProperties()
+            .Where(p => p.PropertyType.IsGenericType && p.PropertyType.GetGenericTypeDefinition() == typeof(DbSet<>)
+                        && Owned.Contains(p.PropertyType.GetGenericArguments()[0]) && p.PropertyType.GetGenericArguments()[0] != typeof(Role))
+            .Select(p => p.Name)
+            .ToHashSet();
+        own.Should().Contain(["DocumentCollaborators", "DocumentPendingInvites", "DocumentGroups", "Comments"], "the context is read as expected");
+        // On any value, the names nothing else uses: a DbSet reached another way, or a navigation such as
+        // document.DocumentGroups. (Collaborators and Comments are also the import review's and DOCX's
+        // names; step 5 removes those navigations, and the compiler then holds the line.)
+        var distinct = own.Where(n => n.StartsWith("Document") || n == "CommentReplies").Append("DocumentCollaborations").ToHashSet();
+
+        var src = Path.Combine(RepoRoot(), "src");
+        string[] exempt = ["Lilia.Features.Sharing", "Lilia.Infrastructure", "Lilia.Core"];
+        var outside = Directory.EnumerateDirectories(src).Where(d => !exempt.Contains(Path.GetFileName(d))).ToList();
+        var found = outside.SelectMany(d => Uses(new Regex(@"\b(?:_context|_db|db|context|dbContext)\s*\.\s*(\w+)\b"), own, d))
+            .Concat(outside.SelectMany(d => Uses(new Regex(@"\b[a-z_]\w*\s*\??\.\s*(\w+)\b"), distinct, d)))
+            .Distinct()
+            .ToList();
+        found.Should().BeEmpty("Sharing's tables are read and written by Sharing; the others ask it");
+    }
+
+    private static List<string> Uses(Regex pattern, IReadOnlySet<string> names, string? root = null)
+    {
+        var dir = root ?? Path.Combine(RepoRoot(), "src", "Lilia.Features.Sharing");
         var hits = new List<string>();
         foreach (var file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
         {
             if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")) continue;
+            if (file.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}")) continue;
             var lines = Comment.Replace(File.ReadAllText(file), "").Split('\n');
             for (var i = 0; i < lines.Length; i++)
                 foreach (Match m in pattern.Matches(lines[i]))

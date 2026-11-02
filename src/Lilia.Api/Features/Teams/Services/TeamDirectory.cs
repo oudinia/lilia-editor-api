@@ -22,4 +22,10 @@ public sealed class TeamDirectory(LiliaDbContext db) : ITeamDirectory
             .Select(g => new GroupCard(g.Id, g.Name, g.Members.Count))
             .ToDictionaryAsync(g => g.Id, ct);
     }
+
+    public async Task<IReadOnlySet<Guid>> GroupsOfAsync(string userId, CancellationToken ct = default) =>
+        (await db.GroupMembers.AsNoTracking()
+            .Where(m => m.UserId == userId)
+            .Select(m => m.GroupId)
+            .ToListAsync(ct)).ToHashSet();
 }

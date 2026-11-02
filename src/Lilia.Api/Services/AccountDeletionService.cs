@@ -23,16 +23,19 @@ public class AccountDeletionService
     public static readonly TimeSpan ReauthWindow = TimeSpan.FromMinutes(10);
 
     private readonly LiliaDbContext _db;
+    // Shares are Sharing's (2 Nov 2026, the bounded contexts, step 3).
+    private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
+    private readonly Lilia.Api.Directories.ISharingAccounts _sharingAccounts;
     private readonly IMemoryCache _cache;
     private readonly IConfiguration _config;
     private readonly ILogger<AccountDeletionService> _logger;
     private readonly IEmailService? _email;
     private readonly IHttpClientFactory? _http;
 
-    public AccountDeletionService(LiliaDbContext db, IMemoryCache cache, IConfiguration config, ILogger<AccountDeletionService> logger,
+    public AccountDeletionService(LiliaDbContext db, Lilia.Api.Directories.ISharingDirectory sharing, Lilia.Api.Directories.ISharingAccounts sharingAccounts, IMemoryCache cache, IConfiguration config, ILogger<AccountDeletionService> logger,
         IEmailService? email = null, IHttpClientFactory? http = null)
     {
-        _db = db; _cache = cache; _config = config; _logger = logger; _email = email; _http = http;
+        _db = db; _sharing = sharing; _sharingAccounts = sharingAccounts; _cache = cache; _config = config; _logger = logger; _email = email; _http = http;
     }
 
     public static string CacheKey(string userId) => $"account-closed:{userId}";
@@ -41,11 +44,11 @@ public class AccountDeletionService
     {
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return null;
-        var owned = _db.Documents.IgnoreQueryFilters().Where(d => d.OwnerId == userId && !d.IsPlayground && !d.IsHelpContent);
-        var shared = owned.Where(d => _db.DocumentCollaborators.Any(c => c.DocumentId == d.Id && c.UserId != userId));
-        var people = await _db.DocumentCollaborators.Where(c => c.UserId != userId && owned.Any(d => d.Id == c.DocumentId))
-            .Select(c => c.UserId).Distinct().CountAsync(ct);
-        return new AccountStatusDto(user.Email, await owned.CountAsync(ct), await shared.CountAsync(ct), people,
+        var owned = await _db.Documents.IgnoreQueryFilters().Where(d => d.OwnerId == userId && !d.IsPlayground && !d.IsHelpContent)
+            .Select(d => d.Id).ToListAsync(ct);
+        // Who they are shared with is Sharing's to say (2 Nov 2026, the bounded contexts, step 3).
+        var shares = await _sharing.SharesOfAsync(owned, userId, ct);
+        return new AccountStatusDto(user.Email, owned.Count, shares.Documents, shares.People,
             user.DeletionRequestedAt, user.DeletionRequestedAt?.AddDays(RestoreDays));
     }
 
@@ -139,7 +142,7 @@ public class AccountDeletionService
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         var docs = await _db.Documents.IgnoreQueryFilters().Where(d => d.OwnerId == userId).ToListAsync(ct);
         _db.Documents.RemoveRange(docs);
-        _db.DocumentCollaborators.RemoveRange(_db.DocumentCollaborators.Where(c => c.UserId == userId));
+        await _sharingAccounts.ForgetAsync(userId, ct);
         _db.UserPreferences.RemoveRange(_db.UserPreferences.Where(p => p.UserId == userId));
         var user = await _db.Users.FirstAsync(u => u.Id == userId, ct);
         var email = user.Email;
