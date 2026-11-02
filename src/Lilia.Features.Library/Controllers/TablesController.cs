@@ -322,7 +322,7 @@ public class TablesController : ControllerBase
                  {
                      var (look, place) = places.TryGetValue((l.DocumentId, l.BlockId), out var p) ? p : (null, SectionPlace.None);
                      return new TableUsageDto(l.DocumentId, l.Title, l.BlockId,
-                         DocumentService.ReadLook(look), place.Number, place.Colour);
+                         LookJson.Read(look), place.Number, place.Colour);
                  })
                  .ToList(),
             copies));
@@ -363,7 +363,7 @@ public class TablesController : ControllerBase
                 Id = b.Id, DocumentId = b.DocumentId, Type = b.Type, SortOrder = b.SortOrder,
                 Content = contents.TryGetValue(b.Id, out var c) ? c : JsonDocument.Parse("{}"),
             });
-            var body = LaTeXExportService.BodyBlocks(doc.Title, blocks);
+            var body = ExportBody.BodyBlocks(doc.Title, blocks);
             var placesInDoc = ThemeSections.Places(body, doc.LatexDocumentClass, doc.Look);
             foreach (var link in links.Where(l => l.DocumentId == group.Key))
             {

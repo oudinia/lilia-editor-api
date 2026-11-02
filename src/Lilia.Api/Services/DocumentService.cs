@@ -1503,19 +1503,7 @@ public class DocumentService : IDocumentService
     }
 
     /// <summary>The stored look as JSON for the DTO; null (Classic) when unset or unreadable.</summary>
-    internal static JsonElement? ReadLook(string? stored)
-    {
-        if (string.IsNullOrWhiteSpace(stored)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(stored);
-            return doc.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+    internal static JsonElement? ReadLook(string? stored) => LookJson.Read(stored);
 }
 
 /// <summary>A look the server will not store; the message names the valid values. Mapped to 400.</summary>
