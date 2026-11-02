@@ -8,6 +8,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Controllers;
 
+/// <summary>
+/// Comments on a document and their replies. Commenting is for everyone the document is shared with,
+/// viewers included (2 Nov 2026, the owner: "Commenting should be for all. Not considered only as
+/// editing"): every route needs read access. Changing or deleting a comment stays with its author or
+/// the document's owner; a reply is deleted by its author.
+/// </summary>
 [ApiController]
 [Route("api/documents/{docId:guid}/comments")]
 [Authorize]
@@ -94,7 +100,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         if (string.IsNullOrWhiteSpace(dto.Content))
@@ -146,7 +152,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var comment = await _db.Comments
@@ -183,7 +189,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var comment = await _db.Comments
@@ -216,7 +222,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         if (string.IsNullOrWhiteSpace(dto.Content))
@@ -259,7 +265,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Write))
+        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var reply = await _db.CommentReplies

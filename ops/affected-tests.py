@@ -154,6 +154,13 @@ def select(changed):
             reached |= {next(iter(declares[f]), "") for f in src_files
                         if name in read(f) and declares[f]} - {""}
     reached = with_contracts(reached)
+    # A Wolverine handler is called by no code: it runs when its event is published. So a changed
+    # handler reaches the events it handles, and through them the code that publishes them, the
+    # controllers above, and their tests (2 Nov: the share email's handler reached no test).
+    events = {d for f in src_files if "/Events/" in f for d in declares[f]}
+    for c in code:
+        if c.endswith(".cs") and any(d.endswith("Handler") for d in declares.get(c, ())):
+            reached |= words.get(c, set()) & events
     # 2. Through the code, DEPTH levels out: the direct users and their users. Further than that
     #    nearly every change reached the entities and the database context and so every test (a
     #    rendering change reached 353 of 382 classes); the nightly full run covers the rest. A name

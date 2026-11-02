@@ -117,6 +117,8 @@ SEL_FILTER=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["filter"
 SEL_ADMIN=$(python3 -c 'import json,sys; print(int(json.loads(sys.argv[1])["admin"]))' "$SEL")
 SEL_MIGRATIONS=$(python3 -c 'import json,sys; print(int(json.loads(sys.argv[1])["migrations"]))' "$SEL")
 echo "selected: $SEL_MODE ($SEL_WHY); admin $SEL_ADMIN; migrations $SEL_MIGRATIONS"
+# What it should take (ops/ci-forecast.py, from each test class's measured time): a CI_ALL run is everything.
+[ "${CI_ALL:-0}" = 1 ] || python3 ops/ci-forecast.py origin/main 2>/dev/null | grep '^forecast' || true
 
 if ! build; then echo "LOCAL CI: FAIL ($((SECONDS - START))s)"; exit 1; fi
 # Side by side, each into its own result file; printed in a fixed order once all three are done.
