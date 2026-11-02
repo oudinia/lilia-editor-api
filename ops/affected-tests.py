@@ -111,7 +111,27 @@ def index():
     for f in src_files:
         for d in declares[f]:
             seen[d] = seen.get(d, 0) + 1
-    INDEX.update(src=src_files, tests=test_files, words=words, declares=declares, bases=bases, seen=seen)
+    # The database context names every entity, and the model snapshot every table: through either, any
+    # entity reached every file using the context (129) and so most tests (2 Nov 2026: one telemetry
+    # table, used by 3 files, ran 4,231 tests). An entity is used through its table's DbSet instead:
+    # db.Comments, not LiliaDbContext. A migration reaches the entities of the tables it touches.
+    dbsets, tables, hubs = {}, {}, set()
+    for f in src_files:
+        text = read(f)
+        # Entities and their mappings too: Document lists its Comments, so a change to Comment reached
+        # Document and so everything; a navigation is a shape, not behaviour that changes with it.
+        if (f.startswith(("src/Lilia.Infrastructure/Migrations/", "src/Lilia.Core/Entities/",
+                          "src/Lilia.Infrastructure/Data/Configurations/"))
+                or any(d.endswith("DbContext") for d in declares[f])):
+            hubs.add(f)
+        for entity, prop in re.findall(r"DbSet<(\w+)>\s+(\w+)", text):
+            dbsets.setdefault(entity, set()).add(prop)
+        m = re.search(r"IEntityTypeConfiguration<(\w+)>", text)
+        t = re.search(r'ToTable\("(\w+)"', text)
+        if m and t:
+            tables[t.group(1)] = m.group(1)
+    INDEX.update(src=src_files, tests=test_files, words=words, declares=declares, bases=bases, seen=seen,
+                 dbsets=dbsets, tables=tables, hubs=hubs)
     return INDEX
 
 
@@ -131,6 +151,11 @@ def select(changed):
 
     ix = index()
     src_files, test_files, words, declares, bases, seen = (ix[k] for k in ("src", "tests", "words", "declares", "bases", "seen"))
+    dbsets, tables, hubs = ix["dbsets"], ix["tables"], ix["hubs"]
+
+    def named(types):
+        # What code writes to use these types: their names, and an entity's DbSet property names.
+        return set(types) | {p for t in types for p in dbsets.get(t, ())}
 
     def with_contracts(types):
         # A class reaches the interfaces and base classes it implements that Lilia declares: the
@@ -147,7 +172,12 @@ def select(changed):
     #    a template) by its file name, which the code that loads it spells out.
     reached = set()
     for c in code:
-        if c.startswith("src/") and c.endswith(".cs"):
+        if c.startswith("src/Lilia.Infrastructure/Migrations/"):
+            # A migration (or its designer, or the snapshot): the entities of the tables it names.
+            if not c.endswith((".Designer.cs", "ModelSnapshot.cs")):
+                named_tables = set(re.findall(r'(?:table|name|principalTable):\s*"(\w+)"', read(c)))
+                reached |= {tables[t] for t in named_tables if t in tables}
+        elif c.startswith("src/") and c.endswith(".cs"):
             reached |= declares.get(c, set()) or {os.path.basename(c)[:-3]}
         elif c.startswith("src/"):
             name = os.path.basename(c)
@@ -170,7 +200,7 @@ def select(changed):
         # Program.cs registers every service, so it "uses" everything: through it, any change reached
         # the 12 test classes built on Program (14% of test time). A change to Program.cs itself runs
         # everything (EVERYTHING above).
-        users = {f for f in src_files if words[f] & frontier and f not in COMPOSITION_ROOT}
+        users = {f for f in src_files if words[f] & named(frontier) and f not in COMPOSITION_ROOT and f not in hubs}
         new = with_contracts(set().union(*(declares[f] for f in users))) - reached if users else set()
         reached |= new
         frontier = {t for t in new if seen.get(t, 0) == 1 or contract(t)}
@@ -185,7 +215,7 @@ def select(changed):
                 routes.append(route_pattern(t, name[: -len("Controller")].lower()))
     classes = set()
     for f in test_files:
-        if f in changed or words[f] & reached or (routes and any(r.search(read(f)) for r in routes)):
+        if f in changed or words[f] & named(reached) or (routes and any(r.search(read(f)) for r in routes)):
             text = read(f)
             ns = NAMESPACE.search(text)
             for cls in re.findall(r"^\s*public\s+(?:sealed\s+|partial\s+)*class\s+([A-Za-z0-9_]+)", text, re.M):
