@@ -61,7 +61,7 @@ public class TestDatabaseFixture : IAsyncLifetime
 /// LILIA_TEST_PG (~/.config/lilia/test-pg.env, which ops/ci-local.sh and lilia test read). Starting a
 /// container and migrating it took most of a small run (a 7-second class took 52 s). The template is
 /// named by the migrations it holds, so a branch that adds one gets its own and no branch sees another's
-/// schema; an unchanged one is ready at once. A class's copy goes when the class is done, and a
+/// schema; an unchanged one is ready at once, and a new one starts from the closest earlier template. A class's copy goes when the class is done, and a
 /// copy that couldn't go (a crashed run's) is swept by a start an hour later.</para>
 ///
 /// <para>Without LILIA_TEST_PG, or when that server doesn't answer, a container of its own for the
@@ -86,10 +86,10 @@ internal static class SharedPostgres
         _admin = await AlwaysOnAsync() ?? await ContainerAsync();
 
         // The template for exactly these migrations: built once, under a lock, for every run after.
-        string migrations;
+        List<string> ids;
         await using (var names = NewContext("postgres"))
-            migrations = string.Join("\n", names.Database.GetMigrations());
-        _template = "lilia_tpl_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(migrations)))[..16].ToLowerInvariant();
+            ids = names.Database.GetMigrations().ToList();
+        _template = "lilia_tpl_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", ids))))[..16].ToLowerInvariant();
         await using var admin = new NpgsqlConnection(_admin);
         await admin.OpenAsync();
         await Exec(admin, "SELECT pg_advisory_lock(72017)");
@@ -101,8 +101,12 @@ internal static class SharedPostgres
                 // template that looks finished.
                 var building = _template + "_building";
                 await Exec(admin, $"DROP DATABASE IF EXISTS {building} WITH (FORCE)");
-                await Exec(admin, $"CREATE DATABASE {building}");
-                // The full migration chain: the schema matches what the app expects in production
+                // From the template that already holds the most of these migrations, in order: a branch
+                // that adds one applies just that one (about a second, against 25 s for all 122). None
+                // that fits (a branch that removed or reordered one): from an empty database.
+                var closest = await ClosestTemplateAsync(admin, ids);
+                await Exec(admin, closest is null ? $"CREATE DATABASE {building}" : $"CREATE DATABASE {building} TEMPLATE {closest}");
+                // The migrations it lacks: the schema matches what the app expects in production
                 // (including every historical table still referenced by cleanup SQL). Program.cs's Migrate
                 // is skipped in the Testing environment, so this is the one place migrations run for tests.
                 await using (var context = NewContext(building))
@@ -110,6 +114,11 @@ internal static class SharedPostgres
                 NpgsqlConnection.ClearAllPools();
                 await Exec(admin, $"ALTER DATABASE {building} RENAME TO {_template}");
             }
+            // The eight newest templates stay (each is about 15 MB of the server's memory). One in use
+            // (being copied) refuses the drop and stays too.
+            var templates = await Names(admin, "lilia_tpl_%", byNewest: true);
+            foreach (var old in templates.Where(t => !t.EndsWith("_building") && t != _template).Skip(7))
+                try { await Exec(admin, $"DROP DATABASE IF EXISTS {old}"); } catch (PostgresException) { }
             // Copies a crashed run left (its exit never came), from runs over an hour old.
             var cutoff = DateTime.UtcNow.AddHours(-1).ToString("yyMMddHHmmss");
             foreach (var old in await Names(admin, "lilia_r%"))
@@ -175,9 +184,34 @@ internal static class SharedPostgres
     private static async Task<bool> Exists(NpgsqlConnection c, string database) =>
         (await Names(c, database)).Count > 0;
 
-    private static async Task<List<string>> Names(NpgsqlConnection c, string like)
+    // The template whose migrations are the longest prefix of these, or null.
+    private static async Task<string?> ClosestTemplateAsync(NpgsqlConnection admin, List<string> ids)
     {
-        await using var cmd = new NpgsqlCommand("SELECT datname FROM pg_database WHERE datname LIKE @p", c);
+        string? best = null;
+        var bestCount = 0;
+        foreach (var name in await Names(admin, "lilia_tpl_%"))
+        {
+            if (name.EndsWith("_building")) continue;
+            var applied = new List<string>();
+            var cs = ConnectionStringFor(name);
+            await using (var c = new NpgsqlConnection(cs))
+            {
+                await c.OpenAsync();
+                await using var cmd = new NpgsqlCommand("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"", c);
+                await using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync()) applied.Add(r.GetString(0));
+            }
+            // Postgres copies a template only when nobody is connected to it, this look included.
+            NpgsqlConnection.ClearPool(new NpgsqlConnection(cs));
+            if (applied.Count > bestCount && applied.Count <= ids.Count && applied.SequenceEqual(ids.Take(applied.Count)))
+                (best, bestCount) = (name, applied.Count);
+        }
+        return best;
+    }
+
+    private static async Task<List<string>> Names(NpgsqlConnection c, string like, bool byNewest = false)
+    {
+        await using var cmd = new NpgsqlCommand("SELECT datname FROM pg_database WHERE datname LIKE @p" + (byNewest ? " ORDER BY oid DESC" : ""), c);
         cmd.Parameters.AddWithValue("p", like);
         var names = new List<string>();
         await using var r = await cmd.ExecuteReaderAsync();
