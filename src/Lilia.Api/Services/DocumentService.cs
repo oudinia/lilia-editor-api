@@ -17,11 +17,15 @@ public class DocumentService : IDocumentService
     private readonly IAiService _aiService;
     private readonly IEntitlementService? _entitlements;
     private readonly IPreviewCacheService? _previewCache;
+    // Who a document is shared with is Sharing's to say (2 Nov 2026, the bounded contexts, step 3).
+    private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
 
     public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService,
+        Lilia.Api.Directories.ISharingDirectory sharing,
         IEntitlementService? entitlements = null, IPreviewCacheService? previewCache = null)
     {
         _context = context;
+        _sharing = sharing;
         _logger = logger;
         _aiService = aiService;
         _entitlements = entitlements;
@@ -132,11 +136,12 @@ public class DocumentService : IDocumentService
         // group they are in, in a team they are in. Each part reads its own index. Written as
         // owner OR EXISTS(…) OR EXISTS(…), Postgres checked every document in the database against
         // the user: ~100 ms for a user with three documents among 11,000 (18 Oct, the request
-        // timings), and growing with every author. As a UNION of ids, ~1 ms.
+        // timings), and growing with every author. As a UNION of ids, ~1 ms. The shares (with the user,
+        // with a group they are in) come from Sharing as a list of ids, read by primary key here.
+        var sharedIds = await _sharing.DocumentsSharedWithAsync(userId, throughGroups: true);
         var userTeams = _context.GroupMembers.Where(gm => gm.UserId == userId).Select(gm => (Guid?)gm.Group.TeamId);
         var visible = _context.Documents.Where(x => x.OwnerId == userId).Select(x => x.Id)
-            .Union(_context.DocumentCollaborators.Where(c => c.UserId == userId).Select(c => c.DocumentId))
-            .Union(_context.DocumentGroups.Where(dg => dg.Group.Members.Any(m => m.UserId == userId)).Select(dg => dg.DocumentId))
+            .Union(_context.Documents.Where(x => sharedIds.Contains(x.Id)).Select(x => x.Id))
             .Union(_context.Documents.Where(x => x.TeamId != null && userTeams.Contains(x.TeamId)).Select(x => x.Id));
 
         var query = _context.Documents
@@ -216,10 +221,7 @@ public class DocumentService : IDocumentService
             );
 
         // Determine user's role per document
-        var collaboratorRoles = await _context.DocumentCollaborators
-            .Include(dc => dc.Role)
-            .Where(dc => documentIds.Contains(dc.DocumentId) && dc.UserId == userId)
-            .ToDictionaryAsync(dc => dc.DocumentId, dc => dc.Role.Name);
+        var collaboratorRoles = await _sharing.RolesOfAsync(userId, documentIds);
 
         // Teams whose documents the user may edit (their team role writes).
         var teamIds = documents.Where(d => d.TeamId != null && d.OwnerId != userId)
@@ -343,10 +345,7 @@ public class DocumentService : IDocumentService
     private async Task<string> RoleForAsync(Document document, string userId)
     {
         if (document.OwnerId == userId) return "owner";
-        var collaborator = await _context.DocumentCollaborators
-            .Where(dc => dc.DocumentId == document.Id && dc.UserId == userId)
-            .Select(dc => dc.Role.Name)
-            .FirstOrDefaultAsync();
+        var collaborator = await _sharing.RoleOfAsync(document.Id, userId);
         if (collaborator is RoleNames.Owner or RoleNames.Editor) return collaborator;
         // Group or team access can be more than the direct share: say what
         // the user can actually do, so the editor opens read-only only for
@@ -967,35 +966,19 @@ public class DocumentService : IDocumentService
 
     public async Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission)
     {
-        var document = await _context.Documents
-            .Include(d => d.Collaborators)
-                .ThenInclude(c => c.Role)
-            .Include(d => d.DocumentGroups)
-                .ThenInclude(dg => dg.Role)
-            .Include(d => d.DocumentGroups)
-                .ThenInclude(dg => dg.Group)
-                    .ThenInclude(g => g.Members)
-            .FirstOrDefaultAsync(d => d.Id == documentId);
+        var document = await _context.Documents.AsNoTracking()
+            .Where(d => d.Id == documentId)
+            .Select(d => new { d.OwnerId, d.TeamId })
+            .FirstOrDefaultAsync();
 
         if (document == null) return false;
 
         // Owner always has full access
         if (document.OwnerId == userId) return true;
 
-        // Check direct collaborator
-        var collaborator = document.Collaborators.FirstOrDefault(c => c.UserId == userId);
-        if (collaborator != null && collaborator.Role.Permissions.Contains(requiredPermission))
+        // A share with the person, or with a group they are in: Sharing's answer.
+        if (await _sharing.GrantsAsync(documentId, userId, requiredPermission))
             return true;
-
-        // Check group access
-        foreach (var docGroup in document.DocumentGroups)
-        {
-            if (docGroup.Group.Members.Any(m => m.UserId == userId) &&
-                docGroup.Role.Permissions.Contains(requiredPermission))
-            {
-                return true;
-            }
-        }
 
         // Team access: a document put in a team is open to the team's
         // members, at their team role. It stops at editing: deleting,

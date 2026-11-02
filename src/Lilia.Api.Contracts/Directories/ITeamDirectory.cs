@@ -10,6 +10,9 @@ public interface ITeamDirectory
 
     /// <summary>The groups found among <paramref name="groupIds"/>, by id; the missing ones are left out.</summary>
     Task<IReadOnlyDictionary<Guid, GroupCard>> FindGroupsAsync(IEnumerable<Guid> groupIds, CancellationToken ct = default);
+
+    /// <summary>The groups the person is a member of.</summary>
+    Task<IReadOnlySet<Guid>> GroupsOfAsync(string userId, CancellationToken ct = default);
 }
 
 public sealed record GroupCard(Guid Id, string Name, int MemberCount);

@@ -492,6 +492,8 @@ builder.Services.AddSingleton<
 builder.Services.AddScoped<Lilia.Api.Directories.IDocumentDirectory, Lilia.Api.Services.Directories.DocumentDirectory>();
 builder.Services.AddScoped<Lilia.Api.Directories.IPeopleDirectory, Lilia.Api.Services.Directories.PeopleDirectory>();
 builder.Services.AddScoped<Lilia.Api.Directories.ITeamDirectory, Lilia.Api.Features.Teams.Services.TeamDirectory>();
+builder.Services.AddScoped<Lilia.Api.Directories.ISharingDirectory, SharingDirectory>();
+builder.Services.AddScoped<Lilia.Api.Directories.ISharingAccounts, SharingAccounts>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
 builder.Services.AddScoped<ISharingService, SharingService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
