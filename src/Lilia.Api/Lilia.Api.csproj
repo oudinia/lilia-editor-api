@@ -48,6 +48,9 @@
     <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
     <ProjectReference Include="..\Lilia.Import\Lilia.Import.csproj" />
     <ProjectReference Include="..\Lilia.Engines\Lilia.Engines.csproj" />
+    <!-- The slices as projects (2 Nov 2026, the pilot): the shared contracts, then each slice. -->
+    <ProjectReference Include="..\Lilia.Api.Contracts\Lilia.Api.Contracts.csproj" />
+    <ProjectReference Include="..\Lilia.Features.Library\Lilia.Features.Library.csproj" />
   </ItemGroup>
 
   <ItemGroup>

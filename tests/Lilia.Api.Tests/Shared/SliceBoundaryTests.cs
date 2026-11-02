@@ -21,12 +21,18 @@ public class SliceBoundaryTests
     [Fact]
     public void No_code_outside_a_slice_names_its_internals()
     {
-        var api = Path.Combine(RepoRoot(), "src", "Lilia.Api");
-        var features = Path.Combine(api, "Features");
-        var files = Directory.EnumerateFiles(api, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-                        && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
-            .ToDictionary(f => Path.GetRelativePath(api, f).Replace('\\', '/'), f => Comment.Replace(File.ReadAllText(f), ""));
+        // The API, and each slice that is its own project (src/Lilia.Features.<Slice>, 2 Nov 2026), whose
+        // files are read as if they sat in Lilia.Api's Features/<Slice>/.
+        var src = Path.Combine(RepoRoot(), "src");
+        var roots = new List<(string Dir, string Prefix)> { (Path.Combine(src, "Lilia.Api"), "") };
+        foreach (var dir in Directory.EnumerateDirectories(src, "Lilia.Features.*"))
+            roots.Add((dir, $"Features/{Path.GetFileName(dir)["Lilia.Features.".Length..]}/"));
+        bool Built(string f) => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                                && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}");
+        var files = roots
+            .SelectMany(r => Directory.EnumerateFiles(r.Dir, "*.cs", SearchOption.AllDirectories).Where(Built)
+                .Select(f => (Rel: r.Prefix + Path.GetRelativePath(r.Dir, f).Replace('\\', '/'), Path: f)))
+            .ToDictionary(x => x.Rel, x => Comment.Replace(File.ReadAllText(x.Path), ""));
 
         string? SliceOf(string rel) => rel.StartsWith("Features/") ? rel.Split('/')[1] : null;
 

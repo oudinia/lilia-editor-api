@@ -5,11 +5,6 @@ using Lilia.Infrastructure.Data;
 
 namespace Lilia.Api.Services;
 
-public interface IAuditService
-{
-    Task LogAsync(string action, string entityType, string? entityId = null, object? details = null);
-}
-
 public class AuditService : IAuditService
 {
     private readonly LiliaDbContext _dbContext;

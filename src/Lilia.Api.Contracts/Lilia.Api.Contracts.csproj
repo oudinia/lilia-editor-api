@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    What the API's slices share (2 Nov 2026, the slices pilot): the interfaces a slice uses from
+    another or from the shared core, the records they take, and a few small helpers. A slice that is
+    its own project references this, never Lilia.Api, which references the slices. Files keep their
+    namespaces (Lilia.Api.Services, Lilia.Api.Models.Documents), so moving them here changed no caller.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
+    <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

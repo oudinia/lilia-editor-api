@@ -45,6 +45,8 @@ MODEL = [r"^src/Lilia\.Infrastructure/Migrations/", r"^src/Lilia\.Infrastructure
 NOTHING = [r"\.md$", r"^docs/", r"^\.github/", r"^ops/", r"\.gitignore$", r"^LICENSE"]
 
 DEPTH = int(os.environ.get("AFFECTED_DEPTH", "2"))
+# The API's code: Lilia.Api, its contracts, and the slices that are projects (2 Nov 2026).
+API_CODE = ("src/Lilia.Api/", "src/Lilia.Api.Contracts/", "src/Lilia.Features.")
 COMPOSITION_ROOT = {"src/Lilia.Api/Program.cs", "src/Lilia.Admin/Program.cs", "src/Lilia.Tools.Api/Program.cs"}
 DECL = re.compile(r"\b(?:class|record|struct|interface|enum)\s+([A-Z][A-Za-z0-9_]*)")
 WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -170,7 +172,7 @@ def select(changed):
     #    of a reached controller (in Controllers/ or a feature's folder).
     routes = []
     for f in src_files:
-        if f.startswith("src/Lilia.Api/") and declares[f] & reached and any(d.endswith("Controller") for d in declares[f]):
+        if f.startswith(API_CODE) and declares[f] & reached and any(d.endswith("Controller") for d in declares[f]):
             name = next(d for d in declares[f] if d.endswith("Controller"))
             for t in ROUTE.findall(read(f)):
                 routes.append(route_pattern(t, name[: -len("Controller")].lower()))
@@ -186,7 +188,7 @@ def select(changed):
     if not classes:
         return {**out, "mode": "fast", "why": "code changed but no test names what it reaches: the fast lane"}
     # The slices' boundary test reads the source, not a type: it names nothing a change reaches.
-    if any(c.startswith("src/Lilia.Api/") for c in changed):
+    if any(c.startswith(API_CODE) for c in changed):
         classes.add("Lilia.Api.Tests.Shared.SliceBoundaryTests.")
     if len(classes) > 0.7 * all_classes:
         return {**out, "mode": "all", "why": f"{len(classes)} of {all_classes} test classes reached: all of them"}
