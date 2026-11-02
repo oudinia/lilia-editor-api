@@ -45,6 +45,7 @@ MODEL = [r"^src/Lilia\.Infrastructure/Migrations/", r"^src/Lilia\.Infrastructure
 NOTHING = [r"\.md$", r"^docs/", r"^\.github/", r"^ops/", r"\.gitignore$", r"^LICENSE"]
 
 DEPTH = int(os.environ.get("AFFECTED_DEPTH", "2"))
+COMPOSITION_ROOT = {"src/Lilia.Api/Program.cs", "src/Lilia.Admin/Program.cs", "src/Lilia.Tools.Api/Program.cs"}
 DECL = re.compile(r"\b(?:class|record|struct|interface|enum)\s+([A-Z][A-Za-z0-9_]*)")
 WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 NAMESPACE = re.compile(r"^\s*namespace\s+([A-Za-z0-9_.]+)", re.M)
@@ -86,39 +87,59 @@ def route_pattern(template, controller):
     return re.compile("(?i)" + "/".join(parts) + r'(?=[/"?\s{]|$)')
 
 
-def main():
-    base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
-    head = sys.argv[2] if len(sys.argv) > 2 else "HEAD"
-    changed = [l for l in git("diff", "--name-only", f"{base}...{head}").splitlines() if l]
-    if head == "HEAD":  # and what isn't committed yet
-        changed += [l for l in git("diff", "--name-only", "HEAD").splitlines() if l and l not in changed]
-    result = {"mode": "none", "filter": "", "classes": 0, "why": [], "changed": len(changed),
-              "admin": any(any_match(c, ADMIN) for c in changed),
-              "migrations": any(any_match(c, MODEL) for c in changed)}
+BASES = re.compile(r"\b(?:class|record|struct)\s+([A-Z]\w*)(?:<[^>{]*>)?(?:\([^){]*\))?\s*:\s*([^{;]+)")
+INDEX = {}
 
-    def done(mode, why, filt="", classes=0):
-        result.update(mode=mode, filter=filt, classes=classes)
-        result["why"].append(why)
-        print(json.dumps(result))
-        sys.exit(0)
 
-    if not changed:
-        done("none", "no change against " + base)
-    for c in changed:
-        if any_match(c, EVERYTHING):
-            done("all", f"{c} is shared ground")
-    code = [c for c in changed if not any_match(c, NOTHING) and not any_match(c, ADMIN)]
-    if not code:
-        done("none", "only documentation, scripts or the admin console changed")
-
-    # Every source and test file: what it declares, and the words it uses (comments aside).
-    src_files = sources("src")
-    test_files = sources(TESTS)
-    words, declares = {}, {}
+def index():
+    """Every source and test file: what it declares, the words it uses (comments aside), and what each
+    declared type implements or extends."""
+    if INDEX:
+        return INDEX
+    src_files, test_files = sources("src"), sources(TESTS)
+    words, declares, bases = {}, {}, {}
     for f in src_files + test_files:
         text = COMMENT.sub("", read(f))
         words[f] = set(WORD.findall(text))
         declares[f] = set(DECL.findall(text))
+        if f in src_files:
+            for name, base_list in BASES.findall(text):
+                bases.setdefault(name, set()).update(re.findall(r"\b([A-Z]\w*)", re.sub(r"\bwhere\b.*", "", base_list)))
+    seen = {}
+    for f in src_files:
+        for d in declares[f]:
+            seen[d] = seen.get(d, 0) + 1
+    INDEX.update(src=src_files, tests=test_files, words=words, declares=declares, bases=bases, seen=seen)
+    return INDEX
+
+
+def select(changed):
+    """What to run for these changed paths: {"mode", "why", "classes": [...], "admin", "migrations"}."""
+    out = {"mode": "none", "why": "", "classes": [],
+           "admin": any(any_match(c, ADMIN) for c in changed),
+           "migrations": any(any_match(c, MODEL) for c in changed)}
+    if not changed:
+        return {**out, "why": "no change"}
+    for c in changed:
+        if any_match(c, EVERYTHING):
+            return {**out, "mode": "all", "why": f"{c} is shared ground"}
+    code = [c for c in changed if not any_match(c, NOTHING) and not any_match(c, ADMIN)]
+    if not code:
+        return {**out, "why": "only documentation, scripts or the admin console changed"}
+
+    ix = index()
+    src_files, test_files, words, declares, bases, seen = (ix[k] for k in ("src", "tests", "words", "declares", "bases", "seen"))
+
+    def with_contracts(types):
+        # A class reaches the interfaces and base classes it implements that Lilia declares: the
+        # controllers use ICollaboratorService, not CollaboratorService (2 Nov: the implementation's
+        # change reached no test).
+        return types | {b for t in types for b in bases.get(t, ()) if seen.get(b, 0) == 1 or contract(b)}
+
+    def contract(t):
+        # An interface (IName) Lilia declares: followed even when another project declares the same
+        # name (Lilia.Tools.Api has its own IEntitlementService), unlike a plain name such as Entry.
+        return seen.get(t, 0) >= 1 and len(t) > 1 and t[0] == "I" and t[1].isupper()
 
     # 1. What changed: the types the changed .cs files declare; a resource (a .sty, a skill's .md,
     #    a template) by its file name, which the code that loads it spells out.
@@ -130,49 +151,56 @@ def main():
             name = os.path.basename(c)
             reached |= {next(iter(declares[f]), "") for f in src_files
                         if name in read(f) and declares[f]} - {""}
+    reached = with_contracts(reached)
     # 2. Through the code, DEPTH levels out: the direct users and their users. Further than that
     #    nearly every change reached the entities and the database context and so every test (a
     #    rendering change reached 353 of 382 classes); the nightly full run covers the rest. A name
     #    declared in more than one file (Entry, Result, Options) carries nothing past the change.
-    seen = {}
-    for f in src_files:
-        for d in declares[f]:
-            seen[d] = seen.get(d, 0) + 1
     frontier = set(reached)
     for _ in range(DEPTH):
-        users = {f for f in src_files if words[f] & frontier}
-        new = set().union(*(declares[f] for f in users)) - reached if users else set()
+        # Program.cs registers every service, so it "uses" everything: through it, any change reached
+        # the 12 test classes built on Program (14% of test time). A change to Program.cs itself runs
+        # everything (EVERYTHING above).
+        users = {f for f in src_files if words[f] & frontier and f not in COMPOSITION_ROOT}
+        new = with_contracts(set().union(*(declares[f] for f in users))) - reached if users else set()
         reached |= new
-        frontier = {t for t in new if seen.get(t, 0) == 1}
+        frontier = {t for t in new if seen.get(t, 0) == 1 or contract(t)}
 
-    # 3. The tests: changed test files, tests naming a reached type, database tests calling a route.
+    # 3. The tests: changed test files, tests naming a reached type, database tests calling the route
+    #    of a reached controller (in Controllers/ or a feature's folder).
     routes = []
     for f in src_files:
-        if f.startswith("src/Lilia.Api/Controllers/") and declares[f] & reached:
-            text = read(f)
-            name = next((d for d in declares[f] if d.endswith("Controller")), "")
-            for t in ROUTE.findall(text):
-                routes.append(route_pattern(t, name[: -len("Controller")].lower() if name else ""))
-    picked = set()
+        if f.startswith("src/Lilia.Api/") and declares[f] & reached and any(d.endswith("Controller") for d in declares[f]):
+            name = next(d for d in declares[f] if d.endswith("Controller"))
+            for t in ROUTE.findall(read(f)):
+                routes.append(route_pattern(t, name[: -len("Controller")].lower()))
+    classes = set()
     for f in test_files:
         if f in changed or words[f] & reached or (routes and any(r.search(read(f)) for r in routes)):
-            picked.add(f)
-
-    classes = set()
-    for f in picked:
-        text = read(f)
-        ns = NAMESPACE.search(text)
-        for cls in re.findall(r"^\s*public\s+(?:sealed\s+|partial\s+)*class\s+([A-Za-z0-9_]+)", text, re.M):
-            classes.add(f"{ns.group(1)}.{cls}." if ns else f".{cls}.")
+            text = read(f)
+            ns = NAMESPACE.search(text)
+            for cls in re.findall(r"^\s*public\s+(?:sealed\s+|partial\s+)*class\s+([A-Za-z0-9_]+)", text, re.M):
+                classes.add(f"{ns.group(1)}.{cls}." if ns else f".{cls}.")
     all_classes = sum(len(re.findall(r"^\s*public\s+(?:sealed\s+|partial\s+)*class\s+\w+", read(f), re.M))
                       for f in test_files)
     if not classes:
-        done("fast", "code changed but no test names what it reaches: the fast lane")
+        return {**out, "mode": "fast", "why": "code changed but no test names what it reaches: the fast lane"}
     if len(classes) > 0.7 * all_classes:
-        done("all", f"{len(classes)} of {all_classes} test classes reached: all of them")
-    flt = "(" + "|".join(f"FullyQualifiedName~{c}" for c in sorted(classes)) + ")"
-    done("some", f"{len(reached)} types reached, {len(routes)} routes; {len(classes)} of {all_classes} test classes",
-         flt, len(classes))
+        return {**out, "mode": "all", "why": f"{len(classes)} of {all_classes} test classes reached: all of them"}
+    return {**out, "mode": "some", "classes": sorted(classes),
+            "why": f"{len(reached)} types reached, {len(routes)} routes; {len(classes)} of {all_classes} test classes"}
+
+
+def main():
+    base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
+    head = sys.argv[2] if len(sys.argv) > 2 else "HEAD"
+    changed = [l for l in git("diff", "--name-only", f"{base}...{head}").splitlines() if l]
+    if head == "HEAD":  # and what isn't committed yet
+        changed += [l for l in git("diff", "--name-only", "HEAD").splitlines() if l and l not in changed]
+    sel = select(changed)
+    flt = "(" + "|".join(f"FullyQualifiedName~{c}" for c in sel["classes"]) + ")" if sel["classes"] else ""
+    print(json.dumps({"mode": sel["mode"], "filter": flt, "classes": len(sel["classes"]), "why": [sel["why"]],
+                      "changed": len(changed), "admin": sel["admin"], "migrations": sel["migrations"]}))
 
 
 if __name__ == "__main__":
