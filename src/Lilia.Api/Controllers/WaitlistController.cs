@@ -70,11 +70,13 @@ public class WaitlistController : ControllerBase
             UserId = User.FindFirst("sub")?.Value
                      ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
             Email = email,
-            Locale = (req.Locale ?? "en").ToLowerInvariant(),
+            // Cut to their columns (locale 10, source 40): longer failed the save, which the catch
+            // below answered "already subscribed" without saving the signup (2 Nov 2026).
+            Locale = Fit((req.Locale ?? "en").ToLowerInvariant(), 10),
             UserAgent = Request.Headers.UserAgent.ToString().Length > 500
                 ? Request.Headers.UserAgent.ToString()[..500]
                 : Request.Headers.UserAgent.ToString(),
-            Source = req.Source ?? "banner",
+            Source = Fit(req.Source ?? "banner", 40),
             SignedUpAt = DateTime.UtcNow,
         };
         _db.CompanionAppWaitlist.Add(row);
@@ -105,6 +107,8 @@ public class WaitlistController : ControllerBase
             .CountAsync(w => w.UnsubscribedAt == null, ct);
         return Ok(new { count });
     }
+
+    private static string Fit(string s, int max) => s.Length > max ? s[..max] : s;
 
     private static bool IsLikelyEmail(string s)
     {
