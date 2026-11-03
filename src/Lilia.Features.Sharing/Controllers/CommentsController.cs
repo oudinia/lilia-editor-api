@@ -2,7 +2,7 @@ using Lilia.Api.Directories;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -20,13 +20,13 @@ namespace Lilia.Api.Controllers;
 [Authorize]
 public class CommentsController : ControllerBase
 {
-    private readonly LiliaDbContext _db;
+    private readonly SharingDbContext _db;
     private readonly IDocumentService _documentService;
     private readonly IDocumentDirectory _documents;
     private readonly IPeopleDirectory _people;
     private readonly ILogger<CommentsController> _logger;
 
-    public CommentsController(LiliaDbContext db, IDocumentService documentService, IDocumentDirectory documents, IPeopleDirectory people, ILogger<CommentsController> logger)
+    public CommentsController(SharingDbContext db, IDocumentService documentService, IDocumentDirectory documents, IPeopleDirectory people, ILogger<CommentsController> logger)
     {
         _db = db;
         _documents = documents;

@@ -1,7 +1,7 @@
 using Lilia.Api.Directories;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
@@ -12,7 +12,7 @@ public class SharedMessages { }
 
 public class CollaboratorService : ICollaboratorService
 {
-    private readonly LiliaDbContext _context;
+    private readonly SharingDbContext _context;
     private readonly IDocumentDirectory _documents;
     private readonly IPeopleDirectory _people;
     private readonly ITeamDirectory _teams;
@@ -28,7 +28,7 @@ public class CollaboratorService : ICollaboratorService
     /// <summary>An invite expires after 14 days (Olivia's spec, confirmed by the user, 10 Oct); it was 30.</summary>
     public static readonly TimeSpan InviteLifetime = TimeSpan.FromDays(14);
 
-    public CollaboratorService(LiliaDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ITeamDirectory teams, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null, ISharingNotifier? sharingNotifier = null)
+    public CollaboratorService(SharingDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ITeamDirectory teams, IEmailService emailService, EmailSettings emailSettings, INotificationService notificationService, IStringLocalizer<SharedMessages> localizer, ILogger<CollaboratorService> logger, Wolverine.IMessageBus? bus = null, ISharingNotifier? sharingNotifier = null)
     {
         _sharingNotifier = sharingNotifier;
         _context = context;

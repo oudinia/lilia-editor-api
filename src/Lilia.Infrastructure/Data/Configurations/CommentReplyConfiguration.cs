@@ -6,7 +6,12 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class CommentReplyConfiguration : IEntityTypeConfiguration<CommentReply>
 {
-    public void Configure(EntityTypeBuilder<CommentReply> builder)
+    /// <summary>
+    /// The table as Sharing's own context maps it too (2 Nov 2026, the bounded contexts, step 4): table,
+    /// columns, keys, indexes and the links inside Sharing. The links out of Sharing (documents, people,
+    /// groups, blocks) are this context's only, for the migrations.
+    /// </summary>
+    public static void Shape(EntityTypeBuilder<CommentReply> builder)
     {
         builder.ToTable("comment_replies");
 
@@ -23,6 +28,11 @@ public class CommentReplyConfiguration : IEntityTypeConfiguration<CommentReply>
             .WithMany(c => c.Replies)
             .HasForeignKey(r => r.CommentId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    public void Configure(EntityTypeBuilder<CommentReply> builder)
+    {
+        Shape(builder);
 
         builder.HasOne(r => r.User)
             .WithMany()

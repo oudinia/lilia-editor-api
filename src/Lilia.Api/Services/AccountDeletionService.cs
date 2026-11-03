@@ -142,7 +142,7 @@ public class AccountDeletionService
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         var docs = await _db.Documents.IgnoreQueryFilters().Where(d => d.OwnerId == userId).ToListAsync(ct);
         _db.Documents.RemoveRange(docs);
-        await _sharingAccounts.ForgetAsync(userId, ct);
+        await _sharingAccounts.ForgetAsync(userId, Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(tx), ct);
         _db.UserPreferences.RemoveRange(_db.UserPreferences.Where(p => p.UserId == userId));
         var user = await _db.Users.FirstAsync(u => u.Id == userId, ct);
         var email = user.Email;

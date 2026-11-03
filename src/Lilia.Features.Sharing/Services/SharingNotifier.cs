@@ -1,6 +1,6 @@
 using Lilia.Api.Directories;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
@@ -30,7 +30,7 @@ public sealed class SharingNotifier : ISharingNotifier
     /// <summary>Several accepts for one document within this window: one email, every notification.</summary>
     public static readonly TimeSpan AcceptEmailWindow = TimeSpan.FromHours(1);
 
-    private readonly LiliaDbContext _db;
+    private readonly SharingDbContext _db;
     private readonly IDocumentDirectory _documents;
     private readonly IPeopleDirectory _people;
     private readonly INotificationService _notifications;
@@ -38,7 +38,7 @@ public sealed class SharingNotifier : ISharingNotifier
     private readonly EmailSettings _settings;
     private readonly ILogger<SharingNotifier> _logger;
 
-    public SharingNotifier(LiliaDbContext db, IDocumentDirectory documents, IPeopleDirectory people, INotificationService notifications, IEmailService email, EmailSettings settings, ILogger<SharingNotifier> logger)
+    public SharingNotifier(SharingDbContext db, IDocumentDirectory documents, IPeopleDirectory people, INotificationService notifications, IEmailService email, EmailSettings settings, ILogger<SharingNotifier> logger)
     {
         _db = db;
         _documents = documents;

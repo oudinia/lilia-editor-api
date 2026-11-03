@@ -6,7 +6,12 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class DocumentGroupConfiguration : IEntityTypeConfiguration<DocumentGroup>
 {
-    public void Configure(EntityTypeBuilder<DocumentGroup> builder)
+    /// <summary>
+    /// The table as Sharing's own context maps it too (2 Nov 2026, the bounded contexts, step 4): table,
+    /// columns, keys, indexes and the links inside Sharing. The links out of Sharing (documents, people,
+    /// groups, blocks) are this context's only, for the migrations.
+    /// </summary>
+    public static void Shape(EntityTypeBuilder<DocumentGroup> builder)
     {
         builder.ToTable("document_groups");
 
@@ -20,6 +25,16 @@ public class DocumentGroupConfiguration : IEntityTypeConfiguration<DocumentGroup
         builder.HasIndex(dg => dg.DocumentId);
         builder.HasIndex(dg => new { dg.DocumentId, dg.GroupId }).IsUnique();
 
+        builder.HasOne(dg => dg.Role)
+            .WithMany(r => r.DocumentGroups)
+            .HasForeignKey(dg => dg.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    public void Configure(EntityTypeBuilder<DocumentGroup> builder)
+    {
+        Shape(builder);
+
         builder.HasOne(dg => dg.Document)
             .WithMany(d => d.DocumentGroups)
             .HasForeignKey(dg => dg.DocumentId)
@@ -29,10 +44,5 @@ public class DocumentGroupConfiguration : IEntityTypeConfiguration<DocumentGroup
             .WithMany(g => g.DocumentGroups)
             .HasForeignKey(dg => dg.GroupId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasOne(dg => dg.Role)
-            .WithMany(r => r.DocumentGroups)
-            .HasForeignKey(dg => dg.RoleId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 }

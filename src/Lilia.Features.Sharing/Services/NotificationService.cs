@@ -1,15 +1,15 @@
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
 
 public class NotificationService : INotificationService
 {
-    private readonly LiliaDbContext _context;
+    private readonly SharingDbContext _context;
 
-    public NotificationService(LiliaDbContext context)
+    public NotificationService(SharingDbContext context)
     {
         _context = context;
     }

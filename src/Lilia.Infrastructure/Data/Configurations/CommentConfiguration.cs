@@ -6,7 +6,12 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class CommentConfiguration : IEntityTypeConfiguration<Comment>
 {
-    public void Configure(EntityTypeBuilder<Comment> builder)
+    /// <summary>
+    /// The table as Sharing's own context maps it too (2 Nov 2026, the bounded contexts, step 4): table,
+    /// columns, keys, indexes and the links inside Sharing. The links out of Sharing (documents, people,
+    /// groups, blocks) are this context's only, for the migrations.
+    /// </summary>
+    public static void Shape(EntityTypeBuilder<Comment> builder)
     {
         builder.ToTable("comments");
 
@@ -23,6 +28,11 @@ public class CommentConfiguration : IEntityTypeConfiguration<Comment>
         builder.HasIndex(c => c.DocumentId);
         builder.HasIndex(c => c.BlockId);
         builder.HasIndex(c => c.UserId);
+    }
+
+    public void Configure(EntityTypeBuilder<Comment> builder)
+    {
+        Shape(builder);
 
         builder.HasOne(c => c.Document)
             .WithMany(d => d.Comments)

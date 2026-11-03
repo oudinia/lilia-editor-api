@@ -6,7 +6,12 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
 {
-    public void Configure(EntityTypeBuilder<Notification> builder)
+    /// <summary>
+    /// The table as Sharing's own context maps it too (2 Nov 2026, the bounded contexts, step 4): table,
+    /// columns, keys, indexes and the links inside Sharing. The links out of Sharing (documents, people,
+    /// groups, blocks) are this context's only, for the migrations.
+    /// </summary>
+    public static void Shape(EntityTypeBuilder<Notification> builder)
     {
         builder.ToTable("notifications");
 
@@ -23,6 +28,11 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.HasIndex(n => n.UserId);
         builder.HasIndex(n => new { n.UserId, n.IsRead });
         builder.HasIndex(n => n.CreatedAt);
+    }
+
+    public void Configure(EntityTypeBuilder<Notification> builder)
+    {
+        Shape(builder);
 
         builder.HasOne(n => n.User)
             .WithMany()

@@ -455,6 +455,13 @@ builder.Services.AddDbContext<LiliaDbContext>((sp, options) =>
         // to a warning so prod deploys don't fail on a cosmetic mismatch.
         .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
+// Sharing's own context over its tables (2 Nov 2026, the bounded contexts, step 4), on the request's
+// connection: one connection per request still, and the erase's transaction can include Sharing.
+builder.Services.AddDbContext<Lilia.Api.Features.Sharing.Data.SharingDbContext>((sp, options) =>
+    options
+        .UseNpgsql(sp.GetRequiredService<LiliaDbContext>().Database.GetDbConnection())
+        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>()));
+
 // Configure Storage Service
 if (!string.IsNullOrEmpty(builder.Configuration["R2:Endpoint"]))
 {

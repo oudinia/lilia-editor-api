@@ -6,7 +6,12 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class DocumentPendingInviteConfiguration : IEntityTypeConfiguration<DocumentPendingInvite>
 {
-    public void Configure(EntityTypeBuilder<DocumentPendingInvite> builder)
+    /// <summary>
+    /// The table as Sharing's own context maps it too (2 Nov 2026, the bounded contexts, step 4): table,
+    /// columns, keys, indexes and the links inside Sharing. The links out of Sharing (documents, people,
+    /// groups, blocks) are this context's only, for the migrations.
+    /// </summary>
+    public static void Shape(EntityTypeBuilder<DocumentPendingInvite> builder)
     {
         builder.ToTable("document_pending_invites");
 
@@ -23,6 +28,11 @@ public class DocumentPendingInviteConfiguration : IEntityTypeConfiguration<Docum
         builder.HasIndex(pi => pi.Email);
         builder.HasIndex(pi => new { pi.DocumentId, pi.Email }).IsUnique()
             .HasFilter("status = 'pending'");
+    }
+
+    public void Configure(EntityTypeBuilder<DocumentPendingInvite> builder)
+    {
+        Shape(builder);
 
         builder.HasOne(pi => pi.Document)
             .WithMany()
