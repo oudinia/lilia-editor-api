@@ -33,8 +33,6 @@ public class DocumentRoutesAreGuardedTests : IntegrationTestBase
     // use the attribute instead of being added here.
     private static readonly Dictionary<string, string> Reviewed = new(StringComparer.Ordinal)
     {
-        ["AiImport.FixFormatting"] = Inline,
-        ["AiImport.SuggestImprovements"] = Inline,
         ["Assets.CreateAsset"] = Inline,
         ["Assets.DeleteAsset"] = Inline,
         ["Assets.GetAsset"] = Inline,
