@@ -1,11 +1,11 @@
 using Lilia.Api.Directories;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
 
 /// <summary>Sharing's answer to <see cref="ISharingDirectory"/>: read-only, untracked.</summary>
-public sealed class SharingDirectory(LiliaDbContext db, ITeamDirectory teams) : ISharingDirectory
+public sealed class SharingDirectory(SharingDbContext db, ITeamDirectory teams) : ISharingDirectory
 {
     public async Task<bool> GrantsAsync(Guid documentId, string userId, string permission, CancellationToken ct = default)
     {

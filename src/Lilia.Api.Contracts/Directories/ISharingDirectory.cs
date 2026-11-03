@@ -46,8 +46,9 @@ public interface ISharingAccounts
     Task ClaimInvitesAsync(string userId, string email, CancellationToken ct = default);
 
     /// <summary>
-    /// When an account is erased: its shares go. Staged on the request's database context, so the caller's
-    /// save (and its transaction) removes them with the rest of the account.
+    /// When an account is erased: its shares go. Inside <paramref name="within"/>, the caller's transaction on
+    /// the request's connection, when it passes one (step 4: Sharing has its own context), so they go with
+    /// the rest of the account or not at all.
     /// </summary>
-    Task ForgetAsync(string userId, CancellationToken ct = default);
+    Task ForgetAsync(string userId, System.Data.Common.DbTransaction? within, CancellationToken ct = default);
 }

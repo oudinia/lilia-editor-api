@@ -1,13 +1,13 @@
 using Lilia.Api.Directories;
 using Lilia.Core.DTOs;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
 
 public class SharingService : ISharingService
 {
-    private readonly LiliaDbContext _context;
+    private readonly SharingDbContext _context;
     private readonly IDocumentDirectory _documents;
     private readonly IPeopleDirectory _people;
     private readonly ICollaboratorService _collaboratorService;
@@ -15,7 +15,7 @@ public class SharingService : ISharingService
     // Avatar-stack cap for the "Shared by me" card; counts carry the rest.
     private const int TopCollaborators = 5;
 
-    public SharingService(LiliaDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ICollaboratorService collaboratorService)
+    public SharingService(SharingDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ICollaboratorService collaboratorService)
     {
         _context = context;
         _documents = documents;

@@ -1,6 +1,6 @@
 using Lilia.Api.Directories;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Services;
@@ -9,7 +9,7 @@ namespace Lilia.Api.Services;
 /// Sharing's answer to <see cref="ISharingAccounts"/>. Claiming invites moved here from UserService
 /// (2 Nov 2026, the bounded contexts, step 3), unchanged: it writes Sharing's tables.
 /// </summary>
-public sealed class SharingAccounts(LiliaDbContext db, ISharingNotifier? notifier = null) : ISharingAccounts
+public sealed class SharingAccounts(SharingDbContext db, ISharingNotifier? notifier = null) : ISharingAccounts
 {
     public async Task ClaimInvitesAsync(string userId, string email, CancellationToken ct = default)
     {
@@ -57,6 +57,18 @@ public sealed class SharingAccounts(LiliaDbContext db, ISharingNotifier? notifie
                 await notifier.InviteAcceptedAsync(documentId, inviter, userId);
     }
 
-    public async Task ForgetAsync(string userId, CancellationToken ct = default) =>
-        db.DocumentCollaborators.RemoveRange(await db.DocumentCollaborators.Where(c => c.UserId == userId).ToListAsync(ct));
+    public async Task ForgetAsync(string userId, System.Data.Common.DbTransaction? within, CancellationToken ct = default)
+    {
+        if (within is not null) await db.Database.UseTransactionAsync(within, ct);
+        try
+        {
+            db.DocumentCollaborators.RemoveRange(await db.DocumentCollaborators.Where(c => c.UserId == userId).ToListAsync(ct));
+            await db.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            // The transaction is the caller's to commit or roll back.
+            if (within is not null) await db.Database.UseTransactionAsync(null, ct);
+        }
+    }
 }

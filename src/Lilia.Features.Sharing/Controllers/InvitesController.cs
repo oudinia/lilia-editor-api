@@ -2,7 +2,7 @@ using Lilia.Api.Directories;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Api.Services;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Sharing.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -32,13 +32,13 @@ namespace Lilia.Api.Controllers;
 [Authorize]
 public class InvitesController : ControllerBase
 {
-    private readonly LiliaDbContext _context;
+    private readonly SharingDbContext _context;
     private readonly IDocumentDirectory _documents;
     private readonly IPeopleDirectory _people;
 
     private readonly ISharingNotifier? _sharingNotifier;
 
-    public InvitesController(LiliaDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ISharingNotifier? sharingNotifier = null)
+    public InvitesController(SharingDbContext context, IDocumentDirectory documents, IPeopleDirectory people, ISharingNotifier? sharingNotifier = null)
     {
         _context = context;
         _documents = documents;

@@ -36,7 +36,7 @@ jobs:
       - name: Check for pending model changes
         run: |
           set -e
-          if dotnet ef migrations has-pending-model-changes \
+          if dotnet ef migrations has-pending-model-changes --context LiliaDbContext \
               --project src/Lilia.Infrastructure \
               --startup-project src/Lilia.Api; then
             echo "EF model and migrations are in sync."

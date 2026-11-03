@@ -6,7 +6,8 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class RoleConfiguration : IEntityTypeConfiguration<Role>
 {
-    public void Configure(EntityTypeBuilder<Role> builder)
+    /// <summary>The table as Sharing's own context maps it too (2 Nov 2026, step 4); the seed rows are this context's, for the migrations.</summary>
+    public static void Shape(EntityTypeBuilder<Role> builder)
     {
         builder.ToTable("roles");
 
@@ -19,6 +20,11 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
             .HasDefaultValueSql("'[]'::jsonb");
 
         builder.HasIndex(r => r.Name).IsUnique();
+    }
+
+    public void Configure(EntityTypeBuilder<Role> builder)
+    {
+        Shape(builder);
 
         // Seed data
         var ownerId = Guid.Parse("00000000-0000-0000-0000-000000000001");
