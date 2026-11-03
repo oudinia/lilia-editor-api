@@ -89,6 +89,65 @@ def route_pattern(template, controller):
     return re.compile("(?i)" + "/".join(parts) + r'(?=[/"?\s{]|$)')
 
 
+# The URLs a test calls: "/api/…" in a string (plain or interpolated), up to a quote, a space or a query.
+URL = re.compile(r'["`](/?api/[^"`\s?]*)')
+OWNERS = []
+CLASS_DECL = re.compile(r"\bclass\s+[A-Z]\w*Controller\b")
+ACTION = re.compile(r'\[(?:Http(?:Get|Post|Put|Patch|Delete)|Route)(?:\("([^"]*)")?[^\]]*\]')
+
+
+def _pattern(template, whole):
+    parts = [r'[^/"\s]+' if seg.startswith("{") else re.escape(seg) for seg in template.strip("/").split("/") if seg]
+    return re.compile("(?i)^/?" + "/".join(parts) + (r"/?$" if whole else r"(?=/|$)")), len(parts)
+
+
+def owners():
+    """Every controller's routes: its endpoints (base route + each action's) matched whole, and its base
+    route as a prefix, each as (pattern, segment count, file, whole)."""
+    if not OWNERS:
+        for f in index()["src"]:
+            if not f.startswith(API_CODE):
+                continue
+            text = COMMENT.sub("", read(f))
+            decl = CLASS_DECL.search(text)
+            if not decl:
+                continue
+            name = decl.group(0).split()[-1][: -len("Controller")].lower()
+            head, body = text[: decl.start()], text[decl.end():]
+            bases = [t.replace("[controller]", name).strip("~") for t in ROUTE.findall(head)] or [""]
+            for base in bases:
+                if base:
+                    OWNERS.append((*_pattern(base, False), f, False))
+                for action in ACTION.findall(body):
+                    action = action.replace("[controller]", name)
+                    template = action.lstrip("~") if action.startswith(("~", "/")) else f"{base}/{action}"
+                    if template.strip("/"):
+                        OWNERS.append((*_pattern(template, True), f, True))
+    return OWNERS
+
+
+def calls_reached_route(text, routes, reached_controllers):
+    """Whether a test calls the route of a reached controller (3 Nov 2026). A URL belongs to the controller
+    with an endpoint matching it whole, the most specific if several; else to the one whose base route is
+    its longest prefix. /api/documents/{id}/comments is the comments controller's, not the documents
+    controller's, though "api/documents" is a prefix of it (that prefix made every change near documents
+    run Sharing's tests). A URL no controller claims keeps the old prefix rule, and so does a test whose
+    URLs aren't plain strings."""
+    urls = URL.findall(text)
+    if not urls:
+        return any(r.search(text) for r in routes)
+    for url in urls:
+        claims = [(n, f) for pattern, n, f, whole in owners() if whole and pattern.search(url)] \
+            or [(n, f) for pattern, n, f, whole in owners() if not whole and pattern.search(url)]
+        if claims:
+            best = max(n for n, _ in claims)
+            if any(f in reached_controllers for n, f in claims if n == best):
+                return True
+        elif any(r.search(url) for r in routes):
+            return True
+    return False
+
+
 BASES = re.compile(r"\b(?:class|record|struct)\s+([A-Z]\w*)(?:<[^>{]*>)?(?:\([^){]*\))?\s*:\s*([^{;]+)")
 INDEX = {}
 
@@ -213,9 +272,11 @@ def select(changed):
             name = next(d for d in declares[f] if d.endswith("Controller"))
             for t in ROUTE.findall(read(f)):
                 routes.append(route_pattern(t, name[: -len("Controller")].lower()))
+    reached_controllers = {f for f in src_files if f.startswith(API_CODE) and declares[f] & reached
+                           and any(d.endswith("Controller") for d in declares[f])}
     classes = set()
     for f in test_files:
-        if f in changed or words[f] & named(reached) or (routes and any(r.search(read(f)) for r in routes)):
+        if f in changed or words[f] & named(reached) or (routes and calls_reached_route(read(f), routes, reached_controllers)):
             text = read(f)
             ns = NAMESPACE.search(text)
             for cls in re.findall(r"^\s*public\s+(?:sealed\s+|partial\s+)*class\s+([A-Za-z0-9_]+)", text, re.M):
