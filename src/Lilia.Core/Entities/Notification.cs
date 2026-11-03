@@ -12,5 +12,4 @@ public class Notification
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public virtual User User { get; set; } = null!;
 }

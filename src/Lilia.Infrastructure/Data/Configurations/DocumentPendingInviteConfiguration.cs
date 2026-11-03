@@ -34,12 +34,12 @@ public class DocumentPendingInviteConfiguration : IEntityTypeConfiguration<Docum
     {
         Shape(builder);
 
-        builder.HasOne(pi => pi.Document)
+        builder.HasOne<Document>()
             .WithMany()
             .HasForeignKey(pi => pi.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(pi => pi.Inviter)
+        builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(pi => pi.InvitedBy)
             .OnDelete(DeleteBehavior.Cascade);

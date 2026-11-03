@@ -52,7 +52,6 @@ public class User
     public virtual ICollection<Team> OwnedTeams { get; set; } = new List<Team>();
     public virtual ICollection<GroupMember> GroupMemberships { get; set; } = new List<GroupMember>();
     public virtual ICollection<Document> OwnedDocuments { get; set; } = new List<Document>();
-    public virtual ICollection<DocumentCollaborator> DocumentCollaborations { get; set; } = new List<DocumentCollaborator>();
     public virtual ICollection<Label> Labels { get; set; } = new List<Label>();
     public virtual ICollection<Formula> Formulas { get; set; } = new List<Formula>();
     public virtual ICollection<Snippet> Snippets { get; set; } = new List<Snippet>();
@@ -65,6 +64,5 @@ public class User
     public virtual ICollection<Invitation> SentInvitations { get; set; } = new List<Invitation>();
     public virtual ICollection<Purchase> Purchases { get; set; } = new List<Purchase>();
     public virtual ICollection<AiChat> AiChats { get; set; } = new List<AiChat>();
-    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
     public virtual ICollection<SyncHistory> SyncHistories { get; set; } = new List<SyncHistory>();
 }

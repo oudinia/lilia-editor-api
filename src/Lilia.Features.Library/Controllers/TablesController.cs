@@ -23,10 +23,13 @@ namespace Lilia.Api.Features.Library.Controllers;
 public class TablesController : ControllerBase
 {
     private readonly LiliaDbContext _db;
+    // Who a paper is shared with is Sharing's to say (3 Nov 2026, the bounded contexts, step 5).
+    private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
     private readonly ILogger<TablesController> _logger;
-    public TablesController(LiliaDbContext db, ILogger<TablesController> logger)
+    public TablesController(LiliaDbContext db, Lilia.Api.Directories.ISharingDirectory sharing, ILogger<TablesController> logger)
     {
         _db = db;
+        _sharing = sharing;
         _logger = logger;
     }
 
@@ -293,17 +296,19 @@ public class TablesController : ControllerBase
         // The count is still honest — you are told the table is used elsewhere,
         // just not by whom or in what. Hiding the number instead would make a
         // shared table look unused and invite someone to delete it.
-        var links = await _db.DocumentTables
+        var rows = await _db.DocumentTables
             .Where(dt => dt.TableId == id)
             .Select(dt => new
             {
                 dt.DocumentId,
                 dt.BlockId,
                 Title = dt.Document!.Title,
-                Visible = dt.Document!.OwnerId == userId
-                          || dt.Document!.Collaborators.Any(c => c.UserId == userId),
+                Mine = dt.Document!.OwnerId == userId,
             })
             .ToListAsync();
+        // A paper the caller may read: theirs, or shared with them directly.
+        var sharedWithMe = (await _sharing.DocumentsSharedWithAsync(userId, throughGroups: false)).ToHashSet();
+        var links = rows.Select(r => new { r.DocumentId, r.BlockId, r.Title, Visible = r.Mine || sharedWithMe.Contains(r.DocumentId) }).ToList();
 
         // Copies are separate tables, so they are counted, never listed: "1 copy
         // was made from this table" (Olivia, tables-modern 1e). A number only,

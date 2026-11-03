@@ -12,6 +12,4 @@ public class DocumentPendingInvite
     public DateTime ExpiresAt { get; set; }
 
     // Navigation properties
-    public virtual Document Document { get; set; } = null!;
-    public virtual User Inviter { get; set; } = null!;
 }

@@ -29,7 +29,6 @@ public class Block
     public virtual Block? Parent { get; set; }
     public virtual ICollection<Block> Children { get; set; } = new List<Block>();
     public virtual User? Creator { get; set; }
-    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
 }
 
 public static class BlockTypes

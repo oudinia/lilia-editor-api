@@ -10,8 +10,5 @@ public class DocumentCollaborator
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public virtual Document Document { get; set; } = null!;
-    public virtual User User { get; set; } = null!;
     public virtual Role Role { get; set; } = null!;
-    public virtual User? Inviter { get; set; }
 }

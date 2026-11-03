@@ -12,5 +12,4 @@ public class Group
     // Navigation properties
     public virtual Team Team { get; set; } = null!;
     public virtual ICollection<GroupMember> Members { get; set; } = new List<GroupMember>();
-    public virtual ICollection<DocumentGroup> DocumentGroups { get; set; } = new List<DocumentGroup>();
 }

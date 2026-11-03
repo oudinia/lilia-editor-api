@@ -35,13 +35,13 @@ public class DocumentGroupConfiguration : IEntityTypeConfiguration<DocumentGroup
     {
         Shape(builder);
 
-        builder.HasOne(dg => dg.Document)
-            .WithMany(d => d.DocumentGroups)
+        builder.HasOne<Document>()
+            .WithMany()
             .HasForeignKey(dg => dg.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(dg => dg.Group)
-            .WithMany(g => g.DocumentGroups)
+        builder.HasOne<Group>()
+            .WithMany()
             .HasForeignKey(dg => dg.GroupId)
             .OnDelete(DeleteBehavior.Cascade);
     }

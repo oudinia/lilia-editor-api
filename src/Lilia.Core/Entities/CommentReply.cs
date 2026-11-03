@@ -10,5 +10,4 @@ public class CommentReply
 
     // Navigation properties
     public virtual Comment Comment { get; set; } = null!;
-    public virtual User User { get; set; } = null!;
 }

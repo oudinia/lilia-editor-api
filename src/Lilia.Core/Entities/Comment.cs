@@ -12,8 +12,5 @@ public class Comment
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public virtual Document Document { get; set; } = null!;
-    public virtual Block? Block { get; set; }
-    public virtual User User { get; set; } = null!;
     public virtual ICollection<CommentReply> Replies { get; set; } = new List<CommentReply>();
 }
