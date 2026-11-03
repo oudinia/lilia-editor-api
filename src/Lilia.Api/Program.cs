@@ -465,6 +465,13 @@ builder.Services.AddDbContext<Lilia.Api.Features.Sharing.Data.SharingDbContext>(
         .UseNpgsql(sp.GetRequiredService<LiliaDbContext>().Database.GetDbConnection())
         .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>()));
 
+// Teams' own context over its tables (3 Nov 2026, Teams' bounded context, step 4), on the request's
+// connection, as Sharing's: a new team and the person's pointer to it go in one transaction.
+builder.Services.AddDbContext<Lilia.Api.Features.Teams.Data.TeamsDbContext>((sp, options) =>
+    options
+        .UseNpgsql(sp.GetRequiredService<LiliaDbContext>().Database.GetDbConnection())
+        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>()));
+
 // Configure Storage Service
 if (!string.IsNullOrEmpty(builder.Configuration["R2:Endpoint"]))
 {

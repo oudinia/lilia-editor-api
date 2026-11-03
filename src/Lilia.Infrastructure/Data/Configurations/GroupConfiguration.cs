@@ -6,7 +6,8 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class GroupConfiguration : IEntityTypeConfiguration<Group>
 {
-    public void Configure(EntityTypeBuilder<Group> builder)
+    /// <summary>The table as Teams' own context maps it too (3 Nov 2026, Teams' bounded context, step 4).</summary>
+    public static void Shape(EntityTypeBuilder<Group> builder)
     {
         builder.ToTable("groups");
 
@@ -25,4 +26,6 @@ public class GroupConfiguration : IEntityTypeConfiguration<Group>
             .HasForeignKey(g => g.TeamId)
             .OnDelete(DeleteBehavior.Cascade);
     }
+
+    public void Configure(EntityTypeBuilder<Group> builder) => Shape(builder);
 }

@@ -1,6 +1,5 @@
 using Lilia.Api.Events.Common;
 using Lilia.Api.Services;
-using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Features.Teams.Handlers;
