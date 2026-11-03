@@ -5,6 +5,7 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Lilia.Api.Features.Teams.Handlers;
 
@@ -23,18 +24,20 @@ public class CreateDefaultTeamHandler
     public async Task Handle(
         UserCreatedEvent evt,
         LiliaDbContext db,
+        Lilia.Api.Directories.IPeopleDirectory people,
+        Lilia.Api.Directories.ITeamAccounts accounts,
         ITeamCodenameGenerator codenames,
         ILogger<CreateDefaultTeamHandler> logger,
         CancellationToken ct)
     {
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == evt.UserId, ct);
-        if (user is null)
+        // The person and their default team are Accounts' (3 Nov 2026, Teams' bounded context, step 4).
+        if (await people.FindAsync(evt.UserId, ct) is null)
         {
             logger.LogWarning("UserCreatedEvent: user {UserId} not in DB — skipping team mint", evt.UserId);
             return;
         }
 
-        if (user.DefaultTeamId is not null)
+        if (await accounts.DefaultTeamOfAsync(evt.UserId, ct) is not null)
         {
             logger.LogDebug("UserCreatedEvent: user {UserId} already has DefaultTeamId — skipping mint", evt.UserId);
             return;
@@ -103,10 +106,18 @@ public class CreateDefaultTeamHandler
         db.Teams.Add(team);
         db.Set<Group>().Add(defaultGroup);
         db.Set<GroupMember>().Add(ownership);
-        user.DefaultTeamId = team.Id;
-        user.UpdatedAt = DateTime.UtcNow;
 
+        // The team and the person's pointer to it go together or not at all. The pointer is claimed only
+        // while it is empty, so a second event for the same person keeps the first team.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
+        if (!await accounts.ClaimDefaultTeamAsync(evt.UserId, team.Id, tx.GetDbTransaction(), ct))
+        {
+            await tx.RollbackAsync(ct);
+            logger.LogInformation("UserCreatedEvent: user {UserId} got a default team meanwhile — this one is not kept", evt.UserId);
+            return;
+        }
+        await tx.CommitAsync(ct);
         logger.LogInformation("Default team {Codename} minted for user {UserId}", codename, evt.UserId);
     }
 

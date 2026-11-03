@@ -67,4 +67,19 @@ public class TeamDirectoryTests : IntegrationTestBase
 
         (await teams.SeatsOwnedByAsync("td-owner")).Should().Be(2, "the sandbox team's member doesn't count");
     }
+
+    [Fact]
+    public async Task A_default_team_is_claimed_once()
+    {
+        await SeedUserAsync("td-claim");
+        var (first, _) = await SeedTeamAsync("td-claim");
+        var (second, _) = await SeedTeamAsync("td-claim");
+        var accounts = Fixture.Factory.Services.CreateScope().ServiceProvider.GetRequiredService<ITeamAccounts>();
+
+        (await accounts.DefaultTeamOfAsync("td-claim")).Should().BeNull();
+        (await accounts.ClaimDefaultTeamAsync("td-claim", first)).Should().BeTrue();
+        (await accounts.ClaimDefaultTeamAsync("td-claim", second)).Should().BeFalse("a second sign-up event keeps the first team");
+        (await accounts.DefaultTeamOfAsync("td-claim")).Should().Be(first);
+        (await accounts.ClaimDefaultTeamAsync("td-nobody", first)).Should().BeFalse();
+    }
 }

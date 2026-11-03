@@ -14,6 +14,12 @@ public interface IDocumentDirectory
 
     /// <summary>Whether block <paramref name="blockId"/> is part of document <paramref name="documentId"/>.</summary>
     Task<bool> HasBlockAsync(Guid documentId, Guid blockId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The documents put in team <paramref name="teamId"/>, newest first, as the team's page lists them
+    /// (3 Nov 2026, Teams' bounded context, step 4: Teams checks the caller belongs, then asks this).
+    /// </summary>
+    Task<IReadOnlyList<Lilia.Core.DTOs.DocumentListDto>> TeamDocumentsAsync(Guid teamId, string teamName, CancellationToken ct = default);
 }
 
 public sealed record DocumentCard(Guid Id, string Title, string OwnerId);
