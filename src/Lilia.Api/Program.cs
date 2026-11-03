@@ -33,7 +33,10 @@ var builder = WebApplication.CreateBuilder(args);
 // sign-in tokens without Stytch configured and exposed the test routes). Its secrets stay in
 // user-secrets, which ASP.NET loads only in Development: load them here too, with environment
 // variables still on top. Optional, so a container without them is unaffected.
-if (!builder.Environment.IsDevelopment())
+// Not under Testing (3 Nov 2026): added after CreateBuilder, they won over the settings a test host
+// injects, so every test host held production's Anthropic key whatever the test said ("sk-placeholder"
+// still unlocked the AI architect). AuthSessionEndpointTests and AiArchitectEndpointTests hold this.
+if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
 {
     builder.Configuration.AddUserSecrets(typeof(Program).Assembly, optional: true, reloadOnChange: false);
     builder.Configuration.AddEnvironmentVariables();
