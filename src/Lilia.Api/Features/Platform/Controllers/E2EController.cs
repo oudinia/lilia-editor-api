@@ -20,6 +20,10 @@ namespace Lilia.Api.Features.Platform.Controllers;
 //         — bulk UI interaction events from the editor (test or
 //         sampled real-user); allow-anonymous, server validates the
 //         event payload shape.
+//
+//  The anonymous writes answer 404 in Production (3 Nov 2026): the reporter
+//  posts to the test copy (5041, Development) and no web code posts coverage
+//  events, so in production they only let anyone fill these tables.
 // =====================================================================
 
 [ApiController]
@@ -28,11 +32,13 @@ public class E2EController : ControllerBase
 {
     private readonly IE2EService _svc;
     private readonly ILogger<E2EController> _logger;
+    private readonly IHostEnvironment _env;
 
-    public E2EController(IE2EService svc, ILogger<E2EController> logger)
+    public E2EController(IE2EService svc, ILogger<E2EController> logger, IHostEnvironment env)
     {
         _svc = svc;
         _logger = logger;
+        _env = env;
     }
 
     // ---- Catalogue reads (authenticated admin) ----
@@ -87,13 +93,14 @@ public class E2EController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<StartRunResponse>> StartRun(
         [FromBody] StartRunRequest req, CancellationToken ct)
-        => Ok(await _svc.StartRunAsync(req, ct));
+        => _env.IsProduction() ? NotFound() : Ok(await _svc.StartRunAsync(req, ct));
 
     [HttpPost("results")]
     [AllowAnonymous]
     public async Task<IActionResult> RecordResult(
         [FromBody] RecordResultRequest req, CancellationToken ct)
     {
+        if (_env.IsProduction()) return NotFound();
         var id = await _svc.RecordResultAsync(req, ct);
         return id is null
             ? Ok(new { recorded = false, reason = "scenario_not_found" })
@@ -105,6 +112,7 @@ public class E2EController : ControllerBase
     public async Task<IActionResult> FinalizeRun(
         Guid id, [FromBody] FinalizeRunRequest req, CancellationToken ct)
     {
+        if (_env.IsProduction()) return NotFound();
         await _svc.FinalizeRunAsync(id, req, ct);
         return Ok();
     }
@@ -116,6 +124,7 @@ public class E2EController : ControllerBase
     public async Task<IActionResult> CoverageEvents(
         [FromBody] CoverageEventsRequest req, CancellationToken ct)
     {
+        if (_env.IsProduction()) return NotFound();
         // Cap per-request payload to prevent abuse if the prod-sampled
         // emitter ever misbehaves. 500 events = ~5min of one user's
         // interactions at default rate.
