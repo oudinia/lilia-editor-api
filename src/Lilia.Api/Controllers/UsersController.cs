@@ -21,12 +21,14 @@ public class UsersController : ControllerBase
 
     private readonly LiliaDbContext _context;
     private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
+    private readonly Lilia.Api.Directories.ITeamDirectory _teams;
     private readonly ILogger<UsersController> _logger;
 
-    public UsersController(LiliaDbContext context, Lilia.Api.Directories.ISharingDirectory sharing, ILogger<UsersController> logger)
+    public UsersController(LiliaDbContext context, Lilia.Api.Directories.ISharingDirectory sharing, Lilia.Api.Directories.ITeamDirectory teams, ILogger<UsersController> logger)
     {
         _context = context;
         _sharing = sharing;
+        _teams = teams;
         _logger = logger;
     }
 
@@ -80,13 +82,7 @@ public class UsersController : ControllerBase
         // Scope: users who share a document or group with the requester.
         // Expressed via intermediate ID sets so EF emits clean joins and
         // we never scan the full Users table.
-        var myGroupIds = _context.GroupMembers
-            .Where(gm => gm.UserId == userId)
-            .Select(gm => gm.GroupId);
-
-        var teamPeers = _context.GroupMembers
-            .Where(gm => myGroupIds.Contains(gm.GroupId))
-            .Select(gm => gm.UserId);
+        var teamPeers = (await _teams.PeersOfAsync(userId, ct)).ToList();
 
         // Documents where the requester is owner or collaborator (the shares are Sharing's to say).
         var owned = await _context.Documents
@@ -105,13 +101,14 @@ public class UsersController : ControllerBase
             .Where(d => myDocIds.Contains(d.Id))
             .Select(d => d.OwnerId);
 
-        var peerIds = teamPeers.Union(docPeers).Union(docOwners).Distinct();
+        // The team peers are a list from Teams; the document peers stay a query, so both run in one statement.
+        var peerIds = docPeers.Union(docOwners);
 
         var results = await _context.Users
             .AsNoTracking()
             .Where(u =>
                 u.Id != userId &&
-                peerIds.Contains(u.Id) &&
+                (teamPeers.Contains(u.Id) || peerIds.Contains(u.Id)) &&
                 u.Name != null &&
                 EF.Functions.ILike(u.Name!, $"%{queryLower}%"))
             .OrderBy(u => u.Name)
