@@ -37,17 +37,17 @@ public class DocumentCollaboratorConfiguration : IEntityTypeConfiguration<Docume
     {
         Shape(builder);
 
-        builder.HasOne(dc => dc.Document)
-            .WithMany(d => d.Collaborators)
+        builder.HasOne<Document>()
+            .WithMany()
             .HasForeignKey(dc => dc.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(dc => dc.User)
-            .WithMany(u => u.DocumentCollaborations)
+        builder.HasOne<User>()
+            .WithMany()
             .HasForeignKey(dc => dc.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(dc => dc.Inviter)
+        builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(dc => dc.InvitedBy)
             .OnDelete(DeleteBehavior.SetNull);

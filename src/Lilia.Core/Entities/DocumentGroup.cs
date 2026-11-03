@@ -9,7 +9,5 @@ public class DocumentGroup
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public virtual Document Document { get; set; } = null!;
-    public virtual Group Group { get; set; } = null!;
     public virtual Role Role { get; set; } = null!;
 }

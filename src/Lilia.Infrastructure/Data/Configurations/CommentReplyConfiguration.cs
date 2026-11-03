@@ -34,7 +34,7 @@ public class CommentReplyConfiguration : IEntityTypeConfiguration<CommentReply>
     {
         Shape(builder);
 
-        builder.HasOne(r => r.User)
+        builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(r => r.UserId)
             .OnDelete(DeleteBehavior.Cascade);

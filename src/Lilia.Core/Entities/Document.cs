@@ -249,10 +249,7 @@ public class Document
     public virtual ICollection<Block> Blocks { get; set; } = new List<Block>();
     public virtual ICollection<BibliographyEntry> BibliographyEntries { get; set; } = new List<BibliographyEntry>();
     public virtual ICollection<DocumentLabel> DocumentLabels { get; set; } = new List<DocumentLabel>();
-    public virtual ICollection<DocumentCollaborator> Collaborators { get; set; } = new List<DocumentCollaborator>();
-    public virtual ICollection<DocumentGroup> DocumentGroups { get; set; } = new List<DocumentGroup>();
     public virtual ICollection<DocumentVersion> Versions { get; set; } = new List<DocumentVersion>();
     public virtual ICollection<Asset> Assets { get; set; } = new List<Asset>();
-    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
     public virtual ICollection<DocumentSnapshot> Snapshots { get; set; } = new List<DocumentSnapshot>();
 }

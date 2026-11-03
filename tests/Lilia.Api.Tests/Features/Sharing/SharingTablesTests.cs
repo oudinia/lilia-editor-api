@@ -44,21 +44,24 @@ public class SharingTablesTests
     }
 
     [Fact]
-    public void Sharing_follows_no_navigation_into_another_context()
+    public void No_navigation_crosses_Sharings_line()
     {
-        // The navigations of Sharing's entities that lead out of it: User, Inviter, Document, Block, Group…
+        // Step 5 (3 Nov 2026): a share, comment, invite or notification holds the ids of a document, a person, a
+        // group or a block, and those hold nothing of Sharing's. The foreign keys stay in the database; only the
+        // code links went. Roles are shared with Teams (a member's team role), so they are left out of this.
         static Type ElementOf(Type t) => t.IsGenericType && t != typeof(string) ? t.GetGenericArguments()[0] : t;
-        var leaving = Owned
-            .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            .Where(p => p.GetGetMethod()!.IsVirtual)
-            .Where(p => ElementOf(p.PropertyType) is { Namespace: "Lilia.Core.Entities" } e && !Owned.Contains(e))
-            .Select(p => p.Name)
-            .ToHashSet();
-        leaving.Should().Contain(["User", "Document", "Inviter", "Group"], "the entities are read as expected");
+        static bool IsEntity(Type t) => t.Namespace == "Lilia.Core.Entities";
+        IEnumerable<string> NavigationsOf(Type t, Func<Type, bool> target) => t
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetGetMethod()!.IsVirtual && IsEntity(ElementOf(p.PropertyType)) && target(ElementOf(p.PropertyType)))
+            .Select(p => $"{t.Name}.{p.Name}");
 
-        // A member access on a lower-case name (c.User, invite.Document): not the controller's own User.
-        var found = Uses(new Regex(@"\b[a-z]\w*\s*\.\s*(\w+)\b"), leaving);
-        found.Should().BeEmpty("a share keeps the ids; names come from the directories");
+        var sharing = Owned.Where(t => t != typeof(Role)).ToHashSet();
+        var others = typeof(Document).Assembly.GetTypes().Where(t => IsEntity(t) && t.IsClass && !Owned.Contains(t)).ToList();
+        others.Should().Contain([typeof(Document), typeof(User), typeof(Lilia.Core.Entities.Group), typeof(Block)], "the entities are read as expected");
+
+        sharing.SelectMany(t => NavigationsOf(t, e => !Owned.Contains(e))).Should().BeEmpty("Sharing's entities keep ids, not navigations, out of it");
+        others.SelectMany(t => NavigationsOf(t, sharing.Contains)).Should().BeEmpty("no other entity navigates into Sharing's");
     }
 
     [Fact]

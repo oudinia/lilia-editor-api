@@ -100,11 +100,11 @@ public class TemplateKeepsTheDocumentTests : IntegrationTestBase
         copy.LatexEngine.Should().Be("xelatex");
     }
 
-    private static void ShouldBePrivateToItsMaker(Document copy, string makerId)
+    private static async Task ShouldBePrivateToItsMaker(LiliaDbContext db, Document copy, string makerId)
     {
         copy.OwnerId.Should().Be(makerId);
         copy.TeamId.Should().BeNull("a copy is private to whoever made it");
-        copy.Collaborators.Should().BeEmpty("a copy never carries the collaborators");
+        (await db.DocumentCollaborators.AnyAsync(c => c.DocumentId == copy.Id)).Should().BeFalse("a copy never carries the collaborators");
         copy.IsPublic.Should().BeFalse("the public link belongs to the original");
         copy.ShareLink.Should().BeNull();
         copy.ShareSlug.Should().BeNull();
@@ -139,7 +139,7 @@ public class TemplateKeepsTheDocumentTests : IntegrationTestBase
         var templateId = await SaveAsTemplateAsync(paper.Id);
 
         await using var db = CreateDbContext();
-        var template = await db.Documents.Include(d => d.Collaborators).FirstAsync(d => d.Id == templateId);
+        var template = await db.Documents.FirstAsync(d => d.Id == templateId);
         template.IsTemplate.Should().BeTrue();
         template.TemplateName.Should().Be("Thesis template");
         template.Title.Should().Be("Thesis template");
@@ -147,7 +147,7 @@ public class TemplateKeepsTheDocumentTests : IntegrationTestBase
         template.IsPublicTemplate.Should().BeFalse();
         template.TemplateUsageCount.Should().Be(0);
         ShouldKeepThePaper(template);
-        ShouldBePrivateToItsMaker(template, OwnerId);
+        await ShouldBePrivateToItsMaker(db, template, OwnerId);
         await ShouldCarryTheContentAsync(db, templateId);
     }
 
@@ -160,8 +160,8 @@ public class TemplateKeepsTheDocumentTests : IntegrationTestBase
         var templateId = await SaveAsTemplateAsync(paper.Id, collaborator);
 
         await using var db = CreateDbContext();
-        var template = await db.Documents.Include(d => d.Collaborators).FirstAsync(d => d.Id == templateId);
-        ShouldBePrivateToItsMaker(template, CollaboratorId);
+        var template = await db.Documents.FirstAsync(d => d.Id == templateId);
+        await ShouldBePrivateToItsMaker(db, template, CollaboratorId);
         ShouldKeepThePaper(template);
     }
 
@@ -176,14 +176,14 @@ public class TemplateKeepsTheDocumentTests : IntegrationTestBase
         var docId = (await use.Content.ReadFromJsonAsync<DocumentDto>())!.Id;
 
         await using var db = CreateDbContext();
-        var doc = await db.Documents.Include(d => d.Collaborators).FirstAsync(d => d.Id == docId);
+        var doc = await db.Documents.FirstAsync(d => d.Id == docId);
         doc.Title.Should().Be("Thesis template");
         doc.IsTemplate.Should().BeFalse();
         doc.TemplateName.Should().BeNull();
         doc.TemplateCategory.Should().BeNull();
         doc.TemplateUsageCount.Should().Be(0);
         ShouldKeepThePaper(doc);
-        ShouldBePrivateToItsMaker(doc, OwnerId);
+        await ShouldBePrivateToItsMaker(db, doc, OwnerId);
         await ShouldCarryTheContentAsync(db, docId);
         (await db.Documents.FirstAsync(d => d.Id == templateId)).TemplateUsageCount.Should().Be(1);
     }

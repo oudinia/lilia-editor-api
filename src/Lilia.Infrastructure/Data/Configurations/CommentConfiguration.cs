@@ -34,18 +34,18 @@ public class CommentConfiguration : IEntityTypeConfiguration<Comment>
     {
         Shape(builder);
 
-        builder.HasOne(c => c.Document)
-            .WithMany(d => d.Comments)
+        builder.HasOne<Document>()
+            .WithMany()
             .HasForeignKey(c => c.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(c => c.Block)
-            .WithMany(b => b.Comments)
+        builder.HasOne<Block>()
+            .WithMany()
             .HasForeignKey(c => c.BlockId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        builder.HasOne(c => c.User)
-            .WithMany(u => u.Comments)
+        builder.HasOne<User>()
+            .WithMany()
             .HasForeignKey(c => c.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }

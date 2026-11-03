@@ -34,7 +34,7 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
     {
         Shape(builder);
 
-        builder.HasOne(n => n.User)
+        builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(n => n.UserId)
             .OnDelete(DeleteBehavior.Cascade);
