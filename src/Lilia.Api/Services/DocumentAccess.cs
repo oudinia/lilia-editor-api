@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Lilia.Api.Services;
 
 /// <summary>Documents' answer to <see cref="IDocumentAccess"/>: moved unchanged from DocumentService.HasAccessAsync (3 Nov 2026).</summary>
-public sealed class DocumentAccess(LiliaDbContext context, ISharingDirectory sharing) : IDocumentAccess
+public sealed class DocumentAccess(LiliaDbContext context, ISharingDirectory sharing, ITeamDirectory teams) : IDocumentAccess
 {
     /// <summary>A team grants reading and writing; deleting, managing the sharing and transferring stay with the owner.</summary>
     private static readonly HashSet<string> TeamGrantable = [Permissions.Read, Permissions.Write];
@@ -32,11 +32,8 @@ public sealed class DocumentAccess(LiliaDbContext context, ISharingDirectory sha
         // managing the sharing and transferring stay with the owner.
         if (document.TeamId is { } teamId && TeamGrantable.Contains(permission))
         {
-            var teamRoles = await context.GroupMembers
-                .Where(gm => gm.Group.TeamId == teamId && gm.UserId == userId)
-                .Select(gm => gm.Role.Permissions)
-                .ToListAsync(ct);
-            if (teamRoles.Any(p => p.Contains(permission))) return true;
+            var roles = await teams.PermissionsInAsync(userId, [teamId], ct);
+            if (roles.TryGetValue(teamId, out var granted) && granted.Contains(permission)) return true;
         }
 
         return false;

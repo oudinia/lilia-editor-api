@@ -24,8 +24,9 @@ public class EntitlementService : IEntitlementService
     private readonly bool _aiEnforced;
 
     public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog,
-        IOptions<EntitlementOptions>? options = null, IConfiguration? configuration = null)
+        Lilia.Api.Directories.ITeamDirectory teams, IOptions<EntitlementOptions>? options = null, IConfiguration? configuration = null)
     {
+        _teams = teams;
         // The same switch AskLiliaService and AiArchitectService read before refusing a request.
         _aiEnforced = configuration?.GetValue("AI:EnforceCredits", false) ?? false;
         _context = context;
@@ -255,14 +256,9 @@ public class EntitlementService : IEntitlementService
             .CountAsync(j => j.UserId == userId && j.JobType == "IMPORT" && j.CreatedAt >= monthStart, ct);
     }
 
-    private Task<int> CountTeamSeatsAsync(string userId, CancellationToken ct) =>
-        _context.Teams.AsNoTracking()
-            // FT-SANDBOX-SCOPE: sandbox teams' seats don't count against quota.
-            .Where(t => t.OwnerId == userId && !t.IsPlayground)
-            .SelectMany(t => t.Groups.SelectMany(g => g.Members))
-            .Select(m => m.UserId)
-            .Distinct()
-            .CountAsync(ct);
+    private readonly Lilia.Api.Directories.ITeamDirectory _teams;
+
+    private Task<int> CountTeamSeatsAsync(string userId, CancellationToken ct) => _teams.SeatsOwnedByAsync(userId, ct);
 
     private static int ReadCap(JsonElement caps, string key)
     {

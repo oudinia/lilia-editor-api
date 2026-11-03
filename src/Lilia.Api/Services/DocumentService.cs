@@ -19,14 +19,16 @@ public class DocumentService : IDocumentService
     private readonly IPreviewCacheService? _previewCache;
     // Who a document is shared with is Sharing's to say (2 Nov 2026, the bounded contexts, step 3).
     private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
+    private readonly Lilia.Api.Directories.ITeamDirectory _teams;
     private readonly IDocumentAccess _access;
 
     public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService,
-        Lilia.Api.Directories.ISharingDirectory sharing, IDocumentAccess access,
+        Lilia.Api.Directories.ISharingDirectory sharing, IDocumentAccess access, Lilia.Api.Directories.ITeamDirectory teams,
         IEntitlementService? entitlements = null, IPreviewCacheService? previewCache = null)
     {
         _context = context;
         _sharing = sharing;
+        _teams = teams;
         _access = access;
         _logger = logger;
         _aiService = aiService;
@@ -141,7 +143,7 @@ public class DocumentService : IDocumentService
         // timings), and growing with every author. As a UNION of ids, ~1 ms. The shares (with the user,
         // with a group they are in) come from Sharing as a list of ids, read by primary key here.
         var sharedIds = await _sharing.DocumentsSharedWithAsync(userId, throughGroups: true);
-        var userTeams = _context.GroupMembers.Where(gm => gm.UserId == userId).Select(gm => (Guid?)gm.Group.TeamId);
+        var userTeams = (await _teams.TeamsOfAsync(userId)).Select(t => (Guid?)t).ToList();
         var visible = _context.Documents.Where(x => x.OwnerId == userId).Select(x => x.Id)
             .Union(_context.Documents.Where(x => sharedIds.Contains(x.Id)).Select(x => x.Id))
             .Union(_context.Documents.Where(x => x.TeamId != null && userTeams.Contains(x.TeamId)).Select(x => x.Id));
@@ -228,12 +230,9 @@ public class DocumentService : IDocumentService
         // Teams whose documents the user may edit (their team role writes).
         var teamIds = documents.Where(d => d.TeamId != null && d.OwnerId != userId)
             .Select(d => d.TeamId!.Value).Distinct().ToList();
-        var writableTeams = (await _context.GroupMembers
-                .Where(gm => teamIds.Contains(gm.Group.TeamId) && gm.UserId == userId)
-                .Select(gm => new { gm.Group.TeamId, gm.Role.Permissions })
-                .ToListAsync())
-            .Where(x => x.Permissions.Contains(Permissions.Write))
-            .Select(x => x.TeamId)
+        var writableTeams = (await _teams.PermissionsInAsync(userId, teamIds))
+            .Where(x => x.Value.Contains(Permissions.Write))
+            .Select(x => x.Key)
             .ToHashSet();
 
         var items = documents.Select(d =>
@@ -803,16 +802,8 @@ public class DocumentService : IDocumentService
 
         if (teamId.HasValue)
         {
-            // Membership = a GroupMember row in any of the team's
-            // groups (the default "Everyone" group at minimum),
-            // OR the user is the team's OwnerId fallback. The
-            // old TeamMember table was retired in the same PR as
-            // this check (see RetireTeamMembersTable migration);
-            // every membership lives in group_members now.
-            var hasTeamAccess = await _context.GroupMembers
-                .AnyAsync(gm => gm.Group.TeamId == teamId.Value && gm.UserId == userId)
-                || await _context.Teams
-                    .AnyAsync(t => t.Id == teamId.Value && t.OwnerId == userId);
+            // A member of the team, or its owner: Teams' answer.
+            var hasTeamAccess = await _teams.BelongsToAsync(userId, teamId.Value);
             if (!hasTeamAccess)
             {
                 _logger.LogWarning(
