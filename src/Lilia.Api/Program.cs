@@ -760,7 +760,6 @@ builder.Services.AddScoped<IImportProgressService, ImportProgressService>();
 builder.Services.AddScoped<IImportReviewService, ImportReviewService>();
 
 // Register AI import review service
-builder.Services.AddScoped<IAiImportService, AiImportService>();
 
 // Add HttpClient for external API calls (DOI lookup)
 builder.Services.AddHttpClient();
@@ -794,7 +793,6 @@ else
 builder.Services.AddScoped<IAiService, AiService>();
 
 // Register AI assistant service (math generation, writing improvement, block classification)
-builder.Services.AddScoped<IAiAssistantService, AiAssistantService>();
 
 // Register AI Document-Architect service (conversational block-structure proposals)
 builder.Services.AddScoped<IAiArchitectService, AiArchitectService>();

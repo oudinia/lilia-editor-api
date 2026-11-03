@@ -19,7 +19,7 @@ namespace Lilia.Api.Services;
 /// returns proposed ops, which keeps it stateless and restart / multi-instance
 /// safe. Conversation history is client-held (sent on every call).
 ///
-/// Follows the AiAssistantService pattern: inject <see cref="IChatClient"/>,
+/// Injects <see cref="IChatClient"/>,
 /// gate on a usable API key, call GetResponseAsync with the configured model.
 /// Spend persists to ai_requests + ai_credit_ledger via EntitlementService.
 /// </summary>
