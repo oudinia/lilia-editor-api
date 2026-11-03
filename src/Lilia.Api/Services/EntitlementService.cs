@@ -181,9 +181,13 @@ public class EntitlementService : IEntitlementService
         await _context.SaveChangesAsync(ct);
     }
 
-    public async Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default)
+    public Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default) =>
+        RecordAiSpendAsync(userId, modelId, new AiTokenUse(inputTokens, outputTokens), aiRequestId, ct);
+
+    public async Task<int> RecordAiSpendAsync(string userId, string modelId, AiTokenUse use, Guid aiRequestId, CancellationToken ct = default)
     {
-        var credits = _aiCatalog.CreditsFor(modelId, inputTokens, outputTokens);
+        var credits = _aiCatalog.CreditsFor(modelId, use);
+        var (inputTokens, outputTokens) = (use.Input, use.Output);
         _context.AiCreditLedger.Add(new AiCreditLedger
         {
             Id = Guid.NewGuid(),
@@ -191,7 +195,10 @@ public class EntitlementService : IEntitlementService
             Delta = -credits,
             Reason = "spend",
             AiRequestId = aiRequestId,
-            Note = $"{modelId}: {inputTokens}+{outputTokens} tok",
+            // The cache part only when there is one, so earlier rows and uncached calls read as before.
+            Note = use.CacheWrite + use.CacheRead > 0
+                ? $"{modelId}: {inputTokens}+{outputTokens} tok (cache write {use.CacheWrite}, read {use.CacheRead})"
+                : $"{modelId}: {inputTokens}+{outputTokens} tok",
             CreatedAt = DateTime.UtcNow,
         });
         await _context.SaveChangesAsync(ct);
