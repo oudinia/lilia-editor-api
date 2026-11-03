@@ -33,8 +33,12 @@ public class AuthSessionEndpointTests : IntegrationTestBase, IDisposable
         foreach (var f in _factories) f.Dispose();
     }
 
-    /// <summary>A host with the real user service and Stytch's admin API answered by the stub (or not configured at all).</summary>
-    private HttpClient Caller(string userId, bool stytchConfigured = true, string? email = null, string? name = null)
+    /// <summary>
+    /// A host with Stytch's admin API answered by the stub (or not configured at all), and the real user service
+    /// when <paramref name="realUsers"/>. Only for accounts seeded first: the sign-in sync creating one mints its
+    /// default team in the background, which raced the cleanup (a team left after "DELETE FROM teams").
+    /// </summary>
+    private HttpClient Caller(string userId, bool stytchConfigured = true, string? email = null, string? name = null, bool realUsers = false)
     {
         var factory = Fixture.Factory.WithWebHostBuilder(b =>
         {
@@ -43,8 +47,11 @@ public class AuthSessionEndpointTests : IntegrationTestBase, IDisposable
             b.UseSetting("Stytch:ApiBase", "https://stytch.stub.test");
             b.ConfigureTestServices(s =>
             {
-                s.RemoveAll<IUserService>();
-                s.AddScoped<IUserService, UserService>();
+                if (realUsers)
+                {
+                    s.RemoveAll<IUserService>();
+                    s.AddScoped<IUserService, UserService>();
+                }
                 s.ConfigureHttpClientDefaults(h => h.ConfigurePrimaryHttpMessageHandler(() => new StubHandler(_stytch)));
             });
         });
@@ -69,7 +76,7 @@ public class AuthSessionEndpointTests : IntegrationTestBase, IDisposable
         await SeedUserAsync("me-ada", "ada@example.org", "Ada Lovelace");
         await SeedUserAsync("me-grace", "grace@example.org", "Grace Hopper");
 
-        var res = await Caller("me-ada", email: "ada@example.org", name: "Ada Lovelace").GetAsync("/api/auth/me");
+        var res = await Caller("me-ada", email: "ada@example.org", name: "Ada Lovelace", realUsers: true).GetAsync("/api/auth/me");
 
         res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
