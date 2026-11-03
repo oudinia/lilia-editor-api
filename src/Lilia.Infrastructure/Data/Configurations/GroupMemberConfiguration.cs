@@ -37,8 +37,9 @@ public class GroupMemberConfiguration : IEntityTypeConfiguration<GroupMember>
     {
         Shape(builder);
 
-        builder.HasOne(gm => gm.User)
-            .WithMany(u => u.GroupMemberships)
+        // The key to the person stays; the link went (3 Nov 2026, Teams' bounded context, step 5).
+        builder.HasOne<User>()
+            .WithMany()
             .HasForeignKey(gm => gm.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }

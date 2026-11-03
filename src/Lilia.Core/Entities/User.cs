@@ -45,12 +45,10 @@ public class User
     public Guid? DefaultTeamId { get; set; }
 
     // Navigation properties
-    public virtual Team? DefaultTeam { get; set; }
+    // A person's teams and memberships are Teams' (3 Nov 2026, step 5): DefaultTeamId, not a link.
     // TeamMemberships nav removed when team_members table was
     // retired (see RetireTeamMembersTable migration). Team
     // membership is now exclusively GroupMembership.
-    public virtual ICollection<Team> OwnedTeams { get; set; } = new List<Team>();
-    public virtual ICollection<GroupMember> GroupMemberships { get; set; } = new List<GroupMember>();
     public virtual ICollection<Document> OwnedDocuments { get; set; } = new List<Document>();
     public virtual ICollection<Label> Labels { get; set; } = new List<Label>();
     public virtual ICollection<Formula> Formulas { get; set; } = new List<Formula>();

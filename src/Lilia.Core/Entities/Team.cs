@@ -38,11 +38,10 @@ public class Team
     /// </summary>
     public bool IsPlayground { get; set; } = false;
 
-    // Navigation properties
-    public virtual User Owner { get; set; } = null!;
+    // Navigation properties. The owner and the team's documents are other contexts' (3 Nov 2026, Teams'
+    // bounded context, step 5): reached by OwnerId and documents.team_id, not by a link.
     // Members nav removed when team_members table was retired
     // (see RetireTeamMembersTable migration). Members are now
     // reached via Groups → Group.Members (GroupMember).
     public virtual ICollection<Group> Groups { get; set; } = new List<Group>();
-    public virtual ICollection<Document> Documents { get; set; } = new List<Document>();
 }

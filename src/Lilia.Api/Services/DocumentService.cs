@@ -150,7 +150,6 @@ public class DocumentService : IDocumentService
 
         var query = _context.Documents
             .Include(d => d.Owner)
-            .Include(d => d.Team)
             .Include(d => d.DocumentLabels)
                 .ThenInclude(dl => dl.Label)
             .Where(d => d.DeletedAt == null)
@@ -234,6 +233,8 @@ public class DocumentService : IDocumentService
             .Where(x => x.Value.Contains(Permissions.Write))
             .Select(x => x.Key)
             .ToHashSet();
+        // The teams' names, for the list's team column: Teams' to say (3 Nov 2026, step 5).
+        var teamNames = await _teams.NamesOfAsync(documents.Where(d => d.TeamId != null).Select(d => d.TeamId!.Value));
 
         var items = documents.Select(d =>
         {
@@ -255,7 +256,7 @@ public class DocumentService : IDocumentService
                 d.OwnerId,
                 d.Owner?.Name,
                 d.TeamId,
-                d.Team?.Name,
+                d.TeamId is { } team ? teamNames.GetValueOrDefault(team) : null,
                 d.CreatedAt,
                 d.UpdatedAt,
                 d.LastOpenedAt,

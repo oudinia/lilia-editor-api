@@ -31,6 +31,15 @@ public sealed class TeamDirectory(TeamsDbContext db) : ITeamDirectory
 
     // Moved unchanged from DocumentService, DocumentAccess, UsersController and EntitlementService (3 Nov 2026).
 
+    public async Task<IReadOnlyDictionary<Guid, string>> NamesOfAsync(IEnumerable<Guid> teamIds, CancellationToken ct = default)
+    {
+        var ids = teamIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, string>();
+        return await db.Teams.AsNoTracking()
+            .Where(t => ids.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+    }
+
     public async Task<IReadOnlySet<Guid>> TeamsOfAsync(string userId, CancellationToken ct = default) =>
         (await db.GroupMembers.AsNoTracking()
             .Where(m => m.UserId == userId)
