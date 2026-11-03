@@ -6,7 +6,8 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class TeamConfiguration : IEntityTypeConfiguration<Team>
 {
-    public void Configure(EntityTypeBuilder<Team> builder)
+    /// <summary>The table as Teams' own context maps it too (3 Nov 2026, Teams' bounded context, step 4); the link to the owner is this context's.</summary>
+    public static void Shape(EntityTypeBuilder<Team> builder)
     {
         builder.ToTable("teams", t =>
         {
@@ -28,6 +29,11 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
         builder.HasIndex(t => t.TeamCode).IsUnique();
         builder.HasIndex(t => t.Slug).IsUnique();
         builder.HasIndex(t => t.OwnerId);
+    }
+
+    public void Configure(EntityTypeBuilder<Team> builder)
+    {
+        Shape(builder);
 
         builder.HasOne(t => t.Owner)
             .WithMany(u => u.OwnedTeams)

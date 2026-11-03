@@ -1,11 +1,11 @@
 using Lilia.Api.Directories;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Teams.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Api.Features.Teams.Services;
 
 /// <summary>Teams' answer to <see cref="ITeamDirectory"/>: read-only, untracked.</summary>
-public sealed class TeamDirectory(LiliaDbContext db) : ITeamDirectory
+public sealed class TeamDirectory(TeamsDbContext db) : ITeamDirectory
 {
     public Task<GroupCard?> FindGroupAsync(Guid groupId, CancellationToken ct = default) =>
         db.Groups.AsNoTracking()

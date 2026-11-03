@@ -6,7 +6,8 @@ namespace Lilia.Infrastructure.Data.Configurations;
 
 public class GroupMemberConfiguration : IEntityTypeConfiguration<GroupMember>
 {
-    public void Configure(EntityTypeBuilder<GroupMember> builder)
+    /// <summary>The table as Teams' own context maps it too (3 Nov 2026, Teams' bounded context, step 4); the link to the person is this context's.</summary>
+    public static void Shape(EntityTypeBuilder<GroupMember> builder)
     {
         builder.ToTable("group_members");
 
@@ -26,14 +27,19 @@ public class GroupMemberConfiguration : IEntityTypeConfiguration<GroupMember>
             .HasForeignKey(gm => gm.GroupId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(gm => gm.User)
-            .WithMany(u => u.GroupMemberships)
-            .HasForeignKey(gm => gm.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
-
         builder.HasOne(gm => gm.Role)
             .WithMany(r => r.GroupMembers)
             .HasForeignKey(gm => gm.RoleId)
             .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    public void Configure(EntityTypeBuilder<GroupMember> builder)
+    {
+        Shape(builder);
+
+        builder.HasOne(gm => gm.User)
+            .WithMany(u => u.GroupMemberships)
+            .HasForeignKey(gm => gm.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

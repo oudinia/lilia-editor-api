@@ -3,7 +3,7 @@ using Lilia.Api.Features.Teams.Services;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Teams.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -23,7 +23,7 @@ public class CreateDefaultTeamHandler
 {
     public async Task Handle(
         UserCreatedEvent evt,
-        LiliaDbContext db,
+        TeamsDbContext db,
         Lilia.Api.Directories.IPeopleDirectory people,
         Lilia.Api.Directories.ITeamAccounts accounts,
         ITeamCodenameGenerator codenames,

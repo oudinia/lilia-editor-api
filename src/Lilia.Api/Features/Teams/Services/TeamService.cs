@@ -1,7 +1,7 @@
 using Lilia.Api.Features.Teams.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
-using Lilia.Infrastructure.Data;
+using Lilia.Api.Features.Teams.Data;
 using Microsoft.EntityFrameworkCore;
 using Lilia.Api.Services;
 
@@ -9,7 +9,7 @@ namespace Lilia.Api.Features.Teams.Services;
 
 public class TeamService : ITeamService
 {
-    private readonly LiliaDbContext _context;
+    private readonly TeamsDbContext _context;
     private readonly IUserService _userService;
     // Teams reads only its own tables (3 Nov 2026, Teams' bounded context, step 4): people's names and
     // default teams, and a team's documents, come from their own contexts.
@@ -20,7 +20,7 @@ public class TeamService : ITeamService
     private readonly Wolverine.IMessageBus? _bus;
     private readonly ITeamCodenameGenerator? _codenames;
 
-    public TeamService(LiliaDbContext context, IUserService userService, Lilia.Api.Directories.IPeopleDirectory people,
+    public TeamService(TeamsDbContext context, IUserService userService, Lilia.Api.Directories.IPeopleDirectory people,
         Lilia.Api.Directories.ITeamAccounts accounts, Lilia.Api.Directories.IDocumentDirectory documents,
         INotificationService? notificationService = null, Wolverine.IMessageBus? bus = null, ITeamCodenameGenerator? codenames = null)
     {
