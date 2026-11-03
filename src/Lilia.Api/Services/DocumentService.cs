@@ -19,13 +19,15 @@ public class DocumentService : IDocumentService
     private readonly IPreviewCacheService? _previewCache;
     // Who a document is shared with is Sharing's to say (2 Nov 2026, the bounded contexts, step 3).
     private readonly Lilia.Api.Directories.ISharingDirectory _sharing;
+    private readonly IDocumentAccess _access;
 
     public DocumentService(LiliaDbContext context, ILogger<DocumentService> logger, IAiService aiService,
-        Lilia.Api.Directories.ISharingDirectory sharing,
+        Lilia.Api.Directories.ISharingDirectory sharing, IDocumentAccess access,
         IEntitlementService? entitlements = null, IPreviewCacheService? previewCache = null)
     {
         _context = context;
         _sharing = sharing;
+        _access = access;
         _logger = logger;
         _aiService = aiService;
         _entitlements = entitlements;
@@ -964,38 +966,9 @@ public class DocumentService : IDocumentService
             .FirstOrDefaultAsync();
     }
 
-    public async Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission)
-    {
-        var document = await _context.Documents.AsNoTracking()
-            .Where(d => d.Id == documentId)
-            .Select(d => new { d.OwnerId, d.TeamId })
-            .FirstOrDefaultAsync();
-
-        if (document == null) return false;
-
-        // Owner always has full access
-        if (document.OwnerId == userId) return true;
-
-        // A share with the person, or with a group they are in: Sharing's answer.
-        if (await _sharing.GrantsAsync(documentId, userId, requiredPermission))
-            return true;
-
-        // Team access: a document put in a team is open to the team's
-        // members, at their team role. It stops at editing: deleting,
-        // managing the sharing and transferring stay with the owner.
-        if (document.TeamId is { } teamId && TeamGrantable.Contains(requiredPermission))
-        {
-            var teamRoles = await _context.GroupMembers
-                .Where(gm => gm.Group.TeamId == teamId && gm.UserId == userId)
-                .Select(gm => gm.Role.Permissions)
-                .ToListAsync();
-            if (teamRoles.Any(p => p.Contains(requiredPermission))) return true;
-        }
-
-        return false;
-    }
-
-    private static readonly HashSet<string> TeamGrantable = [Permissions.Read, Permissions.Write];
+    // The rule lives in DocumentAccess (3 Nov 2026), so what needs only it doesn't depend on this service.
+    public Task<bool> HasAccessAsync(Guid documentId, string userId, string requiredPermission) =>
+        _access.CanAsync(documentId, userId, requiredPermission);
 
     public async Task<PaginatedResult<TrashDocumentDto>> GetTrashDocumentsPaginatedAsync(string userId, int page = 1, int pageSize = 20)
     {

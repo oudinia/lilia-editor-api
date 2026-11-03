@@ -79,8 +79,9 @@ public sealed class RequireDocumentAccessAttribute : Attribute, IAsyncAuthorizat
             return;
         }
 
-        var documents = http.RequestServices.GetRequiredService<IDocumentService>();
-        if (!await documents.HasAccessAsync(documentId, userId, PermissionFor(effective.Permission, http.Request.Method)))
+        // The access check alone (3 Nov 2026), not the whole DocumentService.
+        var access = http.RequestServices.GetRequiredService<IDocumentAccess>();
+        if (!await access.CanAsync(documentId, userId, PermissionFor(effective.Permission, http.Request.Method), http.RequestAborted))
             context.Result = new ForbidResult();
     }
 }

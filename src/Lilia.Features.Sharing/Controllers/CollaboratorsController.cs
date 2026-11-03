@@ -12,12 +12,13 @@ namespace Lilia.Api.Controllers;
 public class CollaboratorsController : ControllerBase
 {
     private readonly ICollaboratorService _collaboratorService;
-    private readonly IDocumentService _documentService;
+    // Only the access check (3 Nov 2026), not the whole DocumentService.
+    private readonly IDocumentAccess _access;
 
-    public CollaboratorsController(ICollaboratorService collaboratorService, IDocumentService documentService)
+    public CollaboratorsController(ICollaboratorService collaboratorService, IDocumentAccess access)
     {
         _collaboratorService = collaboratorService;
-        _documentService = documentService;
+        _access = access;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -28,7 +29,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var collaborators = await _collaboratorService.GetCollaboratorsAsync(docId);
@@ -40,7 +41,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var collaborator = await _collaboratorService.AddUserCollaboratorAsync(docId, userId, dto);
@@ -53,7 +54,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var collaborator = await _collaboratorService.AddGroupCollaboratorAsync(docId, userId, dto);
@@ -68,7 +69,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var collaborator = await _collaboratorService.AddUserCollaboratorAsync(docId, userId, new AddUserCollaboratorDto(targetUserId, dto.Role), silent: true);
@@ -87,7 +88,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         return await _collaboratorService.SendRemovalNoticeAsync(docId, targetUserId, userId, allowReply) ? NoContent() : Conflict();
@@ -98,7 +99,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var collaborator = await _collaboratorService.UpdateUserCollaboratorRoleAsync(docId, targetUserId, userId, dto);
@@ -111,7 +112,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var collaborator = await _collaboratorService.UpdateGroupCollaboratorRoleAsync(docId, groupId, userId, dto);
@@ -124,7 +125,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var result = await _collaboratorService.RemoveUserCollaboratorAsync(docId, targetUserId, userId, notify, allowReply);
@@ -137,7 +138,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var result = await _collaboratorService.RemoveGroupCollaboratorAsync(docId, groupId, userId);
@@ -150,7 +151,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var result = await _collaboratorService.InviteByEmailAsync(docId, userId, dto);
@@ -164,7 +165,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         return Ok(await _collaboratorService.GetPendingInvitesAsync(docId));
@@ -176,7 +177,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         var result = await _collaboratorService.ResendInviteAsync(docId, inviteId, userId);
@@ -190,7 +191,7 @@ public class CollaboratorsController : ControllerBase
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Manage))
+        if (!await _access.CanAsync(docId, userId, Permissions.Manage))
             return Forbid();
 
         return await _collaboratorService.CancelInviteAsync(docId, inviteId) ? NoContent() : NotFound();

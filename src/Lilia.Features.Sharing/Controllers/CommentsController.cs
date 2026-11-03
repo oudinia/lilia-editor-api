@@ -21,17 +21,18 @@ namespace Lilia.Api.Controllers;
 public class CommentsController : ControllerBase
 {
     private readonly SharingDbContext _db;
-    private readonly IDocumentService _documentService;
+    // Only the access check (3 Nov 2026), not the whole DocumentService.
+    private readonly IDocumentAccess _access;
     private readonly IDocumentDirectory _documents;
     private readonly IPeopleDirectory _people;
     private readonly ILogger<CommentsController> _logger;
 
-    public CommentsController(SharingDbContext db, IDocumentService documentService, IDocumentDirectory documents, IPeopleDirectory people, ILogger<CommentsController> logger)
+    public CommentsController(SharingDbContext db, IDocumentAccess access, IDocumentDirectory documents, IPeopleDirectory people, ILogger<CommentsController> logger)
     {
         _db = db;
         _documents = documents;
         _people = people;
-        _documentService = documentService;
+        _access = access;
         _logger = logger;
     }
 
@@ -50,7 +51,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var query = _db.Comments
@@ -79,7 +80,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var comment = await _db.Comments
@@ -100,7 +101,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         if (string.IsNullOrWhiteSpace(dto.Content))
@@ -148,7 +149,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var comment = await _db.Comments
@@ -183,7 +184,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var comment = await _db.Comments
@@ -216,7 +217,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         if (string.IsNullOrWhiteSpace(dto.Content))
@@ -256,7 +257,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var reply = await _db.CommentReplies
@@ -292,7 +293,7 @@ public class CommentsController : ControllerBase
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        if (!await _documentService.HasAccessAsync(docId, userId, Permissions.Read))
+        if (!await _access.CanAsync(docId, userId, Permissions.Read))
             return Forbid();
 
         var total = await _db.Comments.CountAsync(c => c.DocumentId == docId);
