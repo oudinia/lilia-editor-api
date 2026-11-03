@@ -44,6 +44,28 @@ public class TeamsTablesTests
     }
 
     [Fact]
+    public void No_navigation_crosses_Teams_line()
+    {
+        // Step 5 (3 Nov 2026): a team, its groups and members hold the ids of people and documents, and those
+        // hold only a team's id. The foreign keys stay in the database. Roles are shared with Sharing.
+        static Type ElementOf(Type t) => t.IsGenericType && t != typeof(string) ? t.GetGenericArguments()[0] : t;
+        static bool IsEntity(Type t) => t.Namespace == "Lilia.Core.Entities";
+        Type[] teams = [typeof(Lilia.Core.Entities.Team), typeof(Lilia.Core.Entities.Group), typeof(Lilia.Core.Entities.GroupMember)];
+        var shared = typeof(Lilia.Core.Entities.Role);
+        IEnumerable<string> NavigationsOf(Type t, Func<Type, bool> target) => t
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(p => p.GetGetMethod()!.IsVirtual && IsEntity(ElementOf(p.PropertyType)) && target(ElementOf(p.PropertyType)))
+            .Select(p => $"{t.Name}.{p.Name}");
+
+        var others = typeof(Lilia.Core.Entities.Document).Assembly.GetTypes()
+            .Where(t => IsEntity(t) && t.IsClass && !teams.Contains(t) && t != shared).ToList();
+        others.Should().Contain([typeof(Lilia.Core.Entities.Document), typeof(Lilia.Core.Entities.User)], "the entities are read as expected");
+
+        teams.SelectMany(t => NavigationsOf(t, e => !teams.Contains(e) && e != shared)).Should().BeEmpty("Teams' entities keep ids, not links, out of it");
+        others.SelectMany(t => NavigationsOf(t, teams.Contains)).Should().BeEmpty("no other entity links into Teams'");
+    }
+
+    [Fact]
     public void No_code_outside_Teams_names_its_tables()
     {
         var src = Path.Combine(RepoRoot(), "src");

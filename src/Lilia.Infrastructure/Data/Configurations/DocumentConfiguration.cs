@@ -108,8 +108,9 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .HasForeignKey(d => d.OwnerId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasOne(d => d.Team)
-            .WithMany(t => t.Documents)
+        // The key to the team stays; the link went (3 Nov 2026, Teams' bounded context, step 5).
+        builder.HasOne<Team>()
+            .WithMany()
             .HasForeignKey(d => d.TeamId)
             .OnDelete(DeleteBehavior.SetNull);
 

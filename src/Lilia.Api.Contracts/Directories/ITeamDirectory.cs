@@ -17,6 +17,9 @@ public interface ITeamDirectory
     /// <summary>The groups the person is a member of.</summary>
     Task<IReadOnlySet<Guid>> GroupsOfAsync(string userId, CancellationToken ct = default);
 
+    /// <summary>The names of the teams found among <paramref name="teamIds"/>, by id; the missing ones are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> NamesOfAsync(IEnumerable<Guid> teamIds, CancellationToken ct = default);
+
     /// <summary>The teams the person is a member of, through any of their groups.</summary>
     Task<IReadOnlySet<Guid>> TeamsOfAsync(string userId, CancellationToken ct = default);
 

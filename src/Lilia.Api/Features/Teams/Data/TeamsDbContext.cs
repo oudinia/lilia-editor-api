@@ -26,8 +26,6 @@ public sealed class TeamsDbContext(DbContextOptions<TeamsDbContext> options) : D
         base.OnModelCreating(modelBuilder);
 
         // Other contexts' records: their navigations on Teams' entities are left out of this model.
-        modelBuilder.Ignore<User>();
-        modelBuilder.Ignore<Document>();
         modelBuilder.Ignore<DocumentCollaborator>();
         modelBuilder.Ignore<DocumentGroup>();
 

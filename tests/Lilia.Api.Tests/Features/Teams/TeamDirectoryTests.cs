@@ -2,6 +2,7 @@ using FluentAssertions;
 using Lilia.Api.Directories;
 using Lilia.Api.Tests.Integration.Infrastructure;
 using Lilia.Core.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Lilia.Api.Tests.Features.Teams;
@@ -81,5 +82,28 @@ public class TeamDirectoryTests : IntegrationTestBase
         (await accounts.ClaimDefaultTeamAsync("td-claim", second)).Should().BeFalse("a second sign-up event keeps the first team");
         (await accounts.DefaultTeamOfAsync("td-claim")).Should().Be(first);
         (await accounts.ClaimDefaultTeamAsync("td-nobody", first)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Deleting_a_team_leaves_its_documents_and_the_owners_account_without_it()
+    {
+        // Teams' context knows no documents or people since step 5: the database's ON DELETE SET NULL does it.
+        await SeedUserAsync("td-del");
+        var (team, _) = await SeedTeamAsync("td-del");
+        var doc = await SeedDocumentAsync("td-del", "In the team");
+        await using (var db = CreateDbContext())
+        {
+            await db.Documents.Where(d => d.Id == doc.Id).ExecuteUpdateAsync(s => s.SetProperty(d => d.TeamId, team));
+            await db.Users.Where(u => u.Id == "td-del").ExecuteUpdateAsync(s => s.SetProperty(u => u.DefaultTeamId, team));
+        }
+
+        using (var scope = Fixture.Factory.Services.CreateScope())
+            (await scope.ServiceProvider.GetRequiredService<Lilia.Api.Features.Teams.Services.ITeamService>().DeleteTeamAsync(team, "td-del"))
+                .Should().BeTrue();
+
+        await using var check = CreateDbContext();
+        (await check.Documents.SingleAsync(d => d.Id == doc.Id)).TeamId.Should().BeNull("the document stays, outside the team");
+        (await check.Users.SingleAsync(u => u.Id == "td-del")).DefaultTeamId.Should().BeNull();
+        (await check.Groups.AnyAsync(g => g.TeamId == team)).Should().BeFalse("the team's groups go with it");
     }
 }

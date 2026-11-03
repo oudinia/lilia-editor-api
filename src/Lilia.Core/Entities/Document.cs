@@ -245,7 +245,7 @@ public class Document
 
     // Navigation properties
     public virtual User Owner { get; set; } = null!;
-    public virtual Team? Team { get; set; }
+    // The team is Teams' (3 Nov 2026, step 5): TeamId, its name asked of ITeamDirectory.
     public virtual ICollection<Block> Blocks { get; set; } = new List<Block>();
     public virtual ICollection<BibliographyEntry> BibliographyEntries { get; set; } = new List<BibliographyEntry>();
     public virtual ICollection<DocumentLabel> DocumentLabels { get; set; } = new List<DocumentLabel>();

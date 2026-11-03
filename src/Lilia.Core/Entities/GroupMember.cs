@@ -10,6 +10,5 @@ public class GroupMember
 
     // Navigation properties
     public virtual Group Group { get; set; } = null!;
-    public virtual User User { get; set; } = null!;
     public virtual Role Role { get; set; } = null!;
 }

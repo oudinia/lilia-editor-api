@@ -38,7 +38,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         // DefaultTeam relationship — nullable, no cascade (we don't
         // want deleting a team to nuke the user; the webhook will
         // re-mint a default if needed).
-        builder.HasOne(u => u.DefaultTeam)
+        builder.HasOne<Team>()
             .WithMany()
             .HasForeignKey(u => u.DefaultTeamId)
             .OnDelete(DeleteBehavior.SetNull);

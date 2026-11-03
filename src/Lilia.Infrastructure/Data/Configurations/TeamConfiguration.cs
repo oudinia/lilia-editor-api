@@ -35,8 +35,9 @@ public class TeamConfiguration : IEntityTypeConfiguration<Team>
     {
         Shape(builder);
 
-        builder.HasOne(t => t.Owner)
-            .WithMany(u => u.OwnedTeams)
+        // The key to the owner stays; the link went (3 Nov 2026, Teams' bounded context, step 5).
+        builder.HasOne<User>()
+            .WithMany()
             .HasForeignKey(t => t.OwnerId)
             .OnDelete(DeleteBehavior.Restrict);
     }
