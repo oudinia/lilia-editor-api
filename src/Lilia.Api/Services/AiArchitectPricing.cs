@@ -18,7 +18,9 @@ public static class AiArchitectPricing
         ["claude-opus-4-8"] = (5.00m, 25.00m),
         ["claude-sonnet-4-6"] = (3.00m, 15.00m),
         ["claude-haiku-4-5"] = (1.00m, 5.00m),
-        ["claude-haiku-5-5"] = (0.10m, 0.50m),
+        // Haiku 5.5 is $0.10 / $0.50 up to 100,000 prompt tokens and five times that beyond. Ask Lilia often
+        // sends more, so it is priced at the higher rate: never undercharged (3 Nov 2026, the fast skills).
+        ["claude-haiku-5-5"] = (0.50m, 2.50m),
         ["claude-fable-5-1"] = (10.00m, 50.00m),
     };
 

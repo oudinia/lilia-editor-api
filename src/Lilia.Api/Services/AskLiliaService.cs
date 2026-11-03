@@ -101,6 +101,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
     // Reading maths from a photo or a paste: TeX checks each formula with the document's preamble (18 Oct).
     private readonly ILaTeXRenderService? _latexRender;
     private readonly string? _mathModel;
+    private readonly Dictionary<string, AiTierOptions> _tiers;
     private readonly int _creditsPerCompile;
     private readonly bool _useAi;
     private readonly bool _enabled;
@@ -125,13 +126,31 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// the API moves to the end of the conversation on each call. The adapter fills in the messages, the
     /// system prompt and the tools.
     /// </summary>
-    internal static Anthropic.Models.Messages.MessageCreateParams CachedRequest(string model) => new()
+    internal static Anthropic.Models.Messages.MessageCreateParams CachedRequest(string model, string? effort = null) => new()
     {
         Model = model,
         MaxTokens = MaxOutputTokens,
         Messages = [],
         CacheControl = new Anthropic.Models.Messages.CacheControlEphemeral(),
+        // The tier's effort (3 Nov 2026): a quick answer needs less thinking than a document rewrite.
+        OutputConfig = effort is null ? null : new Anthropic.Models.Messages.OutputConfig { Effort = effort },
     };
+
+    /// <summary>
+    /// The model and effort for a question (3 Nov 2026). A model the user picked wins when their plan allows it;
+    /// otherwise the skill's tier (AI:Tiers) chooses, if its model is in the catalog; otherwise the default.
+    /// </summary>
+    internal async Task<(string Model, string? Effort)> ChooseModelAsync(string userId, string? requested, AiSkill skill, CancellationToken ct)
+    {
+        var model = await ResolveModelAsync(userId, requested, ct);
+        if (!string.IsNullOrWhiteSpace(requested) && model == requested) return (model, null);
+        // The tier's model and effort go together: a tier whose model isn't in the catalog falls back to
+        // the default as it was, not the default at the cheap tier's effort.
+        if (_tiers.TryGetValue(skill.Tier, out var tier)
+            && (string.IsNullOrWhiteSpace(tier.Model) || _catalog.Get(tier.Model) is not null))
+            return (string.IsNullOrWhiteSpace(tier.Model) ? model : tier.Model!, string.IsNullOrWhiteSpace(tier.Effort) ? null : tier.Effort);
+        return (model, null);
+    }
     // Bound the tool-use loop: each round is one model call; this caps cost and
     // guarantees termination even if the model keeps requesting tools.
     // Full multi-block rewrites used to die at 4 rounds (partial docs + empty
@@ -243,6 +262,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         _checker = checker;
         _latexRender = latexRender;
         _mathModel = configuration["AI:Math:Model"];
+        _tiers = configuration.GetSection("AI:Tiers").Get<Dictionary<string, AiTierOptions>>() ?? new();
         _creditsPerCompile = configuration.GetValue("AI:CheckDocument:CreditsPerCompile", 1);
         _chatClient = chatClient;
         _entitlement = entitlement;
@@ -460,15 +480,15 @@ public sealed partial class AskLiliaService : IAskLiliaService
             messages.Add(new ChatMessage(ChatRole.User, request.Message));
         }
 
-        // ── model resolution (catalog default; honour a tier-allowed override) ─
-        var model = await ResolveModelAsync(userId, request.Model, ct);
+        // ── model resolution: the one the user picked if their plan allows it, else the skill's tier ─
+        var (model, effort) = await ChooseModelAsync(userId, request.Model, skill, ct);
 
         // ── audit → tool-use loop → meter ─────────────────────────────────
         var aiRequestId = await PersistPendingAsync(userId, PurposeFor(skill.Id), model, messages, documentId, ct);
         var sw = Stopwatch.StartNew();
         try
         {
-            _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model}", skill.Id, userId, model);
+            _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model} effort={Effort}", skill.Id, userId, model, effort ?? "(model's)");
 
             var changed = new List<string>(); // block ids the write tools touched
             var metaChanged = false; // category/class (or other doc-level meta) writes
@@ -506,7 +526,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 // Prompt caching (3 Nov 2026): every round of the tool loop resent the whole conversation
                 // (document, tools, results) at full price, up to 190,000 tokens a question. The top-level
                 // marker caches it up to the newest block, and the next round reads it at a tenth.
-                RawRepresentationFactory = _ => CachedRequest(model),
+                RawRepresentationFactory = _ => CachedRequest(model, effort),
             };
 
             var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct);
