@@ -20,7 +20,7 @@ public class SendInviteEmailHandler
         TeamInviteCreatedEvent evt,
         IEmailService email,
         EmailSettings settings,
-        LiliaDbContext db,
+        Lilia.Api.Directories.IPeopleDirectory people,
         ILogger<SendInviteEmailHandler> logger)
     {
         var inviterName = string.IsNullOrWhiteSpace(evt.InvitedByName) ? "A teammate" : evt.InvitedByName!;
@@ -33,11 +33,10 @@ public class SendInviteEmailHandler
         try
         {
             // Their language when they have an account, else the inviter's.
-            var invited = evt.InvitedEmail.Trim().ToLower();
-            var to = await db.Users.AsNoTracking().Where(u => u.Email.ToLower() == invited)
-                .Select(u => new { u.Locale }).FirstOrDefaultAsync();
-            var by = await db.Users.AsNoTracking().Where(u => u.Id == evt.InvitedByUserId)
-                .Select(u => new { u.Email, u.Locale }).FirstOrDefaultAsync();
+            // Asked of the people directory (3 Nov 2026, Teams' bounded context, step 4): as typed, then lowercased.
+            var invited = evt.InvitedEmail.Trim();
+            var to = await people.FindByEmailAsync(invited) ?? await people.FindByEmailAsync(invited.ToLowerInvariant());
+            var by = await people.FindAsync(evt.InvitedByUserId);
             await email.SendTeamInviteAsync(
                 toEmail: evt.InvitedEmail,
                 inviter: new EmailActor(inviterName, by?.Email),

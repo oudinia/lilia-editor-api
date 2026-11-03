@@ -11,14 +11,24 @@ public class TeamService : ITeamService
 {
     private readonly LiliaDbContext _context;
     private readonly IUserService _userService;
+    // Teams reads only its own tables (3 Nov 2026, Teams' bounded context, step 4): people's names and
+    // default teams, and a team's documents, come from their own contexts.
+    private readonly Lilia.Api.Directories.IPeopleDirectory _people;
+    private readonly Lilia.Api.Directories.ITeamAccounts _accounts;
+    private readonly Lilia.Api.Directories.IDocumentDirectory _documents;
     private readonly INotificationService? _notificationService;
     private readonly Wolverine.IMessageBus? _bus;
     private readonly ITeamCodenameGenerator? _codenames;
 
-    public TeamService(LiliaDbContext context, IUserService userService, INotificationService? notificationService = null, Wolverine.IMessageBus? bus = null, ITeamCodenameGenerator? codenames = null)
+    public TeamService(LiliaDbContext context, IUserService userService, Lilia.Api.Directories.IPeopleDirectory people,
+        Lilia.Api.Directories.ITeamAccounts accounts, Lilia.Api.Directories.IDocumentDirectory documents,
+        INotificationService? notificationService = null, Wolverine.IMessageBus? bus = null, ITeamCodenameGenerator? codenames = null)
     {
         _context = context;
         _userService = userService;
+        _people = people;
+        _accounts = accounts;
+        _documents = documents;
         _notificationService = notificationService;
         _bus = bus;
         _codenames = codenames;
@@ -46,20 +56,16 @@ public class TeamService : ITeamService
 
     public async Task<List<TeamDto>> GetTeamsAsync(string userId)
     {
-        // Pull the user's DefaultTeamId so the DTO can flag it. Single
-        // round-trip — no Include needed because we only need the scalar.
-        var defaultTeamId = await _context.Users
-            .Where(u => u.Id == userId)
-            .Select(u => u.DefaultTeamId)
-            .FirstOrDefaultAsync();
+        // The user's default team, so the DTO can flag it.
+        var defaultTeamId = await _accounts.DefaultTeamOfAsync(userId);
 
         var teams = await _context.Teams
-            .Include(t => t.Owner)
             .Include(t => t.Groups)
                 .ThenInclude(g => g.Members)
             // FT-SANDBOX-SCOPE: sandbox teams never appear in real team lists.
             .Where(t => !t.IsPlayground && (t.OwnerId == userId || t.Groups.Any(g => g.Members.Any(m => m.UserId == userId))))
             .ToListAsync();
+        var owners = await _people.FindManyAsync(teams.Select(t => t.OwnerId));
 
         return teams.Select(t => new TeamDto(
             t.Id,
@@ -67,7 +73,7 @@ public class TeamService : ITeamService
             t.Slug,
             t.Image,
             t.OwnerId,
-            t.Owner?.Name,
+            owners.GetValueOrDefault(t.OwnerId)?.Name,
             t.CreatedAt,
             t.UpdatedAt,
             t.Groups.SelectMany(g => g.Members).Select(m => m.UserId).Distinct().Count(),
@@ -78,10 +84,6 @@ public class TeamService : ITeamService
     public async Task<TeamDetailsDto?> GetTeamAsync(Guid teamId, string userId)
     {
         var team = await _context.Teams
-            .Include(t => t.Owner)
-            .Include(t => t.Groups)
-                .ThenInclude(g => g.Members)
-                    .ThenInclude(m => m.User)
             .Include(t => t.Groups)
                 .ThenInclude(g => g.Members)
                     .ThenInclude(m => m.Role)
@@ -93,19 +95,8 @@ public class TeamService : ITeamService
         if (team.OwnerId != userId && !team.Groups.Any(g => g.Members.Any(m => m.UserId == userId)))
             return null;
 
-        var members = team.Groups
-            .SelectMany(g => g.Members)
-            .GroupBy(m => m.UserId)
-            .Select(g => g.First())
-            .Select(m => new TeamMemberDto(
-                m.UserId,
-                m.User?.Name,
-                m.User?.Email,
-                m.User?.Image,
-                m.Role.Name,
-                m.CreatedAt
-            ))
-            .ToList();
+        var members = await MembersOfAsync(team);
+        var owner = await _people.FindAsync(team.OwnerId);
 
         return new TeamDetailsDto(
             team.Id,
@@ -113,7 +104,7 @@ public class TeamService : ITeamService
             team.Slug,
             team.Image,
             team.OwnerId,
-            team.Owner?.Name,
+            owner?.Name,
             team.CreatedAt,
             team.UpdatedAt,
             members
@@ -163,7 +154,7 @@ public class TeamService : ITeamService
         _context.Teams.Add(team);
         await _context.SaveChangesAsync();
 
-        var owner = await _context.Users.FindAsync(userId);
+        var owner = await _people.FindAsync(userId);
 
         return new TeamDto(
             team.Id,
@@ -228,7 +219,7 @@ public class TeamService : ITeamService
         _context.Teams.Add(team);
         await _context.SaveChangesAsync();
 
-        var owner = await _context.Users.FindAsync(userId);
+        var owner = await _people.FindAsync(userId);
         return new TeamDto(
             team.Id, team.Name, team.Slug, team.Image, team.OwnerId, owner?.Name,
             team.CreatedAt, team.UpdatedAt, 1, false);
@@ -256,7 +247,6 @@ public class TeamService : ITeamService
     public async Task<TeamDto?> UpdateTeamAsync(Guid teamId, string userId, UpdateTeamDto dto)
     {
         var team = await _context.Teams
-            .Include(t => t.Owner)
             .FirstOrDefaultAsync(t => t.Id == teamId);
 
         if (team == null || team.OwnerId != userId) return null;
@@ -276,10 +266,8 @@ public class TeamService : ITeamService
 
         // Re-check default flag — the team being updated may be the
         // caller's default; preserves the badge after rename / image edit.
-        var defaultTeamId = await _context.Users
-            .Where(u => u.Id == userId)
-            .Select(u => u.DefaultTeamId)
-            .FirstOrDefaultAsync();
+        var defaultTeamId = await _accounts.DefaultTeamOfAsync(userId);
+        var owner = await _people.FindAsync(team.OwnerId);
 
         return new TeamDto(
             team.Id,
@@ -287,7 +275,7 @@ public class TeamService : ITeamService
             team.Slug,
             team.Image,
             team.OwnerId,
-            team.Owner?.Name,
+            owner?.Name,
             team.CreatedAt,
             team.UpdatedAt,
             memberCount,
@@ -311,9 +299,6 @@ public class TeamService : ITeamService
         var team = await _context.Teams
             .Include(t => t.Groups)
                 .ThenInclude(g => g.Members)
-                    .ThenInclude(m => m.User)
-            .Include(t => t.Groups)
-                .ThenInclude(g => g.Members)
                     .ThenInclude(m => m.Role)
             .FirstOrDefaultAsync(t => t.Id == teamId);
 
@@ -323,15 +308,24 @@ public class TeamService : ITeamService
         if (team.OwnerId != userId && !team.Groups.Any(g => g.Members.Any(m => m.UserId == userId)))
             return new List<TeamMemberDto>();
 
-        return team.Groups
+        return await MembersOfAsync(team);
+    }
+
+    /// <summary>A team's members, once each, named by the people directory.</summary>
+    private async Task<List<TeamMemberDto>> MembersOfAsync(Team team)
+    {
+        var memberships = team.Groups
             .SelectMany(g => g.Members)
             .GroupBy(m => m.UserId)
             .Select(g => g.First())
+            .ToList();
+        var people = await _people.FindManyAsync(memberships.Select(m => m.UserId));
+        return memberships
             .Select(m => new TeamMemberDto(
                 m.UserId,
-                m.User?.Name,
-                m.User?.Email,
-                m.User?.Image,
+                people.GetValueOrDefault(m.UserId)?.Name,
+                people.GetValueOrDefault(m.UserId)?.Email,
+                people.GetValueOrDefault(m.UserId)?.Image,
                 m.Role.Name,
                 m.CreatedAt
             ))
@@ -369,7 +363,7 @@ public class TeamService : ITeamService
             // frontend can show a toast / pending-row.
             if (_bus is not null)
             {
-                var inviter = await _context.Users.FindAsync(userId);
+                var inviter = await _people.FindAsync(userId);
                 await _bus.PublishAsync(new Events.Common.TeamInviteCreatedEvent(
                     team.Id,
                     team.Name,
@@ -421,7 +415,7 @@ public class TeamService : ITeamService
         // supplies one.
         if (_bus is not null)
         {
-            var inviter = await _context.Users.FindAsync(userId);
+            var inviter = await _people.FindAsync(userId);
             await _bus.PublishAsync(new Events.Common.TeamInviteCreatedEvent(
                 team.Id,
                 team.Name,
@@ -456,7 +450,7 @@ public class TeamService : ITeamService
             .FirstOrDefaultAsync(t => t.Id == teamId);
         if (team == null || team.OwnerId != inviterUserId) return null;
 
-        var targetUser = await _context.Users.FindAsync(dto.UserId);
+        var targetUser = await _people.FindAsync(dto.UserId);
         if (targetUser == null) return null;
 
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == NormalizeRoleName(dto.Role));
@@ -492,8 +486,8 @@ public class TeamService : ITeamService
         {
             if (_notificationService != null)
             {
-                var inviter = await _context.Users.FindAsync(inviterUserId);
-                var inviterName = inviter?.Name ?? inviter?.Email ?? "Someone";
+                var inviter = await _people.FindAsync(inviterUserId);
+                var inviterName = inviter?.Called ?? "Someone";
                 await _notificationService.CreateAsync(
                     targetUser.Id,
                     "team_membership_added",
@@ -524,7 +518,6 @@ public class TeamService : ITeamService
         if (team == null || team.OwnerId != userId) return null;
 
         var membership = await _context.GroupMembers
-            .Include(gm => gm.User)
             .Include(gm => gm.Role)
             .FirstOrDefaultAsync(gm => gm.Group.TeamId == teamId && gm.UserId == targetUserId);
 
@@ -535,12 +528,13 @@ public class TeamService : ITeamService
 
         membership.RoleId = role.Id;
         await _context.SaveChangesAsync();
+        var person = await _people.FindAsync(membership.UserId);
 
         return new TeamMemberDto(
             membership.UserId,
-            membership.User?.Name,
-            membership.User?.Email,
-            membership.User?.Image,
+            person?.Name,
+            person?.Email,
+            person?.Image,
             role.Name,
             membership.CreatedAt
         );
@@ -579,8 +573,8 @@ public class TeamService : ITeamService
         // up both users by id (still in users table).
         if (_bus is not null)
         {
-            var remover = await _context.Users.FindAsync(userId);
-            var removed = await _context.Users.FindAsync(targetUserId);
+            var remover = await _people.FindAsync(userId);
+            var removed = await _people.FindAsync(targetUserId);
             await _bus.PublishAsync(new Events.Common.TeamMemberRemovedEvent(
                 team.Id,
                 team.Name,
@@ -607,50 +601,8 @@ public class TeamService : ITeamService
         if (team.OwnerId != userId && !team.Groups.Any(g => g.Members.Any(m => m.UserId == userId)))
             return new List<DocumentListDto>();
 
-        var documents = await _context.Documents
-            .Include(d => d.Owner)
-            .Include(d => d.DocumentLabels)
-                .ThenInclude(dl => dl.Label)
-            .Where(d => d.TeamId == teamId)
-            .OrderByDescending(d => d.UpdatedAt)
-            .ToListAsync();
-
-        // Get block counts for these documents
-        var documentIds = documents.Select(d => d.Id).ToList();
-        var blockCounts = await _context.Blocks
-            .Where(b => documentIds.Contains(b.DocumentId))
-            .GroupBy(b => b.DocumentId)
-            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.DocumentId, x => x.Count);
-
-        // Get section counts (heading blocks)
-        var sectionCounts = await _context.Blocks
-            .Where(b => documentIds.Contains(b.DocumentId) && b.Type == "heading")
-            .GroupBy(b => b.DocumentId)
-            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.DocumentId, x => x.Count);
-
-        return documents.Select(d => new DocumentListDto(
-            d.Id,
-            d.Title,
-            d.OwnerId,
-            d.Owner?.Name,
-            d.TeamId,
-            team.Name,
-            d.CreatedAt,
-            d.UpdatedAt,
-            d.LastOpenedAt,
-            blockCounts.GetValueOrDefault(d.Id, 0),
-            sectionCounts.GetValueOrDefault(d.Id, 0),
-            new List<OutlineItemDto>(), // Team documents don't need outline for now
-            d.DocumentLabels.Select(dl => new LabelDto(
-                dl.Label.Id,
-                dl.Label.Name,
-                dl.Label.Color,
-                dl.Label.CreatedAt
-            )).ToList(),
-            Look: DocumentService.ReadLook(d.Look)
-        )).ToList();
+        // The list itself is Documents' to build.
+        return (await _documents.TeamDocumentsAsync(teamId, team.Name)).ToList();
     }
 
     private static string GenerateSlug(string name)

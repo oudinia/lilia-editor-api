@@ -21,7 +21,7 @@ public class SendRemovedEmailHandler
     public async Task Handle(
         TeamMemberRemovedEvent evt,
         IEmailService email,
-        LiliaDbContext db,
+        Lilia.Api.Directories.IPeopleDirectory people,
         ILogger<SendRemovedEmailHandler> logger)
     {
         if (string.IsNullOrEmpty(evt.RemovedUserEmail))
@@ -34,11 +34,10 @@ public class SendRemovedEmailHandler
 
         try
         {
-            var people = await db.Users.AsNoTracking()
-                .Where(u => u.Id == evt.RemovedUserId || u.Id == evt.RemovedByUserId)
-                .Select(u => new { u.Id, u.Email, u.Locale }).ToListAsync();
-            var to = people.FirstOrDefault(u => u.Id == evt.RemovedUserId);
-            var by = people.FirstOrDefault(u => u.Id == evt.RemovedByUserId);
+            // Asked of the people directory (3 Nov 2026, Teams' bounded context, step 4).
+            var found = await people.FindManyAsync([evt.RemovedUserId, evt.RemovedByUserId]);
+            var to = found.GetValueOrDefault(evt.RemovedUserId);
+            var by = found.GetValueOrDefault(evt.RemovedByUserId);
             await email.SendTeamMemberRemovedAsync(
                 toEmail: evt.RemovedUserEmail,
                 removedBy: new EmailActor(removerName, by?.Email),
