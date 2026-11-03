@@ -1,26 +1,29 @@
 namespace Lilia.Api.Services;
 
 /// <summary>
-/// Per-token cost estimation for architect calls. Rates are in USD per
-/// 1,000,000 tokens and are deliberately simple, conservative defaults (the
-/// Anthropic Sonnet list price as of mid-2026). They are used only to report
-/// an estimated <c>costUsd</c> + remaining budget to the client; the
-/// authoritative spend record is the integer credit ledger.
+/// What a model call costs, in dollars and in credits. Prices are Anthropic's list prices in USD per
+/// 1,000,000 tokens (3 Nov 2026; they were Sonnet 4 and Opus 4 prices before, 1.5x to 3x today's). The
+/// catalog's credit rates (<c>ai_models</c>) are these prices at <see cref="UsdPerCredit"/>; a test checks
+/// the two agree. The authoritative spend record is the integer credit ledger.
 /// </summary>
 public static class AiArchitectPricing
 {
-    // USD per 1M tokens.
-    private const decimal SonnetInputPerMillion = 3.00m;
-    private const decimal SonnetOutputPerMillion = 15.00m;
-    private const decimal OpusInputPerMillion = 15.00m;
-    private const decimal OpusOutputPerMillion = 75.00m;
-    private const decimal HaikuInputPerMillion = 0.80m;
-    private const decimal HaikuOutputPerMillion = 4.00m;
+    // USD per 1M tokens (input, output), by model id.
+    private static readonly Dictionary<string, (decimal Input, decimal Output)> Prices = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["claude-sonnet-5"] = (2.00m, 10.00m),
+        ["claude-sonnet-5-5"] = (2.00m, 10.00m),
+        ["claude-opus-5"] = (5.00m, 25.00m),
+        ["claude-opus-5-5"] = (4.00m, 20.00m),
+        ["claude-opus-4-8"] = (5.00m, 25.00m),
+        ["claude-sonnet-4-6"] = (3.00m, 15.00m),
+        ["claude-haiku-4-5"] = (1.00m, 5.00m),
+        ["claude-haiku-5-5"] = (0.10m, 0.50m),
+        ["claude-fable-5-1"] = (10.00m, 50.00m),
+    };
 
-    // 1 credit ≈ 1000 tokens (EntitlementService convention). At Sonnet's
-    // blended rate this is a small fraction of a cent; we surface a USD figure
-    // so the editor can show a budget bar. Treat a credit as ~$0.006.
-    private const decimal UsdPerCredit = 0.006m;
+    /// <summary>What a credit is worth: the peg the plans were set with (100 a month ≈ $0.60).</summary>
+    public const decimal UsdPerCredit = 0.006m;
 
     public static decimal ComputeCostUsd(string model, int inputTokens, int outputTokens) =>
         ComputeCostUsd(model, new AiTokenUse(inputTokens, outputTokens));
@@ -45,12 +48,15 @@ public static class AiArchitectPricing
     public static int UsdToCredits(decimal usd)
         => usd <= 0m ? 0 : (int)Math.Ceiling(usd / UsdPerCredit);
 
-    private static (decimal Input, decimal Output) RatesFor(string model)
+    private static (decimal Input, decimal Output) RatesFor(string model) => PricePerMillion(model);
+
+    /// <summary>A model's price in USD per million tokens; an unknown id is priced by its family.</summary>
+    public static (decimal Input, decimal Output) PricePerMillion(string? model)
     {
+        if (model is not null && Prices.TryGetValue(model, out var price)) return price;
         var m = model?.ToLowerInvariant() ?? string.Empty;
-        if (m.Contains("opus")) return (OpusInputPerMillion, OpusOutputPerMillion);
-        if (m.Contains("haiku")) return (HaikuInputPerMillion, HaikuOutputPerMillion);
-        // Default to Sonnet rates (the architect's default model).
-        return (SonnetInputPerMillion, SonnetOutputPerMillion);
+        if (m.Contains("opus")) return Prices["claude-opus-5"];
+        if (m.Contains("haiku")) return Prices["claude-haiku-4-5"];
+        return Prices["claude-sonnet-5"];
     }
 }
