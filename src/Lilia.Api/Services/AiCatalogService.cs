@@ -26,6 +26,9 @@ public interface IAiCatalogService
     /// rates; falls back to ~1 credit / 1k tokens for an unknown model. Min 1.
     /// </summary>
     int CreditsFor(string modelId, int inputTokens, int outputTokens);
+
+    /// <summary>The same with the prompt cache priced in: writes at 1.25× the input rate, reads at 0.1×.</summary>
+    int CreditsFor(string modelId, AiTokenUse use);
 }
 
 /// <summary>
@@ -111,8 +114,17 @@ public class AiCatalogService : IAiCatalogService
         return have >= need;
     }
 
-    public int CreditsFor(string modelId, int inputTokens, int outputTokens)
+    /// <summary>Anthropic's prompt-cache prices, relative to the model's input price (5-minute entries).</summary>
+    public const decimal CacheWriteRate = 1.25m, CacheReadRate = 0.1m;
+
+    public int CreditsFor(string modelId, int inputTokens, int outputTokens) =>
+        CreditsFor(modelId, new AiTokenUse(inputTokens, outputTokens));
+
+    public int CreditsFor(string modelId, AiTokenUse use)
     {
+        // Input as billed: the uncached part at the full rate, cache writes and reads at theirs.
+        var inputTokens = use.Uncached + use.CacheWrite * CacheWriteRate + use.CacheRead * CacheReadRate;
+        var outputTokens = use.Output;
         var m = Get(modelId);
         decimal credits;
         if (m is not null && (m.CreditInPerKTok > 0 || m.CreditOutPerKTok > 0))

@@ -42,7 +42,7 @@ public sealed partial class AskLiliaService
     }
 
     internal sealed record ToolLoopResult(
-        ChatResponse Response, int InputTokens, int OutputTokens, int ToolCalls, int WebSearches,
+        ChatResponse Response, AiTokenUse Use, int ToolCalls, int WebSearches,
         bool PartialApply, List<WebCitation> Citations);
 
     /// <summary>Compile the document as saved now, and count it against the turn.</summary>
@@ -116,8 +116,7 @@ public sealed partial class AskLiliaService
         string skillId, Guid? documentId, Guid aiRequestId, CancellationToken ct)
     {
         ChatResponse response = null!;
-        var inputTokens = 0;
-        var outputTokens = 0;
+        var use = AiTokenUse.None;
         var toolCalls = 0;
         // Which tools, and how many times each. Only read when the cap is
         // hit, but counted throughout because by then it is too late.
@@ -130,8 +129,7 @@ public sealed partial class AskLiliaService
         for (var round = 0; round < MaxToolRounds; round++)
         {
             response = await _chatClient.GetResponseAsync(messages, options, ct);
-            inputTokens += (int?)response.Usage?.InputTokenCount ?? 0;
-            outputTokens += (int?)response.Usage?.OutputTokenCount ?? 0;
+            use += AiUsage.From(response.Usage);
             webSearches += ExtractWebSearches(response);
             if (webSearch)
                 foreach (var c in WebCitationExtractor.Extract(response))
@@ -186,7 +184,7 @@ public sealed partial class AskLiliaService
                 options.ToolMode = ChatToolMode.None;
             }
         }
-        return new ToolLoopResult(response, inputTokens, outputTokens, toolCalls, webSearches, partialApply, citations);
+        return new ToolLoopResult(response, use, toolCalls, webSearches, partialApply, citations);
     }
 
     /// <summary>

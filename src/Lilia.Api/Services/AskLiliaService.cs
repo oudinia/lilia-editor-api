@@ -119,6 +119,19 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private readonly int _attachMaxTextChars;
 
     private const int MaxOutputTokens = 8192;
+
+    /// <summary>
+    /// The request Ask Lilia starts from: Anthropic's automatic prompt caching, a 5-minute entry whose marker
+    /// the API moves to the end of the conversation on each call. The adapter fills in the messages, the
+    /// system prompt and the tools.
+    /// </summary>
+    internal static Anthropic.Models.Messages.MessageCreateParams CachedRequest(string model) => new()
+    {
+        Model = model,
+        MaxTokens = MaxOutputTokens,
+        Messages = [],
+        CacheControl = new Anthropic.Models.Messages.CacheControlEphemeral(),
+    };
     // Bound the tool-use loop: each round is one model call; this caps cost and
     // guarantees termination even if the model keeps requesting tools.
     // Full multi-block rewrites used to die at 4 rounds (partial docs + empty
@@ -490,11 +503,18 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 // this model", HTTP 400) and every enabled model is now Claude 5, so
                 // sending it failed the whole call rather than just the sampling hint.
                 Tools = tools,
+                // Prompt caching (3 Nov 2026): every round of the tool loop resent the whole conversation
+                // (document, tools, results) at full price, up to 190,000 tokens a question. The top-level
+                // marker caches it up to the newest block, and the next round reads it at a tenth.
+                RawRepresentationFactory = _ => CachedRequest(model),
             };
 
             var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct);
-            var (response, inputTokens, outputTokens, toolCalls, webSearches, partialApply, citations) =
-                (loop.Response, loop.InputTokens, loop.OutputTokens, loop.ToolCalls, loop.WebSearches, loop.PartialApply, loop.Citations);
+            var (response, use, toolCalls, webSearches, partialApply, citations) =
+                (loop.Response, loop.Use, loop.ToolCalls, loop.WebSearches, loop.PartialApply, loop.Citations);
+            var (inputTokens, outputTokens) = (use.Input, use.Output);
+            if (use.CacheRead + use.CacheWrite > 0)
+                _logger.LogInformation("[AskLilia] cache: {Read} of {Input} input tokens read, {Write} written", use.CacheRead, use.Input, use.CacheWrite);
             if (toolCalls > 0)
                 _logger.LogInformation("[AskLilia] skill={Skill} used {Calls} tool call(s) partial={Partial}", skill.Id, toolCalls, partialApply);
 
@@ -534,13 +554,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
             if (CompileVerdict(repair, skill.Id, request.Language) is { } verdict)
                 reply = string.IsNullOrWhiteSpace(reply) ? verdict : reply + "\n\n" + verdict;
 
-            var costUsd = AiArchitectPricing.ComputeCostUsd(model, inputTokens, outputTokens) + webSearchCostUsd;
+            var costUsd = AiArchitectPricing.ComputeCostUsd(model, use) + webSearchCostUsd;
 
             await MarkAsync(aiRequestId, "success", null, inputTokens, outputTokens, (int)sw.ElapsedMilliseconds, ct);
 
             // Compiles are metered like web searches: a surcharge row on the same request.
             var compileCredits = repair.Compiles * _creditsPerCompile;
-            var (credits, balance, creditsUsed) = await MeterAsync(userId, model, inputTokens, outputTokens, aiRequestId,
+            var (credits, balance, creditsUsed) = await MeterAsync(userId, model, use, aiRequestId,
                 [(webSearchCredits, $"{webSearches} web search(es)"), (compileCredits, $"{repair.Compiles} compile check(s)")], ct);
 
             var anyWrite = changed.Count > 0 || metaChanged;
@@ -578,7 +598,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
 
     /// <summary>Debit the turn's tokens (and any surcharge) and read the balance back. Best effort: the reply is what was asked for.</summary>
     private async Task<(int Credits, AiArchitectBalance? Balance, int CreditsUsed)> MeterAsync(
-        string userId, string model, int inputTokens, int outputTokens, Guid aiRequestId,
+        string userId, string model, AiTokenUse use, Guid aiRequestId,
         IReadOnlyList<(int Credits, string Reason)> surcharges, CancellationToken ct)
     {
         AiArchitectBalance? balance = null;
@@ -586,7 +606,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         var creditsUsed = 0;
         try
         {
-            credits = await _entitlement.RecordAiSpendAsync(userId, model, inputTokens, outputTokens, aiRequestId, ct);
+            credits = await _entitlement.RecordAiSpendAsync(userId, model, use, aiRequestId, ct);
             foreach (var (surchargeCredits, surchargeReason) in surcharges.Where(x => x.Credits > 0))
             {
                 await _entitlement.RecordAiSurchargeAsync(userId, surchargeCredits, surchargeReason, aiRequestId, ct);

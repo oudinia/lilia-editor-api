@@ -59,6 +59,13 @@ public interface IEntitlementService
     Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default);
 
     /// <summary>
+    /// The same, with the prompt cache priced in (3 Nov 2026): cache writes at 1.25× the input rate, reads at
+    /// 0.1×. Without its own version, an implementation counts every input token at the full rate.
+    /// </summary>
+    Task<int> RecordAiSpendAsync(string userId, string modelId, AiTokenUse use, Guid aiRequestId, CancellationToken ct = default) =>
+        RecordAiSpendAsync(userId, modelId, use.Input, use.Output, aiRequestId, ct);
+
+    /// <summary>
     /// Append a flat, pre-computed credit surcharge for the same request — for
     /// server-side tool use (e.g. web search) that bills outside the per-token
     /// model. No-op when <paramref name="credits"/> &lt;= 0. Recorded as 'spend'

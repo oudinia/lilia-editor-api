@@ -22,10 +22,15 @@ public static class AiArchitectPricing
     // so the editor can show a budget bar. Treat a credit as ~$0.006.
     private const decimal UsdPerCredit = 0.006m;
 
-    public static decimal ComputeCostUsd(string model, int inputTokens, int outputTokens)
+    public static decimal ComputeCostUsd(string model, int inputTokens, int outputTokens) =>
+        ComputeCostUsd(model, new AiTokenUse(inputTokens, outputTokens));
+
+    /// <summary>With the prompt cache priced in (3 Nov 2026): writes at 1.25× the input rate, reads at 0.1×.</summary>
+    public static decimal ComputeCostUsd(string model, AiTokenUse use)
     {
         var (inRate, outRate) = RatesFor(model);
-        var cost = (inputTokens / 1_000_000m * inRate) + (outputTokens / 1_000_000m * outRate);
+        var input = use.Uncached + use.CacheWrite * AiCatalogService.CacheWriteRate + use.CacheRead * AiCatalogService.CacheReadRate;
+        var cost = (input / 1_000_000m * inRate) + (use.Output / 1_000_000m * outRate);
         return decimal.Round(cost, 6);
     }
 
