@@ -84,7 +84,8 @@ migrations() {
   if [ -n "$orphans" ]; then
     echo "FAIL migrations: no .Designer.cs for$orphans"; return 1
   fi
-  if dotnet ef migrations has-pending-model-changes --project src/Lilia.Infrastructure \
+  # The main context owns the migrations; Sharing's context (2 Nov 2026) maps a subset and has none.
+  if dotnet ef migrations has-pending-model-changes --context LiliaDbContext --project src/Lilia.Infrastructure \
        --startup-project src/Lilia.Api --no-build >"$log" 2>&1; then
     echo "pass migrations $((SECONDS - t))s"
   else
