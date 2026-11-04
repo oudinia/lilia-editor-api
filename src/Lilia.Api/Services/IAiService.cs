@@ -22,6 +22,12 @@ public interface IAiService
     /// <summary>One-sentence gist of a document (for the My Documents cards).</summary>
     Task<string> GenerateOneLinerAsync(string title, string content);
 
+    /// <summary>
+    /// What this request's model calls used so far (the service is scoped to the request), so the
+    /// caller can debit the author's allowance and the site's AI budget (4 Nov 2026).
+    /// </summary>
+    (string? Model, AiTokenUse Use) Spent { get; }
+
     // Chat CRUD
     Task<AiChatDto> CreateChatAsync(string userId, CreateAiChatRequest request);
     Task<AiChatListResponse> GetChatsAsync(string userId, string? organizationId = null);

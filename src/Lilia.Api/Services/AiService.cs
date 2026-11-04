@@ -34,6 +34,17 @@ public class AiService : IAiService
         _logger = logger;
     }
 
+    /// <summary>What this request's model calls used, for the ledger and the site's AI budget (4 Nov 2026).</summary>
+    public (string? Model, AiTokenUse Use) Spent { get; private set; } = (null, AiTokenUse.None);
+
+    /// <summary>Every model call goes through here, so each one is counted.</summary>
+    private async Task<ChatResponse> AskAsync(IList<ChatMessage> messages, ChatOptions options)
+    {
+        var response = await _chatClient.GetResponseAsync(messages, options);
+        Spent = (options.ModelId ?? Spent.Model, Spent.Use + AiUsage.From(response.Usage));
+        return response;
+    }
+
     private string GetModelForFeature(string feature)
     {
         return _options.Models.TryGetValue(feature, out var model) ? model : _options.DefaultModel;
@@ -72,7 +83,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Generating block with model {Model}", model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 2048 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 2048 });
         var raw = StripMarkdownFences(response.Text);
         var json = JsonSerializer.Deserialize<JsonElement>(raw, JsonOptions);
 
@@ -108,7 +119,7 @@ public class AiService : IAiService
 
         _logger.LogInformation("Revising {Type} block with model {Model}{Retry}",
             type, model, compilerError is null ? "" : " (retry after compiler error)");
-        var response = await _chatClient.GetResponseAsync(
+        var response = await AskAsync(
             messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
 
         var raw = StripMarkdownFences(response.Text);
@@ -164,7 +175,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Improving text with action {Action}, model {Model}", action, model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
         return new ImproveTextResponse(response.Text.Trim());
     }
 
@@ -179,7 +190,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Suggesting equation with model {Model}", model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 1024 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 1024 });
         var latex = response.Text.Trim();
 
         var block = JsonSerializer.SerializeToElement(new
@@ -202,7 +213,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Grammar check with model {Model}", model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
         var raw = StripMarkdownFences(response.Text);
         var suggestions = JsonSerializer.Deserialize<List<GrammarSuggestion>>(raw, JsonOptions) ?? [];
         return new GrammarCheckResponse(suggestions);
@@ -219,7 +230,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Citation check with model {Model}", model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 4096 });
         var raw = StripMarkdownFences(response.Text);
         var suggestions = JsonSerializer.Deserialize<List<CitationSuggestion>>(raw, JsonOptions) ?? [];
         return new CitationCheckResponse(suggestions);
@@ -236,7 +247,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Generating abstract with model {Model}", model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 2048 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 2048 });
         return new GenerateAbstractResponse(response.Text.Trim());
     }
 
@@ -251,7 +262,7 @@ public class AiService : IAiService
         };
 
         _logger.LogInformation("Generating one-liner with model {Model}", model);
-        var response = await _chatClient.GetResponseAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 128 });
+        var response = await AskAsync(messages, new ChatOptions { ModelId = model, MaxOutputTokens = 128 });
         // Collapse to a single tidy line.
         return response.Text.Trim().Replace("\n", " ").Trim();
     }

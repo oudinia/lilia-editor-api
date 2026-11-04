@@ -6038,7 +6038,7 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.ToTable("plans", null, t =>
                         {
-                            t.HasCheckConstraint("ck_plan_slug", "slug IN ('free','beta','conversion','student','pro','team','epub','compliance_pro','enterprise')");
+                            t.HasCheckConstraint("ck_plan_slug", "slug IN ('free','beta','conversion','student','pro','pro_plus','team','epub','compliance_pro','enterprise')");
                         });
                 });
 

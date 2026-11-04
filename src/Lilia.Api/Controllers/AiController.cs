@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lilia.Api.Filters;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
@@ -58,10 +59,9 @@ public class AiController : ControllerBase
         if (userId is not null)
         {
             var plan = await _entitlements.GetActivePlanAsync(userId, ct);
-            // Plan slugs (free/beta/conversion/pro/team) → coarse tier. Anything
-            // that isn't pro/team is treated as free for model gating.
+            // Plan slug → coarse tier for model gating (Pro Plus counts as Pro).
             var slug = plan?.Slug?.ToLowerInvariant();
-            membership = slug is "pro" or "team" ? slug : "free";
+            membership = Plan.ModelTier(slug);
         }
 
         var models = _catalog.Enabled().Select(m => new
@@ -103,6 +103,7 @@ public class AiController : ControllerBase
     // --- AI Features ---
 
     [HttpPost("generate-block")]
+    [MeteredAi]
     public async Task<IActionResult> GenerateBlock([FromBody] GenerateBlockRequest request)
     {
         var userId = GetUserId();
@@ -132,6 +133,7 @@ public class AiController : ControllerBase
     /// caller, not the only one it will ever have.</para>
     /// </summary>
     [HttpPost("block/revise")]
+    [MeteredAi]
     public async Task<IActionResult> ReviseBlock([FromBody] ReviseBlockRequest request)
     {
         var userId = GetUserId();
@@ -243,6 +245,7 @@ public class AiController : ControllerBase
     }
 
     [HttpPost("improve-text")]
+    [MeteredAi]
     public async Task<IActionResult> ImproveText([FromBody] ImproveTextRequest request)
     {
         var userId = GetUserId();
@@ -259,6 +262,7 @@ public class AiController : ControllerBase
     }
 
     [HttpPost("suggest-equation")]
+    [MeteredAi]
     public async Task<IActionResult> SuggestEquation([FromBody] SuggestEquationRequest request)
     {
         var userId = GetUserId();
@@ -273,6 +277,7 @@ public class AiController : ControllerBase
     }
 
     [HttpPost("grammar-check")]
+    [MeteredAi]
     public async Task<IActionResult> GrammarCheck([FromBody] GrammarCheckRequest request)
     {
         var userId = GetUserId();
@@ -287,6 +292,7 @@ public class AiController : ControllerBase
     }
 
     [HttpPost("citation-check")]
+    [MeteredAi]
     public async Task<IActionResult> CitationCheck([FromBody] CitationCheckRequest request)
     {
         var userId = GetUserId();
@@ -301,6 +307,7 @@ public class AiController : ControllerBase
     }
 
     [HttpPost("generate-abstract")]
+    [MeteredAi]
     public async Task<IActionResult> GenerateAbstract([FromBody] GenerateAbstractRequest request)
     {
         var userId = GetUserId();

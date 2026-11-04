@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Lilia.Api.Filters;
 using Lilia.Api.Models.Documents;
 using Lilia.Api.Services;
 using Lilia.Core.DTOs;
@@ -66,6 +67,7 @@ public class DocumentsController : ControllerBase
     /// My Documents cards. On-demand; owner-only. Returns { aiSummary }.
     /// </summary>
     [HttpPost("{id:guid}/summary")]
+    [MeteredAi]
     public async Task<IActionResult> GenerateSummary(Guid id)
     {
         var userId = GetUserId();

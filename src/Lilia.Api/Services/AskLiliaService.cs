@@ -342,8 +342,11 @@ public sealed partial class AskLiliaService : IAskLiliaService
         {
             await _entitlement.EnsureQuotaAsync(userId, QuotaResource.AiCredits, delta: 1, ct);
         }
-        catch (QuotaExceededException)
+        catch (QuotaExceededException ex)
         {
+            // The site's AI budget (aiSiteBudget, aiFreePool) holds even while allowances only log.
+            if (ex.Resource != "aiCreditsPerMonth")
+                return AskLiliaResult.Lock("over-budget", ex.Message);
             if (_enforceCredits)
                 return AskLiliaResult.Lock("over-budget", "You've used all your AI credits for this period.");
             _logger.LogInformation("[AskLilia] User {UserId} over budget; credit enforcement off — allowing", userId);
@@ -636,7 +639,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         {
             var plan = await _entitlement.GetActivePlanAsync(userId, ct);
             var slug = plan?.Slug?.ToLowerInvariant();
-            var tier = slug is "pro" or "team" ? slug : "free";
+            var tier = Lilia.Core.Entities.Plan.ModelTier(slug);
             if (_catalog.IsAllowedFor(requested, tier)) model = requested;
         }
         return model;

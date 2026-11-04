@@ -93,10 +93,13 @@ public class AiArchitectService : IAiArchitectService
         {
             await _entitlement.EnsureQuotaAsync(userId, QuotaResource.AiCredits, delta: 1, ct);
         }
-        catch (QuotaExceededException)
+        catch (QuotaExceededException ex)
         {
             // Observe-only: record-but-don't-block until allowances are set and
             // AI:EnforceCredits is flipped on. Logged so over-budget is visible.
+            // The site's AI budget (aiSiteBudget, aiFreePool) holds even while allowances only log.
+            if (ex.Resource != "aiCreditsPerMonth")
+                return AiArchitectOutcome.Lock("over-budget", ex.Message);
             if (_enforceCredits)
                 return AiArchitectOutcome.Lock("over-budget", "You've used all your AI credits for this period.");
             _logger.LogInformation("[AiArchitect] User {UserId} over budget, but credit enforcement is off (observe-only) — allowing", userId);
@@ -140,7 +143,7 @@ public class AiArchitectService : IAiArchitectService
         {
             var plan = await _entitlement.GetActivePlanAsync(userId, ct);
             var slug = plan?.Slug?.ToLowerInvariant();
-            var tier = slug is "pro" or "team" ? slug : "free";
+            var tier = Lilia.Core.Entities.Plan.ModelTier(slug);
             if (_catalog.IsAllowedFor(request.Model, tier))
                 model = request.Model;
             else
