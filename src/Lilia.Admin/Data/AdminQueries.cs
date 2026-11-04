@@ -10,7 +10,15 @@ public sealed record Overview(
     int ActiveAuthors7d, int DocumentsCreated7d,
     int AskRequests7d, long AskTokens7d, int AskFailed7d,
     int Compiles7d, int CompilesFailed7d, int ImportErrors7d,
-    int JobsFailed7d, int JobsStuck, int FeedbackNew);
+    int JobsFailed7d, int JobsStuck, int FeedbackNew,
+    AiSpend? AiSpend = null);
+
+/// <summary>
+/// This month's AI spend from Lilia's own ledger, in dollars, against the caps the API applies
+/// (<c>AI:MonthlyBudgetUsd</c>, <c>AI:FreeMonthlyBudgetUsd</c>; 0 = none), 4 Nov 2026. Grok Bot's daily
+/// check compares it with the Anthropic Console: a gap is spend outside Lilia's records.
+/// </summary>
+public sealed record AiSpend(decimal MonthUsd, decimal FreeUsd, decimal CapUsd, decimal FreeCapUsd);
 
 public sealed record UserRow(string Id, string Email, string? Name, DateTime CreatedAt, int Documents, DateTime? LastActive, string? Plan, bool DeletionRequested, bool Suspended = false, bool TwoStep = false);
 
@@ -35,8 +43,11 @@ public sealed record FeedbackRow(Guid Id, DateTime At, string Type, string Statu
 /// What the admin console reads. Never a document's content or a block's text: titles, dates and
 /// counts only (the Privacy Policy promises that the operator doesn't read documents).
 /// </summary>
-public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, TimeProvider clock)
+public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, TimeProvider clock, IConfiguration? configuration = null)
 {
+    /// <summary>A credit's worth, as the API prices them (<c>AiArchitectPricing.UsdPerCredit</c>).</summary>
+    private const decimal UsdPerCredit = 0.006m;
+
     public static readonly string[] FeedbackStatuses = ["new", "acknowledged", "in-progress", "resolved", "dismissed"];
 
     public async Task<Overview> OverviewAsync(CancellationToken ct = default)
@@ -72,7 +83,24 @@ public sealed class AdminQueries(IDbContextFactory<LiliaDbContext> factory, Time
             ImportErrors7d: await db.ImportTelemetryEvents.CountAsync(e => e.CreatedAt >= d7 && e.Severity == "error", ct),
             JobsFailed7d: await db.Jobs.CountAsync(j => j.CreatedAt >= d7 && j.Status.ToLower() == "failed", ct),
             JobsStuck: await db.Jobs.CountAsync(j => (j.Status.ToLower() == "pending" || j.Status.ToLower() == "processing") && j.UpdatedAt < stuckBefore, ct),
-            FeedbackNew: await db.Feedback.CountAsync(f => f.Status == "new", ct));
+            FeedbackNew: await db.Feedback.CountAsync(f => f.Status == "new", ct),
+            AiSpend: await AiSpendAsync(db, now, ct));
+    }
+
+    /// <summary>
+    /// The month's spend as the API's cap counts it: every "spend" row since the 1st, and the free
+    /// share without accounts on an active paid plan or the staff accounts (which the cap exempts).
+    /// </summary>
+    private async Task<AiSpend> AiSpendAsync(LiliaDbContext db, DateTime now, CancellationToken ct)
+    {
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var spends = db.AiCreditLedger.AsNoTracking().Where(l => l.Reason == "spend" && l.CreatedAt >= monthStart);
+        var paid = db.UserPlans.Where(p => p.Status == "active" && p.Plan!.Slug != "free").Select(p => p.UserId);
+        var staff = configuration?.GetSection("Entitlements:StaffUserIds").Get<string[]>() ?? [];
+        var all = -(await spends.SumAsync(l => (int?)l.Delta, ct) ?? 0);
+        var free = -(await spends.Where(l => !paid.Contains(l.UserId) && !staff.Contains(l.UserId)).SumAsync(l => (int?)l.Delta, ct) ?? 0);
+        return new AiSpend(all * UsdPerCredit, free * UsdPerCredit,
+            configuration?.GetValue("AI:MonthlyBudgetUsd", 0m) ?? 0m, configuration?.GetValue("AI:FreeMonthlyBudgetUsd", 0m) ?? 0m);
     }
 
     /// <summary>Accounts, newest first; <paramref name="q"/> matches the email, the name or the id.</summary>

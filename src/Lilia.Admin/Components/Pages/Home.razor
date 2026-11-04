@@ -19,6 +19,12 @@ else
         <Tile Label="Compiles" Value="@o.Compiles7d" Note="@($"{o.CompilesFailed7d} failed")" Id="compiles" Warn="@(o.CompilesFailed7d > 0)" />
         <Tile Label="Import errors" Value="@o.ImportErrors7d" Id="imports" Warn="@(o.ImportErrors7d > 0)" />
         <Tile Label="Jobs" Value="@o.JobsFailed7d" Note="@($"failed · {o.JobsStuck} stuck now")" Id="jobs" Warn="@(o.JobsFailed7d + o.JobsStuck > 0)" />
+        @if (o.AiSpend is { } ai)
+        {
+            <Tile Label="AI spend this month" Text="@Usd(ai.MonthUsd)" Id="ai-spend"
+                  Note="@($"{(ai.CapUsd > 0 ? $"of {Usd(ai.CapUsd)} cap" : "no cap")} · free accounts {Usd(ai.FreeUsd)}{(ai.FreeCapUsd > 0 ? $" of {Usd(ai.FreeCapUsd)}" : "")}")"
+                  Warn="@(ai.CapUsd > 0 && ai.MonthUsd >= 0.8m * ai.CapUsd)" />
+        }
         <Tile Label="New feedback" Value="@o.FeedbackNew" Note="waiting for triage" Id="feedback" Warn="@(o.FeedbackNew > 0)" Href="feedback" />
     </section>
 
@@ -38,4 +44,5 @@ else
 @code {
     private Overview? o;
     protected override async Task OnInitializedAsync() => o = await Queries.OverviewAsync();
+    private static string Usd(decimal d) => d.ToString("$0.00", System.Globalization.CultureInfo.InvariantCulture);
 }
