@@ -50,7 +50,7 @@ public sealed partial class AskLiliaService
         var messages = new List<ChatMessage> { new(ChatRole.System, system), new(ChatRole.User, userParts) };
 
         var model = _mathModel is { Length: > 0 } m ? m : await ResolveModelAsync(userId, request.Model, ct);
-        var aiRequestId = await PersistPendingAsync(userId, PurposeFor(MathAsk.SkillId), model, messages, entity?.Id, ct);
+        var aiRequestId = await PersistPendingAsync(userId, PurposeFor(MathAsk.SkillId), model, messages, entity?.Id, ct, MathAsk.SkillId);
         var sw = Stopwatch.StartNew();
         try
         {
@@ -60,8 +60,9 @@ public sealed partial class AskLiliaService
             var options = new ChatOptions { ModelId = model, MaxOutputTokens = 2048 };
             var run = await runner.RunAsync(messages, options, ct);
 
-            await MarkAsync(aiRequestId, "success", null, run.InputTokens, run.OutputTokens, (int)sw.ElapsedMilliseconds, ct);
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, run.InputTokens, run.OutputTokens);
+            await MarkAsync(aiRequestId, "success", null, run.InputTokens, run.OutputTokens, (int)sw.ElapsedMilliseconds, ct,
+                new TurnCost(new AiTokenUse(run.InputTokens, run.OutputTokens), 0, 0, costUsd));
             var (credits, balance, creditsUsed) = await MeterAsync(userId, model, new AiTokenUse(run.InputTokens, run.OutputTokens), aiRequestId, [], ct);
             _logger.LogInformation("[AskLilia] maths read formulas={Count} failed={Failed} attempts={Attempts} in={In} out={Out} ms={Ms}",
                 run.Proposal.Formulas.Count, run.Proposal.Formulas.Count(f => !f.Ok), run.Proposal.Attempts,

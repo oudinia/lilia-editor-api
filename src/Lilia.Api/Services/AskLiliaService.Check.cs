@@ -43,7 +43,7 @@ public sealed partial class AskLiliaService
 
     internal sealed record ToolLoopResult(
         ChatResponse Response, AiTokenUse Use, int ToolCalls, int WebSearches,
-        bool PartialApply, List<WebCitation> Citations);
+        bool PartialApply, List<WebCitation> Citations, int Rounds = 0, int LargestPrompt = 0);
 
     /// <summary>Compile the document as saved now, and count it against the turn.</summary>
     private async Task<DocumentCheck> RunCheckAsync(LiveDocument live, Guid docGuid, string userId, CompileRepair repair, CancellationToken ct)
@@ -117,6 +117,7 @@ public sealed partial class AskLiliaService
     {
         ChatResponse response = null!;
         var use = AiTokenUse.None;
+        var (rounds, largestPrompt) = (0, 0);
         var toolCalls = 0;
         // Which tools, and how many times each. Only read when the cap is
         // hit, but counted throughout because by then it is too late.
@@ -129,7 +130,10 @@ public sealed partial class AskLiliaService
         for (var round = 0; round < MaxToolRounds; round++)
         {
             response = await _chatClient.GetResponseAsync(messages, options, ct);
-            use += AiUsage.From(response.Usage);
+            var roundUse = AiUsage.From(response.Usage);
+            use += roundUse;
+            rounds++;
+            largestPrompt = Math.Max(largestPrompt, roundUse.Input);
             webSearches += ExtractWebSearches(response);
             if (webSearch)
                 foreach (var c in WebCitationExtractor.Extract(response))
@@ -184,7 +188,7 @@ public sealed partial class AskLiliaService
                 options.ToolMode = ChatToolMode.None;
             }
         }
-        return new ToolLoopResult(response, use, toolCalls, webSearches, partialApply, citations);
+        return new ToolLoopResult(response, use, toolCalls, webSearches, partialApply, citations, rounds, largestPrompt);
     }
 
     /// <summary>

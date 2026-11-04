@@ -60,7 +60,7 @@ public sealed partial class AskLiliaService
         messages.Add(new ChatMessage(ChatRole.User, request.Message));
 
         var model = await ResolveModelAsync(userId, request.Model, ct);
-        var aiRequestId = await PersistPendingAsync(userId, PurposeFor(TikzAsk.SkillId), model, messages, docId, ct);
+        var aiRequestId = await PersistPendingAsync(userId, PurposeFor(TikzAsk.SkillId), model, messages, docId, ct, TikzAsk.SkillId);
         var sw = Stopwatch.StartNew();
         try
         {
@@ -72,8 +72,9 @@ public sealed partial class AskLiliaService
             var run = await runner.RunAsync(messages, options, ctx, intent, request.Message, mayWrite, entity.CustomPreamble, ct,
                 Lilia.Core.Blocks.TikzFigure.DeclaredPackages(entity.LatexPackages, entity.CustomPreamble));
 
-            await MarkAsync(aiRequestId, "success", null, run.InputTokens, run.OutputTokens, (int)sw.ElapsedMilliseconds, ct);
             var costUsd = AiArchitectPricing.ComputeCostUsd(model, run.InputTokens, run.OutputTokens);
+            await MarkAsync(aiRequestId, "success", null, run.InputTokens, run.OutputTokens, (int)sw.ElapsedMilliseconds, ct,
+                new TurnCost(new AiTokenUse(run.InputTokens, run.OutputTokens), 0, 0, costUsd));
             var (credits, balance, creditsUsed) = await MeterAsync(userId, model, new AiTokenUse(run.InputTokens, run.OutputTokens), aiRequestId, [], ct);
             _logger.LogInformation("[AskLilia] figure answered kind={Kind} attempts={Attempts} calls={Calls}",
                 run.Proposal.Kind, run.Proposal.Attempts, run.ModelCalls);
