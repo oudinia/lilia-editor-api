@@ -22,6 +22,8 @@ public class EntitlementService : IEntitlementService
     private readonly IAiCatalogService _aiCatalog;
     private readonly EntitlementOptions _options;
     private readonly bool _aiEnforced;
+    private readonly decimal _siteBudgetUsd;
+    private readonly decimal _freeBudgetUsd;
 
     public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog,
         Lilia.Api.Directories.ITeamDirectory teams, IOptions<EntitlementOptions>? options = null, IConfiguration? configuration = null)
@@ -29,6 +31,8 @@ public class EntitlementService : IEntitlementService
         _teams = teams;
         // The same switch AskLiliaService and AiArchitectService read before refusing a request.
         _aiEnforced = configuration?.GetValue("AI:EnforceCredits", false) ?? false;
+        _siteBudgetUsd = configuration?.GetValue("AI:MonthlyBudgetUsd", 0m) ?? 0m;
+        _freeBudgetUsd = configuration?.GetValue("AI:FreeMonthlyBudgetUsd", 0m) ?? 0m;
         _context = context;
         _logger = logger;
         _aiCatalog = aiCatalog;
@@ -94,10 +98,47 @@ public class EntitlementService : IEntitlementService
         };
 
         var cap = ReadCap(plan.Caps, capKey);
-        if (cap < 0) return;                          // -1 = unlimited
-        if (used + delta > cap)
+        if (cap >= 0 && used + delta > cap)           // -1 = unlimited
             throw new QuotaExceededException(capKey, cap, used, resetsAt, QuotaMessage(capKey, cap, resetsAt));
+        if (resource == QuotaResource.AiCredits)
+            await EnsureSiteAiBudgetAsync(plan.Slug, ct);
     }
+
+    /// <summary>
+    /// The site's monthly AI budget (4 Nov 2026). Lilia launches on a fixed prepaid amount of AI, paid
+    /// before any subscription pays out, so this month's spend for everyone stops at
+    /// <c>AI:MonthlyBudgetUsd</c>, and free accounts' share of it at <c>AI:FreeMonthlyBudgetUsd</c>: free use
+    /// can't eat what paying authors need. 0 or unset is no cap. Spend is the ledger's credits at
+    /// <see cref="AiArchitectPricing.UsdPerCredit"/>, which track the model prices. Staff never reach here.
+    /// </summary>
+    private async Task EnsureSiteAiBudgetAsync(string planSlug, CancellationToken ct)
+    {
+        if (_siteBudgetUsd <= 0 && _freeBudgetUsd <= 0) return;
+        var monthStart = MonthStart();
+        var spends = _context.AiCreditLedger.AsNoTracking().Where(l => l.Reason == "spend" && l.CreatedAt >= monthStart);
+
+        if (_siteBudgetUsd > 0)
+        {
+            var all = -(await spends.SumAsync(l => (int?)l.Delta, ct) ?? 0);
+            if (AiArchitectPricing.CreditsToUsd(all) >= _siteBudgetUsd)
+                throw new QuotaExceededException("aiSiteBudget", AiArchitectPricing.UsdToCredits(_siteBudgetUsd), all, NextMonthStart(),
+                    QuotaMessage("aiSiteBudget", 0, NextMonthStart()));
+        }
+
+        if (_freeBudgetUsd > 0 && planSlug == "free")
+        {
+            // Free is "no active paid plan": the same rule GetActivePlanAsync falls back on.
+            var paid = _context.UserPlans.Where(p => p.Status == "active" && p.Plan!.Slug != "free").Select(p => p.UserId);
+            var staff = _options.StaffUserIds;
+            var free = -(await spends.Where(l => !paid.Contains(l.UserId) && !staff.Contains(l.UserId))
+                .SumAsync(l => (int?)l.Delta, ct) ?? 0);
+            if (AiArchitectPricing.CreditsToUsd(free) >= _freeBudgetUsd)
+                throw new QuotaExceededException("aiFreePool", AiArchitectPricing.UsdToCredits(_freeBudgetUsd), free, NextMonthStart(),
+                    QuotaMessage("aiFreePool", 0, NextMonthStart()));
+        }
+    }
+
+    private static DateTime MonthStart() => new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
     public async Task EnsureCanCreateDocumentAsync(string userId, CancellationToken ct = default)
     {
@@ -141,6 +182,8 @@ public class EntitlementService : IEntitlementService
         "maxDocs" => $"Your plan holds {cap} documents. Move one to the Trash or upgrade to start another.",
         "maxImportsPerMonth" => $"Your plan includes {cap} imports a month; the next one is available on {resetsAt:d MMMM}.",
         "aiCreditsPerMonth" => $"This month's Ask Lilia allowance is used; it renews on {resetsAt:d MMMM}.",
+        "aiSiteBudget" => $"Lilia's AI is resting until {resetsAt:d MMMM}: this month's AI is used up. Everything else works as usual.",
+        "aiFreePool" => $"The free plan's AI is used up for this month; it's back on {resetsAt:d MMMM}. Pro includes Ask Lilia every month.",
         _ => $"Your plan's limit for {capKey} is reached.",
     };
 
@@ -185,7 +228,7 @@ public class EntitlementService : IEntitlementService
     public Task<int> RecordAiSpendAsync(string userId, string modelId, int inputTokens, int outputTokens, Guid aiRequestId, CancellationToken ct = default) =>
         RecordAiSpendAsync(userId, modelId, new AiTokenUse(inputTokens, outputTokens), aiRequestId, ct);
 
-    public async Task<int> RecordAiSpendAsync(string userId, string modelId, AiTokenUse use, Guid aiRequestId, CancellationToken ct = default)
+    public async Task<int> RecordAiSpendAsync(string userId, string modelId, AiTokenUse use, Guid? aiRequestId, CancellationToken ct = default)
     {
         var credits = _aiCatalog.CreditsFor(modelId, use);
         var (inputTokens, outputTokens) = (use.Input, use.Output);

@@ -15,7 +15,7 @@ public class Plan
     public Guid Id { get; set; }
 
     /// <summary>Stable identifier for code. CHECK-constrained in the DB.</summary>
-    public string Slug { get; set; } = string.Empty;    // free | student | pro | team | epub | compliance_pro | enterprise
+    public string Slug { get; set; } = string.Empty;    // free | beta | student | pro | pro_plus | team | epub | compliance_pro | enterprise
 
     public string DisplayName { get; set; } = string.Empty;
 
@@ -54,4 +54,15 @@ public class Plan
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public virtual ICollection<UserPlan> UserPlans { get; set; } = new List<UserPlan>();
+
+    /// <summary>
+    /// The AI model tier a plan unlocks (<c>ai_models.min_membership</c>): Pro Plus is Pro with a larger
+    /// Ask Lilia allowance (4 Nov 2026); anything without a paid tier is free.
+    /// </summary>
+    public static string ModelTier(string? slug) => slug?.ToLowerInvariant() switch
+    {
+        "pro" or "pro_plus" => "pro",
+        "team" => "team",
+        _ => "free",
+    };
 }
