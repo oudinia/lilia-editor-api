@@ -48,6 +48,28 @@ public class AdminQueriesTests(AdminFixture fx)
     }
 
     [Fact]
+    public async Task The_overview_shows_this_month_s_AI_spend_and_the_free_accounts_share()
+    {
+        using var scope = fx.Factory.Services.CreateScope();
+        var before = (await Queries(scope).OverviewAsync()).AiSpend!;
+        var (free, _) = await SeedAuthorAsync("aifree");
+        var (pro, _) = await SeedAuthorAsync("aipro");
+        await using (var db = fx.CreateDbContext())
+        {
+            var plan = await db.Plans.SingleAsync(p => p.Slug == "pro");
+            db.UserPlans.Add(new UserPlan { Id = Guid.NewGuid(), UserId = pro, PlanId = plan.Id, Status = "active", StartedAt = DateTime.UtcNow });
+            foreach (var (user, credits) in new[] { (free, 100), (pro, 250) })
+                db.AiCreditLedger.Add(new AiCreditLedger { Id = Guid.NewGuid(), UserId = user, Delta = -credits, Reason = "spend", CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var after = (await Queries(scope).OverviewAsync()).AiSpend!;
+
+        (after.MonthUsd - before.MonthUsd).Should().Be(2.10m, "350 credits at $0.006");
+        (after.FreeUsd - before.FreeUsd).Should().Be(0.60m, "the Pro account's spend isn't the free share");
+    }
+
+    [Fact]
     public async Task Search_finds_an_account_by_part_of_its_email_and_its_page_lists_titles_only()
     {
         var (id, _) = await SeedAuthorAsync("search", failedCompiles: 1);
