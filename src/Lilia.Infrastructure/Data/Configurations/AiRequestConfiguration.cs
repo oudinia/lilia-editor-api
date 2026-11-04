@@ -33,6 +33,12 @@ public class AiRequestConfiguration : IEntityTypeConfiguration<AiRequest>
         builder.Property(r => r.RedactionSummary).HasColumnName("redaction_summary").HasColumnType("jsonb");
         builder.Property(r => r.PromptTokens).HasColumnName("prompt_tokens").HasDefaultValue(0);
         builder.Property(r => r.CompletionTokens).HasColumnName("completion_tokens").HasDefaultValue(0);
+        builder.Property(r => r.Skill).HasColumnName("skill").HasMaxLength(64);
+        builder.Property(r => r.CacheReadTokens).HasColumnName("cache_read_tokens").HasDefaultValue(0);
+        builder.Property(r => r.CacheWriteTokens).HasColumnName("cache_write_tokens").HasDefaultValue(0);
+        builder.Property(r => r.Rounds).HasColumnName("rounds").HasDefaultValue(0);
+        builder.Property(r => r.LargestPromptTokens).HasColumnName("largest_prompt_tokens").HasDefaultValue(0);
+        builder.Property(r => r.CostUsd).HasColumnName("cost_usd").HasPrecision(12, 6);
         builder.Property(r => r.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("pending").IsRequired();
         builder.Property(r => r.ErrorMessage).HasColumnName("error_message");
         builder.Property(r => r.LatencyMs).HasColumnName("latency_ms");

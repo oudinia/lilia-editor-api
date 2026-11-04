@@ -12,6 +12,9 @@ internal sealed class ScriptedChatClient : IChatClient
 
     public ScriptedChatClient(params string[] replies) => _replies = new Queue<string>(replies);
 
+    /// <summary>What each call reports it used.</summary>
+    public UsageDetails Usage { get; set; } = new() { InputTokenCount = 100, OutputTokenCount = 40 };
+
     /// <summary>Each call's messages, copied at the time of the call.</summary>
     public List<List<ChatMessage>> Calls { get; } = new();
 
@@ -30,7 +33,7 @@ internal sealed class ScriptedChatClient : IChatClient
         }
         return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, reply))
         {
-            Usage = new UsageDetails { InputTokenCount = 100, OutputTokenCount = 40 },
+            Usage = Usage,
         });
     }
 

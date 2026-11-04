@@ -489,6 +489,18 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("block_id");
 
+                    b.Property<int>("CacheReadTokens")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("cache_read_tokens");
+
+                    b.Property<int>("CacheWriteTokens")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("cache_write_tokens");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
@@ -498,6 +510,11 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0)
                         .HasColumnName("completion_tokens");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasPrecision(12, 6)
+                        .HasColumnType("numeric(12,6)")
+                        .HasColumnName("cost_usd");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -512,6 +529,12 @@ namespace Lilia.Infrastructure.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text")
                         .HasColumnName("error_message");
+
+                    b.Property<int>("LargestPromptTokens")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("largest_prompt_tokens");
 
                     b.Property<int?>("LatencyMs")
                         .HasColumnType("integer")
@@ -552,6 +575,17 @@ namespace Lilia.Infrastructure.Migrations
                     b.Property<JsonDocument>("RedactionSummary")
                         .HasColumnType("jsonb")
                         .HasColumnName("redaction_summary");
+
+                    b.Property<int>("Rounds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("rounds");
+
+                    b.Property<string>("Skill")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("skill");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -8137,28 +8171,22 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.Comment", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.Block", "Block")
-                        .WithMany("Comments")
+                    b.HasOne("Lilia.Core.Entities.Block", null)
+                        .WithMany()
                         .HasForeignKey("BlockId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Lilia.Core.Entities.Document", "Document")
-                        .WithMany("Comments")
+                    b.HasOne("Lilia.Core.Entities.Document", null)
+                        .WithMany()
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.User", "User")
-                        .WithMany("Comments")
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Block");
-
-                    b.Navigation("Document");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.CommentReply", b =>
@@ -8169,15 +8197,13 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.User", "User")
+                    b.HasOne("Lilia.Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Comment");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.ConversionAudit", b =>
@@ -8206,25 +8232,23 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.Team", "Team")
-                        .WithMany("Documents")
+                    b.HasOne("Lilia.Core.Entities.Team", null)
+                        .WithMany()
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Owner");
-
-                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.DocumentCollaborator", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.Document", "Document")
-                        .WithMany("Collaborators")
+                    b.HasOne("Lilia.Core.Entities.Document", null)
+                        .WithMany()
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.User", "Inviter")
+                    b.HasOne("Lilia.Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("InvitedBy")
                         .OnDelete(DeleteBehavior.SetNull);
@@ -8235,31 +8259,25 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.User", "User")
-                        .WithMany("DocumentCollaborations")
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Document");
-
-                    b.Navigation("Inviter");
-
                     b.Navigation("Role");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.DocumentGroup", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.Document", "Document")
-                        .WithMany("DocumentGroups")
+                    b.HasOne("Lilia.Core.Entities.Document", null)
+                        .WithMany()
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.Group", "Group")
-                        .WithMany("DocumentGroups")
+                    b.HasOne("Lilia.Core.Entities.Group", null)
+                        .WithMany()
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -8269,10 +8287,6 @@ namespace Lilia.Infrastructure.Migrations
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Document");
-
-                    b.Navigation("Group");
 
                     b.Navigation("Role");
                 });
@@ -8309,21 +8323,17 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.DocumentPendingInvite", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.Document", "Document")
+                    b.HasOne("Lilia.Core.Entities.Document", null)
                         .WithMany()
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.User", "Inviter")
+                    b.HasOne("Lilia.Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("InvitedBy")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Document");
-
-                    b.Navigation("Inviter");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.DocumentSnapshot", b =>
@@ -8703,8 +8713,8 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Lilia.Core.Entities.User", "User")
-                        .WithMany("GroupMemberships")
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -8712,8 +8722,6 @@ namespace Lilia.Infrastructure.Migrations
                     b.Navigation("Group");
 
                     b.Navigation("Role");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.ImportBlockComment", b =>
@@ -8972,13 +8980,11 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.Notification", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.User", "User")
+                    b.HasOne("Lilia.Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.OrganizationMember", b =>
@@ -9158,13 +9164,11 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.Team", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.User", "Owner")
-                        .WithMany("OwnedTeams")
+                    b.HasOne("Lilia.Core.Entities.User", null)
+                        .WithMany()
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.TrustedDevice", b =>
@@ -9207,12 +9211,10 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.User", b =>
                 {
-                    b.HasOne("Lilia.Core.Entities.Team", "DefaultTeam")
+                    b.HasOne("Lilia.Core.Entities.Team", null)
                         .WithMany()
                         .HasForeignKey("DefaultTeamId")
                         .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("DefaultTeam");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.UserOnboarding", b =>
@@ -9264,8 +9266,6 @@ namespace Lilia.Infrastructure.Migrations
             modelBuilder.Entity("Lilia.Core.Entities.Block", b =>
                 {
                     b.Navigation("Children");
-
-                    b.Navigation("Comments");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.BlockGroup", b =>
@@ -9285,12 +9285,6 @@ namespace Lilia.Infrastructure.Migrations
                     b.Navigation("BibliographyEntries");
 
                     b.Navigation("Blocks");
-
-                    b.Navigation("Collaborators");
-
-                    b.Navigation("Comments");
-
-                    b.Navigation("DocumentGroups");
 
                     b.Navigation("DocumentLabels");
 
@@ -9350,8 +9344,6 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.Group", b =>
                 {
-                    b.Navigation("DocumentGroups");
-
                     b.Navigation("Members");
                 });
 
@@ -9424,8 +9416,6 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.Team", b =>
                 {
-                    b.Navigation("Documents");
-
                     b.Navigation("Groups");
                 });
 
@@ -9435,21 +9425,13 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.Navigation("AiChats");
 
-                    b.Navigation("Comments");
-
-                    b.Navigation("DocumentCollaborations");
-
                     b.Navigation("Formulas");
-
-                    b.Navigation("GroupMemberships");
 
                     b.Navigation("Labels");
 
                     b.Navigation("OrganizationMemberships");
 
                     b.Navigation("OwnedDocuments");
-
-                    b.Navigation("OwnedTeams");
 
                     b.Navigation("Passkeys");
 
