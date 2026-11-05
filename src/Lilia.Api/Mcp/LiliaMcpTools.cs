@@ -71,7 +71,7 @@ public sealed class LiliaMcpTools(
     private static object NoDocument(string documentId) =>
         new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
 
-    [McpServerTool(Name = "list_documents", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "list_documents", Title = "List documents", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("List the author's documents (their own and those shared with them), most recently changed first: id, title, role (owner/editor/viewer), when it changed, block count, and the last validation (errors, warnings).")]
     public async Task<object> ListDocuments(
         [Description("Optional words to find in titles.")] string? search = null,
@@ -99,26 +99,26 @@ public sealed class LiliaMcpTools(
         };
     }
 
-    [McpServerTool(Name = "get_outline", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_outline", Title = "Read a document's outline", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("A document's structure: its title, kind and LaTeX class, the heading outline, and every block in order as {id, type, snippet}. Call it first: the other tools take these block ids.")]
     public async Task<object> GetOutline([Description("The document id from list_documents.")] string documentId) =>
         await OpenAsync(documentId) is { } d ? AskLiliaService.DocOutline(d) : NoDocument(documentId);
 
-    [McpServerTool(Name = "get_block", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_block", Title = "Read a block", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("One block's full type and content (JSON) by its id from get_outline or search_document.")]
     public async Task<object> GetBlock(
         [Description("The document id.")] string documentId,
         [Description("A block id from get_outline.")] string blockId) =>
         await OpenAsync(documentId) is { } d ? AskLiliaService.DocBlock(d, blockId) : NoDocument(documentId);
 
-    [McpServerTool(Name = "search_document", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "search_document", Title = "Search a document", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Find text in one document; returns the matching blocks as {id, type, snippet}.")]
     public async Task<object> SearchDocument(
         [Description("The document id.")] string documentId,
         [Description("The text to find.")] string query) =>
         await OpenAsync(documentId) is { } d ? AskLiliaService.DocSearch(d, query) : NoDocument(documentId);
 
-    [McpServerTool(Name = "get_lilia_latex", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_lilia_latex", Title = "Show Lilia's LaTeX", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("The LaTeX that Lilia's own emitter produces for one block or the whole document: what actually compiles here (Lilia's preamble, packages and block mapping), tagged source=\"lilia-emitter\". Prefer it to LaTeX written from memory.")]
     public async Task<object> GetLiliaLatex(
         [Description("The document id.")] string documentId,
@@ -127,12 +127,12 @@ public sealed class LiliaMcpTools(
             ? await AskLiliaService.LiliaLatexAsync(render, logger, d, d.Id, blockId)
             : NoDocument(documentId);
 
-    [McpServerTool(Name = "get_document_settings", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_document_settings", Title = "Read the page setup", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("A document's page setup: paper, orientation, margins, columns, font and size, line spacing, paragraph indent, page numbering, the header and footer slots, and the custom preamble. null means the class default.")]
     public async Task<object> GetDocumentSettings([Description("The document id.")] string documentId) =>
         await OpenAsync(documentId) is { } d ? AskLiliaService.SettingsView(d) : NoDocument(documentId);
 
-    [McpServerTool(Name = "check_document", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "check_document", Title = "Check the document compiles", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), printsCorrectly, and problems: each error and warning with its block id and line. Takes a few seconds. It does not change the document or its saved validation.")]
     public async Task<object> CheckDocument([Description("The document id.")] string documentId) =>
         await OpenAsync(documentId) is { } d ? (await checker.CheckAsync(d)).Report : NoDocument(documentId);
@@ -150,7 +150,7 @@ public sealed class LiliaMcpTools(
         return needsUnicodeEngine ? "xelatex" : "pdflatex";
     }
 
-    [McpServerTool(Name = "export_document", ReadOnly = true, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "export_document", Title = "Export a document", ReadOnly = true, Idempotent = false, OpenWorld = false)]
     [Description("A download link for the document as pdf, tex (one LaTeX file; alias latex), zip (an Overleaf-style LaTeX project) or docx (Word; alias word). The file is not returned here: give the author the link (valid 15 minutes) to click. The reply also says whether the document last compiled (lastCheck); for a pdf, run check_document first if it never has; when that check found this version does not compile, no pdf link is given (tex and zip still are). Read access is enough.")]
     public async Task<object> ExportDocument(
         [Description("The document id.")] string documentId,
@@ -207,7 +207,7 @@ public sealed class LiliaMcpTools(
         }
     }
 
-    [McpServerTool(Name = "search_help", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "search_help", Title = "Search Lilia's help", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Search Lilia's help articles (how to do things in the app: share, export, cite, validate, themes, settings…). Returns {slug, title, summary, url}.")]
     public async Task<object> SearchHelp(
         [Description("What the author wants to do, in their words.")] string query,
@@ -218,7 +218,7 @@ public sealed class LiliaMcpTools(
         return new { results = hits.Select(a => new { a.Slug, a.Title, a.Summary, url = HelpUrl(a.Slug) }) };
     }
 
-    [McpServerTool(Name = "get_help", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_help", Title = "Read a help article", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("One help article by slug (from search_help): its steps, plus 'what this means' for a beginner or the LaTeX underneath for an advanced author.")]
     public async Task<object> GetHelp(
         [Description("The article slug, e.g. 'sharing'.")] string slug,

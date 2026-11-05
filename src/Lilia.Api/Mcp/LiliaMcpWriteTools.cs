@@ -91,7 +91,7 @@ public sealed class LiliaMcpWriteTools(
     // and no bibliography.
     private const string FieldGuide = "Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?, rowColors?: {odd: hex like #F2F2F2, even: hex} (odd = first body row)}; figure {src, caption?, label?, width 0-1} or TikZ {kind:\"tikz\", source, caption?, label?}; code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {caption?, label?, lines:[{kind, text}]} with kind statement|require|ensure|if|elsif|else|endif|for|forall|endfor|while|endwhile|repeat|until|return|comment, or {code} with \\STATE / \\IF{…} lines; callout {text, title?, variant?}; footnote {text}; embed {code} — raw LaTeX printed as written; bibliography {text} — BibTeX entries (@article{key, …}) or lines \"@cite[key] Author — Title\"; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}; CV: personalInfo {name, headline, email, phones:[{number}], homepage, location}, cvSection {title}, cvEntry {period, role, org, location, highlight?, description, tech:[]} (firstName/lastName, organization, startDate/endDate are mapped). Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation.";
 
-    [McpServerTool(Name = "add_block", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "add_block", Title = "Add a block", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Add a block to a document (small, targeted inserts). Returns the new block id. The open editor shows the change at once; the reply gives the version to restore to undo it. An unknown type is refused. " + FieldGuide)]
     public Task<object> AddBlock(
         [Description("The document id.")] string documentId,
@@ -100,7 +100,7 @@ public sealed class LiliaMcpWriteTools(
         [Description("Insert after this block id; omit to append at the end.")] string? afterId = null) =>
         WriteAsync(documentId, "add_block", new() { ["type"] = type, ["content"] = content, ["afterId"] = afterId });
 
-    [McpServerTool(Name = "edit_block", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "edit_block", Title = "Edit a block", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Replace one block's content (and optionally its type) by id. Read it first with get_block. The content replaces the old one entirely: when changing the type, give the new type's fields. " + FieldGuide)]
     public Task<object> EditBlock(
         [Description("The document id.")] string documentId,
@@ -139,21 +139,21 @@ public sealed class LiliaMcpWriteTools(
         return node.ToJsonString();
     }
 
-    [McpServerTool(Name = "remove_block", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "remove_block", Title = "Remove a block", Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Delete one block by id. The version saved before the change can restore it.")]
     public Task<object> RemoveBlock(
         [Description("The document id.")] string documentId,
         [Description("The block id to delete.")] string blockId) =>
         WriteAsync(documentId, "remove_block", new() { ["blockId"] = blockId });
 
-    [McpServerTool(Name = "reorder_blocks", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "reorder_blocks", Title = "Reorder blocks", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Put the document's blocks in this exact order (every block id, from get_outline).")]
     public Task<object> ReorderBlocks(
         [Description("The document id.")] string documentId,
         [Description("All block ids in the new order.")] string[] blockIds) =>
         WriteAsync(documentId, "reorder_blocks", new() { ["blockIds"] = blockIds });
 
-    [McpServerTool(Name = "set_title", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "set_title", Title = "Set the title", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the author and date.")]
     public Task<object> SetTitle(
         [Description("The document id.")] string documentId,
@@ -162,7 +162,7 @@ public sealed class LiliaMcpWriteTools(
         [Description("Date, e.g. 'October 2026' or '\\\\today'.")] string? date = null) =>
         WriteAsync(documentId, "set_title", new() { ["title"] = title, ["author"] = author, ["date"] = date });
 
-    [McpServerTool(Name = "apply_lml", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "apply_lml", Title = "Rewrite the whole document", Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Replace the WHOLE document body with LML, Lilia's block markup, in one step (for rewrites; prefer edit_block for small changes). Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography; bodies indented 2 spaces. The version saved before can restore the old text.")]
     public Task<object> ApplyLml(
         [Description("The document id.")] string documentId,
@@ -206,7 +206,7 @@ public sealed class LiliaMcpWriteTools(
         ["language"] = JsonSerializer.SerializeToElement("auto"),
     };
 
-    [McpServerTool(Name = "set_document_settings", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "set_document_settings", Title = "Change the page setup", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headingNumbering (none|1-5: the heading levels numbered, which the table of contents lists too; default), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), language (auto|en|en-GB|fr|de|es|it|pt|nl|pl|sv|tr|ru|el|ar|he|zh|ja|ko: the PDF's language, auto reads it from the text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
     public Task<object> SetDocumentSettings(
         [Description("The document id.")] string documentId,
@@ -251,7 +251,7 @@ public sealed class LiliaMcpWriteTools(
         return WriteAsync(documentId, "set_document_settings", args);
     }
 
-    [McpServerTool(Name = "create_document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "create_document", Title = "Create a document", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Create a new document owned by the author, optionally with its body written in LML (as apply_lml). Kinds: article (default), report, book. Returns its id and address; then edit it with the other tools.")]
     public async Task<object> CreateDocument(
         [Description("The document's title.")] string title,
@@ -291,7 +291,7 @@ public sealed class LiliaMcpWriteTools(
     /// <summary>Base64 for 10 MB, the largest file import_document takes.</summary>
     private const int ImportMaxChars = 14_000_000;
 
-    [McpServerTool(Name = "import_document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Import a file you have as a new Lilia document, in one call: .tex or .lml as text, .docx as base64 (up to 10 MB). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
         [Description("The file name, e.g. paper.tex, thesis.docx, notes.lml. Its extension gives the format unless format is set.")] string filename,
@@ -345,7 +345,7 @@ public sealed class LiliaMcpWriteTools(
         }
     }
 
-    [McpServerTool(Name = "start_import", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "start_import", Title = "Start a file import", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Import a file (.tex, .docx or .lml) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. When you have the file yourself, import_document does it in one call.")]
     public async Task<object> StartImport()
     {
@@ -361,7 +361,7 @@ public sealed class LiliaMcpWriteTools(
         };
     }
 
-    [McpServerTool(Name = "import_status", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "import_status", Title = "Check an import", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Where an import started with start_import is: waiting (no file dropped yet), done (with the new document's id) or failed (with the reason).")]
     public object ImportStatus([Description("The importId from start_import.")] string importId)
     {
