@@ -79,6 +79,27 @@ public class LiliaMcpServerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Every_tool_has_a_title_and_says_whether_it_reads_or_changes()
+    {
+        // Anthropic's Connectors Directory requires both on every tool (5 Nov 2026).
+        await SeedUserAsync("mcp_titles");
+        var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
+        var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
+        tools.Should().HaveCount(21);
+        foreach (var t in tools)
+        {
+            var name = t.GetProperty("name").GetString();
+            t.TryGetProperty("title", out var title).Should().BeTrue(name);
+            title.GetString().Should().NotBeNullOrWhiteSpace(name);
+            var a = t.GetProperty("annotations");
+            a.GetProperty("title").GetString().Should().Be(title.GetString(), name);
+            (a.TryGetProperty("readOnlyHint", out var ro) && ro.GetBoolean() || a.TryGetProperty("destructiveHint", out _))
+                .Should().BeTrue($"{name} says it reads, or whether it destroys");
+        }
+        tools.Select(t => t.GetProperty("title").GetString()).Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
     public async Task An_author_reads_their_own_document()
     {
         await SeedUserAsync("mcp_owner");
