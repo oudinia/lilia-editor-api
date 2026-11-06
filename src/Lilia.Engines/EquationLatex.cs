@@ -20,7 +20,7 @@ public static class EquationLatex
 
     public static string Render(JsonElement content)
     {
-        var latex = EquationContent.ReadSource(content);
+        var latex = EquationContent.ReadMathSource(content);
         // MathLive leaves placeholders in an equation it was editing.
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
         if (string.IsNullOrWhiteSpace(latex)) return "% Empty equation";

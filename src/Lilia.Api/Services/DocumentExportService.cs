@@ -217,7 +217,7 @@ public class DocumentExportService : IDocumentExportService
                 {
                     var (mode, numbered) = Lilia.Core.Blocks.EquationContent.ReadMode(content);
                     if (!numbered || mode == "inline") break;
-                    var source = Lilia.Core.Blocks.EquationContent.ReadSource(content);
+                    var source = Lilia.Core.Blocks.EquationContent.ReadMathSource(content);
                     var rows = mode is "align" or "gather" || Lilia.Core.Blocks.EquationContent.HasTopLevelAlignment(source)
                         ? Math.Max(1, Regex.Matches(source, @"\\\\(?!\s*$)").Count + 1 - Regex.Matches(source, @"\\(?:nonumber|notag)\b").Count)
                         : 1;
@@ -726,9 +726,8 @@ public class DocumentExportService : IDocumentExportService
         // its own comment. This read "latex" then "text" and never "source", so
         // an equation block saved by the current editor arrived with nothing in
         // it and exported to Word as an italic "[]" (2026-09-09).
-        var latex = GetString(content, "source");
-        if (string.IsNullOrEmpty(latex))
-            latex = GetString(content, "latex");
+        // ReadMathSource (6 Nov 2026): a matrix or cases stored as the mode keeps its environment.
+        var latex = Lilia.Core.Blocks.EquationContent.ReadMathSource(content);
         if (string.IsNullOrEmpty(latex))
             latex = GetString(content, "text");
 

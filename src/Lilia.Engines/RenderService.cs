@@ -275,7 +275,7 @@ public partial class RenderService : IRenderService
 
     private string RenderEquationToHtml(JsonElement content)
     {
-        var latex = EquationContent.ReadSource(content);
+        var latex = EquationContent.ReadMathSource(content);
 
         var displayMode = ResolveDisplayMode(content);
 

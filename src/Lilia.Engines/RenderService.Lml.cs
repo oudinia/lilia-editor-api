@@ -121,7 +121,7 @@ public partial class RenderService
 
     private static string RenderEquationToLml(JsonElement content, string? label)
     {
-        var latex = EquationContent.ReadSource(content);
+        var latex = EquationContent.ReadMathSource(content);
         var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
         var attrs = BuildAttrs(("label", label), ("mode", string.Equals(equationMode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : null));
         return $"@equation{attrs}\n{latex}";

@@ -69,18 +69,48 @@ public static class EquationContent
     /// </summary>
     public static (string Mode, bool Numbered) ReadMode(JsonElement content)
     {
-        string mode;
-        if (TryReadString(content, "equationMode", out var em) && em.Length > 0) mode = em;
-        else if (TryReadString(content, "mode", out var m) && m.Length > 0) mode = m;
-        else if (content.ValueKind == JsonValueKind.Object
-                 && content.TryGetProperty("displayMode", out var dm) && dm.ValueKind == JsonValueKind.False) mode = "inline";
-        else mode = "display";
-
+        var mode = ReadRawMode(content);
         var starred = mode.EndsWith('*');
         var baseMode = starred ? mode[..^1] : mode;
         var optedOut = content.ValueKind == JsonValueKind.Object
             && content.TryGetProperty("numbered", out var n) && n.ValueKind == JsonValueKind.False;
+        // A wrapping mode is a display equation whose body sits in that environment: ReadMathSource adds it.
+        if (WrappingModes.Contains(baseMode)) baseMode = "display";
         return (baseMode, baseMode != "inline" && !starred && !optedOut);
+    }
+
+    /// <summary>
+    /// The modes the editor stores as an environment around the body (6 Nov 2026, issue 33 of the
+    /// launch bot): a [ ] matrix is saved as <c>equationMode: "bmatrix"</c> with only its rows,
+    /// <c>1 &amp; 2 \\ 3 &amp; 4</c>, and the editor's preview adds the environment. The exports read
+    /// the body alone, took its <c>&amp;</c> for an alignment and printed a matrix as numbered
+    /// <c>align</c> rows, without its brackets; cases lost their brace the same way.
+    /// </summary>
+    private static readonly HashSet<string> WrappingModes =
+        ["cases", "split", "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix"];
+
+    /// <summary>
+    /// The equation's maths as the editor shows it: <see cref="ReadSource"/>, inside the environment its
+    /// mode names when that mode wraps the body (a matrix, cases, split), unless the source already
+    /// opens that environment. What every export renders; <see cref="ReadSource"/> stays verbatim for
+    /// the write path.
+    /// </summary>
+    public static string ReadMathSource(JsonElement content)
+    {
+        var source = ReadSource(content);
+        var mode = ReadRawMode(content).TrimEnd('*');
+        if (source.Length == 0 || !WrappingModes.Contains(mode)) return source;
+        if (source.TrimStart().StartsWith($@"\begin{{{mode}}}", StringComparison.Ordinal)) return source;
+        return $@"\begin{{{mode}}}" + source + $@"\end{{{mode}}}";
+    }
+
+    private static string ReadRawMode(JsonElement content)
+    {
+        if (TryReadString(content, "equationMode", out var em) && em.Length > 0) return em;
+        if (TryReadString(content, "mode", out var m) && m.Length > 0) return m;
+        if (content.ValueKind == JsonValueKind.Object
+            && content.TryGetProperty("displayMode", out var dm) && dm.ValueKind == JsonValueKind.False) return "inline";
+        return "display";
     }
 
     /// <summary>

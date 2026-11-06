@@ -384,7 +384,7 @@ public class TypstRenderService : ITypstRenderService
 
     private static string RenderEquationToTypst(JsonElement content)
     {
-        var latex = EquationContent.ReadSource(content);
+        var latex = EquationContent.ReadMathSource(content);
         var displayMode = content.TryGetProperty("displayMode", out var d) && d.GetBoolean();
 
         // Strip MathLive placeholder artifacts
