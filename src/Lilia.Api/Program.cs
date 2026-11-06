@@ -577,6 +577,10 @@ builder.Services.AddScoped<IMathAstService, MathAstService>();
 
 // Background services
 builder.Services.AddHostedService<TrashPurgeBackgroundService>();
+// Wolverine's handlers, built in the background once the app has started, so the first sign-up
+// after a deploy doesn't wait ~5 s for UserCreatedEvent's chain to compile (6 Nov 2026).
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddHostedService<Lilia.Api.Services.WolverineWarmupService>();
 // The admin console's block shapes (17 Oct 2026). Off under the test host: its tests run the
 // processor themselves.
 if (!builder.Environment.IsEnvironment("Testing"))
