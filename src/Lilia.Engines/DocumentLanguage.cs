@@ -221,7 +221,14 @@ public static class DocumentLanguage
     {
         "latex", "source", "code", "src", "label", "language", "url", "href", "citeKey", "key", "id",
         "kind", "type", "mode", "equationMode", "lml", "alt", "style", "theme",
+        // Settings, not words (6 Nov 2026: a list's "default" spacing and "number" format were read as prose).
+        "spacing", "labelFormat", "placement", "align", "columnAlign", "columnWidth", "width", "height",
+        "size", "color", "format", "variant", "status", "numbering",
     };
+
+    // An id or a hash (an image's assetId d807e00e-53d0-…): its hex letters were read as words, and "e" and
+    // "a" counted as Portuguese, so an English document printed its date in Portuguese (launch bot issue 8).
+    private static readonly Regex IdLike = new(@"^[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}$|^[0-9a-fA-F]{12,}$", RegexOptions.Compiled);
 
     private const int MaxChars = 20_000;
 
@@ -247,11 +254,14 @@ public static class DocumentLanguage
     {
         switch (e.ValueKind)
         {
-            case JsonValueKind.String: sb.Append(e.GetString()).Append('\n'); break;
+            case JsonValueKind.String:
+                var text = e.GetString() ?? "";
+                if (!IdLike.IsMatch(text)) sb.Append(text).Append('\n');
+                break;
             case JsonValueKind.Array: foreach (var x in e.EnumerateArray()) Collect(x, sb); break;
             case JsonValueKind.Object:
                 foreach (var p in e.EnumerateObject())
-                    if (!NotProse.Contains(p.Name)) Collect(p.Value, sb);
+                    if (!NotProse.Contains(p.Name) && !p.Name.EndsWith("Id", StringComparison.Ordinal)) Collect(p.Value, sb);
                 break;
         }
     }
@@ -311,7 +321,9 @@ public static class DocumentLanguage
         if (Most(greek)) return "el";
         if (letters < 40) return "en";
 
-        var words = Regex.Matches(text.ToLowerInvariant(), @"\p{L}+").Select(m => m.Value).ToList();
+        // One letter is no evidence: "a", "e", "o", "y", "i" are words in several languages, and labels,
+        // variables and list markers ("Bullet A") are full of them.
+        var words = Regex.Matches(text.ToLowerInvariant(), @"\p{L}{2,}").Select(m => m.Value).ToList();
         if (words.Count < 12) return "en";
         var scores = Stopwords.ToDictionary(kv => kv.Key, kv => words.Count(kv.Value.Contains));
         var ranked = scores.OrderByDescending(kv => kv.Value).ToList();

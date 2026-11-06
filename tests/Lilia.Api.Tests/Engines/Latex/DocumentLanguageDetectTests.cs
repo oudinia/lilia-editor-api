@@ -22,6 +22,34 @@ public class DocumentLanguageDetectTests
     public void The_text_s_language_is_read(string expected, string text) =>
         DocumentLanguage.Detect(text).Should().Be(expected);
 
+    [Fact]
+    public void An_english_document_with_an_image_and_lettered_items_reads_as_English()
+    {
+        // The launch bot's document (issue 8, 6 Nov 2026): it read as Portuguese, from the hex letters of
+        // the image's assetId and "Bullet A", so the PDF printed "5 de novembro de 2026".
+        static System.Text.Json.JsonElement J(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
+        var prose = DocumentLanguage.Prose("Untitled Document", new[]
+        {
+            ("paragraph", J("""{"text":"Intro title"}""")),
+            ("heading", J("""{"text":"First section","level":1}""")),
+            ("paragraph", J("""{"text":"Some body text here. ZZTOP typed As shown by @cite{x"}""")),
+            ("figure", J("""{"alt":"fig.png","src":"/uploads/u/documents/67d690f2-3d2a-4cf4-b7bf-9dc3acb48787/images/d807e00e-53d0-4947-a4c8-fc49ae0cc742.png","assetId":"d807e00e-53d0-4947-a4c8-fc49ae0cc742","caption":""}""")),
+            ("paragraph", J("""{"text":"Item one"}""")),
+            ("paragraph", J("""{"text":"Item two"}""")),
+            ("list", J("""{"kind":"bullet","items":["Bullet A","Bullet B"],"spacing":"default","labelFormat":"number"}""")),
+            ("table", J("""{"caption":"Results","headers":["Column 1","Column 2","Column 3"]}""")),
+        });
+
+        prose.Should().NotContain("d807e00e").And.NotContain("default");
+        DocumentLanguage.Detect(prose).Should().Be("en");
+    }
+
+    [Fact]
+    public void Single_letters_are_no_evidence_of_a_language()
+    {
+        DocumentLanguage.Detect("a e o a e o a e o a e o a e o the item list and more words here to read").Should().Be("en");
+    }
+
     [Theory]
     [InlineData("Bonjour")]
     [InlineData("")]
