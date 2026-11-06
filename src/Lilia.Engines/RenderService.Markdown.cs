@@ -137,7 +137,7 @@ public partial class RenderService
 
     private static string RenderEquationToMarkdown(JsonElement content, string? label)
     {
-        var latex = EquationContent.ReadSource(content);
+        var latex = EquationContent.ReadMathSource(content);
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
 
         var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";

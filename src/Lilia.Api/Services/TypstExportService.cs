@@ -547,9 +547,9 @@ public class TypstExportService : ITypstExportService
         // and rendered as "$  $": a blank space where the equation belongs,
         // in a document that compiles perfectly (2026-09-10). Typst is the
         // default PDF path, so that was the PDF most documents got.
-        var latex = content.TryGetProperty("source", out var src) ? src.GetString() ?? "" : "";
-        if (string.IsNullOrEmpty(latex))
-            latex = content.TryGetProperty("latex", out var l) ? l.GetString() ?? "" : "";
+        // ReadMathSource (6 Nov 2026): the same order, and a matrix or cases stored as the mode keeps its
+        // environment instead of printing as bare rows.
+        var latex = EquationContent.ReadMathSource(content);
         if (string.IsNullOrEmpty(latex))
             latex = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
 
