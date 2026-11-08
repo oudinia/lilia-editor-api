@@ -137,7 +137,8 @@ public partial class RenderService
 
     private static string RenderEquationToMarkdown(JsonElement content, string? label)
     {
-        var latex = EquationContent.ReadMathSource(content);
+        // ReadDisplaySource (8 Nov 2026): an align body keeps its environment; bare rows were a red KaTeX error.
+        var latex = EquationContent.ReadDisplaySource(content);
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
 
         var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";

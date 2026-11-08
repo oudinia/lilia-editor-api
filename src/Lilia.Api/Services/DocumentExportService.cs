@@ -742,8 +742,29 @@ public class DocumentExportService : IDocumentExportService
                 DisplayMode = displayMode,
                 // "(3)" at the right margin, as the PDF prints it; Word's equations had no number (MCP-96).
                 EquationNumber = _currentBlockNumber,
+                EquationRows = NumberedRows(content, latex, _currentBlockNumber),
             }
         };
+    }
+
+    /// <summary>
+    /// A numbered align or gather has a number per row in the PDF, and the numbering pass above counts
+    /// them all; Word printed the first one only, so the next equation's number seemed to skip
+    /// (8 Nov 2026, the launch bot's issue 44). Null for a single row, an unnumbered block or a
+    /// non-numeric number: one paragraph, as before.
+    /// </summary>
+    internal static List<ExportEquationRow>? NumberedRows(JsonElement content, string latex, string? firstNumber)
+    {
+        if (!int.TryParse(firstNumber, out var next)) return null;
+        var (mode, numbered) = Lilia.Core.Blocks.EquationContent.ReadMode(content);
+        if (!numbered || !(mode is "align" or "gather" || Lilia.Core.Blocks.EquationContent.HasTopLevelAlignment(latex))) return null;
+        var rows = Lilia.Core.Blocks.EquationContent.SplitRows(latex);
+        if (rows.Count(r => r.Numbered) < 2) return null;
+        return rows.Select(r => new ExportEquationRow
+        {
+            Latex = AsWordDisplay(ProseLatex.MathForWord(r.Latex)),
+            Number = r.Numbered ? (next++).ToString() : null,
+        }).ToList();
     }
 
     /// <summary>

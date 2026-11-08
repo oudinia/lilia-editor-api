@@ -104,6 +104,68 @@ public static class EquationContent
         return $@"\begin{{{mode}}}" + source + $@"\end{{{mode}}}";
     }
 
+    /// <summary>
+    /// The modes whose environment is the whole display (8 Nov 2026, the launch bot's issue 44): an
+    /// align block stores its rows alone, <c>x &amp;= 1 \\ y &amp;= 2</c>. The LaTeX writer opens
+    /// <c>align</c> itself, but the HTML and Markdown exports put the bare rows between <c>$$</c>, where
+    /// KaTeX shows a top-level <c>&amp;</c> as a red error.
+    /// </summary>
+    private static readonly HashSet<string> DisplayEnvironmentModes = ["align", "gather", "multline"];
+
+    /// <summary>
+    /// <see cref="ReadMathSource"/> as a self-contained display: an align, gather or multline body inside
+    /// its own environment, star kept, unless the source already opens it. For the exports that hand the
+    /// maths to KaTeX or MathJax whole (HTML, Markdown); the LaTeX and Word writers build the environment
+    /// from the mode themselves.
+    /// </summary>
+    public static string ReadDisplaySource(JsonElement content)
+    {
+        var source = ReadMathSource(content);
+        var mode = ReadRawMode(content);
+        if (source.Length == 0 || !DisplayEnvironmentModes.Contains(mode.TrimEnd('*'))) return source;
+        if (source.TrimStart().StartsWith(@"\begin{", StringComparison.Ordinal)) return source;
+        return $@"\begin{{{mode}}}" + source + $@"\end{{{mode}}}";
+    }
+
+    /// <summary>
+    /// The rows of a multi-line body, split at its top-level <c>\\</c> (not those inside a matrix or
+    /// cases), trimmed, a trailing empty row dropped, and whether each row is numbered:
+    /// <c>\nonumber</c> or <c>\notag</c> takes its number away and is removed. The Word export prints
+    /// one number per row, as the PDF does (8 Nov 2026, issue 44).
+    /// </summary>
+    public static IReadOnlyList<(string Latex, bool Numbered)> SplitRows(string? source)
+    {
+        var rows = new List<(string, bool)>();
+        if (string.IsNullOrWhiteSpace(source)) return rows;
+
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < source.Length; i++)
+        {
+            if (source[i] != '\\') continue;
+            if (StartsWithAt(source, i, @"\begin{")) { depth++; i += 6; continue; }
+            if (StartsWithAt(source, i, @"\end{")) { if (depth > 0) depth--; i += 4; continue; }
+            if (i + 1 < source.Length && source[i + 1] == '\\' && depth == 0)
+            {
+                rows.Add(Row(source[start..i]));
+                start = i + 2;
+            }
+            i++;
+        }
+        rows.Add(Row(source[start..]));
+        if (rows.Count > 1 && rows[^1].Item1.Length == 0) rows.RemoveAt(rows.Count - 1);
+        return rows;
+
+        static (string, bool) Row(string text)
+        {
+            var numbered = !NoNumber.IsMatch(text);
+            return (NoNumber.Replace(text, "").Trim(), numbered);
+        }
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex NoNumber =
+        new(@"\\(?:nonumber|notag)\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static string ReadRawMode(JsonElement content)
     {
         if (TryReadString(content, "equationMode", out var em) && em.Length > 0) return em;
