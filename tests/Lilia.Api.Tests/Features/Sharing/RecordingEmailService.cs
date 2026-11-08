@@ -28,7 +28,7 @@ public sealed class RecordingEmailService : IEmailService
     public Task SendDocumentSharedAsync(string toEmail, EmailActor inviter, string documentTitle, string role, string documentUrl, string? locale) => Record("shared", toEmail, documentUrl);
     public Task SendTeamInviteAsync(string toEmail, EmailActor inviter, string teamName, string role, string acceptUrl, string? locale) => Record("team-invite", toEmail);
     public Task SendTeamMemberRemovedAsync(string toEmail, EmailActor removedBy, string teamName, string? locale) => Record("team-removed", toEmail);
-    public Task SendStytchVerificationAsync(string toEmail, string magicLinkUrl, string? locale) => Record("verify", toEmail);
+    public Task SendStytchVerificationAsync(string toEmail, string magicLinkUrl, string? locale) => Record("verify", toEmail, magicLinkUrl);
     public Task SendStytchPasswordResetAsync(string toEmail, string resetUrl, string? locale) => Record("reset", toEmail);
     public Task SendStytchMagicLinkLoginAsync(string toEmail, string magicLinkUrl, string? locale) => Record("magic-link", toEmail);
     public Task SendTwoStepCodeAsync(string toEmail, string code, string? locale) => Record("two-step-code", toEmail, code);

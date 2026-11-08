@@ -131,8 +131,10 @@ public class AuthEmailController : ControllerBase
             AuthEmailKind.Verification  => "&intent=verify",
             _ => "",
         };
+        // The link's one-time code: bringing it back proves this inbox, which Stytch can't (EmailProof).
+        var proof = await Lilia.Api.Services.Email.EmailProof.IssueAsync(_cache, userId, ValidMinutes(kind), ct);
         var url = $"{callbackOrigin}/auth/callback?stytch_token_type=magic_links" +
-                  $"&token={Uri.EscapeDataString(token)}{intent}";
+                  $"&token={Uri.EscapeDataString(token)}{intent}{Lilia.Api.Services.Email.EmailProof.Query(proof)}";
 
         try
         {

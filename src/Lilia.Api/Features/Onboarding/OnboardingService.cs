@@ -24,7 +24,9 @@ public sealed record OnboardingDto(
 
 /// <summary>Body of POST /api/me/onboarding/{step}; each step reads what it needs.</summary>
 public sealed record OnboardingStepRequest(string? Route = null, int? Step = null, bool? OptOut = null,
-    string? Name = null, string? TimeZone = null);
+    string? Name = null, string? TimeZone = null,
+    // "verified": the one-time code of the emailed link just used (EmailProof).
+    string? Proof = null);
 
 public interface IOnboardingService
 {
@@ -95,7 +97,9 @@ public sealed class OnboardingService(
         var token = await stytch.MintMagicLinkAsync(userId, 7 * 24 * 60, ct);
         if (token is null) return false;
         var origin = (emailSettings?.BaseUrl ?? "https://editor.liliaeditor.com").TrimEnd('/');
-        var url = $"{origin}/auth/callback?stytch_token_type=magic_links&token={Uri.EscapeDataString(token)}&intent=verify";
+        var proof = await Lilia.Api.Services.Email.EmailProof.IssueAsync(cache, userId, 7 * 24 * 60, ct);
+        var url = $"{origin}/auth/callback?stytch_token_type=magic_links&token={Uri.EscapeDataString(token)}&intent=verify"
+            + Lilia.Api.Services.Email.EmailProof.Query(proof);
         await email.SendStytchVerificationAsync(user.Email, url, user.Locale);
         logger.LogInformation("[Onboarding] confirmation email sent to {UserId} ({Locale})", userId, EmailTemplates.Language(user.Locale));
         return true;
@@ -161,6 +165,13 @@ public sealed class OnboardingService(
                 }
                 break;
             case OnboardingSteps.Verified:
+                // The code of the emailed link proves the address; Stytch never says so for Lilia's links
+                // (EmailProof, 8 Nov 2026). Without it, the welcome still asks Stytch, as before.
+                if (row.VerifiedAt is null && await Lilia.Api.Services.Email.EmailProof.RedeemAsync(cache, userId, request?.Proof, ct))
+                {
+                    row.VerifiedAt = now;
+                    logger.LogInformation("[Onboarding] {UserId} confirmed the address with an emailed link", userId);
+                }
                 await db.SaveChangesAsync(ct);
                 await TrySendWelcomeAsync(userId, ct);
                 await db.Entry(row).ReloadAsync(ct);

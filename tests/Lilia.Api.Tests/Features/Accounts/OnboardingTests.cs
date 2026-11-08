@@ -141,6 +141,48 @@ public class OnboardingTests : IntegrationTestBase
         (await MailTo("omar@lilia.test", 1)).Should().ContainSingle(m => m.Kind == "welcome").Which.Detail.Should().Be("es");
     }
 
+    /// <summary>
+    /// PROD-27 (8 Nov 2026): Lilia's confirmation link is an embeddable magic link, and Stytch never marks
+    /// an address verified when one is used. The welcome waited for Stytch, so it never came. The link's
+    /// one-time code now proves the inbox.
+    /// </summary>
+    [Fact]
+    public async Task The_confirmation_links_code_brings_the_welcome_though_Stytch_never_says_verified()
+    {
+        _stytch.Users["user-test-paz"] = new StytchUserInfo("paz@lilia.test", "Paz", EmailVerified: false);
+        await SignUpAsync("user-test-paz", "paz@lilia.test", "Paz", "es");
+        var link = (await MailTo("paz@lilia.test", 1)).Should().ContainSingle(m => m.Kind == "verify").Which.Detail;
+        var proof = System.Web.HttpUtility.ParseQueryString(new Uri(link).Query)["proof"];
+        proof.Should().NotBeNullOrEmpty("the link carries its one-time code");
+        _mail.Clear();
+
+        var client = As("user-test-paz", email: "paz@lilia.test");
+        // Without the code, or with a made-up one, Stytch is asked as before, and says no.
+        (await (await client.PostAsJsonAsync("/api/me/onboarding/verified", new { })).Content.ReadFromJsonAsync<OnboardingDto>())!
+            .WelcomeSent.Should().BeFalse();
+        (await (await client.PostAsJsonAsync("/api/me/onboarding/verified", new { proof = "made-up" })).Content.ReadFromJsonAsync<OnboardingDto>())!
+            .Verified.Should().BeFalse();
+
+        var dto = await (await client.PostAsJsonAsync("/api/me/onboarding/verified", new { proof })).Content.ReadFromJsonAsync<OnboardingDto>();
+        dto!.Verified.Should().BeTrue();
+        dto.WelcomeSent.Should().BeTrue();
+        (await MailTo("paz@lilia.test", 1)).Should().ContainSingle(m => m.Kind == "welcome").Which.Detail.Should().Be("es");
+    }
+
+    [Fact]
+    public async Task A_links_code_works_once_and_only_for_its_own_account()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var cache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Distributed.IDistributedCache>();
+        var code = await Lilia.Api.Services.Email.EmailProof.IssueAsync(cache, "user-test-a", 60);
+
+        (await Lilia.Api.Services.Email.EmailProof.RedeemAsync(cache, "user-test-b", code)).Should().BeFalse("another account's code");
+        (await Lilia.Api.Services.Email.EmailProof.RedeemAsync(cache, "user-test-a", code)).Should().BeTrue();
+        (await Lilia.Api.Services.Email.EmailProof.RedeemAsync(cache, "user-test-a", code)).Should().BeFalse("a code works once");
+        Lilia.Api.Services.Email.EmailProof.Query(code).Should().StartWith("&proof=");
+        Lilia.Api.Services.Email.EmailProof.Query(null).Should().BeEmpty();
+    }
+
     [Fact]
     public async Task A_stand_in_address_never_gets_a_welcome()
     {
