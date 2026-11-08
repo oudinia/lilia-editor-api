@@ -59,6 +59,35 @@ public class LinkedTableEditTests : IntegrationTestBase
             .Should().BeGreaterThan(versionBefore, "an open editor must see the write, not overwrite it");
     }
 
+    /// <summary>The editor's "Open in the table tool" (8 Nov 2026): which saved table a block is linked to.</summary>
+    [Fact]
+    public async Task A_blocks_linked_table_is_found_by_its_block_and_only_by_people_who_can_open_it()
+    {
+        await SeedUserAsync(Author);
+        await SeedUserAsync("test_user_tables_link_other");
+        using var client = CreateClientAs(Author);
+        var doc = await SeedDocumentAsync(Author);
+        var tableId = await CreateTableAsync(client, "Top-1", "76.1");
+        var block = await SeedBlockAsync(doc.Id, "table",
+            """{"headers":["Model","Top-1"],"rows":[["ResNet","76.1"]],"caption":"Top-1","label":"tab:top1"}""");
+        var unlinked = await SeedBlockAsync(doc.Id, "table", """{"headers":["A"],"rows":[["1"]]}""");
+
+        (await client.GetAsync($"/api/tables/by-block/{block.Id}?documentId={doc.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "not linked yet");
+        await client.PostAsync($"/api/tables/{tableId}/documents/{doc.Id}?blockId={block.Id}", null);
+
+        var found = await client.GetAsync($"/api/tables/by-block/{block.Id}?documentId={doc.Id}");
+        found.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await found.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid().Should().Be(tableId);
+
+        (await client.GetAsync($"/api/tables/by-block/{unlinked.Id}?documentId={doc.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.GetAsync($"/api/tables/by-block/{block.Id}?documentId={Guid.NewGuid()}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "the block must be in the document named");
+        using var stranger = CreateClientAs("test_user_tables_link_other");
+        (await stranger.GetAsync($"/api/tables/by-block/{block.Id}?documentId={doc.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "someone else's table is not theirs to open");
+    }
+
     [Fact]
     public async Task A_copy_is_its_own_table_and_editing_the_original_leaves_it_alone()
     {
