@@ -190,6 +190,11 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
         var text = (message ?? string.Empty).ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(text))
             return new AskRoute(_default.Id, _default.Name, 0.0, "empty message → architect");
+        // Asking for a whole document goes to the architect, whatever parts it lists (9 Nov 2026): "Draft a short
+        // paper … with one table" went to the Table skill, because "table" outranks "draft", so a paper was drafted
+        // under a table's instructions.
+        if (DraftWholeDocument.IsMatch(text))
+            return new AskRoute(_default.Id, _default.Name, 0.9, "drafting a whole document → architect");
 
         AiSkill? best = null;
         var bestScore = 0;
@@ -226,6 +231,17 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
         sb.AppendLine("(The full skill guidance from its SKILL.md is appended by the generation step.)");
         return sb.ToString();
     }
+
+    /// <summary>A drafting verb, then a whole document ("draft a short research paper", "rédige un article court",
+    /// "redacta un artículo"): up to three words between, none of them "for", "in", "of"…, so "write a table for my
+    /// paper" stays with the table.</summary>
+    private static readonly Regex DraftWholeDocument = new(
+        @"(^|[^\p{L}])(draft|write|compose|rédige|rédiger|écris|écrire|redacta|redactar|escribe|escribir)\s+" +
+        @"(?:(?:a|an|my|me\s+a|the|un|une|mon|ma|una|mi)\s+)?" +
+        @"(?:(?!(?:for|in|to|of|on|about|with|pour|dans|sur|de|du|avec|para|en|sobre|con)\s)[\p{L}\-]+\s+){0,3}" +
+        @"(paper|article|essay|chapter|thesis|dissertation|report|manuscript|proposal|essai|chapitre|thèse|mémoire|rapport|" +
+        @"artículo|ensayo|capítulo|tesis|informe|propuesta)([^\p{L}]|$)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static bool ContainsPhrase(string haystack, string needle)
     {
