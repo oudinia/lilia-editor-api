@@ -275,7 +275,8 @@ public partial class RenderService : IRenderService
 
     private string RenderEquationToHtml(JsonElement content)
     {
-        var latex = EquationContent.ReadMathSource(content);
+        // ReadDisplaySource (8 Nov 2026): an align body keeps its environment; bare rows were a red KaTeX error.
+        var latex = EquationContent.ReadDisplaySource(content);
 
         var displayMode = ResolveDisplayMode(content);
 

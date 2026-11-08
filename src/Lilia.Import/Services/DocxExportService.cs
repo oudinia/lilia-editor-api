@@ -417,6 +417,27 @@ public class DocxExportService : IDocxExportService
     private static string Coalesce(params string?[] values) =>
         values.FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
 
+    /// <summary>
+    /// A display equation's paragraph: centred, and its number "(n)" at the right margin when it has
+    /// one (a centre and a right tab stop).
+    /// </summary>
+    private static Paragraph EquationParagraph(string omml, string? number)
+    {
+        var para = new Paragraph();
+        if (!string.IsNullOrEmpty(number))
+        {
+            para.InnerXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:tabs><w:tab w:val=\"center\" w:pos=\"4513\"/><w:tab w:val=\"right\" w:pos=\"9026\"/></w:tabs></w:pPr>"
+                + $"<w:r xmlns:w=\"{WordNs}\"><w:tab/></w:r>" + omml
+                + $"<w:r xmlns:w=\"{WordNs}\"><w:tab/><w:t>({System.Security.SecurityElement.Escape(number)})</w:t></w:r>";
+        }
+        else
+        {
+            var pPrXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:jc w:val=\"center\"/></w:pPr>";
+            para.InnerXml = pPrXml + $"<m:oMathPara xmlns:m=\"{MathNs}\">{omml}</m:oMathPara>";
+        }
+        return para;
+    }
+
     private async Task<IEnumerable<OpenXmlElement>> ConvertEquation(ExportBlock block, MainDocumentPart mainPart)
     {
         var content = block.Content;
@@ -427,6 +448,21 @@ public class DocxExportService : IDocxExportService
         var latex = Coalesce(content.Source, content.Latex, content.Text);
         var displayMode = content.DisplayMode ?? true;
 
+        // A numbered align or gather: a paragraph per row, each with its own number, as the PDF
+        // numbers them (8 Nov 2026). The rows are no longer aligned with each other on "=".
+        if (displayMode && content.EquationRows is { Count: > 1 } rows && _latexToOmmlConverter != null)
+        {
+            var paragraphs = new List<OpenXmlElement>();
+            foreach (var row in rows)
+            {
+                var (rowOmml, ok, _) = _latexToOmmlConverter.Convert(row.Latex);
+                if (!ok || string.IsNullOrEmpty(rowOmml)) { paragraphs.Clear(); break; }
+                try { paragraphs.Add(EquationParagraph(rowOmml, row.Number)); }
+                catch { paragraphs.Clear(); break; }   // the whole block, as one paragraph, below
+            }
+            if (paragraphs.Count > 0) return paragraphs;
+        }
+
         // Path 1: OMML (native Word math — editable, accessible)
         if (_latexToOmmlConverter != null && !string.IsNullOrWhiteSpace(latex))
         {
@@ -435,23 +471,9 @@ public class DocxExportService : IDocxExportService
             {
                 try
                 {
+                    if (displayMode) return [EquationParagraph(omml, content.EquationNumber)];
                     var para = new Paragraph();
-                    if (displayMode && !string.IsNullOrEmpty(content.EquationNumber))
-                    {
-                        // Centred, its number at the right margin: a centre and a right tab stop.
-                        para.InnerXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:tabs><w:tab w:val=\"center\" w:pos=\"4513\"/><w:tab w:val=\"right\" w:pos=\"9026\"/></w:tabs></w:pPr>"
-                            + $"<w:r xmlns:w=\"{WordNs}\"><w:tab/></w:r>" + omml
-                            + $"<w:r xmlns:w=\"{WordNs}\"><w:tab/><w:t>({System.Security.SecurityElement.Escape(content.EquationNumber)})</w:t></w:r>";
-                    }
-                    else if (displayMode)
-                    {
-                        var pPrXml = $"<w:pPr xmlns:w=\"{WordNs}\"><w:jc w:val=\"center\"/></w:pPr>";
-                        para.InnerXml = pPrXml + $"<m:oMathPara xmlns:m=\"{MathNs}\">{omml}</m:oMathPara>";
-                    }
-                    else
-                    {
-                        para.InnerXml = omml;
-                    }
+                    para.InnerXml = omml;
                     return [para];
                 }
                 catch { /* fall through */ }

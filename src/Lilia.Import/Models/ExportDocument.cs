@@ -91,6 +91,13 @@ public class ExportBlock
     public ExportBlockContent Content { get; set; } = new();
 }
 
+/// <summary>One row of a numbered align or gather, as the Word export prints it.</summary>
+public class ExportEquationRow
+{
+    public string Latex { get; set; } = "";
+    public string? Number { get; set; }
+}
+
 /// <summary>
 /// Content of an export block.
 /// </summary>
@@ -121,6 +128,12 @@ public class ExportBlockContent
 
     /// <summary>A numbered display equation's number, printed "(n)" at the right margin.</summary>
     public string? EquationNumber { get; set; }
+
+    /// <summary>
+    /// A numbered align or gather, one row each with its own number (null for a <c>\nonumber</c> row).
+    /// Set only when there are two numbered rows or more; the Word export then prints a paragraph per row.
+    /// </summary>
+    public List<ExportEquationRow>? EquationRows { get; set; }
 
     /// <summary>
     /// Equation source, verbatim, in whatever notation <see cref="Notation"/>

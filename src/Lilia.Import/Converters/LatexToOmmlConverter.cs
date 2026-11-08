@@ -713,15 +713,18 @@ file sealed class OmmlParser
             env.Append(Consume().Value);
         Expect(LatexToOmmlConverter.TokKind.RightBrace);
 
-        return env.ToString().ToLowerInvariant() switch
+        // Case matters: Vmatrix (‖ ‖) and Bmatrix ({ }) are not vmatrix and bmatrix. This switch read the
+        // name lower-cased, so a ‖ matrix came out with single bars and a { } one with square brackets;
+        // cases took a closing brace too (8 Nov 2026, the launch bot's issue 44).
+        return env.ToString() switch
         {
             "matrix"  => ParseMatrix(""),
-            "pmatrix" => ParseMatrix("pmatrix"),
-            "bmatrix" => ParseMatrix("bmatrix"),
-            "bmatrix*" => ParseMatrix("bmatrix"),
-            "vmatrix" => ParseMatrix("vmatrix"),
-            "Vmatrix" => ParseMatrix("Vmatrix"),
-            "Bmatrix" or "cases" => ParseMatrix("Bmatrix"),
+            "pmatrix" or "pmatrix*" => ParseMatrix("pmatrix"),
+            "bmatrix" or "bmatrix*" => ParseMatrix("bmatrix"),
+            "vmatrix" or "vmatrix*" => ParseMatrix("vmatrix"),
+            "Vmatrix" or "Vmatrix*" => ParseMatrix("Vmatrix"),
+            "Bmatrix" or "Bmatrix*" => ParseMatrix("Bmatrix"),
+            "cases" or "dcases" => ParseMatrix("cases"),
             "aligned" or "align" or "align*" or "aligned*" or "split" => ParseAligned(),
             _ => ParseMatrix("")
         };
@@ -736,6 +739,8 @@ file sealed class OmmlParser
             "Bmatrix" => ("{", "}"),
             "vmatrix" => ("|", "|"),
             "Vmatrix" => ("‖", "‖"),
+            // A left brace and no right one: how Word itself writes cases.
+            "cases" => ("{", ""),
             _ => ("", "")
         };
 
