@@ -87,6 +87,28 @@ public class TablesController : ControllerBase
             t.CreatedAt, t.UpdatedAt, t.Documents.Count, t.OwnerId == userId, t.CopiedFrom));
     }
 
+    /// <summary>
+    /// The saved table a paper's table block is linked to, if this user can open it: the editor's
+    /// "Open in the table tool" opens that table rather than making another (8 Nov 2026, the owner).
+    /// </summary>
+    [HttpGet("by-block/{blockId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ByBlock(Guid blockId, [FromQuery] Guid documentId)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var id = await _db.DocumentTables
+            .Where(dt => dt.BlockId == blockId && dt.DocumentId == documentId)
+            .Select(dt => dt.Table!)
+            .Where(t => t.OwnerId == userId || t.Collaborators.Any(c => c.UserId == userId))
+            .OrderByDescending(t => t.UpdatedAt)
+            .Select(t => (Guid?)t.Id)
+            .FirstOrDefaultAsync();
+        return id is { } found ? Ok(new { id = found }) : NotFound();
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(TableSummaryDto), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] SaveTableDto dto)
