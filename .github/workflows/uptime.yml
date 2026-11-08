@@ -1,0 +1,65 @@
+# An outage alert from outside the server (OPS-30, the owner's go-ahead on 8 Nov 2026).
+#
+# On 30 Oct production stopped at 10:35 and came back at 19:10, and nobody was told: the
+# watchdog runs on the same server. This runs on GitHub's machines every 5 minutes (GitHub may
+# start it a few minutes late). Down = the web page doesn't answer 200, or the API doesn't
+# answer its signed-out 401, twice in a row a minute apart.
+# Down → an issue labelled `outage` mentioning @oudinia (GitHub emails and notifies him); still
+# down → nothing more; back up → a comment and the issue closes. No account or secret needed.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the site from outside
+        id: check
+        run: |
+          probe() {
+            web=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://editor.liliaeditor.com/ || true)
+            api=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://editor.liliaeditor.com/api/documents || true)
+            echo "web=$web api=$api"
+            [ "$web" = 200 ] && [ "$api" = 401 ]
+          }
+          if probe; then echo "down=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          sleep 60
+          if probe; then echo "down=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "down=true" >> "$GITHUB_OUTPUT"
+          echo "detail=web $web, API $api (want 200 and 401)" >> "$GITHUB_OUTPUT"
+
+      - name: Open, or close, the outage issue
+        uses: actions/github-script@v7
+        env:
+          DOWN: ${{ steps.check.outputs.down }}
+          DETAIL: ${{ steps.check.outputs.detail }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const open = (await github.rest.issues.listForRepo({ owner, repo, labels: 'outage', state: 'open' })).data;
+            const now = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+            if (process.env.DOWN === 'true') {
+              if (open.length) return;   // already told
+              await github.rest.issues.create({
+                owner, repo, labels: ['outage'],
+                title: `Lilia is down (${now})`,
+                body: `@oudinia editor.liliaeditor.com is not answering from outside: ${process.env.DETAIL}.\n\nChecked twice a minute apart from GitHub's machines. This issue closes itself when the site is back.`,
+              });
+            } else {
+              for (const issue of open) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: `Back up at ${now}.` });
+                await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: 'closed' });
+              }
+            }
