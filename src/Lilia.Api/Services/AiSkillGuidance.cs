@@ -16,17 +16,22 @@ public static class AiSkillGuidance
 
     public static string Get(string skillId) => Cache.GetOrAdd(skillId, Load);
 
-    private static string Load(string id)
+    /// <summary>The skill's file as written, front matter included: what a user downloads to run with their own AI.</summary>
+    public static string? File(string skillId) => Read(skillId);
+
+    private static string Load(string id) => Read(id) is { } md ? StripFrontmatter(md).Trim() : string.Empty;
+
+    private static string? Read(string id)
     {
         // Resource is pinned to "AiSkills.<id>.md" via LogicalName; match resiliently
         // (tolerate any prefix and a build that swapped '-' for '_').
         var name = Asm.GetManifestResourceNames().FirstOrDefault(n =>
             n.Replace('_', '-').EndsWith($".{id}.md", StringComparison.OrdinalIgnoreCase));
-        if (name is null) return string.Empty;
+        if (name is null) return null;
         using var stream = Asm.GetManifestResourceStream(name);
-        if (stream is null) return string.Empty;
+        if (stream is null) return null;
         using var reader = new StreamReader(stream);
-        return StripFrontmatter(reader.ReadToEnd()).Trim();
+        return reader.ReadToEnd();
     }
 
     private static string StripFrontmatter(string md)
