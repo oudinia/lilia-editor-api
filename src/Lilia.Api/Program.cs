@@ -784,8 +784,9 @@ var anthropicKey = builder.Configuration["AI:Anthropic:ApiKey"];
 if (!string.IsNullOrEmpty(anthropicKey))
 {
     var defaultModel = builder.Configuration["AI:DefaultModel"] ?? "claude-sonnet-5";
+    var timeoutSeconds = builder.Configuration.GetValue("AI:Anthropic:TimeoutSeconds", AnthropicClientFactory.DefaultTimeoutSeconds);
     builder.Services.AddSingleton<IChatClient>(
-        new Anthropic.AnthropicClient { ApiKey = anthropicKey }.AsIChatClient(defaultModel));
+        AnthropicClientFactory.Create(anthropicKey, timeoutSeconds).AsIChatClient(defaultModel));
 }
 else
 {

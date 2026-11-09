@@ -119,7 +119,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private readonly int _attachMaxFileBytes;
     private readonly int _attachMaxTextChars;
 
-    private const int MaxOutputTokens = 8192;
+    // 16,384, the catalog's maxOutput (9 Nov 2026): at 8,192 a 4,000-word chapter written as text in the reply stopped
+    // mid-sentence, nothing reached the document, and the author was charged for it (the cost experiments, 1 of 6
+    // drafts). Only what is written is paid for, so the higher ceiling costs nothing on a short answer.
+    internal const int MaxOutputTokens = 16384;
 
     /// <summary>
     /// The request Ask Lilia starts from: Anthropic's automatic prompt caching, a 5-minute entry whose marker

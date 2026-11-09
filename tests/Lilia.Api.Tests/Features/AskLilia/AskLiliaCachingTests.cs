@@ -50,7 +50,7 @@ public class AskLiliaCachingTests
         var options = new ChatOptions
         {
             ModelId = "claude-sonnet-5",
-            MaxOutputTokens = 8192,
+            MaxOutputTokens = AskLiliaService.MaxOutputTokens,
             Instructions = "You are Lilia.",
             RawRepresentationFactory = _ => AskLiliaService.CachedRequest("claude-sonnet-5"),
         };
@@ -60,7 +60,7 @@ public class AskLiliaCachingTests
         var body = api.Requests.Single().RootElement;
         body.GetProperty("cache_control").GetProperty("type").GetString().Should().Be("ephemeral");
         body.GetProperty("model").GetString().Should().Be("claude-sonnet-5");
-        body.GetProperty("max_tokens").GetInt32().Should().Be(8192);
+        body.GetProperty("max_tokens").GetInt32().Should().Be(AskLiliaService.MaxOutputTokens);
         body.GetProperty("messages").GetArrayLength().Should().Be(1, "the question, once: the base request brings no messages of its own");
         body.GetProperty("system").ToString().Should().Contain("You are Lilia.");
     }
