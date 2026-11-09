@@ -1559,7 +1559,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
             if (anchor is not null) sortOrder = anchor.SortOrder + 1;
         }
         var created = await _blockService.CreateBlockAsync(docId,
-            new Lilia.Core.DTOs.CreateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(type, ParseContent(contentJson, type)), sortOrder, null, null));
+            new Lilia.Core.DTOs.CreateBlockDto(type, Lilia.Import.Services.CvFields.Normalize(type, WithTableHeaders(type, ParseContent(contentJson, type))), sortOrder, null, null));
         doc.Blocks?.Add(created);
         changed.Add(created.Id.ToString());
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
@@ -1649,6 +1649,23 @@ public sealed partial class AskLiliaService : IAskLiliaService
         await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged",
             new { op = "add", id = created.Id, type = "title", content = created.Content, afterId = (string?)null, sortOrder = 0 });
         return new { ok = true, id = created.Id, title };
+    }
+
+    /// <summary>
+    /// A new table with no headers takes its first row as the header (9 Nov 2026: Ask Lilia added a 7-column table
+    /// with the header names as its first row and no headers; the editor then filled in "Column 1–3" and saved it).
+    /// The Table skill's rule is "first row = headers". Only on add: an edit without headers may mean keep them.
+    /// </summary>
+    internal static JsonElement WithTableHeaders(string? blockType, JsonElement content)
+    {
+        if (!string.Equals(blockType, "table", StringComparison.OrdinalIgnoreCase) || content.ValueKind != JsonValueKind.Object) return content;
+        if (JsonNode.Parse(content.GetRawText()) is not JsonObject node) return content;
+        if (node["headers"] is JsonArray { Count: > 0 }) return content;
+        if (node["hasHeader"] is JsonValue hv && hv.GetValueKind() == JsonValueKind.False) return content;
+        if (node["rows"] is not JsonArray { Count: > 0 } rows || rows[0] is not JsonArray first) return content;
+        node["headers"] = first.DeepClone();
+        rows.RemoveAt(0);
+        return JsonSerializer.SerializeToElement(node);
     }
 
     private static System.Text.Json.JsonElement ParseContent(string json, string? blockType = null)
