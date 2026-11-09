@@ -174,8 +174,11 @@ public class AskLiliaCheckDocumentTests : IDisposable
         loop.Response.Text.Should().Be("I could not fix it.");
 
         var verdict = AskLiliaService.CompileVerdict(repair, AskLiliaService.CompileDoctorSkill, "en");
-        verdict.Should().Contain("still does not compile after 3 attempts").And.Contain(_bad.ToString()).And.Contain("l.7");
-        AskLiliaService.CompileVerdict(repair, AskLiliaService.CompileDoctorSkill, "fr").Should().Contain("ne compile toujours pas");
+        // The failing block named as the author sees it, not by its id (9 Nov 2026).
+        verdict.Should().Contain("still does not compile after 3 attempts").And.Contain("the paragraph at the top (l.7)")
+            .And.NotContain(_bad.ToString());
+        AskLiliaService.CompileVerdict(repair, AskLiliaService.CompileDoctorSkill, "fr").Should().Contain("ne compile toujours pas")
+            .And.Contain("le paragraphe au début");
     }
 
     [Fact]
