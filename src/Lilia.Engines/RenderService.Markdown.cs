@@ -27,6 +27,8 @@ public partial class RenderService
                 .Where(e => e.DocumentId == documentId)
                 .OrderBy(e => e.CiteKey)
                 .ToListAsync();
+            // And the references written in the bibliography blocks, as the PDF lists them (9 Nov 2026).
+            bibEntries.AddRange(BibliographyBlocks.Unstored(documentId, blocks, bibEntries.Select(e => e.CiteKey)));
         }
 
         var sb = new StringBuilder();
@@ -411,6 +413,14 @@ public partial class RenderService
             var doi = ReadBibField(entry, "doi");
             var url = ReadBibField(entry, "url");
 
+            // A reference written as text in a bibliography block: its line as written.
+            if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(author) && !string.IsNullOrEmpty(entry.FormattedText))
+            {
+                sb.AppendLine($"[{entry.CiteKey}]: {entry.FormattedText}");
+                sb.AppendLine();
+                continue;
+            }
+
             var line = new StringBuilder();
             line.Append($"[{entry.CiteKey}]: ");
             if (!string.IsNullOrEmpty(author)) line.Append(author).Append(' ');
@@ -479,12 +489,15 @@ public partial class RenderService
         // Italic _x_ → Markdown *x*
         result = Regex.Replace(result, @"(?<![\w])_([^_\n]+)_(?![\w])", "*$1*");
 
-        // Citations: @cite{k1,k2} or \cite{k1,k2} → [@k1; @k2]
-        result = Regex.Replace(result, @"[@\\]cite\{([^}]+)\}", m =>
+        // Citations: @cite{k1,k2}, \cite, \citep or \citet{k1,k2} → [@k1; @k2] (the natbib forms were printed as typed)
+        result = Regex.Replace(result, @"[@\\]cite[pt]?\{([^}]+)\}", m =>
         {
             var keys = m.Groups[1].Value.Split(',').Select(k => "@" + k.Trim()).ToArray();
             return "[" + string.Join("; ", keys) + "]";
         });
+
+        // Lilia's Kind~(prefix:label) → Kind [label](#label), like the references below (9 Nov 2026: printed as typed)
+        result = CrossRefSyntax.KindParen.Replace(result, m => $"{m.Groups["kind"].Value} [{m.Groups["key"].Value}](#{m.Groups["key"].Value})");
 
         // References: @ref{label}, \ref{label}, \cref{label}, etc. → [label](#label)
         result = Regex.Replace(result, @"[@\\](?:c|C|eq|auto|page|name)?ref\{([^}]+)\}", m => $"[{m.Groups[1].Value}](#{m.Groups[1].Value})");
