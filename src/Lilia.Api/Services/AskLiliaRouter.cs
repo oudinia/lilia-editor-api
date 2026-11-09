@@ -203,6 +203,9 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
         // under a table's instructions.
         if (DraftWholeDocument.IsMatch(text))
             return new AskRoute(_default.Id, _default.Name, 0.9, "drafting a whole document → architect");
+        // "Supported" as in backed by evidence is not Coverage's "is X supported in Lilia" (9 Nov 2026: "Which claim is
+        // least supported?" went to Coverage every time). Those phrases don't count as Coverage's trigger.
+        text = EvidenceSupported.Replace(text, " backed ");
 
         AiSkill? best = null;
         var bestScore = 0;
@@ -249,6 +252,12 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
         @"(?:(?!(?:for|in|to|of|on|about|with|pour|dans|sur|de|du|avec|para|en|sobre|con)\s)[\p{L}\-]+\s+){0,3}" +
         @"(paper|article|essay|chapter|thesis|dissertation|report|manuscript|proposal|essai|chapitre|thèse|mémoire|rapport|" +
         @"artículo|ensayo|capítulo|tesis|informe|propuesta)([^\p{L}]|$)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>"Supported" meaning backed by evidence: "least supported", "well supported", "supported by the data".</summary>
+    private static readonly Regex EvidenceSupported = new(
+        @"\b(?:least|most|best|better|well|poorly|weakly|strongly|badly|insufficiently|fully|un)[\s-]*supported\b" +
+        @"|\bsupported\s+by\s+(?:the\s+|my\s+|your\s+|enough\s+)?(?:data|evidence|results?|literature|references?|citations?|sources?|experiments?|findings)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static bool ContainsPhrase(string haystack, string needle)
