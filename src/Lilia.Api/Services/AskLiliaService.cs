@@ -233,12 +233,18 @@ public sealed partial class AskLiliaService : IAskLiliaService
         return string.IsNullOrWhiteSpace(reply) ? CutOffNote : reply + "\n\n" + CutOffNote;
     }
 
-    private const string OutputNote = """
+    internal const string OutputNote = """
         OUTPUT — respond conversationally to the author. Put any LML, BibTeX, or LaTeX you produce
         in fenced code blocks they can copy into Lilia (or apply) — except when EDIT MODE is on and the
         author asked for a change to the document: then write it with the tools (see EDIT MODE). Lead with the artifact; keep prose
         short. Follow the AUTHOR LEVEL guidance above. Never fabricate citations, numbers, datasets,
         or results — keep specifics the author must supply generic and flagged.
+
+        TEXT AND REFERENCES (9 Nov 2026: drafts showed "Section~4" and a red "(storage-review)" in the editor) —
+        in prose, write ordinary spaces: no LaTeX tie (~) in plain text such as "Section 4" or "Dr. Smith"; a tie
+        belongs only inside a cross-reference, Kind~(prefix:label). Refer only to labels and cite keys that exist
+        in the document (get_outline shows them) or that you add in the same change, with their bibliography entry;
+        never leave a placeholder key or a reference to a label nothing defines.
 
         KNOWLEDGE BASE — you have two tools over Lilia's help catalog:
         • search_kb(query): find the right help article by intent (returns slug, title, summary, href);
