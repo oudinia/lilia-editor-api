@@ -31,6 +31,32 @@ public static class BibliographyBlocks
             .GroupBy(e => e.Key, StringComparer.Ordinal).Select(g => g.First())
             .ToList();
 
+    /// <summary>
+    /// The entries written in the blocks under a key the stored entries don't hold, BibTeX first, then references
+    /// written as text (their line as the formatted text). 9 Nov 2026: a draft wrote its references as
+    /// <c>@cite[sleep1] …</c> lines; the PDF listed them, but the editor marked every citation missing and the
+    /// bibliography panel showed none, because both read only the stored entries. Each gets an id fixed by its
+    /// document and key, so a list keeps it in place between loads.
+    /// </summary>
+    public static List<BibliographyEntry> Unstored(Guid documentId, IEnumerable<Block> blocks, IEnumerable<string> storedKeys)
+    {
+        var known = storedKeys.ToHashSet(StringComparer.Ordinal);
+        var list = BibTeX(blocks).Where(e => known.Add(e.CiteKey)).ToList();
+        list.AddRange(Text(blocks).Where(e => known.Add(e.Key)).Select(e => new BibliographyEntry
+        {
+            CiteKey = e.Key,
+            EntryType = BibliographyEntryTypes.Misc,
+            Data = JsonDocument.Parse(JsonSerializer.Serialize(new Dictionary<string, string> { ["note"] = e.Text })),
+            FormattedText = e.Text,
+        }));
+        foreach (var e in list)
+        {
+            e.DocumentId = documentId;
+            e.Id = new Guid(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes($"{documentId}/{e.CiteKey}")));
+        }
+        return list;
+    }
+
     private static IEnumerable<string> Texts(IEnumerable<Block> blocks) =>
         blocks.Where(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
             .Select(b => b.Content?.RootElement is { ValueKind: JsonValueKind.Object } c

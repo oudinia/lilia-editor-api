@@ -10,7 +10,9 @@ public record BibliographyEntryDto(
     JsonElement Data,
     string? FormattedText,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    // Written in a bibliography block, not stored as an entry (9 Nov 2026): shown and resolved, edited in the block.
+    bool InBlock = false
 );
 
 public record CreateBibliographyEntryDto(

@@ -1375,7 +1375,9 @@ public class DocumentService : IDocumentService
                 e.FormattedText,
                 e.CreatedAt,
                 e.UpdatedAt
-            )).ToList(),
+            )).Concat(BibliographyBlocks.Unstored(d.Id, d.Blocks, d.BibliographyEntries.Select(e => e.CiteKey))
+                .Select(e => new BibliographyEntryDto(e.Id, e.DocumentId, e.CiteKey, e.EntryType, e.Data.RootElement,
+                    e.FormattedText, d.UpdatedAt, d.UpdatedAt, InBlock: true))).ToList(),
             d.DocumentLabels.Select(dl => new LabelDto(
                 dl.Label.Id,
                 dl.Label.Name,

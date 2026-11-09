@@ -29,8 +29,12 @@ public partial class BibliographyService : IBibliographyService
             .Where(e => e.DocumentId == documentId)
             .OrderBy(e => e.CiteKey)
             .ToListAsync();
-
-        return entries.Select(MapToDto).ToList();
+        // And the ones written in bibliography blocks, as the document itself lists them.
+        var blocks = await _context.Blocks.Where(b => b.DocumentId == documentId && b.Type == "bibliography").ToListAsync();
+        return entries.Select(MapToDto)
+            .Concat(BibliographyBlocks.Unstored(documentId, blocks, entries.Select(e => e.CiteKey))
+                .Select(e => MapToDto(e) with { InBlock = true }))
+            .ToList();
     }
 
     public async Task<BibliographyEntryDto?> GetEntryAsync(Guid documentId, Guid entryId)
