@@ -100,4 +100,16 @@ public class AskLiliaController : ControllerBase
     [HttpGet("skills")]
     public IActionResult Skills() =>
         Ok(_router.Skills.Select(s => new { id = s.Id, name = s.Name, whenToUse = s.WhenToUse, tier = s.Tier }));
+
+    /// <summary>
+    /// GET /api/ai/skills/{id}/download — a skill's SKILL.md, to run with the author's own AI (10 Nov 2026: the
+    /// app offered an old structure-only file whose JSON went into a paste box "New from structure" no longer has;
+    /// this is the skill Ask Lilia itself runs, which writes LML for Import → Paste). Only the router's skills.
+    /// </summary>
+    [HttpGet("skills/{id}/download")]
+    public IActionResult DownloadSkill(string id)
+    {
+        if (!_router.Skills.Any(s => s.Id == id) || AiSkillGuidance.File(id) is not { } md) return NotFound();
+        return File(System.Text.Encoding.UTF8.GetBytes(md), "text/markdown; charset=utf-8", $"{id}.SKILL.md");
+    }
 }
