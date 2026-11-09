@@ -207,9 +207,27 @@ public sealed partial class AskLiliaService : IAskLiliaService
         NOT supported, so say so plainly and do not drop it silently ("your file uses X; Lilia can't do that, so I left it out; here is what I did instead"): watermarks; arbitrary or OpenType fonts (\setmainfont, fontspec, a named typeface); manual size switches (\tiny to \Huge) as a document setting; header/footer content other than plain text (\thepage, \leftmark, \rightmark and other commands are not interpreted: use pageNumbering for the page number); known limitation: once a FOOTER slot is set, the automatic page number is not printed (the footer slots replace it), so warn the author if they want both; with only header slots set, Lilia still prints the page number centred at the foot; titlesec or other package-level restyling of headings.
         """;
 
-    private const string PartialApplyNote =
-        "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
-        "Ask me to **continue**, or paste the full LML and I'll apply it in one step with `apply_lml`.";
+    // The notes the server adds to a reply, in the author's language (9 Nov 2026: they were English in the French and
+    // Spanish interface; the compile verdict already followed the language).
+    internal static string PartialApplyNote(string? language) => KbLanguage.Normalize(language) switch
+    {
+        "fr" => "⚠️ **Application partielle** — je n'ai pas pu terminer toutes les modifications dans le nombre d'étapes permis : le document peut encore mêler l'ancien et le nouveau. " +
+                "Demandez-moi de **continuer**, ou collez le LML complet et je l'appliquerai en une fois avec `apply_lml`.",
+        "es" => "⚠️ **Aplicación parcial** — no pude terminar todos los cambios en el número de pasos permitido: el documento aún puede mezclar contenido antiguo y nuevo. " +
+                "Pídeme que **continúe**, o pega el LML completo y lo aplicaré de una vez con `apply_lml`.",
+        _ => "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
+             "Ask me to **continue**, or paste the full LML and I'll apply it in one step with `apply_lml`.",
+    };
+
+    internal static string DoneNote(string? language, int? blocks) => (KbLanguage.Normalize(language), blocks) switch
+    {
+        ("fr", null) => "C'est fait : type et classe du document mis à jour.",
+        ("fr", var n) => $"C'est fait : {n} bloc(s) mis à jour.",
+        ("es", null) => "Hecho: tipo y clase del documento actualizados.",
+        ("es", var n) => $"Hecho: {n} bloque(s) actualizado(s).",
+        (_, null) => "Done — updated the document kind/class.",
+        (_, var n) => $"Done — updated {n} block(s).",
+    };
 
     /// <summary>
     /// Edit mode writes; it doesn't show (9 Nov 2026). The skill guidance and OUTPUT say to put LML in a fenced block,
@@ -222,21 +240,27 @@ public sealed partial class AskLiliaService : IAskLiliaService
         "never as an LML block in your reply. This overrides any instruction above to emit fenced LML. Then reply with a short summary of what you changed, not the LML. " +
         "Only show LML without applying it when the author asks to see it first.";
 
-    private const string CutOffNote =
-        "⚠️ **Cut off** — this answer reached the length limit and stopped before the end. " +
-        "Ask me to **continue**, or ask for one section at a time.";
+    internal static string CutOffNote(string? language) => KbLanguage.Normalize(language) switch
+    {
+        "fr" => "⚠️ **Réponse coupée** — cette réponse a atteint la longueur maximale et s'est arrêtée avant la fin. " +
+                "Demandez-moi de **continuer**, ou demandez une section à la fois.",
+        "es" => "⚠️ **Respuesta cortada** — esta respuesta alcanzó la longitud máxima y se detuvo antes del final. " +
+                "Pídeme que **continúe**, o pide una sección cada vez.",
+        _ => "⚠️ **Cut off** — this answer reached the length limit and stopped before the end. " +
+             "Ask me to **continue**, or ask for one section at a time.",
+    };
 
     /// <summary>
     /// A reply the model stopped at the output limit (9 Nov 2026): a 4,000-word chapter written as text stopped mid-word,
     /// its LML block never closed (so the rest of the panel rendered as code), the document stayed empty, and nothing
     /// said so. The open block is closed and the author is told, so they can ask for the rest.
     /// </summary>
-    internal static string WithCutOffNote(string reply, ChatFinishReason? finish)
+    internal static string WithCutOffNote(string reply, ChatFinishReason? finish, string? language = null)
     {
         if (finish != ChatFinishReason.Length) return reply;
         var fences = System.Text.RegularExpressions.Regex.Matches(reply, "^```", System.Text.RegularExpressions.RegexOptions.Multiline).Count;
         if (fences % 2 == 1) reply += "\n```";
-        return string.IsNullOrWhiteSpace(reply) ? CutOffNote : reply + "\n\n" + CutOffNote;
+        return string.IsNullOrWhiteSpace(reply) ? CutOffNote(language) : reply + "\n\n" + CutOffNote(language);
     }
 
     internal const string OutputNote = """
@@ -627,18 +651,16 @@ public sealed partial class AskLiliaService : IAskLiliaService
             if (partialApply)
             {
                 reply = string.IsNullOrWhiteSpace(reply)
-                    ? PartialApplyNote
-                    : reply + "\n\n" + PartialApplyNote;
+                    ? PartialApplyNote(request.Language)
+                    : reply + "\n\n" + PartialApplyNote(request.Language);
             }
             else if (string.IsNullOrWhiteSpace(reply) && (changed.Count > 0 || metaChanged))
             {
-                reply = metaChanged && changed.Count == 0
-                    ? "Done — updated the document kind/class."
-                    : $"Done — updated {changed.Distinct().Count()} block(s).";
+                reply = DoneNote(request.Language, metaChanged && changed.Count == 0 ? null : changed.Distinct().Count());
             }
             if (response.FinishReason == ChatFinishReason.Length)
                 _logger.LogWarning("[AskLilia] skill={Skill} reply cut off at the output limit ({Output} output tokens)", skill.Id, outputTokens);
-            reply = WithCutOffNote(reply, response.FinishReason);
+            reply = WithCutOffNote(reply, response.FinishReason, request.Language);
 
             // A fix must end by saying whether the document now compiles (15 Oct). The compile doctor
             // checks once more when its last edit came after its last check; the verdict is the check's,
