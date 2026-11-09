@@ -882,7 +882,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
             // Atomic full-document replace — preferred for "apply this LML" / rewrites.
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("Full LML source for the document body. May include a ```lml fenced block. Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography. CV/résumé: @personalInfo[name=…, email=…, location=…], @cvSection[title=…], @cvEntry[period=…, role=…, org=…, location=…], @list, @paragraph. Bodies indented 2 spaces.")] string lml,
-                 [System.ComponentModel.Description("Optional document title. If omitted, uses @document title, first level-1 heading, personalInfo name, or keeps the existing title.")] string? title = null)
+                 [System.ComponentModel.Description("Optional document title, used only when the document has no title yet (a title the author chose is kept; to rename, use set_title). If omitted, uses @title, a title: line or the first level-1 heading.")] string? title = null)
                     => ApplyLmlAsync(live.Dto, docGuid, lml, title, changed),
                 name: "apply_lml",
                 description: "PREFERRED for full rewrites: parse LML and replace the entire document body in ONE atomic batch (deletes old body blocks, inserts the parsed ones, keeps/updates the Title block). For CVs use @personalInfo/@cvSection/@cvEntry — not article headings. Do not rebuild a whole document with many add_block/edit_block calls."));
@@ -1375,6 +1375,16 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// Atomic LML → full document body replace. Prefer this over multi-step
     /// add/edit/remove so full rewrites cannot leave hybrid half-applied docs.
     /// </summary>
+    /// <summary>The titles a new document gets before its author names it, in the interface's languages.</summary>
+    private static readonly HashSet<string> PlaceholderTitles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Untitled", "Untitled document", "Sans titre", "Document sans titre", "Sin título", "Documento sin título", "Documento sin titulo",
+    };
+
+    /// <summary>Whether the document's title is one its author chose (not empty, not a placeholder).</summary>
+    internal static bool HasAuthorTitle(string? title) =>
+        !string.IsNullOrWhiteSpace(title) && !PlaceholderTitles.Contains(title.Trim());
+
     private async Task<object> ApplyLmlAsync(
         DocumentDto doc, Guid docId, string lmlSource, string? titleOverride, List<string> changed)
     {
@@ -1413,13 +1423,12 @@ public sealed partial class AskLiliaService : IAskLiliaService
             if (Field("author") is { } lmlAuthor) author = lmlAuthor;
             if (Field("date") is { } lmlDate) { date = lmlDate; dateMode = ""; }
 
-            // The title: the call's, then the LML's own (@title, or a title: line), then the document's.
-            // The first heading only names a document that has no title (MCP-02: any LML body renamed
-            // the document to its first level-1 heading).
-            var resolvedTitle = !string.IsNullOrWhiteSpace(titleOverride) ? titleOverride.Trim()
+            // A title the author chose is kept (9 Nov 2026: Ask Lilia's draft renamed "Thesis chapter" to "Renewable
+            // Energy Storage"); set_title renames. Only a document with no title, or a placeholder one, takes the call's
+            // title, then the LML's own (@title, or a title: line), then its first heading (MCP-02).
+            var resolvedTitle = HasAuthorTitle(doc.Title) ? doc.Title!
+                : !string.IsNullOrWhiteSpace(titleOverride) ? titleOverride.Trim()
                 : Field("title") is { } lmlTitleText ? lmlTitleText
-                : !parsed.TitleFromHeading && !string.IsNullOrWhiteSpace(parsed.Title) ? parsed.Title!.Trim()
-                : !string.IsNullOrWhiteSpace(doc.Title) && doc.Title != "Untitled" ? doc.Title
                 : !string.IsNullOrWhiteSpace(parsed.Title) ? parsed.Title!.Trim()
                 : "Untitled";
 

@@ -167,7 +167,7 @@ public sealed class LiliaMcpWriteTools(
     public Task<object> ApplyLml(
         [Description("The document id.")] string documentId,
         [Description("The full LML source for the body.")] string lml,
-        [Description("Optional new title.")] string? title = null) =>
+        [Description("Optional title, used only when the document has no title yet; to rename a document, use set_title.")] string? title = null) =>
         WriteAsync(documentId, "apply_lml", new() { ["lml"] = lml, ["title"] = title });
 
     private static readonly HashSet<string> TextSettings = new(StringComparer.OrdinalIgnoreCase)
