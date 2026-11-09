@@ -85,7 +85,7 @@ public class LinkedTableEditTests : IntegrationTestBase
             .StatusCode.Should().Be(HttpStatusCode.NotFound, "the block must be in the document named");
         using var stranger = CreateClientAs("test_user_tables_link_other");
         (await stranger.GetAsync($"/api/tables/by-block/{block.Id}?documentId={doc.Id}"))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound, "someone else's table is not theirs to open");
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden, "someone else's paper is not theirs to read (the route guard, 9 Nov)");
     }
 
     [Fact]
