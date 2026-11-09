@@ -180,6 +180,26 @@ public static class SkillExamples
             "Prepara el artículo para enviarlo a IEEE",
             "Adapta el documento al formato de la revista",
         },
+        // Review (9 Nov 2026): written feedback on the author's own document, in one answer.
+        ["lilia-review"] = new[]
+        {
+            "Review my paper and tell me what to fix",
+            "Which part of my argument is the weakest",
+            "Is the evidence in section 3 strong enough",
+            "Give me honest feedback on this draft",
+            "Would a referee accept this article as it is",
+            "Is my conclusion backed by my results",
+            "What are the main problems with this thesis chapter",
+            "Is this draft ready to send to my supervisor",
+            "Donne-moi un retour honnête sur ce brouillon",
+            "Quelle partie de mon article est la moins solide",
+            "Mes conclusions sont-elles justifiées par mes résultats",
+            "Ce chapitre est-il prêt à être soumis",
+            "Dame una opinión sincera sobre este borrador",
+            "Qué parte de mi artículo es la menos sólida",
+            "Mis conclusiones están respaldadas por los resultados",
+            "Está listo este capítulo para enviarlo",
+        },
         ["lilia-challenge"] = new[]
         {
             "Rehearse my thesis defence with me",

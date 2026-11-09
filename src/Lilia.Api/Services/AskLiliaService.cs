@@ -48,6 +48,12 @@ public static class ChallengeSkill
     public const string SkillId = "lilia-challenge";
 }
 
+/// <summary>Review (9 Nov 2026): reads and assesses, in one answer; like Challenge it never writes.</summary>
+public static class ReviewSkill
+{
+    public const string SkillId = "lilia-review";
+}
+
 /// <summary>A file the author attached to the message. <see cref="DataBase64"/>
 /// is the raw file bytes, base64-encoded. Images/PDFs go to the model natively;
 /// docx/text are extracted/inlined server-side.</summary>
@@ -367,6 +373,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         "lilia-polish" => "rephrase",
         "lilia-journal" => "suggest_headings",
         "lilia-document-architect" => "expand_outline",
+        "lilia-review" => "review_finding",
         _ => "other",
     };
 
@@ -430,8 +437,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
             try
             {
                 document = await _documentService.GetDocumentAsync(docGuid, userId);
-                // A challenge asks and assesses; it never writes, whatever the dock's Edit switch says.
-                editMode = MayEditWithAi(request.EditMode, document) && skill.Id != ChallengeSkill.SkillId;
+                // A challenge asks and assesses, a review assesses: neither writes, whatever the dock's Edit switch says.
+                editMode = MayEditWithAi(request.EditMode, document) && !IsReadOnlySkill(skill.Id);
                 if (request.EditMode && !editMode && document is not null)
                     _logger.LogWarning("[AskLilia] edit mode refused: {UserId} is {Role} on {DocId}", userId, document.Role, docGuid);
                 if (document is not null)
@@ -819,6 +826,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// for: a viewer could have Ask Lilia rewrite a document they may only
     /// read. Only the owner and editors write.
     /// </summary>
+    /// <summary>Skills that only read the document: Challenge questions, Review assesses.</summary>
+    internal static bool IsReadOnlySkill(string skillId) =>
+        skillId == ChallengeSkill.SkillId || skillId == ReviewSkill.SkillId;
+
     internal static bool MayEditWithAi(bool requested, Lilia.Core.DTOs.DocumentDto? document) =>
         requested && document?.Role is "owner" or "editor";
 

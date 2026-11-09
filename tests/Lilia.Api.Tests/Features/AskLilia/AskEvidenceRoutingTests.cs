@@ -20,7 +20,8 @@ public class AskEvidenceRoutingTests
     [InlineData("Are these statements supported by the literature?")]
     public void Backed_by_evidence_is_not_coverage(string message)
     {
-        _router.Route(message).SkillId.Should().NotBe("lilia-coverage");
+        // Since the Review skill (9 Nov 2026), these are review questions.
+        _router.Route(message).SkillId.Should().Be("lilia-review");
     }
 
     [Theory]
