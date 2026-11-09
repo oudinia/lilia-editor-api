@@ -68,9 +68,9 @@ internal sealed class AskLiliaHarness
         new(id, Guid.Empty, type, JsonDocument.Parse("{\"text\":\"hi\"}").RootElement, 0, null, 0, DateTime.UtcNow, DateTime.UtcNow);
 
     public IList<AITool> Tools(DocumentDto doc, bool allowWrite, List<string>? changed = null, Action? meta = null,
-        AskLiliaService.CompileRepair? repair = null) =>
+        AskLiliaService.CompileRepair? repair = null, string? question = null) =>
         Service.BuildDocumentTools(new AskLiliaService.LiveDocument(doc), doc.Id, "u1", allowWrite,
-            changed ?? new List<string>(), meta ?? (() => { }), default, repair);
+            changed ?? new List<string>(), meta ?? (() => { }), default, repair, question);
 
     public static AIFunction Fn(IList<AITool> tools, string name) =>
         tools.OfType<AIFunction>().Single(t => t.Name == name);
