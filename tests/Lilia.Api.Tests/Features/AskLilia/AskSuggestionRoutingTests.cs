@@ -23,6 +23,7 @@ public class AskSuggestionRoutingTests
     [InlineData("Draw a TikZ diagram of…", "lilia-figure")]
     [InlineData("Polish the selected paragraph", "lilia-polish")]
     [InlineData("Format for IEEE, two-column", "lilia-journal")]
+    [InlineData("Review my paper: what works and what to fix", "lilia-review")]
     // A reader (view only): questions, answered by the tutor.
     [InlineData("Explain this document in five lines", "lilia-tutor")]
     [InlineData("Explain the main result in plain words", "lilia-tutor")]
@@ -43,6 +44,7 @@ public class AskSuggestionRoutingTests
     [InlineData("Dessine un diagramme TikZ de…", "lilia-figure")]
     [InlineData("Améliore le paragraphe sélectionné", "lilia-polish")]
     [InlineData("Mets en forme pour IEEE, sur deux colonnes", "lilia-journal")]
+    [InlineData("Relis mon article : ce qui marche et ce qu'il faut corriger", "lilia-review")]
     [InlineData("Explique ce document en cinq lignes", "lilia-tutor")]
     [InlineData("Explique le résultat principal simplement", "lilia-tutor")]
     [InlineData("Que dit chaque équation ?", "lilia-tutor")]
@@ -55,6 +57,7 @@ public class AskSuggestionRoutingTests
     [InlineData("Dibuja un diagrama TikZ de…", "lilia-figure")]
     [InlineData("Mejora el párrafo seleccionado", "lilia-polish")]
     [InlineData("Formato para IEEE, a dos columnas", "lilia-journal")]
+    [InlineData("Revisa mi artículo: qué funciona y qué corregir", "lilia-review")]
     [InlineData("Explica este documento en cinco líneas", "lilia-tutor")]
     [InlineData("Explica el resultado principal en palabras sencillas", "lilia-tutor")]
     [InlineData("¿Qué dice cada ecuación?", "lilia-tutor")]
