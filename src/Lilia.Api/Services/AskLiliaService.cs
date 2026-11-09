@@ -480,7 +480,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                             • set_document_settings(...) — page setup: paper size, orientation, margins, columns, font, size, spacing, page numbering, header/footer slots. Pass only what changes. See PAGE SETUP below.
                             • import_latex(text, replace?) — a pasted .tex file through Lilia's own importer: blocks AND page setup in one step.
                             • add_block / edit_block / remove_block / reorder_blocks — small targeted edits only.
-                            • set_title(title, author?, date?) — document title string only (e.g. "Curriculum Vitae — Name"). Person name + contact go in personalInfo, never as a heading or set_title substitute.
+                            • set_title(title, author?, date?) — document title string only (e.g. "Curriculum Vitae — Name"). Person name + contact go in personalInfo, never as a heading or set_title substitute. A title the author chose stays: rename only when they ask.
                             CV content JSON shapes:
                               personalInfo { "name","headline","email","phones":[{"number"}],"homepage","location","socials":[],"extra" }
                               cvSection { "title" }
@@ -494,7 +494,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                             • set_document_settings(...) — page setup: paper size, orientation, margins (top/bottom/left/right), columns (+gap, rule, balanced), font family and size, line spacing, paragraph indent, page numbering, header/footer slots (left/centre/right), custom preamble (advanced). Pass only the fields that change. See PAGE SETUP below.
                             • import_latex(text, replace?) — a pasted .tex file (from \documentclass on) through Lilia's own importer: converts the body to blocks AND applies the page setup it finds. PREFERRED over converting a whole .tex to LML by hand. replace=false appends blocks only.
                             • add_block / edit_block / remove_block / reorder_blocks — for small, targeted edits only (one or a few blocks).
-                            • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title. On CVs, person identity is personalInfo, not set_title.
+                            • set_title(title, author?, date?) — document title / author / date (LaTeX \\title/\\author/\\date). Never use a heading as the document title. On CVs, person identity is personalInfo, not set_title. A title the author chose stays: rename only when they ask.
                             Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem), {"name","headline","email",…} (personalInfo), {"title"} (cvSection), {"period","role","org","description"} (cvEntry).
                             """);
                     }
@@ -585,12 +585,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
         // ── audit → tool-use loop → meter ─────────────────────────────────
         var aiRequestId = await PersistPendingAsync(userId, PurposeFor(skill.Id), model, messages, documentId, ct, skill.Id);
         var sw = Stopwatch.StartNew();
+        var spend = new TurnSpend();
+        var changed = new List<string>(); // block ids the write tools touched
+        var metaChanged = false; // category/class (or other doc-level meta) writes
         try
         {
             _logger.LogInformation("[AskLilia] skill={Skill} user={UserId} model={Model} effort={Effort}", skill.Id, userId, model, effort ?? "(model's)");
 
-            var changed = new List<string>(); // block ids the write tools touched
-            var metaChanged = false; // category/class (or other doc-level meta) writes
             // Undo snapshot — in Edit mode, capture the doc state before the AI
             // can write, so the client can offer "Undo AI changes". Surfaced
             // only if a write actually happened.
@@ -607,7 +608,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
             {
                 liveDoc = new LiveDocument(document);
                 tools = tools.Concat(BuildDocumentTools(
-                    liveDoc, documentId!.Value, userId, editMode, changed, () => metaChanged = true, ct, repair)).ToList();
+                    liveDoc, documentId!.Value, userId, editMode, changed, () => metaChanged = true, ct, repair, request.Message ?? "")).ToList();
             }
             // Live web search (Anthropic server-side tool). It runs provider-side —
             // results arrive within the same response, so the KB tool-use loop below
@@ -628,7 +629,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 RawRepresentationFactory = _ => CachedRequest(model, effort),
             };
 
-            var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct);
+            var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct, spend);
             var (response, use, toolCalls, webSearches, partialApply, citations) =
                 (loop.Response, loop.Use, loop.ToolCalls, loop.WebSearches, loop.PartialApply, loop.Citations);
             var (inputTokens, outputTokens) = (use.Input, use.Output);
@@ -698,7 +699,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AskLilia] AI call failed for user {UserId} skill {Skill}", userId, skill.Id);
-            await MarkAsync(aiRequestId, "error", Truncate(ex.Message, 500), 0, 0, (int)sw.ElapsedMilliseconds, ct);
+            await RecordFailedTurnAsync(userId, model, aiRequestId, spend, changed.Count > 0 || metaChanged,
+                ex is OperationCanceledException && ct.IsCancellationRequested, ex.Message, (int)sw.ElapsedMilliseconds);
             throw;
         }
     }
@@ -863,9 +865,12 @@ public sealed partial class AskLiliaService : IAskLiliaService
         List<string> changed,
         Action markMetaChanged,
         CancellationToken ct,
-        CompileRepair? repair = null)
+        CompileRepair? repair = null,
+        string? question = null)
     {
         repair ??= new CompileRepair(changed);
+        // The title the author gave the document before this turn; set_title keeps it unless they asked to rename.
+        var authorTitle = question is not null && HasAuthorTitle(live.Dto.Title) ? live.Dto.Title!.Trim() : null;
         var meta = markMetaChanged;
         markMetaChanged = () => { meta(); repair.MetaWrites++; };
         var tools = new List<AITool>
@@ -953,7 +958,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
                  [System.ComponentModel.Description("Author name(s). Optional.")] string? author = null,
                  [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date = null)
-                    => SetTitleAsync(live.Dto, docGuid, title, author, date, changed),
+                    => authorTitle is not null && !string.Equals(title?.Trim(), authorTitle, StringComparison.OrdinalIgnoreCase)
+                        && !AsksForTitle(question)
+                        ? Task.FromResult<object>(new { error = $"The author named this document \u201c{authorTitle}\u201d. Keep that title: rename it only when they ask. To set only the author or date, call set_title with title \u201c{authorTitle}\u201d.", category = "kept" })
+                        : SetTitleAsync(live.Dto, docGuid, title!, author, date, changed),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
             tools.Add(AIFunctionFactory.Create(
@@ -1423,6 +1431,17 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// <summary>Whether the document's title is one its author chose (not empty, not a placeholder).</summary>
     internal static bool HasAuthorTitle(string? title) =>
         !string.IsNullOrWhiteSpace(title) && !PlaceholderTitles.Contains(title.Trim());
+
+    // Words that ask for a title or a rename, in the interface's languages. Loose on purpose: a false yes lets the
+    // model rename as before; a false no only keeps the author's title, and they can ask again.
+    private static readonly Regex TitleRequest = new(
+        @"\b(titles?|titled|retitle|rename\w*|name|call(ed)?\s+it|titre\w*|intitul\w*|renomm\w*|nomm\w*|nom|appel\w*|t[ií]tulo\w*|titul\w*|renombr\w*|nombre|llam\w*)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Whether the author's request mentions the title or a rename (9 Nov 2026: Ask Lilia's first draft called
+    /// set_title and renamed "My named paper" to "Sleep and Memory: …", after apply_lml had kept it).</summary>
+    internal static bool AsksForTitle(string? question) =>
+        !string.IsNullOrWhiteSpace(question) && TitleRequest.IsMatch(question);
 
     private async Task<object> ApplyLmlAsync(
         DocumentDto doc, Guid docId, string lmlSource, string? titleOverride, List<string> changed)
@@ -2042,6 +2061,30 @@ public sealed partial class AskLiliaService : IAskLiliaService
         _context.AiRequests.Add(row);
         await _context.SaveChangesAsync(ct);
         return row.Id;
+    }
+
+    /// <summary>
+    /// A turn that failed or was cancelled after some rounds (9 Nov 2026: the browser closed a chapter draft at 125 s,
+    /// after apply_lml had written 33 blocks; the row stayed "pending" with no cost, because it was marked with the
+    /// request's own token, already cancelled). Its rounds were paid to Anthropic, so the row keeps their cost; the
+    /// author is charged only when the turn wrote to the document, the part they got.
+    /// </summary>
+    private async Task RecordFailedTurnAsync(string userId, string model, Guid aiRequestId, TurnSpend spend, bool wrote,
+        bool cancelled, string error, int latencyMs)
+    {
+        try
+        {
+            var costUsd = AiArchitectPricing.ComputeCostUsd(model, spend.Use);
+            // "error" either way (the status column allows no other); the message says it was cancelled.
+            await MarkAsync(aiRequestId, "error", Truncate(cancelled ? "cancelled: the request was closed before the answer" : error, 500), spend.Use.Input, spend.Use.Output,
+                latencyMs, CancellationToken.None, new TurnCost(spend.Use, spend.Rounds, spend.LargestPrompt, costUsd));
+            if (wrote && spend.Rounds > 0)
+                await MeterAsync(userId, model, spend.Use, aiRequestId, [], CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[AskLilia] could not record failed turn {RequestId}", aiRequestId);
+        }
     }
 
     /// <summary>What a turn used and cost, for its audit row (4 Nov 2026).</summary>

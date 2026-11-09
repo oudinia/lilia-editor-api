@@ -43,6 +43,14 @@ public sealed partial class AskLiliaService
         public bool Exhausted => Attempts >= MaxRepairAttempts && Last?.Compiles != true;
     }
 
+    /// <summary>What the tool loop has spent so far; read when the turn fails before it returns.</summary>
+    internal sealed class TurnSpend
+    {
+        public AiTokenUse Use { get; set; } = AiTokenUse.None;
+        public int Rounds { get; set; }
+        public int LargestPrompt { get; set; }
+    }
+
     internal sealed record ToolLoopResult(
         ChatResponse Response, AiTokenUse Use, int ToolCalls, int WebSearches,
         bool PartialApply, List<WebCitation> Citations, int Rounds = 0, int LargestPrompt = 0);
@@ -116,7 +124,7 @@ public sealed partial class AskLiliaService
     /// </summary>
     internal async Task<ToolLoopResult> RunToolLoopAsync(
         List<ChatMessage> messages, ChatOptions options, IList<AITool> tools, bool webSearch, CompileRepair repair,
-        string skillId, Guid? documentId, Guid aiRequestId, CancellationToken ct)
+        string skillId, Guid? documentId, Guid aiRequestId, CancellationToken ct, TurnSpend? spend = null)
     {
         ChatResponse response = null!;
         var use = AiTokenUse.None;
@@ -137,6 +145,7 @@ public sealed partial class AskLiliaService
             use += roundUse;
             rounds++;
             largestPrompt = Math.Max(largestPrompt, roundUse.Input);
+            if (spend is not null) (spend.Use, spend.Rounds, spend.LargestPrompt) = (use, rounds, largestPrompt);
             webSearches += ExtractWebSearches(response);
             if (webSearch)
                 foreach (var c in WebCitationExtractor.Extract(response))
