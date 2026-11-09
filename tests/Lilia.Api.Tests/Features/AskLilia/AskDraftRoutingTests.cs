@@ -28,7 +28,7 @@ public class AskDraftRoutingTests
     }
 
     /// <summary>Growing the paper goes to the architect too (9 Nov): with no keyword these fell to Table, Figure or
-    /// Polish by meaning, and the table and figure skills cost 10 to 20 times as much on a long document.</summary>
+    /// Polish by meaning, and were written under those skills' instructions.</summary>
     [Theory]
     [InlineData("Expand the method to about three times its length, with more detail and examples.")]
     [InlineData("Expand the experiments to about three times its length, with more detail and examples.")]
