@@ -34,6 +34,8 @@ public sealed partial class AskLiliaService
         public int Compiles;
         public int WritesAtLastCheck;
         public DocumentCheck? Last;
+        /// <summary>The document the last check compiled: the verdict names a failing block from it.</summary>
+        public IReadOnlyList<Lilia.Core.DTOs.BlockDto>? Blocks;
         public int Writes => changed.Count + MetaWrites;
         /// <summary>The last check saw the document as it is now.</summary>
         public bool LastIsCurrent => Last is not null && WritesAtLastCheck == Writes;
@@ -53,6 +55,7 @@ public sealed partial class AskLiliaService
         try { saved = await _documentService.GetDocumentAsync(docGuid, userId); }
         catch (Exception ex) { _logger.LogWarning(ex, "[AskLilia] could not reload {DocId} for check_document", docGuid); }
         var check = await _checker!.CheckAsync(saved ?? live.Dto, ct);
+        repair.Blocks = (saved ?? live.Dto).Blocks;
         if (!check.Cached && check.Compiles is not null) repair.Compiles++;
         if (repair.Writes > repair.WritesAtLastCheck) repair.Attempts++;
         repair.WritesAtLastCheck = repair.Writes;
@@ -210,7 +213,7 @@ public sealed partial class AskLiliaService
                 _ => "✅ **Compile check:** the document compiles.",
             };
         var failing = last.Problems.Where(p => p.Severity == "error").Take(5)
-            .Select(p => (p.BlockId is null ? lang switch { "fr" => "préambule", "es" => "preámbulo", _ => "preamble" } : $"`{p.BlockId}`")
+            .Select(p => (p.BlockId is null ? lang switch { "fr" => "préambule", "es" => "preámbulo", _ => "preamble" } : BlockPlace(repair.Blocks, p.BlockId, lang))
                 + (p.Line is int l ? $" (l.{l})" : "") + ": " + p.Message)
             .ToList();
         var head = lang switch
@@ -229,4 +232,42 @@ public sealed partial class AskLiliaService
         var label = lang switch { "fr" => "Échoue encore", "es" => "Sigue fallando", _ => "Still failing" };
         return head + $" {label}:\n" + string.Join("\n", failing.Select(f => "- " + f));
     }
+
+    /// <summary>
+    /// Where a block is, as the author sees it (9 Nov 2026: the verdict listed raw block ids, which mean nothing to an
+    /// author): its kind and the section it sits in, "the equation in “Background”". The id when it can't be found.
+    /// </summary>
+    internal static string BlockPlace(IReadOnlyList<Lilia.Core.DTOs.BlockDto>? blocks, string blockId, string lang)
+    {
+        var ordered = blocks?.OrderBy(b => b.SortOrder).ToList();
+        var at = ordered?.FindIndex(b => string.Equals(b.Id.ToString(), blockId, StringComparison.OrdinalIgnoreCase)) ?? -1;
+        if (ordered is null || at < 0) return $"`{blockId}`";
+        var kind = KindName(ordered[at].Type, lang);
+        var heading = ordered.Take(at).LastOrDefault(b => b.Type == "heading");
+        var title = heading is not null && heading.Content.ValueKind == JsonValueKind.Object
+            && heading.Content.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString()?.Trim() : null;
+        if (title is { Length: > 60 }) title = title[..57] + "…";
+        return (lang, string.IsNullOrEmpty(title)) switch
+        {
+            ("fr", true) => $"{kind} au début",
+            ("fr", false) => $"{kind} dans « {title} »",
+            ("es", true) => $"{kind} al principio",
+            ("es", false) => $"{kind} en «{title}»",
+            (_, true) => $"{kind} at the top",
+            _ => $"{kind} in “{title}”",
+        };
+    }
+
+    private static string KindName(string type, string lang) => (lang, type) switch
+    {
+        ("fr", "equation") => "l'équation", ("fr", "paragraph") => "le paragraphe", ("fr", "table") => "le tableau",
+        ("fr", "figure") => "la figure", ("fr", "heading") => "le titre", ("fr", "list") => "la liste", ("fr", "code") => "le bloc de code",
+        ("fr", "theorem") => "le théorème", ("fr", "abstract") => "le résumé", ("fr", "bibliography") => "la bibliographie", ("fr", _) => "le bloc",
+        ("es", "equation") => "la ecuación", ("es", "paragraph") => "el párrafo", ("es", "table") => "la tabla",
+        ("es", "figure") => "la figura", ("es", "heading") => "el título", ("es", "list") => "la lista", ("es", "code") => "el bloque de código",
+        ("es", "theorem") => "el teorema", ("es", "abstract") => "el resumen", ("es", "bibliography") => "la bibliografía", ("es", _) => "el bloque",
+        (_, "equation") => "the equation", (_, "paragraph") => "the paragraph", (_, "table") => "the table",
+        (_, "figure") => "the figure", (_, "heading") => "the heading", (_, "list") => "the list", (_, "code") => "the code block",
+        (_, "theorem") => "the theorem", (_, "abstract") => "the abstract", (_, "bibliography") => "the bibliography", _ => "the block",
+    };
 }
