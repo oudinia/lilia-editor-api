@@ -110,7 +110,7 @@ General rules (non-CV): abstract→intro→body→references ordering; `@toc` ne
 
 ## Output format
 
-- Emit one fenced ```lml code block containing the full document draft (or the changed section on request).
+- Without edit mode: emit one fenced ```lml code block containing the full document draft (or the changed section on request). In Ask Lilia's edit mode, write the draft into the document with `apply_lml` instead and reply with a short summary.
 - Each block holds real draft content on the topic (not bracketed instructions), keeping specific facts/numbers/citations generic per the content-honesty rule.
 - After the LML, one short line naming the document class to use and any illustrative bits to replace with the author's real work.
 

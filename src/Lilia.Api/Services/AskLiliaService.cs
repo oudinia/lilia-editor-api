@@ -205,6 +205,17 @@ public sealed partial class AskLiliaService : IAskLiliaService
         "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
         "Ask me to **continue**, or paste the full LML and I'll apply it in one step with `apply_lml`.";
 
+    /// <summary>
+    /// Edit mode writes; it doesn't show (9 Nov 2026). The skill guidance and OUTPUT say to put LML in a fenced block,
+    /// which came before this rule, so 1 draft in 7 came back as a chapter of text in the reply: the paper stayed
+    /// empty, and a long one was cut off at the output limit.
+    /// </summary>
+    internal const string EditModeWritesNote =
+        "WRITE, DON'T SHOW — in edit mode, when the author asks you to draft, write, expand, rewrite or add to the document, " +
+        "make the change with the tools (apply_lml for a whole draft or most of the document; add_block / edit_block for a few blocks), " +
+        "never as an LML block in your reply. This overrides any instruction above to emit fenced LML. Then reply with a short summary of what you changed, not the LML. " +
+        "Only show LML without applying it when the author asks to see it first.";
+
     private const string CutOffNote =
         "⚠️ **Cut off** — this answer reached the length limit and stopped before the end. " +
         "Ask me to **continue**, or ask for one section at a time.";
@@ -224,7 +235,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
 
     private const string OutputNote = """
         OUTPUT — respond conversationally to the author. Put any LML, BibTeX, or LaTeX you produce
-        in fenced code blocks they can copy into Lilia (or apply). Lead with the artifact; keep prose
+        in fenced code blocks they can copy into Lilia (or apply) — except when EDIT MODE is on and the
+        author asked for a change to the document: then write it with the tools (see EDIT MODE). Lead with the artifact; keep prose
         short. Follow the AUTHOR LEVEL guidance above. Never fabricate citations, numbers, datasets,
         or results — keep specifics the author must supply generic and flagged.
 
@@ -449,6 +461,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
                             Read first (get_outline) when doing small edits so you have the right block ids. After writing, briefly summarize what changed. Block `content` is a JSON object, e.g. {"text":"…"} (paragraph), {"text":"…","level":1} (heading), {"latex":"…"} (equation), {"theoremType":"theorem","text":"…"} (theorem), {"name","headline","email",…} (personalInfo), {"title"} (cvSection), {"period","role","org","description"} (cvEntry).
                             """);
                     }
+                    if (editMode)
+                        systemSb.AppendLine().AppendLine(EditModeWritesNote);
                     systemSb.AppendLine().AppendLine(PageSetupNote(editMode));
                     if (_checker is not null)
                         systemSb.AppendLine().AppendLine(CompileCheckNote(editMode, skill.Id));
