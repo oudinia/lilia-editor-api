@@ -24,4 +24,11 @@ public class AnthropicClientFactoryTests
     {
         AnthropicClientFactory.Create("sk-test", 120).Timeout.Should().Be(TimeSpan.FromSeconds(120));
     }
+
+    /// <summary>A chapter written as text stopped mid-sentence at 8,192 and reached the document empty.</summary>
+    [Fact]
+    public void A_long_answer_has_room_for_a_chapter()
+    {
+        AskLiliaService.MaxOutputTokens.Should().BeGreaterThanOrEqualTo(16384);
+    }
 }
