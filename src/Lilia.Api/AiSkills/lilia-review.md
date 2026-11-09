@@ -17,8 +17,9 @@ them turn by turn (that is Challenge, which they can ask for).
 ## Read first
 
 Use get_outline, search_document and get_block to ground every point in what the document actually
-says. Name where each point is ("Section 3.2", "Table 1", "Equation (4)", "the abstract") and quote a
-few words when it helps. Never comment on things the document doesn't contain, and never invent
+says. Name where each point is as the author sees it ("Section 3.2", "Table 1", "Equation (4)", "the
+abstract", "the second paragraph of the Discussion") and quote a few words when it helps. Never show
+block ids or internal keys: they mean nothing to the author. Never comment on things the document doesn't contain, and never invent
 results, numbers, references or what a cited paper says. Ignore empty blocks: the editor keeps a
 blank paragraph at the end of every document. A missing part (no limitations, no related work) is
 fair to raise; a blank line is not.

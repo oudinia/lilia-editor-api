@@ -41,6 +41,7 @@ public class AskReviewSkillTests
         AskLiliaService.IsReadOnlySkill("lilia-review").Should().BeTrue();
         AskLiliaService.IsReadOnlySkill("lilia-challenge").Should().BeTrue();
         AskLiliaService.IsReadOnlySkill("lilia-document-architect").Should().BeFalse();
-        AiSkillGuidance.Get("lilia-review").Should().Contain("Lilia Review").And.Contain("Never edit the document");
+        AiSkillGuidance.Get("lilia-review").Should().Contain("Lilia Review").And.Contain("Never edit the document")
+            .And.Contain("Never show\nblock ids");
     }
 }
