@@ -137,6 +137,21 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
                 "interroge-moi", "défie-moi", "teste-moi", "soutenance", "répéter ma soutenance", "joue le relecteur", "relecteur 2", "rapporteur",
                 "desafíame", "examíname", "pregúntame", "ponme a prueba", "defensa", "tribunal", "ensayar", "revisor 2", "haz de revisor" },
             "default", 8),
+        // Review (9 Nov 2026, the owner): direct written feedback on the author's own document, in one answer.
+        // Its questions ("which section is weakest?", "which claim is least supported?") went to Compile
+        // Doctor, Coverage or the Tutor by accident. Challenge questions the author turn by turn; Review answers.
+        new("lilia-review", "Review",
+            "Direct written feedback on the author's own document: what works, the weakest points ranked, what to change. Never edits.",
+            new[] { "review my", "review this", "give me feedback", "feedback on", "critique", "weakest", "weak points", "weak point",
+                "weaknesses", "strengths and weaknesses", "least supported", "well supported", "poorly supported", "weakly supported",
+                "unsupported claim", "unsupported claims", "supported by the data", "supported by the evidence", "supported by the literature",
+                "sample size", "reviewer say", "reviewers say", "would a reviewer", "is it convincing", "is this convincing", "convincing enough",
+                "what is missing", "what's missing", "before i submit", "ready to submit", "gaps in my",
+                "relis mon", "relis ma", "ton avis sur", "donne-moi un avis", "points faibles", "point faible", "faiblesses",
+                "le plus faible", "la plus faible", "taille d'échantillon", "taille de l'échantillon", "dirait un relecteur", "ce qui manque",
+                "revisa mi", "tu opinión sobre", "dame tu opinión", "puntos débiles", "punto débil", "debilidades", "más débil",
+                "tamaño de muestra", "tamaño de la muestra", "diría un revisor", "lo que falta" },
+            "default", 7),
         new("lilia-tutor", "Tutor",
             "Lilia-aware \"how do I…?\" help + a concrete next step.",
             new[] { "how do i", "how to", "what is", "where do i", "explain", "help me understand", "what's the", "how can i",
@@ -203,9 +218,6 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
         // under a table's instructions.
         if (DraftWholeDocument.IsMatch(text))
             return new AskRoute(_default.Id, _default.Name, 0.9, "drafting a whole document → architect");
-        // "Supported" as in backed by evidence is not Coverage's "is X supported in Lilia" (9 Nov 2026: "Which claim is
-        // least supported?" went to Coverage every time). Those phrases don't count as Coverage's trigger.
-        text = EvidenceSupported.Replace(text, " backed ");
 
         AiSkill? best = null;
         var bestScore = 0;
@@ -252,12 +264,6 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
         @"(?:(?!(?:for|in|to|of|on|about|with|pour|dans|sur|de|du|avec|para|en|sobre|con)\s)[\p{L}\-]+\s+){0,3}" +
         @"(paper|article|essay|chapter|thesis|dissertation|report|manuscript|proposal|essai|chapitre|thèse|mémoire|rapport|" +
         @"artículo|ensayo|capítulo|tesis|informe|propuesta)([^\p{L}]|$)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>"Supported" meaning backed by evidence: "least supported", "well supported", "supported by the data".</summary>
-    private static readonly Regex EvidenceSupported = new(
-        @"\b(?:least|most|best|better|well|poorly|weakly|strongly|badly|insufficiently|fully|un)[\s-]*supported\b" +
-        @"|\bsupported\s+by\s+(?:the\s+|my\s+|your\s+|enough\s+)?(?:data|evidence|results?|literature|references?|citations?|sources?|experiments?|findings)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static bool ContainsPhrase(string haystack, string needle)

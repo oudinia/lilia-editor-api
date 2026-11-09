@@ -108,6 +108,11 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   « interroge-moi », «examíname»). Jury, reviewer or tutor mode; one question at a time with an honest
   verdict on each answer; **End and summarise** gives the scorecard (what held, what to fix, questions
   to prepare). It never edits the document, even in Edit mode.
+- **Review** (Ask Lilia's written verdict on your document, in one answer): ask "review my paper",
+  "which section is weakest?", "is my sample size enough?", « quels sont les points faibles ? »,
+  «¿qué falta?». It names what works, the weakest points ranked (each with its section, table or
+  equation) and what to change, and never edits the document; to rehearse a jury or reviewer turn by
+  turn instead, use Challenge.
 - **Maths**: type `$…$` or `\(…\)` in a sentence for inline maths (click it to edit its LaTeX);
   `$$…$$` or `\[…\]` alone on a line makes an equation. **Maths from a photo** (Ask Lilia's first
   button, or **/** then *Maths from a photo…*): take or pick a photo, screenshot or handwriting; Ask
