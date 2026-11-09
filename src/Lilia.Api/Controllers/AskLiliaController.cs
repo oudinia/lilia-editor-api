@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Lilia.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Lilia.Api.Controllers;
 
@@ -23,12 +25,17 @@ public class AskLiliaController : ControllerBase
     private readonly IAskLiliaRouter _router;
     private readonly IAskLiliaService _ask;
     private readonly ILogger<AskLiliaController> _logger;
+    private readonly TimeSpan _keepAliveAfter;
+    private readonly TimeSpan _keepAliveEvery;
 
-    public AskLiliaController(IAskLiliaRouter router, IAskLiliaService ask, ILogger<AskLiliaController> logger)
+    public AskLiliaController(IAskLiliaRouter router, IAskLiliaService ask, ILogger<AskLiliaController> logger,
+        IConfiguration? configuration = null)
     {
         _router = router;
         _ask = ask;
         _logger = logger;
+        _keepAliveAfter = TimeSpan.FromSeconds(configuration?.GetValue("AI:AskKeepAliveAfterSeconds", 20d) ?? 20d);
+        _keepAliveEvery = TimeSpan.FromSeconds(configuration?.GetValue("AI:AskKeepAliveEverySeconds", 10d) ?? 10d);
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -80,20 +87,66 @@ public class AskLiliaController : ControllerBase
             return BadRequest(new { message = "Message is required." });
         if (string.IsNullOrWhiteSpace(request.Message)) request = request with { Message = "" };
 
+        var work = _ask.AskAsync(userId, request, ct);
+        if (await Task.WhenAny(work, Task.Delay(_keepAliveAfter, CancellationToken.None)) == work)
+        {
+            var (status, body) = await OutcomeAsync(work, userId);
+            return StatusCode(status, body);
+        }
+
+        // A long answer (10 Nov 2026): Cloudflare answers 524 when the server has sent nothing for about 125 s,
+        // and a chapter draft can take longer, so the browser saw an error while the draft was still landing
+        // in the paper. Start the answer now and send a space every few seconds (JSON allows leading
+        // whitespace); the outcome follows as JSON, and a lock or failure that comes late says its status in it.
+        Response.StatusCode = StatusCodes.Status200OK;
+        Response.ContentType = "application/json; charset=utf-8";
+        Response.Headers.CacheControl = "no-store";
         try
         {
-            var outcome = await _ask.AskAsync(userId, request, ct);
+            await Response.StartAsync(ct);
+            while (!work.IsCompleted)
+            {
+                await Response.Body.WriteAsync(" "u8.ToArray(), ct);
+                await Response.Body.FlushAsync(ct);
+                await Task.WhenAny(work, Task.Delay(_keepAliveEvery, CancellationToken.None));
+            }
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // The browser left; the turn ends on the same token and records itself.
+        }
+        var (lateStatus, lateBody) = await OutcomeAsync(work, userId);
+        if (ct.IsCancellationRequested) return new EmptyResult();
+        object payload = lateStatus == StatusCodes.Status200OK ? lateBody : Merge(lateBody, lateStatus);
+        var json = HttpContext.RequestServices.GetService<IOptions<JsonOptions>>()?.Value.JsonSerializerOptions;
+        await JsonSerializer.SerializeAsync(Response.Body, payload, payload.GetType(), json, CancellationToken.None);
+        return new EmptyResult();
+    }
+
+    /// <summary>The status and body for a finished turn, as the endpoint has always answered them.</summary>
+    private async Task<(int Status, object Body)> OutcomeAsync(Task<AskLiliaResult> work, string userId)
+    {
+        try
+        {
+            var outcome = await work;
             if (outcome.Locked)
-                return StatusCode(StatusCodes.Status403Forbidden,
-                    new { locked = true, reason = outcome.Reason, message = outcome.Message });
-            return Ok(outcome.Response);
+                return (StatusCodes.Status403Forbidden, new { locked = true, reason = outcome.Reason, message = outcome.Message });
+            return (StatusCodes.Status200OK, outcome.Response!);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AskLilia] Ask failed for user {UserId}", userId);
-            return StatusCode(StatusCodes.Status502BadGateway,
-                new { message = "Ask Lilia failed to respond. Please try again." });
+            return (StatusCodes.Status502BadGateway, new { message = "Ask Lilia failed to respond. Please try again." });
         }
+    }
+
+    /// <summary>A late lock or failure inside the 200 already sent: its body with the status it would have had.</summary>
+    private static Dictionary<string, object?> Merge(object body, int status)
+    {
+        var map = JsonSerializer.SerializeToElement(body, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            .EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value);
+        map["status"] = status;
+        return map;
     }
 
     /// <summary>GET /api/ai/skills — the skill catalog (for an "Ask Lilia" picker / suggestions).</summary>
