@@ -169,6 +169,13 @@ public sealed class AskLiliaRouter : IAskLiliaRouter
             {
                 "draft", "write a paper", "outline", "structure", "thesis", "report", "slides",
                 "problem set", "scaffold", "new paper", "start a",
+                // Growing the paper (9 Nov 2026): with no keyword, "Expand the method …" fell to the closest examples
+                // (Table, Figure) and ran their tools over the whole document, 10 to 20 times an expansion's cost.
+                "expand the", "expand my", "expand this", "expand on", "elaborate on", "lengthen the", "more detail",
+                "add a section", "add a paragraph", "write a section", "write a paragraph",
+                "développe la", "développe le", "développe ma", "développe mon", "développe cette", "allonge la", "allonge le",
+                "ajoute une section", "ajoute un paragraphe", "rédige une section",
+                "amplía la", "amplía el", "amplía mi", "desarrolla la", "desarrolla el", "añade una sección", "añade un párrafo",
                 // CV / résumé — must route to architect so CV block grammar applies
                 "cv", "curriculum vitae", "resume", "résumé", "curriculum", "moderncv",
                 "write a cv", "write a resume", "write my cv", "write my resume",

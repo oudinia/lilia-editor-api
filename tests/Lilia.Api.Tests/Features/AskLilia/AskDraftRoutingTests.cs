@@ -27,7 +27,25 @@ public class AskDraftRoutingTests
         _router.Route(message).SkillId.Should().Be("lilia-document-architect");
     }
 
+    /// <summary>Growing the paper goes to the architect too (9 Nov): with no keyword these fell to Table, Figure or
+    /// Polish by meaning, and the table and figure skills cost 10 to 20 times as much on a long document.</summary>
     [Theory]
+    [InlineData("Expand the method to about three times its length, with more detail and examples.")]
+    [InlineData("Expand the experiments to about three times its length, with more detail and examples.")]
+    [InlineData("Expand the background to about three times its length, with more detail and examples.")]
+    [InlineData("Add a section on limitations after the discussion.")]
+    [InlineData("Elaborate on the second result.")]
+    [InlineData("Développe la discussion avec deux exemples.")]
+    [InlineData("Ajoute une section sur les limites.")]
+    [InlineData("Amplía la introducción con más contexto.")]
+    [InlineData("Añade una sección sobre trabajo futuro.")]
+    public void Growing_the_paper_goes_to_the_architect(string message)
+    {
+        _router.Route(message).SkillId.Should().Be("lilia-document-architect");
+    }
+
+    [Theory]
+    [InlineData("Expand the table with two more rows", "lilia-table")]
     [InlineData("Write a table for my paper comparing the three methods", "lilia-table")]
     [InlineData("Write the equation for the effect size in my paper", "lilia-equation")]
     [InlineData("Add a table comparing GCN, GAT and MPNN by parameters and accuracy.", "lilia-table")]
