@@ -205,6 +205,23 @@ public sealed partial class AskLiliaService : IAskLiliaService
         "⚠️ **Partial apply** — I ran out of tool rounds before finishing every edit, so the document may still mix old and new content. " +
         "Ask me to **continue**, or paste the full LML and I'll apply it in one step with `apply_lml`.";
 
+    private const string CutOffNote =
+        "⚠️ **Cut off** — this answer reached the length limit and stopped before the end. " +
+        "Ask me to **continue**, or ask for one section at a time.";
+
+    /// <summary>
+    /// A reply the model stopped at the output limit (9 Nov 2026): a 4,000-word chapter written as text stopped mid-word,
+    /// its LML block never closed (so the rest of the panel rendered as code), the document stayed empty, and nothing
+    /// said so. The open block is closed and the author is told, so they can ask for the rest.
+    /// </summary>
+    internal static string WithCutOffNote(string reply, ChatFinishReason? finish)
+    {
+        if (finish != ChatFinishReason.Length) return reply;
+        var fences = System.Text.RegularExpressions.Regex.Matches(reply, "^```", System.Text.RegularExpressions.RegexOptions.Multiline).Count;
+        if (fences % 2 == 1) reply += "\n```";
+        return string.IsNullOrWhiteSpace(reply) ? CutOffNote : reply + "\n\n" + CutOffNote;
+    }
+
     private const string OutputNote = """
         OUTPUT — respond conversationally to the author. Put any LML, BibTeX, or LaTeX you produce
         in fenced code blocks they can copy into Lilia (or apply). Lead with the artifact; keep prose
@@ -592,6 +609,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     ? "Done — updated the document kind/class."
                     : $"Done — updated {changed.Distinct().Count()} block(s).";
             }
+            if (response.FinishReason == ChatFinishReason.Length)
+                _logger.LogWarning("[AskLilia] skill={Skill} reply cut off at the output limit ({Output} output tokens)", skill.Id, outputTokens);
+            reply = WithCutOffNote(reply, response.FinishReason);
 
             // A fix must end by saying whether the document now compiles (15 Oct). The compile doctor
             // checks once more when its last edit came after its last check; the verdict is the check's,
