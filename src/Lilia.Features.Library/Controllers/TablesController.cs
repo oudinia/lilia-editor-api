@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Lilia.Api.Filters;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Lilia.Engines.Themes;
@@ -90,8 +91,10 @@ public class TablesController : ControllerBase
     /// <summary>
     /// The saved table a paper's table block is linked to, if this user can open it: the editor's
     /// "Open in the table tool" opens that table rather than making another (8 Nov 2026, the owner).
+    /// The block's document must be readable (9 Nov): the route guard test caught it without one.
     /// </summary>
     [HttpGet("by-block/{blockId:guid}")]
+    [RequireDocumentAccess]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ByBlock(Guid blockId, [FromQuery] Guid documentId)
