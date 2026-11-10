@@ -1028,6 +1028,9 @@ public class DocumentService : IDocumentService
         if (document == null) return false;
 
         if (document.OwnerId != userId) return false;
+        // Back in the list, it counts again: a Free account with 3 documents could hold more by trashing
+        // and restoring (PROD-25, found 23 Oct). Refused like a new document when the plan's are used.
+        await EnsureRoomForDocumentAsync(userId);
 
         document.DeletedAt = null;
         document.UpdatedAt = DateTime.UtcNow;
