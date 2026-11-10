@@ -69,6 +69,7 @@ public class ExportController : ControllerBase
     /// option.
     /// </summary>
     [HttpGet("latex")]
+    [Lilia.Api.Filters.RecordsExport("latex")]
     public async Task<IActionResult> ExportLatex(
         Guid docId,
         [FromQuery] LaTeXExportOptions options,
@@ -201,6 +202,7 @@ public class ExportController : ControllerBase
     /// Export document as a DOCX file
     /// </summary>
     [HttpGet("docx")]
+    [Lilia.Api.Filters.RecordsExport("docx")]
     public async Task<IActionResult> ExportDocx(Guid docId)
     {
         var userId = GetUserId();
@@ -228,6 +230,7 @@ public class ExportController : ControllerBase
     /// minutes, so its compile outlives the request: 202 with Retry-After while it runs, the PDF once it is done.
     /// </summary>
     [HttpGet("pdf")]
+    [Lilia.Api.Filters.RecordsExport("pdf")]
     public async Task<IActionResult> ExportPdf(
         Guid docId,
         [FromQuery] string engine = "auto",
@@ -344,6 +347,7 @@ public class ExportController : ControllerBase
     /// Export document as Markdown.
     /// </summary>
     [HttpGet("markdown")]
+    [Lilia.Api.Filters.RecordsExport("markdown")]
     public async Task<IActionResult> ExportMarkdown(Guid docId)
     {
         var userId = GetUserId();
@@ -361,6 +365,7 @@ public class ExportController : ControllerBase
     /// Export document as LML (Lilia Markup Language) source.
     /// </summary>
     [HttpGet("lml")]
+    [Lilia.Api.Filters.RecordsExport("lml")]
     public async Task<IActionResult> ExportLml(Guid docId)
     {
         var userId = GetUserId();
@@ -378,6 +383,7 @@ public class ExportController : ControllerBase
     /// Export document as HTML — either a single .html file or a .zip bundle with images.
     /// </summary>
     [HttpGet("html")]
+    [Lilia.Api.Filters.RecordsExport("html")]
     public async Task<IActionResult> ExportHtml(Guid docId, [FromQuery] bool bundleImages = false)
     {
         var userId = GetUserId();
