@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Text;
 using Lilia.Api.Filters;
@@ -17,6 +18,17 @@ namespace Lilia.Api.Controllers;
 [Authorize]
 public class ExportController : ControllerBase
 {
+    /// <summary>
+    /// Accessible PDFs being compiled, by document version and options (10 Nov 2026): a 20-page paper takes about
+    /// 150 s, and Cloudflare cuts a response at about 125 s, so the browser saw an error and the compile, tied to the
+    /// request, was stopped and never kept. The compile now runs apart from the request; the endpoint answers 202
+    /// while it runs, and every ask for the same PDF waits on the same compile.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, Task<(byte[] Pdf, string Engine)>> AccessibleRunning = new();
+
+    /// <summary>The seconds the browser is asked to wait before asking again for an accessible PDF still compiling.</summary>
+    internal const int AccessibleRetryAfterSeconds = 15;
+
     private readonly ILaTeXExportService _latexExportService;
     private readonly IDocumentExportService _documentExportService;
     private readonly IDocumentService _documentService;
@@ -212,7 +224,8 @@ public class ExportController : ControllerBase
     /// "auto" (default — Typst with pdflatex fallback), "typst", or "pdflatex".
     /// <c>look</c> (a theme id) and <c>printSafe=true</c> (white paper, dark grounds to their light
     /// pair) change the look of this export only; the document keeps its own.
-    /// <c>accessible=true</c>: the accessible PDF, tagged to PDF/UA-2 for screen readers (TaggedPdf).
+    /// <c>accessible=true</c>: the accessible PDF, tagged to PDF/UA-2 for screen readers (TaggedPdf). It can take
+    /// minutes, so its compile outlives the request: 202 with Retry-After while it runs, the PDF once it is done.
     /// </summary>
     [HttpGet("pdf")]
     public async Task<IActionResult> ExportPdf(
@@ -241,10 +254,12 @@ public class ExportController : ControllerBase
 
         // The version as an ETag (18 Oct): a browser or phone that already has this PDF gets 304 and
         // keeps its copy. Revalidated on every use (no-cache), private to the user.
+        string? outputKey = null;
         if (HttpContext.RequestServices.GetService<DocumentVersions>() is { } versions
             && await versions.OfAsync(docId) is { } version)
         {
-            var etag = "\"" + DocumentVersions.OutputKey(version, "pdf", engine, look, printSafe ? "print-safe" : null)[..32] + "\"";
+            outputKey = DocumentVersions.OutputKey(version, "pdf", engine, look, printSafe ? "print-safe" : null);
+            var etag = "\"" + outputKey[..32] + "\"";
             Response.Headers.ETag = etag;
             Response.Headers.CacheControl = "private, no-cache";
             if (Request.Headers.IfNoneMatch.Any(v => v == etag))
@@ -264,7 +279,26 @@ public class ExportController : ControllerBase
             HttpContext.RequestAborted, CompileController.TicketOf(userId, Request.Headers[CompileController.TicketHeader]));
         try
         {
-            var (pdfBytes, engineUsed) = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine, look, printSafe);
+            (byte[] Pdf, string Engine) compiled;
+            if (accessible)
+            {
+                var job = AccessibleJob(outputKey ?? $"{docId}|{engine}|{look}|{printSafe}", docId, engine, look, printSafe);
+                var wait = TimeSpan.FromSeconds(HttpContext.RequestServices.GetService<IConfiguration>()?
+                    .GetValue("Export:AccessibleWaitSeconds", 90d) ?? 90d);
+                if (await Task.WhenAny(job, Task.Delay(wait, HttpContext.RequestAborted)) != job)
+                {
+                    Response.Headers.RetryAfter = AccessibleRetryAfterSeconds.ToString();
+                    return StatusCode(StatusCodes.Status202Accepted, new
+                    {
+                        status = "preparing",
+                        message = "Your accessible PDF is still being prepared. It takes longer than the usual PDF.",
+                        retryAfterSeconds = AccessibleRetryAfterSeconds,
+                    });
+                }
+                compiled = await job;
+            }
+            else compiled = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine, look, printSafe);
+            var (pdfBytes, engineUsed) = compiled;
             if (pdfBytes == null || pdfBytes.Length < 100 || !pdfBytes.AsSpan(0, 4).SequenceEqual("%PDF"u8))
             {
                 _logger.LogError("[Export] PDF for document {DocId} is empty or invalid ({Length} bytes) — tolerant compile produced no output", docId, pdfBytes?.Length ?? 0);
@@ -497,5 +531,22 @@ public class ExportController : ControllerBase
             </body>
             </html>
             """;
+    }
+
+    /// <summary>The accessible PDF's compile for this key, started once in a scope of its own, detached from the request.</summary>
+    private Task<(byte[] Pdf, string Engine)> AccessibleJob(string key, Guid docId, string engine, string? look, bool printSafe)
+    {
+        var scopes = HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
+        var job = AccessibleRunning.GetOrAdd(key, _ => Task.Run(async () =>
+        {
+            Lilia.Engines.CompileSlots.Detach();
+            using var scope = scopes.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<IDocumentExportService>()
+                .ExportToPdfWithEngineAsync(docId, engine, look, printSafe);
+        }));
+        // Gone once done: the PDF is then in the compile cache, and a failure may be retried.
+        _ = job.ContinueWith(_ => AccessibleRunning.TryRemove(new KeyValuePair<string, Task<(byte[] Pdf, string Engine)>>(key, job)),
+            TaskScheduler.Default);
+        return job;
     }
 }
