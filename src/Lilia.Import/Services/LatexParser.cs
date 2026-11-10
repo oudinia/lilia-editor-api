@@ -1613,6 +1613,25 @@ public class LatexParser : ILatexParser
 
     private static long _mathSpanCallId;
 
+    private static readonly Regex UnknownEnvRx = new(
+        @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>Inline maths in running text: $…$ (not $$) and \(…\).</summary>
+    private static readonly Regex InlineMathRange = new(
+        @"(?<![\\$])\$(?!\$)(?:\\.|[^$\\])+\$|\\\((?:\\.|[^\\]|\\(?!\)))*?\\\)", RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>The first match of <paramref name="rx"/> that doesn't start inside inline maths.</summary>
+    private static Match? FirstOutsideInlineMath(Regex rx, string text)
+    {
+        List<(int Start, int End)>? spans = null;
+        foreach (Match m in rx.Matches(text))
+        {
+            spans ??= InlineMathRange.Matches(text).Select(s => (s.Index, s.Index + s.Length)).ToList();
+            if (!spans.Any(s => m.Index > s.Start && m.Index < s.End)) return m;
+        }
+        return null;
+    }
+
     private static readonly Regex InlineMathSpan = new(
         @"(?<!\\)\$\$(?:\\.|[^$\\])+\$\$|(?<!\\)\$(?:\\.|[^$\\])+\$",
         RegexOptions.Compiled | RegexOptions.Singleline);
@@ -2064,8 +2083,10 @@ public class LatexParser : ILatexParser
             // Is*Environment helpers run the Stage-3 parallel check —
             // same behaviour, plus drift logging when the catalog's
             // handler_kind disagrees with the HashSet.
-            var unknownEnvMatch = Regex.Match(remaining, @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
-            if (unknownEnvMatch.Success && !IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) && !IsTheoremEnvironment(unknownEnvMatch.Groups[1].Value))
+            // Not one inside inline maths: `$A = \begin{pmatrix}…\end{pmatrix}$` was cut into a paragraph ending in "$", a
+            // raw block and a paragraph starting with "$", which LaTeX refused ("Missing $ inserted"; bot #51, 10 Nov).
+            var unknownEnvMatch = FirstOutsideInlineMath(UnknownEnvRx, remaining);
+            if (unknownEnvMatch is { Success: true } && !IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) && !IsTheoremEnvironment(unknownEnvMatch.Groups[1].Value))
                 matches.Add((unknownEnvMatch, "unknown_env"));
 
             // Find the first match
