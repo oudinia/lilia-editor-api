@@ -318,6 +318,8 @@ public class DocumentService : IDocumentService
             Role = await RoleForAsync(document, userId),
             OwnerName = owner?.Name,
             OwnerEmail = owner?.Email,
+            PlanLocked = _entitlements is not null
+                && (await _entitlements.PlanLockedDocumentsAsync(document.OwnerId)).Contains(document.Id),
         };
     }
 

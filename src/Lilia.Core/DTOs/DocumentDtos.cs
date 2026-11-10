@@ -35,7 +35,9 @@ public record DocumentListDto(
     string? AiSummary = null,
     // Document theme (Look), the same shape as on the document: { theme, paper, pins, tables? },
     // null when unset (Classic). The card thumbnail is drawn from it (design 2c). Always written.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] JsonElement? Look = null
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] JsonElement? Look = null,
+    // Read-only over the owner's plan limit after a downgrade (launch redesign 4d): the documents rail shows a lock.
+    bool PlanLocked = false
 );
 
 public record OutlineItemDto(
@@ -127,7 +129,10 @@ public record DocumentDto(
     // a script the setting cannot print (DocumentLanguage).
     string? DetectedLanguage = null,
     // The publisher profile id (venue + stage), null when none (PublisherProfiles).
-    string? PublisherProfile = null
+    string? PublisherProfile = null,
+    // Read-only for everyone because the owner's plan holds fewer documents than they own after a downgrade
+    // (launch redesign 4d, decided 14 Oct 2026): nothing is written to it until the owner makes room or chooses it.
+    bool PlanLocked = false
 );
 
 // CreateDocumentDto moved to Lilia.Api.Models.Documents.CreateDocumentDto as

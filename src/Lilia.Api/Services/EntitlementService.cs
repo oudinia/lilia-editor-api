@@ -158,6 +158,39 @@ public class EntitlementService : IEntitlementService
         return plan is not null && ReadCap(plan.Caps, "maxDocs") >= 0;
     }
 
+    private static readonly IReadOnlySet<Guid> NoneLocked = new HashSet<Guid>();
+
+    /// <summary>
+    /// Over the limit after a downgrade (launch redesign 4d/4e, decided 14 Oct 2026): the owner keeps as many documents
+    /// editable as the plan holds, the ones they chose or else the most recently edited; the others are read-only for
+    /// everyone and never deleted. Only after a downgrade: an account that has always been on Free and owns more (made
+    /// before limits) is left as it is.
+    /// </summary>
+    public async Task<IReadOnlySet<Guid>> PlanLockedDocumentsAsync(string ownerId, CancellationToken ct = default)
+    {
+        if (!_options.Enforce || IsStaff(ownerId)) return NoneLocked;
+        var plan = await GetActivePlanAsync(ownerId, ct);
+        if (plan is null) return NoneLocked;
+        var cap = ReadCap(plan.Caps, "maxDocs");
+        if (cap < 0) return NoneLocked;
+        var owned = await _context.Documents.AsNoTracking()
+            .Where(d => d.OwnerId == ownerId && !d.IsPlayground && !d.IsTemplate && !d.IsHelpContent)
+            .OrderByDescending(d => d.UpdatedAt).Select(d => d.Id).ToListAsync(ct);
+        if (owned.Count <= cap) return NoneLocked;
+        var downgraded = await _context.UserPlans.AnyAsync(
+            p => p.UserId == ownerId && p.Status != "active" && p.Plan!.Slug != "free", ct);
+        if (!downgraded) return NoneLocked;
+        var chosen = await _context.UserPreferences.AsNoTracking()
+            .Where(p => p.UserId == ownerId).Select(p => p.EditableDocumentIds).FirstOrDefaultAsync(ct);
+        var keep = (chosen ?? []).Where(owned.Contains).Distinct().Take(cap).ToList();
+        foreach (var id in owned)
+        {
+            if (keep.Count >= cap) break;
+            if (!keep.Contains(id)) keep.Add(id);
+        }
+        return owned.Except(keep).ToHashSet();
+    }
+
     public async Task<PlanUsageDto?> GetUsageAsync(string userId, CancellationToken ct = default)
     {
         var plan = await GetActivePlanAsync(userId, ct);

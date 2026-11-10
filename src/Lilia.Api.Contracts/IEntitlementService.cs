@@ -40,6 +40,13 @@ public interface IEntitlementService
     /// <summary>True when the user's plan caps documents (Free); false for unlimited plans.</summary>
     Task<bool> HasFiniteDocumentLimitAsync(string userId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The owner's documents that are read-only because their plan holds fewer than they own after a downgrade (launch
+    /// redesign 4d). Empty unless limits are enforced, the owner isn't staff, once held a paid plan and is over.
+    /// </summary>
+    Task<IReadOnlySet<Guid>> PlanLockedDocumentsAsync(string ownerId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
+
     /// <summary>The plan and how much of it is used, for <c>GET /api/plan</c>.</summary>
     Task<PlanUsageDto?> GetUsageAsync(string userId, CancellationToken ct = default);
 
