@@ -51,12 +51,13 @@ internal static class TypstHarness
     /// asserting what a reader would see, not just that it compiled. Null text
     /// when the compile failed; the error says why.
     /// </summary>
-    internal static (string? Text, string Error) CompileToText(string source)
+    internal static (string? Text, string Error) CompileToText(string source, params (string Name, string Content)[] files)
     {
         var dir = Path.Combine(Path.GetTempPath(), $"typst-text-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
         try
         {
+            foreach (var (name, content) in files) File.WriteAllText(Path.Combine(dir, name), content);
             File.WriteAllText(Path.Combine(dir, "main.typ"), source);
             var (code, _, err) = Run("typst", dir, "compile", "main.typ", "out.pdf");
             var pdf = Path.Combine(dir, "out.pdf");

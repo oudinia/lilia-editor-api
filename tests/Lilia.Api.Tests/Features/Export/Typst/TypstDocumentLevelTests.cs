@@ -64,6 +64,27 @@ public class TypstDocumentLevelTests
         finally { try { Directory.Delete(dir, true); } catch { } }
     }
 
+    // ── references written as text ───────────────────────────────────────
+
+    // "@cite[strang2016] G. Strang — …" lines: Typst's styles printed "[1]" with no text (the launch bot's #52, 10 Nov 2026).
+    [Fact]
+    public void A_reference_written_as_text_prints_its_text_in_the_typst_pdf()
+    {
+        var entry = new BibliographyEntry
+        {
+            CiteKey = "strang2016",
+            EntryType = "misc",
+            Data = JsonDocument.Parse("""{"note":"G. Strang — Introduction to Linear Algebra, 2016."}"""),
+        };
+        var bib = BibFor(entry);
+        bib.Should().Contain("title").And.Contain("Introduction to Linear Algebra");
+
+        var (text, error) = TypstHarness.CompileToText(
+            "#set page(width: 14cm, height: auto)\nSee @strang2016.\n#bibliography(\"refs.bib\")\n", ("refs.bib", bib));
+        text.Should().NotBeNull($"typst said: {error}");
+        text!.Should().Contain("Introduction to Linear Algebra");
+    }
+
     // ── the year ─────────────────────────────────────────────────────────
 
     [Fact]
