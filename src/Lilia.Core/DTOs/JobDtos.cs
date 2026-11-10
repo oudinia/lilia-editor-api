@@ -66,7 +66,7 @@ public record ImportOptionsDto(
 
 public record ImportRequestDto(
     string Content,         // Base64 encoded for DOCX, plain text for LaTeX/LML
-    string Format,          // "DOCX", "LATEX", "LML"
+    string Format,          // "DOCX", "PDF", "LATEX", "LML", "MARKDOWN", or "AUTO" for pasted text
     string Filename,
     string? Title = null,
     ImportOptionsDto? Options = null,
