@@ -114,7 +114,8 @@ public record PlanMeterDto(int Used, int Limit, DateTime? ResetsAt);
 /// How far through the month's allowance (0–1), with no counts: Ask Lilia is never a balance.
 /// <see cref="Enforced"/>: whether a used allowance stops Ask Lilia (<c>AI:EnforceCredits</c>).
 /// </summary>
-public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsAt, bool Enforced = false);
+/// <param name="ComingSoon">Ask Lilia is "coming soon" (AI:ComingSoon): the panel says so instead of asking.</param>
+public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsAt, bool Enforced = false, bool ComingSoon = false);
 
 public record PlanNameDto(string Slug, string Name);
 

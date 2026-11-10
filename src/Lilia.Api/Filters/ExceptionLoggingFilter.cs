@@ -117,6 +117,7 @@ public class ExceptionLoggingFilter : IExceptionFilter
                        "maxDocs" => LiliaErrorCodes.PlanDocumentLimit,
                        "maxImportsPerMonth" => LiliaErrorCodes.PlanImportLimit,
                        "aiCreditsPerMonth" or "aiSiteBudget" or "aiFreePool" => LiliaErrorCodes.AiQuotaExceeded,
+                       "aiComingSoon" => LiliaErrorCodes.AiComingSoon,
                        _ => LiliaErrorCodes.Forbidden,
                    },
                    q.Message, LogLevel.Information, CaptureSentry: false),

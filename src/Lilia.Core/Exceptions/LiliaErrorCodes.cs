@@ -68,4 +68,6 @@ public static class LiliaErrorCodes
     // ── AI ────────────────────────────────────────────────────────────────────
     public const string AiServiceUnavailable   = "AI_SERVICE_UNAVAILABLE";
     public const string AiQuotaExceeded        = "AI_QUOTA_EXCEEDED";
+    /// <summary>Ask Lilia is "coming soon" (AI:ComingSoon, the connector-first launch, 10 Nov 2026).</summary>
+    public const string AiComingSoon           = "AI_COMING_SOON";
 }

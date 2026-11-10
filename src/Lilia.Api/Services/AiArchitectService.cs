@@ -97,6 +97,8 @@ public class AiArchitectService : IAiArchitectService
         {
             // Observe-only: record-but-don't-block until allowances are set and
             // AI:EnforceCredits is flipped on. Logged so over-budget is visible.
+            if (ex.Resource == "aiComingSoon")
+                return AiArchitectOutcome.Lock("coming-soon", ex.Message);
             // The site's AI budget (aiSiteBudget, aiFreePool) holds even while allowances only log.
             if (ex.Resource != "aiCreditsPerMonth")
                 return AiArchitectOutcome.Lock("over-budget", ex.Message);

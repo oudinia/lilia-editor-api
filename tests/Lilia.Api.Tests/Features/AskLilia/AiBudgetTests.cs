@@ -32,10 +32,11 @@ public class AiBudgetTests : IntegrationTestBase, IDisposable
         foreach (var f in _factories) f.Dispose();
     }
 
-    private HttpClient Caller(string userId, decimal siteBudget = 0m, decimal freeBudget = 0m)
+    private HttpClient Caller(string userId, decimal siteBudget = 0m, decimal freeBudget = 0m, bool comingSoon = false)
     {
         var factory = Fixture.Factory.WithWebHostBuilder(b =>
         {
+            if (comingSoon) b.UseSetting("AI:ComingSoon", "true");
             b.UseSetting("AI:Anthropic:ApiKey", "sk-test-not-a-key");
             b.UseSetting("AI:Enabled", "true");
             b.UseSetting("AI:EnforceCredits", "true");
@@ -94,6 +95,28 @@ public class AiBudgetTests : IntegrationTestBase, IDisposable
         var body = await res.Content.ReadAsStringAsync();
         body.Should().Contain("resting").And.Contain("Everything else works as usual");
         _chat.Calls.Should().BeEmpty("the budget is checked before the model is called");
+    }
+
+    // The connector-first launch (10 Nov 2026): with AI:ComingSoon, Ask Lilia says "coming soon" and calls no model, the
+    // editor's quick AI actions are refused with their own code, and the plan tells the panel so.
+    [Fact]
+    public async Task Coming_soon_Ask_Lilia_calls_no_model_and_says_so()
+    {
+        var author = NewId("soon");
+        await SeedUserAsync(author);
+        await GivePlanAsync(author, "pro");
+        var client = Caller(author, comingSoon: true);
+
+        var ask = await client.PostAsJsonAsync("/api/ai/ask", Ask("Is this clear?"));
+        (await ask.Content.ReadAsStringAsync()).Should().Contain("coming soon").And.Contain("connect Claude");
+
+        var quick = await client.PostAsJsonAsync("/api/ai/improve-text", new { text = "A sentence.", action = "improve" });
+        quick.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
+        (await quick.Content.ReadAsStringAsync()).Should().Contain("AI_COMING_SOON");
+
+        var plan = await client.GetFromJsonAsync<JsonElement>("/api/plan");
+        plan.GetProperty("ask").GetProperty("comingSoon").GetBoolean().Should().BeTrue();
+        _chat.Calls.Should().BeEmpty("nothing reaches the model while Ask Lilia is coming soon");
     }
 
     [Fact]
@@ -174,7 +197,8 @@ public class AiBudgetTests : IntegrationTestBase, IDisposable
         plans["pro"].YearlyPrice.Should().Be(99m);
         Credits(plans["pro_plus"]).Should().Be(1500);
         plans["pro_plus"].MonthlyPrice.Should().Be(19.99m);
-        plans["pro_plus"].IsActive.Should().BeTrue();
+        // Hidden (not listed, not sold) while Ask Lilia is "coming soon": the connector-first decision, 10 Nov 2026.
+        plans["pro_plus"].IsActive.Should().BeFalse();
         Plan.ModelTier("pro_plus").Should().Be("pro");
         Plan.ModelTier("beta").Should().Be("free");
 

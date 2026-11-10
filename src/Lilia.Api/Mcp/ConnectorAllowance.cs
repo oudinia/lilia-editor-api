@@ -9,7 +9,8 @@ using ModelContextProtocol.Server;
 namespace Lilia.Api.Mcp;
 
 /// <summary>
-/// The connector's daily allowance (the owner, 5 Nov 2026: "Free 50/day, Pro unlimited"). An assistant
+/// The connector's daily allowance (the owner, 5 Nov 2026: "Free 50/day, Pro unlimited"; 25 a day since the
+/// connector-first launch decision of 10 Nov). An assistant
 /// using Lilia costs no AI (the person's own Claude or ChatGPT thinks), but every call runs here, and a
 /// check or an export compiles. So Free gets enough actions a day to try Lilia from an assistant, and
 /// Pro has no daily limit. The number is the plan's <c>mcpActionsPerDay</c> cap (-1: no limit), so the

@@ -25,6 +25,15 @@ public class BillingControllerTests : IntegrationTestBase
         (await anon.PostAsync("/api/billing/portal", null)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    // The connector-first launch (10 Nov 2026): Pro Plus is hidden while Ask Lilia is "coming soon"; Free and Pro are listed.
+    [Fact]
+    public async Task The_plan_list_offers_free_and_pro_not_pro_plus()
+    {
+        using var anon = CreateAnonymousClient();
+        var body = await anon.GetStringAsync("/api/billing/plans");
+        body.Should().Contain("\"slug\":\"free\"").And.Contain("\"slug\":\"pro\"").And.NotContain("\"slug\":\"pro_plus\"");
+    }
+
     [Fact]
     public async Task A_signed_in_person_sees_their_plan_and_checkout_needs_a_plan()
     {
