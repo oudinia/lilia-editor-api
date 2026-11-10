@@ -1164,6 +1164,8 @@ public class DocumentExportService : IDocumentExportService
                 TheoremType = theoremType,
                 TheoremNumber = theoremNumber,
                 Text = ProseLatex.PlainForWord(title, _labelNumber),  // title goes in Text for the header
+                // A title with maths or marks is written as runs (MCP-115: "(Rate of convergence in $V_p$)" printed its source).
+                CaptionRichText = CaptionRuns(title),
                 RichText = ParseInlineFormatting(text, _labelNumber) // body text in RichText
             }
         };
