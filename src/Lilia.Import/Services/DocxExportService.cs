@@ -1245,6 +1245,11 @@ public class DocxExportService : IDocxExportService
         var pages = Field("pages");
         if (pages.Length > 0) parts.Add($"pp. {pages}");
 
+        // A reference written as text ("@cite[key] G. Strang — Introduction to…") is all note: print it as
+        // written, as the PDF does. It printed only its key (MCP-98, LTX-84 and 85).
+        var note = Field("note");
+        if (parts.Count == 0 && note.Length > 0) return note;
+
         // Nothing usable at all: the cite key is the only honest label left,
         // and it at least lets the author find the entry they need to fix.
         if (parts.Count == 0) return entry.CiteKey;

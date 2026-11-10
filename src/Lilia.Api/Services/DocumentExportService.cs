@@ -114,13 +114,17 @@ public class DocumentExportService : IDocumentExportService
         // as the LaTeX export takes them (LaTeXExportService.WithTextEntries). MCP-98: the cited ones,
         // as BibTeX lists them, numbered in the order the references print; a citation prints its number.
         var allEntries = LaTeXExportService.WithTextEntries(doc.Blocks, doc.BibliographyEntries.ToList());
+        // Ties (entries with no author, year or title, as "@cite[key] text" lines are) keep the order they are
+        // first cited in, as BibTeX's plain style leaves them: Word sorted them by key and disagreed with the PDF.
         var cited = CitedKeys(doc.Blocks);
+        var firstCited = cited.Select((k, i) => (k, i)).ToDictionary(x => x.k, x => x.i, StringComparer.Ordinal);
         var listed = allEntries
             .Where(e => cited.Count == 0 || cited.Contains("*") || cited.Contains(e.CiteKey))
             .Select(ConvertBibliographyEntry)
             .OrderBy(e => BibTeXField.ShortAuthors(e.Fields.GetValueOrDefault("author")), StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(e => e.Fields.GetValueOrDefault("year") ?? "", StringComparer.Ordinal)
-            .ThenBy(e => e.Fields.GetValueOrDefault("title") ?? e.CiteKey, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(e => e.Fields.GetValueOrDefault("title") ?? "", StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(e => firstCited.GetValueOrDefault(e.CiteKey, int.MaxValue))
             .ToList();
         for (var n = 0; n < listed.Count; n++) listed[n].Number = n + 1;
         var citeNumbers = listed.ToDictionary(e => e.CiteKey, e => e.Number!.Value.ToString(), StringComparer.Ordinal);
@@ -245,9 +249,11 @@ public class DocumentExportService : IDocumentExportService
         RegexOptions.Compiled);
 
     /// <summary>The keys the document's text cites (every string in its blocks but the bibliography).</summary>
-    private static HashSet<string> CitedKeys(IEnumerable<Block> blocks)
+    /// <summary>The cited keys, in the order they are first cited (BibTeX's order for ties).</summary>
+    private static List<string> CitedKeys(IEnumerable<Block> blocks)
     {
-        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var keys = new List<string>();
         void Walk(JsonElement el)
         {
             switch (el.ValueKind)
@@ -255,7 +261,7 @@ public class DocumentExportService : IDocumentExportService
                 case JsonValueKind.String:
                     foreach (Match m in CiteKeys.Matches(el.GetString() ?? ""))
                         foreach (var k in m.Groups["k"].Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-                            keys.Add(k);
+                            if (seen.Add(k)) keys.Add(k);
                     break;
                 case JsonValueKind.Object:
                     foreach (var p in el.EnumerateObject()) Walk(p.Value);
@@ -265,7 +271,7 @@ public class DocumentExportService : IDocumentExportService
                     break;
             }
         }
-        foreach (var b in blocks.Where(b => b.Type != "bibliography")) Walk(b.Content.RootElement);
+        foreach (var b in blocks.Where(b => b.Type != "bibliography").OrderBy(b => b.SortOrder)) Walk(b.Content.RootElement);
         return keys;
     }
 

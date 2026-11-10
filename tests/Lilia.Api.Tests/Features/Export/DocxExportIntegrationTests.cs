@@ -434,6 +434,23 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         text.Should().NotContain("Uncited").And.NotContain("{").And.NotContain("\\'");
     }
 
+    // MCP-98 (run 4, still open): a reference list written as "@cite[key] text" lines printed only its keys, and
+    // numbered them by key while the PDF numbers them as first cited.
+    [Fact]
+    public async Task ReferencesWrittenAsTextPrintAsWrittenNumberedAsThePdf()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Cite lines");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Covered in @cite{strang2016} and in @cite{axler2015}."}""");
+        await SeedBlockAsync(doc.Id, "bibliography", """{"text":"@cite[strang2016] G. Strang — Introduction to Linear Algebra, 2016.\n@cite[axler2015] S. Axler — Linear Algebra Done Right, 2015."}""", 1);
+
+        var text = TextIn((await ExportAsync(doc.Id)).Bytes);
+
+        text.Should().Contain("Covered in [1] and in [2].");
+        text.Should().Contain("[1] G. Strang — Introduction to Linear Algebra, 2016.")
+            .And.Contain("[2] S. Axler — Linear Algebra Done Right, 2015.")
+            .And.NotContain("] strang2016").And.NotContain("] axler2015");
+    }
+
     // MCP-105 (run 3): proofs numbered like theorems, no appendix title, no header/footer, no
     // column definitions, styles.xml without Normal / Title / Quote, a TOC that listed its own heading.
     [Fact]
