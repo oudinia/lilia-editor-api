@@ -277,6 +277,10 @@ public static class TikzAsk
         (new(@"Unknown function `of'|I do not know the key '/tikz/(?:above|below|left|right)(?: left| right)?' to which you passed '[^']*\bof\b", RegexOptions.Compiled), "positioning"),
         (new(@"Unknown arrow tip kind '(?:Stealth|Latex|Kite|Triangle|Straight Barb|Hooks|Rays|Tee Barb|Arc Barb|Implies)|arrow tip.*(?:Stealth|Latex)", RegexOptions.Compiled), "arrows.meta"),
         (new(@"Unknown shape `(?:diamond|ellipse|trapezium|cylinder|regular polygon|star|isosceles triangle|semicircle)'|I do not know the key '/tikz/(?:diamond|trapezium|cylinder|regular polygon|star|isosceles triangle|semicircle)'", RegexOptions.Compiled), "shapes.geometric"),
+        // pattern= without the library ("You need to say \usetikzlibrary{patterns}"), and a
+        // patterns.meta pattern without its library ("Undefined pattern `Lines[angle=45]'"). 10 Nov, TeX SE 767616.
+        (new(@"You need to say \\usetikzlibrary\{patterns\}", RegexOptions.Compiled), "patterns"),
+        (new(@"Undefined pattern `(?:Lines|Hatch|Dots|Stars)\b", RegexOptions.Compiled), "patterns.meta"),
         (new(@"I do not know the decoration|I do not know the key '/tikz/(?:decorate|decoration)|/pgf/decoration/", RegexOptions.Compiled), "decorations.pathmorphing"),
         (new(@"Cannot parse this coordinate|\(\$", RegexOptions.Compiled), "calc"),
         (new(@"Environment tikzcd undefined|\\arrow", RegexOptions.Compiled), "tikz-cd"),
@@ -405,6 +409,9 @@ public static class TikzAsk
         // Braces and ticks are path replacing; snakes, zigzags, coils and the rest path morphing.
         (new(@"decoration\s*=\s*\{?\s*(?:brace|mirror|ticks|border|waves|expanding waves)", RegexOptions.Compiled), @"\usetikzlibrary{decorations.pathreplacing}"),
         (new(@"decoration\s*=\s*\{?\s*(?:snake|zigzag|coil|bumps|saw|random steps|bent|straight zigzag|lineto)|\bdecorate\b(?![^\]]*decoration\s*=\s*\{?\s*(?:brace|mirror|ticks|border|waves))", RegexOptions.Compiled), @"\usetikzlibrary{decorations.pathmorphing}"),
+        // pattern=north east lines; pattern={Lines[angle=45]} is patterns.meta (10 Nov, TeX SE 767616).
+        (new(@"\bpattern\s*=", RegexOptions.Compiled), @"\usetikzlibrary{patterns}"),
+        (new(@"\bpattern\s*=\s*\{?\s*(?:Lines|Hatch|Dots|Stars)\s*\[", RegexOptions.Compiled), @"\usetikzlibrary{patterns.meta}"),
     };
 
     /// <summary>

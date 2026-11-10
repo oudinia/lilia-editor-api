@@ -390,6 +390,8 @@ public class TikzAskTests
     [InlineData(@"\node[shape=cylinder] {DB};", @"\usetikzlibrary{shapes.geometric}")]
     [InlineData(@"\draw[decorate, decoration={snake}] (0,0) -- (2,0);", @"\usetikzlibrary{decorations.pathmorphing}")]
     [InlineData(@"\draw[decorate, decoration={brace}] (0,0) -- (2,0);", @"\usetikzlibrary{decorations.pathreplacing}")]
+    [InlineData(@"\fill[pattern=north east lines, pattern color=cyan] (0,0) rectangle (1,1);", @"\usetikzlibrary{patterns}")]
+    [InlineData(@"\fill[pattern={Lines[angle=45, distance=3pt]}] (0,0) rectangle (1,1);", @"\usetikzlibrary{patterns.meta}")]
     [InlineData(@"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}", @"\usepackage{tikz-cd}")]
     [InlineData(@"\begin{tikzpicture}\begin{axis}\addplot coordinates {(0,0)};\end{axis}\end{tikzpicture}", @"\usepackage{pgfplots}")]
     public void The_detector_reads_what_the_source_needs(string source, string line) =>
@@ -403,6 +405,7 @@ public class TikzAskTests
     [InlineData(@"\draw (0,0) -- (1,1); % right=of A, ($(A)$), [diamond]", @"\usetikzlibrary{calc}")]
     [InlineData(@"\draw (0,0) -- (1,1); % right=of A", @"\usetikzlibrary{positioning}")]
     [InlineData(@"\node at (0,0) {left of the line};", @"\usetikzlibrary{positioning}")]
+    [InlineData(@"\fill[pattern=north east lines] (0,0) rectangle (1,1);", @"\usetikzlibrary{patterns.meta}")]
     public void The_detector_adds_nothing_the_source_does_not_need(string source, string line) =>
         TikzAsk.DetectRequirements(source).Should().NotContain(line);
 
@@ -427,6 +430,8 @@ public class TikzAskTests
         TikzAsk.LibraryHint("Unknown arrow tip kind 'Stealth'.").Should().Contain("arrows.meta");
         TikzAsk.LibraryHint("Package pgf Error: Unknown shape `diamond' or shape `diamond' is not available.").Should().Contain("shapes.geometric");
         TikzAsk.LibraryHint("Environment tikzcd undefined.").Should().Contain(@"\usepackage{tikz-cd}");
+        TikzAsk.LibraryHint(@"Package tikz Error: You need to say \usetikzlibrary{patterns}.").Should().Contain(@"\usetikzlibrary{patterns}");
+        TikzAsk.LibraryHint("Package pgf Error: Undefined pattern `Lines[angle=45]'.").Should().Contain(@"\usetikzlibrary{patterns.meta}");
         TikzAsk.LibraryHint("Missing $ inserted.").Should().BeNull();
         TikzAsk.RetryMessage(new TikzRenderError("tex", "Missing $ inserted.", 2, null, null)).Should().NotContain("Hint");
     }
