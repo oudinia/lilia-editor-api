@@ -15,10 +15,10 @@ keywords: plan gratis gratuito pro precio límite 3 documentos tres documentos i
 2. El plan **Free** (gratuito) incluye 3 documentos de tu propiedad, 3 importaciones al mes, todos los formatos de exportación, la comprobación de compilación y una pequeña asignación mensual de Preguntar a Lilia. Compartir para leer y comentar es gratis.
 3. **Pro** (10,99 $ al mes) no tiene límite de documentos ni de importaciones, tiene una asignación de Preguntar a Lilia más amplia y coautores que editan.
 4. Al llegar al límite, empezar un 4.º documento (Nuevo, una plantilla, una copia, una importación) muestra **Todos los documentos de tu plan están en uso**. No se crea nada. **Abrir mis documentos** para mover a la papelera uno que ya no necesites y empezar el nuevo.
-5. Cuando el mes de Preguntar a Lilia está usado, su cuadro indica el día en que se renueva. **Validar** (**Revisar el documento** en un teléfono) sigue funcionando.
+5. Cuando el mes de Preguntar a Lilia está usado, su cuadro indica el día en que se renueva. **Validar** (**Revisar el documento** en un teléfono) sigue funcionando. Con Free, también ofrece seguir con tu propia IA: **Conectar Claude** (el conector de Lilia) o **Descargar la habilidad** (la habilidad de redacción, para cualquier chat de IA).
 
 ## Qué significa {#beginner}
-- Los documentos de la papelera, y los que otros comparten contigo, no cuentan para tus 3.
+- Los documentos de la papelera, y los que otros comparten contigo, no cuentan para tus 3. Restaurar uno de la papelera lo cuenta de nuevo: con 3, espera a que hagas sitio.
 - Nunca se elimina nada por un plan.
 - Las aplicaciones de IA que conectas a Lilia (como Claude) no usan tu asignación de Preguntar a Lilia.
 
