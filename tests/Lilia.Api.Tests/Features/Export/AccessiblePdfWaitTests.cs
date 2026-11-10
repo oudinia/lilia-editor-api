@@ -11,7 +11,8 @@ namespace Lilia.Api.Tests.Features.Export;
 /// <summary>
 /// An accessible PDF that takes longer than the wait is still compiled and kept (10 Nov 2026: a 20-page paper took
 /// 148 s; Cloudflare cuts at about 125 s, and the compile, tied to the request, stopped with it). The endpoint answers
-/// 202 while it runs, asking again gets the same compile, and once done the PDF. Wait 50 ms here, compile 600 ms.
+/// 202 while it runs, asking again gets the same compile, and once done the PDF. Wait 50 ms here; the compile ends
+/// when the test says.
 /// </summary>
 public class AccessiblePdfWaitTests : IntegrationTestBase, IDisposable
 {
@@ -55,6 +56,7 @@ public class AccessiblePdfWaitTests : IntegrationTestBase, IDisposable
         first.StatusCode.Should().Be(HttpStatusCode.Accepted);
         first.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromSeconds(15));
         (await c.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Accepted, "the same compile is still running");
+        _export.Finish();
 
         HttpResponseMessage? done = null;
         for (var i = 0; i < 40; i++)
@@ -82,12 +84,17 @@ public class AccessiblePdfWaitTests : IntegrationTestBase, IDisposable
         res.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    /// <summary>The accessible PDF takes 600 ms; the usual one is immediate. Later asks of a done PDF come from "cache".</summary>
+    /// <summary>
+    /// The accessible PDF compiles until the test says <see cref="Finish"/> (a fixed delay raced the second ask under
+    /// CI load); the usual one is immediate. Later asks of a done PDF come from "cache".
+    /// </summary>
     private sealed class SlowExport : IDocumentExportService
     {
         private static readonly byte[] Pdf = System.Text.Encoding.ASCII.GetBytes("%PDF-1.7\n" + new string('x', 200));
         private int _accessible;
         private volatile bool _done;
+        private readonly TaskCompletionSource _finish = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Finish() => _finish.TrySetResult();
         public int AccessibleCalls => _accessible;
 
         public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
@@ -95,7 +102,7 @@ public class AccessiblePdfWaitTests : IntegrationTestBase, IDisposable
             if (engineHint != "tagged") return (Pdf, "pdflatex");
             if (_done) return (Pdf, "tagged");
             Interlocked.Increment(ref _accessible);
-            await Task.Delay(600);
+            await _finish.Task.WaitAsync(TimeSpan.FromSeconds(30));
             _done = true;
             return (Pdf, "tagged");
         }

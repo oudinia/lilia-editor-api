@@ -389,8 +389,15 @@ public class PreviewController : ControllerBase
         // point at real files instead of drawing placeholder rectangles.
         var staged = await _imageStager.StageAsync(docId);
 
+        // The entries first: the generator writes #bibliography only when references.bib will be there
+        // (stored entries and the references written in bibliography blocks, as the LaTeX PDF reads them).
+        var bibEntries = await _context.BibliographyEntries.AsNoTracking()
+            .Where(e => e.DocumentId == docId)
+            .ToListAsync();
+        bibEntries.AddRange(BibliographyBlocks.Unstored(docId, blocks, bibEntries.Select(e => e.CiteKey)));
+
         var typstSource = _typstExporter.BuildTypstDocument(document, blocks, layoutGroups,
-            new TypstExportOptions { LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz });
+            new TypstExportOptions { LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz, HasBibliography = bibEntries.Count > 0 });
 
         var outputFormat = format.ToLowerInvariant() switch
         {
@@ -441,9 +448,6 @@ public class PreviewController : ControllerBase
         // reference failed to compile with "file not found" and fell back —
         // silently, because the fallback works (2026-09-10).
         Dictionary<string, string>? assets = null;
-        var bibEntries = await _context.BibliographyEntries
-            .Where(e => e.DocumentId == docId)
-            .ToListAsync();
         if (bibEntries.Count > 0)
         {
             assets = new Dictionary<string, string>(StringComparer.Ordinal)

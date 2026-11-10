@@ -90,7 +90,7 @@ public class TypstExportService : ITypstExportService
 
         // The bibliography block renderer is static and cannot see the
         // document, so tell it here whether there is anything to cite.
-        HasBibliographyEntries = doc.BibliographyEntries?.Count > 0;
+        HasBibliographyEntries = options.HasBibliography ?? doc.BibliographyEntries?.Count > 0;
         LocalImagePaths = options.LocalImagePaths;
         TikzFigures = options.TikzFigures;
         try
@@ -2044,6 +2044,14 @@ public interface ITypstExportService
 
 public class TypstExportOptions
 {
+    /// <summary>
+    /// Whether references.bib will sit beside the source. The callers load the document without its entries and
+    /// write the file from their own query, so the document said "none" and #bibliography was left out: every
+    /// citation then failed ("label &lt;knuth84&gt; does not exist") and the Typst engine refused the PDF (10 Nov 2026).
+    /// Null falls back to the document's entries.
+    /// </summary>
+    public bool? HasBibliography { get; set; }
+
     public string DocumentClass { get; set; } = "article";
     public string FontSize { get; set; } = "11pt";
     public string PaperSize { get; set; } = "a4";
