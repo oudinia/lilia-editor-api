@@ -223,7 +223,9 @@ public class JobService : IJobService
                     break;
 
                 case "MARKDOWN":
-                    content = await RenderToMarkdownAsync(dto.DocumentId);
+                    // The same Markdown as the export endpoint (10 Nov 2026): this path had its own HTML-stripping
+                    // converter, which missed block-written references, Kind~(label) and the natbib cites.
+                    content = await _renderService.RenderToMarkdownAsync(dto.DocumentId);
                     extension = "md";
                     break;
 
@@ -938,29 +940,6 @@ public class JobService : IJobService
             content,
             job.ResultFileName ?? "export.txt"
         );
-    }
-
-    private async Task<string> RenderToMarkdownAsync(Guid documentId)
-    {
-        var html = await _renderService.RenderToHtmlAsync(documentId);
-
-        var markdown = html
-            .Replace("<h1>", "# ").Replace("</h1>", "\n\n")
-            .Replace("<h2>", "## ").Replace("</h2>", "\n\n")
-            .Replace("<h3>", "### ").Replace("</h3>", "\n\n")
-            .Replace("<h4>", "#### ").Replace("</h4>", "\n\n")
-            .Replace("<p>", "").Replace("</p>", "\n\n")
-            .Replace("<strong>", "**").Replace("</strong>", "**")
-            .Replace("<em>", "_").Replace("</em>", "_")
-            .Replace("<code>", "`").Replace("</code>", "`")
-            .Replace("<br>", "\n").Replace("<br/>", "\n").Replace("<br />", "\n")
-            .Replace("&nbsp;", " ")
-            .Replace("&lt;", "<").Replace("&gt;", ">")
-            .Replace("&amp;", "&");
-
-        markdown = System.Text.RegularExpressions.Regex.Replace(markdown, "<[^>]+>", "");
-
-        return markdown.Trim();
     }
 
     private async Task<string> RenderToLmlAsync(Guid documentId, string userId)
