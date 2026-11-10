@@ -43,4 +43,32 @@ public class Base64LatexImportKeepsStructureTests : IntegrationTestBase
         var list = blocks.Single(b => b.Type == "list").Content.RootElement;
         list.GetProperty("items").GetArrayLength().Should().Be(2);
     }
+
+    /// <summary>
+    /// 10 Nov: a paper imported this way lost its preamble, so a TikZ pattern figure stopped
+    /// compiling ("You need to say \usetikzlibrary{patterns}") and its macros were undefined.
+    /// </summary>
+    [Fact]
+    public async Task The_preamble_and_page_setup_are_kept()
+    {
+        const string user = "b64-preamble";
+        await SeedUserAsync(user);
+        var client = CreateClientAs(user);
+        const string tex = "\\documentclass[11pt,a5paper]{article}\n\\usepackage{pgfplots}\n" +
+                           "\\usetikzlibrary{patterns,patterns.meta}\n\\newcommand{\\R}{\\mathbb{R}}\n" +
+                           "\\begin{document}\n\\section{Setup}\nLet $x \\in \\R$.\n\\end{document}\n";
+
+        var response = await client.PostAsJsonAsync("/api/lilia/jobs/import",
+            new { content = tex, format = "LATEX", filename = "preamble.tex", skipReview = true });
+        response.EnsureSuccessStatusCode();
+        var id = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("document").GetProperty("id").GetGuid();
+
+        await using var db = CreateDbContext();
+        var doc = await db.Documents.SingleAsync(d => d.Id == id);
+        doc.CustomPreamble.Should().Contain("\\usetikzlibrary{patterns,patterns.meta}");
+        doc.CustomPreamble.Should().Contain("\\newcommand{\\R}{\\mathbb{R}}");
+        doc.LatexPackages.Should().Contain("pgfplots");
+        doc.PaperSize.Should().Be("a5");
+    }
 }

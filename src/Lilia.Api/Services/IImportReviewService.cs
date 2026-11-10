@@ -22,6 +22,8 @@ public interface IImportReviewService
     Task<List<ReviewSessionSummaryDto>> ListActiveSessionsAsync(string userId);
     Task<bool> CancelSessionAsync(Guid sessionId, string userId, bool permanent = false);
     Task<FinalizeResultDto?> FinalizeSessionAsync(Guid sessionId, string userId, FinalizeSessionDto dto);
+    /// <summary>An imported LaTeX source's preamble and page setup, written onto its new document.</summary>
+    Task ApplyLatexSourceAsync(Guid documentId, string ownerId, string rawLatex, string source, CancellationToken ct = default);
 
     // Block operations
     Task<BlockReviewDto?> UpdateBlockReviewAsync(Guid sessionId, string blockId, string userId, UpdateBlockReviewDto dto);
