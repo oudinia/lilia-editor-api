@@ -313,6 +313,67 @@ public class ImportReviewService : IImportReviewService
         return true;
     }
 
+    /// <summary>
+    /// Preserve an imported LaTeX source's preamble and page setup on its new document. The body
+    /// parser drops the preamble, so this writes the document class, the \usepackage set, the
+    /// custom macros and the TikZ setup (\usetikzlibrary, \tikzset…) onto the document; then the page
+    /// setup the source asks for and, for a publisher's class, its venue. Without it an imported
+    /// paper loses its \newcommand definitions and re-exports under a generic article preamble.
+    /// Both imports run it: finalizing a review session, and the base64 import the connector's
+    /// import_document uses, which never had it (10 Nov: a TikZ pattern figure imported that way
+    /// stopped compiling, "You need to say \usetikzlibrary{patterns}").
+    /// </summary>
+    public async Task ApplyLatexSourceAsync(Guid documentId, string ownerId, string rawLatex, string source, CancellationToken ct = default)
+    {
+        var ex = LatexPreambleExtractor.Extract(rawLatex);
+        if (!string.IsNullOrWhiteSpace(ex.CustomPreamble)
+            || !string.IsNullOrWhiteSpace(ex.PackagesJson)
+            || !string.IsNullOrWhiteSpace(ex.DocumentClass))
+        {
+            // Only set fields the extractor found; COALESCE keeps any
+            // value the document already carries.
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE documents SET
+                    custom_preamble = COALESCE({ex.CustomPreamble}, custom_preamble),
+                    ""LatexDocumentClass"" = COALESCE({ex.DocumentClass}, ""LatexDocumentClass""),
+                    ""LatexPackages"" = COALESCE({ex.PackagesJson}, ""LatexPackages"")
+                WHERE id = {documentId}", ct);
+        }
+
+        // The page setup the source asks for — class options (11pt, twocolumn, a5paper),
+        // geometry margins, line spacing, page numbering, headers — as document settings, as
+        // Ask Lilia's import already does. Without it every imported paper opened at 12pt,
+        // one column, A4 and default margins (16 Oct).
+        if (_latexParser is null || _documents is null) return;
+        try
+        {
+            var parsed = await _latexParser.ParseTextAsync(rawLatex);
+            var setup = LatexPageSetupExtractor.Extract(rawLatex, parsed.Metadata);
+            var check = DocumentSettingsValidator.Validate(setup.Settings);
+            if (check.Update is { } settings)
+                await _documents.UpdateDocumentAsync(documentId, ownerId, settings);
+            if (setup.NotApplied.Count > 0)
+                _logger.LogInformation("Import {Source}: page setup not applied: {Notes}", source, string.Join("; ", setup.NotApplied));
+
+            // A paper set for a publisher (acmart, IEEEtran… from Overleaf) arrives with its
+            // venue: class, options and reference style as "Publish with…" sets them, and
+            // the class version pinned (25 Oct 2026).
+            if (Lilia.Engines.Publishers.PublisherProfiles.FromClass(parsed.Metadata.DocumentClass, parsed.Metadata.RawClassOptions) is { } venue)
+            {
+                var imported = await _context.Documents.FirstAsync(d => d.Id == documentId, ct);
+                DocumentService.ApplyPublisherProfile(imported, venue);
+                imported.PublisherTemplateVersion = await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(imported.LatexDocumentClass!);
+                await _context.SaveChangesAsync(ct);
+                _logger.LogInformation("Import {Source}: venue {Venue} from \\documentclass[{Options}]{{{Class}}}", source, venue, parsed.Metadata.RawClassOptions, parsed.Metadata.DocumentClass);
+            }
+        }
+        catch (Exception e)
+        {
+            // The document is still made; only its page setup keeps the defaults.
+            _logger.LogWarning(e, "Import {Source}: page setup could not be read", source);
+        }
+    }
+
     public async Task<FinalizeResultDto?> FinalizeSessionAsync(Guid sessionId, string userId, FinalizeSessionDto dto)
     {
         // Permission + state gate. Lightweight projection only — no blocks loaded.
@@ -420,57 +481,7 @@ public class ImportReviewService : IImportReviewService
             if (pre != null
                 && !string.IsNullOrWhiteSpace(pre.RawImportData)
                 && (pre.SourceFormat == "latex" || pre.SourceFormat == "tex"))
-            {
-                var ex = LatexPreambleExtractor.Extract(pre.RawImportData);
-                if (!string.IsNullOrWhiteSpace(ex.CustomPreamble)
-                    || !string.IsNullOrWhiteSpace(ex.PackagesJson)
-                    || !string.IsNullOrWhiteSpace(ex.DocumentClass))
-                {
-                    // Only set fields the extractor found; COALESCE keeps any
-                    // value the document already carries.
-                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                        UPDATE documents SET
-                            custom_preamble = COALESCE({ex.CustomPreamble}, custom_preamble),
-                            ""LatexDocumentClass"" = COALESCE({ex.DocumentClass}, ""LatexDocumentClass""),
-                            ""LatexPackages"" = COALESCE({ex.PackagesJson}, ""LatexPackages"")
-                        WHERE id = {documentId}", ct);
-                }
-
-                // The page setup the source asks for — class options (11pt, twocolumn, a5paper),
-                // geometry margins, line spacing, page numbering, headers — as document settings, as
-                // Ask Lilia's import already does. Without it every imported paper opened at 12pt,
-                // one column, A4 and default margins (16 Oct).
-                if (_latexParser is not null && _documents is not null)
-                {
-                    try
-                    {
-                        var parsed = await _latexParser.ParseTextAsync(pre.RawImportData);
-                        var setup = LatexPageSetupExtractor.Extract(pre.RawImportData, parsed.Metadata);
-                        var check = DocumentSettingsValidator.Validate(setup.Settings);
-                        if (check.Update is { } settings)
-                            await _documents.UpdateDocumentAsync(documentId, ownerId, settings);
-                        if (setup.NotApplied.Count > 0)
-                            _logger.LogInformation("Import {SessionId}: page setup not applied: {Notes}", sessionId, string.Join("; ", setup.NotApplied));
-
-                        // A paper set for a publisher (acmart, IEEEtran… from Overleaf) arrives with its
-                        // venue: class, options and reference style as "Publish with…" sets them, and
-                        // the class version pinned (25 Oct 2026).
-                        if (Lilia.Engines.Publishers.PublisherProfiles.FromClass(parsed.Metadata.DocumentClass, parsed.Metadata.RawClassOptions) is { } venue)
-                        {
-                            var imported = await _context.Documents.FirstAsync(d => d.Id == documentId, ct);
-                            DocumentService.ApplyPublisherProfile(imported, venue);
-                            imported.PublisherTemplateVersion = await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(imported.LatexDocumentClass!);
-                            await _context.SaveChangesAsync(ct);
-                            _logger.LogInformation("Import {SessionId}: venue {Venue} from \\documentclass[{Options}]{{{Class}}}", sessionId, venue, parsed.Metadata.RawClassOptions, parsed.Metadata.DocumentClass);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        // The document is still made; only its page setup keeps the defaults.
-                        _logger.LogWarning(e, "Import {SessionId}: page setup could not be read", sessionId);
-                    }
-                }
-            }
+                await ApplyLatexSourceAsync(documentId, ownerId, pre.RawImportData, $"session {sessionId}", ct);
 
             // The centrepiece: copy approved/edited staged rows into real blocks
             // without routing through the app layer. COALESCE picks edited

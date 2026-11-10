@@ -824,6 +824,12 @@ public class JobService : IJobService
                         });
                         await _context.SaveChangesAsync();
                     }
+
+                    // The preamble and page setup, as the upload path keeps them at finalize: this
+                    // path (the connector's import_document) dropped them, so an imported paper lost
+                    // its macros and TikZ libraries and could stop compiling (10 Nov).
+                    if (!string.IsNullOrWhiteSpace(request.Content))
+                        await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId, request.Content, $"job {job.Id}");
                 }
             }
             else
