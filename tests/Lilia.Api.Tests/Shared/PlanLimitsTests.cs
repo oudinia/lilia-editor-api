@@ -188,13 +188,13 @@ public class PlanLimitsTests : IntegrationTestBase
             var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             db.AiCreditLedger.AddRange(
                 new AiCreditLedger { Id = Guid.NewGuid(), UserId = author, Delta = -500, Reason = "spend", CreatedAt = monthStart.AddDays(-3) },
-                new AiCreditLedger { Id = Guid.NewGuid(), UserId = author, Delta = -50, Reason = "spend", CreatedAt = DateTime.UtcNow });
+                new AiCreditLedger { Id = Guid.NewGuid(), UserId = author, Delta = -10, Reason = "spend", CreatedAt = DateTime.UtcNow });
             await db.SaveChangesAsync();
         }
 
         var plan = await As(_enforced, author).GetFromJsonAsync<JsonElement>("/api/plan");
         var ask = plan.GetProperty("ask");
-        ask.GetProperty("fraction").GetDouble().Should().BeApproximately(0.5, 0.001, "50 of Free's 100 this month");
+        ask.GetProperty("fraction").GetDouble().Should().BeApproximately(0.5, 0.001, "10 of Free's 20 this month (20 since 10 Nov, API #466)");
         ask.TryGetProperty("used", out _).Should().BeFalse("Ask Lilia is an allowance, never a balance");
         ask.GetProperty("resetsAt").GetDateTime().Day.Should().Be(1);
     }
