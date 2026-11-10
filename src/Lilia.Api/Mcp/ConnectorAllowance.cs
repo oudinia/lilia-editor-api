@@ -38,7 +38,7 @@ public sealed class ConnectorAllowance(
             return null;
         var plan = await entitlements.GetActivePlanAsync(userId, ct);
         if (plan is null) return null;
-        // A plan without the key has no daily limit: only Free sets one.
+        // A plan without the key (or -1) has no daily limit; Free sets an allowance, Pro a safety cap.
         if (plan.Caps.ValueKind != JsonValueKind.Object || !plan.Caps.TryGetProperty(CapKey, out var v)
             || v.ValueKind != JsonValueKind.Number || v.GetInt32() < 0)
             return null;
@@ -47,19 +47,23 @@ public sealed class ConnectorAllowance(
         var now = DateTime.UtcNow;
         var key = $"mcp-actions:{userId}:{now:yyyy-MM-dd}";
         var used = int.TryParse(await cache.GetStringAsync(key, ct), out var n) ? n : 0;
-        if (used >= cap) return Message(cap, now);
+        if (used >= cap) return Message(plan.Slug, cap, now);
         await cache.SetStringAsync(key, (used + 1).ToString(CultureInfo.InvariantCulture),
             new DistributedCacheEntryOptions { AbsoluteExpiration = now.Date.AddDays(1).AddHours(1) }, CancellationToken.None);
         return null;
     }
 
-    private string Message(int cap, DateTime now)
+    private string Message(string planSlug, int cap, DateTime now)
     {
         var hours = Math.Max(1, (int)Math.Ceiling((now.Date.AddDays(1) - now).TotalHours));
+        var back = $"They're back in about {hours} hour{(hours == 1 ? "" : "s")} (midnight UTC).";
+        // Pro's cap is a safety limit (the owner, 10 Nov 2026: 500 a day), not an allowance to upsell.
+        if (planSlug != "free")
+            return $"Lilia allows {cap} connector actions a day on this plan, a safety limit, and today's are used. {back} " +
+                   "If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works.";
         var origin = McpOAuth.PublicOrigin(config);
-        return $"Lilia's free plan includes {cap} connector actions a day, and today's are used. They're back in about " +
-               $"{hours} hour{(hours == 1 ? "" : "s")} (midnight UTC). Pro has no daily limit: {origin}/?plans=1. " +
-               "Tell the author this; everything in the Lilia editor itself still works.";
+        return $"Lilia's free plan includes {cap} connector actions a day, and today's are used. {back} " +
+               $"Pro allows far more: {origin}/?plans=1. Tell the author this; everything in the Lilia editor itself still works.";
     }
 
     /// <summary>The call-tool filter that applies it to every connector call.</summary>
