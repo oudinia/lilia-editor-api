@@ -47,6 +47,10 @@ public interface IEntitlementService
     Task<IReadOnlySet<Guid>> PlanLockedDocumentsAsync(string ownerId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
 
+    /// <summary>Choose which documents stay editable over the limit (4e): exactly as many as the plan holds, once a day.</summary>
+    Task<ChooseEditableResult> ChooseEditableAsync(string ownerId, IReadOnlyList<Guid> documentIds, CancellationToken ct = default) =>
+        Task.FromResult(new ChooseEditableResult("not_over_limit"));
+
     /// <summary>The plan and how much of it is used, for <c>GET /api/plan</c>.</summary>
     Task<PlanUsageDto?> GetUsageAsync(string userId, CancellationToken ct = default);
 
@@ -114,7 +118,17 @@ public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsA
 
 public record PlanNameDto(string Slug, string Name);
 
-public record PlanUsageDto(bool Enforced, PlanNameDto Plan, PlanMeterDto Documents, PlanMeterDto Imports, PlanAllowanceDto Ask);
+public record PlanUsageDto(bool Enforced, PlanNameDto Plan, PlanMeterDto Documents, PlanMeterDto Imports, PlanAllowanceDto Ask,
+    PlanReadOnlyDto? ReadOnly = null);
+
+/// <summary>
+/// Over the plan's limit after a downgrade (launch redesign 4d/4e): how many documents are read-only, how many stay
+/// editable, and when the author may choose them again (null: now). Null on the plan when nothing is read-only.
+/// </summary>
+public record PlanReadOnlyDto(int Locked, int Editable, DateTime? ChooseAgainAt);
+
+/// <summary>The outcome of choosing which documents stay editable: null error when saved.</summary>
+public record ChooseEditableResult(string? Error, string? Message = null, DateTime? RetryAt = null);
 
 public class QuotaExceededException : Exception
 {

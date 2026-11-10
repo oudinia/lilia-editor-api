@@ -235,6 +235,11 @@ public class DocumentService : IDocumentService
             .ToHashSet();
         // The teams' names, for the list's team column: Teams' to say (3 Nov 2026, step 5).
         var teamNames = await _teams.NamesOfAsync(documents.Where(d => d.TeamId != null).Select(d => d.TeamId!.Value));
+        // Read-only over the owner's plan limit (4d): the rail shows a lock. Per owner on this page.
+        var locked = new HashSet<Guid>();
+        if (_entitlements is not null)
+            foreach (var ownerId in documents.Select(d => d.OwnerId).Distinct())
+                locked.UnionWith(await _entitlements.PlanLockedDocumentsAsync(ownerId));
 
         var items = documents.Select(d =>
         {
@@ -274,7 +279,8 @@ public class DocumentService : IDocumentService
                 d.ValidationWarningCount,
                 d.ValidationCheckedAt,
                 d.AiSummary,
-                ReadLook(d.Look)
+                ReadLook(d.Look),
+                locked.Contains(d.Id)
             );
         }).ToList();
 

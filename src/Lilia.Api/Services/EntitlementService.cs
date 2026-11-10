@@ -191,6 +191,37 @@ public class EntitlementService : IEntitlementService
         return owned.Except(keep).ToHashSet();
     }
 
+    /// <summary>How long a choice of editable documents stands before it can be changed (4e: once a day).</summary>
+    internal static readonly TimeSpan ChooseEditableEvery = TimeSpan.FromDays(1);
+
+    public async Task<ChooseEditableResult> ChooseEditableAsync(string ownerId, IReadOnlyList<Guid> documentIds, CancellationToken ct = default)
+    {
+        var locked = await PlanLockedDocumentsAsync(ownerId, ct);
+        if (locked.Count == 0) return new ChooseEditableResult("not_over_limit", "All your documents can be edited on your plan.");
+        var plan = await GetActivePlanAsync(ownerId, ct);
+        var cap = plan is null ? 0 : ReadCap(plan.Caps, "maxDocs");
+        var ids = documentIds.Distinct().ToList();
+        if (ids.Count != cap)
+            return new ChooseEditableResult("wrong_count", $"Choose exactly {cap} documents to keep editing.");
+        var owned = await _context.Documents.AsNoTracking()
+            .Where(d => d.OwnerId == ownerId && ids.Contains(d.Id)).Select(d => d.Id).CountAsync(ct);
+        if (owned != ids.Count) return new ChooseEditableResult("not_yours", "Choose documents you own.");
+        var prefs = await _context.UserPreferences.FirstOrDefaultAsync(p => p.UserId == ownerId, ct);
+        var now = DateTime.UtcNow;
+        if (prefs?.EditableChosenAt is { } at && at + ChooseEditableEvery > now)
+            return new ChooseEditableResult("once_a_day", "You can change which documents you edit once a day.", at + ChooseEditableEvery);
+        if (prefs is null)
+        {
+            prefs = new UserPreferences { UserId = ownerId };
+            _context.UserPreferences.Add(prefs);
+        }
+        prefs.EditableDocumentIds = ids;
+        prefs.EditableChosenAt = now;
+        prefs.UpdatedAt = now;
+        await _context.SaveChangesAsync(ct);
+        return new ChooseEditableResult(null);
+    }
+
     public async Task<PlanUsageDto?> GetUsageAsync(string userId, CancellationToken ct = default)
     {
         var plan = await GetActivePlanAsync(userId, ct);
@@ -207,7 +238,18 @@ public class EntitlementService : IEntitlementService
                 askCap < 0 ? 0 : askCap == 0 ? 1 : Math.Min(1.0, (double)askSpent / askCap),
                 Unlimited: askCap < 0,
                 ResetsAt: NextMonthStart(),
-                Enforced: _aiEnforced));
+                Enforced: _aiEnforced),
+            ReadOnly: await ReadOnlyAsync(userId, plan, ct));
+    }
+
+    private async Task<PlanReadOnlyDto?> ReadOnlyAsync(string userId, ActivePlanDto plan, CancellationToken ct)
+    {
+        var locked = await PlanLockedDocumentsAsync(userId, ct);
+        if (locked.Count == 0) return null;
+        var chosenAt = await _context.UserPreferences.AsNoTracking()
+            .Where(p => p.UserId == userId).Select(p => p.EditableChosenAt).FirstOrDefaultAsync(ct);
+        var again = chosenAt is { } at && at + ChooseEditableEvery > DateTime.UtcNow ? at + ChooseEditableEvery : (DateTime?)null;
+        return new PlanReadOnlyDto(locked.Count, ReadCap(plan.Caps, "maxDocs"), again);
     }
 
     private static string QuotaMessage(string capKey, int cap, DateTime? resetsAt) => capKey switch
