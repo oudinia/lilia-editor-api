@@ -84,6 +84,29 @@ public class BillingController : ControllerBase
         return usage is null ? NotFound() : Ok(usage);
     }
 
+    public record ChooseEditableRequest(List<Guid>? DocumentIds);
+
+    /// <summary>
+    /// Over the plan's limit after a downgrade (launch redesign 4e): choose which documents stay editable, exactly as
+    /// many as the plan holds, once a day. The others stay read-only, never deleted.
+    /// </summary>
+    [HttpPut("/api/plan/editable")]
+    [Authorize]
+    public async Task<IActionResult> ChooseEditable([FromBody] ChooseEditableRequest request,
+        [FromServices] IEntitlementService entitlements, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var result = await entitlements.ChooseEditableAsync(userId, request?.DocumentIds ?? [], ct);
+        return result.Error switch
+        {
+            null => NoContent(),
+            "once_a_day" => StatusCode(StatusCodes.Status429TooManyRequests,
+                new { code = "PLAN_CHOOSE_ONCE_A_DAY", message = result.Message, retryAt = result.RetryAt }),
+            var code => BadRequest(new { code = "PLAN_CHOOSE_" + code.ToUpperInvariant(), message = result.Message }),
+        };
+    }
+
     public record CheckoutRequest(string PlanSlug, string? Interval);
 
     /// <summary>Start a Stripe Checkout for a membership plan.</summary>

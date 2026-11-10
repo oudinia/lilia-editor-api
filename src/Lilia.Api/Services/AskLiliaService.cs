@@ -855,7 +855,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         skillId == ChallengeSkill.SkillId || skillId == ReviewSkill.SkillId;
 
     internal static bool MayEditWithAi(bool requested, Lilia.Core.DTOs.DocumentDto? document) =>
-        requested && document?.Role is "owner" or "editor";
+        requested && document?.Role is "owner" or "editor" && document.PlanLocked != true;
 
     internal IList<AITool> BuildDocumentTools(
         LiveDocument live,

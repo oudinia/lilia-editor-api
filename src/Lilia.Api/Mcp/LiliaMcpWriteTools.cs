@@ -413,6 +413,8 @@ public sealed class LiliaMcpWriteTools(
             return new { error = "A cover block is for ePub books; the PDF has no place for it. Use set_title for the title page, and a figure for an image.", category = "invalid" };
         var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
         if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
+        if (doc.PlanLocked)
+            return new { error = "This document is read-only on its owner's plan: the plan holds fewer documents than they own. The owner can choose it as one to keep editing, move another to the Trash, or upgrade.", category = "refused" };
         if (!AskLiliaService.MayEditWithAi(true, doc))
             return new { error = "You can only read this document (view-only access). Its owner can give you edit access." };
 

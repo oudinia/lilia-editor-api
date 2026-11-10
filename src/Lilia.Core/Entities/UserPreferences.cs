@@ -41,6 +41,14 @@ public class UserPreferences
     /// Null until the author answers the one-time question; Ask Lilia treats null as beginner.
     /// </summary>
     public string? AskLevel { get; set; }
+    /// <summary>
+    /// Over the plan's limit after a downgrade (launch redesign 4d/4e, decided 14 Oct 2026): the documents the author
+    /// chose to keep editable; the others are read-only. Null: the most recently edited ones. Changeable once a day.
+    /// </summary>
+    public List<Guid>? EditableDocumentIds { get; set; }
+    /// <summary>When <see cref="EditableDocumentIds"/> was last chosen (the once-a-day rule).</summary>
+    public DateTime? EditableChosenAt { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties

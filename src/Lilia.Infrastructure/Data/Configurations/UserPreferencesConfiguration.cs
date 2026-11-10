@@ -26,6 +26,8 @@ public class UserPreferencesConfiguration : IEntityTypeConfiguration<UserPrefere
         builder.Property(p => p.PreviewEnabled).HasColumnName("preview_enabled").HasDefaultValue(true);
         builder.Property(p => p.Personality).HasColumnName("personality").HasMaxLength(Personalities.MaxLength).IsRequired().HasDefaultValue(Personalities.Pro);
         builder.Property(p => p.AskLevel).HasColumnName("ask_level").HasMaxLength(AskLevels.MaxLength);
+        builder.Property(p => p.EditableDocumentIds).HasColumnName("editable_document_ids");
+        builder.Property(p => p.EditableChosenAt).HasColumnName("editable_chosen_at");
         builder.Property(p => p.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
 
         builder.HasOne(p => p.User)
