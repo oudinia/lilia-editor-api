@@ -32,7 +32,34 @@ public static class BibTeXSerializer
     /// year field and keeps the note.</para>
     /// </summary>
     public static string SerializeForTypst(IEnumerable<BibliographyEntry> entries)
-        => Serialize(entries.Select(TypstSafeYear).ToList());
+        => Serialize(entries.Select(TypstSafeYear).Select(TypstReadableText).ToList());
+
+    /// <summary>
+    /// A reference written as text (<c>@cite[key] G. Strang — Introduction to Linear Algebra, 2016.</c>) is an entry
+    /// holding only <c>note</c>. BibTeX's plain style prints the note; Typst's styles print nothing for it, so the
+    /// Typst PDF listed "[1]" alone (the launch bot's #52, 10 Nov 2026). For Typst only, the text is the title, which
+    /// every style prints.
+    /// </summary>
+    private static BibliographyEntry TypstReadableText(BibliographyEntry entry)
+    {
+        var data = entry.Data?.RootElement;
+        if (data is not { ValueKind: System.Text.Json.JsonValueKind.Object }) return entry;
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in data.Value.EnumerateObject())
+            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(prop.Value.GetString()))
+                fields[prop.Name] = prop.Value.GetString()!;
+        if (fields.Count != 1 || !fields.TryGetValue("note", out var text)) return entry;
+
+        return new BibliographyEntry
+        {
+            Id = entry.Id,
+            DocumentId = entry.DocumentId,
+            CiteKey = entry.CiteKey,
+            EntryType = entry.EntryType,
+            Data = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string> { ["title"] = text })),
+            FormattedText = entry.FormattedText,
+        };
+    }
 
     private static readonly System.Text.RegularExpressions.Regex YearDigits =
         new(@"\d{1,4}", System.Text.RegularExpressions.RegexOptions.Compiled);
