@@ -798,6 +798,9 @@ file sealed class OmmlParser
     {
         var equations = new List<List<XElement>>();
         var cur = new List<XElement>();
+        // An alignment tab marks the next run as the row's alignment point (m:aln), so Word lines the rows up at it
+        // (MCP-94: each row was centred, "=d" under "a=b+c" rather than under its "=").
+        var alignNext = false;
 
         while (CurKind != LatexToOmmlConverter.TokKind.End)
         {
@@ -810,13 +813,20 @@ file sealed class OmmlParser
             }
             if (CurKind == LatexToOmmlConverter.TokKind.DoubleBackslash)
             {
-                Consume(); equations.Add(cur); cur = []; continue;
+                Consume(); equations.Add(cur); cur = []; alignNext = false; continue;
             }
             if (CurKind == LatexToOmmlConverter.TokKind.Ampersand)
             {
-                Consume(); continue; // skip alignment tab
+                // Word takes one alignment point per row: the first tab.
+                Consume(); alignNext = !cur.Any(e => e.DescendantsAndSelf(_m + "aln").Any()); continue;
             }
-            cur.AddRange(ParseAtomWithSubSup());
+            var atoms = ParseAtomWithSubSup();
+            if (alignNext && atoms.SelectMany(a => a.DescendantsAndSelf(_m + "r")).FirstOrDefault() is { } run)
+            {
+                MarkAlignment(run);
+                alignNext = false;
+            }
+            cur.AddRange(atoms);
         }
         equations.Add(cur);
 
@@ -840,6 +850,14 @@ file sealed class OmmlParser
                CurKind != LatexToOmmlConverter.TokKind.End)
             Consume();
         Expect(LatexToOmmlConverter.TokKind.RightBrace);
+    }
+
+    /// <summary>Makes a run its equation array row's alignment point: m:aln, last in the run's math properties.</summary>
+    private void MarkAlignment(XElement run)
+    {
+        var rPr = run.Element(_m + "rPr");
+        if (rPr is null) { rPr = new XElement(_m + "rPr"); run.AddFirst(rPr); }
+        rPr.Add(new XElement(_m + "aln"));
     }
 
     private XElement MakeRun(string text) =>
