@@ -1064,13 +1064,15 @@ public class DocxExportService : IDocxExportService
         var title = content.Text; // title stored in Text
         var bodySpans = content.RichText;
 
-        // Build header text: "Theorem 1 (Title)."
+        // Build header text: "Theorem 1 (Title)." A title with maths or marks comes as runs (CaptionRichText): its
+        // maths a Word equation, its text bold like the rest of the header (MCP-115).
+        var titleRuns = string.IsNullOrEmpty(title) ? null : content.CaptionRichText;
         var headerText = displayType;
         if (number.HasValue)
             headerText += $" {number.Value}";
-        if (!string.IsNullOrEmpty(title))
+        if (!string.IsNullOrEmpty(title) && titleRuns is null)
             headerText += $" ({title})";
-        headerText += ".";
+        if (titleRuns is null) headerText += ".";
 
         // Theorem paragraph with left border (w:pBdr before w:ind: Word's schema order)
         var para = new Paragraph();
@@ -1087,8 +1089,20 @@ public class DocxExportService : IDocxExportService
         var headerProps = new RunProperties();
         headerProps.Append(new Bold());
         headerRun.Append(headerProps);
-        headerRun.Append(new Text(headerText + " ") { Space = SpaceProcessingModeValues.Preserve });
+        headerRun.Append(new Text(headerText + (titleRuns is null ? " " : " (")) { Space = SpaceProcessingModeValues.Preserve });
         para.AppendChild(headerRun);
+        if (titleRuns is not null)
+        {
+            foreach (var span in titleRuns)
+            {
+                if (!string.IsNullOrEmpty(span.Equation)) { para.AppendChild(CreateSpanElement(span)); continue; }
+                var run = CreateRun(span);
+                if (run.RunProperties is null) run.PrependChild(new RunProperties());
+                if (!run.RunProperties!.Elements<Bold>().Any()) run.RunProperties.Append(new Bold());
+                para.AppendChild(run);
+            }
+            para.AppendChild(new Run(new RunProperties(new Bold()), new Text("). ") { Space = SpaceProcessingModeValues.Preserve }));
+        }
 
         // Body text in italic
         if (bodySpans != null && bodySpans.Count > 0)

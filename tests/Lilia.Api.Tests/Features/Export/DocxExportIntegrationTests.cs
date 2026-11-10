@@ -451,6 +451,23 @@ public class DocxExportIntegrationTests : IntegrationTestBase
             .And.NotContain("] strang2016").And.NotContain("] axler2015");
     }
 
+    // MCP-115 (run 4): a theorem title with maths printed its source in Word ("in $V_p$").
+    [Fact]
+    public async Task A_theorem_title_s_maths_is_a_word_equation()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Theorem title");
+        await SeedBlockAsync(doc.Id, "theorem", """{"theoremType":"theorem","title":"Rate of convergence in $V_p$","text":"It converges."}""");
+
+        var bytes = (await ExportAsync(doc.Id)).Bytes;
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var xml = word.MainDocumentPart!.Document.Body!.OuterXml;
+
+        xml.Should().NotContain("$V_p$").And.NotContain("$");
+        xml.Should().Contain("oMath");
+        TextIn(bytes).Should().Contain("Theorem 1 (Rate of convergence in").And.Contain("It converges.");
+    }
+
     // MCP-105 (run 3): proofs numbered like theorems, no appendix title, no header/footer, no
     // column definitions, styles.xml without Normal / Title / Quote, a TOC that listed its own heading.
     [Fact]
