@@ -11,9 +11,23 @@ namespace Lilia.Engines;
 
 public partial class RenderService
 {
+    /// <summary>
+    /// The numbers the document's last PDF compile gave its labels, while a Markdown render runs (10 Nov 2026: a
+    /// reference printed as a link to its label, "[tab:x](#tab:x)", where the PDF says "Table 1"). Async-local so
+    /// the inline renderer reads it without threading it through every block.
+    /// </summary>
+    private static readonly AsyncLocal<IReadOnlyDictionary<string, AuxLabel>?> MarkdownLabelNumbers = new();
+
     public async Task<string> RenderToMarkdownAsync(Guid documentId)
     {
         var doc = await _context.Documents.FindAsync(documentId);
+        MarkdownLabelNumbers.Value = LabelNumbers.Parse(doc?.LabelNumbers);
+        try { return await RenderDocumentToMarkdownAsync(documentId, doc); }
+        finally { MarkdownLabelNumbers.Value = null; }
+    }
+
+    private async Task<string> RenderDocumentToMarkdownAsync(Guid documentId, Document? doc)
+    {
         var blocks = await _context.Blocks
             .Where(b => b.DocumentId == documentId)
             .OrderBy(b => b.SortOrder)
@@ -496,8 +510,20 @@ public partial class RenderService
             return "[" + string.Join("; ", keys) + "]";
         });
 
-        // Lilia's Kind~(prefix:label) → Kind [label](#label), like the references below (9 Nov 2026: printed as typed)
-        result = CrossRefSyntax.KindParen.Replace(result, m => $"{m.Groups["kind"].Value} [{m.Groups["key"].Value}](#{m.Groups["key"].Value})");
+        // Lilia's Kind~(prefix:label) → "Kind 1" with the last PDF's number ("Equation (1)" for an equation), else
+        // Kind [label](#label), like the references below (9 Nov 2026: printed as typed)
+        result = CrossRefSyntax.KindParen.Replace(result, m =>
+        {
+            var (kind, key) = (m.Groups["kind"].Value, m.Groups["key"].Value);
+            return MarkdownNumber(key) is { } n
+                ? (key.StartsWith("eq:", StringComparison.Ordinal) ? $"{kind} ({n})" : $"{kind} {n}")
+                : $"{kind} [{key}](#{key})";
+        });
+
+        // A plain or equation reference prints its number when the last PDF gave one ("1", "(1)"); otherwise, and
+        // for the forms that print words of their own (\cref, \autoref…), a link to the label as before.
+        result = Regex.Replace(result, @"[@\\](eq)?ref\{([^}]+)\}", m =>
+            MarkdownNumber(m.Groups[2].Value) is { } n ? (m.Groups[1].Success ? $"({n})" : n) : m.Value);
 
         // References: @ref{label}, \ref{label}, \cref{label}, etc. → [label](#label)
         result = Regex.Replace(result, @"[@\\](?:c|C|eq|auto|page|name)?ref\{([^}]+)\}", m => $"[{m.Groups[1].Value}](#{m.Groups[1].Value})");
@@ -513,6 +539,10 @@ public partial class RenderService
 
         return result;
     }
+
+    /// <summary>The label's number from the document's last PDF compile, during a Markdown render; null if none.</summary>
+    private static string? MarkdownNumber(string key) =>
+        MarkdownLabelNumbers.Value is { } labels && labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
 
     private static string MdYamlEscape(string s)
     {
