@@ -277,7 +277,11 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone
   documents are all in use**; nothing is created; **Open my documents** to move one to the Trash.
   Nothing is ever deleted because of a plan. The documents rail shows "Free · 2 of 3 documents".
 - Ask Lilia's allowance: from 80% a line under the box gives the renewal day; when used, the box is
-  replaced by a card with the date. Connected apps (Claude) don't use it. Validate always works.
+  replaced by a card with the date. On Free the card also offers **Connect Claude** (the connector's
+  help, /help/connect-claude) and **Download the skill** (the drafting skill, for the author's own AI).
+  Connected apps (Claude) don't use the allowance. Validate always works.
+- Restoring a document from the Trash counts it again: at the limit it is refused with the same
+  message, and stays in the Trash until the author makes room.
 - **Terms** and **Privacy**: /legal/terms and /legal/privacy (linked from sign-up and the footers).
   The text is a placeholder until the lawyer's; English is the binding version.
 

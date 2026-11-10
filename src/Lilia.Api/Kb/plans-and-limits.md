@@ -15,10 +15,10 @@ keywords: plan free pro price limit 3 documents three documents imports allowanc
 2. **Free** holds 3 documents you own, 3 imports a month, every export format, the compile check, and a small monthly Ask Lilia allowance. Sharing to read and comment is free.
 3. **Pro** ($10.99 a month) has no document or import limit, a larger Ask Lilia allowance, and co-authors who edit.
 4. At the limit, starting a 4th document (New, a template, a copy, an import) shows **Your plan's documents are all in use**. Nothing is created. **Open my documents** to move one you no longer need to the Trash, then start the new one.
-5. When Ask Lilia's month is used, its box shows the day it renews. **Validate** (**Check document** on a phone) keeps working.
+5. When Ask Lilia's month is used, its box shows the day it renews. **Validate** (**Check document** on a phone) keeps working. On Free, it also offers to keep going with your own AI: **Connect Claude** (Lilia's connector) or **Download the skill** (the drafting skill, for any AI chat).
 
 ## What this means {#beginner}
-- Documents in the Trash, and documents someone else shared with you, don't count toward your 3.
+- Documents in the Trash, and documents someone else shared with you, don't count toward your 3. Restoring one from the Trash counts it again, so at 3 it waits until you make room.
 - Nothing is ever deleted because of a plan.
 - AI apps you connect to Lilia (such as Claude) don't use your Ask Lilia allowance.
 
