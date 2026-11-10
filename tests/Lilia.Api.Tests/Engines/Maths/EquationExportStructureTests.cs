@@ -80,6 +80,33 @@ public class EquationExportStructureTests
             .Should().Be(@"\begin{align}a &= b\end{align}");
     }
 
+    // ── Word: aligned rows (MCP-94) ──────────────────────────────────────────
+
+    // Each row of an align had its alignment tab dropped, so Word centred every row instead of lining them up at "=".
+    [Fact]
+    public void Each_aligned_row_marks_its_alignment_point_for_word()
+    {
+        var (omml, ok, _) = new LatexToOmmlConverter().Convert(@"\begin{aligned}a &= b + c \\ &= d\end{aligned}");
+        ok.Should().BeTrue();
+        var rows = XElement.Parse($"<r xmlns:m=\"{M}\">{omml}</r>").Descendants(M + "eqArr").Single().Elements(M + "e").ToList();
+        rows.Should().HaveCount(2);
+        foreach (var row in rows)
+        {
+            var points = row.Descendants(M + "aln").ToList();
+            points.Should().ContainSingle("one alignment point per row");
+            points[0].Parent!.Parent!.Element(M + "t")!.Value.Should().Be("=");
+        }
+    }
+
+    [Fact]
+    public void Word_s_alignment_points_come_back_as_alignment_tabs()
+    {
+        var (omml, _, _) = new LatexToOmmlConverter().Convert(@"\begin{aligned}a &= b \\ c &= d\end{aligned}");
+        var (latex, ok, _) = new Lilia.Import.Converters.OmmlToLatexConverter().Convert($"<m:oMath xmlns:m=\"{M}\">{omml}</m:oMath>");
+        ok.Should().BeTrue();
+        latex.Replace(" ", "").Should().Contain("a&=b").And.Contain("c&=d");
+    }
+
     // ── Word: delimiters ─────────────────────────────────────────────────────
 
     private static (string? Beg, string? End) Delimiters(string latex)

@@ -124,7 +124,10 @@ public class OmmlToLatexConverter : IOmmlConverter
         return string.Join(@" \\ ", equations);
     }
 
-    private string ConvertRun(XElement element) => ConvertChildren(element);
+    // A run marked as an equation array's alignment point (m:aln) begins after an alignment tab: Word's aligned rows
+    // come back as aligned LaTeX (MCP-94, the export now writes it).
+    private string ConvertRun(XElement element) =>
+        (element.Element(M + "rPr")?.Element(M + "aln") is not null ? "&" : "") + ConvertChildren(element);
 
     private string ConvertText(XElement element)
     {
