@@ -31,4 +31,22 @@ public class ContentRoutingTests
     [Fact]
     public void An_equation_goes_to_latex() =>
         ContentRouting.WhyLatex([B("equation", new { latex = "x^2" })]).Should().Be("equations");
+
+    // 10 Nov 2026: the Typst writer dropped a footnote block, so an automatic PDF or preview lost it.
+    [Fact]
+    public void A_footnote_goes_to_latex() =>
+        ContentRouting.WhyLatex([B("paragraph", new { text = "A claim." }), B("footnote", new { text = "Its source." })]).Should().Be("footnotes");
+
+    [Fact]
+    public void The_Typst_writer_keeps_a_footnote_as_a_footnote()
+    {
+        var source = new TypstExportService().BuildTypstDocument(
+            Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Doc(),
+            [Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Para("A claim.", 0),
+             Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Block("footnote", new { text = "Its *source*." }, 1)], null);
+
+        source.Should().Contain("#footnote[Its").And.Contain("source").And.NotContain("Unsupported block type for Typst export: footnote");
+        var compiled = Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Compile(source);
+        compiled.Ok.Should().BeTrue(compiled.Error);
+    }
 }

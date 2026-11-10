@@ -69,6 +69,9 @@ public static class ContentRouting
         {
             // Equations are LaTeX maths, which Typst's maths doesn't read.
             if (string.Equals(type, "equation", StringComparison.OrdinalIgnoreCase)) return "equations";
+            // A footnote block belongs at the end of the paragraph before it, which the LaTeX path does
+            // (AttachFootnotes); the Typst writer dropped it, so the footnote was missing (10 Nov 2026).
+            if (string.Equals(type, "footnote", StringComparison.OrdinalIgnoreCase)) return "footnotes";
             foreach (var text in Strings(content))
             {
                 if (LatexOnly.IsMatch(text)) return $"LaTeX or Lilia marks in a {type} block";
