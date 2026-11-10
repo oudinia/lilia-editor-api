@@ -175,6 +175,8 @@ public class PreviewRenderService : IPreviewRenderService
             bibEntries = await _db.BibliographyEntries.AsNoTracking()
                 .Where(b => b.DocumentId == documentId)
                 .ToListAsync(ct);
+            // And the references written in the bibliography blocks, as the LaTeX PDF reads them.
+            bibEntries.AddRange(BibliographyBlocks.Unstored(documentId, blocks, bibEntries.Select(e => e.CiteKey)));
 
             // Layout-dimension groups so the exporter can wrap the
             // right runs in `#columns(N)` (LILIA-136). Other dimensions
@@ -201,7 +203,7 @@ public class PreviewRenderService : IPreviewRenderService
         try
         {
             source = _typstExporter.BuildTypstDocument(doc, blocks, layoutGroups,
-                new TypstExportOptions { LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz });
+                new TypstExportOptions { LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz, HasBibliography = bibEntries.Count > 0 });
         }
         catch (Exception ex)
         {
