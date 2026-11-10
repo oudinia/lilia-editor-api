@@ -122,6 +122,35 @@ public class PlanLimitsTests : IntegrationTestBase
             .Should().Be(HttpStatusCode.PaymentRequired);
     }
 
+    // PROD-25 (found 23 Oct): restoring from the Trash skipped the limit, so trashing and restoring held more than 3.
+    [Fact]
+    public async Task Restoring_from_the_trash_counts_like_a_new_document()
+    {
+        var author = await FreeAuthorWith(3);
+        Guid trashed;
+        await using (var db = CreateDbContext())
+        {
+            var mine = await db.Documents.FirstAsync(d => d.OwnerId == author);
+            mine.DeletedAt = DateTime.UtcNow;
+            trashed = mine.Id;
+            await db.SaveChangesAsync();
+        }
+        var client = As(_enforced, author);
+        (await client.PostAsJsonAsync("/api/documents", new { title = "Third again" })).StatusCode
+            .Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Created);
+
+        var full = await client.PostAsync($"/api/documents/{trashed}/restore", null);
+
+        full.StatusCode.Should().Be(HttpStatusCode.PaymentRequired, "three documents are in the list already");
+        await using (var db = CreateDbContext())
+            (await db.Documents.IgnoreQueryFilters().SingleAsync(d => d.Id == trashed)).DeletedAt.Should().NotBeNull("it stays in the Trash");
+
+        // With room again, it comes back.
+        var other = (await client.GetFromJsonAsync<JsonElement>("/api/documents")).GetProperty("items")[0].GetProperty("id").GetString();
+        (await client.DeleteAsync($"/api/documents/{other}")).IsSuccessStatusCode.Should().BeTrue();
+        (await client.PostAsync($"/api/documents/{trashed}/restore", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
     [Fact]
     public async Task A_staff_account_holds_beta_and_is_not_limited()
     {
