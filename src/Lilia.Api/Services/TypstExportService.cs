@@ -448,6 +448,9 @@ public class TypstExportService : ITypstExportService
             return block.Type switch
             {
                 "paragraph" => RenderParagraph(content),
+                // Its text as a Typst footnote (10 Nov 2026: unknown here, it was dropped with a comment). Automatic
+                // PDFs of a document with one go through LaTeX, which places it after the paragraph before it.
+                "footnote" => $"#footnote[{RenderParagraph(content)}]",
                 "heading" => RenderHeading(content),
                 "equation" => RenderEquation(content),
                 "figure" => RenderFigure(content),
