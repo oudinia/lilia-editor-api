@@ -413,6 +413,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
         }
         catch (QuotaExceededException ex)
         {
+            if (ex.Resource == "aiComingSoon")
+                return AskLiliaResult.Lock("coming-soon", ex.Message);
             // The site's AI budget (aiSiteBudget, aiFreePool) holds even while allowances only log.
             if (ex.Resource != "aiCreditsPerMonth")
                 return AskLiliaResult.Lock("over-budget", ex.Message);

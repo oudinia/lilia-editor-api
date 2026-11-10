@@ -24,6 +24,15 @@ public class EntitlementService : IEntitlementService
     private readonly bool _aiEnforced;
     private readonly decimal _siteBudgetUsd;
     private readonly decimal _freeBudgetUsd;
+    private readonly bool _aiComingSoon;
+
+    /// <summary>
+    /// The connector-first launch (the owner, 10 Nov 2026): Ask Lilia is shown as "coming soon" and Lilia pays for no
+    /// AI; authors write with their own AI through the connector. <c>AI:ComingSoon</c> refuses every metered AI call
+    /// here, where each one asks for its credits, so no route is missed. Staff keep it, to try it before it returns.
+    /// </summary>
+    internal const string ComingSoonMessage =
+        "Ask Lilia is coming soon. Meanwhile, connect Claude to Lilia: it writes and checks your documents with your own AI.";
 
     public EntitlementService(LiliaDbContext context, ILogger<EntitlementService> logger, IAiCatalogService aiCatalog,
         Lilia.Api.Directories.ITeamDirectory teams, IOptions<EntitlementOptions>? options = null, IConfiguration? configuration = null)
@@ -33,6 +42,7 @@ public class EntitlementService : IEntitlementService
         _aiEnforced = configuration?.GetValue("AI:EnforceCredits", false) ?? false;
         _siteBudgetUsd = configuration?.GetValue("AI:MonthlyBudgetUsd", 0m) ?? 0m;
         _freeBudgetUsd = configuration?.GetValue("AI:FreeMonthlyBudgetUsd", 0m) ?? 0m;
+        _aiComingSoon = configuration?.GetValue("AI:ComingSoon", false) ?? false;
         _context = context;
         _logger = logger;
         _aiCatalog = aiCatalog;
@@ -85,6 +95,8 @@ public class EntitlementService : IEntitlementService
         // Staff (the owner's account) hold Beta for its features but no limit at all: not documents,
         // and not Ask Lilia, whose Beta allowance would otherwise stop the owner's own use.
         if (IsStaff(userId)) return;
+        if (resource == QuotaResource.AiCredits && _aiComingSoon)
+            throw new QuotaExceededException("aiComingSoon", 0, 0, null, ComingSoonMessage);
         var plan = await GetActivePlanAsync(userId, ct);
         if (plan is null) return; // No plan data at all — fail open (logged elsewhere).
 
@@ -238,7 +250,8 @@ public class EntitlementService : IEntitlementService
                 askCap < 0 ? 0 : askCap == 0 ? 1 : Math.Min(1.0, (double)askSpent / askCap),
                 Unlimited: askCap < 0,
                 ResetsAt: NextMonthStart(),
-                Enforced: _aiEnforced),
+                Enforced: _aiEnforced,
+                ComingSoon: _aiComingSoon && !IsStaff(userId)),
             ReadOnly: await ReadOnlyAsync(userId, plan, ct));
     }
 

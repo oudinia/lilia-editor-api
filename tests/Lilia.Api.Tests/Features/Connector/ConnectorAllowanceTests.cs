@@ -11,7 +11,7 @@ using Xunit;
 namespace Lilia.Api.Tests.Features.Connector;
 
 /// <summary>
-/// The connector's daily allowance (the owner, 5 Nov 2026: "Free 50/day, Pro unlimited"): Free's 51st
+/// The connector's daily allowance (the owner: "Free 50/day, Pro unlimited" on 5 Nov 2026, 25 a day from 10 Nov): Free's 26th
 /// action of the day is refused as a tool error that names Pro, the help tools stay open, and Pro and
 /// staff aren't counted. Applied with the other plan limits, so these callers turn them on.
 /// </summary>
@@ -74,27 +74,27 @@ public class ConnectorAllowanceTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task The_plans_carry_the_allowance_free_50_and_the_others_no_limit()
+    public async Task The_plans_carry_the_allowance_free_25_and_the_others_no_limit()
     {
         await using var db = CreateDbContext();
         var caps = await db.Plans.AsNoTracking().ToDictionaryAsync(p => p.Slug, p => p.Caps.RootElement.GetProperty("mcpActionsPerDay").GetInt32());
-        caps["free"].Should().Be(50);
+        caps["free"].Should().Be(25);
         caps.Where(c => c.Key != "free").Should().OnlyContain(c => c.Value == -1);
     }
 
     [Fact]
-    public async Task Free_gets_50_actions_a_day_then_a_tool_error_that_names_Pro_while_help_stays_open()
+    public async Task Free_gets_25_actions_a_day_then_a_tool_error_that_names_Pro_while_help_stays_open()
     {
         var id = NewId("free");
         await SeedUserAsync(id);
         var client = Caller(id);
 
-        for (var i = 0; i < 50; i++)
-            (await CallAsync(client, "list_documents")).IsError.Should().BeFalse($"action {i + 1} of 50 is within the allowance");
+        for (var i = 0; i < 25; i++)
+            (await CallAsync(client, "list_documents")).IsError.Should().BeFalse($"action {i + 1} of 25 is within the allowance");
 
         var refused = await CallAsync(client, "list_documents");
         refused.IsError.Should().BeTrue();
-        refused.Text.Should().Contain("50 connector actions a day").And.Contain("Pro has no daily limit").And.Contain("?plans=1");
+        refused.Text.Should().Contain("25 connector actions a day").And.Contain("Pro has no daily limit").And.Contain("?plans=1");
 
         (await CallAsync(client, "search_help", new { query = "export" })).IsError.Should().BeFalse("help doesn't count");
     }
