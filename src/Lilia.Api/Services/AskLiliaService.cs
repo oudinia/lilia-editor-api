@@ -1008,6 +1008,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     + "Pass ONLY the fields to change; everything else is left alone. Invalid values are rejected with the valid "
                     + "choices and nothing is changed. Returns the resulting settings. Does not touch body blocks."));
             tools.Add(AIFunctionFactory.Create(
+                ([Description("A publisher profile id (venue and stage), e.g. ieee-conference, acm-sigconf-review, lncs-submission, elsevier-preprint; \"\" removes the venue (the class stays).")] string profile)
+                    => SetVenueAsync(live, docGuid, userId, markMetaChanged, profile),
+                name: "set_venue",
+                description: "Format the document for a venue: sets the publisher's class, its options, front matter and reference style "
+                    + "in one step (the same as the editor's Venue choice). Only the document's owner can choose it. Profiles: "
+                    + string.Join(", ", Lilia.Engines.Publishers.PublisherProfiles.All.Select(p => $"{p.Id} ({p.Publisher} {p.Venue})")) + "."));
+            tools.Add(AIFunctionFactory.Create(
                 ([Description("The complete LaTeX source the author pasted, from \\documentclass to \\end{document} (or a fragment).")] string text,
                  [Description("true (default): replace the whole document body and apply the file's page setup. false: append the converted blocks after the existing ones and leave settings alone.")] bool replace = true)
                     => ImportLatexAsync(live, docGuid, userId, text, replace, changed, markMetaChanged),
@@ -1280,6 +1287,34 @@ public sealed partial class AskLiliaService : IAskLiliaService
             _logger.LogError(ex, "[AskLilia] set_document_settings failed for {DocId}", docId);
             return new { error = "set_document_settings failed: " + ex.Message };
         }
+    }
+
+    /// <summary>
+    /// The venue (connector prompt templates, 10 Nov 2026: "Format for a venue" had no tool; only the editor's screens set
+    /// it). The same rules as the screens: an unknown id is refused, and only the owner chooses.
+    /// </summary>
+    private async Task<object> SetVenueAsync(LiveDocument live, Guid docId, string userId, Action markMetaChanged, string profile)
+    {
+        try
+        {
+            var updated = await _documentService.UpdateDocumentAsync(docId, userId, new UpdateDocumentDto(
+                Title: null, Language: null, PaperSize: null, FontFamily: null,
+                FontSize: null, Columns: null, ColumnSeparator: null, ColumnGap: null,
+                LatexDocumentClass: null, LatexDocumentClassOptions: null, LatexPackages: null,
+                BalancedColumns: null, MarginTop: null, MarginBottom: null, MarginLeft: null,
+                MarginRight: null, HeaderText: null, FooterText: null, LineSpacing: null,
+                ParagraphIndent: null, PageNumbering: null, AiEnabled: null, LatexEngine: null,
+                ExperimentalLatexEdit: null, DocumentClass: null, DocumentCategory: null,
+                Sides: null, TitlePage: null, Orientation: null,
+                PublisherProfile: (profile ?? "").Trim()));
+            if (updated is null) return new { error = "document not found or no write access" };
+            live.Dto = updated.Blocks is { Count: > 0 } ? updated : updated with { Blocks = live.Dto.Blocks };
+            markMetaChanged();
+            await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged", new { op = "document_settings", fields = new[] { "publisherProfile" } });
+            return new { ok = true, publisherProfile = updated.PublisherProfile, documentClass = updated.LatexDocumentClass };
+        }
+        catch (PublisherProfileException ex) { return new { error = ex.Message }; }
+        catch (PublisherOwnerOnlyException ex) { return new { error = ex.Message }; }
     }
 
     /// <summary>

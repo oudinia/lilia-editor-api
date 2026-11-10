@@ -170,6 +170,13 @@ public sealed class LiliaMcpWriteTools(
         [Description("Optional title, used only when the document has no title yet; to rename a document, use set_title.")] string? title = null) =>
         WriteAsync(documentId, "apply_lml", new() { ["lml"] = lml, ["title"] = title });
 
+    [McpServerTool(Name = "set_venue", Title = "Format for a venue", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Format the document for a venue in one step: the publisher's class, options, front matter and reference style (the editor's Venue choice). Only the document's owner can choose it. Profile ids: acm-sigconf-review, acm-sigconf-final, acm-journal-review, acm-journal-final, ieee-conference, ieee-journal, elsevier-preprint, elsevier-review, elsevier-final, lncs-submission, lncs-camera-ready, aps-review, aps-final, aip-review, aip-final, ams-journal, iop-review, iop-final, siam-review, siam-final; \"\" removes the venue. Run check_document afterwards: a venue's class can need content it expects (an abstract, keywords).")]
+    public Task<object> SetVenue(
+        [Description("The document id.")] string documentId,
+        [Description("The publisher profile id, e.g. ieee-conference; \"\" removes the venue.")] string profile) =>
+        WriteAsync(documentId, "set_venue", new() { ["profile"] = profile });
+
     private static readonly HashSet<string> TextSettings = new(StringComparer.OrdinalIgnoreCase)
     {
         "marginTop", "marginBottom", "marginLeft", "marginRight", "paragraphIndent", "customPreamble",

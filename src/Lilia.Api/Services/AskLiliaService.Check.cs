@@ -19,7 +19,7 @@ public sealed partial class AskLiliaService
     internal static readonly HashSet<string> WriteTools = new(StringComparer.Ordinal)
     {
         "apply_lml", "add_block", "edit_block", "remove_block", "reorder_blocks", "set_title",
-        "set_document_kind", "set_document_settings", "import_latex",
+        "set_document_kind", "set_document_settings", "set_venue", "import_latex",
     };
 
     /// <summary>

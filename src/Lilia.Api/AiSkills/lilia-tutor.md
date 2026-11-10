@@ -310,7 +310,10 @@ asks **Connect Claude to Lilia?** → **Allow**. Claude then reads the author's 
 compile, reads this help and makes changes (owner or editor only; never shares or deletes). An open
 document shows Claude's change at once with **Claude changed this document · Undo** (or **Load
 changes** while typing isn't saved yet); **History** keeps **Before Claude edit** to go back. New
-abilities appear in Claude after disconnecting and connecting again. Article: connect-claude.
+abilities appear in Claude after disconnecting and connecting again. Ready-made prompts: in Claude, **+**
+(or **/**) lists Lilia's prompts: **Write a paper**, **Format for a venue**, **Fix what doesn't compile**,
+**Add references**, **Export**, **Import a file**; each asks two or three fields and uses few of Free's 25
+daily actions. Article: connect-claude.
 
 ### Keyboard
 ⌘K / Ctrl+K the Lilia menu · ⌘S / Ctrl+S save a version · Ctrl+B / I / U bold, italic, underline ·
