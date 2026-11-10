@@ -134,6 +134,7 @@ public class LiliaDbContext : DbContext
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<UserPlan> UserPlans => Set<UserPlan>();
     public DbSet<AiCreditLedger> AiCreditLedger => Set<AiCreditLedger>();
+    public DbSet<Operation> Operations => Set<Operation>();
     public DbSet<StripeEvent> StripeEvents => Set<StripeEvent>();
 
     // LaTeX catalog (v1, Phase 1). The parser consults these tables at

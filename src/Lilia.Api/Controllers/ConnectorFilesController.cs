@@ -25,6 +25,7 @@ public class ConnectorFilesController(
     Lilia.Api.Mcp.CheckMemoStore checks,
     Lilia.Engines.IRenderService render,
     ILaTeXRenderService latexRender,
+    Lilia.Api.Services.OperationLog operations,
     ILogger<ConnectorFilesController> logger) : ControllerBase
 {
     private string? UserId => User.FindFirst("sub")?.Value
@@ -46,6 +47,15 @@ public class ConnectorFilesController(
         logger.LogInformation("[Connector] {Format} download of {DocId} for {UserId}", t.Format, t.DocumentId, t.UserId);
         // A signed link, no sign-in: the link's user owns what this download caches.
         CacheOwner.Set(t.UserId);
+        var result = await FileAsync(t, doc, name);
+        // A file taken through the connector is an operation (paying per operation, 10 Nov 2026); a refusal isn't.
+        if (result is FileResult)
+            await operations.RecordExportAsync(t.UserId, t.DocumentId, t.Format == "latex" ? "tex" : t.Format, "connector");
+        return result;
+    }
+
+    private async Task<IActionResult> FileAsync(ConnectorTransfers.ExportTicket t, Lilia.Core.DTOs.DocumentDto doc, string name)
+    {
         try
         {
             switch (t.Format)
