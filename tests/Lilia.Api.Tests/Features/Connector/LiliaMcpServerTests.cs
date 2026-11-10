@@ -85,7 +85,7 @@ public class LiliaMcpServerTests : IntegrationTestBase
         await SeedUserAsync("mcp_titles");
         var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-        tools.Should().HaveCount(21);
+        tools.Should().HaveCount(22); // set_venue, 10 Nov 2026 (the "Format for a venue" prompt)
         foreach (var t in tools)
         {
             var name = t.GetProperty("name").GetString();
