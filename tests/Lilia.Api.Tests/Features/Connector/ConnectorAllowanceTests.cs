@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -74,12 +76,13 @@ public class ConnectorAllowanceTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task The_plans_carry_the_allowance_free_25_and_the_others_no_limit()
+    public async Task The_plans_carry_the_allowance_free_25_pro_500_and_the_others_no_limit()
     {
         await using var db = CreateDbContext();
         var caps = await db.Plans.AsNoTracking().ToDictionaryAsync(p => p.Slug, p => p.Caps.RootElement.GetProperty("mcpActionsPerDay").GetInt32());
         caps["free"].Should().Be(25);
-        caps.Where(c => c.Key != "free").Should().OnlyContain(c => c.Value == -1);
+        caps["pro"].Should().Be(500, "a safety cap only (the owner, 10 Nov 2026)");
+        caps.Where(c => c.Key is not ("free" or "pro")).Should().OnlyContain(c => c.Value == -1);
     }
 
     [Fact]
@@ -94,13 +97,29 @@ public class ConnectorAllowanceTests : IntegrationTestBase, IDisposable
 
         var refused = await CallAsync(client, "list_documents");
         refused.IsError.Should().BeTrue();
-        refused.Text.Should().Contain("25 connector actions a day").And.Contain("Pro has no daily limit").And.Contain("?plans=1");
+        refused.Text.Should().Contain("25 connector actions a day").And.Contain("Pro allows far more").And.Contain("?plans=1");
 
         (await CallAsync(client, "search_help", new { query = "export" })).IsError.Should().BeFalse("help doesn't count");
     }
 
+    // Pro's safety cap (the owner, 10 Nov 2026: 500 a day): reached, it says so plainly, with no upsell.
     [Fact]
-    public async Task Pro_and_staff_are_not_counted()
+    public async Task Pro_stops_at_its_safety_cap_with_its_own_words()
+    {
+        var pro = NewId("procap");
+        await SeedUserAsync(pro);
+        await GivePlanAsync(pro, "pro");
+        var client = Caller(pro);
+        var cache = _factories[^1].Services.GetRequiredService<IDistributedCache>();
+        await cache.SetStringAsync($"mcp-actions:{pro}:{DateTime.UtcNow:yyyy-MM-dd}", "500");
+
+        var refused = await CallAsync(client, "list_documents");
+        refused.IsError.Should().BeTrue();
+        refused.Text.Should().Contain("500 connector actions a day on this plan, a safety limit").And.NotContain("?plans=1");
+    }
+
+    [Fact]
+    public async Task Pro_goes_well_past_Free_s_allowance_and_staff_are_not_counted()
     {
         var pro = NewId("pro");
         await SeedUserAsync(pro);
