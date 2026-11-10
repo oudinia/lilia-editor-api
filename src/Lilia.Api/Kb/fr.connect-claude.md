@@ -21,6 +21,12 @@ keywords: claude connecteur mcp chatgpt connecter application intégration conne
 
 Une autre application qui accepte les connecteurs MCP se connecte de la même façon, avec la même adresse.
 
+## Des prompts prêts à l'emploi {#prompts}
+Lilia propose à Claude des prompts tout prêts : dans Claude, cliquez sur **+** (ou tapez **/**) et choisissez un prompt Lilia, puis remplissez deux ou trois champs. Chacun fait le travail en un minimum d'étapes, ce qui économise vos actions du jour.
+- **Rédiger un article** : un titre et le sujet ; Lilia crée le document avec un premier jet, le vérifie et vous donne le PDF.
+- **Mettre au format d'une revue** : IEEE, ACM, Springer LNCS, Elsevier et d'autres.
+- **Réparer ce qui ne compile pas**, **Ajouter des références**, **Exporter** (PDF, LaTeX, Overleaf, Word) et **Importer un fichier**.
+
 ## Ce que cela veut dire {#beginner}
 - Claude agit **en votre nom** : il ne voit que les documents que vous pouvez ouvrir vous-même, et ne modifie que ceux dont vous êtes propriétaire ou que vous pouvez modifier. Un document partagé avec vous en lecture seule le reste.
 - Il peut lire vos documents, vérifier qu'ils compilent, lire l'aide de Lilia et faire des modifications. Il ne peut ni partager ni supprimer un document.

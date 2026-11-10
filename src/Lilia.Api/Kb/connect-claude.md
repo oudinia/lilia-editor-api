@@ -21,6 +21,12 @@ keywords: claude connector mcp chatgpt connect app integration custom connector 
 
 Another app that supports MCP connectors connects the same way, with the same address.
 
+## Ready-made prompts {#prompts}
+Lilia gives Claude ready-made prompts: in Claude, click **+** (or type **/**) and choose a Lilia prompt, then fill in two or three fields. Each one does the job in the fewest steps, which saves your daily actions.
+- **Write a paper**: a title and what it is about; Lilia creates the document with a first draft, checks it and gives you the PDF.
+- **Format for a venue**: IEEE, ACM, Springer LNCS, Elsevier and others.
+- **Fix what doesn't compile**, **Add references**, **Export** (PDF, LaTeX, Overleaf, Word) and **Import a file**.
+
 ## What this means {#beginner}
 - Claude works **as you**: it only sees documents you can open yourself, and it only changes documents you own or can edit. A document shared with you as view-only stays read-only.
 - It can read your documents, check whether they compile, read Lilia's help and make changes. It cannot share or delete a document.
