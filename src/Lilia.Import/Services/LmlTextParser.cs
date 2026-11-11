@@ -574,6 +574,8 @@ public sealed class LmlTextParser : ILmlTextParser
                         label = attrs.GetValueOrDefault("label") ?? attrs.GetValueOrDefault("id") ?? "",
                         lineNumbers = attrs.TryGetValue("lineNumbers", out var ln) && bool.TryParse(ln, out var lnOn) && lnOn,
                         code = KeepLines(body),
+                        // The editor reads lines, not code: an imported algorithm opened empty (#52's retest, 11 Nov).
+                        lines = AlgorithmLines.FromLml(body),
                     },
                 });
                 return;
