@@ -76,6 +76,20 @@ public sealed class ConnectorAllowance(
         if (userId is not null && allowance is not null && request.Params is { } p
             && await allowance.UseAsync(userId, p.Name, ct) is { } refusal)
             return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = refusal }] };
-        return await next(request, ct);
+        var result = await next(request, ct);
+        // Every connector action is an operation, weighted by its kind (11 Nov 2026); a refused or failed one isn't.
+        if (userId is not null && result.IsError != true && request.Params is { } call
+            && OperationLog.ConnectorCode(call.Name, WithBody(call)) is { } code
+            && request.Services?.GetService<OperationLog>() is { } operations)
+            await operations.RecordAsync(userId, DocumentIdOf(call), code, "connector");
+        return result;
     };
+
+    private static bool WithBody(CallToolRequestParams call) =>
+        call.Arguments?.TryGetValue("lml", out var lml) == true && lml.ValueKind == System.Text.Json.JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(lml.GetString());
+
+    private static Guid? DocumentIdOf(CallToolRequestParams call) =>
+        call.Arguments?.TryGetValue("documentId", out var id) == true && id.ValueKind == System.Text.Json.JsonValueKind.String
+        && Guid.TryParse(id.GetString(), out var g) ? g : null;
 }

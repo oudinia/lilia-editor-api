@@ -13,8 +13,14 @@ public class Operation
     public string UserId { get; set; } = string.Empty;
     public Guid? DocumentId { get; set; }
 
-    /// <summary>export (CHECK-constrained; more kinds when the owner decides what counts).</summary>
-    public string Kind { get; set; } = "export";
+    /// <summary>The <see cref="OperationKind"/> code (11 Nov 2026: weighted by complexity), e.g. export.pdf, edit.small.</summary>
+    public string Kind { get; set; } = "export.pdf";
+
+    /// <summary>The points it was given when recorded (<see cref="OperationKind.PointsFor"/>): later weight changes don't rewrite it.</summary>
+    public int Points { get; set; }
+
+    /// <summary>Its size in the kind's unit (pages, blocks), when that matters.</summary>
+    public int? Units { get; set; }
 
     /// <summary>pdf | tex | zip | docx | markdown | html | lml.</summary>
     public string Format { get; set; } = string.Empty;
