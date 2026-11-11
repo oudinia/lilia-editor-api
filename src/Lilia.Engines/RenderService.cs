@@ -932,12 +932,14 @@ public partial class RenderService : IRenderService
             m => $"<a class=\"ref\" data-ref=\"{m.Groups[1].Value}\">{m.Groups[1].Value}</a>");
 
         // URLs: \url{{...}}
+        // A link's \# and \% (escaped for LaTeX, #64) are # and % in the page.
+        static string Url(string u) => u.Replace(@"\#", "#").Replace(@"\%", "%");
         result = Regex.Replace(result, @"\\url\{(.+?)\}",
-            m => $"<a href=\"{m.Groups[1].Value}\" class=\"url\" target=\"_blank\" rel=\"noopener\">{m.Groups[1].Value}</a>");
+            m => $"<a href=\"{Url(m.Groups[1].Value)}\" class=\"url\" target=\"_blank\" rel=\"noopener\">{Url(m.Groups[1].Value)}</a>");
 
         // Hyperlinks: \href{{url}}{{text}}
         result = Regex.Replace(result, @"\\href\{(.+?)\}\{(.+?)\}",
-            m => $"<a href=\"{m.Groups[1].Value}\" target=\"_blank\" rel=\"noopener\">{m.Groups[2].Value}</a>");
+            m => $"<a href=\"{Url(m.Groups[1].Value)}\" target=\"_blank\" rel=\"noopener\">{m.Groups[2].Value}</a>");
 
         return result;
     }

@@ -262,8 +262,10 @@ public static class MarkdownTextParser
     {
         if (s.Length == 0) return s;
         // Links first, so an underscore in a URL is not italics.
-        s = Regex.Replace(s, @"(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+""[^""]*"")?\)", m => $@"\href{{{m.Groups[2].Value}}}{{{m.Groups[1].Value}}}");
-        s = Regex.Replace(s, @"<(https?://[^>\s]+)>", @"\url{$1}");
+        // A link's # and % are LaTeX's own characters: unescaped, a page's anchor (…/extended-syntax/#tables) broke the
+        // compile, in a heading above all (the launch bot's #64 row 5, 11 Nov 2026). hyperref prints \# and \% as # and %.
+        s = Regex.Replace(s, @"(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+""[^""]*"")?\)", m => $@"\href{{{UrlArg(m.Groups[2].Value)}}}{{{m.Groups[1].Value}}}");
+        s = Regex.Replace(s, @"<(https?://[^>\s]+)>", m => $@"\url{{{UrlArg(m.Groups[1].Value)}}}");
         s = Regex.Replace(s, @"!\[([^\]]*)\]\(([^)\s]+)\)", m => $@"\href{{{m.Groups[2].Value}}}{{{(m.Groups[1].Value.Length > 0 ? m.Groups[1].Value : "image")}}}");
         var links = new List<string>();
         s = Regex.Replace(s, @"\\(?:href|url)\{[^{}]*\}", m => { links.Add(m.Value); return $"\u0001{links.Count - 1}\u0001"; });
@@ -274,4 +276,7 @@ public static class MarkdownTextParser
         s = Regex.Replace(s, @"\\([*_\[\]#+!>`|])", "$1");
         return Regex.Replace(s, "\u0001(\\d+)\u0001", m => links[int.Parse(m.Groups[1].Value)]);
     }
+
+    /// <summary>A URL as a \href or \url argument: # and % escaped (once), the rest as written.</summary>
+    internal static string UrlArg(string url) => Regex.Replace(url, @"(?<!\\)([#%])", @"\$1");
 }

@@ -76,6 +76,9 @@ public class PasteMarkdownImportTests : IntegrationTestBase
     [InlineData(@"snake_case_name stays", @"snake_case_name stays")]
     [InlineData(@"An escaped \*star\* and <https://example.org>.", @"An escaped *star* and \url{https://example.org}.")]
     [InlineData(@"As in Section~\ref{sec:a}.", @"As in Section~\ref{sec:a}.")]
+    // #64 row 5 (11 Nov 2026): a page's anchor broke the compile; # and % are escaped in a link's address.
+    [InlineData(@"Tables <https://www.markdownguide.org/extended-syntax/#tables>", @"Tables \url{https://www.markdownguide.org/extended-syntax/\#tables}")]
+    [InlineData(@"[the guide](https://x.org/a%20b#c)", @"\href{https://x.org/a\%20b\#c}{the guide}")]
     public void Inline_marks_take_Lilias_form(string markdown, string lilia) =>
         MarkdownTextParser.Inline(markdown).Should().Be(lilia);
 
