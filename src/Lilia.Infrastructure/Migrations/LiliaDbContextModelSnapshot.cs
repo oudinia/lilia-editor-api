@@ -147,7 +147,7 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.ToTable("admin_actions", null, t =>
                         {
-                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status','two_step_off')");
+                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status','two_step_off','operation_weight')");
                         });
                 });
 
@@ -5831,15 +5831,25 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.Property<string>("Kind")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
                         .HasColumnName("kind");
+
+                    b.Property<int>("Points")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("points");
 
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("source");
+
+                    b.Property<int?>("Units")
+                        .HasColumnType("integer")
+                        .HasColumnName("units");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -5849,14 +5859,73 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Kind", "CreatedAt")
+                        .HasDatabaseName("ix_operations_kind_time");
+
                     b.HasIndex("UserId", "CreatedAt")
                         .HasDatabaseName("ix_operations_user_time");
 
                     b.ToTable("operations", null, t =>
                         {
-                            t.HasCheckConstraint("ck_operation_kind", "kind IN ('export')");
-
                             t.HasCheckConstraint("ck_operation_source", "source IN ('screens','connector')");
+                        });
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.OperationKind", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("code");
+
+                    b.Property<bool>("Active")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("active");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("label");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer")
+                        .HasColumnName("points");
+
+                    b.Property<int?>("PointsPerUnit")
+                        .HasColumnType("integer")
+                        .HasColumnName("points_per_unit");
+
+                    b.Property<string>("UnitName")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("unit_name");
+
+                    b.Property<int?>("UnitSize")
+                        .HasColumnType("integer")
+                        .HasColumnName("unit_size");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("operation_kinds", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_operation_kind_category", "category IN ('help','read','edit','document','check','export','import','ai')");
+
+                            t.HasCheckConstraint("ck_operation_kind_points", "points >= 0 AND (points_per_unit IS NULL OR (points_per_unit >= 0 AND unit_size > 0))");
                         });
                 });
 
@@ -9053,6 +9122,12 @@ namespace Lilia.Infrastructure.Migrations
 
             modelBuilder.Entity("Lilia.Core.Entities.Operation", b =>
                 {
+                    b.HasOne("Lilia.Core.Entities.OperationKind", null)
+                        .WithMany()
+                        .HasForeignKey("Kind")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Lilia.Core.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")

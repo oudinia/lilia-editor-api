@@ -76,6 +76,33 @@ public sealed class ConnectorAllowance(
         if (userId is not null && allowance is not null && request.Params is { } p
             && await allowance.UseAsync(userId, p.Name, ct) is { } refusal)
             return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = refusal }] };
-        return await next(request, ct);
+        var result = await next(request, ct);
+        // Every connector action is an operation, weighted by its kind (11 Nov 2026); a refused or failed one isn't.
+        if (userId is not null && !Failed(result) && request.Params is { } call
+            && OperationLog.ConnectorCode(call.Name, WithBody(call)) is { } code
+            && request.Services?.GetService<OperationLog>() is { } operations)
+            await operations.RecordAsync(userId, DocumentIdOf(call), code, "connector");
+        return result;
     };
+
+    /// <summary>A tool error, or a reply whose JSON says "error" (a document the author can't open): not counted.</summary>
+    internal static bool Failed(CallToolResult result)
+    {
+        if (result.IsError == true) return true;
+        if (result.Content is not { Count: > 0 } || result.Content[0] is not TextContentBlock { Text: { } text }) return false;
+        try
+        {
+            using var json = JsonDocument.Parse(text);
+            return json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("error", out _);
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static bool WithBody(CallToolRequestParams call) =>
+        call.Arguments?.TryGetValue("lml", out var lml) == true && lml.ValueKind == System.Text.Json.JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(lml.GetString());
+
+    private static Guid? DocumentIdOf(CallToolRequestParams call) =>
+        call.Arguments?.TryGetValue("documentId", out var id) == true && id.ValueKind == System.Text.Json.JsonValueKind.String
+        && Guid.TryParse(id.GetString(), out var g) ? g : null;
 }

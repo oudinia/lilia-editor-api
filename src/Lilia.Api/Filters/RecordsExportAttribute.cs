@@ -37,7 +37,8 @@ public sealed class RecordsExportAttribute(string format) : TypeFilterAttribute(
             var userId = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userId is null) return;
             var docId = context.RouteData.Values.TryGetValue("docId", out var raw) && Guid.TryParse(raw?.ToString(), out var id) ? id : (Guid?)null;
-            await operations.RecordExportAsync(userId, docId, format, "screens");
+            var accessible = format == "pdf" && bool.TryParse(request.Query["accessible"], out var a) && a;
+            await operations.RecordExportAsync(userId, docId, format, "screens", accessible);
         }
     }
 }
