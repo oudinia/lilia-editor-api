@@ -89,7 +89,7 @@ public sealed class OperationLog(LiliaDbContext db, ILogger<OperationLog> logger
         "add_block" or "edit_block" or "remove_block" or "reorder_blocks" or "set_title"
             or "set_document_settings" or "set_venue" => "edit.small",
         "create_document" => withBody ? "document.write" : "document.create",
-        "apply_lml" => "document.write",
+        "apply_lml" or "paste_content" => "document.write",
         "check_document" => "check",
         "import_document" => "import",
         _ => null,

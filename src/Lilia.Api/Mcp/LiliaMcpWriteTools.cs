@@ -162,6 +162,16 @@ public sealed class LiliaMcpWriteTools(
         [Description("Date, e.g. 'October 2026' or '\\\\today'.")] string? date = null) =>
         WriteAsync(documentId, "set_title", new() { ["title"] = title, ["author"] = author, ["date"] = date });
 
+    // Paste → LaTeX, phase 3 (11 Nov 2026): move a paper over section by section, each one checked.
+    [McpServerTool(Name = "paste_content", Title = "Paste text into a document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Paste any text into a document where asked: LaTeX (a fragment or a whole paper), Markdown or plain text, or Lilia text. Lilia reads it as its Import → Paste does, adds the blocks after afterId (or at the end), checks that the document still compiles, and returns the new block ids, the verdict (problems on the pasted blocks) and the LaTeX of what was pasted. The way to move a paper over section by section: paste a section, read the verdict, fix with edit_block, paste the next after the last block added. The rest of the document and its settings are left as they are.")]
+    public Task<object> PasteContent(
+        [Description("The document id.")] string documentId,
+        [Description("The text to paste.")] string content,
+        [Description("AUTO (default), LATEX, MARKDOWN or LML.")] string? format = null,
+        [Description("Insert after this block id (from get_outline or a previous paste); omit to add at the end.")] string? afterId = null) =>
+        WriteAsync(documentId, "paste_content", new() { ["content"] = content, ["format"] = format, ["afterId"] = afterId });
+
     [McpServerTool(Name = "apply_lml", Title = "Rewrite the whole document", Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Replace the WHOLE document body with LML, Lilia's block markup, in one step (for rewrites; prefer edit_block for small changes). Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography; bodies indented 2 spaces. The version saved before can restore the old text.")]
     public Task<object> ApplyLml(

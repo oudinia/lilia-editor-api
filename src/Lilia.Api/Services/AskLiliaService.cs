@@ -1023,6 +1023,16 @@ public sealed partial class AskLiliaService : IAskLiliaService
                     + "page setup it finds (font size, paper, orientation, columns and gap, geometry margins, line spacing, paragraph indent, "
                     + "\\pagenumbering, fancyhdr header/footer slots, font packages, and the macros as the custom preamble). Prefer this to converting a whole "
                     + ".tex to LML by hand. The reply lists settingsApplied and notApplied: tell the author what could not be carried."));
+            tools.Add(AIFunctionFactory.Create(
+                ([Description("The text to paste: LaTeX (a fragment or a whole paper), Markdown or plain text, or Lilia text (LML).")] string content,
+                 [Description("AUTO (default: Lilia reads the format), LATEX, MARKDOWN or LML.")] string? format = null,
+                 [Description("Insert after this block id (from get_outline); omit to add at the end.")] string? afterId = null)
+                    => PasteContentAsync(live, docGuid, userId, content, format, afterId, changed),
+                name: "paste_content",
+                description: "Paste any text into a document where asked (paste → LaTeX, phase 3): Lilia reads it as Import → Paste does (LaTeX, "
+                    + "Markdown, Lilia text), adds the blocks after afterId or at the end, checks that the document still compiles, and returns the new "
+                    + "block ids, the verdict with any problem on the pasted blocks, and the LaTeX of what was pasted. The way to move a paper over section "
+                    + "by section; the rest of the document and its settings are left as they are."));
         }
         return tools;
     }
@@ -1079,6 +1089,97 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// settings dialog uses. Settings go first so the macros are in place when
     /// the equation blocks are normalised.
     /// </summary>
+    /// <summary>
+    /// paste_content (paste → LaTeX, phase 3, 11 Nov 2026): the text is read as Import → Paste reads it (<see cref="PastedText"/>),
+    /// its blocks go in after <paramref name="afterId"/> (or at the end) in one versioned write, and the document is checked.
+    /// The reply carries the new blocks, the verdict (problems on the pasted blocks, and any error) and their LaTeX.
+    /// </summary>
+    private async Task<object> PasteContentAsync(
+        LiveDocument live, Guid docId, string userId, string content, string? format, string? afterId, List<string> changed)
+    {
+        content ??= "";
+        if (string.IsNullOrWhiteSpace(content)) return new { error = "Nothing to paste: content is empty." };
+        if (content.Length > MaxImportLatexChars)
+            return new { error = $"The text is {content.Length} characters; the limit is {MaxImportLatexChars}. Paste it in parts (each after the last block pasted)." };
+        var f = string.IsNullOrWhiteSpace(format) ? "AUTO" : format.Trim().ToUpperInvariant();
+        if (f is not ("AUTO" or "LATEX" or "MARKDOWN" or "LML"))
+            return new { error = $"Unknown format '{format}': use AUTO, LATEX, MARKDOWN or LML.", category = "invalid" };
+
+        var pasted = await PastedText.ParseAsync(StripLatexFences(content), f, _latexParser, _lmlParser);
+        // A pasted title would sit in the middle of the document; the title is set_title's.
+        var blocks = pasted.Blocks.Where(b => !string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (blocks.Count == 0) return new { error = "Lilia found no content in that text. Nothing was changed." };
+
+        var fresh = await _documentService.GetDocumentAsync(docId, userId)
+            ?? throw new InvalidOperationException("document not found or no access");
+        var existing = (fresh.Blocks ?? new List<BlockDto>()).OrderBy(b => b.SortOrder).ToList();
+        var at = existing.Count;
+        if (!string.IsNullOrWhiteSpace(afterId))
+        {
+            var i = existing.FindIndex(b => string.Equals(b.Id.ToString(), afterId.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (i < 0) return new { error = $"No block '{afterId}' in this document. Call get_outline for block ids, or omit afterId to add at the end." };
+            at = i + 1;
+        }
+
+        var newIds = blocks.Select(_ => Guid.NewGuid()).ToList();
+        var batch = new List<BatchUpdateBlockDto>();
+        var sort = 0;
+        foreach (var b in existing.Take(at)) batch.Add(new BatchUpdateBlockDto(b.Id, null, null, sort++, null, null));
+        for (var k = 0; k < blocks.Count; k++)
+            batch.Add(new BatchUpdateBlockDto(newIds[k], blocks[k].Type,
+                JsonSerializer.SerializeToElement(blocks[k].Content), sort++, null, blocks[k].Depth));
+        foreach (var b in existing.Skip(at)) batch.Add(new BatchUpdateBlockDto(b.Id, null, null, sort++, null, null));
+
+        BatchUpdateResultDto result;
+        try
+        {
+            result = await _blockService.BatchUpdateBlocksAsync(docId, batch, fresh.Version);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return new { error = "The document changed while pasting (the author saved). Nothing was changed; call paste_content again." };
+        }
+        if (live.Dto.Blocks is not null)
+        {
+            live.Dto.Blocks.Clear();
+            live.Dto.Blocks.AddRange(result.Blocks);
+        }
+        foreach (var id in newIds) changed.Add(id.ToString());
+        await _hub.Clients.Group($"doc-{docId}").SendAsync("AiBlockChanged", new { op = "replace", count = result.Blocks.Count });
+
+        var added = result.Blocks.Where(b => newIds.Contains(b.Id)).OrderBy(b => b.SortOrder).ToList();
+        var latex = string.Join("\n\n", added.Select(b => _renderService.RenderBlockToLatex(new Block
+        {
+            Id = b.Id, DocumentId = docId, Type = b.Type,
+            Content = JsonDocument.Parse(b.Content.GetRawText()), SortOrder = b.SortOrder, Depth = b.Depth,
+        })));
+
+        object verdict = new { note = "Not checked here: call check_document." };
+        if (_checker is not null && await _documentService.GetDocumentAsync(docId, userId) is { } now)
+        {
+            var check = await _checker.CheckAsync(now);
+            var mine = newIds.Select(x => x.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            verdict = new
+            {
+                compiles = check.Compiles,
+                printsCorrectly = check.PrintsCorrectly,
+                problems = check.Problems
+                    .Where(p => p.Severity == "error" || (p.BlockId is not null && mine.Contains(p.BlockId)))
+                    .Select(p => new { blockId = p.BlockId, pasted = p.BlockId is not null && mine.Contains(p.BlockId), severity = p.Severity, message = p.Message })
+                    .Take(12),
+            };
+        }
+
+        return new
+        {
+            format = pasted.Format,
+            readAsPlainText = pasted.Fallback is not null,
+            added = added.Select(b => new { id = b.Id, type = b.Type }),
+            check = verdict,
+            latex,
+        };
+    }
+
     private async Task<object> ImportLatexAsync(
         LiveDocument live, Guid docId, string userId, string text, bool replace,
         List<string> changed, Action markMetaChanged)
