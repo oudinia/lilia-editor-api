@@ -435,6 +435,9 @@ public class ExportListItem
     /// </summary>
     public List<ExportListItem>? Children { get; set; }
 
+    /// <summary>Whether <see cref="Children"/> is a numbered list; null when it is the parent's kind (API #483).</summary>
+    public bool? ChildrenOrdered { get; set; }
+
     /// <summary>A description list item's description; <see cref="Text"/> is its term.</summary>
     public List<ExportRichTextSpan>? Description { get; set; }
 }

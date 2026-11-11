@@ -1094,10 +1094,9 @@ public class LaTeXExportService : ILaTeXExportService
     /// <summary>
     /// Walks the items array recursively, emitting nested
     /// itemize/enumerate environments inside each <c>\item</c>. Nested
-    /// lists inherit the parent env (LaTeX itself permits mixing — e.g.
-    /// <c>itemize</c> inside <c>enumerate</c> — but the editor's data
-    /// model doesn't currently let users author that, mirroring the
-    /// HTML renderer's inheritance). Indentation is cosmetic.
+    /// lists inherit the parent env unless the item carries childrenOrdered
+    /// (an <c>itemize</c> inside an <c>enumerate</c>, API #483).
+    /// Indentation is cosmetic.
     /// </summary>
     private void AppendListItems(JsonElement items, string env, int depth, StringBuilder sb, List<string>? enumOptions = null)
     {
@@ -1139,7 +1138,9 @@ public class LaTeXExportService : ILaTeXExportService
                 children.ValueKind == JsonValueKind.Array &&
                 children.GetArrayLength() > 0)
             {
-                AppendListItems(children, env, depth + 1, sb);
+                // The sub-list's own kind when the item says (API #483), else the parent's env.
+                var childEnv = ListItemKind.ChildrenOrderedOrNull(item) is { } ordered ? (ordered ? "enumerate" : "itemize") : env;
+                AppendListItems(children, childEnv, depth + 1, sb);
             }
         }
         sb.AppendLine($@"{indent}\end{{{env}}}");

@@ -585,7 +585,7 @@ public class DocxExportService : IDocxExportService
         // the sub-points of an argument, gone, with no error anywhere.
         if (content.Items != null)
         {
-            AppendListItems(content.Items, numId, 0, elements);
+            AppendListItems(content.Items, numId, isOrdered, 0, elements, mainPart);
         }
 
         return elements;
@@ -598,9 +598,12 @@ public class DocxExportService : IDocxExportService
     /// item does not carry its own: a child of a level-0 item sits at level 1
     /// whether or not anyone said so. Word's numbering definition addresses
     /// nine levels, so deeper nesting is clamped rather than dropped.</para>
+    ///
+    /// <para>A sub-list of the other kind (a bullet list under a numbered point,
+    /// API #483) gets its own numbering: the bullets, or a new numbered list.</para>
     /// </summary>
     private void AppendListItems(
-        List<ExportListItem> items, int numId, int depth, List<OpenXmlElement> into)
+        List<ExportListItem> items, int numId, bool ordered, int depth, List<OpenXmlElement> into, MainDocumentPart mainPart)
     {
         foreach (var item in items)
         {
@@ -628,7 +631,10 @@ public class DocxExportService : IDocxExportService
 
             if (item.Children is { Count: > 0 })
             {
-                AppendListItems(item.Children, numId, level + 1, into);
+                if (item.ChildrenOrdered is { } childOrdered && childOrdered != ordered)
+                    AppendListItems(item.Children, childOrdered ? NewNumberedList(mainPart) : 1, childOrdered, level + 1, into, mainPart);
+                else
+                    AppendListItems(item.Children, numId, ordered, level + 1, into, mainPart);
             }
         }
     }

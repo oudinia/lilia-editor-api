@@ -536,14 +536,13 @@ public class TypstRenderService : ITypstRenderService
         var indent = new string(' ', depth * 2);
         sb.AppendLine($"{indent}{marker} {ProcessTypstText(itemText)}");
 
-        // Nested children
-        if (item.ValueKind == JsonValueKind.Object &&
-            item.TryGetProperty("children", out var children) &&
-            children.ValueKind == JsonValueKind.Array)
+        // Nested children, with their own kind when the item says (API #483).
+        if (ListItemKind.TryChildren(item, out var children))
         {
+            var childMarker = ListItemKind.ChildrenOrdered(item, marker == "+") ? "+" : "-";
             foreach (var child in children.EnumerateArray())
             {
-                RenderListItemToTypst(child, marker, sb, depth + 1);
+                RenderListItemToTypst(child, childMarker, sb, depth + 1);
             }
         }
     }
