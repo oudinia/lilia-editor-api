@@ -18,6 +18,12 @@ public interface IDocumentCheckService
     /// <summary>Check the document as it is saved now. A version already checked is not compiled again.</summary>
     Task<DocumentCheck> CheckAsync(Lilia.Core.DTOs.DocumentDto d, CancellationToken ct = default);
 
+    /// <summary>
+    /// Compile a LaTeX source that belongs to no saved document (the paste preview, 11 Nov 2026) and judge it the
+    /// same way. Block ids in the verdict are the ones in the source's <c>% block:{id}</c> markers.
+    /// </summary>
+    Task<DocumentCheck> CheckSourceAsync(string source, string? engine = null, CancellationToken ct = default);
+
     /// <summary>Wait (up to <paramref name="max"/>) for a check of this document that is still compiling.</summary>
     Task WaitForRunningAsync(Guid documentId, TimeSpan max);
 }
@@ -71,6 +77,48 @@ public sealed partial class DocumentCheckService(
         }
     }
 
+    public async Task<DocumentCheck> CheckSourceAsync(string source, string? engine = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var use = LiliaMcpTools.EngineFor(source, engine);
+            var result = await latex.ValidateAsync(source, use);
+            return Judge(null, source, use, result);
+        }
+        catch (Exception ex) when (Failure(ex, null) is { } failed)
+        {
+            return failed;
+        }
+    }
+
+    /// <summary>A compile that could not give a verdict, said plainly (MCP-45): refused, too long, or failed.</summary>
+    private DocumentCheck? Failure(Exception ex, Guid? docId)
+    {
+        switch (ex)
+        {
+            case Lilia.Engines.TexSafety.UnsafeLatexException unsafeTex:
+            {
+                var message = $"Lilia refuses to compile this LaTeX: {unsafeTex.Message}";
+                return new DocumentCheck(new { compiles = false, category = "refused", error = message }, false, false,
+                    [new BlockProblem(null, null, "error", message)], false);
+            }
+            case TimeoutException or TaskCanceledException or OperationCanceledException:
+            {
+                logger.LogWarning(ex, "[Check] check timed out for {DocId}", docId);
+                const string message = "The compile took too long and was stopped. A loop or a very heavy figure is the usual cause.";
+                return new DocumentCheck(new { compiles = false, category = "timeout", error = message }, false, false,
+                    [new BlockProblem(null, null, "error", message)], false);
+            }
+            default:
+            {
+                logger.LogWarning(ex, "[Check] check failed for {DocId}", docId);
+                var message = $"Lilia could not compile this {(docId is null ? "LaTeX" : "document")}: {ex.Message}";
+                return new DocumentCheck(new { category = "error", error = message }, null, false,
+                    [new BlockProblem(null, null, "error", message)], false);
+            }
+        }
+    }
+
     private string EditorUrl(Guid id) => $"{McpOAuth.PublicOrigin(config)}/d/{id}";
 
     private async Task<DocumentCheck> CompileAsync(Lilia.Core.DTOs.DocumentDto d)
@@ -94,25 +142,9 @@ public sealed partial class DocumentCheckService(
             return check;
         }
         // MCP-45: say what happened. A refusal repeats, so "try again" was wrong for it.
-        catch (Lilia.Engines.TexSafety.UnsafeLatexException ex)
+        catch (Exception ex) when (Failure(ex, d.Id) is { } failed)
         {
-            var message = $"Lilia refuses to compile this LaTeX: {ex.Message}";
-            return new DocumentCheck(new { compiles = false, category = "refused", error = message }, false, false,
-                [new BlockProblem(null, null, "error", message)], false);
-        }
-        catch (Exception ex) when (ex is TimeoutException or TaskCanceledException or OperationCanceledException)
-        {
-            logger.LogWarning(ex, "[Check] check_document timed out for {DocId}", d.Id);
-            const string message = "The compile took too long and was stopped. A loop or a very heavy figure is the usual cause.";
-            return new DocumentCheck(new { compiles = false, category = "timeout", error = message }, false, false,
-                [new BlockProblem(null, null, "error", message)], false);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "[Check] check_document failed for {DocId}", d.Id);
-            var message = $"Lilia could not compile this document: {ex.Message}";
-            return new DocumentCheck(new { category = "error", error = message }, null, false,
-                [new BlockProblem(null, null, "error", message)], false);
+            return failed;
         }
     }
 
@@ -136,7 +168,7 @@ public sealed partial class DocumentCheckService(
 
     private static string? ErrorOf(DocumentCheck c) => c.Problems.FirstOrDefault(p => p.Severity == "error")?.Message;
 
-    private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto d, string source, string engine, LatexValidationResult result,
+    private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto? d, string source, string engine, LatexValidationResult result,
         Lilia.Engines.Publishers.ComplianceReport? publisher = null)
     {
         // T1 (MCP-27/61, MCP-08): judge references and citations from the LaTeX actually emitted,
@@ -175,7 +207,7 @@ public sealed partial class DocumentCheckService(
             .ToList();
 
         var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0;
-        checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, result.Valid, prints, result.Error));
+        if (d is not null) checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, result.Valid, prints, result.Error));
 
         // Per block: what is wrong, where (15 Oct, for Ask Lilia's repair loop).
         var problems = new List<BlockProblem>();
@@ -224,7 +256,7 @@ public sealed partial class DocumentCheckService(
                     : wide.Count > 0
                         ? "It compiles, but a table is wider than its column and runs into the margin (wideTables)."
                         : null,
-            url = EditorUrl(d.Id),
+            url = d is null ? null : EditorUrl(d.Id),
             // What the publisher would reject or query, beside whether it compiles. Not in problems:
             // most are the author's to supply (an abstract, keywords, a country), not LaTeX to repair.
             publisher = publisher is null ? null : new

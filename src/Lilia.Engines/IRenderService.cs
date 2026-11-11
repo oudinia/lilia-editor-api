@@ -12,6 +12,8 @@ public interface IRenderService
     Task<string> RenderPageAsync(Guid documentId, int page);
     Task<string> RenderToHtmlAsync(Guid documentId);
     Task<string> RenderToLatexAsync(Guid documentId);
+    /// <summary>The full LaTeX of a document already in memory, with its blocks (the paste preview: no saved document).</summary>
+    string RenderToLatex(Lilia.Core.Entities.Document doc, IReadOnlySet<Guid>? longtableBlocks = null);
 
     /// <summary>
     /// <paramref name="longtableBlocks"/> names table blocks to emit as

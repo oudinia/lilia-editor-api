@@ -826,6 +826,8 @@ builder.Services.AddSingleton<Lilia.Api.Mcp.ConnectorTransfers>();
 builder.Services.AddSingleton<Lilia.Api.Mcp.CheckMemoStore>();
 // The compile check behind check_document, in the connector and in Ask Lilia (15 Oct).
 builder.Services.AddScoped<IDocumentCheckService, DocumentCheckService>();
+// Paste → LaTeX, phase 2 (11 Nov 2026): blocks, LaTeX and the verdict before anything is made.
+builder.Services.AddScoped<IPastePreviewService, PastePreviewService>();
 builder.Services.AddScoped<IKbSeeder, KbSeeder>();
 
 // Register Lilia.Import services for document conversion. DocxParser
