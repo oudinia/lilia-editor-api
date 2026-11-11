@@ -1675,7 +1675,8 @@ public class DocumentExportService : IDocumentExportService
         var close = text.IndexOf(fence, i + fence.Length, StringComparison.Ordinal);
         if (close <= i + fence.Length) return false;
         var body = text[(i + fence.Length)..close];
-        if (body.Contains('\n') || (fence == "^" && (body.Contains(' ') || (close + 1 < text.Length && text[close + 1] == '^')))) return false;
+        // A body holding a LaTeX command isn't a superscript: pasted LaTeX "mc^2 + \frac12 mv^2" has two carets (11 Nov).
+        if (body.Contains('\n') || (fence == "^" && (body.Contains(' ') || body.Contains('\\') || (close + 1 < text.Length && text[close + 1] == '^')))) return false;
         inner = body;
         return true;
     }

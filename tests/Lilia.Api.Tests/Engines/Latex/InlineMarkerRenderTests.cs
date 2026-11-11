@@ -178,6 +178,16 @@ public class InlineMarkerRenderTests
 
     #region LML markers (sup/sub/smallcaps/strike)
 
+    // Raw LaTeX pasted into a paragraph has carets that aren't Lilia's superscript marks: "mc^2 + \frac12 mv^2" printed
+    // mc\textsuperscript{2 + \frac{1}{2}mv}2 (the launch bot's #59, 11 Nov 2026). A body holding a command isn't one.
+    [Fact]
+    public void Carets_around_a_latex_command_are_not_a_superscript()
+    {
+        var latex = Render(@"E = mc^2 + \frac12 mv^2 for a moving mass.");
+        latex.Should().NotContain(@"\textsuperscript");
+        Render("the 1^st^ of May").Should().Contain(@"\textsuperscript{st}", "a real superscript still is one");
+    }
+
     [Theory]
     [InlineData("x^2^", @"\textsuperscript{2}")]
     [InlineData("H%%2%%O", @"\textsubscript{2}")]
