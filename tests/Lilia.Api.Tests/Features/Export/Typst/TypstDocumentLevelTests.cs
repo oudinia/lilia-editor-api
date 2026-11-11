@@ -83,6 +83,7 @@ public class TypstDocumentLevelTests
             "#set page(width: 14cm, height: auto)\nSee @strang2016.\n#bibliography(\"refs.bib\")\n", ("refs.bib", bib));
         text.Should().NotBeNull($"typst said: {error}");
         text!.Should().Contain("Introduction to Linear Algebra");
+        text.Should().NotContain("..", "the style adds the closing period itself (#52's retest, 11 Nov)");
     }
 
     // ── the year ─────────────────────────────────────────────────────────

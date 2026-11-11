@@ -38,7 +38,8 @@ public static class BibTeXSerializer
     /// A reference written as text (<c>@cite[key] G. Strang — Introduction to Linear Algebra, 2016.</c>) is an entry
     /// holding only <c>note</c>. BibTeX's plain style prints the note; Typst's styles print nothing for it, so the
     /// Typst PDF listed "[1]" alone (the launch bot's #52, 10 Nov 2026). For Typst only, the text is the title, which
-    /// every style prints.
+    /// every style prints. Its closing period goes, since the style adds its own: "2016.." otherwise (#52's retest,
+    /// 11 Nov).
     /// </summary>
     private static BibliographyEntry TypstReadableText(BibliographyEntry entry)
     {
@@ -49,6 +50,8 @@ public static class BibTeXSerializer
             if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(prop.Value.GetString()))
                 fields[prop.Name] = prop.Value.GetString()!;
         if (fields.Count != 1 || !fields.TryGetValue("note", out var text)) return entry;
+        text = text.TrimEnd();
+        if (text.EndsWith('.') && !text.EndsWith("..")) text = text[..^1];
 
         return new BibliographyEntry
         {
