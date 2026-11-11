@@ -273,12 +273,13 @@ public partial class RenderService
         var idx = 0;
         foreach (var item in items.EnumerateArray())
         {
-            var text = item.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+            // A string item among objects is a plain item (children are strings unless they nest).
+            var text = ListItemKind.Text(item);
             var marker = ordered ? $"{start + idx}." : "-";
             sb.AppendLine($"{indent}{marker} {text}");
-            if (item.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array && children.GetArrayLength() > 0)
+            if (ListItemKind.TryChildren(item, out var children))
             {
-                AppendRichListItemsLml(sb, children, ordered, depth + 1, 1);
+                AppendRichListItemsLml(sb, children, ListItemKind.ChildrenOrdered(item, ordered), depth + 1, 1);
             }
             idx++;
         }

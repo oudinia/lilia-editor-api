@@ -316,11 +316,18 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         return content;
     }
 
-    /// <summary>A list item: its text, or {text, children} when a list is nested in it.</summary>
-    private static object ListItemContent(ImportListItem item) =>
-        item.Children.Count == 0
-            ? item.Text
-            : new Dictionary<string, object> { ["text"] = item.Text, ["children"] = item.Children.Select(ListItemContent).ToList() };
+    /// <summary>
+    /// A list item: its text, or {text, children} when a list is nested in it, with
+    /// childrenOrdered when that list is of the other kind (a bullet list under a numbered
+    /// point, API #483).
+    /// </summary>
+    private static object ListItemContent(ImportListItem item)
+    {
+        if (item.Children.Count == 0) return item.Text;
+        var content = new Dictionary<string, object> { ["text"] = item.Text, ["children"] = item.Children.Select(ListItemContent).ToList() };
+        if (item.Children[0].IsNumbered != item.IsNumbered) content["childrenOrdered"] = item.Children[0].IsNumbered;
+        return content;
+    }
 
     internal static string DocumentName(string latexTitle) =>
         Lilia.Engines.TitleAuthors.Parse(latexTitle) is { Count: > 0 } parsed

@@ -574,11 +574,13 @@ public partial class RenderService : IRenderService
         // Render nested list if children present
         if (children.HasValue)
         {
-            var nestedTag = parentIsOrdered ? "ol" : "ul";
+            // The sub-list's own kind when the item says (API #483), else the parent's.
+            var nestedOrdered = ListItemKind.ChildrenOrdered(item, parentIsOrdered);
+            var nestedTag = nestedOrdered ? "ol" : "ul";
             html.Append($"<{nestedTag}>");
             foreach (var child in children.Value.EnumerateArray())
             {
-                RenderListItemToHtml(child, parentIsOrdered, html);
+                RenderListItemToHtml(child, nestedOrdered, html);
             }
             html.Append($"</{nestedTag}>");
         }
@@ -2716,7 +2718,6 @@ public partial class RenderService : IRenderService
     private void RenderListItemToLatex(JsonElement item, string parentEnv, StringBuilder sb, int depth = 1)
     {
         var isDescription = parentEnv == "description";
-        var parentIsOrdered = parentEnv == "enumerate";
         // Support both string items and object items with text/richText/children properties
         string itemText;
         JsonElement? children = null;
@@ -2780,11 +2781,9 @@ public partial class RenderService : IRenderService
             sb.AppendLine($@"\item {GuardLeadingBracket(ProcessLatexText(itemText))}");
         }
 
-        // Render nested list if children present. Nested lists inherit
-        // the parent's env (mirroring how the HTML renderer + editor
-        // model treat nesting — a description list cannot nest a
-        // bulleted list directly today; that would need explicit
-        // per-child kind, which the model doesn't carry yet).
+        // Render nested list if children present. A nested list is of the
+        // parent's env unless the item carries childrenOrdered, its own kind
+        // (a bullet list under a numbered point, API #483, 11 Nov).
         if (children.HasValue)
         {
             // LaTeX nests lists four deep; a fifth level failed the compile ("Too deeply nested",
@@ -2796,7 +2795,9 @@ public partial class RenderService : IRenderService
             }
             else
             {
-                var nestedEnv = parentEnv;
+                var nestedEnv = ListItemKind.ChildrenOrderedOrNull(item) is { } ordered
+                    ? (ordered ? "enumerate" : "itemize")
+                    : parentEnv;
                 sb.AppendLine($@"\begin{{{nestedEnv}}}");
                 foreach (var child in children.Value.EnumerateArray())
                 {
@@ -2805,7 +2806,6 @@ public partial class RenderService : IRenderService
                 sb.AppendLine($@"\end{{{nestedEnv}}}");
             }
         }
-        _ = parentIsOrdered; // retained for future per-kind logic
     }
 
     private string RenderBlockquoteToLatex(JsonElement content)

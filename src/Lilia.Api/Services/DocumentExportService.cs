@@ -891,6 +891,7 @@ public class DocumentExportService : IDocumentExportService
             children.GetArrayLength() > 0)
         {
             exportItem.Children = new List<ExportListItem>();
+            exportItem.ChildrenOrdered = ListItemKind.ChildrenOrderedOrNull(item);
             foreach (var child in children.EnumerateArray())
             {
                 exportItem.Children.Add(ConvertListItem(child));
