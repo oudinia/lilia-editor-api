@@ -116,6 +116,11 @@ public class TableColumnFormatTests
         // "l" is what every untouched column stores, so it is not a choice.
         Preview(new { headers = ModelAcc, rows, columnAlign = new[] { "l", "l" } })
             .Should().Contain(@"\begin{tabular}{lS[table-format=2.1, mode=text]}");
+        // "left" is the dialog's explicit Left (#71, 11 Nov 2026): the author's choice, left as asked.
+        Preview(new { headers = ModelAcc, rows, columnAlign = new[] { "", "left" } })
+            .Should().Contain(@"\begin{tabular}{ll}").And.NotContain("S[");
+        Preview(new { headers = ModelAcc, rows, columnAlign = new[] { "", "right" } })
+            .Should().Contain(@"\begin{tabular}{lr}");
     }
 
     [Fact]

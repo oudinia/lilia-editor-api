@@ -169,7 +169,9 @@ public static class TableColumnFormat
         {
             var align = (StringAt(content, alignProp, c) ?? "").Trim().ToLowerInvariant();
             var explicitDecimal = align is "decimal" or "d" or "s";
-            var auto = align is "" or "l" or "left" or "auto";
+            // "l" is what every untouched column stored, so it still means "not chosen". "left" is the author's own
+            // choice (the table dialog's Left, the launch bot's #71, 11 Nov 2026): no automatic decimal alignment.
+            var auto = align is "" or "l" or "auto";
             var unitRaw = StringAt(content, "columnUnit", c)?.Trim();
             // A unit moves into the header, so without a header there is nowhere for it to go.
             var unit = hasHeaders && !string.IsNullOrEmpty(unitRaw) ? unitRaw : null;
