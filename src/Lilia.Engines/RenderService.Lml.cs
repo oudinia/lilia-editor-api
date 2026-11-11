@@ -328,6 +328,23 @@ public partial class RenderService
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var caption = content.TryGetProperty("caption", out var cap) ? cap.GetString() ?? "" : "";
         var code = content.TryGetProperty("code", out var cd) ? cd.GetString() ?? "" : "";
+        // The editor writes lines, not code: they were dropped, and the algorithm came back empty (#52's retest,
+        // 11 Nov 2026). Plain lines, two spaces a level, a comment after "//": what the LML reader reads back.
+        if (content.TryGetProperty("lines", out var ls) && ls.ValueKind == JsonValueKind.Array && ls.GetArrayLength() > 0)
+        {
+            var written = new List<string>();
+            foreach (var l in ls.EnumerateArray())
+            {
+                if (l.ValueKind != JsonValueKind.Object) continue;
+                string S(string n) => l.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+                var indent = l.TryGetProperty("indent", out var iv) && iv.ValueKind == JsonValueKind.Number ? Math.Max(0, iv.GetInt32()) : 0;
+                var line = $"{S("keyword")} {S("text")}".Trim();
+                if (S("comment").Trim() is { Length: > 0 } comment) line = (line + "  // " + comment).TrimStart();
+                // Under the block's own two-space indent, which the reader takes off before reading the nesting.
+                if (line.Length > 0) written.Add(new string(' ', 2 + indent * 2) + line);
+            }
+            if (written.Count > 0) code = string.Join("\n", written);
+        }
         var attrs = BuildAttrs(
             ("title", string.IsNullOrEmpty(title) ? null : title),
             ("caption", string.IsNullOrEmpty(caption) ? null : caption),
