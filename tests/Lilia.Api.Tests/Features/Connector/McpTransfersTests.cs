@@ -131,7 +131,7 @@ public class McpTransfersTests : IntegrationTestBase
         imported.OwnerId.Should().Be("mcpx_appimport");
         imported.HeadingNumbering.Should().Be(2, "the Word file numbered its headings to level 2");
 
-        (await CallAsync(app, "import_document", new { filename = "x.pdf", content = "abc" })).GetProperty("error").GetString().Should().Contain(".tex, .docx and .lml");
+        (await CallAsync(app, "import_document", new { filename = "x.pdf", content = "abc" })).GetProperty("error").GetString().Should().Contain(".tex, .docx, .md and .lml");
         (await CallAsync(app, "import_document", new { filename = "x.docx", content = "not base64!" })).GetProperty("error").GetString().Should().Contain("base64");
     }
 

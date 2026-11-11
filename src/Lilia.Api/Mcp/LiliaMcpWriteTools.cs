@@ -299,16 +299,16 @@ public sealed class LiliaMcpWriteTools(
     private const int ImportMaxChars = 14_000_000;
 
     [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file you have as a new Lilia document, in one call: .tex or .lml as text, .docx as base64 (up to 10 MB). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
+    [Description("Import a file you have as a new Lilia document, in one call: .tex, .md or .lml as text, .docx as base64 (up to 10 MB). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
-        [Description("The file name, e.g. paper.tex, thesis.docx, notes.lml. Its extension gives the format unless format is set.")] string filename,
-        [Description("The file: its text for .tex and .lml, base64 for .docx (a data: prefix is fine).")] string content,
-        [Description("Optional: tex, docx or lml.")] string? format = null)
+        [Description("The file name, e.g. paper.tex, thesis.docx, notes.md, notes.lml. Its extension gives the format unless format is set.")] string filename,
+        [Description("The file: its text for .tex, .md and .lml, base64 for .docx (a data: prefix is fine).")] string content,
+        [Description("Optional: tex, docx, md or lml.")] string? format = null)
     {
         // MCP-114 (run 3b): an app holding the file could only hand the author a drop page, and an
         // unattended agent couldn't import at all.
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
-        if (string.IsNullOrWhiteSpace(content)) return new { error = "content is empty: give the file's text (.tex, .lml) or base64 (.docx).", category = "invalid" };
+        if (string.IsNullOrWhiteSpace(content)) return new { error = "content is empty: give the file's text (.tex, .md, .lml) or base64 (.docx).", category = "invalid" };
         if (content.Length > ImportMaxChars) return new { error = "The file is over 10 MB. Use start_import: the author drops it on Lilia's page.", category = "invalid" };
         var name = string.IsNullOrWhiteSpace(filename) ? "import" : Path.GetFileName(filename.Trim());
         var kind = ((format ?? Path.GetExtension(name)).Trim().TrimStart('.').ToLowerInvariant()) switch
@@ -316,9 +316,10 @@ public sealed class LiliaMcpWriteTools(
             "tex" or "latex" => "LATEX",
             "docx" or "word" => "DOCX",
             "lml" => "LML",
+            "md" or "markdown" or "txt" => "MARKDOWN",
             _ => null,
         };
-        if (kind is null) return new { error = "Lilia imports .tex, .docx and .lml files: give one of these extensions, or format.", category = "invalid" };
+        if (kind is null) return new { error = "Lilia imports .tex, .docx, .md and .lml files: give one of these extensions, or format.", category = "invalid" };
         if (kind == "DOCX")
         {
             var comma = content.IndexOf(',');

@@ -4,6 +4,7 @@ using Lilia.Core.DTOs;
 using Lilia.Core.Entities;
 using Lilia.Import.Interfaces;
 using Lilia.Import.Models;
+using Lilia.Import.Services;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Lilia.Engines;
@@ -301,6 +302,11 @@ public class JobService : IJobService
         // An import uses one of the month's imports and makes a document: both need room.
         if (_entitlements is not null) await _entitlements.EnsureCanImportAsync(userId);
 
+        // Paste anything (lilia-launch-bot #60, 10 Nov 2026): AUTO reads LaTeX, Lilia text or Markdown
+        // (plain text included) from the text itself.
+        if (string.Equals(request.Format, "AUTO", StringComparison.OrdinalIgnoreCase))
+            request = request with { Format = PasteFormat.Detect(request.Content) };
+
         // Calculate file size for progress tracking
         var fileSizeBytes = request.Content.Length * 3 / 4; // Approximate decoded size from base64
 
@@ -575,7 +581,7 @@ public class JobService : IJobService
                     }
                 }
             }
-            else if (request.Format.ToUpperInvariant() == "LATEX" || request.Format.ToUpperInvariant() == "LML")
+            else if (request.Format.ToUpperInvariant() is "LATEX" or "LML" or "MARKDOWN")
             {
                 // Overleaf ".zip" projects arrive base64-encoded (see
                 // ImportDialog.tsx — zip content is readAsBase64 even for
@@ -750,6 +756,26 @@ public class JobService : IJobService
                         });
                         await _context.SaveChangesAsync();
                     }
+                }
+                else if (request.Format.ToUpperInvariant() == "MARKDOWN")
+                {
+                    // Markdown or plain text: the same element → block mapping as LaTeX.
+                    var sortOrder = 0;
+                    foreach (var (blockType, blockContent) in LatexImportJobExecutor.MapElements(MarkdownTextParser.Parse(request.Content ?? "")))
+                    {
+                        _context.Blocks.Add(new Lilia.Core.Entities.Block
+                        {
+                            Id = Guid.NewGuid(),
+                            DocumentId = createdDocument.Id,
+                            Type = blockType,
+                            Content = JsonDocument.Parse(JsonSerializer.Serialize(blockContent)),
+                            SortOrder = sortOrder++,
+                            Depth = 0,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                    }
+                    await _context.SaveChangesAsync();
                 }
                 else
                 {
