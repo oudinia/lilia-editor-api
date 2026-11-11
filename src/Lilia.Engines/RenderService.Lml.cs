@@ -340,7 +340,8 @@ public partial class RenderService
                 var indent = l.TryGetProperty("indent", out var iv) && iv.ValueKind == JsonValueKind.Number ? Math.Max(0, iv.GetInt32()) : 0;
                 var line = $"{S("keyword")} {S("text")}".Trim();
                 if (S("comment").Trim() is { Length: > 0 } comment) line = (line + "  // " + comment).TrimStart();
-                if (line.Length > 0) written.Add(new string(' ', indent * 2) + line);
+                // Under the block's own two-space indent, which the reader takes off before reading the nesting.
+                if (line.Length > 0) written.Add(new string(' ', 2 + indent * 2) + line);
             }
             if (written.Count > 0) code = string.Join("\n", written);
         }
