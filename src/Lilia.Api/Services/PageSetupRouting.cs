@@ -72,6 +72,14 @@ public static class ContentRouting
             // A footnote block belongs at the end of the paragraph before it, which the LaTeX path does
             // (AttachFootnotes); the Typst writer dropped it, so the footnote was missing (10 Nov 2026).
             if (string.Equals(type, "footnote", StringComparison.OrdinalIgnoreCase)) return "footnotes";
+            // The Typst writer reads an algorithm's old code field, not the editor's lines: an algorithm written in the
+            // editor printed as an empty box (the launch bot's user guides, #66, 11 Nov 2026). The LaTeX path writes it.
+            if (string.Equals(type, "algorithm", StringComparison.OrdinalIgnoreCase)) return "algorithms";
+            // Typst's theorems carry no number: one set to Numbered printed without it (#66). Only an unnumbered one stays.
+            if (string.Equals(type, "theorem", StringComparison.OrdinalIgnoreCase)
+                && !(content.ValueKind == System.Text.Json.JsonValueKind.Object
+                     && content.TryGetProperty("numbered", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.False))
+                return "numbered theorems";
             foreach (var text in Strings(content))
             {
                 if (LatexOnly.IsMatch(text)) return $"LaTeX or Lilia marks in a {type} block";
