@@ -20,6 +20,11 @@ public class PdfImportIntegrationTests : IntegrationTestBase
     public override async Task InitializeAsync()
     {
         await SeedUserAsync(_userId);
+        // PDF import is part of Pro (11 Nov 2026): a Free account is refused before the parser runs.
+        await using var db = CreateDbContext();
+        var pro = db.Plans.Single(p => p.Slug == "pro");
+        db.UserPlans.Add(new Lilia.Core.Entities.UserPlan { Id = Guid.NewGuid(), UserId = _userId, PlanId = pro.Id, Status = "active", StartedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
     }
 
     [Fact]

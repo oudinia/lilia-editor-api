@@ -19,6 +19,7 @@ public class JobService : IJobService
     private readonly IDocxImportService _docxImportService;
     private readonly IPdfParser? _pdfParser;
     private readonly IEntitlementService? _entitlements;
+    private readonly OperationLog? _operations;
     private readonly ILatexParser _latexParser;
     private readonly ILmlTextParser _lmlTextParser;
     private readonly Lilia.Import.Services.ILatexProjectExtractor _latexProjectExtractor;
@@ -42,9 +43,11 @@ public class JobService : IJobService
         Lilia.Core.Interfaces.IStorageService storage,
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null,
-        IEntitlementService? entitlements = null)
+        IEntitlementService? entitlements = null,
+        OperationLog? operations = null)
     {
         _entitlements = entitlements;
+        _operations = operations;
         _context = context;
         _documentService = documentService;
         _renderService = renderService;
@@ -496,6 +499,14 @@ public class JobService : IJobService
 
                 // Decode base64 and save to temp file
                 var bytes = Convert.FromBase64String(request.Content);
+
+                // PDF import is paid (the owner, 11 Nov 2026): each page is read by Mathpix, at a price. The plan is
+                // checked before the PDF goes anywhere, by its pages, and fails closed without the plan service.
+                var pdfPages = PdfPages.Estimate(bytes);
+                if (_entitlements is null)
+                    throw new InvalidOperationException("PDF import is not available: plans can't be checked.");
+                await _entitlements.EnsureCanImportPdfAsync(userId, pdfPages);
+
                 var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.pdf");
 
                 try
@@ -572,6 +583,10 @@ public class JobService : IJobService
 
                     _logger.LogInformation("[Import] Created PDF review session {SessionId} with {BlockCount} blocks for job {JobId}",
                         reviewSessionId, reviewBlocks.Count, job.Id);
+
+                    // The pages read count against the plan's monthly PDF pages and the site's (Operations).
+                    if (_operations is not null)
+                        await _operations.RecordAsync(userId, null, "import.pdf", "screens", "pdf", pdfPages);
                 }
                 finally
                 {

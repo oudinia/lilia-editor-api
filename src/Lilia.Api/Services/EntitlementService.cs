@@ -43,6 +43,7 @@ public class EntitlementService : IEntitlementService
         _siteBudgetUsd = configuration?.GetValue("AI:MonthlyBudgetUsd", 0m) ?? 0m;
         _freeBudgetUsd = configuration?.GetValue("AI:FreeMonthlyBudgetUsd", 0m) ?? 0m;
         _aiComingSoon = configuration?.GetValue("AI:ComingSoon", false) ?? false;
+        _pdfSitePages = configuration?.GetValue("Import:PdfSitePagesPerMonth", 2000) ?? 2000;
         _context = context;
         _logger = logger;
         _aiCatalog = aiCatalog;
@@ -50,6 +51,47 @@ public class EntitlementService : IEntitlementService
     }
 
     public bool Enforced => _options.Enforce;
+
+    private readonly int _pdfSitePages;
+
+    internal const string PdfNotInPlanMessage =
+        "PDF import is part of Pro: each page is read by a paid service. Upgrade to import PDFs, or import the LaTeX, Word or Markdown version.";
+
+    public async Task EnsureCanImportPdfAsync(string userId, int pages, CancellationToken ct = default)
+    {
+        if (IsStaff(userId)) return;
+        pages = Math.Max(1, pages);
+        // Fails closed, unlike the other limits: a PDF costs Lilia money per page.
+        var plan = await GetActivePlanAsync(userId, ct);
+        var cap = plan is null ? 0 : ReadCap(plan.Caps, "pdfPagesPerMonth");
+        if (cap == 0)
+            throw new QuotaExceededException("pdfImport", 0, 0, null, PdfNotInPlanMessage);
+        var used = await PdfPagesThisMonthAsync(userId, ct);
+        if (cap > 0 && used + pages > cap)
+            throw new QuotaExceededException("pdfPagesPerMonth", cap, used, NextMonthStart(),
+                used >= cap
+                    ? $"This month's {cap} PDF pages are used; they renew on {NextMonthStart():d MMMM}."
+                    : $"This PDF has {pages} pages and {cap - used} of this month's {cap} PDF pages are left. They renew on {NextMonthStart():d MMMM}.");
+        if (_pdfSitePages > 0)
+        {
+            var start = MonthStart();
+            var all = await _context.Operations.AsNoTracking()
+                .Where(o => o.Kind == "import.pdf" && o.CreatedAt >= start).SumAsync(o => (int?)o.Units, ct) ?? 0;
+            if (all + pages > _pdfSitePages)
+            {
+                _logger.LogWarning("[Entitlements] PDF import refused: the site's {Cap} pages this month are used ({Used})", _pdfSitePages, all);
+                throw new QuotaExceededException("pdfSitePages", _pdfSitePages, all, NextMonthStart(),
+                    $"PDF import is paused until {NextMonthStart():d MMMM}: this month's PDF reading is used up. Every other import works as usual.");
+            }
+        }
+    }
+
+    public async Task<int> PdfPagesThisMonthAsync(string userId, CancellationToken ct = default)
+    {
+        var start = MonthStart();
+        return await _context.Operations.AsNoTracking()
+            .Where(o => o.UserId == userId && o.Kind == "import.pdf" && o.CreatedAt >= start).SumAsync(o => (int?)o.Units, ct) ?? 0;
+    }
 
     private bool IsStaff(string userId) => _options.StaffUserIds.Contains(userId, StringComparer.Ordinal);
 

@@ -37,6 +37,17 @@ public interface IEntitlementService
     /// <summary>Refuse an import (which also creates a document) when enforcement is on and either limit is reached.</summary>
     Task EnsureCanImportAsync(string userId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Refuse a PDF import the plan doesn't pay for (the owner, 11 Nov 2026: PDF import is not free; Mathpix charges
+    /// per page). Always enforced, whatever the plan switch: a plan without <c>pdfPagesPerMonth</c> (Free) is refused,
+    /// a Pro account within its monthly pages is let through, and the site's monthly pages
+    /// (<c>Import:PdfSitePagesPerMonth</c>) bound everyone. Staff are not limited.
+    /// </summary>
+    Task EnsureCanImportPdfAsync(string userId, int pages, CancellationToken ct = default);
+
+    /// <summary>The PDF pages this account imported this month (the operations record).</summary>
+    Task<int> PdfPagesThisMonthAsync(string userId, CancellationToken ct = default);
+
     /// <summary>True when the user's plan caps documents (Free); false for unlimited plans.</summary>
     Task<bool> HasFiniteDocumentLimitAsync(string userId, CancellationToken ct = default);
 
