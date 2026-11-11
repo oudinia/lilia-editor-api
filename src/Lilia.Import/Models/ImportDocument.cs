@@ -18,6 +18,12 @@ public class ImportDocument
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
+    /// The pages the reading service read and charged (Mathpix's num_pages), when it says (11 Nov 2026: a PDF
+    /// import's pages are counted against the plan by this, not by an estimate from the file).
+    /// </summary>
+    public int? PageCount { get; set; }
+
+    /// <summary>
     /// All elements in document order.
     /// </summary>
     public List<ImportElement> Elements { get; set; } = [];

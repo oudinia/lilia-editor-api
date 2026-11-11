@@ -586,7 +586,7 @@ public class JobService : IJobService
 
                     // The pages read count against the plan's monthly PDF pages and the site's (Operations).
                     if (_operations is not null)
-                        await _operations.RecordAsync(userId, null, "import.pdf", "screens", "pdf", pdfPages);
+                        await _operations.RecordAsync(userId, null, "import.pdf", "screens", "pdf", importDocument.PageCount ?? pdfPages);
                 }
                 finally
                 {

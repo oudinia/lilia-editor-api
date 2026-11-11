@@ -64,6 +64,8 @@ public static class LiliaErrorCodes
     // ── Plans ─────────────────────────────────────────────────────────────────
     public const string PlanDocumentLimit      = "PLAN_DOCUMENT_LIMIT";
     public const string PlanImportLimit        = "PLAN_IMPORT_LIMIT";
+    /// <summary>PDF import refused: not in the plan, this month's PDF pages used, or the site's (11 Nov 2026).</summary>
+    public const string PlanPdfImport          = "PLAN_PDF_IMPORT";
 
     // ── AI ────────────────────────────────────────────────────────────────────
     public const string AiServiceUnavailable   = "AI_SERVICE_UNAVAILABLE";

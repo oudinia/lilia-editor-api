@@ -43,6 +43,18 @@ public partial class MathpixPdfImportService : IPdfParser
 
         _logger.LogInformation("[Mathpix] PDF {PdfId} completed, markdown length: {Length}", pdfId, markdown.Length);
 
+        // The pages Mathpix read (and charges): what the plan's PDF pages count (the launch bot's #65, 11 Nov 2026:
+        // an estimate from the file counted a 2-page PDF as 21).
+        int? pages = null;
+        try
+        {
+            pages = (await _mathpixClient.GetStatusAsync(pdfId, cancellationToken)).NumPages;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Mathpix] Could not read the page count of {PdfId}", pdfId);
+        }
+
         // Step 3: Parse Markdown into ImportElements
         var elements = await ParseMarkdownAsync(markdown, cancellationToken);
 
@@ -61,7 +73,8 @@ public partial class MathpixPdfImportService : IPdfParser
             Elements = elements,
             Warnings = warnings,
             Metadata = new ImportMetadata(),
-            RawImportData = markdown
+            RawImportData = markdown,
+            PageCount = pages,
         };
 
         _logger.LogInformation("[Mathpix] Parsed {ElementCount} elements, title: \"{Title}\"", elements.Count, title);
@@ -211,6 +224,13 @@ public partial class MathpixPdfImportService : IPdfParser
         return elements;
     }
 
+    /// <summary>
+    /// The PDF's own equation number (Mathpix writes it as <c>\tag{1}</c>) comes off: Lilia numbers the equation, and
+    /// both showed, "(1)" beside Lilia's own (the launch bot's #65, 11 Nov 2026).
+    /// </summary>
+    internal static string WithoutTag(string latex) =>
+        System.Text.RegularExpressions.Regex.Replace(latex, @"\\tag\*?\s*\{[^{}]*\}", "").Trim();
+
     private static (ImportEquation?, int) ParseDisplayEquation(string[] lines, int startIndex)
     {
         var line = lines[startIndex].TrimStart();
@@ -225,7 +245,7 @@ public partial class MathpixPdfImportService : IPdfParser
                 var latex = rest[..endIdx].Trim();
                 return (new ImportEquation
                 {
-                    LatexContent = latex,
+                    LatexContent = WithoutTag(latex),
                     ConversionSucceeded = true,
                     IsInline = false
                 }, startIndex + 1);
@@ -252,7 +272,7 @@ public partial class MathpixPdfImportService : IPdfParser
                 var latex = string.Join("\n", content).Trim();
                 return (new ImportEquation
                 {
-                    LatexContent = latex,
+                    LatexContent = WithoutTag(latex),
                     ConversionSucceeded = true,
                     IsInline = false
                 }, j + 1);
