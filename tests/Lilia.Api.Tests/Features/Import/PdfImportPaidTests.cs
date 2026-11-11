@@ -85,6 +85,17 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
+    public async Task Every_plan_says_its_PDF_pages_and_the_plans_above_Pro_are_not_refused()
+    {
+        await using var db = CreateDbContext();
+        var pages = (await db.Plans.ToListAsync()).ToDictionary(p => p.Slug,
+            p => p.Caps.RootElement.TryGetProperty("pdfPagesPerMonth", out var v) ? v.GetInt32() : (int?)null);
+        pages.Should().OnlyContain(p => p.Value != null, "a plan without the cap is refused without anyone deciding it");
+        foreach (var paid in new[] { "pro_plus", "team", "enterprise" })
+            if (pages.ContainsKey(paid)) pages[paid].Should().BeGreaterThan(0, $"{paid} costs more than Pro");
+    }
+
+    [Fact]
     public async Task Free_is_refused_even_with_the_plan_limits_off()
     {
         var free = NewId("free");
