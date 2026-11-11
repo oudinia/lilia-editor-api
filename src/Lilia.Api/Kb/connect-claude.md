@@ -36,5 +36,5 @@ Lilia gives Claude ready-made prompts: in Claude, click **+** (or type **/**) an
 ## For LaTeX users {#expert}
 - The connector is a Model Context Protocol (MCP) server over Streamable HTTP; sign-in is OAuth 2.1 through Lilia's identity provider (dynamic client registration or client metadata documents, PKCE). An app's token works for these tools only, not for the rest of Lilia's API.
 - `get_lilia_latex` returns the LaTeX Lilia itself emits (its preamble, packages and block mapping), which is what compiles; `check_document` compiles it now without saving a validation.
-- Edits go through Lilia's blocks: `add_block`, `edit_block`, `remove_block`, `reorder_blocks`, `set_title`, `set_document_settings`, `apply_lml` (replaces the whole body with LML) and `create_document`.
+- Edits go through Lilia's blocks: `add_block`, `edit_block`, `remove_block`, `reorder_blocks`, `set_title`, `set_document_settings`, `apply_lml` (replaces the whole body with LML), `paste_content` (pastes LaTeX, Markdown or Lilia text where you ask and checks it compiles: the way to move a paper over section by section) and `create_document`.
 - Files travel as links, not through the conversation: `export_document` returns a download link valid 15 minutes (pdf, tex, zip or docx), and `start_import` returns a page where you drop a file to import; `import_status` follows it.

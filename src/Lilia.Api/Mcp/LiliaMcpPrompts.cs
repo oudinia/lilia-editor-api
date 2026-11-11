@@ -134,6 +134,7 @@ public sealed class LiliaMcpPrompts
 
         1. If you have the file's content in this conversation (.tex or .lml text, or a .docx as base64), call import_document with it.
            Otherwise call start_import and give the author the link to drop the file, then import_status until it is done.
+           To add a section or a paste to a document the author already has, call paste_content on it instead: it checks too, so skip step 2.
         2. check_document on the new document.
         3. Tell the author the document's address, what came in, and the problems the check found (without fixing them unless asked).
 
