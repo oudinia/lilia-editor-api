@@ -996,6 +996,9 @@ public class LaTeXRenderService : ILaTeXRenderService
             async Task<int> Pass() => (await RunProcessAsync(engine, args, tmpDir, timeout)).ExitCode;
 
             var exitCode = await Pass();
+            // A first pass that failed is the answer: another pass reads its half-written .aux and reports
+            // that instead ("File ended while scanning use of \BKM@entry", the bot's #51, 11 Nov).
+            if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath);
             // A bibliography: BibTeX reads pass 1's .aux, and pass 2 starts with the citations it will
             // print already in the .aux (BibliographyPasses). A third pass only if TeX says so.
             if (await RunBibTeXAsync(tmpDir, timeout) is { } bbl)
@@ -1028,16 +1031,7 @@ public class LaTeXRenderService : ILaTeXRenderService
 
             // In tolerant mode, accept whatever PDF was produced even if
             // exit code indicates errors — the user gets a partial preview.
-            if (exitCode != 0 && !tolerant)
-            {
-                var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
-                var errorLines = logContent.Split('\n')
-                    .Where(l => l.StartsWith("!") || l.Contains("Error"))
-                    .Take(5);
-                throw new InvalidOperationException(
-                    $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
-                );
-            }
+            if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath);
 
             if (!File.Exists(pdfPath))
             {
@@ -1266,6 +1260,25 @@ public class LaTeXRenderService : ILaTeXRenderService
     }
 
     // One hardened launcher for every TeX process: shell escape off, scrubbed environment, optional other user.
+    /// <summary>
+    /// Why a compile failed, from its log. LaTeX that was stopped from outside (the server restarting mid-compile)
+    /// writes no error, and the message was a bare "LaTeX compilation failed:" (the bot's #51, 11 Nov): it says so.
+    /// </summary>
+    private static async Task ThrowCompileFailureAsync(string logPath)
+    {
+        var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+        var errorLines = CompileErrorLines(logContent);
+        throw new InvalidOperationException(errorLines.Count > 0
+            ? $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
+            : InterruptedMessage);
+    }
+
+    internal const string InterruptedMessage =
+        "LaTeX compilation failed: the compile was interrupted before LaTeX finished (the server may have restarted). Try again.";
+
+    internal static List<string> CompileErrorLines(string log) =>
+        log.Split('\n').Where(l => l.StartsWith("!") || l.Contains("Error")).Take(5).ToList();
+
     private static Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
         string command, string arguments, string workingDir, int timeoutSeconds, CancellationToken ct = default) =>
         Lilia.Engines.TexSafety.TexProcessRunner.RunAsync(command, arguments, workingDir, timeoutSeconds,
