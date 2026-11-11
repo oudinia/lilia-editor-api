@@ -115,7 +115,9 @@ public class ExceptionLoggingFilter : IExceptionFilter
             => new(402, q.Resource switch
                    {
                        "maxDocs" => LiliaErrorCodes.PlanDocumentLimit,
-                       "maxImportsPerMonth" or "pdfImport" or "pdfPagesPerMonth" or "pdfSitePages" => LiliaErrorCodes.PlanImportLimit,
+                       "maxImportsPerMonth" => LiliaErrorCodes.PlanImportLimit,
+                       // Not the monthly imports: the screens showed "This month's imports are used" after the PDF refusal (#65).
+                       "pdfImport" or "pdfPagesPerMonth" or "pdfSitePages" => LiliaErrorCodes.PlanPdfImport,
                        "aiCreditsPerMonth" or "aiSiteBudget" or "aiFreePool" => LiliaErrorCodes.AiQuotaExceeded,
                        "aiComingSoon" => LiliaErrorCodes.AiComingSoon,
                        _ => LiliaErrorCodes.Forbidden,

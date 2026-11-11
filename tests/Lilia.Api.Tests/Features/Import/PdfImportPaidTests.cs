@@ -160,17 +160,31 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
         });
 
         res.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
-        JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement.GetProperty("code").GetString().Should().Be("PLAN_IMPORT_LIMIT");
+        JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement.GetProperty("code").GetString().Should().Be("PLAN_PDF_IMPORT");
     }
 
     private const string TwoPagePdf = "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
         + "2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >> endobj\n"
         + "3 0 obj << /Type /Page /Parent 2 0 R >> endobj\n4 0 obj << /Type /Page /Parent 2 0 R >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF";
 
+    // A count elsewhere in the file (here the bookmarks') is not the page tree's.
+    private const string TwoPagesWithBookmarks = "%PDF-1.5\n1 0 obj << /Type /Outlines /First 5 0 R /Count 21 >> endobj\n"
+        + "2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >> endobj\n"
+        + "6 0 obj << /Title (Chapter) /Parent 1 0 R /Count -20 >> endobj\n7 0 obj << /Type /Catalog /Pages 2 0 R /Outlines 1 0 R >> endobj\n%%EOF";
+
     [Theory]
+    [InlineData(TwoPagesWithBookmarks, 2)]
     [InlineData(TwoPagePdf, 2)]
     [InlineData("%PDF-1.4\n3 0 obj << /Type /Page >> endobj\n4 0 obj << /Type /Page >> endobj\n5 0 obj << /Type /Page >> endobj\n%%EOF", 3)]
     [InlineData("%PDF-1.5\n(compressed page tree)\n%%EOF", 1)]
     public void The_pages_are_read_from_the_file(string pdf, int pages) =>
         PdfPages.Estimate(Encoding.Latin1.GetBytes(pdf)).Should().Be(pages);
+
+    // #65 (11 Nov 2026): the PDF's own equation numbers showed beside Lilia's ("(1)" twice over).
+    [Theory]
+    [InlineData(@"\sum_n a_n = 1 \tag{1}", @"\sum_n a_n = 1")]
+    [InlineData(@"x = y \tag*{(A)}", "x = y")]
+    [InlineData(@"\frac{a}{b}", @"\frac{a}{b}")]
+    public void A_PDFs_own_equation_number_comes_off(string latex, string kept) =>
+        Lilia.Import.Services.MathpixPdfImportService.WithoutTag(latex).Should().Be(kept);
 }
