@@ -1210,7 +1210,7 @@ public class TypstExportService : ITypstExportService
             m => Ph($"#smallcaps[{EscapeTypstInline(m.Groups[1].Value)}]"));
         s = Regex.Replace(s, @"%%([^%]+)%%",
             m => Ph($"#sub[{EscapeTypstInline(m.Groups[1].Value)}]"));
-        s = Regex.Replace(s, @"(?<!\^)\^([^^\s][^^]*?)\^(?!\^)",
+        s = Regex.Replace(s, @"(?<!\^)\^([^^\s\\][^^\\]*?)\^(?!\^)",
             m => Ph($"#super[{EscapeTypstInline(m.Groups[1].Value)}]"));
 
         // 1e. LaTeX inline-styling commands the editor serialises directly

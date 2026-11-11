@@ -3282,7 +3282,7 @@ public partial class RenderService : IRenderService
         // Smallcaps `^^…^^` — must precede `^…^` superscript below.
         result = Regex.Replace(result, @"\^\^(.+?)\^\^", @"\textsc{$1}");
         // Superscript `^…^` — single carets.
-        result = Regex.Replace(result, @"(?<!\^)\^([^^\s][^^]*?)\^(?!\^)", @"\textsuperscript{$1}");
+        result = Regex.Replace(result, @"(?<!\^)\^([^^\s\\][^^\\]*?)\^(?!\^)", @"\textsuperscript{$1}");
         // Subscript `%%…%%`.
         result = Regex.Replace(result, @"%%(.+?)%%", @"\textsubscript{$1}");
         // Strikethrough `~~…~~` — soul package's \st (was Step 3 but broken
