@@ -632,231 +632,43 @@ public class JobService : IJobService
                 job.Progress = 50;
                 job.DocumentId = createdDocument.Id;
 
-                if (request.Format.ToUpperInvariant() == "LML")
+                // The same reading as the paste preview (PastedText, 11 Nov 2026): a Lilia JSON export or Lilia text,
+                // Markdown or plain text, LaTeX (a full document or a fragment).
+                var pasted = await PastedText.ParseAsync(request.Content, request.Format, _latexParser, _lmlTextParser,
+                    request.Options?.AutoDetectEquations ?? true, (ex, why) => _logger.LogWarning(ex, "[Import] {Why}", why));
+                if (pasted.Fallback is not null)
+                    _logger.LogWarning("[Import] {Format} import fell back to a single {Block} block", pasted.Format, pasted.Fallback);
+
+                // A title the text gives: LaTeX's \title always; Lilia text's when no title was asked for, or the
+                // title is still the file's name.
+                if (pasted.Title is { } textTitle
+                    && (pasted.Format == "LATEX"
+                        || string.IsNullOrWhiteSpace(request.Title)
+                        || string.Equals(createdDocument.Title, Path.GetFileNameWithoutExtension(request.Filename), StringComparison.Ordinal)))
+                    createdDocument.Title = textTitle;
+
+                var sortOrder = 0;
+                foreach (var block in pasted.Blocks)
                 {
-                    // 1) JSON Lilia export: { document: { blocks: [...] } }
-                    // 2) Human-readable text LML: @heading / @paragraph / @theorem …
-                    // 3) Last resort: single paragraph with raw text
-                    var importedBlocks = false;
-
-                    var trimmedContent = request.Content?.TrimStart() ?? "";
-                    if (trimmedContent.StartsWith('{') || trimmedContent.StartsWith('['))
+                    _context.Blocks.Add(new Lilia.Core.Entities.Block
                     {
-                        try
-                        {
-                            var lmlDoc = JsonSerializer.Deserialize<JsonElement>(request.Content!);
-                            if (lmlDoc.TryGetProperty("document", out var docElement) &&
-                                docElement.TryGetProperty("blocks", out var blocksElement) &&
-                                blocksElement.ValueKind == JsonValueKind.Array &&
-                                blocksElement.GetArrayLength() > 0)
-                            {
-                                var sortOrder = 0;
-                                foreach (var block in blocksElement.EnumerateArray())
-                                {
-                                    var blockEntity = new Lilia.Core.Entities.Block
-                                    {
-                                        Id = Guid.NewGuid(),
-                                        DocumentId = createdDocument.Id,
-                                        Type = block.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "paragraph" : "paragraph",
-                                        Content = block.TryGetProperty("content", out var contentEl)
-                                            ? JsonDocument.Parse(contentEl.GetRawText())
-                                            : JsonDocument.Parse("{}"),
-                                        SortOrder = sortOrder++,
-                                        Depth = block.TryGetProperty("depth", out var depthEl) ? depthEl.GetInt32() : 0,
-                                        CreatedAt = DateTime.UtcNow,
-                                        UpdatedAt = DateTime.UtcNow
-                                    };
-                                    _context.Blocks.Add(blockEntity);
-                                }
-                                await _context.SaveChangesAsync();
-                                importedBlocks = true;
-                            }
-                            // Also accept top-level { blocks: [...] }
-                            else if (lmlDoc.TryGetProperty("blocks", out var topBlocks) &&
-                                     topBlocks.ValueKind == JsonValueKind.Array &&
-                                     topBlocks.GetArrayLength() > 0)
-                            {
-                                var sortOrder = 0;
-                                foreach (var block in topBlocks.EnumerateArray())
-                                {
-                                    var blockEntity = new Lilia.Core.Entities.Block
-                                    {
-                                        Id = Guid.NewGuid(),
-                                        DocumentId = createdDocument.Id,
-                                        Type = block.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "paragraph" : "paragraph",
-                                        Content = block.TryGetProperty("content", out var contentEl)
-                                            ? JsonDocument.Parse(contentEl.GetRawText())
-                                            : JsonDocument.Parse("{}"),
-                                        SortOrder = sortOrder++,
-                                        Depth = block.TryGetProperty("depth", out var depthEl) ? depthEl.GetInt32() : 0,
-                                        CreatedAt = DateTime.UtcNow,
-                                        UpdatedAt = DateTime.UtcNow
-                                    };
-                                    _context.Blocks.Add(blockEntity);
-                                }
-                                await _context.SaveChangesAsync();
-                                importedBlocks = true;
-                            }
-                        }
-                        catch (JsonException ex)
-                        {
-                            _logger.LogWarning(ex, "[Import] LML content looked like JSON but failed to parse; trying text LML");
-                        }
-                    }
-
-                    if (!importedBlocks && _lmlTextParser.LooksLikeTextLml(request.Content ?? ""))
-                    {
-                        var parsed = _lmlTextParser.Parse(request.Content ?? "");
-                        if (parsed.Blocks.Count > 0)
-                        {
-                            if (!string.IsNullOrWhiteSpace(parsed.Title) &&
-                                (string.IsNullOrWhiteSpace(request.Title) ||
-                                 string.Equals(createdDocument.Title, Path.GetFileNameWithoutExtension(request.Filename), StringComparison.Ordinal)))
-                            {
-                                createdDocument.Title = parsed.Title!;
-                            }
-
-                            var sortOrder = 0;
-                            foreach (var block in parsed.Blocks)
-                            {
-                                _context.Blocks.Add(new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = block.Type,
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(block.Content)),
-                                    SortOrder = sortOrder++,
-                                    Depth = block.Depth,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                });
-                            }
-                            await _context.SaveChangesAsync();
-                            importedBlocks = true;
-                            _logger.LogInformation(
-                                "[Import] Parsed text LML into {Count} blocks (warnings: {Warnings})",
-                                parsed.Blocks.Count,
-                                parsed.Warnings.Count);
-                        }
-                    }
-
-                    if (!importedBlocks)
-                    {
-                        _logger.LogWarning("[Import] LML import fell back to single paragraph block");
-                        _context.Blocks.Add(new Lilia.Core.Entities.Block
-                        {
-                            Id = Guid.NewGuid(),
-                            DocumentId = createdDocument.Id,
-                            Type = "paragraph",
-                            Content = JsonDocument.Parse(JsonSerializer.Serialize(new { text = request.Content })),
-                            SortOrder = 0,
-                            Depth = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        });
-                        await _context.SaveChangesAsync();
-                    }
+                        Id = Guid.NewGuid(),
+                        DocumentId = createdDocument.Id,
+                        Type = block.Type,
+                        Content = PastedText.ContentJson(block),
+                        SortOrder = sortOrder++,
+                        Depth = block.Depth,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    });
                 }
-                else if (request.Format.ToUpperInvariant() == "MARKDOWN")
-                {
-                    // Markdown or plain text: the same element → block mapping as LaTeX.
-                    var sortOrder = 0;
-                    foreach (var (blockType, blockContent) in LatexImportJobExecutor.MapElements(MarkdownTextParser.Parse(request.Content ?? "")))
-                    {
-                        _context.Blocks.Add(new Lilia.Core.Entities.Block
-                        {
-                            Id = Guid.NewGuid(),
-                            DocumentId = createdDocument.Id,
-                            Type = blockType,
-                            Content = JsonDocument.Parse(JsonSerializer.Serialize(blockContent)),
-                            SortOrder = sortOrder++,
-                            Depth = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        });
-                    }
-                    await _context.SaveChangesAsync();
-                }
-                else
-                {
-                    // LaTeX: Parse using ILatexParser into structured blocks
-                    try
-                    {
-                        var parsedDoc = await _latexParser.ParseTextAsync(request.Content, new LatexImportOptions
-                        {
-                            ExtractDocumentTitle = true,
-                            ConvertEquationEnvironments = request.Options?.AutoDetectEquations ?? true,
-                            ConvertDisplayMath = request.Options?.AutoDetectEquations ?? true,
-                        });
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("[Import] {Format} text read into {Count} blocks", pasted.Format, pasted.Blocks.Count);
 
-                        // Update document title if parser found one
-                        if (!string.IsNullOrWhiteSpace(parsedDoc.Title) && createdDocument != null)
-                        {
-                            createdDocument.Title = parsedDoc.Title;
-                        }
-
-                        if (parsedDoc.Elements.Count > 0)
-                        {
-                            int sortOrder = 0;
-                            // The upload path's mapping (LatexImportJobExecutor), not a copy: the copy here
-                            // had drifted and dropped heading labels and numbering, table captions and
-                            // layout, quotes and algorithms, and made a list per item. This path is the
-                            // connector's import_document (LaTeX coverage refs.section-ref, 15 Oct).
-                            foreach (var (blockType, blockContent) in LatexImportJobExecutor.MapElements(parsedDoc.Elements))
-                            {
-                                _context.Blocks.Add(new Lilia.Core.Entities.Block
-                                {
-                                    Id = Guid.NewGuid(),
-                                    DocumentId = createdDocument.Id,
-                                    Type = blockType,
-                                    Content = JsonDocument.Parse(JsonSerializer.Serialize(blockContent)),
-                                    SortOrder = sortOrder++,
-                                    Depth = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                });
-                            }
-                        }
-                        else
-                        {
-                            // Parser returned no elements, fall back to single paragraph
-                            _context.Blocks.Add(new Lilia.Core.Entities.Block
-                            {
-                                Id = Guid.NewGuid(),
-                                DocumentId = createdDocument.Id,
-                                Type = "paragraph",
-                                Content = JsonDocument.Parse(JsonSerializer.Serialize(new { text = request.Content })),
-                                SortOrder = 0,
-                                Depth = 0,
-                                CreatedAt = DateTime.UtcNow,
-                                UpdatedAt = DateTime.UtcNow
-                            });
-                        }
-                        await _context.SaveChangesAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Import] LaTeX parsing failed, falling back to code block");
-                        _context.Blocks.Add(new Lilia.Core.Entities.Block
-                        {
-                            Id = Guid.NewGuid(),
-                            DocumentId = createdDocument.Id,
-                            Type = "code",
-                            Content = JsonDocument.Parse(JsonSerializer.Serialize(new { code = request.Content, language = "latex" })),
-                            SortOrder = 0,
-                            Depth = 0,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        });
-                        await _context.SaveChangesAsync();
-                    }
-
-                    // The preamble and page setup, as the upload path keeps them at finalize: this
-                    // path (the connector's import_document) dropped them, so an imported paper lost
-                    // its macros and TikZ libraries and could stop compiling (10 Nov).
-                    if (!string.IsNullOrWhiteSpace(request.Content))
-                        await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId, request.Content, $"job {job.Id}");
-                }
+                // The preamble and page setup, as the upload path keeps them at finalize: this path (the connector's
+                // import_document) dropped them, so an imported paper lost its macros and TikZ libraries (10 Nov).
+                if (pasted.Format == "LATEX" && !string.IsNullOrWhiteSpace(request.Content))
+                    await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId, request.Content, $"job {job.Id}");
             }
             else
             {
