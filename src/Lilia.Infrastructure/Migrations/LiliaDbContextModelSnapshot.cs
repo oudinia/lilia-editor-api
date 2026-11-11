@@ -147,7 +147,7 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.ToTable("admin_actions", null, t =>
                         {
-                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status','two_step_off')");
+                            t.HasCheckConstraint("ck_admin_action_action", "action IN ('grant_credits','set_plan','suspend','unsuspend','resend_verification','feedback_status','two_step_off','operation_weight')");
                         });
                 });
 

@@ -1,0 +1,89 @@
+@page "/operations"
+@inject AdminOperations Operations
+@inject AuthenticationStateProvider Auth
+
+<PageTitle>Operations · Lilia admin</PageTitle>
+<h1>Operations</h1>
+<p class="muted">What authors did with Lilia, weighted by complexity (story points). A weight change applies to operations recorded after it.</p>
+<div class="filters" data-testid="admin-operations-period">
+    @foreach (var d in new[] { 7, 30, 90 })
+    {
+        <button class="@(d == days ? "on" : "")" @onclick="() => Load(d)" data-testid="admin-operations-period-option" data-days="@d">@d days</button>
+    }
+</div>
+
+@if (data is null) { <p class="muted">Loading…</p> }
+else
+{
+    <div class="tiles" data-testid="admin-operations-totals">
+        <Tile Label="Operations" Value="@data.Count" />
+        <Tile Label="Points" Value="@data.Points" />
+    </div>
+
+    <h2>Kinds and weights</h2>
+    @if (error is not null) { <p class="error" data-testid="admin-operations-error">@error</p> }
+    <table data-testid="admin-operation-kinds">
+        <thead><tr><th>Kind</th><th>Category</th><th>Points</th><th>Per unit</th><th>Active</th><th>Used</th><th>Points used</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var k in data.Kinds)
+            {
+                var edit = edits.GetValueOrDefault(k.Code) ?? new Edit(k.Points, k.PointsPerUnit, k.UnitSize, k.Active);
+                <tr data-testid="admin-operation-kind" data-code="@k.Code">
+                    <td><strong>@k.Code</strong><br /><span class="muted">@k.Label</span></td>
+                    <td><span class="chip">@k.Category</span></td>
+                    <td><input type="number" min="0" value="@edit.Points" @onchange="e => Set(k.Code, edit with { Points = Int(e.Value) ?? 0 })" data-testid="admin-operation-points" style="width:4.5em" /></td>
+                    <td>
+                        <input type="number" min="0" value="@edit.PerUnit" @onchange="e => Set(k.Code, edit with { PerUnit = Int(e.Value) })" data-testid="admin-operation-per-unit" style="width:4em" />
+                        per <input type="number" min="1" value="@edit.UnitSize" @onchange="e => Set(k.Code, edit with { UnitSize = Int(e.Value) })" data-testid="admin-operation-unit-size" style="width:4em" />
+                        @(k.UnitName ?? "units")
+                    </td>
+                    <td><input type="checkbox" checked="@edit.Active" @onchange="e => Set(k.Code, edit with { Active = e.Value is true })" data-testid="admin-operation-active" /></td>
+                    <td>@k.Count.ToString("N0")</td>
+                    <td>@k.TotalPoints.ToString("N0")</td>
+                    <td>@if (edits.ContainsKey(k.Code)) { <button @onclick="() => Save(k.Code)" data-testid="admin-operation-save">Save</button> }</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2>Per day</h2>
+    @if (data.PerDay.Count == 0) { <p class="muted" data-testid="admin-operations-empty">No operations in this period.</p> }
+    else
+    {
+        <table data-testid="admin-operations-per-day">
+            <thead><tr><th>Day (UTC)</th><th>Operations</th><th>Points</th></tr></thead>
+            <tbody>@foreach (var d in data.PerDay) { <tr><td>@d.Day.ToString("d MMM")</td><td>@d.Count</td><td>@d.Points</td></tr> }</tbody>
+        </table>
+
+        <h2>Accounts</h2>
+        <table data-testid="admin-operations-accounts">
+            <thead><tr><th>Account</th><th>Operations</th><th>Points</th></tr></thead>
+            <tbody>
+                @foreach (var a in data.TopAccounts)
+                {
+                    <tr data-testid="admin-operations-account"><td><a href="users/@Uri.EscapeDataString(a.UserId)">@(a.Email ?? a.UserId)</a></td><td>@a.Count</td><td>@a.Points</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private sealed record Edit(int Points, int? PerUnit, int? UnitSize, bool Active);
+    private int days = 30;
+    private OperationsOverview? data;
+    private string? error;
+    private readonly Dictionary<string, Edit> edits = new();
+
+    protected override async Task OnInitializedAsync() => data = await Operations.OverviewAsync(days);
+    private async Task Load(int d) { days = d; data = await Operations.OverviewAsync(days); }
+    private void Set(string code, Edit e) { edits[code] = e; error = null; }
+    private static int? Int(object? v) => int.TryParse(v?.ToString(), out var n) ? n : null;
+    private async Task Save(string code)
+    {
+        var e = edits[code];
+        var admin = (await Auth.GetAuthenticationStateAsync()).User.FindFirst("email")?.Value ?? "unknown";
+        error = await Operations.SetWeightAsync(code, e.Points, e.PerUnit, e.UnitSize, e.Active, admin);
+        if (error is null) { edits.Remove(code); data = await Operations.OverviewAsync(days); }
+    }
+}
