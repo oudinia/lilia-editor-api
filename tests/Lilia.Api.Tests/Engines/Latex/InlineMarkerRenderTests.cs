@@ -186,6 +186,9 @@ public class InlineMarkerRenderTests
         var latex = Render(@"E = mc^2 + \frac12 mv^2 for a moving mass.");
         latex.Should().NotContain(@"\textsuperscript");
         Render("the 1^st^ of May").Should().Contain(@"\textsuperscript{st}", "a real superscript still is one");
+        // A lone caret doesn't pair with the next one across a sentence.
+        var mixed = Render(@"E = mc^2 + \frac12 mv^2 for a moving mass, and the 1^st^ term.");
+        mixed.Should().Contain(@"\textsuperscript{st}").And.NotContain("for a moving mass, and the 1}");
     }
 
     [Theory]

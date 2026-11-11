@@ -1278,9 +1278,10 @@ public class LaTeXExportService : ILaTeXExportService
             m => Ph($@"\textsc{{{EscapeLatex(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"%%([^%]+)%%",
             m => Ph($@"\textsubscript{{{EscapeLatex(m.Groups[1].Value)}}}"));
-        // Never across a LaTeX command: raw LaTeX pasted into a paragraph, "mc^2 + \frac12 mv^2", printed
-        // mc\textsuperscript{2 + \frac{1}{2}mv}2 (the launch bot's #59, 11 Nov 2026).
-        result = Regex.Replace(result, @"(?<!\^)\^([^^\s\\][^^\\]*?)\^(?!\^)",
+        // No spaces and no LaTeX command inside, as Pandoc and the Word reader: raw LaTeX pasted into a paragraph,
+        // "mc^2 + \frac12 mv^2", printed mc\textsuperscript{2 + \frac{1}{2}mv}2, and a lone caret paired with the next
+        // one across a sentence (the launch bot's #59, 11 Nov 2026). The editor writes a multi-word one word by word.
+        result = Regex.Replace(result, @"(?<!\^)\^([^^\s\\]+)\^(?!\^)",
             m => Ph($@"\textsuperscript{{{EscapeLatex(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"~~([^~]+)~~",
             m => Ph($@"\st{{{EscapeLatex(m.Groups[1].Value)}}}"));
