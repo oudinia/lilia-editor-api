@@ -49,4 +49,15 @@ public class ContentRoutingTests
         var compiled = Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Compile(source);
         compiled.Ok.Should().BeTrue(compiled.Error);
     }
+
+    // #66 (11 Nov 2026): the Typst PDF printed an editor algorithm as an empty box and a numbered theorem with no number.
+    [Fact]
+    public void Algorithms_and_numbered_theorems_go_to_LaTeX_an_unnumbered_theorem_stays()
+    {
+        ContentRouting.WhyLatex([B("algorithm", new { caption = "Sum", lines = new[] { new { indent = 0, keyword = "for", text = "i", comment = "" } } })])
+            .Should().Be("algorithms");
+        ContentRouting.WhyLatex([B("theorem", new { text = "Every x is y.", theoremType = "theorem" })]).Should().Be("numbered theorems");
+        ContentRouting.WhyLatex([B("theorem", new { text = "Every x is y.", theoremType = "theorem", numbered = true })]).Should().Be("numbered theorems");
+        ContentRouting.WhyLatex([B("theorem", new { text = "Every x is y.", theoremType = "remark", numbered = false })]).Should().BeNull();
+    }
 }
