@@ -90,6 +90,27 @@ public class PastePreviewTests : IDisposable
         preview.Latex.Should().Contain(@"\newcommand{\R}{\mathbb{R}}", "the paper's macro is what makes \\R compile");
     }
 
+    // #64 (11 Nov 2026): the preview showed 5 blocks and the screen import made 6, the title block from \title.
+    [Fact]
+    public async Task A_papers_title_block_is_shown_first_as_the_import_makes_it()
+    {
+        const string paper = """
+            \documentclass{article}
+            \title{Waves and Cliffs}
+            \author{A. Author}
+            \begin{document}
+            \maketitle
+            \section{Setting}
+            Text.
+            \end{document}
+            """;
+        var preview = await Service(_ => Valid()).PreviewAsync(paper, "LATEX");
+
+        preview.Blocks.First().Type.Should().Be("title");
+        preview.Blocks.Skip(1).Select(b => b.Type).Should().Contain("heading");
+        preview.Latex.Should().Contain("Waves and Cliffs");
+    }
+
     [Fact]
     public async Task Text_that_reads_as_nothing_special_is_one_paragraph_and_says_so()
     {

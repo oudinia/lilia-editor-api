@@ -55,7 +55,9 @@ public sealed class PastePreviewService(
             doc.LatexDocumentClass = pre.DocumentClass;
             doc.LatexPackages = pre.PackagesJson;
         }
-        var blocks = pasted.Blocks.Select((b, i) => new Block
+        // What the screen import makes: a paper's title block first (#64).
+        var shown = pasted.TitleBlock is { } title ? new[] { title }.Concat(pasted.Blocks).ToList() : pasted.Blocks.ToList();
+        var blocks = shown.Select((b, i) => new Block
         {
             Id = Guid.NewGuid(),
             DocumentId = doc.Id,
@@ -77,7 +79,7 @@ public sealed class PastePreviewService(
 
         return new PastePreview(
             pasted.Format, pasted.Title,
-            pasted.Blocks.Select(b => new PastePreviewBlock(b.Type, b.Content)).ToList(),
+            shown.Select(b => new PastePreviewBlock(b.Type, b.Content)).ToList(),
             latex, Lilia.Api.Mcp.LiliaMcpTools.EngineFor(latex, doc.LatexEngine),
             check.Compiles, check.PrintsCorrectly, problems, pasted.Fallback);
     }

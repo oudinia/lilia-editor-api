@@ -12,7 +12,15 @@ public sealed record PastedBlock(string Type, object Content, int Depth = 0);
 /// What a text reads as: its blocks, and a title when the text names one. <see cref="TitleFromText"/> says the title
 /// came from the LML text itself (an <c>@title</c> or first heading), which the import may prefer over a filename.
 /// </summary>
-public sealed record PastedBlocks(string Format, string? Title, bool TitleFromText, IReadOnlyList<PastedBlock> Blocks, string? Fallback);
+public sealed record PastedBlocks(string Format, string? Title, bool TitleFromText, IReadOnlyList<PastedBlock> Blocks, string? Fallback)
+{
+    /// <summary>
+    /// The title block a LaTeX paper's <c>\title</c>/<c>\author</c> make in the screen import (the upload path), which the
+    /// preview shows first (#64, 11 Nov 2026: the preview showed 5 blocks and the import made 6). Not one of
+    /// <see cref="Blocks"/>: the text import and paste_content leave the title to the document.
+    /// </summary>
+    public PastedBlock? TitleBlock { get; init; }
+}
 
 /// <summary>
 /// Text → blocks for the three text formats (LaTeX, Lilia text or JSON, Markdown), in memory. The paste and text
@@ -84,7 +92,10 @@ public static class PastedText
                 return new PastedBlocks("LATEX", title, false, [new PastedBlock("paragraph", new { text = content })], "paragraph");
             // The upload path's mapping (LatexImportJobExecutor), not a copy: a copy had drifted before (15 Oct).
             return new PastedBlocks("LATEX", title, false,
-                LatexImportJobExecutor.MapElements(doc.Elements).Select(x => new PastedBlock(x.type, x.content)).ToList(), null);
+                LatexImportJobExecutor.MapElements(doc.Elements).Select(x => new PastedBlock(x.type, x.content)).ToList(), null)
+            {
+                TitleBlock = LatexImportJobExecutor.TitleBlockFor(doc) is { } t ? new PastedBlock(t.type, t.content) : null,
+            };
         }
         catch (Exception ex)
         {

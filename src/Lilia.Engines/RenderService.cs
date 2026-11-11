@@ -1687,7 +1687,14 @@ public partial class RenderService : IRenderService
         // correct algorithmic commands without parsing backslashes. Fall back
         // to the legacy flat `code` blob for backwards compat.
         var renderedFromLines = false;
-        if (content.TryGetProperty("lines", out var linesEl) && linesEl.ValueKind == JsonValueKind.Array && linesEl.GetArrayLength() > 0)
+        if (content.TryGetProperty("lines", out var linesEl) && linesEl.ValueKind == JsonValueKind.Array && linesEl.GetArrayLength() > 0
+            && AlgorithmLatex.IsEditorShape(linesEl))
+        {
+            // The editor's shape (#64, 11 Nov 2026): its keywords and indentation make the structure.
+            foreach (var l in AlgorithmLatex.FromEditorLines(linesEl)) sb.AppendLine(l);
+            renderedFromLines = true;
+        }
+        else if (content.TryGetProperty("lines", out linesEl) && linesEl.ValueKind == JsonValueKind.Array && linesEl.GetArrayLength() > 0)
         {
             foreach (var line in linesEl.EnumerateArray())
             {
