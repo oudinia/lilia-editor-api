@@ -2126,7 +2126,14 @@ public partial class RenderService : IRenderService
                 var alignList = alignProp.EnumerateArray().ToList();
                 for (var i = 0; i < Math.Min(alignList.Count, colCount); i++)
                 {
-                    var val = alignList[i].GetString()?.ToLowerInvariant();
+                    var val = alignList[i].GetString()?.ToLowerInvariant() switch
+                    {
+                        // The dialog's explicit choices, in words (#71).
+                        "left" => "l",
+                        "center" or "centre" => "c",
+                        "right" => "r",
+                        var v => v,
+                    };
                     if (val is "l" or "c" or "r" or "p" or "m" or "b")
                         colAlignments[i] = val;
                 }
