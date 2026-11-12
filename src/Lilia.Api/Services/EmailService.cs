@@ -219,15 +219,33 @@ public class EmailService : IEmailService
 
     // ── Account notices (17 Oct designs): the export, closing, erasing ──
 
+    /// <summary>
+    /// A file's size for an email (the bot's Level 5, 12 Nov 2026: a 6.8 KB export read "1 MB"): KB under
+    /// 1 MB, one decimal under 10 MB, whole MB above; French writes Ko/Mo and a decimal comma.
+    /// </summary>
+    internal static string FileSize(long bytes, string lang)
+    {
+        var fr = lang == "fr";
+        var culture = System.Globalization.CultureInfo.GetCultureInfo(fr ? "fr-FR" : lang == "es" ? "es-ES" : "en-GB");
+        if (bytes < 1_048_576)
+        {
+            var kb = Math.Max(1, (int)Math.Round(bytes / 1024.0));
+            return $"{kb} {(fr ? "Ko" : "KB")}";
+        }
+        var mb = bytes / 1_048_576.0;
+        var shown = mb < 10 ? mb.ToString("0.#", culture) : Math.Round(mb).ToString("0", culture);
+        return $"{shown} {(fr ? "Mo" : "MB")}";
+    }
+
     public Task SendExportReadyAsync(string toEmail, string? locale, DateTime requestedAt, DateTime expiresAt, string fileName, int documents, long bytes)
     {
         var lang = EmailTemplates.Language(locale);
-        var megabytes = Math.Max(1, (int)Math.Round(bytes / 1_048_576.0));
+        var size = FileSize(bytes, lang);
         var meta = lang switch
         {
-            "fr" => $"{documents} document{(documents == 1 ? "" : "s")} · {megabytes} Mo",
-            "es" => $"{documents} documento{(documents == 1 ? "" : "s")} · {megabytes} MB",
-            _ => $"{documents} document{(documents == 1 ? "" : "s")} · {megabytes} MB",
+            "fr" => $"{documents} document{(documents == 1 ? "" : "s")} · {size}",
+            "es" => $"{documents} documento{(documents == 1 ? "" : "s")} · {size}",
+            _ => $"{documents} document{(documents == 1 ? "" : "s")} · {size}",
         };
         return SendAccountTemplateAsync("export", toEmail, locale, new()
         {
