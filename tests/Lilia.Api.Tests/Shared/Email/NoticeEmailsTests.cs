@@ -80,7 +80,7 @@ public class NoticeEmailsTests
 
         outbox.Sent[2].Text.Should().Contain("Peut modifier", "the owner reads the role of who joined");
         outbox.Sent[3].Text.Should().Contain("Vous pouvez modifier").And.Contain("Vous pouviez lire");
-        outbox.Sent[8].Text.Should().Contain("31 octobre 2026").And.Contain("7 novembre 2026").And.Contain("12 documents · 3 Mo");
+        outbox.Sent[8].Text.Should().Contain("31 octobre 2026").And.Contain("7 novembre 2026").And.Contain("12 documents · 3,3 Mo");
         outbox.Sent[9].Text.Should().Contain("30 novembre 2026");
         outbox.Sent[10].Subject.Should().Be("Votre compte Lilia est effacé");
     }
