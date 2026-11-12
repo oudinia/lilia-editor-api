@@ -123,6 +123,22 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
         over.Message.Should().Contain("6 pages").And.Contain("5 of this month's 100");
     }
 
+    // PROD-49 (12 Nov 2026): the plan says how many PDF pages are used this month and how many the plan holds.
+    [Fact]
+    public async Task The_plan_shows_this_month_s_PDF_pages()
+    {
+        var pro = NewId("meter");
+        await SeedUserAsync(pro);
+        await GivePlanAsync(pro, "pro");
+        await PagesReadAsync(pro, 12);
+        using var scope = Factory().Services.CreateScope();
+        var usage = await scope.ServiceProvider.GetRequiredService<IEntitlementService>().GetUsageAsync(pro);
+
+        usage!.PdfPages.Should().NotBeNull();
+        usage.PdfPages!.Used.Should().Be(12);
+        usage.PdfPages.Limit.Should().Be(100);
+    }
+
     [Fact]
     public async Task The_site_s_monthly_pages_bound_everyone_but_staff()
     {

@@ -294,7 +294,8 @@ public class EntitlementService : IEntitlementService
                 ResetsAt: NextMonthStart(),
                 Enforced: _aiEnforced,
                 ComingSoon: _aiComingSoon && !IsStaff(userId)),
-            ReadOnly: await ReadOnlyAsync(userId, plan, ct));
+            ReadOnly: await ReadOnlyAsync(userId, plan, ct),
+            PdfPages: new PlanMeterDto(await PdfPagesThisMonthAsync(userId, ct), ReadCap(plan.Caps, "pdfPagesPerMonth"), NextMonthStart()));
     }
 
     private async Task<PlanReadOnlyDto?> ReadOnlyAsync(string userId, ActivePlanDto plan, CancellationToken ct)
