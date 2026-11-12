@@ -15,6 +15,9 @@ public class ImportReviewMessages { }
 
 public class ImportReviewService : IImportReviewService
 {
+    /// <summary>Fewer headings than this get no automatic table of contents (launch-bot #76).</summary>
+    internal const int AutoTocMinHeadings = 5;
+
     private readonly IEntitlementService? _entitlements;
     private readonly Lilia.Import.Interfaces.ILatexParser? _latexParser;
     private readonly IDocumentService? _documents;
@@ -96,13 +99,14 @@ public class ImportReviewService : IImportReviewService
             blockReviews.Add(review);
         }
 
-        // Auto-insert a tableOfContents block when ≥2 headings are detected and no TOC exists
+        // Auto-insert a tableOfContents block when ≥5 headings are detected and no TOC exists.
+        // It was ≥2 until 12 Nov 2026: a two-heading note got a contents list (launch-bot #76).
         var headingCount = blockReviews.Count(b =>
             b.OriginalType == BlockTypes.Heading || b.OriginalType == "header");
         var hasTocBlock = blockReviews.Any(b =>
             b.OriginalType == BlockTypes.TableOfContents || b.OriginalType == "toc");
 
-        if (headingCount >= 2 && !hasTocBlock)
+        if (headingCount >= AutoTocMinHeadings && !hasTocBlock)
         {
             var tocWarningMessage = _localizer["AutoTocWarning"].Value;
             var tocWarnings = JsonDocument.Parse(

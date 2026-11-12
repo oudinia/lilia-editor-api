@@ -244,7 +244,11 @@ public class DocxParser : IDocxParser
         // Resolve the language-neutral StyleName (from styles.xml <w:name>).
         // Cheap: amortised O(1) per paragraph after the first lookup.
         var styleName = styleId is null ? null : ResolveStyleName(mainPart, styleId);
-        var numPr = para.ParagraphProperties?.NumberingProperties;
+        // Launch-bot #76 (12 Nov 2026): Word's "List Number" / "List Bullet" styles (and python-docx)
+        // number a paragraph through its style, with no numPr on the paragraph, so the list became
+        // plain paragraphs. A non-heading style's numbering now counts; numbered heading styles stay headings.
+        var numPr = para.ParagraphProperties?.NumberingProperties
+            ?? (styleId is not null && !IsHeadingStyle(styleName, styleId) ? StyleNumberingProperties(mainPart, styleId) : null);
         var mathElements = para.Descendants<M.OfficeMath>().ToList();
         var shading = para.ParagraphProperties?.Shading;
 
@@ -480,6 +484,27 @@ public class DocxParser : IDocxParser
     /// authoring language, so matching on StyleName is language-independent.
     /// Cached per MainDocumentPart.
     /// </summary>
+    /// <summary>The list numbering the style (or one it is based on) gives its paragraphs; null when none or numId 0.</summary>
+    private static NumberingProperties? StyleNumberingProperties(MainDocumentPart mainPart, string styleId)
+    {
+        var styles = mainPart.StyleDefinitionsPart?.Styles;
+        if (styles is null) return null;
+        var id = styleId;
+        for (var hop = 0; hop < 6 && id is not null; hop++)
+        {
+            var style = styles.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == id);
+            if (style is null) return null;
+            var num = style.StyleParagraphProperties?.NumberingProperties;
+            if (num?.NumberingId?.Val?.Value is int n) return n != 0 ? num : null;
+            id = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
+    private static bool IsHeadingStyle(string? styleName, string styleId) =>
+        (styleName ?? styleId).StartsWith("heading", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(styleName ?? styleId, "title", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The style, or one it is based on, carries list numbering (numId other than 0).</summary>
     private static bool StyleHasNumbering(MainDocumentPart mainPart, string styleId)
     {
@@ -1216,7 +1241,12 @@ public class DocxParser : IDocxParser
             if (firstRow != null)
             {
                 var headerProp = firstRow.TableRowProperties?.GetFirstChild<TableHeader>();
-                importTable.HasHeaderRow = headerProp != null;
+                // Launch-bot #76: a table whose style formats the first row as a header (tblLook
+                // firstRow, Word's default for an inserted table) has its own headers, not "Column 1".
+                var look = table.GetFirstChild<TableProperties>()?.GetFirstChild<TableLook>();
+                var lookFirstRow = look?.FirstRow?.Value == true
+                    || (look?.Val?.Value is string hex && int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var bits) && (bits & 0x0020) != 0);
+                importTable.HasHeaderRow = headerProp != null || (lookFirstRow && table.Elements<TableRow>().Count() > 1);
             }
 
             foreach (var row in table.Elements<TableRow>())
