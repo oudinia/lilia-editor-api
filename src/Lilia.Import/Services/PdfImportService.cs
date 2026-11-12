@@ -126,7 +126,7 @@ public partial class PdfImportService : IPdfParser
         }
 
         // Post-processing pass: detect abstract, bibliography, and theorem sections
-        elements = PostProcess(elements, warnings);
+        elements = HeadingLevels.Promote(PostProcess(elements, warnings));
 
         // Extract title from first heading or first text block
         var title = ExtractTitle(elements);

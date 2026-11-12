@@ -217,7 +217,8 @@ public static class MarkdownTextParser
             paragraph.Add(line);
         }
         FlushParagraph();
-        return elements;
+        // A text starting at ## printed "0.1" (#79): the shallowest heading becomes a section.
+        return HeadingLevels.Promote(elements);
     }
 
     private static ImportEquation Equation(string latex, int order) => new()
