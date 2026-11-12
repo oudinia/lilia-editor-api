@@ -67,11 +67,13 @@ Ajoutez à `~/.gemini/settings.json` (notez **httpUrl**) :
 ```
 Puis lancez `/mcp auth lilia` et connectez-vous dans le navigateur.
 
-## Zed, Junie, LM Studio, Mistral, Copilot Studio {#more}
+## Zed, Junie, LM Studio, Mistral, Perplexity, Gemini, Copilot Studio {#more}
 - **Zed** : dans les réglages, `"context_servers": { "lilia": { "url": "https://editor.liliaeditor.com/api/mcp" } }` ; Zed vous propose de vous connecter.
 - **Junie** (JetBrains) : `~/.junie/mcp/mcp.json` avec `{ "mcpServers": { "lilia": { "url": "https://editor.liliaeditor.com/api/mcp" } } }`, puis `/mcp` → **lilia** → **Authorize**.
 - **LM Studio** : **Program → Install → Edit mcp.json**, ajoutez la même entrée `mcpServers` ; LM Studio ouvre la page de connexion.
 - **Mistral Le Chat** : un administrateur l’ajoute dans **Connecteurs → + Ajouter un connecteur → Connecteur MCP personnalisé**, nom **lilia**, l’adresse ci-dessus, puis **Connecter**.
+- **Perplexity** : **Paramètres → Connecteurs → + Connecteur personnalisé**, l’adresse ci-dessus, authentification **OAuth**, puis connecter. Les connecteurs personnalisés sont réservés aux offres payantes (Pro, Max, Enterprise).
+- **Application Gemini** : **Paramètres → Applications connectées → Ajouter une application personnalisée**, l’adresse ci-dessus, puis connectez-vous. Google ne le propose que pour certaines offres et certains pays ; si l’option n’apparaît pas, utilisez Gemini CLI.
 - **Microsoft Copilot Studio** : **Tools → Add a tool → New tool → Model Context Protocol**, l’adresse ci-dessus, authentification **OAuth 2.0 → Dynamic discovery**.
 
 ## Toute autre application {#other}
