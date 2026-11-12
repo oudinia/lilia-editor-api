@@ -73,7 +73,8 @@ public class ExportController : ControllerBase
     public async Task<IActionResult> ExportLatex(
         Guid docId,
         [FromQuery] LaTeXExportOptions options,
-        [FromQuery] string? mode = null)
+        [FromQuery] string? mode = null,
+        [FromQuery] bool texWhenAlone = false)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -128,6 +129,14 @@ public class ExportController : ControllerBase
         {
             if (options.Submission) options.SubmittedBy = userId;
             var zipStream = await _latexExportService.ExportToZipAsync(docId, options);
+            // "Single file" (the bot's Level 3 notes, 12 Nov 2026): when the project is main.tex alone (no
+            // figures, no bibliography file; the README doesn't count), send the .tex itself, not a zip of it.
+            // Opt-in (texWhenAlone, sent by the export dialog): other callers, the connector among them, keep the zip.
+            if (texWhenAlone && !options.Submission && string.Equals(options.Structure, "single", StringComparison.OrdinalIgnoreCase)
+                && SoleMainTex(zipStream) is { } tex)
+            {
+                return File(tex, "application/x-tex", $"{sanitizedTitle}.tex");
+            }
             var name = !options.Submission ? $"{sanitizedTitle}.zip"
                 : LaTeXExportService.TapsZipName(options.TapsAcronym, options.TapsPaperId) ?? $"{sanitizedTitle}-submission.zip";
             return File(zipStream, "application/zip", name);
@@ -459,6 +468,31 @@ public class ExportController : ControllerBase
         new[] { '<', '>', ':', '"', '/', '\\', '|', '?', '*', '\0' }
         .Concat(Enumerable.Range(1, 31).Select(c => (char)c))
         .ToArray();
+
+    /// <summary>
+    /// main.tex's bytes when the zip holds nothing else that compiling needs (a README aside); null
+    /// otherwise. Leaves the stream at its start so the zip can still be sent.
+    /// </summary>
+    internal static byte[]? SoleMainTex(Stream zip)
+    {
+        if (!zip.CanSeek) return null;
+        zip.Position = 0;
+        byte[]? tex = null;
+        using (var archive = new ZipArchive(zip, ZipArchiveMode.Read, leaveOpen: true))
+        {
+            var files = archive.Entries.Where(e => !e.FullName.EndsWith('/')).ToList(); // folders aren't files
+            var others = files.Where(e => e.FullName is not "main.tex" and not "README.txt").ToList();
+            var main = files.FirstOrDefault(e => e.FullName == "main.tex");
+            if (main is not null && others.Count == 0)
+            {
+                using var ms = new MemoryStream();
+                using (var s = main.Open()) s.CopyTo(ms);
+                tex = ms.ToArray();
+            }
+        }
+        zip.Position = 0;
+        return tex;
+    }
 
     private static string SanitizeFilename(string title)
     {
