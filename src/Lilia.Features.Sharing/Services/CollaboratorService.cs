@@ -49,16 +49,21 @@ public class CollaboratorService : ICollaboratorService
             .Where(dc => dc.DocumentId == documentId)
             .Select(dc => new { dc.Id, dc.UserId, Role = dc.Role.Name, dc.RoleId, dc.CreatedAt })
             .ToListAsync();
+        // The owner comes first, marked "owner" (the bot's #83, 13 Nov 2026): the Share list showed only the
+        // people it was shared with, while the design puts the owner inside it (with no role menu).
+        var ownerId = (await _documents.FindAsync(documentId))?.OwnerId;
         // Names and pictures come from Accounts; a share whose account is gone isn't listed (as the join had it).
-        var people = await _people.FindManyAsync(userRows.Select(r => r.UserId));
+        var people = await _people.FindManyAsync(userRows.Select(r => r.UserId).Append(ownerId ?? "").Where(id => id != "").Distinct());
         var userCollaborators = userRows
-            .Where(r => people.ContainsKey(r.UserId))
+            .Where(r => people.ContainsKey(r.UserId) && r.UserId != ownerId)
             .Select(r =>
             {
                 var p = people[r.UserId];
                 return new UserCollaboratorDto(r.Id, r.UserId, p.Name, p.Email, p.Image, r.Role, r.RoleId, r.CreatedAt);
             })
             .ToList();
+        if (ownerId is not null && people.TryGetValue(ownerId, out var owner))
+            userCollaborators.Insert(0, new UserCollaboratorDto(Guid.Empty, ownerId, owner.Name, owner.Email, owner.Image, RoleNames.Owner, Guid.Empty, DateTime.MinValue));
 
         var groupRows = await _context.DocumentGroups
             .Where(dg => dg.DocumentId == documentId)
