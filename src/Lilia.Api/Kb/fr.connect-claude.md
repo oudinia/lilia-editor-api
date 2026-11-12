@@ -1,25 +1,84 @@
 ---
 slug: connect-claude
 lang: fr
-title: Connecter Claude (ou une autre application d'IA) à Lilia
-summary: Permettre à Claude de lire vos documents, de vérifier qu'ils compilent et de faire des modifications visibles et annulables, grâce au connecteur de Lilia.
+title: Connecter votre IA à Lilia : Claude, ChatGPT, Cursor, VS Code et d’autres
+summary: Permettre à votre application d’IA de lire vos documents, de vérifier qu’ils compilent et de faire des modifications visibles et annulables, grâce au connecteur de Lilia. Les étapes pour Claude, Claude Code, ChatGPT, Codex, Cursor, VS Code, Gemini CLI et d’autres.
 skill: lilia-tutor
 audience: all
-tags: [claude, chatgpt, connecteur, mcp, applications d'ia]
-keywords: claude connecteur mcp chatgpt connecter application intégration connecteur personnalisé claude.ai claude desktop assistant ia externe
+tags: [claude, chatgpt, cursor, vscode, gemini, connecteur, mcp, applications d'ia]
+keywords: claude claude-code chatgpt codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio connecteur mcp connecter application intégration connecteur personnalisé assistant ia externe
 ---
-# Connecter Claude (ou une autre application d'IA) à Lilia
+# Connecter votre IA à Lilia
+
+Le connecteur de Lilia permet à l’application d’IA que vous utilisez déjà de travailler dans vos documents Lilia : les lire, les écrire et les modifier, vérifier qu’ils compilent et les exporter. Vous gardez votre IA et son abonnement ; Lilia compte les actions sur votre offre.
 
 ## Étapes {#steps}
-1. Dans Claude (claude.ai ou l'application de bureau), ouvrez **Settings → Connectors** (Paramètres → Connecteurs) et choisissez **Add custom connector** (Ajouter un connecteur personnalisé).
-2. Nommez-le **Lilia** et donnez l'adresse `https://editor.liliaeditor.com/api/mcp`. Laissez les réglages avancés vides, puis ajoutez-le.
-3. Cliquez sur **Connect** (Connecter). Lilia s'ouvre : connectez-vous si besoin, puis sur **Connecter Claude à Lilia ?** vérifiez ce qu'il pourra faire et cliquez sur **Autoriser**.
-4. De retour dans Claude, demandez avec vos mots : *« Liste mes documents Lilia »*, *« Mon article compile-t-il ? »*, *« Ajoute une phrase à la fin de l'introduction de Pythagore theorem »*.
-5. Si le document est ouvert dans Lilia, les modifications de Claude apparaissent aussitôt, avec **Claude a modifié ce document · Annuler**. Si votre dernière saisie n'est pas encore enregistrée, Lilia attend et propose **Charger les modifications**.
-6. Pour revenir en arrière plus tard : **Historique**, puis restaurez la version **Before Claude edit** (avant la modification de Claude), enregistrée avant son premier changement.
-7. Pour arrêter : dans Claude, **Settings → Connectors → Lilia**, puis déconnectez-le ou supprimez-le.
+1. Dans votre application d’IA, ajoutez un **connecteur personnalisé** (certaines l’appellent serveur MCP) avec cette adresse : `https://editor.liliaeditor.com/api/mcp`. Les étapes de chaque application sont ci-dessous.
+2. Quand l’application se connecte, Lilia s’ouvre : connectez-vous si on vous le demande, puis sur **Connecter … à Lilia ?** vérifiez ce qu’elle pourra faire et cliquez sur **Autoriser**.
+3. De retour dans votre application, demandez avec vos mots : *« Liste mes documents Lilia »*, *« Mon article compile-t-il ? »*, *« Ajoute une phrase à la fin de l’introduction »*.
+4. Avec le document ouvert dans Lilia, les modifications de l’application apparaissent aussitôt, avec **Annuler**. Pour revenir en arrière plus tard : **Historique**, puis restaurez la version enregistrée avant sa première modification.
+5. Pour arrêter : retirez le connecteur dans votre application.
 
-Une autre application qui accepte les connecteurs MCP se connecte de la même façon, avec la même adresse.
+## Claude : web, ordinateur et téléphone {#claude}
+1. Ouvrez **Customize → Connectors** (claude.ai/customize/connectors) et choisissez **+ Add → Add custom connector**.
+2. Nom **Lilia**, adresse `https://editor.liliaeditor.com/api/mcp`, puis **Continue**. Gardez les réglages de connexion proposés, choisissez **Sign in now**, puis **Add**.
+3. Dans une conversation, activez-le avec **+ → Connectors → Lilia**.
+- L’offre gratuite accepte un connecteur personnalisé. En Team et Enterprise, un propriétaire l’ajoute dans **Organization settings → Connectors**, puis chaque membre se connecte.
+- Un connecteur ajouté sur le web ou l’application de bureau apparaît aussi sur votre téléphone.
+
+## Claude Code {#claude-code}
+```
+claude mcp add --transport http --scope user lilia https://editor.liliaeditor.com/api/mcp
+```
+Puis lancez `/mcp` dans Claude Code, choisissez **lilia** et connectez-vous dans le navigateur (ou `claude mcp login lilia`). `--scope user` le rend disponible dans tous vos projets.
+
+## ChatGPT {#chatgpt}
+1. Sur chatgpt.com, ouvrez **Plugins** et choisissez **+ → Add custom MCP server**.
+2. Nom **lilia**, connexion **Public endpoint**, adresse `https://editor.liliaeditor.com/api/mcp`, authentification **OAuth**.
+3. Confirmez l’avertissement, créez le plugin et installez-le. Dans une conversation, tapez **@** et choisissez **lilia**.
+- Les offres ChatGPT qui peuvent ajouter un serveur personnalisé, et y écrire, dépendent de l’offre : voir l’aide d’OpenAI. ChatGPT vous demande de confirmer chaque modification.
+
+## Codex (la ligne de commande d’OpenAI) {#codex}
+```
+codex mcp add lilia --url https://editor.liliaeditor.com/api/mcp
+codex mcp login lilia
+```
+Ou ajoutez à `~/.codex/config.toml` :
+```
+[mcp_servers.lilia]
+url = "https://editor.liliaeditor.com/api/mcp"
+```
+
+## Cursor {#cursor}
+Ajoutez à `~/.cursor/mcp.json` (tous les projets) ou `.cursor/mcp.json` (un projet), puis connectez-vous quand Cursor le demande :
+```
+{ "mcpServers": { "lilia": { "url": "https://editor.liliaeditor.com/api/mcp" } } }
+```
+
+## VS Code avec GitHub Copilot {#vscode}
+1. Palette de commandes → **MCP: Add Server** → **HTTP**.
+2. Adresse `https://editor.liliaeditor.com/api/mcp`, nom **lilia**, puis choisissez où le garder (tous vos espaces de travail, ou celui-ci).
+3. Connectez-vous dans le navigateur quand VS Code le demande (ou **Authenticate** dans les actions du serveur).
+
+## Gemini CLI {#gemini}
+Ajoutez à `~/.gemini/settings.json` (notez **httpUrl**) :
+```
+{ "mcpServers": { "lilia": { "httpUrl": "https://editor.liliaeditor.com/api/mcp" } } }
+```
+Puis lancez `/mcp auth lilia` et connectez-vous dans le navigateur.
+
+## Zed, Junie, LM Studio, Mistral, Copilot Studio {#more}
+- **Zed** : dans les réglages, `"context_servers": { "lilia": { "url": "https://editor.liliaeditor.com/api/mcp" } }` ; Zed vous propose de vous connecter.
+- **Junie** (JetBrains) : `~/.junie/mcp/mcp.json` avec `{ "mcpServers": { "lilia": { "url": "https://editor.liliaeditor.com/api/mcp" } } }`, puis `/mcp` → **lilia** → **Authorize**.
+- **LM Studio** : **Program → Install → Edit mcp.json**, ajoutez la même entrée `mcpServers` ; LM Studio ouvre la page de connexion.
+- **Mistral Le Chat** : un administrateur l’ajoute dans **Connecteurs → + Ajouter un connecteur → Connecteur MCP personnalisé**, nom **lilia**, l’adresse ci-dessus, puis **Connecter**.
+- **Microsoft Copilot Studio** : **Tools → Add a tool → New tool → Model Context Protocol**, l’adresse ci-dessus, authentification **OAuth 2.0 → Dynamic discovery**.
+
+## Toute autre application {#other}
+Une application qui accepte les serveurs MCP distants avec OAuth se connecte avec la même adresse. Une qui n’exécute que des serveurs locaux peut passer par le pont `mcp-remote` (il faut Node.js) :
+```
+{ "mcpServers": { "lilia": { "command": "npx", "args": ["mcp-remote", "https://editor.liliaeditor.com/api/mcp", "--transport", "http-only"] } } }
+```
 
 ## Des prompts prêts à l'emploi {#prompts}
 Lilia propose à Claude des prompts tout prêts : dans Claude, cliquez sur **+** (ou tapez **/**) et choisissez un prompt Lilia, puis remplissez deux ou trois champs. Chacun fait le travail en un minimum d'étapes, ce qui économise vos actions du jour.
