@@ -131,7 +131,9 @@ public record PlanAllowanceDto(double Fraction, bool Unlimited, DateTime ResetsA
 public record PlanNameDto(string Slug, string Name);
 
 public record PlanUsageDto(bool Enforced, PlanNameDto Plan, PlanMeterDto Documents, PlanMeterDto Imports, PlanAllowanceDto Ask,
-    PlanReadOnlyDto? ReadOnly = null);
+    PlanReadOnlyDto? ReadOnly = null,
+    // PDF import pages this month (PROD-49, 12 Nov 2026): limit 0 on Free (no PDF import), 100 on Pro.
+    PlanMeterDto? PdfPages = null);
 
 /// <summary>
 /// Over the plan's limit after a downgrade (launch redesign 4d/4e): how many documents are read-only, how many stay
