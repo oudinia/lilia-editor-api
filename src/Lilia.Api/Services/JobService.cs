@@ -919,7 +919,8 @@ public class JobService : IJobService
                 ImportParagraph p => new CreateReviewBlockDto(
                     Id: Guid.NewGuid().ToString(),
                     Type: "paragraph",
-                    Content: JsonSerializer.SerializeToElement(new { text = p.Text }),
+                    // Bold, italic and underline as the editor's marks (launch-bot #76).
+                    Content: JsonSerializer.SerializeToElement(new { text = Lilia.Import.Services.InlineMarkers.Apply(p.Text, p.Formatting) }),
                     Confidence: 95,
                     Warnings: null,
                     SortOrder: sortOrder++,
@@ -990,7 +991,7 @@ public class JobService : IJobService
                 ImportBlockquote bq => new CreateReviewBlockDto(
                     Id: Guid.NewGuid().ToString(),
                     Type: "blockquote",
-                    Content: JsonSerializer.SerializeToElement(new { text = bq.Text }),
+                    Content: JsonSerializer.SerializeToElement(new { text = Lilia.Import.Services.InlineMarkers.Apply(bq.Text, bq.Formatting) }),
                     Confidence: 80,
                     Warnings: null,
                     SortOrder: sortOrder++,
@@ -1137,7 +1138,7 @@ public class JobService : IJobService
         bool ordered,
         int sortOrder)
     {
-        var itemTexts = items.Select(li => li.Text).ToArray();
+        var itemTexts = items.Select(li => Lilia.Import.Services.InlineMarkers.Apply(li.Text, li.Formatting)).ToArray();
         return new CreateReviewBlockDto(
             Id: Guid.NewGuid().ToString(),
             Type: "list",
@@ -1178,7 +1179,7 @@ public class JobService : IJobService
         bool ordered,
         int sortOrder)
     {
-        var itemTexts = items.Select(li => li.Text).ToArray();
+        var itemTexts = items.Select(li => Lilia.Import.Services.InlineMarkers.Apply(li.Text, li.Formatting)).ToArray();
 
         return new Lilia.Core.Entities.Block
         {
