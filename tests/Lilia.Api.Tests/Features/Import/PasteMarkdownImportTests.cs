@@ -52,7 +52,8 @@ public class PasteMarkdownImportTests : IntegrationTestBase
     public void Markdown_becomes_headings_lists_equations_tables_quotes_and_code()
     {
         var els = MarkdownTextParser.Parse(ChatAnswer);
-        els.OfType<ImportHeading>().Single().Should().Match<ImportHeading>(h => h.Level == 2 && h.Text == "Results");
+        // "## Results" is the answer's shallowest heading, so it becomes a section (launch-bot #79, 12 Nov 2026).
+        els.OfType<ImportHeading>().Single().Should().Match<ImportHeading>(h => h.Level == 1 && h.Text == "Results");
         els.OfType<ImportParagraph>().Single().Text.Should().Be(
             @"The loss **drops** fast, see \href{https://example.org/a_b}{the paper}. It is *stable* and uses `adam`.");
 

@@ -61,7 +61,7 @@ public partial class MathpixPdfImportService : IPdfParser
         var warnings = new List<ImportWarning>();
 
         // Step 4: Post-process for abstract/bibliography/theorem detection
-        elements = PdfImportService.PostProcess(elements, warnings);
+        elements = HeadingLevels.Promote(PdfImportService.PostProcess(elements, warnings));
 
         // Step 5: Extract title
         var title = PdfImportService.ExtractTitle(elements);
