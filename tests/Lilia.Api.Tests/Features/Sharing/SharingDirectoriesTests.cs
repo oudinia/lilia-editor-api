@@ -70,7 +70,9 @@ public class SharingDirectoriesTests : IntegrationTestBase
 
         var list = await client.GetFromJsonAsync<CollaboratorListDto>($"/api/documents/{doc.Id}/collaborators");
 
-        list!.Users.Should().ContainSingle().Which.Should().Match<UserCollaboratorDto>(u =>
+        // The owner first, marked owner (the bot's #83, 13 Nov 2026), then the people it is shared with.
+        list!.Users.Select(u => (u.UserId, u.RoleName)).Should().Equal((owner, "owner"), (ada, "viewer"));
+        list.Users[1].Should().Match<UserCollaboratorDto>(u =>
             u.UserId == ada && u.Name == "Ada Lovelace" && u.Email == $"{ada}@lilia.test" && u.RoleName == "viewer");
         list.Groups.Should().ContainSingle().Which.Should().Match<GroupCollaboratorDto>(g =>
             g.GroupId == groupId && g.GroupName == "Reviewers" && g.MemberCount == 2 && g.RoleName == "editor");
