@@ -685,9 +685,10 @@ public class TypstExportService : ITypstExportService
         var sb = new StringBuilder();
         sb.AppendLine($"#table(");
         sb.AppendLine($"  columns: {colCount},");
-        // Only written when a column is decimal, so a table without one is as it was.
-        if (plan.AnyDecimal)
-            sb.AppendLine($"  align: ({string.Join(", ", Enumerable.Range(0, colCount).Select(c => TypstAlign(content, plan, c)))}),");
+        // Always written (launch-bot #71, 13 Nov 2026): a captioned table sits in a figure, and Typst centres
+        // a figure's body, so cells with no alignment of their own came out centred, Left or not. Auto and
+        // Left are left, as the LaTeX export's l columns are.
+        sb.AppendLine($"  align: ({string.Join(", ", Enumerable.Range(0, colCount).Select(c => TypstAlign(content, plan, c)))}),");
 
         if (headers.Count > 0)
         {
