@@ -166,6 +166,12 @@ public sealed partial class DocumentCheckService(
         return Lilia.Engines.Publishers.PublisherCompliance.Check(doc, doc.Blocks.OrderBy(b => b.SortOrder).ToList(), source, installed);
     }
 
+    private static readonly Regex EmptyFraction = new(@"\\[dt]?frac\s*(\{\s*\}|\{[^{}]*\}\s*\{\s*\})", RegexOptions.Compiled);
+
+    /// <summary>1-based lines of the emitted LaTeX holding a fraction with an empty numerator or denominator.</summary>
+    internal static IEnumerable<int> EmptyFractionLines(string source) =>
+        source.Split('\n').Select((text, i) => (text, line: i + 1)).Where(x => EmptyFraction.IsMatch(x.text)).Select(x => x.line);
+
     private static string? ErrorOf(DocumentCheck c) => c.Problems.FirstOrDefault(p => p.Severity == "error")?.Message;
 
     private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto? d, string source, string engine, LatexValidationResult result,
@@ -226,6 +232,11 @@ public sealed partial class DocumentCheckService(
         foreach (var o in wideFound)
             problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
                 $"The table is {Math.Round(o.Points, 1)}pt wider than its column."));
+        // A fraction with an empty part compiles and prints a blank (launch-bot #34, 13 Nov 2026: \frac{a}
+        // was completed to \frac{a}{} and the check said all was well).
+        foreach (var fracLine in EmptyFractionLines(source))
+            problems.Add(new BlockProblem(audit.BlockAtLine(fracLine)?.ToString(), fracLine, "warning",
+                "A fraction has an empty part (like \\frac{a}{}): it prints a blank there."));
         var listed = problems.Take(MaxProblems).ToList();
 
         var report = new
