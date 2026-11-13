@@ -12,7 +12,7 @@ Download:
 
 Only you can download it, after signing in. The link is valid until {{expires_on}}.
 
-Didn’t ask for this? Someone may be using your account. Change your password in the Security section.
+Didn’t ask for this? Someone may be using your account. Check Settings → Security, and write to us through the help center.
 
 —
 You’re receiving this because an export of your Lilia data was requested for {{recipient_email}}.

@@ -12,7 +12,7 @@ Descargar:
 
 Solo se puede descargar desde tu cuenta, después de iniciar sesión. El enlace es válido hasta el {{expires_on}}.
 
-¿No la pediste tú? Puede que alguien esté usando tu cuenta. Cambia tu contraseña en la sección Seguridad.
+¿No la pediste tú? Puede que alguien esté usando tu cuenta. Revisa Ajustes → Seguridad y escríbenos desde el centro de ayuda.
 
 —
 Recibes este mensaje porque se pidió una exportación de tus datos de Lilia para {{recipient_email}}.
