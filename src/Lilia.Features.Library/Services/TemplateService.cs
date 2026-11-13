@@ -173,11 +173,12 @@ public class TemplateService : ITemplateService
             .Include(d => d.Blocks.OrderBy(b => b.SortOrder))
             .Include(d => d.BibliographyEntries)
             .FirstOrDefaultAsync(d => d.Id == templateId && d.IsTemplate);
-        if (_entitlements is not null) await _entitlements.EnsureCanCreateDocumentAsync(userId);
-
         // Using a template copies its content, so it is visible on the same
         // terms as reading it: someone else's private template is not found.
+        // Checked before the plan limit (full browser suite, 13 Nov 2026): a person at the limit was
+        // told 402 about a template they can't see, where everyone else gets 404.
         if (template == null || !IsVisibleTo(template, userId)) return null;
+        if (_entitlements is not null) await _entitlements.EnsureCanCreateDocumentAsync(userId);
 
         // A new document, on the same rule as Duplicate: the template's
         // settings and content, owned by whoever used it.
