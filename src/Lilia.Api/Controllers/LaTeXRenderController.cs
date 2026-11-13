@@ -498,6 +498,11 @@ public class LaTeXRenderController : ControllerBase
 
         var result = await _latexService.ValidateAsync(fullLatex, engine);
         var (valid, error, warnings) = (result.Valid, result.Error, result.Warnings);
+        // Launch-bot #34, retest 2 (13 Nov 2026): the document pass warned about \frac{a}{}, but the full
+        // validation list builds its rows from each block's own validation, so the equation kept its green
+        // tick. The block says it too now (ValidationCacheService.RuleVersion v4 drops the old results).
+        if (DocumentCheckService.EmptyFractionLines(latex).Any())
+            warnings = [.. warnings ?? [], EmptyFractionMessage];
 
         if (!valid)
         {
