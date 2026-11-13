@@ -335,11 +335,32 @@ public class TableColumnFormatTests
         text.Should().Contain("50.1").And.Contain("Top-1");
     }
 
+    // Launch-bot #71 (13 Nov 2026): a captioned table is a figure, whose body Typst centres; without an
+    // alignment of their own the cells were centred, even with Left chosen. Every column says it now.
     [Fact]
-    public void Typst_without_a_decimal_column_is_unchanged()
+    public void Typst_writes_every_column_alignment_so_a_figure_does_not_centre_the_cells()
     {
-        var src = Typst(new { headers = new[] { "A", "B" }, rows = new[] { new[] { "x", "y" } } });
-        src.Should().NotContain("align:");
+        Typst(new { headers = new[] { "A", "B" }, rows = new[] { new[] { "x", "y" } } })
+            .Should().Contain("align: (left, left),");
+
+        var src = Typst(new
+        {
+            headers = new[] { "Site", "Change (m)" },
+            rows = new[] { new[] { "North", "1.2" }, new[] { "South", "0.8" } },
+            columnAlign = new[] { "left", "left" },
+            caption = "Illustrative coastal observations.",
+        });
+        src.Should().Contain("#figure(").And.Contain("align: (left, left),");
+        var (text, error) = CompileToText(src);
+        text.Should().NotBeNull(error);
+        text.Should().Contain("North").And.Contain("Illustrative coastal observations.");
+    }
+
+    [Fact]
+    public void Typst_keeps_centre_and_right_as_chosen()
+    {
+        Typst(new { headers = new[] { "A", "B", "C" }, rows = new[] { new[] { "x", "y", "z" } }, columnAlign = new[] { "c", "right", "auto" } })
+            .Should().Contain("align: (center, right, left),");
     }
 }
 
