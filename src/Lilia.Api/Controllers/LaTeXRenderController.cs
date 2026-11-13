@@ -623,6 +623,8 @@ public class LaTeXRenderController : ControllerBase
     /// <summary>
     /// Validate an entire document's LaTeX + check bibliography references.
     /// </summary>
+    private const string EmptyFractionMessage = "A fraction has an empty part (like \\frac{a}{}): it prints a blank there.";
+
     [HttpPost("{documentId:guid}/validate")]
     [Lilia.Api.Filters.RequireDocumentAccess(Lilia.Core.Entities.Permissions.Read)]
     public async Task<IActionResult> ValidateDocument(Guid documentId)
@@ -789,7 +791,11 @@ public class LaTeXRenderController : ControllerBase
             }
 
             // Merge bibliography + layout + reference warnings with LaTeX warnings
-            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(refWarnings).Concat(tikzWarnings)
+            // The editor's Validate now panel reads these, not the document check (the bot's #34 retest,
+            // 13 Nov 2026): a fraction with an empty part compiles and prints a blank.
+            var fractionWarnings = DocumentCheckService.EmptyFractionLines(latex)
+                .Select(_ => EmptyFractionMessage);
+            var allWarnings = bibWarnings.Concat(layoutWarnings).Concat(refWarnings).Concat(tikzWarnings).Concat(fractionWarnings)
                 .Concat(warnings).Distinct().ToArray();
 
             if (!valid || allWarnings.Length > 0)
@@ -863,6 +869,11 @@ public class LaTeXRenderController : ControllerBase
             }
             foreach (var f in blockIssues.Where(i => i.blockId is not null))
                 issues.Add(new ValidationIssue("warning", "frame", f.message, f.blockId));
+            // The equation blocks with an empty fraction part, so the panel points at them (#34).
+            var fractionBlockIds = DocumentCheckService.EmptyFractionLines(latex)
+                .Select(l => lineMap.BlockAt(l)?.ToString()).OfType<string>().Distinct().ToArray();
+            foreach (var id in fractionBlockIds)
+                issues.Add(new ValidationIssue("warning", "equation", EmptyFractionMessage, id));
             if (!valid)
                 issues.Insert(0, new ValidationIssue("error", "compile", FirstErrorLine(error), errorBlockId));
 
@@ -871,6 +882,7 @@ public class LaTeXRenderController : ControllerBase
                 .Select(id => id.ToString())
                 .Concat(blockIssues.Where(i => i.blockId is not null).Select(i => i.blockId!))
                 .Concat(tikzBlockIds)
+                .Concat(fractionBlockIds)
                 .Distinct()
                 .ToArray();
 
@@ -887,6 +899,7 @@ public class LaTeXRenderController : ControllerBase
                 blockIssues = blockIssues
                     .Select(i => (object)new { i.blockId, kind = "frame", i.frame, i.message })
                     .Concat(tikzIssues)
+                    .Concat(fractionBlockIds.Select(id => (object)new { blockId = id, kind = "equation", message = EmptyFractionMessage }))
                     .ToArray(),
                 durationMs = result.DurationMs,
                 engine = string.IsNullOrEmpty(result.Engine) ? null : result.Engine,
