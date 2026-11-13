@@ -55,8 +55,19 @@ public class ImportReviewService : IImportReviewService
 
     public async Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false)
     {
+        // The review's title names the format (web #638), read from the session. Sessions made from a job
+        // all kept the default "tex", so a Word import was titled "LaTeX import review" (launch-bot #76,
+        // 13 Nov 2026). The job knows its format; "latex" stays "tex", as before.
+        var jobFormat = dto.JobId is { } jobId
+            ? await _context.Jobs.Where(j => j.Id == jobId).Select(j => j.SourceFormat).FirstOrDefaultAsync()
+            : null;
+        var sourceFormat = string.IsNullOrWhiteSpace(jobFormat) || jobFormat.Equals("latex", StringComparison.OrdinalIgnoreCase)
+            ? "tex"
+            : jobFormat.ToLowerInvariant();
+
         var session = new ImportReviewSession
         {
+            SourceFormat = sourceFormat,
             Id = Guid.NewGuid(),
             JobId = dto.JobId,
             OwnerId = userId,
