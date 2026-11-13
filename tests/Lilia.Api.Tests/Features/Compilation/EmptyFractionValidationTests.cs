@@ -35,4 +35,32 @@ public class EmptyFractionValidationTests : IntegrationTestBase
         root.GetProperty("warnings").EnumerateArray().Select(w => w.GetString()).Should().Contain(w => w!.Contains("empty part"));
         root.GetProperty("blocksWithWarnings").EnumerateArray().Select(b => b.GetString()).Should().Contain(eq.Id.ToString());
     }
+
+    /// <summary>Retest 2: the full validation list builds its rows from each block's own validation.</summary>
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task The_equation_block_warns_on_its_own_and_a_complete_fraction_does_not()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Empty fraction, block");
+        var empty = await SeedBlockAsync(doc.Id, "equation", JsonSerializer.Serialize(new { latex = @"\frac{a}{}", displayMode = true }), 0);
+        var whole = await SeedBlockAsync(doc.Id, "equation", JsonSerializer.Serialize(new { latex = @"\frac{a}{b}", displayMode = true }), 1);
+        var client = CreateClientAs(_userId);
+
+        async Task<(bool Valid, string[] Warnings)> Validate(Guid id)
+        {
+            var resp = await client.PostAsync($"/api/latex/block/{id}/validate", null);
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var root = json.RootElement;
+            return (root.GetProperty("valid").GetBoolean(),
+                root.GetProperty("warnings").EnumerateArray().Select(w => w.GetString() ?? "").ToArray());
+        }
+
+        var first = await Validate(empty.Id);
+        first.Valid.Should().BeTrue();
+        first.Warnings.Should().Contain(w => w.Contains("empty part"));
+        // The second call is served from the cache and must say the same.
+        (await Validate(empty.Id)).Warnings.Should().Contain(w => w.Contains("empty part"));
+        (await Validate(whole.Id)).Warnings.Should().NotContain(w => w.Contains("empty part"));
+    }
 }

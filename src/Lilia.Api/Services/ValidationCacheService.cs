@@ -51,7 +51,9 @@ public class ValidationCacheService : IValidationCacheService
     // v3: inject \newunicodechar shim so literal Unicode in prose (γ, ×, —)
     // compiles instead of erroring. Bump re-validates blocks that previously
     // failed on "Unicode character not set up for use with LaTeX".
-    public const string RuleVersion = "v3";
+    // v4 (13 Nov 2026, launch-bot #34): a block with an empty fraction part (\frac{a}{}) warns. Bump so
+    // blocks cached clean before that re-validate and show it.
+    public const string RuleVersion = "v4";
 
     private readonly LiliaDbContext _context;
     private readonly BulkInsertHelper _bulk;
