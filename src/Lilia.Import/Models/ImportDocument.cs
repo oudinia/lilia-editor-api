@@ -96,6 +96,15 @@ public class ImportMetadata
     /// <summary>Heading levels the source numbered (HeadingNumbering.Detect): null unknown, 0 none, 1–5.</summary>
     public int? HeadingNumbering { get; set; }
 
+    /// <summary>The title the source shows (a Word file's Title-style paragraph, else its title property); null when none.</summary>
+    public string? SourceTitle { get; set; }
+
+    /// <summary>A Word file's page margins, as Lilia stores them ("1in", "2.5cm"); null when the source sets none.</summary>
+    public string? MarginTop { get; set; }
+    public string? MarginBottom { get; set; }
+    public string? MarginLeft { get; set; }
+    public string? MarginRight { get; set; }
+
     /// <summary>
     /// Document author (dc:creator).
     /// </summary>

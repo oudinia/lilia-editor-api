@@ -193,6 +193,47 @@ public class McpTransfersTests : IntegrationTestBase
         check.GetProperty("note").GetString().Should().Contain("Missing figure");
     }
 
+    // MCP-124 (retested 14 Nov): a Word file on US Letter with 1 in / 1.25 in margins and a Title-style
+    // paragraph came in titled by its file name, the title as body text, on A4 with no margins.
+    [Fact]
+    public async Task A_word_import_keeps_its_title_paper_and_margins()
+    {
+        await SeedUserAsync("mcpx_pagesetup");
+        var app = CreateClientAs("mcpx_pagesetup");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+
+        const string w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        static string P(string text, string? style = null) =>
+            $"<w:p>{(style is null ? "" : $"<w:pPr><w:pStyle w:val=\"{style}\"/></w:pPr>")}<w:r><w:t>{text}</w:t></w:r></w:p>";
+        var parts = new Dictionary<string, string>
+        {
+            ["[Content_Types].xml"] = """<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>""",
+            ["_rels/.rels"] = """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>""",
+            ["word/_rels/document.xml.rels"] = """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>""",
+            ["word/styles.xml"] = $"""<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="{w}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>""",
+            ["word/document.xml"] = $"""<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="{w}"><w:body>{P("Sediment Transport in Flumes", "Title")}{P("Introduction", "Heading1")}{P("This study measures sediment transport in a laboratory flume.")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1800" w:bottom="1440" w:left="1800" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>""",
+        };
+        using var zip = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Create, true))
+            foreach (var (name, xml) in parts)
+            {
+                await using var entry = archive.CreateEntry(name).Open();
+                await entry.WriteAsync(Encoding.UTF8.GetBytes(xml));
+            }
+
+        var result = await CallAsync(app, "import_document", new { filename = "paper-setup.docx", content = Convert.ToBase64String(zip.ToArray()) });
+        result.TryGetProperty("error", out _).Should().BeFalse(result.ToString());
+        var id = result.GetProperty("documentId").GetGuid();
+        await using var db = CreateDbContext();
+        var doc = await db.Documents.AsNoTracking().Include(d => d.Blocks).FirstAsync(d => d.Id == id);
+        doc.Title.Should().Be("Sediment Transport in Flumes");
+        doc.PaperSize.Should().Be("letter");
+        (doc.MarginTop, doc.MarginBottom, doc.MarginLeft, doc.MarginRight).Should().Be(("1in", "1in", "1.25in", "1.25in"));
+        doc.Blocks.Should().NotContain(b => b.Content.RootElement.GetRawText().Contains("Sediment Transport"), "the title is the document's, not body text");
+        doc.Blocks.Should().NotContain(b => b.Type == "tableOfContents");
+    }
+
     [Fact]
     public async Task An_apps_token_cannot_upload_on_the_drop_page()
     {

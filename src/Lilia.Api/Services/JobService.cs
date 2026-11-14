@@ -403,9 +403,12 @@ public class JobService : IJobService
                     job.Progress = 60;
                     await _context.SaveChangesAsync();
 
+                    // The document's own title (its Title paragraph or title property) before the file name (MCP-124).
                     var title = !string.IsNullOrWhiteSpace(request.Title)
                         ? request.Title
-                        : Path.GetFileNameWithoutExtension(request.Filename);
+                        : importResult.IntermediateDocument?.Metadata.SourceTitle is { Length: > 0 } sourceTitle
+                            ? sourceTitle
+                            : Path.GetFileNameWithoutExtension(request.Filename);
 
                     // Build review blocks from intermediate elements using shared conversion
                     var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
@@ -448,7 +451,8 @@ public class JobService : IJobService
                         userId, job.Id, title, reviewBlocks,
                         paragraphTraces: tracesJson,
                         sourceFilePath: persistentPath,
-                        headingNumbering: importResult.IntermediateDocument?.Metadata.HeadingNumbering);
+                        headingNumbering: importResult.IntermediateDocument?.Metadata.HeadingNumbering,
+                        pageSetup: ImportReviewService.PageSetupJson(importResult.IntermediateDocument?.Metadata));
 
                     reviewSessionId = sessionResult.Session.Id;
 

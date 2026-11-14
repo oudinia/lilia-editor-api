@@ -487,12 +487,22 @@ public class ImportReviewService : IImportReviewService
             // and re-exports under a generic article preamble.
             var pre = await _context.ImportReviewSessions
                 .Where(s => s.Id == sessionId)
-                .Select(s => new { s.RawImportData, s.SourceFormat, s.HeadingNumbering })
+                .Select(s => new { s.RawImportData, s.SourceFormat, s.HeadingNumbering, s.PageSetup })
                 .FirstOrDefaultAsync(ct);
             // The source's heading numbering (a DOCX's Word numbering): the document starts from it.
             if (pre?.HeadingNumbering is { } sourceNumbering)
                 await _context.Database.ExecuteSqlInterpolatedAsync(
                     $"UPDATE documents SET heading_numbering = {sourceNumbering} WHERE id = {documentId}", ct);
+            // The source's page: paper size and margins (MCP-124: a Letter file came in as A4, margins unset).
+            if (PageSetupOf(pre?.PageSetup) is { } page)
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE documents SET
+                        paper_size = COALESCE({page.PaperSize}, paper_size),
+                        margin_top = COALESCE({page.MarginTop}, margin_top),
+                        margin_bottom = COALESCE({page.MarginBottom}, margin_bottom),
+                        margin_left = COALESCE({page.MarginLeft}, margin_left),
+                        margin_right = COALESCE({page.MarginRight}, margin_right)
+                    WHERE id = {documentId}", ct);
             if (pre != null
                 && !string.IsNullOrWhiteSpace(pre.RawImportData)
                 && (pre.SourceFormat == "latex" || pre.SourceFormat == "tex"))
@@ -1208,6 +1218,29 @@ public class ImportReviewService : IImportReviewService
         return activities.Select(MapActivityToDto).ToList();
     }
 
+    internal sealed record PageSetupValues(string? PaperSize, string? MarginTop, string? MarginBottom, string? MarginLeft, string? MarginRight);
+
+    /// <summary>The stored page setup, each value checked as the settings tool checks it; null when none is usable.</summary>
+    internal static PageSetupValues? PageSetupOf(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var p = JsonSerializer.Deserialize<PageSetupValues>(json, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            if (p is null) return null;
+            var check = DocumentSettingsValidator.Validate(new DocumentSettingsValidator.Input(
+                PaperSize: p.PaperSize, MarginTop: p.MarginTop, MarginBottom: p.MarginBottom, MarginLeft: p.MarginLeft, MarginRight: p.MarginRight));
+            return check.Ok && (p.PaperSize ?? p.MarginTop ?? p.MarginBottom ?? p.MarginLeft ?? p.MarginRight) is not null ? p : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>A parsed source's page setup as stored on the session (null when it sets none).</summary>
+    internal static string? PageSetupJson(Lilia.Import.Models.ImportMetadata? m) =>
+        m is null || (m.PaperSize ?? m.MarginTop ?? m.MarginBottom ?? m.MarginLeft ?? m.MarginRight) is null ? null
+            : JsonSerializer.Serialize(new PageSetupValues(m.PaperSize, m.MarginTop, m.MarginBottom, m.MarginLeft, m.MarginRight),
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
     // --- Auto-creation from import ---
 
     public async Task<CreateSessionResponseDto> CreateSessionFromImportAsync(
@@ -1219,7 +1252,8 @@ public class ImportReviewService : IImportReviewService
         JsonElement? paragraphTraces = null,
         string? sourceFilePath = null,
         string? rawImportData = null,
-        int? headingNumbering = null)
+        int? headingNumbering = null,
+        string? pageSetup = null)
     {
         var warningsJson = warnings != null
             ? JsonSerializer.SerializeToElement(warnings)
@@ -1235,12 +1269,13 @@ public class ImportReviewService : IImportReviewService
         var result = await CreateSessionAsync(userId, dto);
 
         // Store paragraph traces and source file path if provided
-        if (paragraphTraces.HasValue || sourceFilePath != null || rawImportData != null || headingNumbering != null)
+        if (paragraphTraces.HasValue || sourceFilePath != null || rawImportData != null || headingNumbering != null || pageSetup != null)
         {
             var session = await _context.ImportReviewSessions.FindAsync(result.Session.Id);
             if (session != null)
             {
                 session.HeadingNumbering = headingNumbering;
+                session.PageSetup = pageSetup;
                 if (paragraphTraces.HasValue)
                 {
                     session.ParagraphTraces = JsonDocument.Parse(paragraphTraces.Value.GetRawText());

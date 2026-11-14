@@ -167,6 +167,21 @@ public class DocxParser : IDocxParser
                 allElements.AddRange(commentElements);
                 allElements.AddRange(trackChangeElements);
 
+                // The Title-style paragraph is the document's title, not body text (MCP-124: it became a
+                // paragraph, and the title came from the file name). Else the file's title property.
+                var titlePara = elements.OfType<ImportParagraph>()
+                    .FirstOrDefault(p => p.Style == ParagraphStyle.Title && !string.IsNullOrWhiteSpace(p.Text));
+                if (titlePara != null)
+                {
+                    importDoc.Metadata.SourceTitle = titlePara.Text.Trim();
+                    allElements.Remove(titlePara);
+                    elements.Remove(titlePara);
+                }
+                else if (!string.IsNullOrWhiteSpace(doc.PackageProperties.Title))
+                    importDoc.Metadata.SourceTitle = doc.PackageProperties.Title.Trim();
+                if (importDoc.Metadata.SourceTitle is { } sourceTitle) importDoc.Title = sourceTitle;
+                ReadPageSetup(body, importDoc.Metadata);
+
                 importDoc.Elements = allElements;
                 importDoc.Metadata.HeadingNumbering = Lilia.Import.Detection.HeadingNumbering.Detect(elements);
 
@@ -1138,6 +1153,46 @@ public class DocxParser : IDocxParser
         return false;
     }
 
+    // Page sizes in twentieths of a point (portrait), as Lilia names them.
+    private static readonly (string Name, int W, int H)[] PageSizes =
+    [
+        ("a4", 11906, 16838), ("letter", 12240, 15840), ("legal", 12240, 20160),
+        ("a5", 8391, 11906), ("executive", 10440, 15120), ("b5", 9979, 14173),
+    ];
+
+    /// <summary>
+    /// The page the Word file is set on: its last section's size and margins (MCP-124: a US Letter
+    /// file with 1 in and 1.25 in margins came in as A4 with the class's margins). A size Lilia has
+    /// no name for keeps the document's default.
+    /// </summary>
+    internal static void ReadPageSetup(Body body, ImportMetadata metadata)
+    {
+        var section = body.Elements<SectionProperties>().LastOrDefault() ?? body.Descendants<SectionProperties>().LastOrDefault();
+        if (section is null) return;
+        if (section.GetFirstChild<PageSize>() is { Width.HasValue: true, Height.HasValue: true } size)
+        {
+            int w = (int)size.Width!.Value, h = (int)size.Height!.Value;
+            if (w > h) (w, h) = (h, w);
+            var named = PageSizes.FirstOrDefault(p => Math.Abs(p.W - w) <= 30 && Math.Abs(p.H - h) <= 30);
+            if (named.Name is not null) metadata.PaperSize = named.Name;
+        }
+        if (section.GetFirstChild<PageMargin>() is { } m)
+        {
+            metadata.MarginTop = Length(m.Top?.Value);
+            metadata.MarginBottom = Length(m.Bottom?.Value);
+            metadata.MarginLeft = Length(m.Left?.Value is uint l ? (int)l : null);
+            metadata.MarginRight = Length(m.Right?.Value is uint r ? (int)r : null);
+        }
+    }
+
+    // Twentieths of a point as Lilia writes a margin: inches when a whole quarter inch, else centimetres.
+    internal static string? Length(int? twips)
+    {
+        if (twips is not int t || t <= 0) return null;
+        if (t % 360 == 0) return $"{(t / 1440m).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}in";
+        return $"{(t * 2.54m / 1440m).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}cm";
+    }
+
     internal ParagraphStyle GetParagraphStyle(string? styleId, Paragraph para)
     {
         if (string.IsNullOrEmpty(styleId))
@@ -1147,10 +1202,11 @@ public class DocxParser : IDocxParser
 
         if (lower.Contains("quote") || lower.Contains("blockquote"))
             return ParagraphStyle.Quote;
-        if (lower.Contains("title"))
-            return ParagraphStyle.Title;
+        // Subtitle first: "subtitle" contains "title", so a Subtitle paragraph read as the Title.
         if (lower.Contains("subtitle"))
             return ParagraphStyle.Subtitle;
+        if (lower.Contains("title"))
+            return ParagraphStyle.Title;
         if (lower.Contains("caption"))
             return ParagraphStyle.Caption;
 
