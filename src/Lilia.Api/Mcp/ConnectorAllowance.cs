@@ -27,7 +27,8 @@ public sealed class ConnectorAllowance(
     IDistributedCache cache,
     IOptions<EntitlementOptions> options,
     IConfiguration config,
-    OperationPacks packs)
+    OperationPacks packs,
+    IOptions<StripeOptions> stripe)
 {
     public const string CapKey = "mcpActionsPerDay";
     /// <summary>
@@ -106,8 +107,12 @@ public sealed class ConnectorAllowance(
             return $"Lilia allows {cap} connector actions a day on this plan, a safety limit, and today's are used. {back} " +
                    "If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works.";
         var origin = McpOAuth.PublicOrigin(config);
+        // Packs, once they're on sale (the owner, 14 Nov 2026: "shown … in the connector limit message").
+        var packOffer = stripe.Value.IsConfigured && !string.IsNullOrEmpty(stripe.Value.OperationsPackPriceId)
+            ? $" Or the author can buy operations for checks, exports and imports: ${stripe.Value.OperationsPackUnitCents / 100m:0.##} for {OperationPacks.PerPack}, never expiring, in {origin}/settings/billing."
+            : "";
         return $"Lilia's free plan includes {cap} connector actions a day, and today's are used. {back} " +
-               $"Pro allows far more: {origin}/?plans=1. Tell the author this; everything in the Lilia editor itself still works.";
+               $"Pro allows far more: {origin}/?plans=1.{packOffer} Tell the author this; everything in the Lilia editor itself still works.";
     }
 
     /// <summary>The call-tool filter that applies it to every connector call.</summary>
