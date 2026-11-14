@@ -326,7 +326,7 @@ public class TypstCompileService : ITypstCompileService
     /// Returns null if nothing resolves so the caller can degrade
     /// gracefully (PreviewService falls back to pdflatex).
     /// </summary>
-    private static string? ResolveBinary()
+    internal static string? ResolveBinary()
     {
         var env = Environment.GetEnvironmentVariable(TypstBinaryEnvVar);
         if (!string.IsNullOrEmpty(env) && File.Exists(env)) return env;
@@ -381,6 +381,56 @@ public class TypstCompileService : ITypstCompileService
     }
 
     private const string TypstBinaryEnvVar = "TYPST_BINARY";
+
+    /// <summary>
+    /// The Typst release Lilia's output and real-TeX tests were checked with (14 Nov 2026). Nothing installs or pins
+    /// the binary: it is whatever <see cref="ResolveBinary"/> finds, so a quiet upgrade could change previews. Start-up
+    /// logs the version found and warns when it isn't this one. After a deliberate upgrade: run the real-TeX tests,
+    /// then change this and <c>CompileCache.ProcedureVersion</c>.
+    /// </summary>
+    internal const string ExpectedVersion = "0.15.1";
+
+    /// <summary>"typst 0.15.1 (9dfd3a08)" → "0.15.1"; null when the output isn't a version line.</summary>
+    internal static string? ParseVersion(string? output)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(output ?? "", @"^\s*typst\s+v?(\d+\.\d+\.\d+[\w.-]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    /// <summary>The start-up line for the Typst binary found (or not), compared with <see cref="ExpectedVersion"/>.</summary>
+    internal static (string Line, bool Warn) BootLine(string? path, string? version, string expected = ExpectedVersion)
+    {
+        if (path is null)
+            return ($"[BOOT] Typst NOT FOUND: previews fall back to LaTeX (set {TypstBinaryEnvVar} to the binary)", true);
+        if (version is null)
+            return ($"[BOOT] Typst at {path} did not report its version: previews may fail", true);
+        if (version == expected)
+            return ($"[BOOT] Typst {version} ready: {path}", false);
+        return ($"[BOOT] Typst {version} at {path} is NOT the checked {expected}: previews may differ. Run the real-TeX tests, " +
+                "then update TypstCompileService.ExpectedVersion and CompileCache.ProcedureVersion", true);
+    }
+
+    /// <summary>Finds the binary and asks its version (5 s at most). For the start-up line.</summary>
+    internal static async Task<(string? Path, string? Version)> DescribeBinaryAsync()
+    {
+        var path = ResolveBinary();
+        if (path is null) return (null, null);
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var psi = new System.Diagnostics.ProcessStartInfo(path) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            psi.ArgumentList.Add("--version");
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null) return (path, null);
+            var output = await proc.StandardOutput.ReadToEndAsync(cts.Token);
+            await proc.WaitForExitAsync(cts.Token);
+            return (path, ParseVersion(output));
+        }
+        catch (Exception)
+        {
+            return (path, null);
+        }
+    }
 }
 
 public interface ITypstCompileService

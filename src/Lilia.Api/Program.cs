@@ -954,6 +954,15 @@ if (Lilia.Engines.TexSafety.TexProcessRunner.Sandboxed)
     else Console.Error.WriteLine($"[BOOT] TeX sandbox (bwrap) CANNOT START, every compile will fail: {sandboxDetail}");
 }
 
+// Typst isn't pinned (14 Nov 2026): say at start-up which version runs the previews, and warn when it isn't the
+// one Lilia's output was checked with. In the background: it never delays start-up.
+_ = Task.Run(async () =>
+{
+    var (typstPath, typstVersion) = await Lilia.Api.Services.TypstCompileService.DescribeBinaryAsync();
+    var (line, warn) = Lilia.Api.Services.TypstCompileService.BootLine(typstPath, typstVersion);
+    if (warn) Console.Error.WriteLine(line); else Console.WriteLine(line);
+});
+
 // Document themes: find out once, in the background, which themes' TeX packages are installed
 // (GET /api/themes reports it as `available`; an unavailable theme is never compiled).
 _ = Lilia.Engines.Themes.ThemeAvailability.WarmUpAsync();
