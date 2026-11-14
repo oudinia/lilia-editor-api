@@ -845,7 +845,10 @@ public class DocumentExportService : IDocumentExportService
             Content = new ExportBlockContent
             {
                 Items = items,
-                ListType = listType
+                ListType = listType,
+                // The label style and first number: Word showed "1. 2." for "(III), (IV)" (MCP-117).
+                LabelFormat = content.TryGetProperty("labelFormat", out var lf) && lf.ValueKind == JsonValueKind.String ? lf.GetString() : null,
+                Start = content.TryGetProperty("start", out var st) && st.TryGetInt32(out var n) && n > 0 ? n : null,
             }
         };
     }

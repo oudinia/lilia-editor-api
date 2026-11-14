@@ -570,7 +570,7 @@ public class DocxExportService : IDocxExportService
         var elements = new List<OpenXmlElement>();
         var content = block.Content;
         var isOrdered = content.ListType?.ToLowerInvariant() == "ordered";
-        var numId = isOrdered ? NewNumberedList(mainPart) : 1;
+        var numId = isOrdered ? NewNumberedList(mainPart, content.LabelFormat, content.Start) : 1;
 
         // A description list: each term in bold, then its description, the following lines indented
         // (as LaTeX's description environment prints it). Its descriptions were dropped (MCP-95).
@@ -643,17 +643,45 @@ public class DocxExportService : IDocxExportService
     /// Each numbered list counts from 1, as each LaTeX enumerate does: they all shared one Word
     /// numbering, so a second list went on from the first.
     /// </summary>
-    private static int NewNumberedList(MainDocumentPart mainPart)
+    private static int NewNumberedList(MainDocumentPart mainPart, string? labelFormat = null, int? start = null)
     {
         var numbering = mainPart.NumberingDefinitionsPart?.Numbering;
         if (numbering is null) return 2;
         var id = numbering.Elements<NumberingInstance>().Max(n => (int)(n.NumberID?.Value ?? 0)) + 1;
         var instance = new NumberingInstance { NumberID = id, AbstractNumId = new AbstractNumId { Val = 1 } };
         for (var lvl = 0; lvl < 9; lvl++)
-            instance.Append(new LevelOverride(new StartOverrideNumberingValue { Val = 1 }) { LevelIndex = lvl });
+        {
+            var levelOverride = new LevelOverride(new StartOverrideNumberingValue { Val = lvl == 0 ? start ?? 1 : 1 }) { LevelIndex = lvl };
+            // The list's own label style on its first level, as the LaTeX export writes it (\begin{enumerate}
+            // [label=(\Roman*), start=3]): Word showed every numbered list as "1. 2." (MCP-117).
+            if (lvl == 0 && LabelStyle(labelFormat) is { } style)
+            {
+                var shared = numbering.Elements<AbstractNum>().FirstOrDefault(a => a.AbstractNumberId?.Value == 1)?
+                    .Elements<Level>().FirstOrDefault(l => l.LevelIndex?.Value == 0);
+                var level = (Level?)shared?.CloneNode(true) ?? new Level { LevelIndex = 0 };
+                level.RemoveAllChildren<StartNumberingValue>();
+                level.RemoveAllChildren<NumberingFormat>();
+                level.RemoveAllChildren<LevelText>();
+                level.PrependChild(new LevelText { Val = style.Text });
+                level.PrependChild(new NumberingFormat { Val = style.Format });
+                level.PrependChild(new StartNumberingValue { Val = start ?? 1 });
+                levelOverride.Append(level);
+            }
+            instance.Append(levelOverride);
+        }
         numbering.Append(instance);
         return id;
     }
+
+    /// <summary>Word's format and label for a list's labelFormat; null for the default numbers.</summary>
+    private static (NumberFormatValues Format, string Text)? LabelStyle(string? labelFormat) => labelFormat switch
+    {
+        "alpha" => (NumberFormatValues.LowerLetter, "(%1)"),
+        "Alpha" => (NumberFormatValues.UpperLetter, "(%1)"),
+        "roman" => (NumberFormatValues.LowerRoman, "(%1)"),
+        "Roman" => (NumberFormatValues.UpperRoman, "(%1)"),
+        _ => null,
+    };
 
     private void AppendDescriptionItems(List<ExportListItem> items, int depth, List<OpenXmlElement> into)
     {

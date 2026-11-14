@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 using FluentAssertions;
 using Lilia.Import.Converters;
 using Lilia.Import.Models;
@@ -478,6 +479,34 @@ public class DocxExportServiceTests
         DocxExportService.AlgorithmLineParts("while $x$ do").Should().Equal(("while ", false), ("x", true), (" do", false));
         DocxExportService.AlgorithmLineParts("a \\$ b").Should().Equal(("a \\$ b", false));
         DocxExportService.AlgorithmLineParts("").Should().Equal(("", false));
+    }
+
+    // MCP-117 (retested 14 Nov): "(III), (IV)" from labelFormat Roman, start 3, came out of Word as "1. 2.":
+    // every numbered list used the one decimal numbering.
+    [Fact]
+    public async Task A_numbered_list_keeps_its_label_style_and_start()
+    {
+        static ExportBlock List(string? format, int? start) => Block("list", new ExportBlockContent
+        {
+            ListType = "ordered", LabelFormat = format, Start = start,
+            Items = [new ExportListItem { Text = "One" }, new ExportListItem { Text = "Two" }],
+        });
+        var bytes = await Service().ExportAsync(Doc(List("Roman", 3), List("alpha", null), List(null, null)));
+        using var ms = new MemoryStream(bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var numbering = word.MainDocumentPart!.NumberingDefinitionsPart!.Numbering;
+        var used = word.MainDocumentPart.Document.Descendants<NumberingId>().Select(n => (int)n.Val!.Value).Distinct().ToList();
+        used.Should().HaveCount(3, "each list has its own numbering");
+
+        DocumentFormat.OpenXml.Wordprocessing.Level? FirstLevel(int numId) => numbering.Elements<NumberingInstance>()
+            .Single(i => i.NumberID!.Value == numId).Elements<LevelOverride>().Single(o => o.LevelIndex!.Value == 0)
+            .GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Level>();
+        var roman = FirstLevel(used[0])!;
+        roman.GetFirstChild<NumberingFormat>()!.Val!.Value.Should().Be(NumberFormatValues.UpperRoman);
+        roman.GetFirstChild<StartNumberingValue>()!.Val!.Value.Should().Be(3);
+        roman.GetFirstChild<LevelText>()!.Val!.Value.Should().Be("(%1)");
+        FirstLevel(used[1])!.GetFirstChild<NumberingFormat>()!.Val!.Value.Should().Be(NumberFormatValues.LowerLetter);
+        FirstLevel(used[2]).Should().BeNull("a plain numbered list keeps the shared decimal numbering");
     }
 
     [Fact]

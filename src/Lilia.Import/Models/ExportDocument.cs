@@ -216,6 +216,12 @@ public class ExportBlockContent
     /// </summary>
     public string? ListType { get; set; }
 
+    /// <summary>A numbered list's label style: number (default), alpha, Alpha, roman, Roman.</summary>
+    public string? LabelFormat { get; set; }
+
+    /// <summary>A numbered list's first number (1 when absent).</summary>
+    public int? Start { get; set; }
+
     /// <summary>
     /// Theorem type for theorem blocks (theorem, lemma, proposition, corollary, definition, remark, example).
     /// </summary>
