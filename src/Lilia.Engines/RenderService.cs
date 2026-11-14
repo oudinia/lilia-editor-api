@@ -1379,6 +1379,10 @@ public partial class RenderService : IRenderService
             tableEntries = tableEntries.Where(e => cited.Contains(e.CiteKey) || cited.Contains(LabelKey.Safe(e.CiteKey))).ToList();
             textEntries = textEntries.Where(e => cited.Contains(e.Key) || cited.Contains(LabelKey.Safe(e.Key))).ToList();
         }
+        // In the order the PDF prints them: the export lets BibTeX sort by author unless the style keeps
+        // citation order (MCP-119: Zygmund was [1] here and [2] in the PDF).
+        var bibStyle = Lilia.Engines.Publishers.PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc));
+        if (!BibliographyOrder.KeepsCitationOrder(bibStyle)) tableEntries = BibliographyOrder.Sorted(tableEntries);
         if (tableEntries.Count > 0 || textEntries.Count > 0)
         {
             latex.AppendLine();
