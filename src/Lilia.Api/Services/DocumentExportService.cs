@@ -137,10 +137,13 @@ public class DocumentExportService : IDocumentExportService
         var labels = LabelNumbers.Parse(doc.LabelNumbers);
         var own = WordNumbers(doc);
         _blockNumbers = own.Blocks;
+        exportDoc.ChapterNumbering = IsChapterClass(doc);
+        // A number from the last compile that isn't one: an uncaptioned figure's label holds LaTeX's own
+        // \caption@xref, which printed in Word as "Figure \caption@xref {fig:nocap}{ on input line 438}" (MCP-96).
         _labelNumber = key => key.StartsWith("cite:", StringComparison.Ordinal)
             ? citeNumbers.GetValueOrDefault(key[5..])
             : own.Labels.TryGetValue(key, out var mine) ? mine
-            : labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) ? l.Number : null;
+            : labels.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Number) && !l.Number.Contains('\\') ? l.Number : null;
 
         // One counter per kind, as each \newtheorem has its own; a proof and numbered:false take
         // none. Word numbered every theorem-like block with one counter, proofs too ("Proof 4", MCP-105).
@@ -161,7 +164,10 @@ public class DocumentExportService : IDocumentExportService
             _currentBlockNumber = _blockNumbers.GetValueOrDefault(block.Id);
             var exportBlock = await ConvertBlockAsync(block, theoremNumber);
             if (exportBlock != null)
+            {
+                if (own.Chapters.TryGetValue(block.Id, out var chapter)) exportBlock.Content.CaptionChapter = chapter;
                 exportDoc.Blocks.Add(exportBlock);
+            }
         }
 
         if (listed.Count > 0) exportDoc.Bibliography = listed;
@@ -175,14 +181,25 @@ public class DocumentExportService : IDocumentExportService
     /// kind (proofs and numbered:false unnumbered), numbered display equations (an align counts each
     /// line), captioned figures, tables, listings and algorithms.
     /// </summary>
-    internal static (Dictionary<Guid, string> Blocks, Dictionary<string, string> Labels) WordNumbers(Document doc)
+    internal static bool IsChapterClass(Document doc) =>
+        Lilia.Engines.LaTeXPreambleBuilder.ResolveClassName(doc).ToLowerInvariant() is "book" or "report" or "memoir" or "scrbook" or "scrreprt";
+
+    /// <summary>
+    /// … and, in a chapter class (book, report, memoir, KOMA's), equations, figures, tables and
+    /// listings within chapters as LaTeX numbers them, "2.1" (MCP-96: Word wrote "(1)", "Table 1" where
+    /// the PDF prints "(2.1)", "Table 2.1"); <c>Chapters</c> holds each captioned block's chapter.
+    /// </summary>
+    internal static (Dictionary<Guid, string> Blocks, Dictionary<string, string> Labels, Dictionary<Guid, int> Chapters) WordNumbers(Document doc)
     {
         var blocks = new Dictionary<Guid, string>();
         var labels = new Dictionary<string, string>(StringComparer.Ordinal);
+        var chapters = new Dictionary<Guid, int>();
+        var byChapter = IsChapterClass(doc);
         var depth = doc.HeadingNumbering switch { null => 3, < 0 => 3, var n => n.Value };
         var sections = new int[7];
         var kinds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var equations = 0;
+        string Within(int n) => byChapter ? $"{Math.Max(sections[1], 0)}.{n}" : n.ToString();
 
         void Label(JsonElement content, string type, string number)
         {
@@ -202,6 +219,13 @@ public class DocumentExportService : IDocumentExportService
                     if (unnumbered || level > depth) break;
                     sections[level]++;
                     for (var k = level + 1; k < sections.Length; k++) sections[k] = 0;
+                    // A chapter restarts equations, figures, tables and listings (\chapter resets their
+                    // counters; listings number by chapter by default); algorithms and theorems run on.
+                    if (byChapter && level == 1)
+                    {
+                        equations = 0;
+                        kinds.Remove("#figure"); kinds.Remove("#table"); kinds.Remove("#code");
+                    }
                     var number = string.Join(".", sections.Skip(1).Take(level).Select(x => Math.Max(x, 0)));
                     blocks[block.Id] = number;
                     Label(content, "heading", number);
@@ -225,7 +249,7 @@ public class DocumentExportService : IDocumentExportService
                     var rows = mode is "align" or "gather" || Lilia.Core.Blocks.EquationContent.HasTopLevelAlignment(source)
                         ? Math.Max(1, Regex.Matches(source, @"\\\\(?!\s*$)").Count + 1 - Regex.Matches(source, @"\\(?:nonumber|notag)\b").Count)
                         : 1;
-                    var number = (equations + 1).ToString();
+                    var number = Within(equations + 1);
                     equations += rows;
                     blocks[block.Id] = number;
                     Label(content, "equation", number);
@@ -235,13 +259,15 @@ public class DocumentExportService : IDocumentExportService
                 {
                     if (string.IsNullOrWhiteSpace(GetString(content, "caption"))) break;
                     var type = block.Type.ToLowerInvariant() == "image" ? "figure" : block.Type.ToLowerInvariant();
-                    var number = (kinds["#" + type] = kinds.GetValueOrDefault("#" + type) + 1).ToString();
+                    var n = kinds["#" + type] = kinds.GetValueOrDefault("#" + type) + 1;
+                    var number = byChapter && type != "algorithm" ? Within(n) : n.ToString();
+                    if (byChapter && type != "algorithm") chapters[block.Id] = Math.Max(sections[1], 0);
                     Label(content, type, number);
                     break;
                 }
             }
         }
-        return (blocks, labels);
+        return (blocks, labels, chapters);
     }
 
     private static readonly Regex CiteKeys = new(

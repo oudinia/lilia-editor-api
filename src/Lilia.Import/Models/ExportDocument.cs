@@ -63,6 +63,12 @@ public class ExportDocument
     public List<ExportBlock> Blocks { get; set; } = [];
 
     /// <summary>
+    /// A chapter class (book, report, memoir, KOMA's book and report): equations, figures, tables and
+    /// listings number within chapters, "2.1", as LaTeX does (MCP-96).
+    /// </summary>
+    public bool ChapterNumbering { get; set; }
+
+    /// <summary>
     /// Bibliography entries (optional).
     /// </summary>
     public List<ExportBibliographyEntry>? Bibliography { get; set; }
@@ -205,6 +211,9 @@ public class ExportBlockContent
     /// count as it goes). Null when not numbered.
     /// </summary>
     public int? CaptionNumber { get; set; }
+
+    /// <summary>The chapter a caption's number is within (ChapterNumbering): "Table 2.1".</summary>
+    public int? CaptionChapter { get; set; }
 
     /// <summary>
     /// List items.
