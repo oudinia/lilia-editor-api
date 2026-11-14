@@ -90,9 +90,19 @@ public static class LatexPreambleExtractor
 
         var hits = new List<(int Pos, string Text)>();
         var seenDefinitions = new HashSet<string>(StringComparer.Ordinal);
+        // The rest of what a preamble defines (LatexDefinitions, 14 Nov 2026): xparse commands and environments,
+        // expl3 and \makeatletter blocks, fonts and maths symbols, colours, lengths, counters, \let. Only these
+        // four kinds were kept, so an answer's \NewDocumentCommand or \DeclareSymbolFont was lost (launch bot #99).
+        var statements = Lilia.Import.Services.LatexDefinitions.Find(rawLatex).Where(f => !InPicture(f.Start)).ToList();
+        bool InStatement(int pos) => statements.Any(f => pos > f.Start && pos < f.Start + f.Length);
+        foreach (var (start, length) in statements)
+        {
+            var text = rawLatex.Substring(start, length).Trim();
+            if (seenDefinitions.Add(text)) hits.Add((start, text));
+        }
         foreach (var re in MacroRes)
             foreach (Match m in re.Matches(rawLatex))
-                if (!InPicture(m.Index) && seenDefinitions.Add(m.Value.Trim()))
+                if (!InPicture(m.Index) && !InStatement(m.Index) && seenDefinitions.Add(m.Value.Trim()))
                     hits.Add((m.Index, m.Value.Trim()));
         // TikZ setup (\usetikzlibrary, \tikzset, \pgfplotsset, \tikzstyle …), wherever it is
         // outside a picture: the body parser drops it, and the pictures need it on export and

@@ -897,6 +897,11 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\def\s*\\[A-Za-z@]+\s*(?:#\d)*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\theoremstyle\s*\{[^}]*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*\{[^}]*\}", "");
+        // And the rest of what defines rather than prints (LatexDefinitions: xparse, expl3 and \makeatletter blocks,
+        // fonts, colours, lengths, \let). The flattener ate the unknown command and kept its arguments:
+        // \colorlet{quack}{black} printed "quack{black}" (launch bot #102, 14 Nov 2026). LatexPreambleExtractor
+        // carries them onto the document's custom preamble.
+        documentContent = LatexDefinitions.Strip(documentContent);
 
         // When a user pastes a full document, \begin{document} /
         // \end{document} are wrappers, not content. The generic
