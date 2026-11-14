@@ -2297,7 +2297,10 @@ public class LatexParser : ILatexParser
 
                 case "table":
                 case "table*":
-                    var tableContent = firstMatch.match.Groups[2].Value;
+                    // The float's content is its last group: table and table* capture a placement first, sidewaystable
+                    // and wraptable don't. Groups[2] read nothing for those two, and the table was lost (launch bot
+                    // #105, 14 Nov 2026).
+                    var tableContent = firstMatch.match.Groups[firstMatch.match.Groups.Count - 1].Value;
                     // Same brace-balanced col-spec regex as the bare-tabular
                     // matcher — `[^}]*` truncates on `>{\itshape}c` etc.
                     var tabularMatch = Regex.Match(tableContent, @"\\begin\{tabular\}(?:\[[^\]]*\])?\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}([\s\S]*?)\\end\{tabular\}", RegexOptions.Singleline);
@@ -2321,17 +2324,19 @@ public class LatexParser : ILatexParser
                     }
                     else
                     {
-                        // Store raw table content
-                        document.Elements.Add(new ImportParagraph
+                        // A table this parser can't read as rows (xltabular, tabularx, tblr …): the whole float as raw
+                        // LaTeX, which the PDF prints as written. It was a paragraph of its source, which printed as
+                        // text, or nothing (launch bot #105, 14 Nov 2026).
+                        document.Elements.Add(new ImportLatexPassthrough
                         {
                             Order = elementOrder++,
-                            Text = tableContent.Trim(),
-                            Style = ParagraphStyle.Normal
+                            LatexCode = firstMatch.match.Value.Trim(),
+                            Description = "Table (raw LaTeX)",
                         });
                         document.Warnings.Add(new ImportWarning
                         {
                             Type = ImportWarningType.UnsupportedElement,
-                            Message = "Could not parse table structure"
+                            Message = "Could not parse table structure: kept as raw LaTeX"
                         });
                     }
                     break;
