@@ -667,7 +667,12 @@ public class JobService : IJobService
                     createdDocument.Title = textTitle;
 
                 var sortOrder = 0;
-                foreach (var block in pasted.Blocks)
+                // A Markdown file's front matter: its title, author and date as the new document's title block
+                // (#106, 14 Nov 2026). LaTeX's text import leaves the title to the document, as before.
+                var blocksToAdd = pasted.Format == "MARKDOWN" && pasted.TitleBlock is { } frontTitle
+                    ? new[] { frontTitle }.Concat(pasted.Blocks)
+                    : pasted.Blocks;
+                foreach (var block in blocksToAdd)
                 {
                     _context.Blocks.Add(new Lilia.Core.Entities.Block
                     {
@@ -688,6 +693,11 @@ public class JobService : IJobService
                 // import_document) dropped them, so an imported paper lost its macros and TikZ libraries (10 Nov).
                 if (pasted.Format == "LATEX" && !string.IsNullOrWhiteSpace(request.Content))
                     await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId, request.Content, $"job {job.Id}");
+                // A Markdown file's header-includes, read as a preamble the same way: packages to the package list,
+                // definitions to the custom preamble (#106: pandoc's isodate line never reached the PDF).
+                else if (pasted.Format == "MARKDOWN" && pasted.PreambleLatex.Count > 0)
+                    await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId,
+                        string.Join("\n", pasted.PreambleLatex) + "\n\\begin{document}\n\\end{document}\n", $"job {job.Id} (Markdown header-includes)");
             }
             else
             {
