@@ -26,6 +26,17 @@ public interface IDocumentExportService
     /// </summary>
     Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(
         Guid documentId, string? engineHint, string? lookTheme, bool printSafe);
+
+    /// <summary>
+    /// The PDF, its engine, and the LaTeX errors it was made in spite of (empty when clean, and for Typst). The
+    /// preview says so rather than show a PDF that may be missing text without a word (the launch bot's #103).
+    /// </summary>
+    async Task<(byte[] Pdf, string Engine, IReadOnlyList<string> Problems)> ExportToPdfWithProblemsAsync(
+        Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
+    {
+        var (pdf, engine) = await ExportToPdfWithEngineAsync(documentId, engineHint, lookTheme, printSafe);
+        return (pdf, engine, []);
+    }
 }
 
 public class DocumentExportService : IDocumentExportService
@@ -342,23 +353,31 @@ public class DocumentExportService : IDocumentExportService
     public async Task<(byte[] Pdf, string Engine)> ExportToPdfWithEngineAsync(
         Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
     {
+        var (pdf, engine, _) = await ExportToPdfWithProblemsAsync(documentId, engineHint, lookTheme, printSafe);
+        return (pdf, engine);
+    }
+
+    public async Task<(byte[] Pdf, string Engine, IReadOnlyList<string> Problems)> ExportToPdfWithProblemsAsync(
+        Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
+    {
         // By document version first (DocumentVersions, 18 Oct): an unchanged document's PDF is
         // answered before anything is rendered or routed, and two requests at once share one export.
+        // The entry keeps the engine in Log and the problems, one a line, in Aux.
         if (_versions is not null && await _versions.OfAsync(documentId) is { } version)
         {
             var key = DocumentVersions.OutputKey(version, "pdf", engineHint ?? "auto", lookTheme, printSafe ? "print-safe" : null);
             var (entry, hit) = await CompileCache.Versions.GetOrCompileAsync(key, async () =>
             {
-                var (pdf, engine) = await ExportToPdfUncachedAsync(documentId, engineHint, lookTheme, printSafe);
-                return new CompileCache.Entry(pdf, engine, "");
+                var (pdf, engine, problems) = await ExportToPdfUncachedAsync(documentId, engineHint, lookTheme, printSafe);
+                return new CompileCache.Entry(pdf, engine, string.Join("\n", problems));
             });
             if (hit) Lilia.Core.Diagnostics.Timing.Mark("pdf.version hit");
-            return (entry.Pdf, entry.Log);
+            return (entry.Pdf, entry.Log, entry.Aux.Length == 0 ? [] : entry.Aux.Split('\n'));
         }
         return await ExportToPdfUncachedAsync(documentId, engineHint, lookTheme, printSafe);
     }
 
-    private async Task<(byte[] Pdf, string Engine)> ExportToPdfUncachedAsync(
+    private async Task<(byte[] Pdf, string Engine, IReadOnlyList<string> Problems)> ExportToPdfUncachedAsync(
         Guid documentId, string? engineHint, string? lookTheme, bool printSafe)
     {
         // engineHint = "typst"     → Typst only, throw if it fails
@@ -424,7 +443,7 @@ public class DocumentExportService : IDocumentExportService
                 typstPdf = await _previewRender.TryTypstPdfAsync(documentId);
             if (typstPdf is not null && typstPdf.Length > 0)
             {
-                return (typstPdf, "typst");
+                return (typstPdf, "typst", []);
             }
             if (hint == "typst")
             {
@@ -495,13 +514,14 @@ public class DocumentExportService : IDocumentExportService
 
         byte[] pdflatexPdf;
         string? aux;
+        IReadOnlyList<string> problems;
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.compile"))
-            (pdflatexPdf, aux) = await _latexRenderService.RenderToPdfTolerantWithAuxAsync(
+            (pdflatexPdf, aux, problems) = await _latexRenderService.RenderToPdfTolerantWithProblemsAsync(
                 latex, timeout: tagged ? TaggedPdf.PassTimeoutSeconds : 60, engine: engine,
                 materialiseAssets: dir => WriteProjectAssetsAsync(archive, dir));
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.labels"))
             await KeepLabelNumbersAsync(documentId, aux);
-        return (pdflatexPdf, engine);
+        return (pdflatexPdf, engine, problems);
     }
 
     /// <summary>

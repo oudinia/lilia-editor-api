@@ -292,6 +292,7 @@ public class ExportController : ControllerBase
         try
         {
             (byte[] Pdf, string Engine) compiled;
+            IReadOnlyList<string> problems = [];
             if (accessible)
             {
                 var job = AccessibleJob(outputKey ?? $"{docId}|{engine}|{look}|{printSafe}", docId, engine, look, printSafe);
@@ -309,7 +310,12 @@ public class ExportController : ControllerBase
                 }
                 compiled = await job;
             }
-            else compiled = await _documentExportService.ExportToPdfWithEngineAsync(docId, engine, look, printSafe);
+            else
+            {
+                var made = await _documentExportService.ExportToPdfWithProblemsAsync(docId, engine, look, printSafe);
+                compiled = (made.Pdf, made.Engine);
+                problems = made.Problems;
+            }
             var (pdfBytes, engineUsed) = compiled;
             if (pdfBytes == null || pdfBytes.Length < 100 || !pdfBytes.AsSpan(0, 4).SequenceEqual("%PDF"u8))
             {
@@ -320,6 +326,13 @@ public class ExportController : ControllerBase
             // Typst path is taken when the document is in its supported set.
             // Users never see this; the editor surfaces a data-engine attr.
             Response.Headers["X-Render-Engine"] = engineUsed;
+            // The errors LaTeX went past to make this PDF (#103, 14 Nov 2026): the preview says some text may be
+            // missing, with LaTeX's lines. The lines are URL-encoded, one a line, so a header can carry them.
+            if (problems.Count > 0)
+            {
+                Response.Headers["X-Compile-Problems"] = problems.Count(p => p.StartsWith('!')).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                Response.Headers["X-Compile-Problem-Lines"] = Uri.EscapeDataString(string.Join("\n", problems.Take(8)));
+            }
             var sanitizedTitle = SanitizeFilename(document.Title);
             return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
         }
