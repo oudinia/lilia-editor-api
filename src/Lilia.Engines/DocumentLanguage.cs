@@ -122,8 +122,13 @@ public static class DocumentLanguage
     /// The preamble lines that set the language, before Lilia's packages (so hyperref and cleveref
     /// see it). Empty for English: an English document compiles exactly as before.
     /// </summary>
-    public static string Preamble(LanguageSpec spec)
+    public static string Preamble(LanguageSpec spec) => Preamble(spec, Array.Empty<LanguageSpec>());
+
+    /// <summary><see cref="Preamble(LanguageSpec)"/>, with right-to-left languages quoted in the text
+    /// (<see cref="SecondScripts"/>): babel with bidi, and each switched on by its own letters.</summary>
+    public static string Preamble(LanguageSpec spec, IReadOnlyList<LanguageSpec> others)
     {
+        if (others.Count > 0) return PreambleWith(spec, others);
         if (spec.Code == "en") return "";
         var sb = new StringBuilder("% Document language: ").Append(spec.Code).Append(" (DocumentLanguage)\n");
         if (spec.Provide)
@@ -141,6 +146,27 @@ public static class DocumentLanguage
         }
         if (spec.Setup is { } setup) sb.Append(setup).Append('\n');
         if (spec.Cleveref is { } c) sb.Append(@"\PassOptionsToPackage{").Append(c).Append("}{cleveref}\n");
+        return sb.ToString();
+    }
+
+    private static string PreambleWith(LanguageSpec spec, IReadOnlyList<LanguageSpec> others)
+    {
+        var sb = new StringBuilder("% Document language: ").Append(spec.Code)
+            .Append(", quoting ").Append(string.Join(", ", others.Select(o => o.Code))).Append(" (DocumentLanguage)\n");
+        if (spec.Provide)
+        {
+            sb.Append(@"\usepackage[bidi=basic]{babel}").Append('\n');
+            sb.Append(@"\babelprovide[import,main]{").Append(spec.Babel).Append("}\n");
+        }
+        else
+        {
+            var options = "shorthands=off,bidi=basic," + (spec.Options is { } o ? o + "," : "") + spec.Babel;
+            sb.Append(@"\usepackage[").Append(options).Append("]{babel}\n");
+        }
+        foreach (var other in others)
+            sb.Append(@"\babelprovide[import,onchar=ids fonts]{").Append(other.Babel).Append("}\n");
+        if (spec.Setup is { } setup) sb.Append(setup).Append('\n');
+        if (spec.Cleveref is { } c && spec.Code != "en") sb.Append(@"\PassOptionsToPackage{").Append(c).Append("}{cleveref}\n");
         return sb.ToString();
     }
 
@@ -211,7 +237,41 @@ public static class DocumentLanguage
     {
         if (OwnChoice(doc, importedPackages)) return new Plan(null, engine, hasCjk, "", "");
         var spec = For(doc);
-        return new Plan(spec, AtLeast(engine, spec), hasCjk || spec.Cjk, Preamble(spec), Fonts(spec));
+        var others = SecondScripts(doc, spec);
+        if (others.Count == 0)
+            return new Plan(spec, AtLeast(engine, spec), hasCjk || spec.Cjk, Preamble(spec), Fonts(spec));
+        // Babel's bidi=basic is LuaLaTeX's: the second language raises the engine to it.
+        var withOthers = others.Aggregate(AtLeast(engine, spec), AtLeast);
+        return new Plan(spec, withOthers, hasCjk || spec.Cjk, Preamble(spec, others),
+            Fonts(spec) + string.Concat(others.Select(o => o.Fonts is { } f ? f + "\n" : "")));
+    }
+
+    /// <summary>
+    /// The right-to-left languages whose letters appear in a document typeset in another language
+    /// (MCP-120, retested 14 Nov): an English paper quoting <c>\foreignlanguage{arabic}{مرحبا}</c> loaded
+    /// no language package, so the command was unknown, "arabic" printed and pdflatex dropped the
+    /// letters. Such a language is loaded the way a right-to-left document loads English for its
+    /// Latin runs: switched on by its own letters (onchar), in its own face. Not for a CJK document
+    /// (XeLaTeX, where babel's bidi=basic does not run) nor a right-to-left one (it has its own).
+    /// The whole text is read, not the language guess's first 20,000 characters: one quotation is enough.
+    /// </summary>
+    public static IReadOnlyList<LanguageSpec> SecondScripts(Document doc, LanguageSpec main)
+    {
+        if (main.Rtl || main.Cjk) return Array.Empty<LanguageSpec>();
+        bool arabic = false, hebrew = false;
+        var sb = new StringBuilder(doc.Title ?? "");
+        foreach (var b in doc.Blocks ?? new List<Block>())
+            if (b.Type is not ("code" or "equation" or "embed")) Collect(b.Content.RootElement, sb);
+        foreach (var ch in sb.ToString())
+        {
+            if (ch is >= '\u0600' and <= '\u06FF' or >= '\u0750' and <= '\u077F' or >= '\uFB50' and <= '\uFDFF' or >= '\uFE70' and <= '\uFEFF') arabic = true;
+            else if (ch is >= '\u05D0' and <= '\u05EA') hebrew = true;
+            if (arabic && hebrew) break;
+        }
+        var found = new List<LanguageSpec>();
+        if (arabic) found.Add(Specs["ar"]);
+        if (hebrew) found.Add(Specs["he"]);
+        return found;
     }
 
     // ── Detection ──────────────────────────────────────────────────────────

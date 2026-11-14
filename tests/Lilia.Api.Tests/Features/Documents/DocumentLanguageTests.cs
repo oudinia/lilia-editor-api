@@ -153,6 +153,24 @@ public class DocumentLanguageTests : IntegrationTestBase
     }
 
     [Theory]
+    // MCP-120 (retested 14 Nov): the PDF printed "Arabic: arabic end." and the check said "No multilingual
+    // package has been loaded". With markup, and without (babel switches on the script's own letters).
+    [InlineData("Arabic: \\foreignlanguage{arabic}{مرحبا بالعالم} end.", "مرحبا", "lualatex")]
+    [InlineData("Hebrew: \\foreignlanguage{hebrew}{שלום עולם} end.", "שלום", "lualatex")]
+    // No LaTeX at all: whichever engine the router picks (Typst for plain text), the letters print.
+    [InlineData("Arabic: مرحبا بالعالم end.", "مرحبا", null)]
+    [InlineData("Hebrew: שלום עולם end.", "שלום", null)]
+    public async Task A_quotation_in_a_right_to_left_language_prints_in_an_English_document(string quotation, string word, string? latexEngine)
+    {
+        var id = await DocumentAsync("auto", "This short study describes the method and the results that we obtained in the laboratory, and the reasons we chose them over the others.");
+        (await _client.PostAsJsonAsync($"/api/documents/{id}/blocks", new { type = "paragraph", content = new { text = quotation }, sortOrder = 2 }))
+            .EnsureSuccessStatusCode();
+        var (pdf, engine) = await PdfAsync(id);
+        if (latexEngine is not null) engine.Should().Be(latexEngine);
+        pdf.Should().Contain(word, $"printed by {engine}").And.Contain("Abstract", "the document stays English").And.NotContain("arabic end");
+    }
+
+    [Theory]
     [InlineData("ar", "تصف هذه الدراسة القصيرة الطريقة والنتائج التي حصلنا عليها في المختبر.")]
     [InlineData("ja", "この短い研究では、方法と得られた結果について説明します。")]
     [InlineData("ru", "Это короткое исследование описывает метод и полученные нами результаты.")]
