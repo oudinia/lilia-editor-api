@@ -31,6 +31,9 @@ public interface IBillingService
     Task<string> CreateCheckoutSessionAsync(
         string userId, string planSlug, string billingInterval, CancellationToken ct = default);
 
+    /// <summary>Create a Stripe Checkout for operation packs (1 to 20, adjustable on Stripe's page); returns the URL.</summary>
+    Task<string> CreatePackCheckoutAsync(string userId, int quantity, CancellationToken ct = default);
+
     /// <summary>Create a Stripe billing-portal session for the user; returns the URL.</summary>
     Task<string> CreatePortalSessionAsync(string userId, CancellationToken ct = default);
 
@@ -46,13 +49,86 @@ public class BillingService : IBillingService
     private readonly LiliaDbContext _db;
     private readonly StripeOptions _opts;
     private readonly ILogger<BillingService> _logger;
+    private readonly OperationPacks _packs;
 
-    public BillingService(LiliaDbContext db, IOptions<StripeOptions> opts, ILogger<BillingService> logger)
+    public BillingService(LiliaDbContext db, IOptions<StripeOptions> opts, ILogger<BillingService> logger, OperationPacks packs)
     {
         _db = db;
         _opts = opts.Value;
         _logger = logger;
+        _packs = packs;
     }
+
+    /// <summary>The metadata kind a pack Checkout carries, so the webhook tells it from a membership.</summary>
+    public const string PackKind = "ops_pack";
+
+    // ── Operation packs (the owner, 14 Nov 2026) ─────────────────────
+
+    public async Task<string> CreatePackCheckoutAsync(string userId, int quantity, CancellationToken ct = default)
+    {
+        RequireConfigured();
+        if (string.IsNullOrEmpty(_opts.OperationsPackPriceId))
+            throw new BillingException("Operation packs have no Stripe price configured.");
+        if (quantity is < 1 or > OperationPacks.MaxPacks)
+            throw new BillingException($"Choose 1 to {OperationPacks.MaxPacks} packs.");
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new BillingException("User not found.");
+        var customerId = await EnsureStripeCustomerAsync(user, ct);
+
+        var metadata = new Dictionary<string, string> { ["user_id"] = userId, ["kind"] = PackKind };
+        var options = new SessionCreateOptions
+        {
+            Mode = "payment",
+            Customer = customerId,
+            ClientReferenceId = userId,
+            LineItems =
+            [
+                new SessionLineItemOptions
+                {
+                    Price = _opts.OperationsPackPriceId,
+                    Quantity = quantity,
+                    // The buyer may change the number on Stripe's page; the webhook credits what was paid.
+                    AdjustableQuantity = new SessionLineItemAdjustableQuantityOptions { Enabled = true, Minimum = 1, Maximum = OperationPacks.MaxPacks },
+                },
+            ],
+            Metadata = metadata,
+            PaymentIntentData = new SessionPaymentIntentDataOptions { Metadata = metadata },
+            SuccessUrl = _opts.PacksSuccessUrl,
+            CancelUrl = _opts.PacksCancelUrl,
+        };
+        var session = await new SessionService().CreateAsync(options, RequestOpts(), ct);
+        _logger.LogInformation("Stripe pack checkout {SessionId} created — user {UserId}, {Quantity} pack(s)", session.Id, userId, quantity);
+        return session.Url;
+    }
+
+    /// <summary>
+    /// Credits a paid pack Checkout: the number of packs is what was paid for (the subtotal over the pack's price,
+    /// since the buyer can change it on Stripe's page), with the bonus tiers, once per session. Ignored while unpaid
+    /// (a delayed payment method is credited on checkout.session.async_payment_succeeded).
+    /// </summary>
+    internal async Task HandlePackCheckoutAsync(StripeCheckoutSession session, CancellationToken ct)
+    {
+        var userId = session.Metadata?.GetValueOrDefault("user_id") ?? session.ClientReferenceId;
+        if (string.IsNullOrEmpty(userId)) { _logger.LogWarning("Pack checkout {SessionId}: no user", session.Id); return; }
+        if (!string.Equals(session.PaymentStatus, "paid", StringComparison.Ordinal))
+        {
+            _logger.LogInformation("Pack checkout {SessionId}: payment {Status}, not credited yet", session.Id, session.PaymentStatus);
+            return;
+        }
+        var unit = _opts.OperationsPackUnitCents;
+        var subtotal = session.AmountSubtotal ?? 0;
+        if (unit <= 0 || subtotal <= 0 || subtotal % unit != 0 || subtotal / unit is < 1 or > OperationPacks.MaxPacks)
+            throw new BillingException($"Pack checkout {session.Id}: a subtotal of {subtotal} cents isn't a whole number of packs.");
+        var packs = (int)(subtotal / unit);
+        var credited = await _packs.GrantPurchaseAsync(userId, packs, session.Id, ct);
+        _logger.LogInformation("Pack checkout {SessionId}: {Packs} pack(s) for {UserId} ({Operations} operations){Again}",
+            session.Id, packs, userId, OperationPacks.OperationsFor(packs), credited ? "" : ", already credited");
+    }
+
+    private static bool IsPackCheckout(StripeCheckoutSession session) =>
+        string.Equals(session.Mode, "payment", StringComparison.Ordinal)
+        && string.Equals(session.Metadata?.GetValueOrDefault("kind"), PackKind, StringComparison.Ordinal);
 
     // ── Checkout ──────────────────────────────────────────────────────
 
@@ -176,7 +252,10 @@ public class BillingService : IBillingService
             switch (stripeEvent.Type)
             {
                 case "checkout.session.completed":
-                    await HandleCheckoutCompletedAsync((StripeCheckoutSession)stripeEvent.Data.Object, ct);
+                case "checkout.session.async_payment_succeeded":
+                    var completed = (StripeCheckoutSession)stripeEvent.Data.Object;
+                    if (IsPackCheckout(completed)) await HandlePackCheckoutAsync(completed, ct);
+                    else if (stripeEvent.Type == "checkout.session.completed") await HandleCheckoutCompletedAsync(completed, ct);
                     break;
                 case "customer.subscription.created":
                 case "customer.subscription.updated":

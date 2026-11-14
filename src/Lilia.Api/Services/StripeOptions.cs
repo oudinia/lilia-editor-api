@@ -22,5 +22,18 @@ public class StripeOptions
     /// <summary>Where the Stripe billing portal returns the user.</summary>
     public string PortalReturnUrl { get; set; } = "https://editor.liliaeditor.com/settings/billing";
 
+    /// <summary>
+    /// The "Lilia operations pack" one-time price (the owner, 14 Nov 2026: $5 for 300 operations; Lilia adds the bonus),
+    /// set by ops/stripe-prices.sh or <c>Stripe__OperationsPackPriceId</c>. Empty: packs aren't on sale yet.
+    /// </summary>
+    public string OperationsPackPriceId { get; set; } = "";
+
+    /// <summary>The pack's price in cents: the count of packs paid for is the subtotal over it.</summary>
+    public long OperationsPackUnitCents { get; set; } = 500;
+
+    /// <summary>Where a pack purchase returns the author: Settings → Plan, which shows the new balance.</summary>
+    public string PacksSuccessUrl { get; set; } = "https://editor.liliaeditor.com/settings/plan?packs=bought";
+    public string PacksCancelUrl { get; set; } = "https://editor.liliaeditor.com/settings/plan";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(SecretKey);
 }
