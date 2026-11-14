@@ -183,4 +183,33 @@ public class OperationPacksTests : IntegrationTestBase, IDisposable
         refused.Text.Should().Contain("25 connector actions a day");
         (await CallAsync(other, "check_document", new { documentId = Guid.NewGuid().ToString() })).IsError.Should().BeTrue();
     }
+
+    // The owner, 14 Nov 2026: packs "shown … in the connector limit message", once they're on sale.
+    [Fact]
+    public async Task The_limit_message_offers_packs_only_once_they_are_on_sale()
+    {
+        var id = NewId("offer");
+        await SeedUserAsync(id);
+        var plain = Caller(id);
+        await UseTheAllowanceAsync(id);
+        var refused = await CallAsync(plain, "list_documents");
+        refused.Text.Should().Contain("?plans=1").And.NotContain("settings/billing");
+
+        var factory = Fixture.Factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Entitlements:Enforce", "true");
+            b.UseSetting("Mcp:CallsPerMinute", "1000");
+            b.UseSetting("Stripe:SecretKey", "sk_test_placeholder");
+            b.UseSetting("Stripe:OperationsPackPriceId", "price_test_pack");
+        });
+        _factories.Add(factory);
+        var onSale = factory.CreateClient();
+        onSale.DefaultRequestHeaders.Add("X-Test-UserId", id);
+        onSale.DefaultRequestHeaders.Add("X-Test-Email", $"{id}@lilia.test");
+        onSale.DefaultRequestHeaders.Add("X-Test-Name", id);
+        await UseTheAllowanceAsync(id);
+        var offered = await CallAsync(onSale, "list_documents");
+        offered.IsError.Should().BeTrue();
+        offered.Text.Should().Contain("$5 for 300").And.Contain("/settings/billing").And.Contain("?plans=1");
+    }
 }

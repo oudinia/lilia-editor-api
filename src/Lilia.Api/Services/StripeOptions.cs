@@ -31,9 +31,9 @@ public class StripeOptions
     /// <summary>The pack's price in cents: the count of packs paid for is the subtotal over it.</summary>
     public long OperationsPackUnitCents { get; set; } = 500;
 
-    /// <summary>Where a pack purchase returns the author: Settings → Plan, which shows the new balance.</summary>
-    public string PacksSuccessUrl { get; set; } = "https://editor.liliaeditor.com/settings/plan?packs=bought";
-    public string PacksCancelUrl { get; set; } = "https://editor.liliaeditor.com/settings/plan";
+    /// <summary>Where a pack purchase returns the author: Settings → Plan (its address is /settings/billing), which shows the new balance.</summary>
+    public string PacksSuccessUrl { get; set; } = "https://editor.liliaeditor.com/settings/billing?packs=bought";
+    public string PacksCancelUrl { get; set; } = "https://editor.liliaeditor.com/settings/billing";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(SecretKey);
 }
