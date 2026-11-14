@@ -31,6 +31,36 @@ public class WideTableTests
         WideTables.Message(found[0]).Should().Contain("130 pt wider");
     }
 
+    // MCP-130 (retested 14 Nov): a code line with a long name ran 356 pt past a two-column paper's
+    // column, under a clean check. Listings are found the same way as tables; prose isn't.
+    [Fact]
+    public void A_code_line_wider_than_its_column_is_found()
+    {
+        const string log = "Overfull \\hbox (35.8pt too wide) in paragraph at lines 12--13\n"
+            + "Overfull \\hbox (356.0pt too wide) in paragraph at lines 13--14\n"
+            + "Overfull \\hbox (40.0pt too wide) in paragraph at lines 30--31\n";
+        var source = string.Join("\n", Enumerable.Range(1, 40).Select(n => n switch
+        {
+            11 => "\\begin{lstlisting}[language=Python]",
+            15 => "\\end{lstlisting}",
+            _ => "x",
+        }));
+        var found = WideTables.FindCode(log, source);
+        found.Should().ContainSingle().Which.Should().Be(new WideTables.Overflow(13, 14, 356.0));
+        WideTables.CodeMessage(found[0]).Should().Contain("356 pt wider");
+        WideTables.Find(log, source).Should().BeEmpty("a listing is not a table");
+    }
+
+    [Fact]
+    public async Task In_two_columns_a_long_code_name_is_reported()
+    {
+        var code = "veryLongIdentifierWithoutAnySpacesThatCannotBeBrokenByListingsAtAll_and_it_keeps_going_on = 1";
+        var (tex, log, _) = await Compile(columns: 2, B("code", new { code, language = "python" }));
+        WideTables.FindCode(log, tex).Should().ContainSingle();
+        var (tex1, log1, _) = await Compile(columns: 2, B("code", new { code = "x = 1", language = "python" }));
+        WideTables.FindCode(log1, tex1).Should().BeEmpty();
+    }
+
     // 2 Nov: a table wider than its column is now scaled down to it (FitToLine), so the seven
     // columns that overflowed here before fit, and the check has nothing to report.
     [Fact]

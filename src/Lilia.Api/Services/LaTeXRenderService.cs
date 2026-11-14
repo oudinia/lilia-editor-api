@@ -686,7 +686,8 @@ public class LaTeXRenderService : ILaTeXRenderService
                     // produces hundreds.
                     var glyphs = LaTeXGlyphScanner.Describe(LaTeXGlyphScanner.Scan(logContent));
                     // Tables wider than the column (MCP-63): an \hbox warning, but not a cosmetic one.
-                    var wideTables = Lilia.Engines.WideTables.Find(logContent, latex).Select(Lilia.Engines.WideTables.Message);
+                    var wideTables = Lilia.Engines.WideTables.Find(logContent, latex).Select(Lilia.Engines.WideTables.Message)
+                        .Concat(Lilia.Engines.WideTables.FindCode(logContent, latex).Select(Lilia.Engines.WideTables.CodeMessage));
 
                     actionableWarnings =
                     [

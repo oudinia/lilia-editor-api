@@ -23,7 +23,25 @@ public static class WideTables
     /// TeX reports a tabular as "in paragraph" (its box sits in the float's paragraph) and a longtable
     /// row as "in alignment"; either counts when its lines overlap a tabular in <paramref name="source"/>.
     /// </summary>
-    public static IReadOnlyList<Overflow> Find(string? log, string? source, double minPoints = 10)
+    public static IReadOnlyList<Overflow> Find(string? log, string? source, double minPoints = 10) =>
+        FindIn(log, source, TabularBegin, TabularEnd, minPoints);
+
+    private static readonly Regex ListingBegin = new(@"\\begin\{lstlisting\}", RegexOptions.Compiled);
+    private static readonly Regex ListingEnd = new(@"\\end\{lstlisting\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Code listings wider than their column (MCP-130, retested 14 Nov: in a two-column paper a line
+    /// with a long name ran 356 pt past the column, under a clean check). listings wraps at spaces
+    /// (breaklines), not inside a name, and TeX says so as an overfull paragraph inside the listing.
+    /// </summary>
+    public static IReadOnlyList<Overflow> FindCode(string? log, string? source, double minPoints = 10) =>
+        FindIn(log, source, ListingBegin, ListingEnd, minPoints);
+
+    public static string CodeMessage(Overflow o) =>
+        $"A code line is {Math.Round(o.Points):0} pt wider than the text (source lines {o.FirstLine}–{o.LastLine}): it runs into the margin. "
+        + "Break the long line (listings wraps only at spaces), or in two columns make the code block span both.";
+
+    private static IReadOnlyList<Overflow> FindIn(string? log, string? source, Regex begin, Regex end, double minPoints)
     {
         if (string.IsNullOrEmpty(log) || string.IsNullOrEmpty(source)) return [];
         var spans = new List<(int From, int To)>();
@@ -31,8 +49,8 @@ public static class WideTables
         int? open = null;
         for (var i = 0; i < lines.Length; i++)
         {
-            if (open is null && TabularBegin.IsMatch(lines[i])) open = i + 1;
-            if (open is not null && TabularEnd.IsMatch(lines[i])) { spans.Add((open.Value, i + 1)); open = null; }
+            if (open is null && begin.IsMatch(lines[i])) open = i + 1;
+            if (open is not null && end.IsMatch(lines[i])) { spans.Add((open.Value, i + 1)); open = null; }
         }
         return Overfull.Matches(log)
             .Select(m => new Overflow(int.Parse(m.Groups["a"].Value, CultureInfo.InvariantCulture),
