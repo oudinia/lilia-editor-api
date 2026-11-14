@@ -5,7 +5,7 @@ summary: How a Lilia document is built — typed blocks edited Word-style, with 
 skill: lilia-tutor
 audience: beginner
 tags: [basics, lml, blocks, editor]
-keywords: block lml paste paragraph heading equation figure table theorem abstract bibliography toc structure document format
+keywords: block lml paste paragraph heading equation figure table theorem abstract bibliography toc structure document format brace braces backslash typed latex escape
 ---
 # Blocks and LML
 
@@ -25,6 +25,8 @@ keywords: block lml paste paragraph heading equation figure table theorem abstra
 ```
 
 **Inline marks** (inside any text): `**bold**`, `*italic*`, `__underline__`, `~~strike~~`, `==highlight==`, `^superscript^`, `%%subscript%%`, maths as `$…$`, `\(…\)` or `\[…\]`. Refer to a labelled block with `Theorem~(thm:main)` or `Equation~(eq:loss)` (Lilia writes `\ref` / `\eqref` and numbers it), cite with `@cite{key}`. In a quoted attribute (`caption="…"`) a backslash stays as written; only `\"` and `\\` are escapes. In a table, `\|` is a literal bar. Marks and maths work in table cells, captions and theorem titles too. A Markdown heading can carry its label: `# Results {#sec:results}`. A `$` followed by an amount (`$5`) is a price, not maths.
+
+**LaTeX you type stays LaTeX.** A command (`\emph{…}`, `\SI{3}{\metre}`), a `{…}` group and a control space (`\LaTeX\ is`) pass through as written, so `{kept}` prints "kept": the braces group, they don't print. To print a brace write `\{` and `\}`; a backslash, `\textbackslash{}`. Every other character (`%`, `&`, `#`, `_`) prints as typed.
 
 **Why blocks.** Each block knows its type, so Lilia can validate it, renumber cross-references, and emit correct LaTeX — you focus on content, not boilerplate.
 
