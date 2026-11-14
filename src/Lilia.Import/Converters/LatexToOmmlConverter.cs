@@ -381,9 +381,15 @@ file sealed class OmmlParser
                         => cmd is @"\label" or @"\tag" ? ConsumeArg() : null,
             @"\phantom" or @"\hphantom" or @"\vphantom"
                         => ConsumeArg(),
-            @"\," or @"\;" or @"\:" or @"\!" or @"\>" or @"\space"
-            or @"\quad" or @"\qquad"
-                        => null,
+            // Spaces are part of what the formula says: "m\,s^{-2}" without its thin space read "ms⁻²",
+            // milliseconds (MCP-118). Each becomes the Unicode space of its width; \! (negative) stays nothing.
+            @"\,"      => MakeRun("\u2009"),
+            @"\:" or @"\>" => MakeRun("\u2005"),
+            @"\;"      => MakeRun("\u2004"),
+            @"\quad"   => MakeRun("\u2003"),
+            @"\qquad"  => MakeRun("\u2003\u2003"),
+            @"\space"  => MakeRun("\u00A0"),
+            @"\!"      => null,
             @"\not"     => ParseNot(),
             _ => _commandToChar.TryGetValue(cmd, out var ch) ? MakeRun(ch) : MakeRun(name)
         };
@@ -445,6 +451,9 @@ file sealed class OmmlParser
             else break;
         }
 
+        // A limit the formula doesn't give is declared hidden: an empty one is a placeholder box in Word (MCP-118).
+        if (sub == null) naryPr.Add(new XElement(_m + "subHide", new XAttribute(_m + "val", "1")));
+        if (sup == null) naryPr.Add(new XElement(_m + "supHide", new XAttribute(_m + "val", "1")));
         var eElems = ParseAtomWithSubSup(); // integrand/summand: next atom only
         return new XElement(_m + "nary",
             naryPr,
@@ -546,15 +555,63 @@ file sealed class OmmlParser
 
     // ── Math functions (sin, cos, lim, …) ────────────────────────────────────
 
+    // Functions whose subscript sits under the name: \lim_{x \to 0}.
+    private static readonly HashSet<string> LimitFunctions = new(StringComparer.Ordinal)
+        { "lim", "limsup", "liminf", "min", "max", "inf", "sup", "det", "gcd" };
+
+    // What can't start a function's argument: \sin = 1, \sin, x.
+    private const string NotAnArgument = "+-=<>,;:.!|)]";
+
+    /// <summary>
+    /// A function and its argument (MCP-118): \sin x wrote the name with an empty argument, a placeholder
+    /// box in Word, and x after it. The argument is the next atom (a parenthesised group whole); a limit or
+    /// power goes on the name (\lim_{x\to0}, \sin^2 x). With no argument, the name is an upright run.
+    /// </summary>
     private XElement ParseFunc(string name)
     {
-        var fName = new XElement(_m + "fName",
-            new XElement(_m + "r",
-                new XElement(_m + "rPr",
-                    new XElement(_m + "sty", new XAttribute(_m + "val", "r"))),
-                new XElement(_m + "t", name)));
-        return new XElement(_m + "func", new XElement(_m + "funcPr"), fName,
-            new XElement(_m + "e"));
+        XElement nameRun = new XElement(_m + "r",
+            new XElement(_m + "rPr", new XElement(_m + "sty", new XAttribute(_m + "val", "p"))),
+            new XElement(_m + "t", name));
+        XElement fNameContent = nameRun;
+        XElement? sub = null, sup = null;
+        while (CurKind is LatexToOmmlConverter.TokKind.Underscore or LatexToOmmlConverter.TokKind.Caret)
+        {
+            if (CurKind == LatexToOmmlConverter.TokKind.Underscore && sub == null) { Consume(); sub = new XElement(_m + "sub", ParseBraceGroup()); }
+            else if (CurKind == LatexToOmmlConverter.TokKind.Caret && sup == null) { Consume(); sup = new XElement(_m + "sup", ParseBraceGroup()); }
+            else break;
+        }
+        if (sub != null && sup == null && LimitFunctions.Contains(name))
+            fNameContent = new XElement(_m + "limLow", new XElement(_m + "e", nameRun), new XElement(_m + "lim", sub.Nodes()));
+        else if (sub != null && sup != null)
+            fNameContent = new XElement(_m + "sSubSup", new XElement(_m + "e", nameRun), sub, sup);
+        else if (sub != null)
+            fNameContent = new XElement(_m + "sSub", new XElement(_m + "e", nameRun), sub);
+        else if (sup != null)
+            fNameContent = new XElement(_m + "sSup", new XElement(_m + "e", nameRun), sup);
+
+        var arg = new List<XElement>();
+        if (CurKind == LatexToOmmlConverter.TokKind.Char && Cur.Value == "(")
+        {
+            // A parenthesised argument, whole: \sin(x + y).
+            var depth = 0;
+            while (CurKind != LatexToOmmlConverter.TokKind.End)
+            {
+                if (CurKind == LatexToOmmlConverter.TokKind.Char && Cur.Value == "(") depth++;
+                var closes = CurKind == LatexToOmmlConverter.TokKind.Char && Cur.Value == ")";
+                arg.AddRange(ParseAtomWithSubSup());
+                if (closes && --depth == 0) break;
+            }
+        }
+        else if (CurKind is LatexToOmmlConverter.TokKind.LeftBrace or LatexToOmmlConverter.TokKind.Command
+                 || (CurKind == LatexToOmmlConverter.TokKind.Char && !NotAnArgument.Contains(Cur.Value)))
+        {
+            if (!(CurKind == LatexToOmmlConverter.TokKind.Command && Cur.Value is @"\right" or @"\end"))
+                arg.AddRange(ParseAtomWithSubSup());
+        }
+
+        if (arg.Count == 0) return fNameContent;
+        return new XElement(_m + "func", new XElement(_m + "funcPr"), new XElement(_m + "fName", fNameContent),
+            new XElement(_m + "e", arg));
     }
 
     // ── Text runs (\text, \mathrm, …) ────────────────────────────────────────
