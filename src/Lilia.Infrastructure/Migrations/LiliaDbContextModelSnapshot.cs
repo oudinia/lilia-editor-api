@@ -5875,6 +5875,76 @@ namespace Lilia.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.OperationCredit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<int>("Delta")
+                        .HasColumnType("integer")
+                        .HasColumnName("delta");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid?>("RefundOf")
+                        .HasColumnType("uuid")
+                        .HasColumnName("refund_of");
+
+                    b.Property<string>("StripeSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("stripe_session_id");
+
+                    b.Property<string>("Tool")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("tool");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RefundOf")
+                        .IsUnique()
+                        .HasDatabaseName("ux_operation_credits_refund_of")
+                        .HasFilter("refund_of IS NOT NULL");
+
+                    b.HasIndex("StripeSessionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_operation_credits_stripe_session")
+                        .HasFilter("stripe_session_id IS NOT NULL");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_operation_credits_user");
+
+                    b.ToTable("operation_credits", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_operation_credit_reason", "reason IN ('purchase','spend','refund','adjustment')");
+                        });
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.OperationKind", b =>
                 {
                     b.Property<string>("Code")
@@ -9132,6 +9202,17 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Lilia.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.OperationCredit", b =>
+                {
                     b.HasOne("Lilia.Core.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")

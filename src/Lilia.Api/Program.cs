@@ -624,6 +624,7 @@ builder.Services.AddScoped<IAiOrchestrator, AiOrchestrator>();
 builder.Services.AddScoped<IAiHintAugmenter, AiHintAugmenter>();
 builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddScoped<OperationLog>();
+builder.Services.AddScoped<OperationPacks>();
 builder.Services.AddScoped<AccountExportService>();
 builder.Services.AddScoped<IBillingService, BillingService>();
 builder.Services.AddScoped<Lilia.Import.Services.ILatexProjectExtractor, Lilia.Import.Services.LatexProjectExtractor>();
