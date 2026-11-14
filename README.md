@@ -115,49 +115,22 @@ lilia-editor-api/
 
 ### Prerequisites
 - .NET 10 SDK
-- PostgreSQL 15+
-
-### Database Setup
-
-1. Create the database:
-```bash
-createdb lilia_core
-```
-
-2. Run migrations:
-```bash
-psql -d lilia_core -f database/001_create_lilia_core.sql
-psql -d lilia_core -f database/003_seed_templates.sql
-```
+- PostgreSQL 15+ (a local database for development; the tests use their own)
+- For PDF output: a TeX Live installation (pdflatex, xelatex, lualatex) and the Typst CLI
 
 ### Configuration
 
-Update `appsettings.json` with your settings:
+`src/Lilia.Api/appsettings.json` holds the defaults. A local database is the default:
 
 ```json
 {
   "ConnectionStrings": {
-    "LiliaCore": "Host=localhost;Database=lilia_core;Username=postgres;Password=..."
-  },
-  "Clerk": {
-    "Authority": "https://clerk.your-domain.com",
-    "Issuer": "https://clerk.your-domain.com"
+    "LiliaCore": "Host=localhost;Database=lilia;Username=lilia;Password=..."
   }
 }
 ```
 
-For production with Cloudflare R2:
-```json
-{
-  "R2": {
-    "Endpoint": "https://<account-id>.r2.cloudflarestorage.com",
-    "AccessKeyId": "...",
-    "SecretAccessKey": "...",
-    "BucketName": "lilia-assets",
-    "PublicUrl": "https://assets.lilia.app"
-  }
-}
-```
+Secrets (the production database, the sign-in provider, email, AI) are never committed: use `dotnet user-secrets` or environment variables.
 
 ### Run
 
@@ -166,20 +139,42 @@ cd src/Lilia.Api
 dotnet run
 ```
 
-The API will start on `http://localhost:5000`.
+The API listens on `http://127.0.0.1:5001`. EF Core migrations (`src/Lilia.Infrastructure/Migrations`) are applied at start-up. The SQL files in `database/` are the original 2025 schema, kept for reference only.
+
+### Tests
+
+```bash
+dotnet test
+```
+
+The integration tests start their own PostgreSQL; the real-TeX tests (`Category=RequiresTeX`) need TeX Live.
 
 ## Authentication
 
-The API uses Clerk JWT authentication. Include the JWT token in the Authorization header:
+Sign-in is **Stytch**. The web app signs people in with Stytch's SDK, and the API validates the Stytch session JWT it sends:
 
 ```
-Authorization: Bearer <clerk-jwt-token>
+Authorization: Bearer <stytch-session-jwt>
 ```
+
+The MCP connector (`/api/mcp`) uses OAuth through Stytch Connected Apps. Clerk and Kinde, used earlier in 2026, are gone.
 
 ## Storage
 
-- **Development**: Local file storage in `./uploads`
-- **Production**: Cloudflare R2 with presigned URLs for uploads
+- **Development and today's production:** local disk (`uploads/`, `LocalStorageService`).
+- **Cloudflare R2:** used when `R2:Endpoint` is set (`R2StorageService`).
+
+## How it runs
+
+- **One Linux server** runs the web app, the API and their workers, behind Cloudflare.
+- **PostgreSQL** is on Neon, and Redis caches compile results.
+- **PDF output:**
+  - TeX Live, with shell escape always off and every TeX process in a bubblewrap sandbox in production;
+  - Typst, for fast previews of documents it can print.
+- **Deploys:** there is no hosting platform and no deploy workflow. A change goes through local CI and a pull request, then the server rebuilds `main` and keeps the previous build for rollback.
+- **GitHub Actions** only runs checks: tests, the migrations check, and an uptime probe.
+
+The DigitalOcean App Platform spec (`.do/app.yaml`) was removed in November 2026: Lilia has not run there since September.
 
 ## Roles
 
