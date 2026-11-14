@@ -24,7 +24,7 @@ public class WordProseTests
     [InlineData(@"\SI{3}{\kilo\gram}, \num{12345.678}", "3 kg, 12345.678")]
     [InlineData(@"(Section~\ref{sec:unc})", "(Section 3)")]
     [InlineData(@"by \eqref{eq:fit}", "by (2)")]
-    [InlineData(@"see \ref{sec:none}", "see [sec:none]")]
+    [InlineData(@"see \ref{sec:none}", "see ??")] // as the PDF prints it; a raw label read as text (MCP-96, 14 Nov)
     [InlineData(@"Theorem~(sec:unc)", "Theorem 3")]
     [InlineData(@"as in \cite{knuth84,lamport94}", "as in [knuth84, lamport94]")]
     [InlineData(@"50\% done -- mostly", "50% done – mostly")]

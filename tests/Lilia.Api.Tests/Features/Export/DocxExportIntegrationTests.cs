@@ -553,6 +553,45 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         text.Should().Contain("(1)").And.NotContain("[sec:intro]").And.NotContain("lem:a");
     }
 
+    // MCP-96 (run 4, retested 14 Nov): in a report Word wrote "(1)" and "Table 1" where the PDF prints
+    // "(2.1)" and "Table 2.1"; a reference to an uncaptioned figure printed LaTeX's own
+    // "\caption@xref {fig:nocap}…" (or "[fig:nocap]"), where the PDF prints "??".
+    [Fact]
+    public async Task A_report_numbers_within_chapters_and_an_unnumbered_reference_reads_question_marks()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Report");
+        await using (var db = CreateDbContext())
+        {
+            var d = await db.Documents.FirstAsync(x => x.Id == doc.Id);
+            d.LatexDocumentClass = "report";
+            await db.SaveChangesAsync();
+        }
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"First","level":1}""");
+        await SeedBlockAsync(doc.Id, "table", """{"caption":"Early","headers":["A"],"rows":[["1"]]}""", 1);
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Second","level":1}""", 2);
+        await SeedBlockAsync(doc.Id, "equation", """{"latex":"a=b","equationMode":"display","label":"eq:one"}""", 3);
+        await SeedBlockAsync(doc.Id, "table", """{"caption":"Data","label":"tab:data","headers":["A"],"rows":[["1"]]}""", 4);
+        await SeedBlockAsync(doc.Id, "figure", """{"src":"figures/x.png","label":"fig:nocap"}""", 5);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"See Equation~(eq:one), Table~(tab:data) and Figure~(fig:nocap)."}""", 6);
+
+        var text = TextIn((await ExportAsync(doc.Id)).Bytes).Replace('\u00A0', ' ');
+        text.Should().Contain("See Equation (2.1), Table 2.1 and Figure ??.");
+        text.Should().Contain("(2.1)").And.Contain("Table 1.1: Early").And.Contain("Table 2.1: Data");
+        text.Should().NotContain("caption@xref").And.NotContain("[fig:nocap]");
+    }
+
+    [Fact]
+    public async Task An_article_keeps_running_numbers()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Article");
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"First","level":1}""");
+        await SeedBlockAsync(doc.Id, "table", """{"caption":"Early","headers":["A"],"rows":[["1"]]}""", 1);
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Second","level":1}""", 2);
+        await SeedBlockAsync(doc.Id, "table", """{"caption":"Data","headers":["A"],"rows":[["1"]]}""", 3);
+        var text = TextIn((await ExportAsync(doc.Id)).Bytes);
+        text.Should().Contain("Table 1: Early").And.Contain("Table 2: Data");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {

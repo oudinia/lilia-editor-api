@@ -271,7 +271,8 @@ public static class ProseLatex
         // A bare name defined with its kind's prefix (eq:loss for "loss"), as the LaTeX resolves it (MCP-106).
         ?? (key.Contains(':') ? null : new[] { "eq", "fig", "tbl", "tab", "alg", "thm", "sec" }
             .Select(p => labelNumber?.Invoke($"{p}:{LabelKey.Safe(key)}")).FirstOrDefault(n => n is not null))
-        ?? $"[{key}]";
+        // Unresolved: "??", as the PDF prints it; the raw label ("[fig:nocap]") read as text (MCP-96).
+        ?? "??";
 
     /// <summary><c>\metre\per\second\squared</c> → m/s²; literal units (<c>m/s^2</c>) are kept.</summary>
     private static string UnitText(string units)
