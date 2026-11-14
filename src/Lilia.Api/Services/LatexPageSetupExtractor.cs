@@ -33,6 +33,15 @@ public static class LatexPageSetupExtractor
         IReadOnlyList<string> Applied,
         IReadOnlyList<string> NotApplied);
 
+    /// <summary>The body size each class sets when \documentclass names none.</summary>
+    private static readonly Dictionary<string, int> ClassDefaultSize = new(StringComparer.Ordinal)
+    {
+        ["article"] = 10, ["report"] = 10, ["book"] = 10,
+        ["amsart"] = 10, ["amsbook"] = 10, ["amsproc"] = 10,
+        ["memoir"] = 10, ["llncs"] = 10, ["IEEEtran"] = 10,
+        ["scrartcl"] = 11, ["scrreprt"] = 11, ["scrbook"] = 11,
+    };
+
     private static readonly Regex Comment = new(@"(?<!\\)%[^\n]*", RegexOptions.Compiled);
 
     public static Result Extract(string tex, ImportMetadata meta)
@@ -253,6 +262,11 @@ public static class LatexPageSetupExtractor
             Set("customPreamble", i => i with { CustomPreamble = cp }, $"{cp.Split('\n').Length} line(s) of macros");
         }
         if (pre2.DocumentClass is not null) applied.Add($"documentClass = {pre2.DocumentClass}");
+        // No size option means the class's own size, not Lilia's default (MCP-125: a plain
+        // \documentclass{article} came in at 12pt, so every line and table grew). Only classes whose
+        // default is known; any other keeps the document's.
+        if (meta.FontSize is null && pre2.DocumentClass is { } cls && ClassDefaultSize.TryGetValue(cls, out var size))
+            Set("fontSize", i => i with { FontSize = size }, $"{size}pt (the {cls} class's default)");
         if (pre2.PackagesJson is not null) applied.Add("packages = the \\usepackage list");
 
         return new Result(input, pre2.DocumentClass, pre2.PackagesJson, twoside ? "two" : null, titlePage, applied, notes);

@@ -39,6 +39,26 @@ Hello $\R$.
     private static LatexPageSetupExtractor.Result Run(string tex) =>
         LatexPageSetupExtractor.Extract(tex, new LatexParser().ParseTextAsync(tex).GetAwaiter().GetResult().Metadata);
 
+    [Theory]
+    // MCP-125: no size option is the class's own size, not Lilia's 12.
+    [InlineData(@"\documentclass{article}", 10)]
+    [InlineData(@"\documentclass[a4paper]{book}", 10)]
+    [InlineData(@"\documentclass{scrartcl}", 11)]
+    [InlineData(@"\documentclass[11pt]{article}", 11)]
+    [InlineData(@"\documentclass[12pt]{report}", 12)]
+    public void A_class_without_a_size_option_keeps_its_own_size(string documentClass, int expected)
+    {
+        var r = Run(documentClass + "\n\\begin{document}\nText.\n\\end{document}\n");
+        r.Settings.FontSize.Should().Be(expected);
+    }
+
+    [Fact]
+    public void A_class_whose_default_size_is_unknown_sets_none()
+    {
+        var r = Run("\\documentclass{acmart}\n\\begin{document}\nText.\n\\end{document}\n");
+        r.Settings.FontSize.Should().BeNull();
+    }
+
     [Fact]
     public void A_lecture_preamble_becomes_settings()
     {
