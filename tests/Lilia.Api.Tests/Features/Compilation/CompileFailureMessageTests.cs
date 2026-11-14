@@ -27,4 +27,24 @@ public class CompileFailureMessageTests
         (await act.Should().ThrowAsync<InvalidOperationException>())
             .Which.Message.Should().Contain("Undefined control sequence").And.NotContain("interrupted");
     }
+
+    [Fact]
+    public void Each_error_comes_with_the_source_line_LaTeX_names()
+    {
+        // A missing package in the custom preamble (the launch bot's TeX Stack Exchange run, 14 Nov 2026).
+        const string log = "(./document.tex\n! LaTeX Error: File `isodate.sty' not found.\n\nType X to quit or <RETURN> to proceed,\n"
+            + "or enter new name. (Default extension: sty)\n\nEnter file name: \n! Emergency stop.\n<read *> \n         \n"
+            + "l.12 \\usepackage{isodate}\n                          ^^M\n";
+        LaTeXRenderService.CompileErrorLines(log).Should().Equal(
+            "! LaTeX Error: File `isodate.sty' not found.",
+            "! Emergency stop.",
+            "l.12 \\usepackage{isodate}");
+    }
+
+    [Fact]
+    public void An_undefined_command_names_its_line()
+    {
+        const string log = "! Undefined control sequence.\nl.3 Hello \\undefinedcommandxyz\n                         \n";
+        LaTeXRenderService.CompileErrorLines(log).Should().Equal("! Undefined control sequence.", "l.3 Hello \\undefinedcommandxyz");
+    }
 }

@@ -1039,9 +1039,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 // Tolerant mode should still surface "no PDF at all" — likely
                 // preamble / package error, not a body glitch.
                 var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
-                var errorLines = logContent.Split('\n')
-                    .Where(l => l.StartsWith("!") || l.Contains("Error"))
-                    .Take(5);
+                var errorLines = CompileErrorLines(logContent);
                 throw new InvalidOperationException(
                     errorLines.Any()
                         ? $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
@@ -1056,7 +1054,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             // met on 1 Nov) has no %%EOF and opens nowhere: the error, not the file.
             if (!System.Text.Encoding.ASCII.GetString(pdf, Math.Max(0, pdf.Length - 1024), Math.Min(1024, pdf.Length)).Contains("%%EOF"))
             {
-                var errorLines = log.Split('\n').Where(l => l.StartsWith("!") || l.Contains("Error")).Take(5);
+                var errorLines = CompileErrorLines(log);
                 throw new InvalidOperationException($"LaTeX compilation failed:\n{string.Join("\n", errorLines)}");
             }
 
@@ -1277,8 +1275,39 @@ public class LaTeXRenderService : ILaTeXRenderService
     internal const string InterruptedMessage =
         "LaTeX compilation failed: the compile was interrupted before LaTeX finished (the server may have restarted). Try again.";
 
-    internal static List<string> CompileErrorLines(string log) =>
-        log.Split('\n').Where(l => l.StartsWith("!") || l.Contains("Error")).Take(5).ToList();
+    /// <summary>
+    /// The log's errors, each with the source line LaTeX names after it ("l.12 \usepackage{isodate}"), which
+    /// is what says where (the launch bot's TeX Stack Exchange run, 14 Nov 2026: the preview showed only
+    /// "PDF compilation failed"). At most four errors; the first is the one that matters.
+    /// </summary>
+    internal static List<string> CompileErrorLines(string log)
+    {
+        var lines = log.Replace("\r\n", "\n").Split('\n');
+        var result = new List<string>();
+        var errors = 0;
+        for (var i = 0; i < lines.Length && errors < 4; i++)
+        {
+            var line = lines[i].TrimEnd();
+            if (!(line.StartsWith('!') || line.Contains("Error"))) continue;
+            if (result.Contains(line)) continue;
+            result.Add(line);
+            errors++;
+            if (!line.StartsWith('!')) continue;
+            // The "l.<n> …" line follows within a few lines (after help text such as "Type X to quit").
+            for (var j = i + 1; j < Math.Min(lines.Length, i + 15); j++)
+            {
+                if (lines[j].StartsWith('!')) break;
+                if (System.Text.RegularExpressions.Regex.IsMatch(lines[j], @"^l\.\d+ "))
+                {
+                    var at = lines[j].TrimEnd();
+                    result.Add(at.Length > 160 ? at[..160] + "…" : at);
+                    i = j;
+                    break;
+                }
+            }
+        }
+        return result;
+    }
 
     private static Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
         string command, string arguments, string workingDir, int timeoutSeconds, CancellationToken ct = default) =>
