@@ -460,6 +460,26 @@ public class DocxExportServiceTests
             Block("algorithm", new ExportBlockContent { Text = "for each x: do y" }))))
             .Should().Contain("for each x: do y");
 
+    // MCP-116 (retested 14 Nov): an algorithm line's $…$ printed as source, "while $B_i \neq \emptyset$".
+    [Fact]
+    public async Task An_algorithm_line_s_maths_is_a_word_equation()
+    {
+        var xml = await ExportXmlAsync(Doc(Block("algorithm", new ExportBlockContent
+        {
+            Code = "while $B_i \\neq \\emptyset$ do\n  $R \\leftarrow B_i$; costs \\$5",
+        })));
+        TextOf(xml).Should().NotContain("\\neq").And.NotContain("$B_i").And.Contain("while").And.Contain("costs \\$5");
+        Regex.Matches(xml, "<m:oMath").Count.Should().Be(2);
+    }
+
+    [Fact]
+    public void An_algorithm_line_splits_into_text_and_maths()
+    {
+        DocxExportService.AlgorithmLineParts("while $x$ do").Should().Equal(("while ", false), ("x", true), (" do", false));
+        DocxExportService.AlgorithmLineParts("a \\$ b").Should().Equal(("a \\$ b", false));
+        DocxExportService.AlgorithmLineParts("").Should().Equal(("", false));
+    }
+
     [Fact]
     public async Task TableOfContents() =>
         (await ExportXmlAsync(Doc(Block("tableofcontents", new ExportBlockContent()))))

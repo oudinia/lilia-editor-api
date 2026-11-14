@@ -1580,18 +1580,34 @@ public class DocxExportService : IDocxExportService
             elements.Add(captionPara);
         }
 
-        // Reuse code block rendering
-        var codeBlock = new ExportBlock
+        // One paragraph per line, in the code style. A line's $…$ is maths: it printed as source,
+        // "while $B_i \neq \emptyset$" (MCP-116, retested 14 Nov), while the PDF typesets it.
+        foreach (var line in (content.Code ?? content.Text ?? "").Split('\n'))
         {
-            Type = "code",
-            Content = new ExportBlockContent
+            var para = new Paragraph(new ParagraphProperties(new ParagraphStyleId { Val = "Code" }));
+            foreach (var (text, isMaths) in AlgorithmLineParts(line))
             {
-                Code = content.Code ?? content.Text,
-                Language = content.Language ?? "text"
+                if (isMaths) para.AppendChild(CreateSpanElement(new ExportRichTextSpan { Equation = text }));
+                else para.AppendChild(new Run(
+                    new RunProperties(new RunFonts { Ascii = "Consolas", HighAnsi = "Consolas" }),
+                    new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
             }
-        };
-        elements.AddRange(ConvertCode(codeBlock));
+            elements.Add(para);
+        }
         return elements;
+    }
+
+    /// <summary>A line's plain stretches and its <c>$…$</c> maths, in order. An unpaired or escaped <c>$</c> stays text.</summary>
+    internal static IEnumerable<(string Text, bool IsMaths)> AlgorithmLineParts(string line)
+    {
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(line, @"(?<!\\)\$(?<m>[^$]+?)(?<!\\)\$"))
+        {
+            if (m.Index > at) yield return (line[at..m.Index], false);
+            yield return (m.Groups["m"].Value, true);
+            at = m.Index + m.Length;
+        }
+        if (at < line.Length || line.Length == 0) yield return (line[at..], false);
     }
 
     private IEnumerable<OpenXmlElement> ConvertCallout(ExportBlock block)
