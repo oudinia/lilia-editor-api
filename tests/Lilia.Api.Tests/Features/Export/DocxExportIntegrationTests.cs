@@ -592,6 +592,50 @@ public class DocxExportIntegrationTests : IntegrationTestBase
         text.Should().Contain("Table 1: Early").And.Contain("Table 2: Data");
     }
 
+    // MCP-105 (run 4, retested 14 Nov): a book's appendix printed as a plain heading, where the PDF
+    // prints "Appendix A"; the chapters after it are lettered too. An article's appendix is "A".
+    [Theory]
+    [InlineData("book", "Appendix A Flume calibration", "B Second appendix")]
+    [InlineData("article", "A Flume calibration", "B Second appendix")]
+    public async Task The_appendix_is_lettered_as_in_the_pdf(string cls, string appendix, string next)
+    {
+        var doc = await SeedDocumentAsync(_userId, "Appendix");
+        await using (var db = CreateDbContext())
+        {
+            var d = await db.Documents.FirstAsync(x => x.Id == doc.Id);
+            d.LatexDocumentClass = cls;
+            await db.SaveChangesAsync();
+        }
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Introduction","level":1}""");
+        await SeedBlockAsync(doc.Id, "backMatter", """{"subType":"appendix","title":"Flume calibration","text":"Calibrated."}""", 1);
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Second appendix","level":1}""", 2);
+        var text = TextIn((await ExportAsync(doc.Id)).Bytes);
+        text.Should().Contain("1 Introduction").And.Contain(appendix).And.Contain(next);
+    }
+
+    // MCP-105: a footer with a centre slot lost the page number, which the PDF prints on the right.
+    [Fact]
+    public async Task A_footer_slot_keeps_the_page_number_in_the_next_free_slot()
+    {
+        var doc = await SeedDocumentAsync(_userId, "Footer");
+        await using (var db = CreateDbContext())
+        {
+            var d = await db.Documents.FirstAsync(x => x.Id == doc.Id);
+            d.FooterCenter = "Anonymous authors";
+            await db.SaveChangesAsync();
+        }
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Body."}""");
+        using var ms = new MemoryStream((await ExportAsync(doc.Id)).Bytes);
+        using var word = WordprocessingDocument.Open(ms, false);
+        var footer = word.MainDocumentPart!.FooterParts.Single().Footer!;
+        footer.InnerText.Should().Contain("Anonymous authors");
+        footer.Descendants<DocumentFormat.OpenXml.Wordprocessing.SimpleField>().Should().ContainSingle(f => f.Instruction!.Value!.Contains("PAGE"));
+        // After the centre text: the right slot.
+        var para = footer.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>().Single();
+        var kids = para.ChildElements.Select(e => e is DocumentFormat.OpenXml.Wordprocessing.SimpleField ? "PAGE" : e.InnerText == "" && e.Descendants<DocumentFormat.OpenXml.Wordprocessing.TabChar>().Any() ? "TAB" : e.InnerText).Where(x => x != "").ToList();
+        kids.Should().Equal("TAB", "Anonymous authors", "TAB", "PAGE");
+    }
+
     [Fact]
     public async Task HighlightedTextDoesNotAbortTheExport()
     {

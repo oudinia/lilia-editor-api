@@ -741,13 +741,13 @@ public class DocxExportService : IDocxExportService
     private static void NumberCaptions(IEnumerable<ExportBlock> blocks)
     {
         int tables = 0, figures = 0, listings = 0, algorithms = 0;
-        int? chapter = null;
+        string? chapter = null;
         foreach (var b in blocks)
         {
             if (b.Content is null || string.IsNullOrWhiteSpace(b.Content.Caption)) continue;
             // In a chapter class (the export stamps CaptionChapter) each chapter restarts tables, figures and
             // listings, "Table 2.1", as LaTeX does (MCP-96); algorithms run on.
-            if (b.Content.CaptionChapter is int c && c != chapter) { chapter = c; tables = figures = listings = 0; }
+            if (b.Content.CaptionChapter is { } c && c != chapter) { chapter = c; tables = figures = listings = 0; }
             if (string.Equals(b.Type, "table", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++tables;
             else if (string.Equals(b.Type, "figure", StringComparison.OrdinalIgnoreCase)) b.Content.CaptionNumber = ++figures;
             // Listing and algorithm captions, numbered as LaTeX numbers them (MCP-105: they were gone).
@@ -762,7 +762,7 @@ public class DocxExportService : IDocxExportService
     /// at — Olivia, 23 Sep: use Word's own fields, so Word numbers them); the
     /// run inside it is the number shown before Word updates fields.
     /// </summary>
-    private Paragraph CaptionParagraph(string label, int? number, string text, bool center, List<ExportRichTextSpan>? runs = null, int? chapter = null)
+    private Paragraph CaptionParagraph(string label, int? number, string text, bool center, List<ExportRichTextSpan>? runs = null, string? chapter = null)
     {
         var para = new Paragraph();
         var pPr = new ParagraphProperties(new ParagraphStyleId { Val = "Caption" });
@@ -770,7 +770,7 @@ public class DocxExportService : IDocxExportService
         para.Append(pPr);
         if (number is int n)
         {
-            para.Append(new Run(new Text($"{label} " + (chapter is int c ? $"{c}." : "")) { Space = SpaceProcessingModeValues.Preserve }));
+            para.Append(new Run(new Text($"{label} " + (chapter is { } c ? $"{c}." : "")) { Space = SpaceProcessingModeValues.Preserve }));
             // Within a chapter the field restarts at each Heading 1 (\\s 1), as the number does.
             para.Append(new SimpleField(new Run(new Text(n.ToString()))) { Instruction = chapter is null ? $" SEQ {label} \\* ARABIC " : $" SEQ {label} \\* ARABIC \\s 1 " });
             para.Append(new Run(new Text(": ") { Space = SpaceProcessingModeValues.Preserve }));
@@ -1383,25 +1383,27 @@ public class DocxExportService : IDocxExportService
 
     /// <summary>
     /// The running header and footer: left, centre and right slots on one line (centre and right tab
-    /// stops), as fancyhdr prints them. With no footer slot, the page number centred, unless page
+    /// stops), as fancyhdr prints them, with the page number in the first free footer slot unless page
     /// numbering is off. The .docx had neither (MCP-105).
     /// </summary>
     private static void AddHeaderFooter(MainDocumentPart mainPart, SectionProperties section, ExportDocument document)
     {
-        static Paragraph Line(string? left, string? center, string? right, bool pageNumber, bool roman)
+        // The page number goes in the slot named by pageAt ("left", "center", "right"), or nowhere.
+        static Paragraph Line(string? left, string? center, string? right, string? pageAt, bool roman)
         {
             var para = new Paragraph(new ParagraphProperties(new Tabs(
                 new TabStop { Val = TabStopValues.Center, Position = 4513 },
                 new TabStop { Val = TabStopValues.Right, Position = 9026 })));
-            void Add(string? text) { if (!string.IsNullOrEmpty(text)) para.Append(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve })); }
-            Add(left);
+            void Add(string? text, string slot)
+            {
+                if (pageAt == slot) para.Append(new SimpleField(new Run(new Text("1"))) { Instruction = roman ? " PAGE \\* roman " : " PAGE " });
+                else if (!string.IsNullOrEmpty(text)) para.Append(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
+            }
+            Add(left, "left");
             para.Append(new Run(new TabChar()));
-            if (pageNumber)
-                para.Append(new SimpleField(new Run(new Text("1"))) { Instruction = roman ? " PAGE \\* roman " : " PAGE " });
-            else
-                Add(center);
+            Add(center, "center");
             para.Append(new Run(new TabChar()));
-            Add(right);
+            Add(right, "right");
             return para;
         }
 
@@ -1409,18 +1411,23 @@ public class DocxExportService : IDocxExportService
         if (hasHeader)
         {
             var header = mainPart.AddNewPart<HeaderPart>();
-            header.Header = new Header(Line(document.HeaderLeft, document.HeaderCenter, document.HeaderRight, false, false));
+            header.Header = new Header(Line(document.HeaderLeft, document.HeaderCenter, document.HeaderRight, null, false));
             // References come first in w:sectPr (schema order), before the page size.
             section.InsertAt(new HeaderReference { Type = HeaderFooterValues.Default, Id = mainPart.GetIdOfPart(header) }, 0);
         }
 
         var hasFooter = !string.IsNullOrWhiteSpace(document.FooterLeft) || !string.IsNullOrWhiteSpace(document.FooterCenter) || !string.IsNullOrWhiteSpace(document.FooterRight);
         var numbering = (document.PageNumbering ?? "arabic").Trim().ToLowerInvariant();
-        if (!hasFooter && numbering == "none") return;
+        // The page number in the first free footer slot, centre, right, left, as the LaTeX export puts it
+        // (LaTeXPreambleBuilder): a centre slot took it away, where the PDF prints it on the right (MCP-105).
+        var pageAt = numbering == "none" ? null
+            : string.IsNullOrWhiteSpace(document.FooterCenter) ? "center"
+            : string.IsNullOrWhiteSpace(document.FooterRight) ? "right"
+            : string.IsNullOrWhiteSpace(document.FooterLeft) ? "left"
+            : null;
+        if (!hasFooter && pageAt is null) return;
         var footer = mainPart.AddNewPart<FooterPart>();
-        footer.Footer = new Footer(hasFooter
-            ? Line(document.FooterLeft, document.FooterCenter, document.FooterRight, false, false)
-            : Line(null, null, null, true, numbering == "roman"));
+        footer.Footer = new Footer(Line(document.FooterLeft, document.FooterCenter, document.FooterRight, pageAt, numbering == "roman"));
         section.InsertAt(new FooterReference { Type = HeaderFooterValues.Default, Id = mainPart.GetIdOfPart(footer) }, hasHeader ? 1 : 0);
     }
 

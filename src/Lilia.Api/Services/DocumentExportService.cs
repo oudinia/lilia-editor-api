@@ -65,6 +65,7 @@ public class DocumentExportService : IDocumentExportService
     private Func<string, string?>? _labelNumber;
     private Dictionary<Guid, string> _blockNumbers = [];
     private string? _currentBlockNumber;
+    private bool _chapterClass;
     private string? _customPreamble;
 
     public async Task<ExportDocument> BuildExportDocumentAsync(Guid documentId)
@@ -137,7 +138,7 @@ public class DocumentExportService : IDocumentExportService
         var labels = LabelNumbers.Parse(doc.LabelNumbers);
         var own = WordNumbers(doc);
         _blockNumbers = own.Blocks;
-        exportDoc.ChapterNumbering = IsChapterClass(doc);
+        exportDoc.ChapterNumbering = _chapterClass = IsChapterClass(doc);
         // A number from the last compile that isn't one: an uncaptioned figure's label holds LaTeX's own
         // \caption@xref, which printed in Word as "Figure \caption@xref {fig:nocap}{ on input line 438}" (MCP-96).
         _labelNumber = key => key.StartsWith("cite:", StringComparison.Ordinal)
@@ -189,17 +190,21 @@ public class DocumentExportService : IDocumentExportService
     /// listings within chapters as LaTeX numbers them, "2.1" (MCP-96: Word wrote "(1)", "Table 1" where
     /// the PDF prints "(2.1)", "Table 2.1"); <c>Chapters</c> holds each captioned block's chapter.
     /// </summary>
-    internal static (Dictionary<Guid, string> Blocks, Dictionary<string, string> Labels, Dictionary<Guid, int> Chapters) WordNumbers(Document doc)
+    internal static (Dictionary<Guid, string> Blocks, Dictionary<string, string> Labels, Dictionary<Guid, string> Chapters) WordNumbers(Document doc)
     {
         var blocks = new Dictionary<Guid, string>();
         var labels = new Dictionary<string, string>(StringComparer.Ordinal);
-        var chapters = new Dictionary<Guid, int>();
+        var chapters = new Dictionary<Guid, string>();
         var byChapter = IsChapterClass(doc);
         var depth = doc.HeadingNumbering switch { null => 3, < 0 => 3, var n => n.Value };
         var sections = new int[7];
         var kinds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var equations = 0;
-        string Within(int n) => byChapter ? $"{Math.Max(sections[1], 0)}.{n}" : n.ToString();
+        var appendix = false;
+        // The top level's number: after the Appendix block, A, B… as \appendix makes it (MCP-105).
+        string Top() => appendix ? Letter(Math.Max(sections[1], 1)) : Math.Max(sections[1], 0).ToString();
+        static string Letter(int n) => n <= 26 ? ((char)('A' + n - 1)).ToString() : Letter((n - 1) / 26) + (char)('A' + (n - 1) % 26);
+        string Within(int n) => byChapter ? $"{Top()}.{n}" : n.ToString();
 
         void Label(JsonElement content, string type, string number)
         {
@@ -226,9 +231,27 @@ public class DocumentExportService : IDocumentExportService
                         equations = 0;
                         kinds.Remove("#figure"); kinds.Remove("#table"); kinds.Remove("#code");
                     }
-                    var number = string.Join(".", sections.Skip(1).Take(level).Select(x => Math.Max(x, 0)));
+                    var number = string.Join(".", new[] { Top() }.Concat(sections.Skip(2).Take(level - 1).Select(x => Math.Max(x, 0).ToString())));
                     blocks[block.Id] = number;
                     Label(content, "heading", number);
+                    break;
+                }
+                // The Appendix block: \appendix, then its title as the first lettered chapter or section
+                // (a bare block only starts the lettering). Word printed it as an unnumbered heading,
+                // without "Appendix A" (MCP-105, LTX-83).
+                case "backmatter" when Lilia.Engines.Themes.ThemeSections.IsAppendixBlock(block):
+                {
+                    appendix = true;
+                    Array.Clear(sections);
+                    var titled = !string.IsNullOrWhiteSpace(GetString(content, "title")) || !string.IsNullOrWhiteSpace(GetString(content, "text"));
+                    if (!titled || depth < 1) break;
+                    sections[1] = 1;
+                    if (byChapter)
+                    {
+                        equations = 0;
+                        kinds.Remove("#figure"); kinds.Remove("#table"); kinds.Remove("#code");
+                    }
+                    blocks[block.Id] = Top();
                     break;
                 }
                 case "theorem":
@@ -261,7 +284,7 @@ public class DocumentExportService : IDocumentExportService
                     var type = block.Type.ToLowerInvariant() == "image" ? "figure" : block.Type.ToLowerInvariant();
                     var n = kinds["#" + type] = kinds.GetValueOrDefault("#" + type) + 1;
                     var number = byChapter && type != "algorithm" ? Within(n) : n.ToString();
-                    if (byChapter && type != "algorithm") chapters[block.Id] = Math.Max(sections[1], 0);
+                    if (byChapter && type != "algorithm") chapters[block.Id] = Top();
                     Label(content, type, number);
                     break;
                 }
@@ -1215,13 +1238,17 @@ public class DocumentExportService : IDocumentExportService
             };
         var text = GetString(content, "text");
         if (string.IsNullOrEmpty(text)) text = GetString(content, "content");
+        var shown = ProseLatex.PlainForWord(title, _labelNumber);
+        // The Appendix block's letter, as the PDF prints it: "Appendix A" over a chapter, "A" before a section.
+        if (_currentBlockNumber is { } letter && subType.Equals("appendix", StringComparison.OrdinalIgnoreCase))
+            shown = (_chapterClass ? $"Appendix {letter} " : $"{letter} ") + shown;
         return new ExportBlock
         {
             Type = "matter",
             Content = new ExportBlockContent
             {
                 Variant = subType.ToLowerInvariant(),
-                Text = ProseLatex.PlainForWord(title, _labelNumber),
+                Text = shown,
                 RichText = string.IsNullOrWhiteSpace(text) ? null : ParseInlineFormatting(text, _labelNumber),
             }
         };

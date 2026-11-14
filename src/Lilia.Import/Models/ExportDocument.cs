@@ -213,7 +213,7 @@ public class ExportBlockContent
     public int? CaptionNumber { get; set; }
 
     /// <summary>The chapter a caption's number is within (ChapterNumbering): "Table 2.1".</summary>
-    public int? CaptionChapter { get; set; }
+    public string? CaptionChapter { get; set; }
 
     /// <summary>
     /// List items.
