@@ -75,6 +75,10 @@ public static class ContentRouting
             // The Typst writer reads an algorithm's old code field, not the editor's lines: an algorithm written in the
             // editor printed as an empty box (the launch bot's user guides, #66, 11 Nov 2026). The LaTeX path writes it.
             if (string.Equals(type, "algorithm", StringComparison.OrdinalIgnoreCase)) return "algorithms";
+            // Raw LaTeX (an embed block, LaTeX unless its engine says otherwise) is LaTeX's to run. Its source sits in
+            // "code", which the text scan below skips, and the Typst writer read other fields: a tblr table in one was
+            // left out of the Auto PDF without a word (the launch bot's TeX Stack Exchange run, 14 Nov 2026).
+            if (string.Equals(type, "embed", StringComparison.OrdinalIgnoreCase) && EmbedIsLatex(content)) return "raw LaTeX";
             // Typst's theorems carry no number: one set to Numbered printed without it (#66). Only an unnumbered one stays.
             if (string.Equals(type, "theorem", StringComparison.OrdinalIgnoreCase)
                 && !(content.ValueKind == System.Text.Json.JsonValueKind.Object
@@ -90,6 +94,19 @@ public static class ContentRouting
         // Text in another language: its headings and word breaks are LaTeX's (DocumentLanguage).
         if (Lilia.Engines.DocumentLanguage.Detect(Lilia.Engines.DocumentLanguage.Prose(null, list)) != "en") return "text in another language";
         return null;
+    }
+
+    /// <summary>An embed holding LaTeX: some source in "code" or "latex", and no engine other than LaTeX.</summary>
+    private static bool EmbedIsLatex(System.Text.Json.JsonElement content)
+    {
+        if (content.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+        if (content.TryGetProperty("engine", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(e.GetString()) && !string.Equals(e.GetString(), "latex", StringComparison.OrdinalIgnoreCase))
+            return false;
+        foreach (var key in new[] { "code", "latex", "source" })
+            if (content.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()))
+                return true;
+        return false;
     }
 
     private static IEnumerable<string> Strings(System.Text.Json.JsonElement e) => e.ValueKind switch
