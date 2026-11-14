@@ -174,6 +174,21 @@ public sealed partial class DocumentCheckService(
 
     private static string? ErrorOf(DocumentCheck c) => c.Problems.FirstOrDefault(p => p.Severity == "error")?.Message;
 
+    /// <summary>
+    /// What the references above do in the PDF, by kind (MCP-126): a label with no number before it
+    /// prints nothing ("see also Listing ."), not "??"; a duplicate label points at the wrong number.
+    /// The note said "?? or ?" for all of them.
+    /// </summary>
+    internal static string ReferenceNote(bool dangling, bool missingCitations, bool empty, bool duplicate)
+    {
+        var parts = new List<string>();
+        if (dangling) parts.Add("references to labels the document never writes print as ??");
+        if (missingCitations) parts.Add("citations with no bibliography entry print as ?");
+        if (empty) parts.Add("references to a label with no numbered item before it print nothing");
+        if (duplicate) parts.Add("a label written twice makes its references point at the wrong number");
+        return "It compiles, but " + string.Join("; ", parts) + " (see references and citations above).";
+    }
+
     private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto? d, string source, string engine, LatexValidationResult result,
         Lilia.Engines.Publishers.ComplianceReport? publisher = null)
     {
@@ -261,7 +276,7 @@ public sealed partial class DocumentCheckService(
             note = !result.Valid
                 ? "It does not compile: see error (and errorBlockId for the block)."
                 : references.Count + citations.Count > 0
-                ? "It compiles, but references or citations above will print as ?? or ? in the PDF."
+                ? ReferenceNote(audit.DanglingReferences.Any(), citations.Count > 0, audit.EmptyReferences.Any(), audit.DuplicateLabels.Any())
                 : dropped is not null
                     ? "It compiles, but some characters are missing from the PDF (see warnings)."
                     : wide.Count > 0
