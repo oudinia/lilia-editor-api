@@ -16,6 +16,8 @@ namespace Lilia.Api.Controllers;
 //    GET  /api/plan              — your plan and how much of it is used (auth)
 //    POST /api/billing/checkout  — start a Checkout for a plan (auth)
 //    POST /api/billing/portal    — open the Stripe customer portal (auth)
+//    GET  /api/billing/packs     — the author's connector operations and the pack offer (auth)
+//    POST /api/billing/packs/checkout — start a Checkout for 1 to 20 operation packs (auth)
 //    POST /api/billing/webhook   — Stripe subscription webhook (anon,
 //                                  authenticated by the Stripe signature)
 // =====================================================================
@@ -124,6 +126,53 @@ public class BillingController : ControllerBase
             var url = await _billing.CreateCheckoutSessionAsync(
                 userId, req.PlanSlug, req.Interval ?? "month", ct);
             return Ok(new { url });
+        }
+        catch (BillingException ex)
+        {
+            return StatusCode(503, new { error = "billing_unavailable", message = ex.Message });
+        }
+    }
+
+    public record PackCheckoutRequest(int Quantity);
+
+    /// <summary>
+    /// The author's connector operations: the balance, and what a pack costs and gives (the owner, 14 Nov 2026), for
+    /// Settings → Plan. <c>onSale</c> is false until the pack's Stripe price is configured.
+    /// </summary>
+    [HttpGet("packs")]
+    [Authorize]
+    public async Task<IActionResult> Packs([FromServices] OperationPacks packs, [FromServices] Microsoft.Extensions.Options.IOptions<StripeOptions> stripe, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        return Ok(new
+        {
+            balance = await packs.BalanceAsync(userId, ct),
+            onSale = stripe.Value.IsConfigured && !string.IsNullOrEmpty(stripe.Value.OperationsPackPriceId),
+            priceCents = stripe.Value.OperationsPackUnitCents,
+            perPack = OperationPacks.PerPack,
+            maxPacks = OperationPacks.MaxPacks,
+            tiers = new[]
+            {
+                new { fromPacks = 1, perPack = OperationPacks.OperationsFor(1) },
+                new { fromPacks = 4, perPack = OperationPacks.OperationsFor(4) / 4 },
+                new { fromPacks = 10, perPack = OperationPacks.OperationsFor(10) / 10 },
+            },
+        });
+    }
+
+    /// <summary>Start a Stripe Checkout for operation packs (1 to 20; the quantity can be changed on Stripe's page).</summary>
+    [HttpPost("packs/checkout")]
+    [Authorize]
+    public async Task<IActionResult> PackCheckout([FromBody] PackCheckoutRequest req, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (req.Quantity is < 1 or > OperationPacks.MaxPacks)
+            return BadRequest(new { error = "quantity_out_of_range", message = $"Choose 1 to {OperationPacks.MaxPacks} packs." });
+        try
+        {
+            return Ok(new { url = await _billing.CreatePackCheckoutAsync(userId, req.Quantity, ct) });
         }
         catch (BillingException ex)
         {
