@@ -134,7 +134,8 @@ public class AuthEmailController : ControllerBase
         // The link's one-time code: bringing it back proves this inbox, which Stytch can't (EmailProof).
         var proof = await Lilia.Api.Services.Email.EmailProof.IssueAsync(_cache, userId, ValidMinutes(kind), ct);
         var url = $"{callbackOrigin}/auth/callback?stytch_token_type=magic_links" +
-                  $"&token={Uri.EscapeDataString(token)}{intent}{Lilia.Api.Services.Email.EmailProof.Query(proof)}";
+                  $"&token={Uri.EscapeDataString(token)}{intent}{Lilia.Api.Services.Email.EmailProof.Query(proof)}" +
+                  ReturnQuery(req.ReturnPath, kind);
 
         try
         {
@@ -160,6 +161,24 @@ public class AuthEmailController : ControllerBase
 
         return Ok(new { sent = true });
     }
+
+    /// <summary>
+    /// Where the link brings the author back after signing in: a path on the callback's own site, as the editor's
+    /// /auth/callback reads it (<c>redirectUrl</c>). Connector onboarding, 14 Nov 2026: someone who signs up while
+    /// Claude waits to connect confirms the email, often on another device; the return path lived only in the
+    /// first browser's storage, so the link landed on Home and the app never connected. Not for a password reset
+    /// (that link sets a password first). Anything but a plain same-site path is ignored: never an open redirect.
+    /// </summary>
+    internal static string ReturnQuery(string? returnPath, AuthEmailKind kind)
+    {
+        if (kind == AuthEmailKind.PasswordReset || !IsSameSitePath(returnPath)) return "";
+        return "&redirectUrl=" + Uri.EscapeDataString(returnPath!);
+    }
+
+    internal static bool IsSameSitePath(string? path) =>
+        !string.IsNullOrEmpty(path) && path.Length <= 4000 && path[0] == '/'
+        && !path.StartsWith("//", StringComparison.Ordinal) && !path.Contains('\\')
+        && !path.Any(char.IsControl);
 
     /// <summary>
     /// Pick the callback origin for the magic-link URL. Caller may
@@ -299,6 +318,12 @@ public class AuthEmailRequest
     /// editor origin is used. The path is always <c>/auth/callback</c>.
     /// </summary>
     public string? RedirectTo { get; set; }
+
+    /// <summary>
+    /// The path the link brings the author back to after signing in (an app waiting to connect:
+    /// <c>/oauth/authorize?…</c>). A same-site path only; anything else is ignored.
+    /// </summary>
+    public string? ReturnPath { get; set; }
 }
 
 internal enum AuthEmailKind
