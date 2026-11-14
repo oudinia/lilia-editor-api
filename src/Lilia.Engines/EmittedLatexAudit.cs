@@ -54,7 +54,8 @@ public sealed class EmittedLatexAudit
         var inBody = false;
         var sectioned = false;
         Guid? block = null;
-        var lines = (source ?? "").Split('\n');
+        // Text a code block only shows is not the document's labels or references (MCP-127).
+        var lines = LatexVerbatim.Blank(source).Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
             var lineNo = i + 1;

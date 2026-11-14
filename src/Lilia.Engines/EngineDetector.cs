@@ -57,7 +57,7 @@ public static class EngineDetector
         RegexOptions.Compiled);
 
     /// <summary>True when only LuaLaTeX can compile it, whatever engine the document is set to.</summary>
-    public static bool RequiresLua(string? latex) => !string.IsNullOrEmpty(latex) && LuaOnly.IsMatch(latex);
+    public static bool RequiresLua(string? latex) => !string.IsNullOrEmpty(latex) && LuaOnly.IsMatch(LatexVerbatim.Blank(latex));
 
     // XeTeX-only packages.
     private static readonly Regex XeOnly = new(
@@ -96,10 +96,13 @@ public static class EngineDetector
     public static LatexEngine Detect(string? latex)
     {
         if (string.IsNullOrEmpty(latex)) return LatexEngine.Pdflatex;
-        if (LuaOnly.IsMatch(latex)) return LatexEngine.Lualatex;
+        // Commands a code block only shows don't choose the engine (MCP-128); its letters still
+        // need fonts, so the CJK test below reads the whole text.
+        var commands = LatexVerbatim.Blank(latex);
+        if (LuaOnly.IsMatch(commands)) return LatexEngine.Lualatex;
         // xeCJK runs only on XeTeX, so it outranks the fontspec rule below.
-        if (XeOnly.IsMatch(latex)) return LatexEngine.Xelatex;
-        if (Fontspec.IsMatch(latex) || FontPackages.IsMatch(latex)) return LatexEngine.Lualatex;
+        if (XeOnly.IsMatch(commands)) return LatexEngine.Xelatex;
+        if (Fontspec.IsMatch(commands) || FontPackages.IsMatch(commands)) return LatexEngine.Lualatex;
         // Chinese, Japanese or Korean text: pdflatex has no fonts for it here (CjkText).
         if (CjkText.Contains(latex)) return LatexEngine.Xelatex;
         return LatexEngine.Pdflatex;
