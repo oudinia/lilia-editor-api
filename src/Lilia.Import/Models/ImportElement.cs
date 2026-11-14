@@ -846,6 +846,21 @@ public class ImportLatexPassthrough : ImportElement
 }
 
 /// <summary>
+/// A CV block (<c>personalInfo</c>, <c>cvSection</c>, <c>cvEntry</c>) read from a moderncv source (the launch bot's #112,
+/// 15 Nov 2026; <see cref="Lilia.Import.Services.ModernCv"/>). A passthrough too, like <see cref="ImportTikzFigure"/>:
+/// <see cref="ImportLatexPassthrough.LatexCode"/> holds the LaTeX it came from, so a consumer that doesn't know CV
+/// blocks keeps carrying that. The import paths match this type before the passthrough it derives from.
+/// </summary>
+public class ImportCvBlock : ImportLatexPassthrough
+{
+    /// <summary>The editor's block type: personalInfo, cvSection or cvEntry.</summary>
+    public string BlockType { get; set; } = "cvEntry";
+
+    /// <summary>The block's content, in the shape the editor and GET /api/blocktypes use.</summary>
+    public Dictionary<string, object?> Content { get; set; } = new();
+}
+
+/// <summary>
 /// A TikZ picture: a figure block with <c>kind: "tikz"</c> (see <see cref="Lilia.Core.Blocks.TikzFigure"/>).
 ///
 /// <para>It is a passthrough too: <see cref="ImportLatexPassthrough.LatexCode"/> holds the whole

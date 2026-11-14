@@ -132,6 +132,7 @@ public class LatexFragmentParser : ILatexFragmentParser
         }),
         ImportBlockquote bq => ("blockquote", new { text = bq.Text }),
         ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
+        ImportCvBlock cv => (cv.BlockType, cv.Content),
         ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
         _ => ("paragraph", new { text = string.Empty }),
     };
