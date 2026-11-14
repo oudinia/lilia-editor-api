@@ -344,12 +344,21 @@ public sealed class LiliaMcpWriteTools(
             if (result.Document is null)
                 return new { error = $"Lilia could not import this file: {result.Job?.ErrorMessage ?? "the importer produced no document"}" };
             logger.LogInformation("[Mcp] import_document {File} ({Kind}) → {DocId} by {App}", name, kind, result.Document.Id, await AppNameAsync());
+            // MCP-123: a .tex with \write18 or \input{|…} was imported without a word (the preamble's
+            // dropped, the body's kept as text), though every other write tool refuses it (MCP-45) and
+            // the compile does. The file is still imported, so the author can fix it in the editor; the
+            // reply says what the compile will refuse, in the guard's own words.
+            var unsafeSource = kind == "DOCX" ? null : Lilia.Engines.TexSafety.TexSourceGuard.Violation(content);
             return new
             {
                 documentId = result.Document.Id,
                 title = result.Document.Title,
                 url = $"{McpOAuth.PublicOrigin(config)}/d/{result.Document.Id}",
-                next = "Read it with get_outline, or check it compiles with check_document.",
+                warning = unsafeSource is null ? null
+                    : $"{unsafeSource} The document was imported, but it will not compile until that is removed; anything the importer dropped is gone.",
+                next = unsafeSource is null
+                    ? "Read it with get_outline, or check it compiles with check_document."
+                    : "Find and remove it (get_outline, then edit the block), then check_document.",
             };
         }
         catch (QuotaExceededException limit)

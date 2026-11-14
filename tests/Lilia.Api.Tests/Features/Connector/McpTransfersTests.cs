@@ -135,6 +135,34 @@ public class McpTransfersTests : IntegrationTestBase
         (await CallAsync(app, "import_document", new { filename = "x.docx", content = "not base64!" })).GetProperty("error").GetString().Should().Contain("base64");
     }
 
+    // MCP-123: a .tex that asks to run commands is imported (the author fixes it in the editor), and the
+    // reply says what the compile will refuse; a clean file has no warning.
+    [Fact]
+    public async Task An_import_that_runs_commands_comes_with_a_warning()
+    {
+        await SeedUserAsync("mcpx_appunsafe");
+        var app = CreateClientAs("mcpx_appunsafe");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+
+        var unsafeTex = await CallAsync(app, "import_document", new
+        {
+            filename = "shell.tex",
+            content = "\\documentclass{article}\n\\immediate\\write18{echo preamble}\n\\begin{document}\nText.\n\\immediate\\write18{echo body}\n\\end{document}\n",
+        });
+        unsafeTex.TryGetProperty("error", out _).Should().BeFalse(unsafeTex.ToString());
+        unsafeTex.GetProperty("warning").GetString().Should().Contain("write18").And.Contain("will not compile");
+
+        var clean = await CallAsync(app, "import_document", new
+        {
+            filename = "clean.tex",
+            content = "\\documentclass{article}\\begin{document}Hello.\\end{document}",
+        });
+        clean.TryGetProperty("error", out _).Should().BeFalse(clean.ToString());
+        // The connector leaves null fields out: a clean file has no warning at all.
+        (clean.TryGetProperty("warning", out var w) && w.ValueKind != System.Text.Json.JsonValueKind.Null).Should().BeFalse();
+    }
+
     [Fact]
     public async Task An_apps_token_cannot_upload_on_the_drop_page()
     {
