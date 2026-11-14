@@ -2920,6 +2920,22 @@ public class LatexParser : ILatexParser
             {
                 rawArg = rawArg.Substring(1, rawArg.Length - 2).Trim();
             }
+            // \State x \Comment{why} is one line with its comment, as algorithmicx prints it; it
+            // became a second, numbered line (MCP-121 retest, 14 Nov). A \Comment alone on its
+            // source line stays a line of its own.
+            var sameLine = lines.Count > 0
+                && !body.AsSpan(matches[i - 1].Index, m.Index - matches[i - 1].Index).Contains('\n');
+            // \State \Return x is one line, "return x": the empty \State gives way.
+            if (sameLine && lines[^1] is { Kind: "statement", Text: "", Comment: "" })
+            {
+                lines.RemoveAt(lines.Count - 1);
+                sameLine = false;
+            }
+            if (kind == "comment" && sameLine && lines[^1].Comment.Length == 0)
+            {
+                lines[^1].Comment = rawArg;
+                continue;
+            }
             lines.Add(new ImportAlgorithmLine
             {
                 Kind = kind,

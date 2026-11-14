@@ -583,7 +583,7 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                 indent,
                 keyword,
                 text = isComment ? "" : line.Text,
-                comment = isComment ? line.Text : "",
+                comment = isComment ? line.Text : line.Comment ?? "",
             });
 
             if (kind is "if" or "elsif" or "else" or "for" or "while" or "repeat" or "loop")

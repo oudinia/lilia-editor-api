@@ -31,7 +31,7 @@ public static class AlgorithmLines
 
     private static List<object> FromCommands(string body)
     {
-        var lines = new List<object>();
+        var lines = new List<Line>();
         var indent = 0;
         var matches = Command.Matches(body);
         for (var i = 0; i < matches.Count; i++)
@@ -53,11 +53,27 @@ public static class AlgorithmLines
                 _ => "",
             };
             var isComment = kind == "comment";
-            lines.Add(new { indent, keyword, text = isComment ? "" : arg, comment = isComment ? arg : "" });
+            var sameLine = lines.Count > 0
+                && !body.AsSpan(matches[i - 1].Index, m.Index - matches[i - 1].Index).Contains('\n');
+            // \STATE \RETURN x is one line: the empty \STATE gives way.
+            if (sameLine && lines[^1] is { Keyword: "", Text: "", Comment: "" })
+            {
+                lines.RemoveAt(lines.Count - 1);
+                sameLine = false;
+            }
+            // A \COMMENT on the same source line as the command before it is that line's comment.
+            if (isComment && sameLine && lines[^1].Comment.Length == 0)
+            {
+                lines[^1] = lines[^1] with { Comment = arg };
+                continue;
+            }
+            lines.Add(new Line(indent, keyword, isComment ? "" : arg, isComment ? arg : ""));
             if (kind is "if" or "elsif" or "else" or "for" or "while" or "repeat" or "loop") indent++;
         }
-        return lines;
+        return lines.Select(l => (object)new { indent = l.Indent, keyword = l.Keyword, text = l.Text, comment = l.Comment }).ToList();
     }
+
+    private sealed record Line(int Indent, string Keyword, string Text, string Comment);
 
     private static List<object> FromPlain(string body)
     {

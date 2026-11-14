@@ -234,6 +234,8 @@ public class ImportAlgorithmLine
 {
     public string Kind { get; set; } = "statement";
     public string Text { get; set; } = string.Empty;
+    /// <summary>A <c>\Comment</c> written on the same source line, after the command.</summary>
+    public string Comment { get; set; } = string.Empty;
 }
 
 /// <summary>
