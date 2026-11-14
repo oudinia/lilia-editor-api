@@ -97,6 +97,20 @@ public static class FigureFile
             m => printed.TryGetValue(m.Groups[1].Value, out var to) ? $"[Missing figure: {to}]" : m.Value);
     }
 
+    /// <summary>The storage key a figure's src names (a key, /uploads/key, or a URL); null when none.</summary>
+    public static string? StorageKey(string? src)
+    {
+        if (string.IsNullOrEmpty(src)) return null;
+        if (src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(src, UriKind.Absolute, out var uri)) return null;
+            var path = uri.AbsolutePath;
+            // /uploads/key (local storage), or an R2/S3 path as it is.
+            return path.StartsWith("/uploads/", StringComparison.Ordinal) ? path["/uploads/".Length..] : path.TrimStart('/');
+        }
+        return src.StartsWith("/uploads/", StringComparison.Ordinal) ? src["/uploads/".Length..] : src;
+    }
+
     /// <summary>The image, or a framed placeholder naming the missing file.</summary>
     public static string Include(string filename, string width, string placeholderWidth = @"0.7\textwidth") =>
         $@"\IfFileExists{{figures/{filename}}}{{%" + "\n"

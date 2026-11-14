@@ -1448,32 +1448,7 @@ public class LaTeXExportService : ILaTeXExportService
         return images;
     }
 
-    private static string? ExtractStorageKey(string src)
-    {
-        if (string.IsNullOrEmpty(src)) return null;
-
-        // If it's a full URL, extract the path after /uploads/ or the key portion
-        if (src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-        {
-            if (Uri.TryCreate(src, UriKind.Absolute, out var uri))
-            {
-                var path = uri.AbsolutePath;
-                // Handle /uploads/key pattern (local storage)
-                if (path.StartsWith("/uploads/"))
-                    return path["/uploads/".Length..];
-                // Handle R2/S3 paths — use the path as-is minus leading slash
-                return path.TrimStart('/');
-            }
-            return null;
-        }
-
-        // If it starts with /uploads/, strip the prefix
-        if (src.StartsWith("/uploads/"))
-            return src["/uploads/".Length..];
-
-        // Otherwise treat the whole string as a storage key
-        return src;
-    }
+    private static string? ExtractStorageKey(string src) => FigureFile.StorageKey(src);
 
     // ── README generation ──────────────────────────────────────────────
 
