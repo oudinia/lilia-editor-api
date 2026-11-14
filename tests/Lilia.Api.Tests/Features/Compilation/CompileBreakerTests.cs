@@ -67,6 +67,30 @@ public class CompileBreakerTests
     public void The_escape_avoids_delimiters_the_code_uses() =>
         ListingText.Escape("s = \"(*@\" + \"é\"").Option.Should().Be("escapeinside={(*|}{|*)}");
 
+    // ── MCP-129 ─────────────────────────────────────────────────────────
+    private const string TutorialCode = "\\begin{lstlisting}[language=Python]\nprint(\"hello\")\n\\end{lstlisting}\nAfter the listing, $x^2$ and a \\textbf{bold} word stay code.";
+
+    [Fact]
+    public void A_listing_end_in_the_code_does_not_end_the_listing()
+    {
+        var latex = _render.RenderBlockToLatex(B("code", new { code = TutorialCode, language = "latex" }));
+        latex.Should().Contain(@"\end{lst(*@@*)listing}").And.Contain("escapeinside={(*@}{@*)}");
+        // Only the block's own end remains.
+        System.Text.RegularExpressions.Regex.Matches(latex, @"\\end\{lstlisting\}").Should().HaveCount(1);
+        // With non-ASCII too, one escape option serves both.
+        ListingText.Escape("café\n\\end{lstlisting}").Code.Should().Be("caf(*@é@*)\n\\end{lst(*@@*)listing}");
+    }
+
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task A_latex_tutorial_s_code_block_compiles()
+    {
+        var tex = RenderDoc(null,
+            B("paragraph", new { text = "How to write a listing:" }),
+            B("code", new { code = TutorialCode, language = "latex" }));
+        (await Compile(tex)).Should().NotBeEmpty();
+    }
+
     // ── MCP-26 ──────────────────────────────────────────────────────────
     [Fact]
     public void Cjk_text_picks_xelatex_and_loads_xecjk()
