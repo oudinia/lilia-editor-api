@@ -357,7 +357,9 @@ public class TikzStep3Tests
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var act = () => svc.DraftAsync(doc, block, heavy, "tests", null, cts.Token);
         await act.Should().ThrowAsync<OperationCanceledException>();
-        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2.5), "the compile stops when the request does");
+        // About 1 s alone; 3.1 s in the nightly run, with every test at once (13 and 14 Nov 2026), which failed a 2.5 s
+        // limit. An uncancelled draft takes about 7 s alone and longer under load, so 5 s still proves it stopped.
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5), "the compile stops when the request does");
 
         // Nothing was cached: neither a drawing nor an error.
         (Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories) : [])
