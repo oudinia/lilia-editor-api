@@ -1829,6 +1829,11 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("paragraph_indent");
 
+                    b.Property<string>("PdfEngine")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("pdf_engine");
+
                     b.Property<string>("PublisherProfile")
                         .HasColumnType("text");
 

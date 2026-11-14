@@ -123,6 +123,7 @@ public static class VersionSnapshot
             footerText = document.FooterText,
             pageNumbering = document.PageNumbering,
             headingNumbering = document.HeadingNumbering,
+            pdfEngine = document.PdfEngine,
             documentCategory = document.DocumentCategory,
             latexDocumentClass = document.LatexDocumentClass,
             latexDocumentClassOptions = document.LatexDocumentClassOptions,
@@ -256,6 +257,7 @@ public static class VersionSnapshot
         if (Has(snapshot, "pageNumbering")) document.PageNumbering = ReadString(snapshot, "pageNumbering");
         if (Has(snapshot, "headingNumbering"))
             document.HeadingNumbering = snapshot.TryGetProperty("headingNumbering", out var hn) && hn.ValueKind == JsonValueKind.Number ? hn.GetInt32() : null;
+            document.PdfEngine = snapshot.TryGetProperty("pdfEngine", out var pe) && pe.ValueKind == JsonValueKind.String ? pe.GetString() : null;
         if (Has(snapshot, "documentCategory")) document.DocumentCategory = ReadString(snapshot, "documentCategory");
         if (Has(snapshot, "latexDocumentClass")) document.LatexDocumentClass = ReadString(snapshot, "latexDocumentClass");
         if (Has(snapshot, "latexDocumentClassOptions")) document.LatexDocumentClassOptions = ReadString(snapshot, "latexDocumentClassOptions");

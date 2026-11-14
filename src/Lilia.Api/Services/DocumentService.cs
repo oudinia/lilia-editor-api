@@ -629,6 +629,10 @@ public class DocumentService : IDocumentService
         if (dto.PageNumbering != null) document.PageNumbering = dto.PageNumbering;
         // -1 returns to the class default; 0 numbers none; 1–5 number levels 1 to n.
         if (dto.HeadingNumbering is { } hn) document.HeadingNumbering = hn < 0 ? null : Math.Clamp(hn, 0, 5);
+        // How the PDF is made (14 Nov 2026): "auto" (stored as null) or "latex"; anything else is ignored, as for
+        // LatexEngine below.
+        if (dto.PdfEngine?.Trim().ToLowerInvariant() is ("auto" or "latex") and var pdfEngine)
+            document.PdfEngine = pdfEngine == "latex" ? "latex" : null;
         if (!string.IsNullOrWhiteSpace(dto.PaginationPolicy))
         {
             // Same shape as LatexEngine below: the DB CHECK would reject a bad
@@ -1148,6 +1152,7 @@ public class DocumentService : IDocumentService
                 FooterText = original.FooterText,
                 PageNumbering = original.PageNumbering,
                 HeadingNumbering = original.HeadingNumbering,
+                PdfEngine = original.PdfEngine,
                 PaginationPolicy = original.PaginationPolicy,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -1413,6 +1418,7 @@ public class DocumentService : IDocumentService
             LookLocked: ThemeLock.Reason(d.LatexDocumentClass),
             LookThemes: ThemeLock.ThemesFor(d.LatexDocumentClass),
             HeadingNumbering: d.HeadingNumbering,
+            PdfEngine: d.PdfEngine ?? "auto",
             DetectedLanguage: PrintedLanguage(d),
             PublisherProfile: d.PublisherProfile
         );

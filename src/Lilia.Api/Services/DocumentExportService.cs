@@ -390,10 +390,14 @@ public class DocumentExportService : IDocumentExportService
         // The engine the document itself asks for. Read before the Typst branch
         // because it decides whether that branch may run at all.
         var routing = Lilia.Core.Diagnostics.Timing.Measure("pdf.route");
-        var documentEngine = await _context.Documents
+        var engines = await _context.Documents
             .Where(d => d.Id == documentId)
-            .Select(d => d.LatexEngine)
-            .FirstOrDefaultAsync() ?? "pdflatex";
+            .Select(d => new { d.LatexEngine, d.PdfEngine })
+            .FirstOrDefaultAsync();
+        var documentEngine = engines?.LatexEngine ?? "pdflatex";
+        // The document's own choice of how its PDF is made (Document.PdfEngine, 14 Nov 2026): "latex" skips Typst
+        // whenever the caller didn't name an engine. A named one (the preview's switch, Export → PDF) still wins.
+        var documentWantsLatex = engines?.PdfEngine == "latex" && hint == "auto";
 
         // Typst is a different typesetting system, not a faster pdflatex. It is
         // a fair default for a document on the default engine, and it is the
@@ -405,7 +409,9 @@ public class DocumentExportService : IDocumentExportService
         // So: an explicit LaTeX engine in the query skips Typst, and so does a
         // document that has chosen a non-default engine for itself.
         var tagged = hint == "tagged";
-        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex" || tagged
+        // "latex" (the preview's switch, 14 Nov 2026) is LaTeX with the document's own engine (XeLaTeX for one that
+        // chose it), where "pdflatex" names that engine.
+        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex" or "latex" || tagged || documentWantsLatex
                          || documentEngine is "xelatex" or "lualatex";
 
         // This export's look (Export PDF: Look ▾ / Print-safe). Null: the document's own.
