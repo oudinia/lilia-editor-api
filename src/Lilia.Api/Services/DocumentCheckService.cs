@@ -226,8 +226,13 @@ public sealed partial class DocumentCheckService(
         var wide = wideFound
             .Select(o => new { blockId = audit.BlockAtLine(o.FirstLine), tooWidePt = Math.Round(o.Points, 1) })
             .ToList();
+        // MCP-130: code lines wider than their column, the same way.
+        var wideCodeFound = Lilia.Engines.WideTables.FindCode(result.Log, source).ToList();
+        var wideCode = wideCodeFound
+            .Select(o => new { blockId = audit.BlockAtLine(o.FirstLine), tooWidePt = Math.Round(o.Points, 1) })
+            .ToList();
 
-        var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0;
+        var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0 && wideCode.Count == 0;
         if (d is not null) checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, result.Valid, prints, result.Error));
 
         // Per block: what is wrong, where (15 Oct, for Ask Lilia's repair loop).
@@ -247,6 +252,9 @@ public sealed partial class DocumentCheckService(
         foreach (var o in wideFound)
             problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
                 $"The table is {Math.Round(o.Points, 1)}pt wider than its column."));
+        foreach (var o in wideCodeFound)
+            problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
+                $"A line of this code is {Math.Round(o.Points, 1)}pt wider than its column (listings wraps only at spaces)."));
         // A fraction with an empty part compiles and prints a blank (launch-bot #34, 13 Nov 2026: \frac{a}
         // was completed to \frac{a}{} and the check said all was well).
         foreach (var fracLine in EmptyFractionLines(source))
@@ -260,6 +268,7 @@ public sealed partial class DocumentCheckService(
             engine,
             printsCorrectly = prints,
             wideTables = wide.Count > 0 ? wide : null,
+            wideCode = wideCode.Count > 0 ? wideCode : null,
             unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
             error = result.Error,
             errorCategory = result.ParsedError?.Category,
@@ -281,7 +290,9 @@ public sealed partial class DocumentCheckService(
                     ? "It compiles, but some characters are missing from the PDF (see warnings)."
                     : wide.Count > 0
                         ? "It compiles, but a table is wider than its column and runs into the margin (wideTables)."
-                        : null,
+                        : wideCode.Count > 0
+                            ? "It compiles, but a line of code is wider than its column and runs into the margin (wideCode)."
+                            : null,
             url = d is null ? null : EditorUrl(d.Id),
             // What the publisher would reject or query, beside whether it compiles. Not in problems:
             // most are the author's to supply (an abstract, keywords, a country), not LaTeX to repair.
