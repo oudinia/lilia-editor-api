@@ -194,7 +194,7 @@ public class PlanLimitsTests : IntegrationTestBase
 
         var plan = await As(_enforced, author).GetFromJsonAsync<JsonElement>("/api/plan");
         var ask = plan.GetProperty("ask");
-        ask.GetProperty("fraction").GetDouble().Should().BeApproximately(0.5, 0.001, "10 of Free's 20 this month (20 since 10 Nov, API #466)");
+        ask.GetProperty("fraction").GetDouble().Should().BeApproximately(10.0 / 30, 0.001, "10 of Free's 30 this month (30 since 14 Nov); last month spent more than it had, so nothing carries");
         ask.TryGetProperty("used", out _).Should().BeFalse("Ask Lilia is an allowance, never a balance");
         ask.GetProperty("resetsAt").GetDateTime().Day.Should().Be(1);
     }
