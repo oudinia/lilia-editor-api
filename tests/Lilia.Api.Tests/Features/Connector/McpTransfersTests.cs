@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -161,6 +162,35 @@ public class McpTransfersTests : IntegrationTestBase
         clean.TryGetProperty("error", out _).Should().BeFalse(clean.ToString());
         // The connector leaves null fields out: a clean file has no warning at all.
         (clean.TryGetProperty("warning", out var w) && w.ValueKind != System.Text.Json.JsonValueKind.Null).Should().BeFalse();
+    }
+
+    // MCP-111: a figure whose image can't be found prints a "[Missing figure: …]" frame, and the check
+    // said the document printed correctly. It asks storage, as the export does; a found image is fine.
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task The_check_reports_a_figure_whose_image_is_missing()
+    {
+        await SeedUserAsync("mcpx_missingfig");
+        var app = CreateClientAs("mcpx_missingfig");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+        var storage = Fixture.Factory.Services.GetRequiredService<Lilia.Core.Interfaces.IStorageService>();
+        var present = $"check-tests/{Guid.NewGuid():N}.png";
+        await storage.UploadAsync(present, new MemoryStream(Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")), "image/png");
+
+        var author = CreateClientAs("mcpx_missingfig"); // the author's own client writes; the app reads
+        var doc = (await (await author.PostAsJsonAsync("/api/documents", new { title = "Figures" })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var gone = await (await author.PostAsJsonAsync($"/api/documents/{doc}/blocks", new { type = "figure", content = new { src = "figures/gone.png", caption = "Gone" }, sortOrder = 0 }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        (await author.PostAsJsonAsync($"/api/documents/{doc}/blocks", new { type = "figure", content = new { src = present, caption = "Here" }, sortOrder = 1 })).EnsureSuccessStatusCode();
+
+        var check = await CallAsync(app, "check_document", new { documentId = doc });
+        check.GetProperty("printsCorrectly").GetBoolean().Should().BeFalse(check.ToString());
+        var missing = check.GetProperty("missingFigures").EnumerateArray().ToList();
+        missing.Should().ContainSingle();
+        missing[0].GetProperty("blockId").GetGuid().Should().Be(gone.GetProperty("id").GetGuid());
+        check.GetProperty("note").GetString().Should().Contain("Missing figure");
     }
 
     [Fact]

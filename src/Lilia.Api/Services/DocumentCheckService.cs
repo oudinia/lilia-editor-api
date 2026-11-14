@@ -44,7 +44,8 @@ public sealed partial class DocumentCheckService(
     CheckMemoStore checks,
     IConfiguration config,
     ILogger<DocumentCheckService> logger,
-    Lilia.Infrastructure.Data.LiliaDbContext? db = null) : IDocumentCheckService
+    Lilia.Infrastructure.Data.LiliaDbContext? db = null,
+    Lilia.Core.Interfaces.IStorageService? storage = null) : IDocumentCheckService
 {
     private const int MaxProblems = 30;
 
@@ -136,7 +137,7 @@ public sealed partial class DocumentCheckService(
                 return seen with { Cached = true };
             }
             var result = await latex.ValidateAsync(source, engine);
-            var check = Judge(d, source, engine, result, await PublisherAsync(d, source));
+            var check = Judge(d, source, engine, result, await PublisherAsync(d, source), await MissingFiguresAsync(d.Id));
             if (ByVersion.Count >= MaxCachedVersions) ByVersion.Clear();
             ByVersion[key] = check;
             return check;
@@ -189,9 +190,39 @@ public sealed partial class DocumentCheckService(
         return "It compiles, but " + string.Join("; ", parts) + " (see references and citations above).";
     }
 
-    private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto? d, string source, string engine, LatexValidationResult result,
-        Lilia.Engines.Publishers.ComplianceReport? publisher = null)
+    /// <summary>
+    /// The figures whose image the export can't read (MCP-111): the PDF prints a framed "[Missing figure:
+    /// name]" there, and the check said it printed correctly. The check's own compile never has the images
+    /// (every figure takes the frame), so it asks storage, as the export does (FigureFile.StorageKey).
+    /// </summary>
+    private async Task<IReadOnlyList<(Guid BlockId, string File)>> MissingFiguresAsync(Guid documentId)
     {
+        if (db is null || storage is null) return [];
+        var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId).ToListAsync();
+        var missing = new List<(Guid, string)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (block, src) in Lilia.Engines.FigureFile.Sources(blocks))
+        {
+            var file = Lilia.Engines.FigureFile.Name(src);
+            if (!seen.Add(file)) continue;
+            try
+            {
+                var key = Lilia.Engines.FigureFile.StorageKey(src) ?? throw new FileNotFoundException(src);
+                await using var _ = await storage.DownloadAsync(key);
+            }
+            catch (Exception ex)
+            {
+                logger.LogInformation("[Check] figure {File} of {DocId} is missing: {Why}", file, documentId, ex.GetType().Name);
+                missing.Add((block.Id, file));
+            }
+        }
+        return missing;
+    }
+
+    private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto? d, string source, string engine, LatexValidationResult result,
+        Lilia.Engines.Publishers.ComplianceReport? publisher = null, IReadOnlyList<(Guid BlockId, string File)>? missingFigures = null)
+    {
+        missingFigures ??= [];
         // T1 (MCP-27/61, MCP-08): judge references and citations from the LaTeX actually emitted,
         // not the stored fields. A label the emitter never printed made "??" under a clean check,
         // and a one-pass compile can't report undefined references itself.
@@ -232,7 +263,8 @@ public sealed partial class DocumentCheckService(
             .Select(o => new { blockId = audit.BlockAtLine(o.FirstLine), tooWidePt = Math.Round(o.Points, 1) })
             .ToList();
 
-        var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0 && wideCode.Count == 0;
+        var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0 && wideCode.Count == 0
+            && missingFigures.Count == 0;
         if (d is not null) checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, result.Valid, prints, result.Error));
 
         // Per block: what is wrong, where (15 Oct, for Ask Lilia's repair loop).
@@ -252,6 +284,9 @@ public sealed partial class DocumentCheckService(
         foreach (var o in wideFound)
             problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
                 $"The table is {Math.Round(o.Points, 1)}pt wider than its column."));
+        foreach (var (blockId, file) in missingFigures)
+            problems.Add(new BlockProblem(blockId.ToString(), null, "warning",
+                $"The image {file} can't be found: the PDF prints a \"Missing figure\" frame here. Upload it again."));
         foreach (var o in wideCodeFound)
             problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
                 $"A line of this code is {Math.Round(o.Points, 1)}pt wider than its column (listings wraps only at spaces)."));
@@ -270,6 +305,7 @@ public sealed partial class DocumentCheckService(
             wideTables = wide.Count > 0 ? wide : null,
             wideCode = wideCode.Count > 0 ? wideCode : null,
             unprinted = unprinted.Count > 0 ? unprinted.Select(t => $"A {t} block prints nothing in the PDF.") : null,
+            missingFigures = missingFigures.Count > 0 ? missingFigures.Select(m => new { blockId = m.BlockId, file = m.File }) : null,
             error = result.Error,
             errorCategory = result.ParsedError?.Category,
             // The command LaTeX doesn't know (MCP-37: only "Undefined control sequence." was said).
@@ -292,7 +328,9 @@ public sealed partial class DocumentCheckService(
                         ? "It compiles, but a table is wider than its column and runs into the margin (wideTables)."
                         : wideCode.Count > 0
                             ? "It compiles, but a line of code is wider than its column and runs into the margin (wideCode)."
-                            : null,
+                            : missingFigures.Count > 0
+                                ? "It compiles, but an image can't be found: the PDF prints a \"Missing figure\" frame (missingFigures)."
+                                : null,
             url = d is null ? null : EditorUrl(d.Id),
             // What the publisher would reject or query, beside whether it compiles. Not in problems:
             // most are the author's to supply (an abstract, keywords, a country), not LaTeX to repair.
