@@ -100,6 +100,13 @@ public class Document
     public int? HeadingNumbering { get; set; }
 
     /// <summary>
+    /// How the PDF is made (the owner, 14 Nov 2026, the launch bot's #101): null is Automatic (Typst for a quick
+    /// preview when it can print everything, LaTeX otherwise), "latex" always LaTeX (the document's LatexEngine).
+    /// A one-off choice is the preview's switch or Export → PDF, which pass ?engine= and win over this.
+    /// </summary>
+    public string? PdfEngine { get; set; }
+
+    /// <summary>
     /// How the bottom of a page is filled — the one knob of the pagination
     /// policy an author can sensibly hold an opinion about.
     ///

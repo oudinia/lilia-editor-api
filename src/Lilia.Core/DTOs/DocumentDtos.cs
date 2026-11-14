@@ -125,6 +125,8 @@ public record DocumentDto(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<string>? LookThemes = null,
     // Numbered heading levels: null = class default, 0 = none, 1–5 = levels 1 to n (Document.HeadingNumbering).
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? HeadingNumbering = null,
+    // How the PDF is made: "auto" (Typst when it can print everything, else LaTeX) or "latex" (Document.PdfEngine).
+    string PdfEngine = "auto",
     // The language the PDF is typeset in when it is not the setting: with "auto", or when the text is in
     // a script the setting cannot print (DocumentLanguage).
     string? DetectedLanguage = null,
@@ -204,6 +206,8 @@ public record UpdateDocumentDto(
     // Numbered heading levels: null leaves it alone, -1 returns to the class default, 0 numbers none,
     // 1–5 number levels 1 to n.
     int? HeadingNumbering = null,
+    // How the PDF is made: "auto" or "latex"; null leaves it alone, and anything else is ignored.
+    string? PdfEngine = null,
     // A publisher profile id (GET /api/publishers): sets the class and its options. "" clears the
     // profile (the class stays as it is). Unknown ids are refused (400).
     string? PublisherProfile = null
