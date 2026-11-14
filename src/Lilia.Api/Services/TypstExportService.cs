@@ -1119,9 +1119,16 @@ public class TypstExportService : ITypstExportService
         // Embed blocks are escape-hatch raw content. For Typst output
         // we wrap in a comment-flagged raw block so it's visible but
         // doesn't break the parse.
-        var raw = content.TryGetProperty("source", out var s) ? s.GetString() ?? "" : "";
-        if (string.IsNullOrEmpty(raw))
-            raw = content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        // The fields the LaTeX export reads ("code", then "latex") first: this read only "source" and "text",
+        // so an embed written in the editor or by an app printed as an empty box (14 Nov 2026). Automatic PDFs
+        // of a document with raw LaTeX go through LaTeX (ContentRouting); this is Typst asked for by name.
+        var raw = "";
+        foreach (var key in new[] { "code", "latex", "source", "text" })
+            if (content.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(v.GetString()))
+            {
+                raw = v.GetString()!;
+                break;
+            }
         return $"// [Embed block — raw content below]\n```\n{raw}\n```";
     }
 

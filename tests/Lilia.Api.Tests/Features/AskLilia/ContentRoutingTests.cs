@@ -60,4 +60,30 @@ public class ContentRoutingTests
         ContentRouting.WhyLatex([B("theorem", new { text = "Every x is y.", theoremType = "theorem", numbered = true })]).Should().Be("numbered theorems");
         ContentRouting.WhyLatex([B("theorem", new { text = "Every x is y.", theoremType = "remark", numbered = false })]).Should().BeNull();
     }
+
+    // The launch bot's TeX Stack Exchange run (14 Nov 2026): a tblr table in a raw LaTeX block was left out of the Auto PDF.
+    [Fact]
+    public void Raw_LaTeX_goes_to_LaTeX()
+    {
+        const string tblr = @"\begin{tblr}{colspec={lr}} a & 1 \\ \end{tblr}";
+        ContentRouting.WhyLatex([B("paragraph", new { text = "Plain." }), B("embed", new { code = tblr })]).Should().Be("raw LaTeX");
+        ContentRouting.WhyLatex([B("embed", new { latex = tblr })]).Should().Be("raw LaTeX");
+        ContentRouting.WhyLatex([B("embed", new { code = tblr, engine = "latex" })]).Should().Be("raw LaTeX");
+    }
+
+    [Fact]
+    public void An_empty_embed_or_one_for_another_engine_stays_on_typst()
+    {
+        ContentRouting.WhyLatex([B("embed", new { code = "" })]).Should().BeNull();
+        ContentRouting.WhyLatex([B("embed", new { code = "#rect(width: 1cm)", engine = "typst" })]).Should().BeNull();
+    }
+
+    [Fact]
+    public void The_Typst_writer_shows_an_embed_s_source_rather_than_an_empty_box()
+    {
+        var source = new TypstExportService().BuildTypstDocument(
+            Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Doc(),
+            [Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Block("embed", new { code = @"\begin{tblr}{lr} a & 1 \end{tblr}" }, 0)], null);
+        source.Should().Contain(@"\begin{tblr}{lr} a & 1 \end{tblr}");
+    }
 }
