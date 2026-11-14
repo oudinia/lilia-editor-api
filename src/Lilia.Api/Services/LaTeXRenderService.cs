@@ -32,6 +32,18 @@ public interface ILaTeXRenderService
         Func<string, Task>? materialiseAssets = null);
 
     /// <summary>
+    /// As <see cref="RenderToPdfTolerantWithAuxAsync"/>, and the errors LaTeX went past to make it (the log's lines,
+    /// with the source line each names): a PDF made in spite of errors may be missing text, and said nothing (the
+    /// launch bot's #103, 14 Nov 2026: a broken preamble line printed as stray text). Empty when it compiled clean.
+    /// </summary>
+    async Task<(byte[] Pdf, string? Aux, IReadOnlyList<string> Problems)> RenderToPdfTolerantWithProblemsAsync(
+        string latex, int timeout = 60, string engine = "pdflatex", Func<string, Task>? materialiseAssets = null)
+    {
+        var (pdf, aux) = await RenderToPdfTolerantWithAuxAsync(latex, timeout, engine, materialiseAssets);
+        return (pdf, aux, []);
+    }
+
+    /// <summary>
     /// Compile and return the PDF alongside the block → page map read from the
     /// .aux. One compile, two outputs — the map is a by-product of a render that
     /// had to happen anyway.
@@ -206,6 +218,19 @@ public class LaTeXRenderService : ILaTeXRenderService
         var (pdf, _) = await RenderToPdfTolerantWithAuxAsync(latex, timeout, engine, materialiseAssets);
         return pdf;
     }
+
+    /// <inheritdoc />
+    public async Task<(byte[] Pdf, string? Aux, IReadOnlyList<string> Problems)> RenderToPdfTolerantWithProblemsAsync(
+        string latex, int timeout = 60, string engine = "pdflatex", Func<string, Task>? materialiseAssets = null)
+    {
+        var (pdf, log, aux) = await CompileLatexAsync(
+            latex, timeout, tolerant: true, engine: engine, materialiseAssets: materialiseAssets);
+        return (pdf, aux, ProblemsIn(log));
+    }
+
+    /// <summary>The errors a tolerant compile went past: only when the log has a real one ("!" line).</summary>
+    internal static IReadOnlyList<string> ProblemsIn(string? log) =>
+        string.IsNullOrEmpty(log) || !log.Split('\n').Any(l => l.StartsWith('!')) ? [] : CompileErrorLines(log);
 
     /// <inheritdoc />
     public async Task<(byte[] Pdf, string? Aux)> RenderToPdfTolerantWithAuxAsync(
