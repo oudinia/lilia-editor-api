@@ -94,7 +94,7 @@ public static class LatexPreambleExtractor
         // expl3 and \makeatletter blocks, fonts and maths symbols, colours, lengths, counters, \let. Only these
         // four kinds were kept, so an answer's \NewDocumentCommand or \DeclareSymbolFont was lost (launch bot #99).
         var statements = Lilia.Import.Services.LatexDefinitions.Find(rawLatex).Where(f => !InPicture(f.Start)).ToList();
-        bool InStatement(int pos) => statements.Any(f => pos > f.Start && pos < f.Start + f.Length);
+        bool InStatement(int pos) => statements.Any(f => pos >= f.Start && pos < f.Start + f.Length);
         foreach (var (start, length) in statements)
         {
             var text = rawLatex.Substring(start, length).Trim();

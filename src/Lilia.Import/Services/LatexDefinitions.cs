@@ -20,7 +20,7 @@ namespace Lilia.Import.Services;
 public static class LatexDefinitions
 {
     // The argument shape of each command: 'c' a control sequence (\name, or {\name}); 'm' a braced group (or one
-    // token); 'o' an optional [..] group, absent or present; 's' an optional star.
+    // token); 'o' an optional [..] group, absent or present; 's' an optional star; 'p' \\def's parameter text.
     private static readonly Dictionary<string, string> Shapes = new(StringComparer.Ordinal)
     {
         // xparse (in the LaTeX kernel since 2020)
@@ -36,7 +36,14 @@ public static class LatexDefinitions
         // Colours (xcolor)
         ["definecolor"] = "ommm", ["colorlet"] = "omom", ["providecolor"] = "ommm",
         // Lengths, counters
-        ["newlength"] = "c", ["newcounter"] = "mo", ["newif"] = "c",
+        ["newlength"] = "c", ["newcounter"] = "mo", ["newif"] = "c", ["setlength"] = "cm", ["addtolength"] = "cm",
+        // The LaTeX macros themselves, read here at any depth: the older patterns went one brace level deep, so a body
+        // like \rot{\parbox[c]{..}{..}} leaked as text (launch bot #105, 14 Nov 2026).
+        ["newcommand"] = "scoom", ["renewcommand"] = "scoom", ["providecommand"] = "scoom",
+        ["newenvironment"] = "smoomm", ["renewenvironment"] = "smoomm",
+        ["def"] = "cpm", ["gdef"] = "cpm", ["edef"] = "cpm", ["xdef"] = "cpm",
+        // array's column types
+        ["newcolumntype"] = "mom",
     };
 
     private static readonly (string Open, string Close)[] Blocks =
@@ -53,13 +60,21 @@ public static class LatexDefinitions
         var found = new List<(int Start, int Length)>();
         if (string.IsNullOrEmpty(source)) return found;
 
+        // What is shown or drawn as written is never a definition of the document: code listings and verbatim text,
+        // and TikZ pictures, where \def\r{2} is local to the picture.
+        var verbatim = Regex.Matches(source, @"\\begin\{(verbatim\*?|Verbatim|lstlisting|minted|comment)\}[\s\S]*?\\end\{\1\}")
+            .Select(m => (Start: m.Index, Length: m.Length))
+            .Concat(Lilia.Core.Blocks.TikzFigure.FindEnvironments(source).Select(p => (p.Start, p.Length)))
+            .ToList();
+        bool Kept(int pos) => verbatim.Any(v => pos >= v.Start && pos < v.Start + v.Length);
+
         // Blocks first: what they hold is theirs (a \newcommand inside \makeatletter is the block's).
         foreach (var (open, close) in Blocks)
         {
             var at = 0;
             while ((at = source.IndexOf(open, at, StringComparison.Ordinal)) >= 0)
             {
-                if (InComment(source, at)) { at += open.Length; continue; }
+                if (InComment(source, at) || Kept(at)) { at += open.Length; continue; }
                 var end = source.IndexOf(close, at + open.Length, StringComparison.Ordinal);
                 if (end < 0) break;
                 found.Add((at, end + close.Length - at));
@@ -72,14 +87,14 @@ public static class LatexDefinitions
         {
             if (!Shapes.TryGetValue(m.Groups[1].Value, out var shape)) continue;
             // \foo inside \foobar is not \foo (the regex already takes the whole name); skip nested and commented.
-            if (Inside(m.Index) || InComment(source, m.Index)) continue;
+            if (Inside(m.Index) || InComment(source, m.Index) || Kept(m.Index)) continue;
             var end = ReadArguments(source, m.Index + m.Length, shape);
             if (end is int e) found.Add((m.Index, e - m.Index));
         }
 
         // \let\a\b and \let\a=\b
         foreach (Match m in Regex.Matches(source, @"\\let\s*\\[A-Za-z@]+\s*=?\s*\\[A-Za-z@]+"))
-            if (!Inside(m.Index) && !InComment(source, m.Index)) found.Add((m.Index, m.Length));
+            if (!Inside(m.Index) && !InComment(source, m.Index) && !Kept(m.Index)) found.Add((m.Index, m.Length));
 
         found.Sort((a, b) => a.Start.CompareTo(b.Start));
         return found;
@@ -114,6 +129,12 @@ public static class LatexDefinitions
             var j = SkipSpace(s, i);
             switch (slot)
             {
+                case 'p':
+                    // \def's parameter text (#1#2, or delimiters) up to its body; never across a line.
+                    var brace = s.IndexOf('{', i);
+                    if (brace < 0 || brace - i > 40 || s.AsSpan(i, brace - i).IndexOfAny('\n', '}') >= 0) return null;
+                    i = brace;
+                    break;
                 case 's':
                     if (j < s.Length && s[j] == '*') i = j + 1;
                     break;
