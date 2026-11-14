@@ -175,6 +175,9 @@ public class ImportMetadata
     /// <summary>Free-form extra info from \extrainfo{...}.</summary>
     public string? ExtraInfo { get; set; }
 
+    /// <summary>Where the person is, from moderncv's \address{street}{city}{country} (the non-empty parts, joined).</summary>
+    public string? Location { get; set; }
+
     // ── LaTeX-specific preamble metadata ──────────────────────────────
 
     /// <summary>

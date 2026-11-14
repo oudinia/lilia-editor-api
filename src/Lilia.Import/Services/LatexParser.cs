@@ -636,6 +636,10 @@ public class LatexParser : ILatexParser
         // instead of leaking as raw \cmd in block text. Each \cvX{...}{...}
         // becomes `**field1** — field2 — …` then the rest of the parser
         // treats them as ordinary paragraphs / list items.
+        // moderncv (the launch bot's #112): \cventry and \makecvtitle become CV blocks after the parse; moderncv's
+        // two-argument \cvitem family becomes text. Before the generic CV macros, which read \cvitem as four arguments.
+        var isModernCv = ModernCv.Is(content);
+        if (isModernCv) content = ModernCv.Mark(content);
         content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
@@ -943,6 +947,7 @@ public class LatexParser : ILatexParser
 
         // Parse the content
         ParseContent(documentContent, document, options, tikz);
+        if (isModernCv) ModernCv.Build(document);
 
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.
@@ -2883,6 +2888,14 @@ public class LatexParser : ILatexParser
         {
             var network = sm.Groups[1].Success ? sm.Groups[1].Value.Trim() : "web";
             document.Metadata.Socials.Add((network, sm.Groups[2].Value.Trim()));
+        }
+
+        var addressMatch = Regex.Match(content, @"\\address\{([^}]*)\}(?:\{([^}]*)\})?(?:\{([^}]*)\})?");
+        if (addressMatch.Success)
+        {
+            var parts = new[] { addressMatch.Groups[1].Value, addressMatch.Groups[2].Value, addressMatch.Groups[3].Value }
+                .Select(p => p.Trim()).Where(p => p.Length > 0).ToArray();
+            if (parts.Length > 0) document.Metadata.Location = string.Join(", ", parts);
         }
 
         var extraMatch = Regex.Match(content, @"\\extrainfo\{([^}]+)\}");

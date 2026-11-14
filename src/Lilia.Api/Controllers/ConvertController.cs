@@ -1320,11 +1320,12 @@ public class ConvertController : ControllerBase
             // personalInfo block at the top of the document so the CV's
             // identity surface survives into the editor.
             var meta = importDoc.Metadata;
-            if (!string.IsNullOrWhiteSpace(meta.PersonName)
+            var cvHasPerson = importDoc.Elements.Any(e => e is ImportCvBlock { BlockType: "personalInfo" });
+            if (!cvHasPerson && (!string.IsNullOrWhiteSpace(meta.PersonName)
                 || !string.IsNullOrWhiteSpace(meta.Email)
                 || meta.Phones.Count > 0
                 || meta.Socials.Count > 0
-                || !string.IsNullOrWhiteSpace(meta.Homepage))
+                || !string.IsNullOrWhiteSpace(meta.Homepage)))
             {
                 blocks.Add(new LatexBlockDto("personalInfo", new
                 {
@@ -1477,6 +1478,10 @@ public class ConvertController : ControllerBase
                         break;
                     case ImportPageBreak:
                         blocks.Add(new LatexBlockDto("pageBreak", new { }));
+                        break;
+                    case ImportCvBlock cv:
+                        // A moderncv CV's blocks (#112), its Personal information block included.
+                        blocks.Add(new LatexBlockDto(cv.BlockType, cv.Content));
                         break;
                     case ImportTikzFigure tikz:
                         // A TikZ picture is a figure whose drawing is source (TikzFigure).

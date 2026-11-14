@@ -352,6 +352,9 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     /// </summary>
     internal static (string type, object content)? TitleBlockFor(ImportDocument doc)
     {
+        // A CV's Personal information block says who it is (#112): a title banner would print the name twice.
+        if (doc.Elements.Any(e => e is ImportCvBlock { BlockType: "personalInfo" })) return null;
+
         var title = doc.Title?.Trim() ?? "";
         var author = doc.Metadata?.Author?.Trim() ?? "";
         var date = doc.Metadata?.Date?.Trim() ?? "";
@@ -513,6 +516,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         // A TikZ picture is a figure whose drawing is source (TikzFigure). Before the passthrough
         // case it derives from, which would make it a code block.
         ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
+        // A moderncv CV's blocks (#112): before the passthrough they derive from, like TikZ figures.
+        ImportCvBlock cv => (cv.BlockType, cv.Content),
         // An environment the parser doesn't model (ACM's acks, Elsevier's highlights, LNCS's credits, a
         // user's own): raw LaTeX, which the export writes as is. As a code block it printed as a listing
         // of its own source (26 Oct 2026, the Overleaf test projects).
