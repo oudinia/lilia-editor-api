@@ -57,6 +57,9 @@ public class DocxExportService : IDocxExportService
 
             // Convert blocks to DOCX elements
             var sawBibliography = false;
+            foreach (var element in ImpliedTitle(document))
+                body.AppendChild(element);
+
             foreach (var block in document.Blocks)
             {
                 if (string.Equals(block.Type, "bibliography", StringComparison.OrdinalIgnoreCase))
@@ -1460,6 +1463,26 @@ public class DocxExportService : IDocxExportService
         var date = ResolveDate(content.DateText, content.Date);
         if (!string.IsNullOrWhiteSpace(date))
             yield return CentredParagraph(date, sizeHalfPoints: "22", bold: false, spaceAfter: "240");
+    }
+
+    /// <summary>
+    /// The title a PDF prints when the document has no Title block: the PDF always typesets \maketitle, from the
+    /// document's name and \today (LaTeXExportService.AppendFrontMatter), so Word printed neither the title nor the
+    /// date of such a document (the launch bot's #110, 14 Nov 2026). Nothing when a Title block exists, when the
+    /// document has no name, or when its first block is a heading that already says it (the PDF drops that heading).
+    /// </summary>
+    internal IEnumerable<OpenXmlElement> ImpliedTitle(ExportDocument document)
+    {
+        var name = document.Title?.Trim();
+        if (string.IsNullOrEmpty(name)) return [];
+        if (document.Blocks.Any(b => string.Equals(b.Type, "title", StringComparison.OrdinalIgnoreCase))) return [];
+        var first = document.Blocks.FirstOrDefault();
+        if (first is not null && string.Equals(first.Type, "heading", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Normalise(first.Content.Text), Normalise(name), StringComparison.OrdinalIgnoreCase))
+            return [];
+        return ConvertTitle(new ExportBlock { Type = "title", Content = new ExportBlockContent { Text = name, DateText = @"\today" } }).ToList();
+
+        static string Normalise(string? text) => System.Text.RegularExpressions.Regex.Replace(text ?? "", @"\s+", " ").Trim();
     }
 
     /// <summary>\today means "when this was typeset"; anything else is verbatim.</summary>
