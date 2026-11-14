@@ -20,6 +20,12 @@ public sealed record PastedBlocks(string Format, string? Title, bool TitleFromTe
     /// <see cref="Blocks"/>: the text import and paste_content leave the title to the document.
     /// </summary>
     public PastedBlock? TitleBlock { get; init; }
+
+    /// <summary>
+    /// Raw LaTeX for the document's preamble, from a Markdown file's <c>header-includes</c> (MarkdownFrontMatter,
+    /// launch bot #106, 14 Nov 2026). Empty for the other formats: LaTeX carries its own preamble.
+    /// </summary>
+    public IReadOnlyList<string> PreambleLatex { get; init; } = [];
 }
 
 /// <summary>
@@ -75,8 +81,20 @@ public static class PastedText
         }
 
         if (f == "MARKDOWN")
-            return new PastedBlocks(f, null, false,
-                LatexImportJobExecutor.MapElements(MarkdownTextParser.Parse(content)).Select(x => new PastedBlock(x.type, x.content)).ToList(), null);
+        {
+            // YAML front matter is metadata, not text: it became one run-on heading (#106, 14 Nov 2026).
+            var front = MarkdownFrontMatter.Read(content);
+            var title = string.IsNullOrWhiteSpace(front.Title) ? null : front.Title;
+            PastedBlock? titleBlock = front.Found && (title ?? front.Author ?? front.Date) is not null
+                ? new PastedBlock("title", new Dictionary<string, object> { ["title"] = title ?? "", ["author"] = front.Author ?? "", ["date"] = front.Date ?? "" })
+                : null;
+            return new PastedBlocks(f, title, title is not null,
+                LatexImportJobExecutor.MapElements(MarkdownTextParser.Parse(front.Body)).Select(x => new PastedBlock(x.type, x.content)).ToList(), null)
+            {
+                TitleBlock = titleBlock,
+                PreambleLatex = front.HeaderIncludes,
+            };
+        }
 
         // LaTeX: a full document or a fragment.
         try
