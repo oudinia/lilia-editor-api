@@ -152,6 +152,8 @@ public class EntitlementService : IEntitlementService
         };
 
         var cap = ReadCap(plan.Caps, capKey);
+        if (resource == QuotaResource.AiCredits && cap > 0)
+            cap += await AskCarryAsync(userId, cap, ct);
         if (cap >= 0 && used + delta > cap)           // -1 = unlimited
             throw new QuotaExceededException(capKey, cap, used, resetsAt, QuotaMessage(capKey, cap, resetsAt));
         if (resource == QuotaResource.AiCredits)
@@ -282,6 +284,7 @@ public class EntitlementService : IEntitlementService
         if (plan is null) return null;
         var askCap = IsStaff(userId) ? -1 : ReadCap(plan.Caps, "aiCreditsPerMonth");
         var askSpent = await GetAiCreditsSpentThisMonthAsync(userId, ct);
+        if (askCap > 0) askCap += await AskCarryAsync(userId, askCap, ct);
         return new PlanUsageDto(
             Enforced: _options.Enforce,
             Plan: new PlanNameDto(plan.Slug, plan.DisplayName),
@@ -413,6 +416,37 @@ public class EntitlementService : IEntitlementService
         // Documents you own. Not playground sandboxes, templates or help articles; documents in
         // the Trash are filtered out by the query filter, and documents shared with you aren't yours.
         _context.Documents.AsNoTracking().CountAsync(d => d.OwnerId == userId && !d.IsPlayground && !d.IsTemplate && !d.IsHelpContent, ct);
+
+    /// <summary>
+    /// The Ask Lilia credits last months left for this one (<see cref="AskRollover"/>). Only months since the current
+    /// plan started count, or since the last plan ended for an account back on Free (a cancelled plan's credits are lost),
+    /// and none before the account was made.
+    /// </summary>
+    private async Task<int> AskCarryAsync(string userId, int allowance, CancellationToken ct)
+    {
+        var monthStart = MonthStart();
+        var from = monthStart.AddMonths(-AskRollover.LookBackMonths);
+        var plans = await _context.UserPlans.AsNoTracking().Where(p => p.UserId == userId)
+            .Select(p => new { p.Status, p.StartedAt, p.EndsAt, p.UpdatedAt }).ToListAsync(ct);
+        var active = plans.Where(p => p.Status == "active").OrderByDescending(p => p.StartedAt).FirstOrDefault();
+        DateTime? since = active is not null ? active.StartedAt
+            : plans.Count > 0 ? plans.Max(p => p.EndsAt ?? p.UpdatedAt) : null;
+        // Nor before the account existed: a new account's empty past months left nothing unused.
+        var joined = await _context.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => (DateTime?)u.CreatedAt).FirstOrDefaultAsync(ct);
+        if (joined is { } j && (since is null || j > since)) since = j;
+        if (since is { } s && s > from) from = s;
+        if (from >= monthStart) return 0;
+
+        var first = new DateTime(from.Year, from.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var months = (monthStart.Year - first.Year) * 12 + monthStart.Month - first.Month;
+        var spent = new int[months];
+        var spends = await _context.AiCreditLedger.AsNoTracking()
+            .Where(l => l.UserId == userId && l.Reason == "spend" && l.CreatedAt >= from && l.CreatedAt < monthStart)
+            .Select(l => new { l.CreatedAt, l.Delta }).ToListAsync(ct);
+        foreach (var x in spends)
+            spent[(x.CreatedAt.Year - first.Year) * 12 + x.CreatedAt.Month - first.Month] += -x.Delta;
+        return AskRollover.Carry(allowance, spent);
+    }
 
     private async Task<int> GetAiCreditsSpentThisMonthAsync(string userId, CancellationToken ct)
     {
