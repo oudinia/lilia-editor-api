@@ -37,7 +37,7 @@ public sealed class CompileCache
     /// <c>LaTeXRenderService.CompileInDirAsync</c> or the bibliography steps change what they
     /// produce: kept results outlive deploys, and would otherwise be served from the old steps.
     /// </summary>
-    public const string ProcedureVersion = "2026-11-14.3"; // \end{lstlisting} inside a code block no longer ends it (MCP-129)
+    public const string ProcedureVersion = "2026-11-14.4"; // Auto sends raw LaTeX (an embed) to LaTeX; Typst reads its code
     // Before: "2026-11-06.2" // language detection skips ids and single letters (.1: matrices, cases and split keep their environment)
 
     private readonly long _maxBytes;
