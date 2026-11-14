@@ -43,6 +43,11 @@ public class ImportReviewSession
     /// document at finalize as Document.HeadingNumbering. Null when unknown.</summary>
     public int? HeadingNumbering { get; set; }
 
+    /// <summary>The source's page (a Word file's paper size and margins) as JSON
+    /// <c>{paperSize, marginTop, marginBottom, marginLeft, marginRight}</c>, written onto the document at
+    /// finalize (MCP-124). Null when the source sets none.</summary>
+    public string? PageSetup { get; set; }
+
     /// <summary>
     /// Per-tab progress in the aspect-based review UI. Shape:
     /// { structure: "unvisited|in_progress|done", content: ..., tables:

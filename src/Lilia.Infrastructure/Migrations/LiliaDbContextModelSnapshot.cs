@@ -4683,6 +4683,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("owner_id");
 
+                    b.Property<string>("PageSetup")
+                        .HasColumnType("text")
+                        .HasColumnName("page_setup");
+
                     b.Property<JsonDocument>("ParagraphTraces")
                         .HasColumnType("jsonb")
                         .HasColumnName("paragraph_traces");
