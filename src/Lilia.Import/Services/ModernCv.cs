@@ -23,13 +23,33 @@ public static class ModernCv
     private const string EntryMark = "LILIACVENTRYX";
     private const string TitleMark = "LILIACVTITLEX";
 
-    /// <summary>A moderncv source: its class, or its own commands.</summary>
+    /// <summary>
+    /// A moderncv source: its class, or its own commands used in the body. Only the body: Lilia's own LaTeX export
+    /// defines \makecvtitle and \cventry in every preamble (LaTeXPreamble.CvShims), so an exported paper imported
+    /// again is not a CV.
+    /// </summary>
     public static bool Is(string content) =>
         Regex.IsMatch(content, @"\\documentclass\s*(\[[^\]]*\])?\s*\{moderncv\}")
-        || Regex.IsMatch(content, @"\\(makecvtitle|cventry)\b");
+        || Regex.IsMatch(Body(content), @"\\(makecvtitle|cventry)\b");
 
-    /// <summary>Before the parse: markers for <c>\cventry</c> and <c>\makecvtitle</c>, text for the <c>\cvitem</c> family.</summary>
+    /// <summary>What follows \begin{document}, or all of it when there is none (a pasted fragment).</summary>
+    private static string Body(string content)
+    {
+        var at = content.IndexOf(@"\begin{document}", StringComparison.Ordinal);
+        return at < 0 ? content : content[at..];
+    }
+
+    /// <summary>
+    /// Before the parse, on the body only (the preamble's definitions stay as written): markers for <c>\cventry</c>
+    /// and <c>\makecvtitle</c>, text for the <c>\cvitem</c> family.
+    /// </summary>
     public static string Mark(string content)
+    {
+        var at = content.IndexOf(@"\begin{document}", StringComparison.Ordinal);
+        return at < 0 ? MarkBody(content) : content[..at] + MarkBody(content[at..]);
+    }
+
+    private static string MarkBody(string content)
     {
         content = Expand(content, "cventry", 6, a => $"\n\n{EntryMark}{Convert.ToHexString(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(a)))}\n\n");
         content = Expand(content, "cvitemwithcomment", 3, a => Paragraph(Labelled(a[0], a[2].Length > 0 ? $"{a[1]} ({a[2]})" : a[1])));

@@ -107,6 +107,25 @@ public class ModernCvImportTests
     }
 
     [Fact]
+    public async Task A_paper_exported_by_Lilia_is_not_a_CV_though_its_preamble_defines_the_CV_commands()
+    {
+        // Lilia's LaTeX export defines \makecvtitle and \cventry in every preamble (CvShims); the round-trip tests
+        // re-import those exports, and 138 of them broke when the preamble counted.
+        var doc = await Parse("""
+            \documentclass{article}
+            \providecommand{\makecvtitle}{}
+            \providecommand{\cventry}[7][]{\textbf{#3}}
+            \begin{document}
+            \section{Limits}
+            Text.
+            \end{document}
+            """);
+
+        doc.Elements.OfType<ImportCvBlock>().Should().BeEmpty();
+        doc.Elements.OfType<ImportHeading>().Single().Text.Should().Be("Limits");
+    }
+
+    [Fact]
     public async Task A_CV_without_makecvtitle_still_starts_with_the_person()
     {
         var doc = await Parse(Ada.Replace(@"\makecvtitle", ""));
