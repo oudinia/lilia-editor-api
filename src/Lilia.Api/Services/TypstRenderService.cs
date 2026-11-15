@@ -573,10 +573,23 @@ public class TypstRenderService : ITypstRenderService
         return $"#align(center)[#emph[Abstract]]\n\n{ProcessTypstText(text)}";
     }
 
-    private static string RenderEmbedToTypst(JsonElement content)
+    /// <summary>The note a raw-LaTeX block prints as in a Typst PDF (#113).</summary>
+    internal const string RawLatexNote = "This block is raw LaTeX: it prints when the PDF is made with LaTeX.";
+
+    /// <summary>
+    /// A raw block. Typst can't print LaTeX: its code went into the Typst source as written, so a forced Typst preview
+    /// printed a tblr table's source as text (the launch bot's #113, 15 Nov 2026). Automatic already sends a document
+    /// with raw LaTeX to LaTeX (ContentRouting); with Typst chosen on the preview, the block is a short note instead.
+    /// An embed that says it's Typst is still written as is.
+    /// </summary>
+    internal static string RenderEmbedToTypst(JsonElement content)
     {
         var code = content.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
-        return $"// Embed block\n{code}";
+        var engine = content.TryGetProperty("engine", out var e) ? e.GetString() ?? "" : "";
+        if (engine.Equals("typst", StringComparison.OrdinalIgnoreCase)) return $"// Embed block\n{code}";
+        if (string.IsNullOrWhiteSpace(code)) return "";
+        return "#block(width: 100%, inset: 8pt, radius: 3pt, stroke: 0.5pt + luma(180), fill: luma(246))" +
+               $"[#text(size: 9pt, fill: luma(80))[{EscapeTypst(RawLatexNote)}]]";
     }
 
     private static string RenderAlgorithmToTypst(JsonElement content)
