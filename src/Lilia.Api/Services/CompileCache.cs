@@ -37,7 +37,7 @@ public sealed class CompileCache
     /// <c>LaTeXRenderService.CompileInDirAsync</c> or the bibliography steps change what they
     /// produce: kept results outlive deploys, and would otherwise be served from the old steps.
     /// </summary>
-    public const string ProcedureVersion = "2026-11-15.4"; // Typst prints a note for raw LaTeX and CV blocks; Automatic sends CV blocks to LaTeX (#113, #114). Before (15.3): A CV photo prints from its file (#114). Before (15.2): A compile error in the Custom preamble quotes the author's line (#100 follow-up). Before (15.1): Typst prints a raw-LaTeX block as a note
+    public const string ProcedureVersion = "2026-11-15.5"; // A tblr table loads tabularray (#113 note). Before (15.4): Typst prints a note for raw LaTeX and CV blocks; Automatic sends CV blocks to LaTeX (#113, #114). Before (15.3): A CV photo prints from its file (#114). Before (15.2): A compile error in the Custom preamble quotes the author's line (#100 follow-up). Before (15.1): Typst prints a raw-LaTeX block as a note
     // Before: "2026-11-06.2" // language detection skips ids and single letters (.1: matrices, cases and split keep their environment)
 
     private readonly long _maxBytes;

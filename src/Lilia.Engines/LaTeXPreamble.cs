@@ -271,8 +271,14 @@ public static partial class LaTeXPreamble
             lines += "\\usepackage{lipsum}\n";
         if (sources.Any(src => BlindtextCommandRe.IsMatch(src!)) && !authorPackages.Any(p => (p ?? "").Contains("blindtext", StringComparison.Ordinal)))
             lines += "\\usepackage{blindtext}\n";
+        // A tblr table pasted as raw LaTeX without its \usepackage stopped the LaTeX PDF ("Environment tblr
+        // undefined"; the launch bot's #113 retest, 15 Nov 2026): the package comes with the table.
+        if (sources.Any(src => TblrRe.IsMatch(src!)) && !authorPackages.Any(p => (p ?? "").Contains("tabularray", StringComparison.Ordinal)))
+            lines += "\\usepackage{tabularray}\n";
         return lines;
     }
+
+    private static readonly System.Text.RegularExpressions.Regex TblrRe = new(@"\\begin\s*\{(?:long|tall)?tblr\}", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static readonly System.Text.RegularExpressions.Regex LipsumCommandRe = new(@"\\lipsum\b", System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex BlindtextCommandRe = new(@"\\(?:[Bb]lind(?:text|document)|blindlist(?:optional)?)\b", System.Text.RegularExpressions.RegexOptions.Compiled);
