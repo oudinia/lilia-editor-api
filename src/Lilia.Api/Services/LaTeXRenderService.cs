@@ -966,6 +966,10 @@ public class LaTeXRenderService : ILaTeXRenderService
         string latex, int timeout, bool tolerant = false, string engine = "pdflatex",
         Func<string, Task>? materialiseAssets = null)
     {
+        // Accents typed as a letter plus a combining mark (e + U+0301) stopped pdflatex ("Unicode character ́ (U+0301)
+        // not set up"; the document sweep, E-015, 15 Nov 2026). Composed (NFC), they are the one character inputenc
+        // knows (é). Canonical composition changes no ASCII, so LaTeX and line numbers are untouched.
+        latex = ComposeAccents(latex);
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
 
@@ -1004,6 +1008,10 @@ public class LaTeXRenderService : ILaTeXRenderService
             try { Directory.Delete(tmpDir, true); } catch { }
         }
     }
+
+    /// <summary>The source in Unicode NFC (accents composed); unchanged when it already is.</summary>
+    internal static string ComposeAccents(string latex) =>
+        latex.IsNormalized(System.Text.NormalizationForm.FormC) ? latex : latex.Normalize(System.Text.NormalizationForm.FormC);
 
     /// <summary>The compile itself, in a directory that already holds the project's files.</summary>
     private async Task<(byte[] Pdf, string Log, string Aux)> CompileInDirAsync(
