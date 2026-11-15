@@ -52,6 +52,41 @@ public class DocxExportIntegrationTests : IntegrationTestBase
 
     // ── the endpoint ─────────────────────────────────────────────────────
 
+    // The document sweep (15 Nov 2026): a CV exported to Word came out as its title and date only.
+    [Fact]
+    public async Task ACvExportsItsPersonEntriesAndSections()
+    {
+        var doc = await SeedDocumentAsync(_userId, "A CV");
+        await SeedBlockAsync(doc.Id, "personalInfo", """{"name":"Ada Lovelace","headline":"Analyst","email":"ada@example.org","phones":[{"number":"+44 20 0000 0000"}]}""");
+        await SeedBlockAsync(doc.Id, "cvSection", """{"title":"Experience"}""");
+        await SeedBlockAsync(doc.Id, "cvEntry", """{"period":"2020–2024","role":"Engineer","org":"Lab","location":"Paris","description":"Built things.","tech":["C#","TypeScript"]}""");
+
+        var (status, bytes) = await ExportAsync(doc.Id);
+
+        status.Should().Be(HttpStatusCode.OK);
+        var text = TextIn(bytes);
+        text.Should().Contain("Ada Lovelace").And.Contain("Analyst").And.Contain("ada@example.org").And.Contain("+44 20 0000 0000")
+            .And.Contain("Experience").And.Contain("Engineer").And.Contain("Lab — Paris (2020–2024)")
+            .And.Contain("Built things.").And.Contain("C#, TypeScript");
+    }
+
+    // The document sweep (A-029, 15 Nov 2026): a figure whose width is stored as "50%" (as LaTeX accepts it) made
+    // the Word export answer 500, because the width was read as a number.
+    [Theory]
+    [InlineData("\"50%\"")]
+    [InlineData("95")]
+    [InlineData("0.5")]
+    public async Task AFigureWidthInAnyStoredFormExports(string width)
+    {
+        var doc = await SeedDocumentAsync(_userId, "Figure width");
+        await SeedBlockAsync(doc.Id, "figure", $$"""{"src":"","caption":"A half-width figure.","width":{{width}}}""");
+
+        var (status, bytes) = await ExportAsync(doc.Id);
+
+        status.Should().Be(HttpStatusCode.OK);
+        TextIn(bytes).Should().Contain("A half-width figure.");
+    }
+
     [Fact]
     public async Task ExportsADocumentAsAWordFile()
     {

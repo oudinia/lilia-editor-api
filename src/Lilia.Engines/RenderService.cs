@@ -1894,7 +1894,8 @@ public partial class RenderService : IRenderService
     }
 
     /// <summary>A cvEntry's tech list: an array of strings, or one comma-separated string.</summary>
-    private static List<string> CvTech(JsonElement content)
+    /// <summary>A CV entry's technologies, from an array or a comma-separated string. Shared with the Word export.</summary>
+    public static List<string> CvTech(JsonElement content)
     {
         if (!content.TryGetProperty("tech", out var t)) return [];
         var items = t.ValueKind switch

@@ -584,8 +584,16 @@ public class TypstExportService : ITypstExportService
         if (TikzFigure.IsTikz(content))
             return RenderTikzFigure(content, captionPart);
 
+        // Subfigures are LaTeX's to lay out (Automatic sends them there): with Typst forced, a note in their place,
+        // under the figure's own caption. Before, the figure had no src of its own and was dropped whole, caption and
+        // all, while Automatic chose Typst for it (the document sweep, A-033, 15 Nov 2026).
+        if (HasSubfigures(content))
+            return $"#figure([{LatexOnlyNote(SubfiguresNote)}]{captionPart})";
+
+        // A figure with no image yet keeps its caption, in a placeholder box, as the LaTeX PDF keeps it; it used to
+        // become a comment, and the caption was lost (the document sweep, A-035, 15 Nov 2026).
         if (string.IsNullOrEmpty(src))
-            return "// [Figure without source]";
+            return $"#figure({ImagePlaceholder}{captionPart})";
 
         // Figures with external / placeholder URLs can't be resolved
         // inside Typst's sandboxed file system at compile time. Render
@@ -603,8 +611,7 @@ public class TypstExportService : ITypstExportService
         {
             // Typst rect with fill+stroke; placed inside #figure so
             // captions still render via the standard caption slot.
-            var inner = "rect(width: 80%, height: 4cm, fill: rgb(\"#f3f4f6\"), stroke: rgb(\"#d1d5db\"), inset: 1em, radius: 4pt)[#align(center + horizon)[#text(fill: rgb(\"#9ca3af\"))[Image placeholder]]]";
-            return $"#figure({inner}{captionPart})";
+            return $"#figure({ImagePlaceholder}{captionPart})";
         }
 
         return $"#figure(image({QuoteTypst(src)}){captionPart})";
@@ -1145,6 +1152,18 @@ public class TypstExportService : ITypstExportService
 
     /// <summary>The note a CV block prints as in a Typst PDF: Typst has no CV layout (#114).</summary>
     internal const string CvBlockNote = "This CV block prints when the PDF is made with LaTeX.";
+
+    /// <summary>The note subfigures print as in a Typst PDF: the Typst writer has no subfigure layout.</summary>
+    internal const string SubfiguresNote = "These subfigures print when the PDF is made with LaTeX.";
+
+    /// <summary>The grey box a figure prints as when Typst has no image for it (none chosen, or one it can't open).</summary>
+    internal const string ImagePlaceholder =
+        "rect(width: 80%, height: 4cm, fill: rgb(\"#f3f4f6\"), stroke: rgb(\"#d1d5db\"), inset: 1em, radius: 4pt)[#align(center + horizon)[#text(fill: rgb(\"#9ca3af\"))[Image placeholder]]]";
+
+    /// <summary>True when a figure block holds subfigures (a non-empty "subfigures" array).</summary>
+    internal static bool HasSubfigures(JsonElement content) =>
+        content.ValueKind == JsonValueKind.Object && content.TryGetProperty("subfigures", out var s)
+        && s.ValueKind == JsonValueKind.Array && s.GetArrayLength() > 0;
 
     /// <summary>A small grey box saying a block prints only with LaTeX.</summary>
     internal static string LatexOnlyNote(string note) =>

@@ -693,8 +693,10 @@ WHERE b.document_id = @doc AND b.id = ANY(@ids) AND b.type = 'heading';";
         if (!string.Equals(block.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase))
             return;
         TryReadTitleField(block, out var newTitle);
+        // The document's name holds 255 characters; the Title block holds the full title (the PDF prints it). A longer
+        // title made saving the block fail with a database error, a 500 (the document sweep, E-040, 15 Nov 2026).
         if (!string.IsNullOrWhiteSpace(newTitle))
-            document.Title = newTitle.Trim();
+            document.Title = DocumentNameOf(newTitle);
     }
 
     /// <summary>
@@ -707,6 +709,20 @@ WHERE b.document_id = @doc AND b.id = ANY(@ids) AND b.type = 'heading';";
             string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
         if (titleBlock is null) return;
         SyncDocumentTitleFromTitleBlock(document, titleBlock);
+    }
+
+    /// <summary>The documents table's limit on a document's name.</summary>
+    internal const int DocumentNameMaxLength = 255;
+
+    /// <summary>A title as a document name: trimmed, and cut at a word under the 255-character limit, with an ellipsis.</summary>
+    internal static string DocumentNameOf(string title)
+    {
+        var t = title.Trim();
+        if (t.Length <= DocumentNameMaxLength) return t;
+        var cut = t[..(DocumentNameMaxLength - 1)];
+        var space = cut.LastIndexOf(' ');
+        if (space > DocumentNameMaxLength / 2) cut = cut[..space];
+        return cut.TrimEnd() + "…";
     }
 
     private static bool TryReadTitleField(Block block, out string? title)

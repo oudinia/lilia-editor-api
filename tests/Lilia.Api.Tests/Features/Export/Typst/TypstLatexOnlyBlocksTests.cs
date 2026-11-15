@@ -51,6 +51,31 @@ public class TypstLatexOnlyBlocksTests
                                     ("paragraph", JsonSerializer.SerializeToElement(new { text = "Plain text." }))])
             .Should().Be("CV blocks");
 
+    // The document sweep (15 Nov 2026): Automatic chose Typst for these figures, and Typst dropped them whole.
+    [Fact]
+    public void A_figure_with_no_image_keeps_its_caption()
+    {
+        var typst = Build(Block("figure", new { src = "", caption = "An empty figure." }));
+        typst.Should().Contain("#figure(").And.Contain("An empty figure.").And.Contain("Image placeholder");
+    }
+
+    [Fact]
+    public void Subfigures_are_a_note_under_the_figure_caption_not_dropped()
+    {
+        var typst = Build(Block("figure", new { caption = "Two panels.", subfigures = new[] { new { src = "a.png", caption = "Left" }, new { src = "b.png", caption = "Right" } } }));
+        typst.Should().Contain(TypstExportService.SubfiguresNote).And.Contain("Two panels.");
+    }
+
+    [Fact]
+    public void Automatic_sends_a_document_with_subfigures_to_LaTeX()
+        => ContentRouting.WhyLatex([("figure", JsonSerializer.SerializeToElement(new { caption = "Two panels.", subfigures = new[] { new { src = "a.png" } } }))])
+            .Should().Be("subfigures");
+
+    [Fact]
+    public void A_plain_figure_is_not_sent_to_LaTeX_for_subfigures()
+        => ContentRouting.WhyLatex([("figure", JsonSerializer.SerializeToElement(new { src = "a.png", caption = "One.", subfigures = Array.Empty<object>() }))])
+            .Should().BeNull();
+
     [Fact]
     public void Plain_prose_stays_on_Typst()
         => ContentRouting.WhyLatex([("paragraph", JsonSerializer.SerializeToElement(new { text = "Plain text." }))]).Should().BeNull();

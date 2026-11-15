@@ -648,6 +648,12 @@ public class DocumentExportService : IDocumentExportService
             "algorithm" => ConvertAlgorithmBlock(content),
             "callout" => ConvertCalloutBlock(content),
             "footnote" => ConvertFootnoteBlock(content),
+            // CV blocks (the document sweep, 15 Nov 2026): a CV exported to Word came out as its title and date only,
+            // every CV block falling through to an empty paragraph. Written as the HTML export writes them.
+            "personalInfo" or "personalinfo" => ConvertPersonalInfoBlock(content),
+            "cvSection" or "cvsection" => new ExportBlock { Type = "heading", Content = new ExportBlockContent { Text = GetString(content, "title").Trim(), Level = 2 } },
+            "cvEntry" or "cventry" => ConvertCvEntryBlock(content),
+            "photo" => await ConvertPhotoBlockAsync(content, block.DocumentId),
             // Passed through, not dropped. This returned null for "handled at
             // document level" — and no document level handled it, so the block
             // never reached the exporter and every Word export came out with no
@@ -780,6 +786,66 @@ public class DocumentExportService : IDocumentExportService
         FontSize = marks.FontSize,
         FontFamily = marks.FontFamily,
     };
+
+    private static ExportBlock CvParagraph(List<ExportRichTextSpan> spans) => new()
+    {
+        Type = "paragraph",
+        Content = new ExportBlockContent { Text = string.Concat(spans.Select(x => x.Text)), RichText = spans },
+    };
+
+    private static ExportBlock ConvertPersonalInfoBlock(JsonElement content)
+    {
+        var spans = new List<ExportRichTextSpan>();
+        void Line(string text, bool bold = false, bool italic = false)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+            if (spans.Count > 0) spans.Add(new ExportRichTextSpan { Text = "\n" });
+            spans.Add(new ExportRichTextSpan { Text = text.Trim(), Bold = bold, Italic = italic });
+        }
+        Line(GetString(content, "name"), bold: true);
+        Line(GetString(content, "headline"), italic: true);
+        Line(string.Join(" · ", Lilia.Engines.RenderService.CvContact(content)));
+        return CvParagraph(spans);
+    }
+
+    private static ExportBlock ConvertCvEntryBlock(JsonElement content)
+    {
+        var spans = new List<ExportRichTextSpan>();
+        var role = GetString(content, "role").Trim();
+        if (role.Length > 0) spans.Add(new ExportRichTextSpan { Text = role, Bold = true });
+        var org = GetString(content, "org").Trim();
+        var location = GetString(content, "location").Trim();
+        var period = GetString(content, "period").Trim();
+        var head = new System.Text.StringBuilder();
+        if (org.Length > 0) head.Append(role.Length > 0 ? ", " : "").Append(org);
+        if (location.Length > 0) head.Append(role.Length + org.Length > 0 ? " — " : "").Append(location);
+        if (period.Length > 0) head.Append(role.Length + org.Length + location.Length > 0 ? $" ({period})" : period);
+        if (head.Length > 0) spans.Add(new ExportRichTextSpan { Text = head.ToString() });
+        void Line(string text, bool italic = false)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+            if (spans.Count > 0) spans.Add(new ExportRichTextSpan { Text = "\n" });
+            spans.Add(new ExportRichTextSpan { Text = text.Trim(), Italic = italic });
+        }
+        Line(GetString(content, "highlight"), italic: true);
+        Line(GetString(content, "description"));
+        Line(string.Join(", ", Lilia.Engines.RenderService.CvTech(content)));
+        return CvParagraph(spans);
+    }
+
+    /// <summary>A CV photo, as a figure without caption, at the block's size (pixels, 64 by default).</summary>
+    private async Task<ExportBlock> ConvertPhotoBlockAsync(JsonElement content, Guid documentId)
+    {
+        var figure = await ConvertFigureBlockAsync(content, documentId);
+        if (figure.Content.Image is { } image)
+        {
+            var size = content.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number && sz.TryGetDouble(out var px) ? px : 64;
+            var aspect = image.Width is > 0 && image.Height is > 0 ? image.Height.Value / image.Width.Value : 1;
+            image.Width = Math.Clamp(size, 24, 300) * 1.5;
+            image.Height = image.Width * aspect;
+        }
+        return figure;
+    }
 
     private ExportBlock ConvertHeadingBlock(JsonElement content)
     {
@@ -1093,7 +1159,9 @@ public class DocumentExportService : IDocumentExportService
         var src = GetString(content, "src");
         var alt = GetString(content, "alt");
         var caption = GetString(content, "caption");
-        var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
+        // Read as LaTeX reads it (a fraction, 95 or "95%"): GetDouble() threw on "50%", so the Word export of such a
+        // figure answered 500 (the document sweep, A-029, 15 Nov 2026), and a stored 95 made a 47,500 px image.
+        var width = Lilia.Engines.FigureWidth.Fraction(content);
 
         ExportImageData? imageData = null;
 
