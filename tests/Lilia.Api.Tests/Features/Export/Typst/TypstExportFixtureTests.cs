@@ -73,7 +73,7 @@ public class TypstExportFixtureTests
             ExpectIn: new[] { "#figure(image(", "img.png", "A figure" }),
         new Fx("figure: missing src degrades gracefully",
             "figure", """{"caption":"no src"}""",
-            ExpectIn: new[] { "Figure without source" }),
+            ExpectIn: new[] { "#figure(", "Image placeholder", "no src" }),
 
         // table
         new Fx("table: 2x2 with header",

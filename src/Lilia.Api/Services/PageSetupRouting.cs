@@ -82,6 +82,9 @@ public static class ContentRouting
             // CV blocks are LaTeX's too: the Typst writer has no CV layout and dropped them, so a Photo inserted in an
             // article came out of the Automatic PDF missing (the launch bot's #114, 15 Nov 2026).
             if (type is "personalInfo" or "photo" or "cvSection" or "cvEntry") return "CV blocks";
+            // Subfigures are LaTeX's to lay out: the Typst writer has none, and a figure holding them was dropped from the
+            // Automatic PDF, caption and all (the document sweep, A-033, 15 Nov 2026).
+            if (type is "figure" or "image" && TypstExportService.HasSubfigures(content)) return "subfigures";
             // Typst's theorems carry no number: one set to Numbered printed without it (#66). Only an unnumbered one stays.
             if (string.Equals(type, "theorem", StringComparison.OrdinalIgnoreCase)
                 && !(content.ValueKind == System.Text.Json.JsonValueKind.Object
