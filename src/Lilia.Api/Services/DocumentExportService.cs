@@ -1093,7 +1093,9 @@ public class DocumentExportService : IDocumentExportService
         var src = GetString(content, "src");
         var alt = GetString(content, "alt");
         var caption = GetString(content, "caption");
-        var width = content.TryGetProperty("width", out var w) ? w.GetDouble() : 0.8;
+        // Read as LaTeX reads it (a fraction, 95 or "95%"): GetDouble() threw on "50%", so the Word export of such a
+        // figure answered 500 (the document sweep, A-029, 15 Nov 2026), and a stored 95 made a 47,500 px image.
+        var width = Lilia.Engines.FigureWidth.Fraction(content);
 
         ExportImageData? imageData = null;
 

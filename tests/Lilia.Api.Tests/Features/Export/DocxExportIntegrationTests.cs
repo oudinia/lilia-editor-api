@@ -52,6 +52,23 @@ public class DocxExportIntegrationTests : IntegrationTestBase
 
     // ── the endpoint ─────────────────────────────────────────────────────
 
+    // The document sweep (A-029, 15 Nov 2026): a figure whose width is stored as "50%" (as LaTeX accepts it) made
+    // the Word export answer 500, because the width was read as a number.
+    [Theory]
+    [InlineData("\"50%\"")]
+    [InlineData("95")]
+    [InlineData("0.5")]
+    public async Task AFigureWidthInAnyStoredFormExports(string width)
+    {
+        var doc = await SeedDocumentAsync(_userId, "Figure width");
+        await SeedBlockAsync(doc.Id, "figure", $$"""{"src":"","caption":"A half-width figure.","width":{{width}}}""");
+
+        var (status, bytes) = await ExportAsync(doc.Id);
+
+        status.Should().Be(HttpStatusCode.OK);
+        TextIn(bytes).Should().Contain("A half-width figure.");
+    }
+
     [Fact]
     public async Task ExportsADocumentAsAWordFile()
     {
