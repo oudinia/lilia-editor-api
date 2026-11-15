@@ -1238,6 +1238,38 @@ if (!app.Environment.IsEnvironment("Testing"))
     // Warm the AI model catalog so the model picker + resolution serve from memory.
     await app.Services.GetRequiredService<IAiCatalogService>().PreloadAsync();
 
+    // The first signed-in page after a restart took 3–7 s (14 Nov 2026: 08:43, 13:32 and 15:16, each the first
+    // signed-in load after a deploy), its queries under 1 s: the requests waited together on the Stytch keys, fetched
+    // synchronously under a lock, while the first queries compiled. Both happen here instead, in the background, and
+    // the times are logged. The page's reads run for a user who doesn't exist (they read nothing); preferences are
+    // left out, since reading them creates a row for an unknown user.
+    _ = Task.Run(async () =>
+    {
+        var parts = new List<string>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        if (!string.IsNullOrEmpty(stytchJwksUrl))
+        {
+            try
+            {
+                await Lilia.Api.Auth.StytchJwksCache.PrefetchAsync(stytchJwksUrl);
+                parts.Add($"stytch keys {sw.ElapsedMilliseconds}ms");
+            }
+            catch (Exception ex) { parts.Add($"stytch keys failed ({ex.GetType().Name})"); }
+        }
+        sw.Restart();
+        try
+        {
+            using var warm = app.Services.CreateScope();
+            var nobody = $"warm-up-{Guid.NewGuid():N}";
+            await warm.ServiceProvider.GetRequiredService<IDocumentService>()
+                .GetDocumentsPaginatedAsync(nobody, 1, 20, null, null, "updatedAt", "desc", null);
+            await warm.ServiceProvider.GetRequiredService<IEntitlementService>().GetUsageAsync(nobody);
+            parts.Add($"first page's queries {sw.ElapsedMilliseconds}ms");
+        }
+        catch (Exception ex) { parts.Add($"first page's queries failed ({ex.GetType().Name})"); }
+        Console.WriteLine($"[BOOT] warm-up: {string.Join(", ", parts)}");
+    });
+
     // Seed the knowledge base from embedded Kb/*.md (idempotent upsert by slug).
     // Scoped — resolve from the migration scope so it shares the post-migrate DbContext.
     await scope.ServiceProvider.GetRequiredService<IKbSeeder>().PreloadAsync();
