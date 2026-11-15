@@ -228,9 +228,42 @@ public class LaTeXRenderService : ILaTeXRenderService
         return (pdf, aux, ProblemsIn(log, latex));
     }
 
-    /// <summary>The errors a tolerant compile went past: only when the log has a real one ("!" line).</summary>
-    internal static IReadOnlyList<string> ProblemsIn(string? log, string? source = null) =>
-        string.IsNullOrEmpty(log) || !log.Split('\n').Any(l => l.StartsWith('!')) ? [] : CompileErrorLines(log, source);
+    /// <summary>
+    /// The errors a tolerant compile went past (only when the log has a real one, a "!" line), and text LaTeX cut off
+    /// the page without an error.
+    /// </summary>
+    internal static IReadOnlyList<string> ProblemsIn(string? log, string? source = null)
+    {
+        if (string.IsNullOrEmpty(log)) return [];
+        var problems = log.Split('\n').Any(l => l.StartsWith('!')) ? CompileErrorLines(log, source) : [];
+        if (CutOffPoints(log) is > 0 and var pt)
+            problems.Add($"{TextCutOffProblem} (LaTeX: \"Overfull \\vbox ({pt:0}pt too high) has occurred while \\output is active\")");
+        return problems;
+    }
+
+    /// <summary>
+    /// The problem line for text LaTeX pushed past the bottom of a page. A block that can't break across pages and is
+    /// taller than one (30 headings in a row with no text between them, each kept with the next) is shipped as one page
+    /// and the rest is cut off, with no error: 300 headings printed 31 (the document sweep, E-033, 15 Nov 2026).
+    /// It starts with "!" so the preview counts it and says some text may be missing.
+    /// </summary>
+    internal const string TextCutOffProblem =
+        "! Some text didn't fit on its page and is cut off: a block taller than a page (for example many headings in a row with no text between them)";
+
+    private static readonly System.Text.RegularExpressions.Regex OverfullOutput = new(
+        @"Overfull \\vbox \((\d+(?:\.\d+)?)pt too high\) has occurred while \\output is active",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The largest page overflow in points, when over 20pt (a slightly tall figure overflows by a few points
+    /// and loses nothing visible); 0 otherwise.</summary>
+    internal static double CutOffPoints(string log)
+    {
+        var worst = 0.0;
+        foreach (System.Text.RegularExpressions.Match m in OverfullOutput.Matches(log))
+            if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pt))
+                worst = Math.Max(worst, pt);
+        return worst > 20 ? worst : 0;
+    }
 
     /// <inheritdoc />
     public async Task<(byte[] Pdf, string? Aux)> RenderToPdfTolerantWithAuxAsync(
