@@ -225,12 +225,12 @@ public class LaTeXRenderService : ILaTeXRenderService
     {
         var (pdf, log, aux) = await CompileLatexAsync(
             latex, timeout, tolerant: true, engine: engine, materialiseAssets: materialiseAssets);
-        return (pdf, aux, ProblemsIn(log));
+        return (pdf, aux, ProblemsIn(log, latex));
     }
 
     /// <summary>The errors a tolerant compile went past: only when the log has a real one ("!" line).</summary>
-    internal static IReadOnlyList<string> ProblemsIn(string? log) =>
-        string.IsNullOrEmpty(log) || !log.Split('\n').Any(l => l.StartsWith('!')) ? [] : CompileErrorLines(log);
+    internal static IReadOnlyList<string> ProblemsIn(string? log, string? source = null) =>
+        string.IsNullOrEmpty(log) || !log.Split('\n').Any(l => l.StartsWith('!')) ? [] : CompileErrorLines(log, source);
 
     /// <inheritdoc />
     public async Task<(byte[] Pdf, string? Aux)> RenderToPdfTolerantWithAuxAsync(
@@ -1024,7 +1024,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             var exitCode = await Pass();
             // A first pass that failed is the answer: another pass reads its half-written .aux and reports
             // that instead ("File ended while scanning use of \BKM@entry", the bot's #51, 11 Nov).
-            if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath);
+            if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath, latex);
             // A bibliography: BibTeX reads pass 1's .aux, and pass 2 starts with the citations it will
             // print already in the .aux (BibliographyPasses). A third pass only if TeX says so.
             if (await RunBibTeXAsync(tmpDir, timeout) is { } bbl)
@@ -1057,14 +1057,14 @@ public class LaTeXRenderService : ILaTeXRenderService
 
             // In tolerant mode, accept whatever PDF was produced even if
             // exit code indicates errors — the user gets a partial preview.
-            if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath);
+            if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath, latex);
 
             if (!File.Exists(pdfPath))
             {
                 // Tolerant mode should still surface "no PDF at all" — likely
                 // preamble / package error, not a body glitch.
                 var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
-                var errorLines = CompileErrorLines(logContent);
+                var errorLines = CompileErrorLines(logContent, latex);
                 throw new InvalidOperationException(
                     errorLines.Any()
                         ? $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
@@ -1079,7 +1079,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             // met on 1 Nov) has no %%EOF and opens nowhere: the error, not the file.
             if (!System.Text.Encoding.ASCII.GetString(pdf, Math.Max(0, pdf.Length - 1024), Math.Min(1024, pdf.Length)).Contains("%%EOF"))
             {
-                var errorLines = CompileErrorLines(log);
+                var errorLines = CompileErrorLines(log, latex);
                 throw new InvalidOperationException($"LaTeX compilation failed:\n{string.Join("\n", errorLines)}");
             }
 
@@ -1288,13 +1288,45 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// Why a compile failed, from its log. LaTeX that was stopped from outside (the server restarting mid-compile)
     /// writes no error, and the message was a bare "LaTeX compilation failed:" (the bot's #51, 11 Nov): it says so.
     /// </summary>
-    private static async Task ThrowCompileFailureAsync(string logPath)
+    private static async Task ThrowCompileFailureAsync(string logPath, string? source = null)
     {
         var logContent = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
-        var errorLines = CompileErrorLines(logContent);
+        var errorLines = CompileErrorLines(logContent, source);
         throw new InvalidOperationException(errorLines.Count > 0
             ? $"LaTeX compilation failed:\n{string.Join("\n", errorLines)}"
             : InterruptedMessage);
+    }
+
+    /// <summary>
+    /// Line <paramref name="lineNumber"/> (1-based) of the compiled source, when it lies between the Custom preamble's
+    /// markers (RenderService.YourPreambleStart/End): the author's own text, shortened. Null anywhere else.
+    /// </summary>
+    internal static string? InYourPreamble(string[] sourceLines, int lineNumber)
+    {
+        var start = Array.FindIndex(sourceLines, l => l.TrimEnd() == Lilia.Engines.RenderService.YourPreambleStart);
+        if (start < 0) return null;
+        var end = Array.FindIndex(sourceLines, start + 1, l => l.TrimEnd() == Lilia.Engines.RenderService.YourPreambleEnd);
+        var index = lineNumber - 1;
+        if (index <= start || (end >= 0 && index >= end) || index >= sourceLines.Length) return null;
+        var text = sourceLines[index].Trim();
+        if (text.Length == 0) return null;
+        return text.Length > 100 ? text[..100] + "…" : text;
+    }
+
+    /// <summary>The author's Custom preamble line that loads <paramref name="package"/>, shortened; null if none does.</summary>
+    internal static string? YourPreambleLineLoading(string[] sourceLines, string package)
+    {
+        var start = Array.FindIndex(sourceLines, l => l.TrimEnd() == Lilia.Engines.RenderService.YourPreambleStart);
+        if (start < 0) return null;
+        var end = Array.FindIndex(sourceLines, start + 1, l => l.TrimEnd() == Lilia.Engines.RenderService.YourPreambleEnd);
+        var loads = new System.Text.RegularExpressions.Regex(
+            @"\\(usepackage|RequirePackage)\s*(\[[^\]]*\])?\s*\{[^}]*\b" + System.Text.RegularExpressions.Regex.Escape(package) + @"\b[^}]*\}");
+        for (var i = start + 1; i < (end < 0 ? sourceLines.Length : end); i++)
+        {
+            var text = sourceLines[i].Trim();
+            if (loads.IsMatch(text)) return text.Length > 100 ? text[..100] + "…" : text;
+        }
+        return null;
     }
 
     internal const string InterruptedMessage =
@@ -1304,9 +1336,15 @@ public class LaTeXRenderService : ILaTeXRenderService
     /// The log's errors, each with the source line LaTeX names after it ("l.12 \usepackage{isodate}"), which
     /// is what says where (the launch bot's TeX Stack Exchange run, 14 Nov 2026: the preview showed only
     /// "PDF compilation failed"). At most four errors; the first is the one that matters.
+    /// <para>With the <paramref name="source"/> compiled, a line in the author's Custom preamble says so and quotes it:
+    /// "l.401" is a line of the generated .tex, which the author never sees (the bot's #100 retest, 15 Nov).</para>
     /// </summary>
-    internal static List<string> CompileErrorLines(string log)
+    internal static List<string> CompileErrorLines(string log, string? source = null)
     {
+        var sourceLines = source?.Replace("\r\n", "\n").Split('\n');
+        // The missing package's name: LaTeX follows "File `x.sty' not found" with "! Emergency stop.", and the
+        // "l.<n>" line comes after that second error.
+        string? missingPackage = null;
         var lines = log.Replace("\r\n", "\n").Split('\n');
         var result = new List<string>();
         var errors = 0;
@@ -1317,6 +1355,8 @@ public class LaTeXRenderService : ILaTeXRenderService
             if (result.Contains(line)) continue;
             result.Add(line);
             errors++;
+            var missingFile = System.Text.RegularExpressions.Regex.Match(line, @"File `([^']+)\.(sty|cls)' not found");
+            if (missingFile.Success) missingPackage = missingFile.Groups[1].Value;
             if (!line.StartsWith('!')) continue;
             // The "l.<n> …" line follows within a few lines (after help text such as "Type X to quit").
             for (var j = i + 1; j < Math.Min(lines.Length, i + 15); j++)
@@ -1325,7 +1365,15 @@ public class LaTeXRenderService : ILaTeXRenderService
                 if (System.Text.RegularExpressions.Regex.IsMatch(lines[j], @"^l\.\d+ "))
                 {
                     var at = lines[j].TrimEnd();
-                    result.Add(at.Length > 160 ? at[..160] + "…" : at);
+                    at = at.Length > 160 ? at[..160] + "…" : at;
+                    // A missing package is reported where LaTeX stopped reading (the line after it, often past the
+                    // preamble): the author's line that loads it says where. Any other error: the line LaTeX names.
+                    if (sourceLines is not null
+                        && ((missingPackage is not null ? YourPreambleLineLoading(sourceLines, missingPackage) : null)
+                            ?? (int.TryParse(System.Text.RegularExpressions.Regex.Match(at, @"^l\.(\d+)").Groups[1].Value, out var n)
+                                ? InYourPreamble(sourceLines, n) : null)) is { } yours)
+                        at += $"  ← your Custom preamble: {yours}";
+                    result.Add(at);
                     i = j;
                     break;
                 }
