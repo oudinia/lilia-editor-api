@@ -13,6 +13,22 @@ namespace Lilia.Api.Tests.Features.Export;
 /// </summary>
 public class SweepPreambleTests
 {
+    // B-010: on beamer, a plain enumitem looped on beamer's \labelenumi and every numbered list stopped the PDF.
+    [Fact]
+    public void Slides_give_enumitem_labels_of_its_own()
+    {
+        var beamer = LaTeXPreamble.ForClass(LaTeXPreamble.Packages, "beamer");
+        beamer.Should().Contain(@"\setlist[enumerate,1]{label=\arabic*.}").And.Contain(@"\setlist[itemize]{label=\usebeamertemplate{itemize item}}");
+        beamer.Should().Contain(@"\usepackage{enumitem}");
+    }
+
+    [Theory]
+    [InlineData("article")]
+    [InlineData("report")]
+    [InlineData(null)]
+    public void Other_classes_keep_enumitem_as_it_was(string? className)
+        => LaTeXPreamble.ForClass(LaTeXPreamble.Packages, className).Should().NotContain(@"\setlist[");
+
     [Fact]
     public void The_preamble_allows_enough_output_passes_for_many_floats()
         => LaTeXPreamble.Packages.Should().Contain(@"\maxdeadcycles=1000");

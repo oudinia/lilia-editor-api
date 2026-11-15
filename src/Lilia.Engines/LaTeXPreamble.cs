@@ -321,9 +321,25 @@ public static partial class LaTeXPreamble
         IsBeamer(className)
             ? packages.Replace("\\usepackage{setspace}\n",
                 "% setspace is left out for beamer: it breaks beamer's footnotes.\n")
+                .Replace("\\usepackage{enumitem}\n", BeamerEnumitem)
             : Publishers.PublisherClasses.Is(className)
                 ? Publishers.PublisherClasses.Packages(packages, className!)
                 : packages;
+
+    /// <summary>
+    /// enumitem on beamer, with labels of its own. Loaded plainly, it takes beamer's \labelenumi as its default, which
+    /// beamer defines through itself, and every numbered list stopped the PDF ("TeX capacity exceeded, grouping
+    /// levels=255" at the first \item; the document sweep, B-010, 15 Nov 2026). With explicit labels, plain, nested,
+    /// [start=5], [label=(\alph*)] and [nosep] lists all print, and bullets keep beamer's own.
+    /// </summary>
+    internal const string BeamerEnumitem = @"\usepackage{enumitem}
+% beamer: enumitem's lists get labels of their own (it read beamer's self-referring \labelenumi and looped).
+\setlist[enumerate,1]{label=\arabic*.}
+\setlist[enumerate,2]{label=\alph*.}
+\setlist[enumerate,3]{label=\roman*.}
+\setlist[enumerate,4]{label=\Alph*.}
+\setlist[itemize]{label=\usebeamertemplate{itemize item}}
+";
 
     /// <summary>True for beamer (and the beamer-based classes Lilia treats as decks).</summary>
     public static bool IsBeamer(string? className) =>
