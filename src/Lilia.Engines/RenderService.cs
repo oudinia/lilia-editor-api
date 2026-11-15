@@ -1854,9 +1854,9 @@ public partial class RenderService : IRenderService
         var size = content.TryGetProperty("size", out var sz) && sz.ValueKind == JsonValueKind.Number ? sz.GetInt32() : 64;
         var position = JsonStr(content, "position");
         var align = position switch { "left" => "flushleft", "right" => "flushright", _ => "center" };
-        // Keep filename inline; preview path uses the same figures/ folder
-        // convention as the exporter.
-        var filename = src.Contains('/') ? src[(src.LastIndexOf('/') + 1)..] : src;
+        // The name the export writes the photo's file under (FigureFile.Sources collects photos with the figures,
+        // #114): its own last segment never matched FigureFile.Name, so the photo printed as a "[photo]" frame.
+        var filename = FigureFile.Name(src);
         return $@"\begin{{{align}}}
 \IfFileExists{{figures/{filename}}}{{\includegraphics[height={size}pt]{{figures/{filename}}}}}{{\fbox{{\parbox{{{size}pt}}{{\centering\small [photo]}}}}}}
 \end{{{align}}}";

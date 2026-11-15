@@ -124,7 +124,7 @@ public sealed class DocumentImageStager(
         // compile time and memory for nothing.
         var referenced = await db.Blocks.AsNoTracking()
             .Where(b => b.DocumentId == documentId)
-            .Where(b => b.Type == "figure" || b.Type == "image")
+            .Where(b => b.Type == "figure" || b.Type == "image" || b.Type == "photo")
             .Select(b => b.Content)
             .ToListAsync(ct);
 

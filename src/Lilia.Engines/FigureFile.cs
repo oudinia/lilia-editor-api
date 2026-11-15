@@ -29,14 +29,21 @@ public static class FigureFile
 
     /// <summary>
     /// Every image the emitter includes, in order: a figure's own, or, when it has subfigures, theirs
-    /// instead (RenderService prints those and not the figure's src).
+    /// instead (RenderService prints those and not the figure's src); and a CV's photo, which printed as a
+    /// "[photo]" frame because its file never reached figures/ (the launch bot's #114, 15 Nov 2026).
     /// </summary>
     public static IEnumerable<(Block Block, string Src)> Sources(IEnumerable<Block> blocks)
     {
-        foreach (var block in blocks.Where(b => b.Type == "figure"))
+        foreach (var block in blocks.Where(b => b.Type is "figure" or "photo"))
         {
             var content = block.Content.RootElement;
             if (content.ValueKind != JsonValueKind.Object) continue;
+            if (block.Type == "photo")
+            {
+                if (content.TryGetProperty("src", out var ps) && ps.ValueKind == JsonValueKind.String && ps.GetString() is { Length: > 0 } photo)
+                    yield return (block, photo);
+                continue;
+            }
             if (content.TryGetProperty("subfigures", out var subs) && subs.ValueKind == JsonValueKind.Array && subs.GetArrayLength() > 0)
             {
                 foreach (var sub in subs.EnumerateArray())
