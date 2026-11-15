@@ -446,10 +446,11 @@ connectionString = Lilia.Api.Services.DatabasePool.Tune(connectionString);
 
 // Every query's time goes to its request's timing line; slow ones are logged (18 Oct).
 builder.Services.AddSingleton<Lilia.Api.Services.QueryTimingInterceptor>();
+builder.Services.AddSingleton<Lilia.Api.Services.ConnectionTimingInterceptor>();
 builder.Services.AddDbContext<LiliaDbContext>((sp, options) =>
     options
         .UseNpgsql(connectionString)
-        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>())
+        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>(), sp.GetRequiredService<Lilia.Api.Services.ConnectionTimingInterceptor>())
         // Column-name-only remappings (e.g. HasColumnName added after the
         // column already existed in the database) make EF think the model
         // has pending changes, which MigrateAsync then treats as fatal.
@@ -463,14 +464,14 @@ builder.Services.AddDbContext<LiliaDbContext>((sp, options) =>
 builder.Services.AddDbContext<Lilia.Api.Features.Sharing.Data.SharingDbContext>((sp, options) =>
     options
         .UseNpgsql(sp.GetRequiredService<LiliaDbContext>().Database.GetDbConnection())
-        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>()));
+        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>(), sp.GetRequiredService<Lilia.Api.Services.ConnectionTimingInterceptor>()));
 
 // Teams' own context over its tables (3 Nov 2026, Teams' bounded context, step 4), on the request's
 // connection, as Sharing's: a new team and the person's pointer to it go in one transaction.
 builder.Services.AddDbContext<Lilia.Api.Features.Teams.Data.TeamsDbContext>((sp, options) =>
     options
         .UseNpgsql(sp.GetRequiredService<LiliaDbContext>().Database.GetDbConnection())
-        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>()));
+        .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>(), sp.GetRequiredService<Lilia.Api.Services.ConnectionTimingInterceptor>()));
 
 // Configure Storage Service
 if (!string.IsNullOrEmpty(builder.Configuration["R2:Endpoint"]))
