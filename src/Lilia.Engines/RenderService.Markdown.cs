@@ -102,6 +102,12 @@ public partial class RenderService
                 "algorithm" => RenderAlgorithmToMarkdown(content),
                 "callout" => RenderCalloutToMarkdown(content),
                 "footnote" => RenderFootnoteToMarkdown(content, ReadLabel(content)),
+                // CV blocks (the document sweep, 15 Nov 2026): a CV exported to Markdown was four "Unsupported block
+                // type" comments, the person's name and every entry gone. Written as the HTML export writes them.
+                "personalinfo" => RenderPersonalInfoToMarkdown(content),
+                "photo" => RenderPhotoToMarkdown(content),
+                "cvsection" => "## " + JsonStr(content, "title").Trim(),
+                "cventry" => RenderCvEntryToMarkdown(content),
                 _ => $"<!-- Unsupported block type: {block.Type} -->"
             };
         }
@@ -400,6 +406,65 @@ public partial class RenderService
             sb.AppendLine($"> {ProcessMarkdownInline(line)}");
         }
         return sb.ToString().TrimEnd();
+    }
+
+    private static string RenderPersonalInfoToMarkdown(JsonElement content)
+    {
+        var lines = new List<string>();
+        var name = JsonStr(content, "name").Trim();
+        if (name.Length > 0) lines.Add("# " + name);
+        var headline = JsonStr(content, "headline").Trim();
+        if (headline.Length > 0) lines.Add("*" + headline + "*");
+        var contact = CvContact(content);
+        if (contact.Count > 0) lines.Add(string.Join(" · ", contact));
+        return string.Join("\n\n", lines);
+    }
+
+    /// <summary>A CV header's contact details in order: email, phones, location, homepage, social handles.</summary>
+    public static List<string> CvContact(JsonElement content)
+    {
+        var bits = new List<string>();
+        void Add(string s) { if (!string.IsNullOrWhiteSpace(s)) bits.Add(s.Trim()); }
+        Add(JsonStr(content, "email"));
+        if (content.TryGetProperty("phones", out var phones) && phones.ValueKind == JsonValueKind.Array)
+            foreach (var p in phones.EnumerateArray())
+                if (p.ValueKind == JsonValueKind.Object) Add(JsonStr(p, "number"));
+        Add(JsonStr(content, "location"));
+        Add(JsonStr(content, "homepage"));
+        if (content.TryGetProperty("socials", out var socials) && socials.ValueKind == JsonValueKind.Array)
+            foreach (var so in socials.EnumerateArray())
+                if (so.ValueKind == JsonValueKind.Object && JsonStr(so, "handle") is { Length: > 0 } h)
+                    Add(JsonStr(so, "network") is { Length: > 0 } net ? $"{net}: {h}" : h);
+        Add(JsonStr(content, "extra"));
+        return bits;
+    }
+
+    private static string RenderPhotoToMarkdown(JsonElement content)
+    {
+        var src = JsonStr(content, "src");
+        return string.IsNullOrWhiteSpace(src) ? "" : $"![{EscapeMarkdownBrackets(JsonStr(content, "alt"))}]({src})";
+    }
+
+    private static string RenderCvEntryToMarkdown(JsonElement content)
+    {
+        var head = new StringBuilder();
+        var role = JsonStr(content, "role").Trim();
+        if (role.Length > 0) head.Append("**").Append(role).Append("**");
+        var org = JsonStr(content, "org").Trim();
+        if (org.Length > 0) head.Append(head.Length > 0 ? ", " : "").Append(org);
+        var location = JsonStr(content, "location").Trim();
+        if (location.Length > 0) head.Append(head.Length > 0 ? " — " : "").Append(location);
+        var period = JsonStr(content, "period").Trim();
+        if (period.Length > 0) head.Append(head.Length > 0 ? $" ({period})" : period);
+        var parts = new List<string>();
+        if (head.Length > 0) parts.Add(head.ToString());
+        var highlight = JsonStr(content, "highlight").Trim();
+        if (highlight.Length > 0) parts.Add("*" + highlight + "*");
+        var description = JsonStr(content, "description").Trim();
+        if (description.Length > 0) parts.Add(description);
+        var tech = CvTech(content);
+        if (tech.Count > 0) parts.Add(string.Join(", ", tech));
+        return string.Join("\n\n", parts);
     }
 
     private static string RenderFootnoteToMarkdown(JsonElement content, string? label)
