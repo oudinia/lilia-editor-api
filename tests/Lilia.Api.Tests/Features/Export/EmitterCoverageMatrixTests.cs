@@ -145,19 +145,15 @@ public class EmitterCoverageMatrixTests
             ],
             AllEmitters);
 
-        // ── CV types — de-scoped, not broken ──────────────────────────────
-        // Scope is articles, reports and books (P1.5); CV is 1.7% of the corpus
-        // and falling, and the blocks are already hidden from the insert
-        // surfaces. LaTeX and HTML DO emit them, so documents that already
-        // contain CV blocks keep rendering and keep exporting to PDF — which is
-        // exactly why the blocks were hidden rather than removed.
-        //
-        // This is the drift PLAN.md P1.2 predicted: "five of those six vanish
-        // the moment CV and slides are de-scoped". The sixth was `title`, and
-        // it is no longer in this list — P0.3 closed it.
+        // ── CV types ──────────────────────────────────────────────────────
+        // CVs are back in production (15 Nov 2026). LaTeX, HTML and, since the
+        // document sweep found a CV exported to Markdown as "Unsupported block
+        // type" comments, Markdown emit them (Word does too, outside this
+        // matrix). Typst prints a note for them and Automatic sends CVs to LaTeX
+        // (#114); LML still has no CV syntax of its own here.
         Gap(
             [BlockTypes.PersonalInfo, BlockTypes.Photo, BlockTypes.CvEntry, BlockTypes.CvSection],
-            Markdown, Lml, Typst);
+            Lml, Typst);
 
         // ── columnLayout in Typst — CLOSED 2026-09-06 ─────────────────
         // Was the gap that mattered: a general layout block every other emitter

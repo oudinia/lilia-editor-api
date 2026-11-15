@@ -160,6 +160,8 @@ public static partial class LaTeXPreamble
 
     private static readonly Regex CustomNewTheorem = new(@"\\newtheorem\*?\{([A-Za-z]+)\*?\}(?:\[[^\]]*\])?\{[^}]*\}(?:\[[^\]]*\])?", RegexOptions.Compiled);
 
+    private static readonly Regex CustomRenewCommand = new(@"\\renewcommand\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?", RegexOptions.Compiled);
+
     private static readonly Regex CustomUsePackage = new(
         @"\\usepackage\s*(\[[^\]]*\])?\s*\{([^}]*)\}", RegexOptions.Compiled);
 
@@ -170,6 +172,11 @@ public static partial class LaTeXPreamble
     public static string CustomPreambleForEmit(string? custom)
     {
         if (string.IsNullOrWhiteSpace(custom)) return "";
+        // A \renewcommand of a command this class doesn't have stops the compile ("Command ... undefined"): an imported
+        // moderncv CV kept moderncv's \renewcommand*{\bibliographyitemlabel}, and Lilia prints CVs on article, so the
+        // whole PDF failed (the document sweep, D-018, 15 Nov 2026). A \providecommand first makes it defined; on a
+        // command that exists it does nothing.
+        custom = CustomRenewCommand.Replace(custom, m => $"\\providecommand{{\\{m.Groups[1].Value}}}{{}}{m.Value}");
         // A \newtheorem of a kind Lilia declares stops the compile ("already defined"): left out.
         custom = CustomNewTheorem.Replace(custom, m => KnownTheoremEnvironments.Contains(m.Groups[1].Value)
             ? $"% [lilia] left out \\newtheorem{{{m.Groups[1].Value}}}: Lilia declares it." : m.Value);
@@ -346,6 +353,7 @@ public static partial class LaTeXPreamble
 % Graphics & floats
 \usepackage{graphicx}
 \usepackage{float}
+\maxdeadcycles=1000  % 50 figures or tables in a row ran out of TeX's 100 passes: ""Float(s) lost"" (the document sweep, 15 Nov 2026)
 \usepackage{caption}
 \usepackage{subcaption}
 \usepackage[dvipsnames,svgnames,table]{xcolor}    % ~200+ named colors (red/blue/… + Apricot/ForestGreen/… + DarkOrchid/MidnightBlue/…)
