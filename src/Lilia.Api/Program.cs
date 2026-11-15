@@ -442,7 +442,7 @@ Console.WriteLine($"[BOOT] database target: {database}");
 //   53300: remaining connection slots are reserved for roles with the SUPERUSER attribute
 // (see Sentry LILIA-API-9). Always force these caps on top of whatever
 // the env var carries, so ops can't accidentally blow past the DB limit.
-connectionString = Lilia.Api.Services.DatabasePool.Tune(connectionString);
+connectionString = Lilia.Api.Services.DatabasePool.Tune(connectionString, Lilia.Api.Services.DatabasePool.WarmConnections);
 
 // Every query's time goes to its request's timing line; slow ones are logged (18 Oct).
 builder.Services.AddSingleton<Lilia.Api.Services.QueryTimingInterceptor>();
