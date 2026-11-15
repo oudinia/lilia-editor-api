@@ -656,6 +656,21 @@ public static partial class LaTeXPreamble
 \newunicodechar{∀}{\ensuremath{\forall}}
 \newunicodechar{∃}{\ensuremath{\exists}}
 \newunicodechar{∅}{\ensuremath{\emptyset}}
+% Ticks, crosses, warnings and stars that AI-written text puts in prose and tables (the document sweep, 15 Nov 2026:
+% each was a LaTeX error and the character was dropped). U+FE0F, the invisible selector after many emoji, prints nothing.
+\newunicodechar{✅}{\ensuremath{\checkmark}}
+\newunicodechar{✓}{\ensuremath{\checkmark}}
+\newunicodechar{✔}{\ensuremath{\checkmark}}
+\newunicodechar{✗}{\ensuremath{\times}}
+\newunicodechar{✘}{\ensuremath{\times}}
+\newunicodechar{❌}{\ensuremath{\times}}
+\newunicodechar{⚠}{\textbf{!}}
+\newunicodechar{❗}{\textbf{!}}
+\newunicodechar{❓}{\textbf{?}}
+\newunicodechar{★}{\ensuremath{\bigstar}}
+\newunicodechar{☆}{\ensuremath{\star}}
+\newunicodechar{ℵ}{\ensuremath{\aleph}}
+\newunicodechar{️}{}
 ";
 
     /// <summary>
