@@ -79,6 +79,9 @@ public static class ContentRouting
             // "code", which the text scan below skips, and the Typst writer read other fields: a tblr table in one was
             // left out of the Auto PDF without a word (the launch bot's TeX Stack Exchange run, 14 Nov 2026).
             if (string.Equals(type, "embed", StringComparison.OrdinalIgnoreCase) && EmbedIsLatex(content)) return "raw LaTeX";
+            // CV blocks are LaTeX's too: the Typst writer has no CV layout and dropped them, so a Photo inserted in an
+            // article came out of the Automatic PDF missing (the launch bot's #114, 15 Nov 2026).
+            if (type is "personalInfo" or "photo" or "cvSection" or "cvEntry") return "CV blocks";
             // Typst's theorems carry no number: one set to Numbered printed without it (#66). Only an unnumbered one stays.
             if (string.Equals(type, "theorem", StringComparison.OrdinalIgnoreCase)
                 && !(content.ValueKind == System.Text.Json.JsonValueKind.Object

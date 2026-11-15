@@ -78,12 +78,14 @@ public class ContentRoutingTests
         ContentRouting.WhyLatex([B("embed", new { code = "#rect(width: 1cm)", engine = "typst" })]).Should().BeNull();
     }
 
+    // 14 Nov this printed the source (rather than an empty box); the launch bot's #113 retest (15 Nov) found the source
+    // printed as text in a Typst preview. Typst can't print LaTeX: the block says so instead.
     [Fact]
-    public void The_Typst_writer_shows_an_embed_s_source_rather_than_an_empty_box()
+    public void The_Typst_writer_says_a_raw_LaTeX_block_prints_with_LaTeX_rather_than_printing_its_source()
     {
         var source = new TypstExportService().BuildTypstDocument(
             Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Doc(),
             [Lilia.Api.Tests.Features.Export.Typst.TypstHarness.Block("embed", new { code = @"\begin{tblr}{lr} a & 1 \end{tblr}" }, 0)], null);
-        source.Should().Contain(@"\begin{tblr}{lr} a & 1 \end{tblr}");
+        source.Should().Contain(TypstExportService.RawLatexNote).And.NotContain("tblr");
     }
 }

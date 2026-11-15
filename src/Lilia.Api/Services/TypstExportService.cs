@@ -468,6 +468,9 @@ public class TypstExportService : ITypstExportService
                 "pageBreak" or "pagebreak" or "page_break" => "#pagebreak()",
                 "columnBreak" or "columnbreak" or "column_break" => "#colbreak()",
                 "embed" => RenderEmbed(content),
+                // Typst has no CV layout: these were dropped without a word, so a CV's Typst PDF lost them (#114).
+                // Automatic sends a document with CV blocks to LaTeX (ContentRouting); this is Typst asked for by name.
+                "personalInfo" or "photo" or "cvSection" or "cvEntry" => LatexOnlyNote(CvBlockNote),
                 "callout" => RenderCallout(content),
                 "header" => RenderHeading(content),    // alias
                 "image" => RenderFigure(content),       // alias
@@ -1129,8 +1132,24 @@ public class TypstExportService : ITypstExportService
                 raw = v.GetString()!;
                 break;
             }
-        return $"// [Embed block — raw content below]\n```\n{raw}\n```";
+        // Typst can't print LaTeX: the raw source printed as text in a Typst preview (the launch bot's #113, 15 Nov
+        // 2026). Raw LaTeX becomes a short note in its place; an embed that says it's Typst is written as is.
+        if (content.TryGetProperty("engine", out var engine) && engine.ValueKind == JsonValueKind.String
+            && string.Equals(engine.GetString(), "typst", StringComparison.OrdinalIgnoreCase))
+            return raw;
+        return string.IsNullOrWhiteSpace(raw) ? "" : LatexOnlyNote(RawLatexNote);
     }
+
+    /// <summary>The note a raw-LaTeX block prints as in a Typst PDF (#113).</summary>
+    internal const string RawLatexNote = "This block is raw LaTeX: it prints when the PDF is made with LaTeX.";
+
+    /// <summary>The note a CV block prints as in a Typst PDF: Typst has no CV layout (#114).</summary>
+    internal const string CvBlockNote = "This CV block prints when the PDF is made with LaTeX.";
+
+    /// <summary>A small grey box saying a block prints only with LaTeX.</summary>
+    internal static string LatexOnlyNote(string note) =>
+        "#block(width: 100%, inset: 8pt, radius: 3pt, stroke: 0.5pt + luma(180), fill: luma(246))" +
+        $"[#text(size: 9pt, fill: luma(80))[{note.Replace("\\", "\\\\").Replace("[", "\\[").Replace("]", "\\]").Replace("#", "\\#")}]]";
 
     // ────────── helpers ──────────
 
