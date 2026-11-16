@@ -46,7 +46,39 @@ public static class ModernCv
     public static string Mark(string content)
     {
         var at = content.IndexOf(@"\begin{document}", StringComparison.Ordinal);
-        return at < 0 ? MarkBody(content) : content[..at] + MarkBody(content[at..]);
+        var name = Regex.Match(content, @"\\name\s*\{([^{}]*)\}\s*\{([^{}]*)\}") is { Success: true } n ? $"{n.Groups[1].Value.Trim()} {n.Groups[2].Value.Trim()}".Trim() : "";
+        return at < 0 ? MarkBody(Letter(content, name)) : content[..at] + MarkBody(Letter(content[at..], name));
+    }
+
+    /// <summary>
+    /// moderncv's cover letter (the document sweep, D-018, 16 Nov 2026): \recipient, \opening, \closing, \enclosure and the
+    /// body's \date are declarations that \makelettertitle and \makeletterclosing print; imported, those two were unknown
+    /// commands that stopped the PDF. They become paragraphs where the letter prints them: the recipient, the date and the
+    /// opening at the title, the closing, the person's name and the enclosure at the end. Lilia has no letter block.
+    /// </summary>
+    internal static string Letter(string body, string personName)
+    {
+        if (!Regex.IsMatch(body, @"\\makelettertitle\b")) return body;
+        string[] recipient = [], opening = [], closing = [], date = [], enclosure = [];
+        var enclosureLabel = Regex.Match(body, @"\\enclosure\s*\[([^\]]*)\]") is { Success: true } e ? e.Groups[1].Value.Trim() : "Enclosure";
+        body = Expand(body, "recipient", 2, a => { recipient = a; return ""; });
+        body = Expand(body, "opening", 1, a => { opening = a; return ""; });
+        body = Expand(body, "closing", 1, a => { closing = a; return ""; });
+        body = Expand(body, "enclosure", 1, a => { enclosure = a; return ""; });
+        body = Expand(body, "date", 1, a => { date = a; return ""; });
+
+        static string Para(string text) => string.IsNullOrWhiteSpace(text) ? "" : $"\n\n{text.Trim()}\n\n";
+        static string Lines(string text) => string.Join(", ", text.Split(@"\\").Select(Clean).Where(l => l.Length > 0));
+        var title = (recipient.Length == 2 ? Para($"**{Clean(recipient[0])}**") + Para(Lines(recipient[1])) : "")
+                    + (date.Length == 1 ? Para(Clean(date[0])) : "")
+                    + (opening.Length == 1 ? Para(Clean(opening[0])) : "");
+        var end = (closing.Length == 1 ? Para(Clean(closing[0])) : "")
+                  + Para(personName)
+                  + (enclosure.Length == 1 ? Para($"{enclosureLabel}: {Clean(enclosure[0])}") : "");
+        body = Regex.Replace(body, @"\\makelettertitle\b", title.Replace("$", "$$"));
+        return Regex.IsMatch(body, @"\\makeletterclosing\b")
+            ? Regex.Replace(body, @"\\makeletterclosing\b", end.Replace("$", "$$"))
+            : body.Replace(@"\end{document}", end + @"\end{document}");
     }
 
     private static string MarkBody(string content)
