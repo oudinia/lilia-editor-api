@@ -2467,6 +2467,8 @@ public partial class RenderService : IRenderService
     public string ComposeBody(Document doc, IReadOnlyList<Block> blocks, IReadOnlyList<string> rendered, bool pageMap)
     {
         rendered = AttachFootnotes(blocks, rendered);
+        if (string.Equals(LaTeXPreambleBuilder.ResolveClassName(doc), "beamer", StringComparison.OrdinalIgnoreCase))
+            return CrossRefSyntax.ResolveBareReferences(ComposeBeamerBody(blocks, rendered, pageMap));
         var latex = new StringBuilder();
         var blocksList = blocks;
         var bookDivisions = UsesBookDivisions(doc, blocksList);
@@ -2521,6 +2523,87 @@ public partial class RenderService : IRenderService
         }
         // \eqref{loss} to an equation labelled "loss" (written eq:loss) resolves (MCP-106).
         return CrossRefSyntax.ResolveBareReferences(latex.ToString());
+    }
+
+    /// <summary>
+    /// A slide deck's body in frames. Its blocks were written outside any frame: a heading was a \section, which beamer
+    /// only puts in the navigation, so an imported deck's frame titles (imported as headings) printed nowhere and the
+    /// rest sat on unframed pages (the launch bot's #117, 16 Nov 2026; Oussama: "fix them"). Now a heading followed by
+    /// content opens a frame titled with it: a numbered heading keeps its \section for the navigation (and the theme's
+    /// section page), an unnumbered one (an imported \frametitle) is only the frame's title. Content before any heading
+    /// gets an untitled frame. A slide block is its own frame; a page break ends a frame. A frame holding code or
+    /// verbatim text is [fragile], as beamer needs.
+    /// </summary>
+    private static string ComposeBeamerBody(IReadOnlyList<Block> blocks, IReadOnlyList<string> rendered, bool pageMap)
+    {
+        var latex = new StringBuilder();
+        StringBuilder? frame = null;
+        string? frameTitle = null;
+
+        void Close()
+        {
+            if (frame is null) return;
+            var body = frame.ToString();
+            if (body.Trim().Length > 0)
+            {
+                var fragile = Regex.IsMatch(body, @"\\begin\{(?:lstlisting|verbatim|Verbatim|minted)\}|\\lstinline|\\verb\W");
+                latex.Append(@"\begin{frame}").Append(fragile ? "[fragile]" : "");
+                if (!string.IsNullOrWhiteSpace(frameTitle)) latex.Append(@"\frametitle{").Append(frameTitle).Append('}');
+                latex.AppendLine();
+                latex.Append(body);
+                latex.AppendLine(@"\end{frame}");
+            }
+            frame = null;
+            frameTitle = null;
+        }
+
+        for (var i = 0; i < blocks.Count; i++)
+        {
+            var type = blocks[i].Type ?? "";
+            var text = i < rendered.Count ? rendered[i] : "";
+            var marker = pageMap ? $"% block:{blocks[i].Id}\n\\label{{{AuxPageMap.LabelFor(blocks[i].Id)}}}\n" : "";
+
+            if (type.Equals("heading", StringComparison.OrdinalIgnoreCase) || type.Equals("header", StringComparison.OrdinalIgnoreCase))
+            {
+                Close();
+                var m = Regex.Match(text, @"\\(?:sub)*section(\*?)\s*(?:\[[^\]]*\])?\s*\{(.*)\}", RegexOptions.Singleline);
+                var numbered = m.Success && m.Groups[1].Value.Length == 0;
+                // The navigation entry (and the theme's section page) for a numbered heading.
+                if (numbered || !m.Success) latex.Append(marker).AppendLine(text);
+                // Content follows before the next heading, slide or page break: a frame under this title.
+                var hasContent = false;
+                for (var j = i + 1; j < blocks.Count; j++)
+                {
+                    var t = blocks[j].Type ?? "";
+                    if (t.Equals("heading", StringComparison.OrdinalIgnoreCase) || t.Equals("header", StringComparison.OrdinalIgnoreCase)
+                        || t.Equals("slide", StringComparison.OrdinalIgnoreCase) || t.Equals("pageBreak", StringComparison.OrdinalIgnoreCase)) break;
+                    if (j < rendered.Count && rendered[j].Trim().Length > 0) { hasContent = true; break; }
+                }
+                if (hasContent && m.Success)
+                {
+                    frame = new StringBuilder();
+                    frameTitle = Regex.Replace(m.Groups[2].Value, @"\\label\{[^{}]*\}", "").Trim();
+                    if (!numbered) frame.Append(marker);
+                }
+                continue;
+            }
+            if (type.Equals("slide", StringComparison.OrdinalIgnoreCase))
+            {
+                Close();
+                latex.Append(marker).AppendLine(text);
+                continue;
+            }
+            if (type.Equals("pageBreak", StringComparison.OrdinalIgnoreCase) || type.Equals("pagebreak", StringComparison.OrdinalIgnoreCase))
+            {
+                Close();
+                continue;
+            }
+            if (text.Trim().Length == 0) { latex.Append(marker); continue; }
+            frame ??= new StringBuilder();
+            frame.Append(marker).AppendLine(text);
+        }
+        Close();
+        return latex.ToString();
     }
 
     /// <summary>A book with front or back matter blocks: its body is split by \frontmatter,
