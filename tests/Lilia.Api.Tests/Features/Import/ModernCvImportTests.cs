@@ -80,6 +80,40 @@ public class ModernCvImportTests
         entry["description"].Should().Be("Studied analysis with De Morgan.");
     }
 
+    // The document sweep (D-018, 16 Nov 2026): moderncv's skill matrix was flattened into brace text that stopped the PDF.
+    private const string Skills = """
+        \documentclass{moderncv}
+        \name{Ada}{Lovelace}
+        \begin{document}
+        \makecvtitle
+        \section{Skills}
+        \cvskilllegend*[1em]{}% adjust post spacing
+        \cvskillhead[-0.1em]%
+        \cvskillentry*{Language:}{3}{Python}{2}{I have built many projects.}
+        \cvskillentry{}{2}{Lilypond}{14}{So much sheet music.}
+        \cvskillentry*[1em]{Methods}{4}{SCRUM}{8}{SCRUM master for 5 years}
+        \setcvskillcolumns[5em][][]
+        \end{document}
+        """;
+
+    [Fact]
+    public async Task Skill_matrix_rows_are_CV_entries_and_the_legend_goes()
+    {
+        var doc = await Parse(Skills);
+        var entries = doc.Elements.OfType<ImportCvBlock>().Where(b => b.BlockType == "cvEntry").Select(b => b.Content).ToList();
+
+        entries.Should().HaveCount(3);
+        Json(entries[0]["role"]!).Should().Contain("Python");
+        Json(entries[0]["org"]!).Should().Contain("Language").And.NotContain(":");
+        Json(entries[0]["period"]!).Should().Contain("2 years");
+        Json(entries[0]["highlight"]!).Should().Contain("Level 3 of 5");
+        Json(entries[0]["description"]!).Should().Contain("many projects");
+        Json(entries[2]["role"]!).Should().Contain("SCRUM");
+
+        var text = string.Join("\n", doc.Elements.OfType<ImportParagraph>().Select(p => p.Text));
+        text.Should().NotContain("cvskill").And.NotContain("{").And.NotContain("}").And.NotContain("LILIACV");
+    }
+
     [Fact]
     public async Task Nothing_leaks_as_LaTeX_or_brace_text()
     {

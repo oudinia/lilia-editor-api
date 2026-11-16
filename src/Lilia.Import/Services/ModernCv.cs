@@ -52,6 +52,15 @@ public static class ModernCv
     private static string MarkBody(string content)
     {
         content = Expand(content, "cventry", 6, a => $"\n\n{EntryMark}{Convert.ToHexString(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(a)))}\n\n");
+        // The skill matrix (moderncv 2.x; the document sweep, D-018, 16 Nov 2026): each \cvskillentry[*][spacing]{category}
+        // {level 1-5}{skill}{years}{comment} is a CV entry (skill as the role, category as the organisation, years as the
+        // period, the level as its highlight). It was flattened into brace text that stopped the PDF. Legends, headers and
+        // column settings are layout only.
+        content = Regex.Replace(content, @"\\cvskillentry\*", @"\cvskillentry");
+        content = Expand(content, "cvskillentry", 5, a => $"\n\n{EntryMark}{Convert.ToHexString(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(SkillAsEntry(a))))}\n\n");
+        content = Regex.Replace(content, @"\\(?:cvskill(?:plain)?legend|cvskillhead)\*?(?:\s*\[[^\]]*\])*(?:\s*\{[^{}]*\})?", "");
+        content = Regex.Replace(content, @"\\setcvskill(?:legend)?columns(?:\s*\[[^\]]*\])*", "");
+        content = Regex.Replace(content, @"\\cvskill\s*\{\s*([1-5])\s*\}", "($1/5)");
         content = Expand(content, "cvitemwithcomment", 3, a => Paragraph(Labelled(a[0], a[2].Length > 0 ? $"{a[1]} ({a[2]})" : a[1])));
         content = Expand(content, "cvdoubleitem", 4, a => Paragraph(Labelled(a[0], a[1])) + Paragraph(Labelled(a[2], a[3])));
         content = Expand(content, "cvlistdoubleitem", 2, a => Paragraph(a[0]) + Paragraph(a[1]));
@@ -122,6 +131,19 @@ public static class ModernCv
         },
         LatexCode = @"\makecvtitle",
     };
+
+    /// <summary>
+    /// A \cvskillentry's five arguments (category, level, skill, years, comment) in \cventry's order (years, title,
+    /// employer, city, grade, description), so the same entry builder reads them.
+    /// </summary>
+    internal static string[] SkillAsEntry(string[] a)
+    {
+        var category = a[0].Trim().TrimEnd(':').Trim();
+        var level = int.TryParse(a[1].Trim(), out var n) && n is >= 1 and <= 5 ? $"Level {n} of 5" : a[1].Trim();
+        var years = a[3].Trim();
+        if (int.TryParse(years, out var y)) years = y == 1 ? "1 year" : $"{y} years";
+        return [years, a[2], category, "", level, a[4]];
+    }
 
     /// <summary>\cventry{years}{title}{employer or school}{city}{grade}{description}, from a marker's hex.</summary>
     private static ImportCvBlock? Entry(string hex)
