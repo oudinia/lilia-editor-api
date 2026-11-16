@@ -521,6 +521,9 @@ public class DocumentExportService : IDocumentExportService
         byte[] pdflatexPdf;
         string? aux;
         IReadOnlyList<string> problems;
+        // Marked with its document: the compile starts from what this document's last one left (PassState),
+        // so an edit that moves no reference needs one LaTeX pass instead of two (16 Nov 2026).
+        using (PassState.ForDocument(documentId))
         using (Lilia.Core.Diagnostics.Timing.Measure("pdf.compile"))
             (pdflatexPdf, aux, problems) = await _latexRenderService.RenderToPdfTolerantWithProblemsAsync(
                 latex, timeout: tagged ? TaggedPdf.PassTimeoutSeconds : 60, engine: engine,

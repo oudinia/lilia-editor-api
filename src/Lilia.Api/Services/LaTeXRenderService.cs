@@ -1023,6 +1023,8 @@ public class LaTeXRenderService : ILaTeXRenderService
             // An unchanged document is not compiled again (CompileCache): the key is the .tex, the
             // engine and every file beside it. Only a miss takes one of the compile slots.
             var key = CompileCache.Key(latex, engine, tolerant, tmpDir);
+            // The document's last compile left its .aux and the rest (PassState): with them, one pass is often enough.
+            var stateKey = PassState.Shared is null ? null : PassState.KeyFor(latex, engine, tolerant);
             var sw = Stopwatch.StartNew();
             var (entry, hit) = await CompileCache.Shared.GetOrCompileAsync(key, async () =>
             {
@@ -1032,7 +1034,7 @@ public class LaTeXRenderService : ILaTeXRenderService
                 try
                 {
                     using var compiling = Lilia.Core.Diagnostics.Timing.Measure("tex.compile");
-                    var (pdf, log, aux) = await CompileInDirAsync(latex, timeout, tolerant, engine, tmpDir);
+                    var (pdf, log, aux) = await CompileInDirAsync(latex, timeout, tolerant, engine, tmpDir, stateKey);
                     return new CompileCache.Entry(pdf, log, aux);
                 }
                 finally
@@ -1057,7 +1059,7 @@ public class LaTeXRenderService : ILaTeXRenderService
 
     /// <summary>The compile itself, in a directory that already holds the project's files.</summary>
     private async Task<(byte[] Pdf, string Log, string Aux)> CompileInDirAsync(
-        string latex, int timeout, bool tolerant, string engine, string tmpDir)
+        string latex, int timeout, bool tolerant, string engine, string tmpDir, string? stateKey = null)
     {
         // Lilia's preamble, precompiled (DocumentFormats): about 1.7 s of each pass was loading it. A
         // compile the format cannot carry runs again without it, and the format is set aside.
@@ -1067,7 +1069,7 @@ public class LaTeXRenderService : ILaTeXRenderService
             Lilia.Core.Diagnostics.Timing.Mark("tex.preamble format");
             try
             {
-                return await CompilePassesAsync(DocumentFormats.WithEndOfDump(latex), timeout, tolerant, engine, tmpDir, format);
+                return await CompilePassesAsync(DocumentFormats.WithEndOfDump(latex), timeout, tolerant, engine, tmpDir, format, stateKey);
             }
             catch (InvalidOperationException ex)
             {
@@ -1076,14 +1078,14 @@ public class LaTeXRenderService : ILaTeXRenderService
                 foreach (var f in Directory.EnumerateFiles(tmpDir, "document.*")) File.Delete(f);
             }
         }
-        return await CompilePassesAsync(latex, timeout, tolerant, engine, tmpDir, null);
+        return await CompilePassesAsync(latex, timeout, tolerant, engine, tmpDir, null, stateKey);
     }
 
     private Task<bool> BuildFormatAsyncForDocuments(string dump, string engine, string path) =>
         BuildFormatAsync(dump, engine, path, timeoutSeconds: 60);
 
     private async Task<(byte[] Pdf, string Log, string Aux)> CompilePassesAsync(
-        string latex, int timeout, bool tolerant, string engine, string tmpDir, string? format)
+        string latex, int timeout, bool tolerant, string engine, string tmpDir, string? format, string? stateKey = null)
     {
         {
             var texPath = Path.Combine(tmpDir, "document.tex");
@@ -1104,13 +1106,43 @@ public class LaTeXRenderService : ILaTeXRenderService
                 : $"-interaction=nonstopmode {(tolerant ? "" : "-halt-on-error ")}--no-shell-escape \"-fmt={format}\" -output-directory {tmpDir} {texPath}";
             async Task<int> Pass() => (await RunProcessAsync(engine, args, tmpDir, timeout)).ExitCode;
 
+            // What this document's last compile left (PassState): pass one starts from it.
+            var kept = stateKey is null ? null : PassState.Shared?.Get(stateKey);
+            if (kept is not null) PassState.Write(tmpDir, kept);
+
             var exitCode = await Pass();
             // A first pass that failed is the answer: another pass reads its half-written .aux and reports
             // that instead ("File ended while scanning use of \BKM@entry", the bot's #51, 11 Nov).
             if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath, latex);
+            var settled = false;
+            if (kept is not null)
+            {
+                // Pass one read the kept files. If it (and BibTeX) wrote them back unchanged and LaTeX asks for no
+                // rerun, another pass would read the same files and print the same PDF: done in one.
+                var auxPath0 = Path.Combine(tmpDir, "document.aux");
+                var bib = kept.ContainsKey(".bbl")
+                    || (File.Exists(auxPath0) && BibliographyPasses.HasDatabase(await File.ReadAllTextAsync(auxPath0), tmpDir));
+                if (bib) await RunBibTeXAsync(tmpDir, timeout);
+                var log1 = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
+                settled = PassState.Same(PassState.Read(tmpDir), kept) && !BibliographyPasses.NeedsRerun(log1);
+                if (settled)
+                {
+                    Interlocked.Increment(ref PassState.OnePassCompiles);
+                    Lilia.Core.Diagnostics.Timing.Mark("tex.one pass (kept .aux)");
+                }
+                else if (bib)
+                {
+                    // A bibliography's steps assume pass one started from an empty folder: start again, as before.
+                    PassState.Clear(tmpDir);
+                    exitCode = await Pass();
+                    if (exitCode != 0 && !tolerant) await ThrowCompileFailureAsync(logPath, latex);
+                }
+                // Otherwise pass two (and three, when LaTeX asks) run as before, from what pass one wrote.
+            }
             // A bibliography: BibTeX reads pass 1's .aux, and pass 2 starts with the citations it will
             // print already in the .aux (BibliographyPasses). A third pass only if TeX says so.
-            if (await RunBibTeXAsync(tmpDir, timeout) is { } bbl)
+            if (settled) { /* one pass was enough */ }
+            else if (await RunBibTeXAsync(tmpDir, timeout) is { } bbl)
             {
                 var auxPath1 = Path.Combine(tmpDir, "document.aux");
                 var natbib = BibliographyPasses.UsesNatbib(latex, File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "");
@@ -1169,10 +1201,13 @@ public class LaTeXRenderService : ILaTeXRenderService
             // Read the .aux before the finally block deletes the directory. It
             // carries one \newlabel per block label, which is where the page map
             // comes from — see AuxPageMap. Accurate only because the loop above
-            // runs the engine twice: pass one writes the labels, pass two settles
-            // the page numbers.
+            // runs the engine twice (pass one writes the labels, pass two settles
+            // the page numbers), or once from kept files it wrote back unchanged.
             var auxPath = Path.Combine(tmpDir, "document.aux");
             var aux = File.Exists(auxPath) ? await File.ReadAllTextAsync(auxPath) : "";
+
+            // Kept for this document's next compile (PassState).
+            if (stateKey is not null) PassState.Shared?.Put(stateKey, PassState.Read(tmpDir));
 
             return (pdf, log, aux);
         }
