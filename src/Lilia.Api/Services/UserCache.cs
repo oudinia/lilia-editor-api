@@ -118,7 +118,8 @@ public static class UserCache
     {
         var scope = CacheOwner.Scope(userId);
         long removed = CompileCache.Shared.RemoveScope(scope) + CompileCache.Versions.RemoveScope(scope)
-            + CompileCache.Checks.RemoveScope(scope) + LaTeXRenderService.ForgetScope(scope);
+            + CompileCache.Checks.RemoveScope(scope) + LaTeXRenderService.ForgetScope(scope)
+            + (PassState.Shared?.RemoveScope(scope) ?? 0);
         if (Store is not null)
         {
             try { removed += await Store.PurgeAsync(scope); }

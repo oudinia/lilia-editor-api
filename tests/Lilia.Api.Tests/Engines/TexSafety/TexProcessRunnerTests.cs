@@ -84,6 +84,15 @@ public class TexProcessRunnerTests
     }
 
     [Fact]
+    public void The_system_font_cache_is_shown_read_only_so_XeLaTeX_does_not_rescan_the_fonts()
+    {
+        // 16 Nov 2026: without it every XeLaTeX pass in the sandbox took 0.7 s longer (fontconfig rescanned the fonts).
+        var args = TexProcessRunner.Build("xelatex", "doc.tex", "/tmp/w", sandbox: true, readOnly: []).Arguments;
+        args.Should().Contain("--ro-bind-try /var/cache/fontconfig /var/cache/fontconfig");
+        args.Should().NotContain("--bind /var/cache/fontconfig", "read-only: a document never writes the system cache");
+    }
+
+    [Fact]
     public void A_precompiled_format_elsewhere_is_bound_read_only_and_an_outside_output_directory_writable()
     {
         var psi = TexProcessRunner.Build("pdflatex", "\"-fmt=/var/cache/lilia/fmt/tikz-abc\" -output-directory /tmp/out doc.tex", "/tmp/w", sandbox: true, readOnly: []);

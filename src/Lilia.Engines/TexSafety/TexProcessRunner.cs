@@ -113,6 +113,10 @@ public static class TexProcessRunner
             "--ro-bind /usr /usr", "--symlink usr/lib /lib", "--symlink usr/lib64 /lib64",
             "--symlink usr/bin /bin", "--symlink usr/sbin /sbin",
             "--ro-bind-try /etc/fonts /etc/fonts", "--ro-bind-try /etc/texmf /etc/texmf",
+            // The system font cache, read-only. Without it fontconfig rescanned every font on each XeLaTeX
+            // start: 2.46 s instead of 1.59 s a pass, about 1.4 s per Chinese, Japanese or Korean compile
+            // (lilia-docs/reports/2026-11-16-latex-compile-speed.md).
+            "--ro-bind-try /var/cache/fontconfig /var/cache/fontconfig",
             "--proc /proc", "--dev /dev", "--tmpfs /tmp",
         };
         var bound = new HashSet<string>(StringComparer.Ordinal);
