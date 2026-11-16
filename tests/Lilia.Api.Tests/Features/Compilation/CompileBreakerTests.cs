@@ -54,6 +54,14 @@ public class CompileBreakerTests
         LaTeXPreamble.ValidationPackages.Should().Contain(@"\lstdefinelanguage{JavaScript}");
     }
 
+    // 16 Nov: code lines wrap at spaces in Lilia's own PDF, as in the .tex download.
+    [Fact]
+    public void Code_lines_wrap_in_both_compile_preambles()
+    {
+        LaTeXPreamble.Packages.Should().Contain(@"\lstset{breaklines=true}");
+        LaTeXPreamble.ValidationPackages.Should().Contain(@"\lstset{breaklines=true}");
+    }
+
     // ── MCP-18 ──────────────────────────────────────────────────────────
     [Fact]
     public void Non_ascii_in_code_goes_through_an_escape()

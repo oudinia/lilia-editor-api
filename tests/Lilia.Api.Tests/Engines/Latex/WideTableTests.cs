@@ -61,6 +61,18 @@ public class WideTableTests
         WideTables.FindCode(log1, tex1).Should().BeEmpty();
     }
 
+    // 16 Nov (the connector's checks of the owner's documents): Lilia's own PDF had no breaklines, so a
+    // code line wider than the text ran into the margin even with spaces in it. It wraps now; a long name
+    // with no space still can't (above).
+    [Fact]
+    public async Task A_long_code_line_with_spaces_wraps()
+    {
+        var code = "# prints the last numbered item, e.g. Remark 2, and this comment keeps going well past the right margin of the page";
+        var (tex, log, _) = await Compile(columns: 1, B("code", new { code, language = "python" }));
+        tex.Should().Contain(@"\lstset{breaklines=true}");
+        WideTables.FindCode(log, tex).Should().BeEmpty(string.Join("\n", log.Split('\n').Where(l => l.Contains("Overfull"))));
+    }
+
     // 2 Nov: a table wider than its column is now scaled down to it (FitToLine), so the seven
     // columns that overflowed here before fit, and the check has nothing to report.
     [Fact]
