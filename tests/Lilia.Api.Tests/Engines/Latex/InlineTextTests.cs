@@ -71,7 +71,7 @@ public class InlineTextTests
         foreach (var latex in new[] { Render("paragraph", new { text }), Export(Doc(B("paragraph", new { text }))) })
         {
             latex.Should().NotContain(@"1\$").And.NotContain(@"b\$");   // the formula's closing sign stays a sign
-            latex.Should().Contain(@"\$5");                                  // the author's dollar stays text
+            latex.Should().Contain(@"\$5").And.NotContain(@"\\$");        // the author's dollar stays text, escaped once
             latex.Should().Contain(text.Contains("x=1") ? "$x=1$" : "$a<b$");
         }
     }
