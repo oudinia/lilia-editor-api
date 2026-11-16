@@ -178,7 +178,8 @@ public class TypstRenderService : ITypstRenderService
                 "blockquote" or "quote" => RenderBlockquoteToTypst(content),
                 "theorem" => RenderTheoremToTypst(content),
                 "abstract" => RenderAbstractToTypst(content),
-                "tableofcontents" => "#outline()",
+                // The block's own title when the author set one (TocTitle, 16 Nov 2026).
+                "tableofcontents" => TocTitle.Custom(content) is { } tocTitle ? $"#outline(title: [{ProcessTypstText(tocTitle)}])" : "#outline()",
                 "columnlayout" => RenderColumnLayoutToTypst(content),
                 "columnbreak" => "#colbreak()",
                 "pagebreak" or "divider" => "#pagebreak()",
