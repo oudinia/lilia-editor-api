@@ -24,12 +24,32 @@ public class DeclarationGroupImportTests
     public void A_declaration_group_becomes_its_mark_or_its_text(string latex, string expected)
         => LatexParser.DeclarationGroups(latex).Should().Be(expected);
 
+    // The document sweep (D-013): "\item {About work}" kept its braces in the list item.
+    [Theory]
+    [InlineData(@"{About work}", "About work")]
+    [InlineData(@"Text {Certifying Institution Name} here", "Text Certifying Institution Name here")]
+    [InlineData(@"{}", "")]
+    public void A_bare_group_of_plain_text_loses_its_braces(string latex, string expected)
+        => LatexParser.DeclarationGroups(latex).Should().Be(expected);
+
     [Theory]
     [InlineData(@"{\item x}")]          // \it must not eat \item
-    [InlineData(@"{x}")]                // a plain group is not a declaration
+    [InlineData(@"\textbf{x}")]         // a command's argument
+    [InlineData(@"x^{2} and a_{i}")]     // scripts keep their groups
+    [InlineData(@"\{literal\}")]        // escaped braces are text
     [InlineData(@"$\{x\}$")]            // maths untouched (and set aside before this runs)
     public void Other_groups_are_left_alone(string latex)
         => LatexParser.DeclarationGroups(latex).Should().Be(latex);
+
+    [Fact]
+    public async Task A_list_item_written_as_a_group_imports_without_braces()
+    {
+        var parsed = await new LatexParser().ParseTextAsync(
+            "\\documentclass{article}\n\\begin{document}\n\\begin{itemize}\n\\item {About work}\n\\item Plain item\n\\end{itemize}\n\\end{document}\n");
+        var items = parsed.Elements.OfType<ImportListItem>().Select(i => i.Text).ToList();
+        items.Should().Contain("About work").And.Contain("Plain item");
+        items.Should().NotContain(i => i.Contains('{') || i.Contains('}'));
+    }
 
     [Fact]
     public async Task The_sweep_fixture_line_imports_without_braces()
