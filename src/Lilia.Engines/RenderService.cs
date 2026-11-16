@@ -1587,13 +1587,16 @@ public partial class RenderService : IRenderService
             : null;
 
     /// <summary>
-    /// The contents, under the block's own title when the author set one (<see cref="TocTitle"/>). \providecommand
-    /// first: a class without \contentsname (beamer without babel) would otherwise stop at the \renewcommand.
+    /// The contents, under the block's own title when the author set one (<see cref="TocTitle"/>). Both names are set:
+    /// most classes print \contentsname, revtex4-2 (APS, AIP) prints \tocname (the document sweep's chunk 5, 16 Nov
+    /// 2026). \def, not \renewcommand: a class may lack either (beamer without babel has no \contentsname).
     /// </summary>
-    private string RenderTableOfContentsToLatex(JsonElement content) =>
-        TocTitle.Custom(content) is { } title
-            ? $@"\providecommand{{\contentsname}}{{}}\renewcommand{{\contentsname}}{{{ProcessLatexText(title)}}}" + "\n" + @"\tableofcontents"
-            : @"\tableofcontents";
+    private string RenderTableOfContentsToLatex(JsonElement content)
+    {
+        if (TocTitle.Custom(content) is not { } title) return @"\tableofcontents";
+        var heading = ProcessLatexText(title);
+        return $@"\def\contentsname{{{heading}}}\def\tocname{{{heading}}}" + "\n" + @"\tableofcontents";
+    }
 
     private string RenderAbstractToLatex(JsonElement content)
     {
