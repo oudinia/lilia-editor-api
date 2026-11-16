@@ -21,6 +21,10 @@ public static class ModernCv
 {
     // Letters only, so no text pass touches them; the arguments follow as hex.
     private const string EntryMark = "LILIACVENTRYX";
+
+    /// <summary>The marker paragraph for one CV entry, in \cventry's argument order (years, title, employer, city, grade, description).</summary>
+    internal static string EntryMarker(string[] cventryArgs) =>
+        $"\n\n{EntryMark}{Convert.ToHexString(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cventryArgs)))}\n\n";
     private const string TitleMark = "LILIACVTITLEX";
 
     /// <summary>
@@ -108,11 +112,17 @@ public static class ModernCv
     }
 
     /// <summary>After the parse: CV blocks in place of the markers and sections, and the person's name on the document.</summary>
-    public static void Build(ImportDocument document)
+    public static void Build(ImportDocument document) => Build(document, withPerson: true);
+
+    /// <summary>
+    /// <paramref name="withPerson"/>: false for a "resume" template (ResumeTemplate), whose header is plain centred text
+    /// with no \name to fill a Personal information block; its entries and sections are built the same way.
+    /// </summary>
+    internal static void Build(ImportDocument document, bool withPerson)
     {
         var meta = document.Metadata;
         var headline = document.Title?.Trim() ?? "";
-        if (!string.IsNullOrWhiteSpace(meta.PersonName)) document.Title = meta.PersonName!.Trim();
+        if (withPerson && !string.IsNullOrWhiteSpace(meta.PersonName)) document.Title = meta.PersonName!.Trim();
 
         var person = PersonalInfo(meta, headline);
         var result = new List<ImportElement>(document.Elements.Count + 1);
@@ -122,7 +132,7 @@ public static class ModernCv
             switch (element)
             {
                 case ImportParagraph p when p.Text.Trim() == TitleMark:
-                    if (!placed) result.Add(person);
+                    if (!placed && withPerson) result.Add(person);
                     placed = true;
                     continue;
                 case ImportParagraph p when p.Text.Trim().StartsWith(EntryMark, StringComparison.Ordinal)
@@ -142,7 +152,7 @@ public static class ModernCv
                     continue;
             }
         }
-        if (!placed) result.Insert(0, person);
+        if (!placed && withPerson) result.Insert(0, person);
         for (var i = 0; i < result.Count; i++) result[i].Order = i;
         document.Elements = result;
     }
@@ -210,7 +220,7 @@ public static class ModernCv
     }
 
     /// <summary>Each <c>\name[optional]{a}{b}…</c> with <paramref name="count"/> brace arguments, replaced by the formatter's text.</summary>
-    internal static string Expand(string content, string name, int count, Func<string[], string> format)
+    internal static string Expand(string content, string name, int count, Func<string[], string> format, bool argumentsAcrossLines = false)
     {
         var pattern = new Regex(@"\\" + Regex.Escape(name) + @"(?![A-Za-z])\s*(\[[^\]]*\])?\s*\{");
         var from = 0;
@@ -223,7 +233,8 @@ public static class ModernCv
             var ok = true;
             for (var i = 0; i < count; i++)
             {
-                while (pos < content.Length && i > 0 && char.IsWhiteSpace(content[pos]) && content[pos] != '\n') pos++;
+                // Arguments sit on one line in moderncv; resume templates spread them over lines ({org}{place}, newline, {role}{dates}).
+                while (pos < content.Length && i > 0 && char.IsWhiteSpace(content[pos]) && (argumentsAcrossLines || content[pos] != '\n')) pos++;
                 if (pos >= content.Length || content[pos] != '{' || Close(content, pos) is not { } close) { ok = false; break; }
                 args[i] = content.Substring(pos + 1, close - pos - 1).Trim();
                 pos = close + 1;
