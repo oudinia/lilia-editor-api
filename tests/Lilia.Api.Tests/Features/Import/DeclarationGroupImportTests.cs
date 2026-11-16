@@ -19,6 +19,8 @@ public class DeclarationGroupImportTests
     [InlineData(@"{\sc Small Caps}", "^^Small Caps^^")]
     [InlineData(@"{\small {\bf nested}}", "**nested**")]
     [InlineData(@"{\ttfamily mono}", "mono")]
+    [InlineData(@"\textbf{\Large Git Cheatsheet}", @"\textbf{Git Cheatsheet}")]   // a command's argument keeps its braces
+    [InlineData(@"\href{u}{\bf link}", @"\href{u}{**link**}")]
     public void A_declaration_group_becomes_its_mark_or_its_text(string latex, string expected)
         => LatexParser.DeclarationGroups(latex).Should().Be(expected);
 

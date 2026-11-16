@@ -1643,7 +1643,18 @@ public class LatexParser : ILatexParser
         {
             var before = text;
             foreach (var (rx, open, close) in DeclarationGroupRules)
-                text = rx.Replace(text, m => m.Groups[1].Value.Trim() is { Length: > 0 } inner ? open + inner + close : "");
+            {
+                var current = text;
+                text = rx.Replace(current, m =>
+                {
+                    var inner = m.Groups[1].Value.Trim();
+                    var marked = inner.Length > 0 ? open + inner + close : "";
+                    // A command's argument (\textbf{\Large x}, \section[a]{\small x}, \href{u}{\bf x}) keeps its braces:
+                    // only the declaration inside goes. Removing them left "\textbfx" (the corpus tests).
+                    var argument = m.Index > 0 && (char.IsLetter(current[m.Index - 1]) || current[m.Index - 1] is ']' or '}');
+                    return argument ? "{" + marked + "}" : marked;
+                });
+            }
             if (text == before) break;
         }
         return text;
