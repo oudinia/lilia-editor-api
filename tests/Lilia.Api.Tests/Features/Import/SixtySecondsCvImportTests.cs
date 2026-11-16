@@ -34,6 +34,9 @@ public class SixtySecondsCvImportTests
         var entries = cv.Where(b => b.BlockType == "cvEntry").Select(b => J(b.Content)).ToList();
         entries.Should().Contain(e => e.Contains("Post-Doc Panda Studies") && e.Contains("Panda Academy") && e.Contains("2009"));
         entries.Should().Contain(e => e.Contains("Back to Cosmos") && e.Contains("Progress in Physics"));
+        // The launch bot's #119: "($\varnothing\, 1,0$)" stayed raw LaTeX in the entry's title.
+        cv.Where(b => b.BlockType == "cvEntry").Select(b => b.Content["role"]?.ToString()).Should().Contain("Master Theses (∅ 1,0)");
+        entries.Should().NotContain(e => e.Contains("varnothing"));
 
         var text = string.Join("\n", doc.Elements.OfType<ImportParagraph>().Select(p => p.Text));
         text.Should().Contain("Sports").And.Contain("Sailing, Golf");

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Lilia.Import.Converters;
 using Lilia.Import.Models;
 
 namespace Lilia.Import.Services;
@@ -218,8 +219,32 @@ public static class ModernCv
         // A control space ("Prof.\ Alpha Beta") is a space (the launch bot's #119).
         t = LatexParser.ControlSpaces(t);
         t = Regex.Replace(t, @"\\(textbf|emph|textit)\{([^{}]*)\}", "$2");
+        t = MathAsText(t);
         return Regex.Replace(t, @"\s+", " ").Trim();
     }
+
+    /// <summary>
+    /// Inline maths made only of symbols, as the characters it prints: a CV field is plain text, so "($\varnothing\, 1,0$)"
+    /// stayed raw LaTeX in the editor and the PDF (the launch bot's #119, SixtySecondsCV). Maths with anything else (a
+    /// superscript, a fraction, an unknown command) is left as written.
+    /// </summary>
+    internal static string MathAsText(string text) => Regex.Replace(text, @"(?<!\\)\$([^$]+)\$", m =>
+    {
+        var known = true;
+        var s = Regex.Replace(m.Groups[1].Value, @"\\([A-Za-z]+|[,;:! ])", c =>
+        {
+            switch (c.Groups[1].Value)
+            {
+                case "," or ";" or ":": return "\u2009";
+                case "!": return "";
+                case " ": return " ";
+            }
+            if (LatexToOmmlConverter.TryCommandChar(c.Value, out var ch)) return ch;
+            known = false;
+            return c.Value;
+        });
+        return known && !Regex.IsMatch(s, @"[\\^_{}&]") ? s : m.Value;
+    });
 
     /// <summary>Each <c>\name[optional]{a}{b}…</c> with <paramref name="count"/> brace arguments, replaced by the formatter's text.</summary>
     internal static string Expand(string content, string name, int count, Func<string[], string> format, bool argumentsAcrossLines = false)
