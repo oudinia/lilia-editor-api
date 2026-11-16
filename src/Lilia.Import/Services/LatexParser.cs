@@ -952,7 +952,10 @@ public class LatexParser : ILatexParser
 
         // Remove document setup commands
         documentContent = Regex.Replace(documentContent, @"\\maketitle\b", "");
-        documentContent = Regex.Replace(documentContent, @"\\tableofcontents\b", "");
+        // \tableofcontents is kept: it becomes a contents block (the dispatcher's "toc"). Stripped here, every imported
+        // document lost its contents (the document sweep's chunk 7, 16 Nov 2026).
+        // A counter set by hand goes with its arguments: \setcounter{page}{123} left "page{123}" in the text.
+        documentContent = Regex.Replace(documentContent, @"\\(?:setcounter|addtocounter)\s*\{[^{}]*\}\s*\{[^{}]*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\newpage\b", "");
         documentContent = Regex.Replace(documentContent, @"\\clearpage\b", "");
 
@@ -1560,8 +1563,10 @@ public class LatexParser : ILatexParser
     {
         text = CrossReference.Replace(text, "$1");
         text = Regex.Replace(text, @"\\(?:textbf|textit|emph|texttt|textsc|textrm|textsf|underline)\{([^{}]*)\}", "$1");
-        text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
-        text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
+        // An empty {} pair only: \{?\}? took a lone } too, so "\part{Designing with \LaTeX}" lost its closing brace
+        // (the document sweep's chunk 7, a TeX Stack Exchange answer, 16 Nov 2026).
+        text = Regex.Replace(text, @"\\LaTeX(?:\{\})?", "LaTeX");
+        text = Regex.Replace(text, @"\\TeX(?:\{\})?", "TeX");
         text = text.Replace("~", " ").Replace("\\,", " ");
         return text.Trim();
     }
@@ -1720,8 +1725,10 @@ public class LatexParser : ILatexParser
             m.Groups[1].Value is "textcite" or "Textcite" ? @"\citet" : @"\citep");
 
         // Normalise escaped TeX marks first.
-        text = Regex.Replace(text, @"\\LaTeX\{?\}?", "LaTeX");
-        text = Regex.Replace(text, @"\\TeX\{?\}?", "TeX");
+        // An empty {} pair only: \{?\}? took a lone } too, so "\part{Designing with \LaTeX}" lost its closing brace
+        // (the document sweep's chunk 7, a TeX Stack Exchange answer, 16 Nov 2026).
+        text = Regex.Replace(text, @"\\LaTeX(?:\{\})?", "LaTeX");
+        text = Regex.Replace(text, @"\\TeX(?:\{\})?", "TeX");
 
         // \href{URL}{LABEL} and \url{URL} stay as written (PreservedInlineCommands):
         // the editor parses both into link nodes and the exporter writes both
@@ -1927,6 +1934,15 @@ public class LatexParser : ILatexParser
                 CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");
                 matches.Add((sectionMatch, "section"));
             }
+
+            // \part has no heading level in Lilia (a chapter is level 1 in a book): kept as raw LaTeX, which the PDF prints
+            // as the part page and its contents entry. It was a paragraph of its source, or lost (the sweep's chunk 7).
+            var partMatch = Regex.Match(remaining, @"\\part\*?\s*(?:\[[^\]]*\])?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
+            if (partMatch.Success)
+                matches.Add((partMatch, "part"));
+            var tocMatch = Regex.Match(remaining, @"\\tableofcontents\b");
+            if (tocMatch.Success)
+                matches.Add((tocMatch, "toc"));
 
             // Equation environments
             if (options.ConvertEquationEnvironments)
@@ -2312,6 +2328,19 @@ public class LatexParser : ILatexParser
                             DetectionReason = CodeBlockDetectionReason.StyleName
                         });
                     }
+                    break;
+
+                case "part":
+                    document.Elements.Add(new ImportLatexPassthrough
+                    {
+                        Order = elementOrder++,
+                        LatexCode = firstMatch.match.Value.Trim(),
+                        Description = "Part (raw LaTeX)",
+                    });
+                    break;
+
+                case "toc":
+                    document.Elements.Add(new ImportTableOfContents { Order = elementOrder++ });
                     break;
 
                 case "tikz":

@@ -528,6 +528,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         // editor and both exporters already have.
         ImportBlockquote bq => ("blockquote", BlockquoteContent(bq)),
         ImportAlgorithm algo => ("algorithm", AlgorithmContent(algo)),
+        // \tableofcontents (16 Nov 2026): it was stripped, and every imported document lost its contents.
+        ImportTableOfContents => ("tableOfContents", new { title = "Table of Contents" }),
         _ => ("paragraph", new { text = "" }),
     };
 
