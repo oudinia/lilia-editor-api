@@ -28,6 +28,20 @@ public class ContentRoutingTests
         ContentRouting.WhyLatex([B("heading", new { text = "Intro", level = 1 }), B("paragraph", new { text = "Plain **bold** and *italic*, 50% done." }),
             B("figure", new { src = "https://x/a_b__c.png", caption = "A picture" })]).Should().BeNull();
 
+    // 16 Nov 2026: Typst on the server has no emoji font, so 🚀 printed as an empty box; LaTeX draws emoji (twemojis).
+    [Theory]
+    [InlineData("Launch 🚀 today.")]
+    [InlineData("Nice 👍🏽")]
+    [InlineData("Love ❤️ it")]
+    public void Emoji_go_to_latex(string text) =>
+        ContentRouting.WhyLatex([B("paragraph", new { text })]).Should().Be("emoji in a paragraph block");
+
+    [Theory]
+    [InlineData("A plain heart ❤ and arrows → ← stay.")]
+    [InlineData("Accents é, ü and Greek α stay.")]
+    public void Symbols_that_are_not_emoji_stay_on_typst(string text) =>
+        ContentRouting.WhyLatex([B("paragraph", new { text })]).Should().BeNull();
+
     [Fact]
     public void An_equation_goes_to_latex() =>
         ContentRouting.WhyLatex([B("equation", new { latex = "x^2" })]).Should().Be("equations");
