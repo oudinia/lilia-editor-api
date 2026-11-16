@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using System.ComponentModel;
+using System.Text.Json;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
 using Lilia.Infrastructure.Data;
@@ -132,6 +133,57 @@ public sealed class LiliaMcpTools(
         [Description("The document id.")] string documentId,
         [Description("The text to find.")] string query) =>
         await OpenAsync(documentId) is { } d ? AskLiliaService.DocSearch(d, query) : NoDocument(documentId);
+
+    /// <summary>
+    /// The whole document in one call (the connector test, 17 Nov 2026): to read a paper before revising it, an assistant
+    /// had get_outline's 120-character snippets or one get_block per block, and apply_lml had no LML to start from.
+    /// </summary>
+    [McpServerTool(Name = "get_document", Title = "Read the whole document", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The whole document in one call, in order: each block's id, type and content (the JSON edit_block takes), and the body as LML (what apply_lml takes, to rewrite it). Read a paper with this before revising it, rather than one get_block per block. A long document comes in pages: offset and limit count blocks (default 0 and 150, at most 400); nextOffset is where the next page starts (null on the last).")]
+    public async Task<object> GetDocument(
+        [Description("The document id.")] string documentId,
+        [Description("The first block to return, counting from 0. Default 0.")] int offset = 0,
+        [Description("How many blocks, 1 to 400. Default 150.")] int limit = 150)
+    {
+        if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
+        var all = (d.Blocks ?? []).OrderBy(b => b.SortOrder).ToList();
+        offset = Math.Max(0, offset);
+        limit = Math.Clamp(limit, 1, 400);
+        var page = all.Skip(offset).Take(limit).ToList();
+        var lml = new System.Text.StringBuilder();
+        foreach (var b in page)
+        {
+            var text = string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase)
+                ? BibliographyLml(b.Content)
+                : render.RenderBlockToLml(new Lilia.Core.Entities.Block
+                {
+                    Id = b.Id, DocumentId = d.Id, Type = b.Type, SortOrder = b.SortOrder, Depth = b.Depth,
+                    Content = JsonDocument.Parse(b.Content.GetRawText()),
+                });
+            if (!string.IsNullOrWhiteSpace(text)) lml.AppendLine(text.TrimEnd()).AppendLine();
+        }
+        var next = offset + page.Count;
+        return new
+        {
+            id = d.Id,
+            title = d.Title,
+            kind = d.DocumentCategory,
+            latexClass = d.LatexDocumentClass,
+            blockCount = all.Count,
+            offset,
+            nextOffset = next < all.Count ? next : (int?)null,
+            blocks = page.Select(b => new { id = b.Id, type = b.Type, content = b.Content }),
+            lml = lml.ToString().TrimEnd(),
+            url = EditorUrl(d.Id),
+        };
+    }
+
+    /// <summary>A bibliography block's own entries as LML (the block renderer leaves them to the document's entry list).</summary>
+    private static string BibliographyLml(JsonElement content)
+    {
+        var text = content.ValueKind == JsonValueKind.Object && content.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        return "@bibliography\n" + string.Join("\n", text.Split('\n').Select(l => "  " + l.TrimEnd()));
+    }
 
     [McpServerTool(Name = "get_lilia_latex", Title = "Show Lilia's LaTeX", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("The LaTeX that Lilia's own emitter produces for one block or the whole document: what actually compiles here (Lilia's preamble, packages and block mapping), tagged source=\"lilia-emitter\". Prefer it to LaTeX written from memory.")]

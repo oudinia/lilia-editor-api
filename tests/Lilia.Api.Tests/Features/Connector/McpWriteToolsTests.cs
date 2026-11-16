@@ -95,6 +95,37 @@ public class McpWriteToolsTests : IntegrationTestBase
         title.GetProperty("keywords").EnumerateArray().Select(k => k.GetString()).Should().Equal("union-find", "amortised analysis");
     }
 
+    // get_document's LML is what apply_lml takes: a rewrite can start from the document as it is.
+    [Fact]
+    public async Task The_LML_get_document_gives_goes_back_through_apply_lml_unchanged()
+    {
+        await SeedUserAsync("mcpw_roundtrip");
+        var doc = await SeedDocumentAsync("mcpw_roundtrip", "Round trip");
+        var app = App("mcpw_roundtrip", "openid documents:read documents:write");
+        var made = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = """
+            @heading[level=1, label=sec:a]
+              Introduction
+            @paragraph
+              See Equation~(eq:e) and **bold** text.
+            @equation[mode=display, label=eq:e]
+              E = mc^2
+            @list[kind=bullet]
+              - one
+              - two
+            """ });
+        made.TryGetProperty("error", out _).Should().BeFalse(made.ToString());
+
+        var before = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
+        var again = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = before.GetProperty("lml").GetString() });
+        again.TryGetProperty("error", out _).Should().BeFalse(again.ToString());
+        var after = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
+
+        static IEnumerable<string> Shape(JsonElement d) => d.GetProperty("blocks").EnumerateArray()
+            .Where(b => b.GetProperty("type").GetString() != "title")
+            .Select(b => b.GetProperty("type").GetString() + " " + b.GetProperty("content").GetRawText());
+        Shape(after).Should().Equal(Shape(before));
+    }
+
     [Fact]
     public async Task An_app_without_the_write_scope_may_read_but_not_edit_and_is_told_how_to_allow_it()
     {

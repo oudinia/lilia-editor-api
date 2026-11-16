@@ -22,7 +22,7 @@ public class LiliaMcpServerTests : IntegrationTestBase
 
     private static readonly string[] ReadTools =
     [
-        "list_documents", "get_outline", "get_block", "search_document", "get_lilia_latex",
+        "list_documents", "get_outline", "get_document", "get_block", "search_document", "get_lilia_latex",
         "get_document_settings", "check_document", "search_help", "get_help",
         // Read-only too: a download link, and where an import is.
         "export_document", "import_status",
@@ -86,7 +86,7 @@ public class LiliaMcpServerTests : IntegrationTestBase
         await SeedUserAsync("mcp_titles");
         var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-        tools.Should().HaveCount(23); // paste_content, 11 Nov 2026 (paste → LaTeX, phase 3)
+        tools.Should().HaveCount(24); // get_document, 17 Nov 2026 (the connector test)
         foreach (var t in tools)
         {
             var name = t.GetProperty("name").GetString();
@@ -121,6 +121,33 @@ public class LiliaMcpServerTests : IntegrationTestBase
 
         var block = await CallAsync(client, "get_block", new { documentId = doc.Id.ToString(), blockId = heading.Id.ToString() });
         block.GetProperty("type").GetString().Should().Be("heading");
+    }
+
+    // The connector test (17 Nov 2026): reading a whole paper took one get_block per block.
+    [Fact]
+    public async Task Get_document_gives_every_block_and_the_body_as_LML_in_pages()
+    {
+        await SeedUserAsync("mcp_getdoc");
+        var doc = await SeedDocumentAsync("mcp_getdoc", "Tides");
+        await SeedBlockAsync(doc.Id, "heading", """{"text":"Introduction","level":1}""", 0);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"The moon pulls the sea."}""", 1);
+        await SeedBlockAsync(doc.Id, "bibliography", """{"text":"@book{darwin1898, author={G. Darwin}, title={The Tides}, year={1898}}"}""", 2);
+        var client = CreateClientAs("mcp_getdoc");
+
+        var all = await CallAsync(client, "get_document", new { documentId = doc.Id.ToString() });
+        all.GetProperty("blockCount").GetInt32().Should().Be(3);
+        all.GetProperty("blocks").EnumerateArray().Select(b => b.GetProperty("type").GetString()).Should().Equal("heading", "paragraph", "bibliography");
+        all.GetProperty("blocks")[1].GetProperty("content").GetProperty("text").GetString().Should().Be("The moon pulls the sea.");
+        var lml = all.GetProperty("lml").GetString()!;
+        lml.Should().Contain("Introduction").And.Contain("The moon pulls the sea.").And.Contain("@bibliography").And.Contain("darwin1898");
+        // The last page: no nextOffset (the connector leaves nulls out).
+        (!all.TryGetProperty("nextOffset", out var none) || none.ValueKind == JsonValueKind.Null).Should().BeTrue();
+
+        var first = await CallAsync(client, "get_document", new { documentId = doc.Id.ToString(), offset = 0, limit = 2 });
+        first.GetProperty("blocks").GetArrayLength().Should().Be(2);
+        first.GetProperty("nextOffset").GetInt32().Should().Be(2);
+        var rest = await CallAsync(client, "get_document", new { documentId = doc.Id.ToString(), offset = 2, limit = 2 });
+        rest.GetProperty("blocks").GetArrayLength().Should().Be(1);
     }
 
     [Fact]
