@@ -1661,8 +1661,14 @@ public class LatexParser : ILatexParser
             }
             if (text == before) break;
         }
+        // A bare group with plain text in it ("\item {About work}", "{Certifying Institution}") is TeX grouping, not
+        // content: its braces leaked into list items (the document sweep, D-013, 16 Nov 2026). Only when nothing marks it
+        // as an argument or maths (no command name, ], }, \, ^ or _ right before it) and it holds no command.
+        text = BareGroup.Replace(text, m => m.Groups[1].Value);
         return text;
     }
+
+    private static readonly Regex BareGroup = new(@"(?<![A-Za-z\]}\\^_])\{([^{}\\]*)\}", RegexOptions.Compiled);
 
     private static long _mathSpanCallId;
 
