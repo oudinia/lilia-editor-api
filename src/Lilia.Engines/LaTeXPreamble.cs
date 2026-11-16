@@ -399,6 +399,9 @@ public static partial class LaTeXPreamble
   morekeywords={async,await,break,case,catch,class,const,continue,debugger,default,delete,do,else,export,extends,false,finally,for,function,if,import,in,instanceof,let,new,null,of,return,static,super,switch,this,throw,true,try,typeof,undefined,var,void,while,with,yield},
   sensitive=true, morecomment=[l]{//}, morecomment=[s]{/*}{*/},
   morestring=[b]', morestring=[b]"", morestring=[b]`}
+% Long code lines wrap at spaces, as in the .tex download: without it every code line wider than the
+% column ran into the margin in Lilia's own PDF (the connector's checks, 16 Nov 2026).
+\lstset{breaklines=true}
 
 % Algorithms & pseudocode
 % NOTE: we bundle algorithm + algorithmic (the legacy interface) only. The alternatives
@@ -498,6 +501,9 @@ public static partial class LaTeXPreamble
   morekeywords={async,await,break,case,catch,class,const,continue,debugger,default,delete,do,else,export,extends,false,finally,for,function,if,import,in,instanceof,let,new,null,of,return,static,super,switch,this,throw,true,try,typeof,undefined,var,void,while,with,yield},
   sensitive=true, morecomment=[l]{//}, morecomment=[s]{/*}{*/},
   morestring=[b]', morestring=[b]"", morestring=[b]`}
+% Long code lines wrap at spaces, as in the .tex download: without it every code line wider than the
+% column ran into the margin in Lilia's own PDF (the connector's checks, 16 Nov 2026).
+\lstset{breaklines=true}
 
 % Algorithms & pseudocode
 % NOTE: we bundle algorithm + algorithmic (the legacy interface) only. The alternatives
