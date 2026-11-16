@@ -640,6 +640,9 @@ public class LatexParser : ILatexParser
         // two-argument \cvitem family becomes text. Before the generic CV macros, which read \cvitem as four arguments.
         var isModernCv = ModernCv.Is(content);
         if (isModernCv) content = ModernCv.Mark(content);
+        // The "resume" template family (Jake's resume and forks): its own macros as CV entries (the document sweep, D-013, D-014).
+        var isResume = !isModernCv && ResumeTemplate.Is(content);
+        if (isResume) content = ResumeTemplate.Mark(content);
         content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
@@ -948,6 +951,7 @@ public class LatexParser : ILatexParser
         // Parse the content
         ParseContent(documentContent, document, options, tikz);
         if (isModernCv) ModernCv.Build(document);
+        else if (isResume) ResumeTemplate.Build(document);
 
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.
