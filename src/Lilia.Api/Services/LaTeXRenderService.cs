@@ -1011,7 +1011,8 @@ public class LaTeXRenderService : ILaTeXRenderService
         // Accents typed as a letter plus a combining mark (e + U+0301) stopped pdflatex ("Unicode character ́ (U+0301)
         // not set up"; the document sweep, E-015, 15 Nov 2026). Composed (NFC), they are the one character inputenc
         // knows (é). Canonical composition changes no ASCII, so LaTeX and line numbers are untouched.
-        latex = WithCatalogGaps(ComposeAccents(latex));
+        // Emoji are drawn by twemojis (EmojiLatex), before the catalog: an emoji drawn is no longer a gap.
+        latex = WithCatalogGaps(Lilia.Engines.EmojiLatex.Apply(ComposeAccents(latex), Lilia.Engines.EmojiLatex.Installed, StaticallyMapped));
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
 
