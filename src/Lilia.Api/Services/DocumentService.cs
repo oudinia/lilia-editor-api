@@ -709,10 +709,35 @@ public class DocumentService : IDocumentService
     /// A publisher profile (25 Oct 2026): an id sets the profile, its class and its options; "" clears
     /// the profile; an unknown id is refused (<see cref="PublisherProfileException"/>, 400). With no
     /// profile in the request, a class change away from the profile's class clears the profile.
+    ///
+    /// <para>Clearing also undoes what the profile set, when the document still has it: the class goes back to the
+    /// category's own (article, report, book; moderncv for a CV) and the profile's class options go. The editor
+    /// offers this as "None — Lilia's own layout", but the document stayed in revtex4-2 with [aip,preprint] (the
+    /// launch bot's #118, 16 Nov 2026). A class the author changed since is left as it is.</para>
     /// </summary>
     internal static void ApplyPublisherProfile(Document document, string? requested)
     {
-        if (requested is "") { document.PublisherProfile = null; return; }
+        if (requested is "")
+        {
+            if (Lilia.Engines.Publishers.PublisherProfiles.Find(document.PublisherProfile) is { } was
+                && string.Equals(was.DocumentClass, document.LatexDocumentClass, StringComparison.OrdinalIgnoreCase))
+            {
+                document.LatexDocumentClass = (document.DocumentCategory ?? "").ToLowerInvariant() switch
+                {
+                    "report" => "report",
+                    "book" => "book",
+                    "cv" => "moderncv",
+                    _ => "article",
+                };
+                var profileOptions = (was.ClassOptions ?? "").Split(',').Select(o => o.Trim()).Where(o => o.Length > 0)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var kept = (document.LatexDocumentClassOptions ?? "").Split(',').Select(o => o.Trim())
+                    .Where(o => o.Length > 0 && !profileOptions.Contains(o)).ToList();
+                document.LatexDocumentClassOptions = kept.Count == 0 ? null : string.Join(",", kept);
+            }
+            document.PublisherProfile = null;
+            return;
+        }
         if (requested is not null)
         {
             var profile = Lilia.Engines.Publishers.PublisherProfiles.Find(requested)

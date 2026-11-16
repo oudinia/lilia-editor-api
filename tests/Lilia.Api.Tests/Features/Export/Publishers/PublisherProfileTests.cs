@@ -46,7 +46,7 @@ public class PublisherProfileTests
         new() { Id = Guid.NewGuid(), Title = "T", OwnerId = "u", LatexDocumentClass = cls, PublisherProfile = profile };
 
     [Fact]
-    public void Setting_a_profile_sets_the_class_clearing_keeps_it_and_another_class_drops_the_profile()
+    public void Setting_a_profile_sets_the_class_clearing_restores_Lilias_and_another_class_drops_the_profile()
     {
         var doc = Doc();
         DocumentService.ApplyPublisherProfile(doc, "acm-sigconf-final");
@@ -55,7 +55,8 @@ public class PublisherProfileTests
         (doc.LatexDocumentClass, doc.LatexDocumentClassOptions).Should().Be(("llncs", null));
 
         DocumentService.ApplyPublisherProfile(doc, "");
-        (doc.PublisherProfile, doc.LatexDocumentClass).Should().Be((null, "llncs"), "clearing the profile leaves the class");
+        // Since 16 Nov 2026 (the launch bot's #118): "None — Lilia's own layout" undoes what the profile set.
+        (doc.PublisherProfile, doc.LatexDocumentClass, doc.LatexDocumentClassOptions).Should().Be((null, "article", null), "clearing the profile goes back to Lilia's own class");
 
         var moved = Doc("article", "ieee-conference");
         DocumentService.ApplyPublisherProfile(moved, null);
@@ -66,6 +67,30 @@ public class PublisherProfileTests
 
         var act = () => DocumentService.ApplyPublisherProfile(Doc(), "nature-2026");
         act.Should().Throw<PublisherProfileException>().WithMessage("*Unknown publisher profile*");
+    }
+
+    [Theory]
+    [InlineData("article", "article")]
+    [InlineData("report", "report")]
+    [InlineData("book", "book")]
+    [InlineData(null, "article")]
+    public void Clearing_a_profile_goes_back_to_the_categorys_class_and_drops_the_profiles_options(string? category, string expected)
+    {
+        var doc = Doc();
+        doc.DocumentCategory = category;
+        DocumentService.ApplyPublisherProfile(doc, "aip-review");
+        (doc.LatexDocumentClass, doc.LatexDocumentClassOptions).Should().Be(("revtex4-2", "aip,preprint"));
+        doc.LatexDocumentClassOptions += ",twoside"; // an option the author set since
+        DocumentService.ApplyPublisherProfile(doc, "");
+        (doc.PublisherProfile, doc.LatexDocumentClass, doc.LatexDocumentClassOptions).Should().Be((null, expected, "twoside"));
+    }
+
+    [Fact]
+    public void Clearing_keeps_a_class_the_author_changed_since()
+    {
+        var doc = Doc("IEEEtran", "aip-review"); // the class no longer the profile's
+        DocumentService.ApplyPublisherProfile(doc, "");
+        (doc.PublisherProfile, doc.LatexDocumentClass).Should().Be((null, "IEEEtran"));
     }
 
     [Fact]
