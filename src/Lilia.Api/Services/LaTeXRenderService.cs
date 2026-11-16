@@ -1149,10 +1149,12 @@ public class LaTeXRenderService : ILaTeXRenderService
                 var natbib = BibliographyPasses.UsesNatbib(latex, File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "");
                 await File.AppendAllTextAsync(auxPath1, BibliographyPasses.Bibcites(bbl, natbib));
                 var lists = await ReadListsAsync(tmpDir);
+                var auxBefore = await File.ReadAllTextAsync(auxPath1);
                 exitCode = await Pass();
                 var log2 = File.Exists(logPath) ? await File.ReadAllTextAsync(logPath) : "";
                 var lists2 = await ReadListsAsync(tmpDir);
-                if (BibliographyPasses.NeedsRerun(log2) || !lists.AsEnumerable().SequenceEqual(lists2))
+                if (BibliographyPasses.NeedsRerun(log2) || !lists.AsEnumerable().SequenceEqual(lists2)
+                    || BibliographyPasses.TocWidthsMoved(auxBefore, File.Exists(auxPath1) ? await File.ReadAllTextAsync(auxPath1) : ""))
                 {
                     Lilia.Core.Diagnostics.Timing.Mark("tex.pass 3");
                     exitCode = await Pass();
@@ -1160,11 +1162,15 @@ public class LaTeXRenderService : ILaTeXRenderService
             }
             else
             {
+                var auxPath2 = Path.Combine(tmpDir, "document.aux");
+                var auxBefore = File.Exists(auxPath2) ? await File.ReadAllTextAsync(auxPath2) : "";
                 exitCode = await Pass();
                 // A third pass when LaTeX asks for one ("Label(s) may have changed"): a contents that
                 // moves the pages after it left the second pass's references, and the accessible PDF's
                 // tags, one pass stale. veraPDF failed a tagged PDF with a contents on it (2 Nov).
-                if (File.Exists(logPath) && BibliographyPasses.NeedsRerun(await File.ReadAllTextAsync(logPath)))
+                // And when revtex measured its contents' numbers in this pass (TocWidthsMoved).
+                if ((File.Exists(logPath) && BibliographyPasses.NeedsRerun(await File.ReadAllTextAsync(logPath)))
+                    || BibliographyPasses.TocWidthsMoved(auxBefore, File.Exists(auxPath2) ? await File.ReadAllTextAsync(auxPath2) : ""))
                 {
                     Lilia.Core.Diagnostics.Timing.Mark("tex.pass 3");
                     exitCode = await Pass();

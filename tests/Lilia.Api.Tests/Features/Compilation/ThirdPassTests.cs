@@ -37,4 +37,31 @@ The target is on page \pageref{target}.
         page.Should().BeGreaterThan(1);
         pages[page - 1].Should().Contain($"The target is on page {page}.");
     }
+
+    // The launch bot's #118 (16 Nov 2026): revtex4-2 sizes its contents' number boxes from widths the pass before
+    // measured, and asks for no rerun. Two passes printed "IIntroduction"; the third lays it out.
+    [Fact]
+    public async Task A_revtex_contents_has_room_for_its_numbers()
+    {
+        const string tex = @"\documentclass[aip,preprint]{revtex4-2}
+\begin{document}
+\tableofcontents
+\section{Introduction}
+Text.
+\section{Methods}
+\subsection{Setup}
+Text.
+\end{document}";
+        var pdf = await new LaTeXRenderService(NullLogger<LaTeXRenderService>.Instance).RenderToPdfAsync(tex, "pdflatex", timeout: 120);
+        var text = await Tool("pdftotext", pdf, "-");
+        text.Should().Contain("I. Introduction").And.Contain("II. Methods");
+    }
+
+    [Fact]
+    public void Only_a_change_in_revtexs_widths_asks_for_another_pass()
+    {
+        BibliographyPasses.TocWidthsMoved("\\relax\n", "\\relax\n\\gdef \\tocmax@section{18.68pt}\n").Should().BeTrue();
+        BibliographyPasses.TocWidthsMoved("\\gdef \\tocmax@section{18.68pt}\n", "\\gdef \\tocmax@section{18.68pt}\n").Should().BeFalse();
+        BibliographyPasses.TocWidthsMoved("\\relax\n\\newlabel{a}{{1}{1}}\n", "\\relax\n\\newlabel{a}{{1}{2}}\n").Should().BeFalse("other .aux changes are LaTeX's rerun check's");
+    }
 }
