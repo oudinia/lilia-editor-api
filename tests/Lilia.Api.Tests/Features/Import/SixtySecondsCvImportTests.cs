@@ -31,6 +31,9 @@ public class SixtySecondsCvImportTests
 
         cv.Where(b => b.BlockType == "cvSection").Select(b => J(b.Content["title"])).Should()
             .Contain(t => t.Contains("Working Experience")).And.Contain(t => t.Contains("Publications"));
+        // The launch bot's #119: a \cvsubsection is unnumbered, as the template prints it ("0.1 Postgraduate Training").
+        doc.Elements.OfType<ImportHeading>().Should().Contain(h => h.Text.Contains("Postgraduate Training"))
+            .And.OnlyContain(h => !h.Numbered || h.Level == 1);
         var entries = cv.Where(b => b.BlockType == "cvEntry").Select(b => J(b.Content)).ToList();
         entries.Should().Contain(e => e.Contains("Post-Doc Panda Studies") && e.Contains("Panda Academy") && e.Contains("2009"));
         entries.Should().Contain(e => e.Contains("Back to Cosmos") && e.Contains("Progress in Physics"));
