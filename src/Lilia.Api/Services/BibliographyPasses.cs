@@ -130,6 +130,19 @@ internal static class BibliographyPasses
             || flat.Contains("Rerun to get", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// revtex4-2 (APS, AIP) sizes its contents' number boxes from the widest number, which the pass that typesets the
+    /// contents measures and writes to the .aux (<c>\gdef \tocmax@section{…}</c>); only the next pass uses it, and it asks
+    /// for no rerun. Two passes left the numbers running into the titles ("IIntroduction"; the launch bot's #118,
+    /// 16 Nov 2026). True when a pass changed those widths: one more pass lays the contents out.
+    /// </summary>
+    public static bool TocWidthsMoved(string auxBefore, string auxAfter)
+    {
+        static string Widths(string aux) => string.Join("\n", aux.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith(@"\gdef \tocmax@", StringComparison.Ordinal)));
+        var after = Widths(auxAfter);
+        return after.Length > 0 && after != Widths(auxBefore);
+    }
+
     /// <summary>The lists a pass reads from the one before (contents, figures, tables).</summary>
     public static readonly string[] ListExtensions = [".toc", ".lof", ".lot"];
 }
