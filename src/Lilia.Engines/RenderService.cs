@@ -3332,7 +3332,9 @@ public partial class RenderService : IRenderService
         // Escape any remaining literal $ that were not part of a $...$ math pair
         // (e.g. currency "$100"). These arrive here as plain $ because the math
         // protection in Step 1 only replaced matched pairs.
-        result = result.Replace("$", @"\$");
+        // A dollar the author already escaped (\$5) is left as it is: escaping it again made \\$, a line break followed
+        // by a $ that opened maths ("Missing $ inserted"; the document sweep, chunk 2, after API #565, 16 Nov 2026).
+        result = Regex.Replace(result, @"(?<!\\)\$", @"\$");
 
         // Step 3: Convert inline formatting markers whose delimiters are
         // safe across the escape pass (`*`, `_`, `` ` ``, `=` are NOT in
