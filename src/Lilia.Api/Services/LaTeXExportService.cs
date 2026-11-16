@@ -947,8 +947,12 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine();
         sb.AppendLine(@"\begin{document}");
         sb.AppendLine();
-        sb.AppendLine(@"\maketitle");
-        sb.AppendLine();
+        // A CV's header is its Personal information block (CvHeader): no name-and-date title above it.
+        if (!CvHeader.ReplacesTitle(blocks))
+        {
+            sb.AppendLine(@"\maketitle");
+            sb.AppendLine();
+        }
         if (abstractBlock is null) return;
         if (inputAbstract) sb.AppendLine(@"\input{frontmatter/abstract}");
         else sb.AppendLine(AbstractEnv());

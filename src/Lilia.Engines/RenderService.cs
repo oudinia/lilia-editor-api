@@ -1323,7 +1323,8 @@ public partial class RenderService : IRenderService
         else
             latex.AppendLine(@"\date{\today}");
         latex.AppendLine(@"\begin{document}");
-        latex.AppendLine(@"\maketitle");
+        // A CV's header is its Personal information block (CvHeader): no name-and-date title above it.
+        if (!CvHeader.ReplacesTitle(blocks)) latex.AppendLine(@"\maketitle");
         latex.AppendLine();
 
         return AppendBodyAndBibliography(doc, latex, blocks, blocks, renderedBlocks, usesNatbib);
