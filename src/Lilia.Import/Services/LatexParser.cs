@@ -956,6 +956,10 @@ public class LatexParser : ILatexParser
         // document lost its contents (the document sweep's chunk 7, 16 Nov 2026).
         // A counter set by hand goes with its arguments: \setcounter{page}{123} left "page{123}" in the text.
         documentContent = Regex.Replace(documentContent, @"\\(?:setcounter|addtocounter)\s*\{[^{}]*\}\s*\{[^{}]*\}", "");
+        // A sectioning command with an empty title (\subsection*{} to start a layout, a template's placeholder) has no
+        // heading to make: the heading pattern needs a title, so it stayed in the text as a bare "\subsection*" that took
+        // the next line (the import sweep's hipster CV, D-015; the TeX Stack Exchange sweep's W-315, 16 Nov 2026).
+        documentContent = Regex.Replace(documentContent, @"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*(?:\[\s*\])?\s*\{\s*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\newpage\b", "");
         documentContent = Regex.Replace(documentContent, @"\\clearpage\b", "");
 
