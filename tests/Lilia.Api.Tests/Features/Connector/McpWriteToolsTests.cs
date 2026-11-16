@@ -71,6 +71,30 @@ public class McpWriteToolsTests : IntegrationTestBase
         (await db.DocumentVersions.CountAsync(v => v.DocumentId == doc.Id)).Should().Be(1);
     }
 
+    // The connector test (17 Nov 2026): set_title replaced the whole title block, so a call with the title alone erased
+    // the author and date, and every call dropped the keywords (which IEEE and ACM ask for, and which it couldn't set).
+    [Fact]
+    public async Task Set_title_changes_only_what_it_is_given_and_sets_keywords()
+    {
+        await SeedUserAsync("mcpw_title");
+        var doc = await SeedDocumentAsync("mcpw_title", "A paper");
+        await SeedBlockAsync(doc.Id, "title", """{"title":"A paper","author":"Ada Lovelace","date":"1843","keywords":["engines"],"affiliation":"Analytical Society"}""", 0);
+        var app = App("mcpw_title", "openid documents:read documents:write");
+
+        var r = await CallAsync(app, "set_title", new { documentId = doc.Id.ToString(), title = "A better paper" });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        var r2 = await CallAsync(app, "set_title", new { documentId = doc.Id.ToString(), title = "A better paper", keywords = "union-find, amortised analysis" });
+        r2.TryGetProperty("error", out _).Should().BeFalse(r2.ToString());
+
+        await using var db = CreateDbContext();
+        var title = (await db.Blocks.SingleAsync(b => b.DocumentId == doc.Id && b.Type == "title")).Content.RootElement;
+        title.GetProperty("title").GetString().Should().Be("A better paper");
+        title.GetProperty("author").GetString().Should().Be("Ada Lovelace");
+        title.GetProperty("date").GetString().Should().Be("1843");
+        title.GetProperty("affiliation").GetString().Should().Be("Analytical Society");
+        title.GetProperty("keywords").EnumerateArray().Select(k => k.GetString()).Should().Equal("union-find", "amortised analysis");
+    }
+
     [Fact]
     public async Task An_app_without_the_write_scope_may_read_but_not_edit_and_is_told_how_to_allow_it()
     {
