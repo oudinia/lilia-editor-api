@@ -54,14 +54,25 @@ public static partial class EmojiLatex
     public static string Apply(string latex, IReadOnlySet<string> known, IReadOnlySet<int> mapped)
     {
         if (known.Count == 0) return latex;
-        const string begin = @"\begin{document}";
-        var at = latex.IndexOf(begin, StringComparison.Ordinal);
+        var at = latex.IndexOf(Begin, StringComparison.Ordinal);
         if (at < 0) return latex;
-        var bodyStart = at + begin.Length;
-        var body = latex[bodyStart..];
-        if (!body.Any(char.IsSurrogate) && !body.Contains('\uFE0F')) return latex;
+        var body = DrawText(latex[(at + Begin.Length)..], known, mapped, out var replaced);
+        return replaced ? latex[..at] + Package + Begin + body : latex;
+    }
 
-        var replaced = false;
+    private const string Begin = @"\begin{document}";
+
+    /// <summary>The line that loads the package, for a preamble.</summary>
+    public const string Package = "% [lilia] Emoji as pictures (twemojis)\n\\usepackage{twemojis}\n";
+
+    /// <summary>
+    /// A piece of LaTeX body with its emoji drawn (code listings and verbatim text left alone); <paramref name="replaced"/>
+    /// says whether the package is needed. For a project's chapter files, whose preamble is elsewhere.
+    /// </summary>
+    public static string DrawText(string body, IReadOnlySet<string> known, IReadOnlySet<int> mapped, out bool replaced)
+    {
+        replaced = false;
+        if (known.Count == 0 || (!body.Any(char.IsSurrogate) && !body.Contains('\uFE0F'))) return body;
         var sb = new StringBuilder(body.Length + 64);
         var last = 0;
         foreach (Match m in Literal().Matches(body))
@@ -70,9 +81,16 @@ public static partial class EmojiLatex
             last = m.Index + m.Length;
         }
         sb.Append(Draw(body[last..], known, mapped, ref replaced));
-        if (!replaced) return latex;
-        return latex[..at] + "% [lilia] Emoji as pictures (twemojis)\n\\usepackage{twemojis}\n" + begin + sb;
+        return replaced ? sb.ToString() : body;
     }
+
+    /// <summary>The code points the shared preamble's list maps (<see cref="LaTeXPreamble.UnicodeShims"/>): left to it.</summary>
+    public static IReadOnlySet<int> SharedListMapped { get; } = Regex
+        .Matches(LaTeXPreamble.UnicodeShims, @"\\newunicodechar\{(.+?)\}\{")
+        .Select(m => m.Groups[1].Value)
+        .Where(c => c.Length > 0)
+        .Select(c => char.ConvertToUtf32(c, 0))
+        .ToHashSet();
 
     private static string Draw(string text, IReadOnlySet<string> known, IReadOnlySet<int> mapped, ref bool replaced)
     {
