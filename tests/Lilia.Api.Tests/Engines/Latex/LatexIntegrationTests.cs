@@ -26,7 +26,9 @@ public class LatexIntegrationTests : IAsyncLifetime
 {
     private readonly RenderService _renderService;
     private static bool _dockerAvailable;
-    private static readonly string TmpBase = Path.Combine(Path.GetTempPath(), "lilia-latex-tests");
+    // One folder per user (16 Nov 2026): a run with sudo on 15 Nov left /tmp/lilia-latex-tests owned by root, and every
+    // test here then failed with "Access to the path … is denied" in the nightly run. Another user's folder can't block this one.
+    private static readonly string TmpBase = Path.Combine(Path.GetTempPath(), $"lilia-latex-tests-{Environment.UserName}");
 
     /// <summary>
     /// The TeX image these tests compile against.
