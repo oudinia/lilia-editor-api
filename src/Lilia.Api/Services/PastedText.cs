@@ -107,7 +107,16 @@ public static class PastedText
             });
             var title = string.IsNullOrWhiteSpace(doc.Title) ? null : doc.Title;
             if (doc.Elements.Count == 0)
+            {
+                // A whole document whose body holds nothing the parser keeps (only \titlepage or \maketitle): its title
+                // page, as a Title block from \title, \author and \date, or nothing. The source as one paragraph, the
+                // fallback for text that isn't LaTeX, put \documentclass and the preamble in the body, and the PDF
+                // stopped (the document sweep's chunk 7, a TeX Stack Exchange deck, 16 Nov 2026).
+                if (IsWholeDocument(content))
+                    return new PastedBlocks("LATEX", title, false,
+                        LatexImportJobExecutor.TitleBlockFor(doc) is { } only ? [new PastedBlock(only.type, only.content)] : [], null);
                 return new PastedBlocks("LATEX", title, false, [new PastedBlock("paragraph", new { text = content })], "paragraph");
+            }
             // The upload path's mapping (LatexImportJobExecutor), not a copy: a copy had drifted before (15 Oct).
             return new PastedBlocks("LATEX", title, false,
                 LatexImportJobExecutor.MapElements(doc.Elements).Select(x => new PastedBlock(x.type, x.content)).ToList(), null)
@@ -120,6 +129,13 @@ public static class PastedText
             warn?.Invoke(ex, "LaTeX parsing failed, falling back to a code block");
             return new PastedBlocks("LATEX", null, false, [new PastedBlock("code", new { code = content, language = "latex" })], "code");
         }
+    }
+
+    /// <summary>A whole LaTeX document: a \documentclass and a \begin{document}, outside comments.</summary>
+    internal static bool IsWholeDocument(string content)
+    {
+        var code = System.Text.RegularExpressions.Regex.Replace(content, @"(?m)(?<!\\)%.*$", "");
+        return code.Contains(@"\documentclass", StringComparison.Ordinal) && code.Contains(@"\begin{document}", StringComparison.Ordinal);
     }
 
     private static PastedBlock FromJson(JsonElement block) => new(
