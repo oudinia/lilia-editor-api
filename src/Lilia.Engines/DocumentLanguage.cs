@@ -137,7 +137,14 @@ public static class DocumentLanguage
             sb.Append(@"\babelprovide[import,main]{").Append(spec.Babel).Append("}\n");
             // Latin letters in a right-to-left document are English, in the Latin font: set in the Arabic or
             // Hebrew face, their commas and full stops took that script's shapes (، for ,) and 17.8 read 8،17.
-            if (spec.Rtl) sb.Append(@"\babelprovide[import,onchar=ids fonts]{english}").Append('\n');
+            if (spec.Rtl)
+            {
+                sb.Append(@"\babelprovide[import,onchar=ids fonts]{english}").Append('\n');
+                // Code reads left to right whatever the document's language: in an Arabic or Hebrew document a code
+                // block was set right to left, print('ok') printed as ('ok')print (the document sweep, L-368, L-397,
+                // 16 Nov 2026). Each listing is set in English, which babel lays out left to right.
+                sb.Append(RtlCodeHooks);
+            }
         }
         else
         {
@@ -148,6 +155,10 @@ public static class DocumentLanguage
         if (spec.Cleveref is { } c) sb.Append(@"\PassOptionsToPackage{").Append(c).Append("}{cleveref}\n");
         return sb.ToString();
     }
+
+    /// <summary>A code listing in a right-to-left document, set left to right (in English).</summary>
+    internal const string RtlCodeHooks =
+        "\\AddToHook{env/lstlisting/before}{\\begin{otherlanguage}{english}}\n\\AddToHook{env/lstlisting/after}{\\end{otherlanguage}}\n";
 
     private static string PreambleWith(LanguageSpec spec, IReadOnlyList<LanguageSpec> others)
     {
