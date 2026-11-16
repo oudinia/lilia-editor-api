@@ -464,7 +464,7 @@ public class TypstExportService : ITypstExportService
                 // Match both the canonical camelCase (BlockTypes constants)
                 // and the all-lowercase forms that legacy / imported data
                 // stores. Same casing tolerance the LaTeX path applies.
-                "tableOfContents" or "tableofcontents" or "toc" => "#outline()",
+                "tableOfContents" or "tableofcontents" or "toc" => TocTitle.Custom(content) is { } tocTitle ? $"#outline(title: [{FormatInline(tocTitle)}])" : "#outline()",
                 "pageBreak" or "pagebreak" or "page_break" => "#pagebreak()",
                 "columnBreak" or "columnbreak" or "column_break" => "#colbreak()",
                 "embed" => RenderEmbed(content),

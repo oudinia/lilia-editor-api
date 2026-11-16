@@ -94,7 +94,7 @@ public partial class RenderService
                 "blockquote" or "quote" => RenderBlockquoteToMarkdown(content),
                 "theorem" => RenderTheoremToMarkdown(content, ReadLabel(content)),
                 "abstract" => RenderAbstractToMarkdown(content),
-                "tableofcontents" => "## Table of Contents",
+                "tableofcontents" => "## " + (TocTitle.Custom(content) ?? "Table of Contents"),
                 "bibliography" => "",
                 "pagebreak" or "divider" or "columnbreak" => "---",
                 "columnlayout" => RenderColumnLayoutToMarkdown(content),

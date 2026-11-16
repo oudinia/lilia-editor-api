@@ -205,7 +205,7 @@ public partial class RenderService : IRenderService
                 "theorem" => RenderTheoremToHtml(content),
                 "abstract" => RenderAbstractToHtml(content),
                 "title" => RenderTitleToHtml(content),
-                "tableofcontents" => "<div class=\"table-of-contents\"><h3>Table of Contents</h3><p>Auto-generated from headings</p></div>",
+                "tableofcontents" => $"<div class=\"table-of-contents\"><h3>{WebUtility.HtmlEncode(TocTitle.Custom(content) ?? "Table of Contents")}</h3><p>Auto-generated from headings</p></div>",
                 "bibliography" => RenderBibliographyToHtml(content),
                 "columnbreak" => "<div class=\"column-break\"><span class=\"column-break-label\">Column Break</span></div>",
                 "columnlayout" => RenderColumnLayoutToHtml(content),
@@ -1490,7 +1490,7 @@ public partial class RenderService : IRenderService
                 // Title is preamble metadata (\title/\author/\date) consumed into
                 // the preamble + \maketitle; it renders nothing in the body.
                 "title" => "",
-                "tableofcontents" => @"\tableofcontents",
+                "tableofcontents" => RenderTableOfContentsToLatex(content),
                 "columnbreak" => @"\liliaColumnBreak",
                 // ePub block types: their text prints rather than vanishing (MCP-42, MCP-83).
                 "verse" or "aside" or "annotation" => RenderEpubTextToLatex(block.Type.ToLowerInvariant(), content),
@@ -1585,6 +1585,15 @@ public partial class RenderService : IRenderService
             && a.ValueKind == JsonValueKind.String && a.GetString() is "center" or "right" or "justify"
             ? a.GetString()
             : null;
+
+    /// <summary>
+    /// The contents, under the block's own title when the author set one (<see cref="TocTitle"/>). \providecommand
+    /// first: a class without \contentsname (beamer without babel) would otherwise stop at the \renewcommand.
+    /// </summary>
+    private string RenderTableOfContentsToLatex(JsonElement content) =>
+        TocTitle.Custom(content) is { } title
+            ? $@"\providecommand{{\contentsname}}{{}}\renewcommand{{\contentsname}}{{{ProcessLatexText(title)}}}" + "\n" + @"\tableofcontents"
+            : @"\tableofcontents";
 
     private string RenderAbstractToLatex(JsonElement content)
     {

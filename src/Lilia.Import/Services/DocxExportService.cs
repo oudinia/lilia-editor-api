@@ -332,7 +332,7 @@ public class DocxExportService : IDocxExportService
             "abstract" => ConvertAbstract(block),
             "bibliography" => ConvertBibliography(options, document),
             "pagebreak" => ConvertPageBreak(),
-            "tableofcontents" => ConvertTableOfContents(),
+            "tableofcontents" => ConvertTableOfContents(block),
             "algorithm" => ConvertAlgorithm(block),
             "callout" => ConvertCallout(block),
             "footnote" => ConvertFootnote(block, mainPart),
@@ -1580,7 +1580,7 @@ public class DocxExportService : IDocxExportService
         return [para];
     }
 
-    private IEnumerable<OpenXmlElement> ConvertTableOfContents()
+    private IEnumerable<OpenXmlElement> ConvertTableOfContents(ExportBlock block)
     {
         var elements = new List<OpenXmlElement>();
 
@@ -1589,7 +1589,7 @@ public class DocxExportService : IDocxExportService
         var headingPPr = new ParagraphProperties();
         headingPPr.Append(new ParagraphStyleId { Val = "TOCHeading" });
         headingPara.Append(headingPPr);
-        headingPara.AppendChild(new Run(new Text("Contents")));
+        headingPara.AppendChild(new Run(new Text(string.IsNullOrWhiteSpace(block.Content?.Text) ? "Contents" : block.Content.Text)));
         elements.Add(headingPara);
 
         // TOC field

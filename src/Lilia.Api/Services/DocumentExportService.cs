@@ -647,7 +647,7 @@ public class DocumentExportService : IDocumentExportService
             "frontmatter" or "backmatter" => ConvertMatterBlock(content),
             "abstract" => ConvertAbstractBlock(content),
             "pagebreak" => ConvertPageBreakBlock(),
-            "tableofcontents" => ConvertTableOfContentsBlock(),
+            "tableofcontents" => ConvertTableOfContentsBlock(content),
             "algorithm" => ConvertAlgorithmBlock(content),
             "callout" => ConvertCalloutBlock(content),
             "footnote" => ConvertFootnoteBlock(content),
@@ -1376,12 +1376,13 @@ public class DocumentExportService : IDocumentExportService
         };
     }
 
-    private ExportBlock ConvertTableOfContentsBlock()
+    private ExportBlock ConvertTableOfContentsBlock(JsonElement content)
     {
         return new ExportBlock
         {
             Type = "tableOfContents",
-            Content = new ExportBlockContent()
+            // The block's own title when the author set one; null keeps Word's "Contents" (TocTitle, 16 Nov 2026).
+            Content = new ExportBlockContent { Text = TocTitle.Custom(content) }
         };
     }
 
