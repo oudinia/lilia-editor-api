@@ -1852,13 +1852,18 @@ public partial class RenderService : IRenderService
             {
                 var network = s.TryGetProperty("network", out var nEl) ? nEl.GetString() : "";
                 var handle = s.TryGetProperty("handle", out var hEl) ? hEl.GetString() : "";
+                // A link is clickable, like the homepage (the launch bot's #119: SixtySecondsCV's GitHub and Overleaf links
+                // printed as plain text); a handle (@sparrow) stays text.
                 if (!string.IsNullOrEmpty(handle))
-                    sb.AppendLine(@$"\small\textbf{{{EscapeLatex(network ?? "")}:}} {EscapeLatex(handle)}\par");
+                    sb.AppendLine(@$"\small\textbf{{{EscapeLatex(network ?? "")}:}} {(IsWebLink(handle) ? $@"\url{{{handle}}}" : EscapeLatex(handle))}\par");
             }
         if (!string.IsNullOrEmpty(extra))
             sb.AppendLine($@"\smallskip\textit{{{EscapeLatex(extra)}}}\par");
         return sb.ToString().TrimEnd();
     }
+
+    private static bool IsWebLink(string value) =>
+        Regex.IsMatch(value, @"^https?://[^\s{}\\%#]+$", RegexOptions.IgnoreCase);
 
     private string RenderPhotoToLatex(JsonElement content)
     {

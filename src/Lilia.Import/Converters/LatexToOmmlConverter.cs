@@ -79,6 +79,10 @@ public class LatexToOmmlConverter : ILatexToOmmlConverter
         [@"\sharp"] = "♯", [@"\flat"] = "♭", [@"\natural"] = "♮", [@"\checkmark"] = "✓",
     };
 
+    /// <summary>The character a symbol command prints (<c>\varnothing</c> → ∅), for text that can't hold maths.</summary>
+    internal static bool TryCommandChar(string command, out string character) =>
+        CommandToChar.TryGetValue(command, out character!);
+
     private static readonly Dictionary<string, string> NaryOps = new(StringComparer.Ordinal)
     {
         [@"\sum"] = "∑", [@"\prod"] = "∏", [@"\int"] = "∫",

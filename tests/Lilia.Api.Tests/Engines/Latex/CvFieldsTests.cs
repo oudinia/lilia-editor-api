@@ -25,6 +25,35 @@ public class CvFieldsTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
+    // The launch bot's #119 (SixtySecondsCV): the sidebar's GitHub and Overleaf links printed as plain text; only the
+    // homepage was a link. A link is clickable now; a handle stays text.
+    [Fact]
+    public void A_social_link_is_clickable_and_a_handle_stays_text()
+    {
+        var latex = _render.RenderBlockToLatex(B("personalInfo", Json(new
+        {
+            name = "Raging Bull",
+            socials = new object[]
+            {
+                new { network = "github", handle = "https://github.com/LaGuer/SixtySecondsCV" },
+                new { network = "twitter", handle = "@sparrow_x" },
+            },
+        })));
+        latex.Should().Contain(@"\url{https://github.com/LaGuer/SixtySecondsCV}");
+        latex.Should().Contain(@"@sparrow\_x").And.NotContain(@"\url{@sparrow");
+    }
+
+    // The launch bot's #119: "($\varnothing\, 1,0$)" in an entry's title stayed raw LaTeX (a CV field is plain text).
+    // Maths made only of symbols becomes what it prints; anything else is left as written.
+    [Theory]
+    [InlineData(@"Master Theses ($\varnothing\, 1,0$)", "Master Theses (∅ 1,0)")]
+    [InlineData(@"Grade $\alpha$ and $\leq 3$", "Grade α and ≤ 3")]
+    [InlineData(@"Score $x^2$", @"Score $x^2$")]
+    [InlineData(@"Cost \$5 to \$7", @"Cost \$5 to \$7")]
+    [InlineData(@"Odd $\notacommand$", @"Odd $\notacommand$")]
+    public void Symbol_maths_in_a_CV_field_becomes_its_characters(string field, string expected) =>
+        ModernCv.Clean(field).Should().Be(expected);
+
     [Fact]
     public void Guessed_entry_fields_become_lilias()
     {
