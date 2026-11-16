@@ -683,7 +683,7 @@ public class TypstRenderService : ITypstRenderService
             mathRegions.Add($"$ {m.Groups[1].Value} $");
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
-        result = Regex.Replace(result, @"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", m =>
+        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$(?!\$)", m =>
         {
             mathRegions.Add($"${m.Groups[1].Value}$");
             return $"\x00MATH{mathRegions.Count - 1}\x00";

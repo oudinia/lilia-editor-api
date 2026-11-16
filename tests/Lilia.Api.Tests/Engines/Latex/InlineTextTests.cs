@@ -60,6 +60,27 @@ public class InlineTextTests
         foreach (var e in expected) exported.Should().Contain(e);
     }
 
+    // The document sweep, chunk 2 (16 Nov 2026): a dollar the author escaped (\$5) beside a formula was taken as the
+    // formula's opening sign, and the formula's closing sign was escaped: "Missing $ inserted", the rest of the block lost.
+    [Theory]
+    [InlineData(@"It costs \$5 and $x=1$ here.")]
+    [InlineData(@"$x=1$ and it costs \$5.")]
+    [InlineData(@"Between \$5 and \$10, with $a<b$.")]
+    public void An_escaped_dollar_beside_maths_leaves_the_formula_whole(string text)
+    {
+        foreach (var latex in new[] { Render("paragraph", new { text }), Export(Doc(B("paragraph", new { text }))) })
+        {
+            latex.Should().NotContain(@"1\$").And.NotContain(@"b\$");   // the formula's closing sign stays a sign
+            latex.Should().Contain(@"\$5");                                  // the author's dollar stays text
+            latex.Should().Contain(text.Contains("x=1") ? "$x=1$" : "$a<b$");
+        }
+    }
+
+    [Fact]
+    public void Chemistry_in_an_abstract_loads_mhchem()
+        => Export(Doc(B("abstract", new { title = "Abstract", text = @"Water is \ce{H2O}." })))
+            .Should().Contain(@"\usepackage[version=4]{mhchem}");
+
     // ── MCP-25 ──────────────────────────────────────────────────────────
     [Fact]
     public void A_markdown_heading_anchor_is_its_label()
