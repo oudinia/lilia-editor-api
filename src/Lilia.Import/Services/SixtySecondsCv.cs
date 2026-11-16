@@ -8,8 +8,8 @@ namespace Lilia.Import.Services;
 /// Its four-argument \cvitem came in as raw text ("…2009 -- 2010}{Post-Doc Panda Studies}{Panda …") and the template
 /// wasn't recognised as a CV.
 ///
-/// <para>Before the parse (<see cref="Mark"/>), on the body only: \cvsection becomes a section and \cvsubsection a
-/// subsection; \cvitem{dates}{title}{organisation}{details} a CV entry (moderncv's entry marker, so
+/// <para>Before the parse (<see cref="Mark"/>), on the body only: \cvsection becomes a section and \cvsubsection an
+/// unnumbered subsection; \cvitem{dates}{title}{organisation}{details} a CV entry (moderncv's entry marker, so
 /// <see cref="ModernCv.Build(ImportDocument, bool)"/> builds it); \cvpubitem{title}{authors}{journal}{year} an entry;
 /// \cvitemshort{label}{text} a line "label: text"; the cvtable environment and the back sidebar go; \makefrontsidebar
 /// marks the Personal information block. Its fields are the preamble's \cvname, \cvjobtitle, \cvmail, \cvphone,
@@ -64,7 +64,9 @@ public static class SixtySecondsCv
         // The back sidebar, the signature and the watermark print nothing in Lilia's CV: they go (\cvsignature stopped the PDF).
         body = Regex.Replace(body, @"\\(?:makebacksidebar|cvsignature|watermark)\b", "");
         body = Regex.Replace(body, @"\\cvsection\*?\s*\{", @"\section{");
-        body = Regex.Replace(body, @"\\cvsubsection\*?\s*\{", @"\subsection{");
+        // Unnumbered, as the template prints it: numbered, "Postgraduate Training" printed as "0.1" under a CV section
+        // (which numbers nothing), and the check warned of a subsection before the first section (the launch bot's #119).
+        body = Regex.Replace(body, @"\\cvsubsection\*?\s*\{", @"\subsection*{");
         body = ModernCv.Expand(body, "cvpubitem", 4, a => ModernCv.EntryMarker([a[3], a[0], a[2], "", "", a[1]]), argumentsAcrossLines: true);
         body = ModernCv.Expand(body, "cvitemshort", 2, a => $"\n\n\\textbf{{{a[0]}}}: {a[1]}\n\n", argumentsAcrossLines: true);
         // \cvitem{dates}{title}{organisation}{details}, the details often on the next line.
