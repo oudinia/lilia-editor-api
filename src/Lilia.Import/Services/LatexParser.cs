@@ -651,6 +651,10 @@ public class LatexParser : ILatexParser
         var isSixty = !isModernCv && !isResume && !isAltaCv && SixtySecondsCv.Is(content);
         var sixtyHeader = isSixty ? SixtySecondsCv.ReadHeader(content) : null;
         if (isSixty) content = SixtySecondsCv.Mark(content);
+        // Twenty Seconds CV and its forks: \twentyitem as CV entries, the preamble's \cvname… as Personal information (V-011).
+        var isTwenty = !isModernCv && !isResume && !isAltaCv && !isSixty && TwentySecondsCv.Is(content);
+        var twentyHeader = isTwenty ? TwentySecondsCv.ReadHeader(content) : null;
+        if (isTwenty) content = TwentySecondsCv.Mark(content);
         content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
@@ -962,6 +966,7 @@ public class LatexParser : ILatexParser
         else if (isResume) ResumeTemplate.Build(document);
         else if (isAltaCv) AltaCv.Build(document, altaHeader!);
         else if (isSixty) SixtySecondsCv.Build(document, sixtyHeader!);
+        else if (isTwenty) TwentySecondsCv.Build(document, twentyHeader!);
 
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.
