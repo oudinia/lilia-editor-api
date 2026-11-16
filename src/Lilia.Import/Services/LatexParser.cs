@@ -655,6 +655,10 @@ public class LatexParser : ILatexParser
         var isTwenty = !isModernCv && !isResume && !isAltaCv && !isSixty && TwentySecondsCv.Is(content);
         var twentyHeader = isTwenty ? TwentySecondsCv.ReadHeader(content) : null;
         if (isTwenty) content = TwentySecondsCv.Mark(content);
+        // The simple hipster CV: \simpleheader as Personal information, \cvevent and \cvdegree as CV entries (D-015, V-015).
+        var isHipster = !isModernCv && !isResume && !isAltaCv && !isSixty && !isTwenty && HipsterCv.Is(content);
+        var hipsterHeader = isHipster ? HipsterCv.ReadHeader(content) : null;
+        if (isHipster) content = HipsterCv.Mark(content);
         content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
@@ -974,6 +978,7 @@ public class LatexParser : ILatexParser
         else if (isAltaCv) AltaCv.Build(document, altaHeader!);
         else if (isSixty) SixtySecondsCv.Build(document, sixtyHeader!);
         else if (isTwenty) TwentySecondsCv.Build(document, twentyHeader!);
+        else if (isHipster) HipsterCv.Build(document, hipsterHeader!);
 
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.
