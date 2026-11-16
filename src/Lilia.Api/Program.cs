@@ -358,8 +358,10 @@ if (!string.IsNullOrEmpty(stytchProjectId) && !string.IsNullOrEmpty(stytchJwksUr
                 ValidateIssuer = true,
                 // Session tokens say stytch.com/<project>; Connected Apps tokens (MCP sign-in)
                 // say the project domain they were issued through.
-                ValidIssuers = new[] { stytchIssuer, Lilia.Api.Mcp.McpOAuth.AuthorizationServer(builder.Configuration) }
-                    .Where(i => !string.IsNullOrEmpty(i)).Select(i => i!).ToArray(),
+                // Plus Stytch:AdditionalIssuers (comma-separated): the issuer before a move to a custom auth domain
+                // (16 Nov 2026: auth.liliaeditor.com, so Claude's connector sees one issuer everywhere), so tokens
+                // issued under the old address keep working until they expire.
+                ValidIssuers = Lilia.Api.Mcp.McpOAuth.ValidIssuers(stytchIssuer, builder.Configuration),
                 ValidateAudience = true,
                 ValidAudience = stytchProjectId,
                 ValidateLifetime = true,

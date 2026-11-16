@@ -35,6 +35,16 @@ public static class McpOAuth
         (config["Mcp:PublicOrigin"] ?? config["Email:BaseUrl"] ?? "https://editor.liliaeditor.com").TrimEnd('/');
 
     /// <summary>The Stytch project domain that issues the tokens (no trailing slash).</summary>
+    /// <summary>
+    /// The token issuers the API accepts: Stytch's session issuer (stytch.com/&lt;project&gt;), the authorization server
+    /// (Connected Apps tokens, the MCP sign-in), and Stytch:AdditionalIssuers, comma-separated (an address the project
+    /// issued under before, kept while its tokens are alive).
+    /// </summary>
+    public static string[] ValidIssuers(string? sessionIssuer, IConfiguration config) =>
+        new[] { sessionIssuer, AuthorizationServer(config) }
+            .Concat((config["Stytch:AdditionalIssuers"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(i => i.TrimEnd('/')))
+            .Where(i => !string.IsNullOrEmpty(i)).Select(i => i!).Distinct(StringComparer.Ordinal).ToArray();
+
     public static string? AuthorizationServer(IConfiguration config) =>
         config["Mcp:AuthorizationServer"]?.TrimEnd('/') is { Length: > 0 } s ? s : null;
 
