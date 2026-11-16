@@ -72,17 +72,32 @@ public sealed class LiliaMcpTools(
         new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
 
     [McpServerTool(Name = "list_documents", Title = "List documents", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("List the author's documents (their own and those shared with them), most recently changed first: id, title, role (owner/editor/viewer), when it changed, block count, and the last validation (errors, warnings).")]
+    [Description("List the author's documents (their own and those shared with them), most recently changed first: id, title, role (owner/editor/viewer), when it changed, block count, and the last validation (errors, warnings). One page at a time: total says how many there are, and nextOffset (null on the last page) is the offset for the next page.")]
     public async Task<object> ListDocuments(
         [Description("Optional words to find in titles.")] string? search = null,
-        [Description("How many to return, 1 to 50. Default 20.")] int limit = 20)
+        [Description("How many to return, 1 to 50. Default 20.")] int limit = 20,
+        [Description("How many to skip, for the next page: pass the previous answer's nextOffset. Default 0.")] int offset = 0,
+        [Description("\"changed\" (default): last changed first. \"warnings\": most warnings in the last validation first. \"errors\": most errors first. Never-validated documents count as 0.")] string? sort = null)
     {
-        var list = await documents.GetDocumentsAsync(UserId, string.IsNullOrWhiteSpace(search) ? null : search.Trim());
+        // Paged in the database (16 Nov 2026): the list took the 100 most recently opened, kept 50
+        // at most and said nothing of the rest, so an author with more could neither reach them nor
+        // learn how many they had. Now offset + total, and the owner's "documents ordered by max warnings".
+        var order = string.IsNullOrWhiteSpace(sort) ? "changed" : sort.Trim().ToLowerInvariant();
+        if (order is not ("changed" or "warnings" or "errors"))
+            return new { error = $"Unknown sort '{sort}'. Use \"changed\", \"warnings\" or \"errors\"." };
+        var take = Math.Clamp(limit, 1, 50);
+        var skip = Math.Max(0, offset);
+        var page = await documents.GetDocumentsPaginatedAsync(
+            UserId, pageSize: take, search: string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            sortBy: order, skip: skip);
+        var next = skip + page.Items.Count;
         return new
         {
-            documents = list
-                .OrderByDescending(d => d.UpdatedAt)
-                .Take(Math.Clamp(limit, 1, 50))
+            total = page.TotalCount,
+            offset = skip,
+            sort = order,
+            nextOffset = page.Items.Count > 0 && next < page.TotalCount ? next : (int?)null,
+            documents = page.Items
                 .Select(d => new
                 {
                     id = d.Id,
