@@ -18,12 +18,39 @@ public static class EquationLatex
         @"^\\begin\{(equation|align|gather|multline|flalign|alignat|eqnarray)(\*?)\}([\s\S]*)\\end\{\1\2\}$",
         RegexOptions.Compiled);
 
+    /// <summary>What an equation with unbalanced braces prints instead of itself.</summary>
+    public const string UnbalancedNote = "This equation has an unclosed or extra brace, so it is left out of the PDF: fix it in the editor.";
+
+    /// <summary>True when every unescaped { has its }, and no } closes nothing (\{ and \} are text).</summary>
+    public static bool BracesBalance(string latex)
+    {
+        var depth = 0;
+        for (var i = 0; i < latex.Length; i++)
+        {
+            var c = latex[i];
+            if (c == '\\') { i++; continue; }
+            if (c == '{') depth++;
+            else if (c == '}' && --depth < 0) return false;
+        }
+        return depth == 0;
+    }
+
     public static string Render(JsonElement content)
     {
         var latex = EquationContent.ReadMathSource(content);
         // MathLive leaves placeholders in an equation it was editing.
         latex = latex.Replace("\\placeholder{}", "").Replace("\\placeholder", "");
         if (string.IsNullOrWhiteSpace(latex)) return "% Empty equation";
+
+        // One equation with an unclosed brace stopped the whole LaTeX PDF ("File ended while scanning use of \frac"; the
+        // document sweep, E-025, 16 Nov 2026): every other block was lost with it. It now prints as a red note in its place;
+        // the rest of the document compiles, and the document check still points at the block.
+        if (!BracesBalance(latex))
+        {
+            var (m, _) = EquationContent.ReadMode(content);
+            return m == "inline" ? $@"\textcolor{{red}}{{{UnbalancedNote}}}"
+                : @"\begin{center}\fbox{\parbox{0.9\linewidth}{\centering\small\textcolor{red}{" + UnbalancedNote + @"}}}\end{center}";
+        }
 
         var (mode, numbered) = EquationContent.ReadMode(content);
         var label = content.ValueKind == JsonValueKind.Object && content.TryGetProperty("label", out var lbl)
