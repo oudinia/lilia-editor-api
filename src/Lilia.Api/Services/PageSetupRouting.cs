@@ -95,6 +95,9 @@ public static class ContentRouting
                 if (LatexOnly.IsMatch(text)) return $"LaTeX or Lilia marks in a {type} block";
                 if (Lilia.Engines.CurrencyDollar.Protect(text, _ => "\u0001").Contains('\u0001')) return $"a price in a {type} block";
                 if (text.Contains('$')) return $"maths in a {type} block";
+                // Emoji are LaTeX's to draw (EmojiLatex, twemojis): Typst on the server has no emoji font, and 🚀 printed
+                // as an empty box in the Automatic PDF and preview (16 Nov 2026).
+                if (Lilia.Engines.EmojiLatex.Contains(text)) return $"emoji in a {type} block";
             }
         }
         // Text in another language: its headings and word breaks are LaTeX's (DocumentLanguage).

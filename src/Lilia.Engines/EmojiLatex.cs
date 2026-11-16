@@ -94,6 +94,22 @@ public static partial class EmojiLatex
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Text holding an emoji, by the same reading <see cref="Apply"/> uses. Automatic sends such a document to LaTeX:
+    /// Typst on the server has no emoji font, so 🚀 printed as an empty box (16 Nov 2026).
+    /// </summary>
+    public static bool Contains(string text)
+    {
+        if (!text.Any(char.IsSurrogate) && !text.Contains('\uFE0F')) return false;
+        var cps = new List<int>(text.Length);
+        for (var i = 0; i < text.Length; i += char.IsSurrogatePair(text, i) ? 2 : 1) cps.Add(char.ConvertToUtf32(text, i));
+        for (var i = 0; i < cps.Count; i++)
+            if (IsStart(cps, i, NoneMapped)) return true;
+        return false;
+    }
+
+    private static readonly IReadOnlySet<int> NoneMapped = new HashSet<int>();
+
     /// <summary>An emoji starts here: a pictograph (U+1F000 up), or a symbol from the older blocks asking for its emoji form (U+FE0F).</summary>
     private static bool IsStart(List<int> cps, int i, IReadOnlySet<int> mapped)
     {
