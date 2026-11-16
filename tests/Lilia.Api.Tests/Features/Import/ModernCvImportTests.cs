@@ -114,6 +114,40 @@ public class ModernCvImportTests
         text.Should().NotContain("cvskill").And.NotContain("{").And.NotContain("}").And.NotContain("LILIACV");
     }
 
+    // The document sweep (D-018, 16 Nov 2026): moderncv's cover letter (\makelettertitle, \makeletterclosing) imported as
+    // unknown commands that stopped the PDF.
+    private const string CoverLetter = """
+        \documentclass{moderncv}
+        \name{John}{Doe}
+        \begin{document}
+        \recipient{Company Recruitment team}{Company, Inc.\\123 somestreet\\some city}
+        \date{January 01, 1984}
+        \opening{Dear Sir or Madam,}
+        \closing{Yours faithfully,}
+        \enclosure[Attached]{curriculum vitae}
+        \makelettertitle
+
+        I am writing to apply.
+
+        \makeletterclosing
+        \end{document}
+        """;
+
+    [Fact]
+    public async Task A_cover_letter_comes_in_as_its_paragraphs_in_order()
+    {
+        var doc = await Parse(CoverLetter);
+        var paragraphs = doc.Elements.OfType<ImportParagraph>().Select(p => p.Text.Trim()).ToList();
+        var text = string.Join("\n", paragraphs);
+
+        text.Should().Contain("Company Recruitment team").And.Contain("Company, Inc., 123 somestreet, some city")
+            .And.Contain("January 01, 1984").And.Contain("Dear Sir or Madam,").And.Contain("I am writing to apply.")
+            .And.Contain("Yours faithfully,").And.Contain("John Doe").And.Contain("Attached: curriculum vitae");
+        text.IndexOf("Dear Sir", StringComparison.Ordinal).Should().BeLessThan(text.IndexOf("I am writing", StringComparison.Ordinal));
+        text.IndexOf("I am writing", StringComparison.Ordinal).Should().BeLessThan(text.IndexOf("Yours faithfully", StringComparison.Ordinal));
+        text.Should().NotContain("makeletter").And.NotContain("recipient").And.NotContain("{").And.NotContain("}");
+    }
+
     [Fact]
     public async Task Nothing_leaks_as_LaTeX_or_brace_text()
     {
