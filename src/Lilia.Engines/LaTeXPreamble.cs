@@ -670,6 +670,15 @@ public static partial class LaTeXPreamble
 \newunicodechar{★}{\ensuremath{\bigstar}}
 \newunicodechar{☆}{\ensuremath{\star}}
 \newunicodechar{ℵ}{\ensuremath{\aleph}}
+% Number sets and the script l, in neither this list nor the catalog: ℝ stopped the PDF (the document sweep, E-015, 16 Nov 2026).
+\newunicodechar{ℝ}{\ensuremath{\mathbb{R}}}
+\newunicodechar{ℕ}{\ensuremath{\mathbb{N}}}
+\newunicodechar{ℤ}{\ensuremath{\mathbb{Z}}}
+\newunicodechar{ℚ}{\ensuremath{\mathbb{Q}}}
+\newunicodechar{ℂ}{\ensuremath{\mathbb{C}}}
+\newunicodechar{ℍ}{\ensuremath{\mathbb{H}}}
+\newunicodechar{ℙ}{\ensuremath{\mathbb{P}}}
+\newunicodechar{ℓ}{\ensuremath{\ell}}
 \newunicodechar{️}{}
 ";
 

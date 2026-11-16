@@ -39,7 +39,9 @@ public class PdfUnicodeCatalogTests
     public void Characters_the_static_list_lacks_come_from_the_catalog_before_the_body()
     {
         var latex = Service().WithCatalogGaps(Doc);
-        latex.Should().Contain(@"\newunicodechar{∮}{\ensuremath{\oint}}").And.Contain(@"\newunicodechar{ℝ}{\ensuremath{\mathbb{R}}}");
+        latex.Should().Contain(@"\newunicodechar{∮}{\ensuremath{\oint}}").And.Contain(@"\newunicodechar{⊗}{\ensuremath{\otimes}}");
+        // ℝ is in the static list since 16 Nov (E-015): the static list's mapping is used, not the catalog's.
+        latex.Should().NotContain(@"\newunicodechar{ℝ}");
         latex.IndexOf(@"\newunicodechar{∮}", StringComparison.Ordinal).Should().BeLessThan(latex.IndexOf(@"\begin{document}", StringComparison.Ordinal));
     }
 
