@@ -26,9 +26,16 @@ public class LatexIntegrationTests : IAsyncLifetime
 {
     private readonly RenderService _renderService;
     private static bool _dockerAvailable;
-    // One folder per user (16 Nov 2026): a run with sudo on 15 Nov left /tmp/lilia-latex-tests owned by root, and every
-    // test here then failed with "Access to the path … is denied" in the nightly run. Another user's folder can't block this one.
-    private static readonly string TmpBase = Path.Combine(Path.GetTempPath(), $"lilia-latex-tests-{Environment.UserName}");
+    // Under the user's own cache folder: /tmp/lilia-latex-tests was left owned by root (see below), and only sudo can remove it.
+    private static readonly string TmpBase = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "lilia-latex-tests");
+
+    // This test's own folder (16 Nov 2026). xUnit runs InitializeAsync/DisposeAsync around every test, and DisposeAsync
+    // used to delete the shared TmpBase after giving the cleanup container only 5 s. Under load the container started
+    // later, found its mount gone, and Docker recreated the folder as root: every following test failed with "Access to
+    // the path … is denied" (the nightly run of 16 Nov, 15 Nov 03:46 before it). Now each test cleans only its own
+    // folder, after its cleanup container has finished, and the shared folder is never deleted.
+    private readonly string _testRoot = Path.Combine(TmpBase, Guid.NewGuid().ToString("N"));
 
     /// <summary>
     /// The TeX image these tests compile against.
@@ -108,6 +115,7 @@ public class LatexIntegrationTests : IAsyncLifetime
         }
 
         Directory.CreateDirectory(TmpBase);
+        Directory.CreateDirectory(_testRoot);
     }
 
     public Task DisposeAsync()
@@ -123,17 +131,21 @@ public class LatexIntegrationTests : IAsyncLifetime
                 var psi = new ProcessStartInfo("docker") { UseShellExecute = false };
                 foreach (var argument in new[]
                          {
-                             "run", "--rm", "-v", $"{TmpBase}:/cleanup",
+                             "run", "--rm", "-v", $"{_testRoot}:/cleanup",
                              "alpine", "rm", "-rf", "/cleanup/.",
                          })
                 {
                     psi.ArgumentList.Add(argument);
                 }
 
-                Process.Start(psi)?.WaitForExit(5000);
+                // Delete the folder only once the container is done with it: a container that starts after the folder
+                // is gone makes Docker recreate it as root.
+                using var cleanup = Process.Start(psi);
+                if (cleanup is not null && !cleanup.WaitForExit(60_000))
+                    return Task.CompletedTask; // still running: leave the folder rather than race it
             }
 
-            Directory.Delete(TmpBase, true);
+            Directory.Delete(_testRoot, true);
         }
         catch { /* best-effort cleanup of a temp directory */ }
         return Task.CompletedTask;
@@ -172,7 +184,7 @@ public class LatexIntegrationTests : IAsyncLifetime
                 "or set LILIA_TEX_IMAGE to an image you have.");
         }
 
-        var testDir = Path.Combine(TmpBase, Guid.NewGuid().ToString("N"));
+        var testDir = Path.Combine(_testRoot, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(testDir);
 
         var texPath = Path.Combine(testDir, "test.tex");
