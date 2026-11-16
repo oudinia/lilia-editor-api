@@ -84,6 +84,32 @@ public class EmojiLatexTests
         EmojiLatex.Apply(src, new HashSet<string>(), Mapped).Should().Be(src);
     }
 
+    [Fact]
+    public void A_chapter_file_is_drawn_and_says_the_package_is_needed()
+    {
+        EmojiLatex.DrawText("Launch 🚀.\n\\begin{lstlisting}\n'🚀'\n\\end{lstlisting}", Known, Mapped, out var replaced)
+            .Should().Be("Launch \\texttwemoji{1f680}.\n\\begin{lstlisting}\n'🚀'\n\\end{lstlisting}");
+        replaced.Should().BeTrue();
+        EmojiLatex.DrawText("No emoji here, ✅ only.", Known, Mapped, out var none).Should().Be("No emoji here, ✅ only.");
+        none.Should().BeFalse();
+    }
+
+    [Fact]
+    public void The_shared_list_mapped_set_holds_its_ticks_and_stars() =>
+        EmojiLatex.SharedListMapped.Should().Contain(0x2705).And.Contain(0x2605);
+
+    // 16 Nov 2026: the downloaded .tex carried a raw 🚀, which stops pdflatex on Overleaf. It now carries the drawing.
+    [Fact]
+    public void The_downloaded_tex_carries_the_drawn_emoji()
+    {
+        if (EmojiLatex.Installed.Count == 0) return; // no TeX Live here: nothing to draw with
+        var doc = new Document { Id = Guid.NewGuid(), Title = "Emoji", Language = "en", PaperSize = "a4", FontFamily = "serif", FontSize = 11, LatexDocumentClass = "article" };
+        var para = new Block { Id = Guid.NewGuid(), Type = "paragraph", SortOrder = 0, Content = JsonDocument.Parse("""{"text":"Launch 🚀 now."}""") };
+        var tex = new LaTeXExportService(null!, null!, NullLogger<LaTeXExportService>.Instance).BuildSingleFileLatex(doc, [para], [], new LaTeXExportOptions());
+        tex.Should().Contain(@"\texttwemoji{1f680}").And.NotContain("🚀");
+        tex.IndexOf(@"\usepackage{twemojis}", StringComparison.Ordinal).Should().BeLessThan(tex.IndexOf(@"\begin{document}", StringComparison.Ordinal));
+    }
+
     [Trait("Category", "RequiresTeX")]
     [Fact]
     public async Task A_paper_with_emoji_compiles_with_pdflatex()

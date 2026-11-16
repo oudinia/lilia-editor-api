@@ -75,6 +75,9 @@ public class LaTeXExportService : ILaTeXExportService
         var main = files.First(f => f.Path == "main.tex").Content;
         if (LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass) is var cls && PublisherClasses.Is(cls))
             main = PublisherClasses.Finish(main, cls);
+        else
+            // The .tex download (ExportController) comes through here too: emoji drawn as in GenerateProject (WithEmoji).
+            main = EmojiLatex.Apply(main, EmojiLatex.Installed, EmojiLatex.SharedListMapped);
         var bib = files.FirstOrDefault(f => f.Path == "references.bib")?.Content;
         return bib is null ? main : WithBibInside(main, bib);
     }
@@ -320,6 +323,11 @@ public class LaTeXExportService : ILaTeXExportService
             var everything = string.Join("\n", files.Where(f => f.Path.EndsWith(".tex", StringComparison.Ordinal)).Select(f => f.Content));
             files = files.Select(f => f.Path.EndsWith(".tex", StringComparison.Ordinal) ? f with { Content = PublisherClasses.Finish(f.Content, publisherClass, everything) } : f).ToList();
         }
+        // Emoji are drawn by twemojis, as in Lilia's own PDF (API #577), so the project compiles as downloaded (Overleaf
+        // has the package): a raw 🚀 stopped pdflatex there (16 Nov 2026). Not in a publisher's project, which loads only
+        // the packages its publisher accepts.
+        else
+            files = WithEmoji(files);
         // A submission's figure files are named by their number (fig1.png), as publishers ask; the
         // images are written under the same names (ExportToZipAsync, WriteFiguresAsync).
         if (options.Submission && FigureFile.SubmissionNames(blocks.OrderBy(b => b.SortOrder)) is { Count: > 0 } figureNames)
@@ -1667,6 +1675,43 @@ public class LaTeXExportService : ILaTeXExportService
             if (files[i].Path.EndsWith(".tex"))
                 files[i] = files[i] with { Content = ToBiblatex(files[i].Content, style) };
         return files;
+    }
+
+    /// <summary>
+    /// Each .tex file's emoji drawn (<see cref="EmojiLatex"/>), and the package loaded: by main.tex when it holds the
+    /// preamble, else at the end of preamble.tex.
+    /// </summary>
+    private static List<ProjectFile> WithEmoji(List<ProjectFile> files)
+    {
+        var known = EmojiLatex.Installed;
+        if (known.Count == 0) return files;
+        var needed = false;
+        var result = files.Select(f =>
+        {
+            if (!f.Path.EndsWith(".tex", StringComparison.Ordinal) || f.Path == "preamble.tex") return f;
+            if (f.Content.Contains(@"\begin{document}", StringComparison.Ordinal))
+                return f with { Content = EmojiLatex.Apply(f.Content, known, EmojiLatex.SharedListMapped) };
+            var drawn = EmojiLatex.DrawText(f.Content, known, EmojiLatex.SharedListMapped, out var replaced);
+            needed |= replaced;
+            return replaced ? f with { Content = drawn } : f;
+        }).ToList();
+        if (!needed) return result;
+        var pi = result.FindIndex(f => f.Path == "preamble.tex");
+        if (pi >= 0)
+        {
+            if (!result[pi].Content.Contains(@"\usepackage{twemojis}", StringComparison.Ordinal))
+                result[pi] = result[pi] with { Content = result[pi].Content.TrimEnd() + "\n" + EmojiLatex.Package };
+            return result;
+        }
+        // No preamble file: main.tex holds it.
+        var mi = result.FindIndex(f => f.Path == "main.tex");
+        if (mi >= 0 && !result[mi].Content.Contains(@"\usepackage{twemojis}", StringComparison.Ordinal))
+        {
+            var main = result[mi].Content;
+            var at = main.IndexOf(@"\begin{document}", StringComparison.Ordinal);
+            if (at >= 0) result[mi] = result[mi] with { Content = main[..at] + EmojiLatex.Package + main[at..] };
+        }
+        return result;
     }
 
     private record ProjectFile(string Path, string Content);
