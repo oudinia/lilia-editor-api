@@ -44,10 +44,10 @@ public class TocTitleTests
     public void LaTeX_prints_a_custom_title_before_the_contents()
     {
         var latex = Render.RenderBlockToLatex(Toc("""{"title":"Overview & Plan"}"""));
-        latex.Should().Contain(@"\renewcommand{\contentsname}{Overview \& Plan}");
-        latex.IndexOf(@"\renewcommand", StringComparison.Ordinal).Should().BeLessThan(latex.IndexOf(@"\tableofcontents", StringComparison.Ordinal));
-        // A class without \contentsname (beamer without babel) would stop at a bare \renewcommand.
-        latex.Should().StartWith(@"\providecommand{\contentsname}{}");
+        latex.Should().Contain(@"\def\contentsname{Overview \& Plan}");
+        // revtex4-2 (APS, AIP) prints \tocname instead (the sweep's chunk 5: U-280, U-304, U-328, U-352).
+        latex.Should().Contain(@"\def\tocname{Overview \& Plan}");
+        latex.IndexOf(@"\def", StringComparison.Ordinal).Should().BeLessThan(latex.IndexOf(@"\tableofcontents", StringComparison.Ordinal));
     }
 
     [Theory]
