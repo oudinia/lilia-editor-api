@@ -40,6 +40,42 @@ public class LongTitleBlockTests : IntegrationTestBase
         block.Content.RootElement.GetProperty("title").GetString().Should().Be(title);
     }
 
+    // The launch bot's #117 (16 Nov 2026): the editor saved the cut name back as the document's title, and the reverse
+    // sync replaced the Title block's full title with it; the PDF printed the cut form.
+    [Fact]
+    public async Task Saving_the_cut_name_back_leaves_the_full_title_in_the_block()
+    {
+        var client = CreateClientAs(_userId);
+        var doc = (await (await client.PostAsJsonAsync("/api/documents", new { title = "Short" })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var title = string.Join(" ", Enumerable.Repeat("A very long title word", 15));
+        (await client.PostAsJsonAsync($"/api/documents/{doc}/blocks", new { type = "title", content = new { title, author = "A", date = "" }, sortOrder = 0 })).EnsureSuccessStatusCode();
+
+        string name;
+        await using (var db = CreateDbContext()) name = (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc)).Title;
+        (await client.PutAsJsonAsync($"/api/documents/{doc}", new { title = name })).EnsureSuccessStatusCode();
+
+        await using var check = CreateDbContext();
+        var block = await check.Blocks.AsNoTracking().FirstAsync(b => b.DocumentId == doc && b.Type == "title");
+        block.Content.RootElement.GetProperty("title").GetString().Should().Be(title);
+    }
+
+    [Fact]
+    public async Task A_long_rename_from_the_top_bar_saves_and_the_block_gets_the_full_title()
+    {
+        var client = CreateClientAs(_userId);
+        var doc = (await (await client.PostAsJsonAsync("/api/documents", new { title = "Short" })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await client.PostAsJsonAsync($"/api/documents/{doc}/blocks", new { type = "title", content = new { title = "Old", author = "A", date = "" }, sortOrder = 0 })).EnsureSuccessStatusCode();
+        var title = string.Join(" ", Enumerable.Repeat("Another long title word", 14));
+
+        var response = await client.PutAsJsonAsync($"/api/documents/{doc}", new { title });
+
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
+        await using var db = CreateDbContext();
+        (await db.Documents.AsNoTracking().FirstAsync(d => d.Id == doc)).Title.Length.Should().BeLessThanOrEqualTo(BlockService.DocumentNameMaxLength);
+        var block = await db.Blocks.AsNoTracking().FirstAsync(b => b.DocumentId == doc && b.Type == "title");
+        block.Content.RootElement.GetProperty("title").GetString().Should().Be(title);
+    }
+
     [Theory]
     [InlineData("Short title", "Short title")]
     [InlineData("  Padded  ", "Padded")]
