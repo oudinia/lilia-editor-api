@@ -43,4 +43,39 @@ public class SixtySecondsCvImportTests
     [Fact]
     public void Only_its_class_counts() =>
         SixtySecondsCv.Is("\\documentclass{article}\\begin{document}\\cvitem{a}{b}{c}{d}\\end{document}").Should().BeFalse();
+
+    // The launch bot's #119, on the repository's own file: the sidebar's \social{icon}{link}{text} came out as
+    // "web: \aiOverleafSquare", and \cvsignature and \watermark were left in the body (\cvsignature stopped the PDF).
+    [Fact]
+    public async Task The_sidebar_links_are_read_from_their_icon_and_the_signature_goes()
+    {
+        const string tex = """
+            \documentclass[a4paper]{sixtysecondscv}
+            \cvname{Raging Bull}
+            \addtofrontsidebar{
+              \begin{icontable}{2.5em}{1em}
+                \social{\aiOverleafSquare}
+                  {https://www.overleaf.com/latex/templates/x}
+                  {Overleaf Link}
+                \social{\faGithub}
+                  {https://github.com/LaGuer/SixtySecondsCV}
+                  {Github Project Page Link}
+              \end{icontable}
+            }
+            \begin{document}
+            \makefrontsidebar
+            \cvsection{Work}
+            \begin{cvtable}
+              \cvitem{2019}{Role}{Org}{Details.}
+            \end{cvtable}
+            \cvsignature
+            \watermark
+            \end{document}
+            """;
+        var doc = await new LatexParser().ParseTextAsync(tex);
+        var socials = J(doc.Elements.OfType<ImportCvBlock>().Single(b => b.BlockType == "personalInfo").Content["socials"]);
+        socials.Should().Contain("github").And.Contain("https://github.com/LaGuer/SixtySecondsCV").And.Contain("overleaf");
+        socials.Should().NotContain("aiOverleafSquare").And.NotContain(@"\\fa");
+        string.Join("\n", doc.Elements.OfType<ImportParagraph>().Select(p => p.Text)).Should().NotContain("cvsignature").And.NotContain("watermark");
+    }
 }

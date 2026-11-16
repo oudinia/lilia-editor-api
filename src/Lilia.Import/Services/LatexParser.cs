@@ -1559,6 +1559,16 @@ public class LatexParser : ILatexParser
     private static readonly Regex CrossReference = new(
         @"\\(?:eqref|cref|Cref|autoref|pageref|nameref|ref)\{([^}]+)\}", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Control spaces ("\ ": a backslash before a space or a line end, not the second half of \\) as spaces, outside
+    /// maths, where "\ " is real spacing.
+    /// </summary>
+    internal static string ControlSpaces(string text) => text.Contains('\\')
+        ? ControlSpaceOrMath.Replace(text, m => m.Value.StartsWith('$') || m.Value.StartsWith(@"\(") ? m.Value : " ")
+        : text;
+
+    private static readonly Regex ControlSpaceOrMath = new(@"\$\$[\s\S]*?\$\$|\$[^$]*\$|\\\([\s\S]*?\\\)|(?<!\\)\\(?:[ \t]|(?=\n))", RegexOptions.Compiled);
+
     private static string StripInlineCommandsForPlainText(string text)
     {
         text = CrossReference.Replace(text, "$1");
@@ -1568,6 +1578,7 @@ public class LatexParser : ILatexParser
         text = Regex.Replace(text, @"\\LaTeX(?:\{\})?", "LaTeX");
         text = Regex.Replace(text, @"\\TeX(?:\{\})?", "TeX");
         text = text.Replace("~", " ").Replace("\\,", " ");
+        text = ControlSpaces(text);
         return text.Trim();
     }
 
@@ -1723,6 +1734,10 @@ public class LatexParser : ILatexParser
         // (\Textcite and \Parencite lose their capital: natbib's \Citet is not among the preserved commands.)
         text = Regex.Replace(text, @"\\(textcite|Textcite|parencite|Parencite|autocite|Autocite)(?![A-Za-z])", m =>
             m.Groups[1].Value is "textcite" or "Textcite" ? @"\citet" : @"\citep");
+
+        // A control space ("Ph.D.\ in", after an abbreviation's full stop) is a space: it stayed as "\ " in the text
+        // (the launch bot's #119, AltaCV's sample, 16 Nov 2026). \\ (a line break) is left alone.
+        text = ControlSpaces(text);
 
         // Normalise escaped TeX marks first.
         // An empty {} pair only: \{?\}? took a lone } too, so "\part{Designing with \LaTeX}" lost its closing brace

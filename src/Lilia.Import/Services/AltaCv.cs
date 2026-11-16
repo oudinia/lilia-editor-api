@@ -141,8 +141,12 @@ public static class AltaCv
                 case "email": meta.Email ??= v; break;
                 case "phone": meta.Phones.Add(("mobile", v)); break;
                 case "homepage": meta.Homepage ??= v; break;
-                case "location": meta.Location = v; break;
-                case "mailaddress": meta.Location ??= v; break;
+                case "location":
+                    if (meta.Location is { } address && address != v) meta.ExtraInfo ??= address;
+                    meta.Location = v;
+                    break;
+                // Both a place and a mailing address: the address is the extra line (it was dropped; the launch bot's #119).
+                case "mailaddress": if (meta.Location is null) meta.Location = v; else meta.ExtraInfo ??= v; break;
                 case "xtwitter": meta.Socials.Add(("twitter", v)); break;
                 default:
                     if (field is "linkedin" or "github" or "gitlab" or "twitter" or "orcid" or "mastodon" or "stackoverflow" or "researchgate" or "googlescholar")
