@@ -49,6 +49,20 @@ public static class TikzFigure
         "tikzstyle", "pgfdeclarelayer", "pgfsetlayers",
     };
 
+    /// <summary>
+    /// TikZ and PGF commands that declare something with a body, by their number of brace arguments. Each is kept
+    /// whole: before, only a <c>\tikzset</c> inside the body was taken, and the declaration around it was lost, so
+    /// its <c>#1</c> stopped the PDF ("Illegal parameter number", the document sweep's TeX Stack Exchange answers,
+    /// W-367, 16 Nov 2026).
+    /// </summary>
+    private static readonly Dictionary<string, int> Declarations = new(StringComparer.Ordinal)
+    {
+        ["tikzdeclarecoordinatesystem"] = 2,
+        ["pgfdeclareshape"] = 2,
+        ["pgfmathdeclarefunction"] = 3,
+        ["pgfdeclaredecoration"] = 3,
+    };
+
     private static readonly Regex PgfplotsUse = new(
         @"\\begin\{(?:axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|groupplot|ternaryaxis|smithchart)\}|\\addplot\b|\\pgfplotsset\b",
         RegexOptions.Compiled);
@@ -241,8 +255,10 @@ public static class TikzFigure
             },
             onCommand: (name, start, nameEnd) =>
             {
-                if (!SetupCommands.Contains(name)) return null;
-                var end = ReadArguments(text, name, nameEnd);
+                int end;
+                if (Declarations.TryGetValue(name, out var count)) end = ReadGroups(text, nameEnd, count);
+                else if (SetupCommands.Contains(name)) end = ReadArguments(text, name, nameEnd);
+                else return null;
                 if (end < 0) return null;
                 spans.Add((start, end - start));
                 return end;
@@ -391,6 +407,17 @@ public static class TikzFigure
         k = SkipSpaces(text, k + 1);
         var bracket = ReadGroup(text, k, '[', ']');
         return bracket < 0 ? end : bracket;
+    }
+
+    /// <summary>Past <paramref name="count"/> brace groups, spaces between them allowed; -1 when one is missing.</summary>
+    private static int ReadGroups(string text, int i, int count)
+    {
+        for (var n = 0; n < count; n++)
+        {
+            i = ReadGroup(text, SkipSpaces(text, i), '{', '}');
+            if (i < 0) return -1;
+        }
+        return i;
     }
 
     private static int SkipSpaces(string text, int i)

@@ -23,6 +23,35 @@ public class TikzFigureTests
 {
     // ── helpers ─────────────────────────────────────────────────────────
 
+    // W-367 (the document sweep's TeX Stack Exchange answers, 16 Nov 2026): a coordinate system declared in the
+    // preamble lost everything but the \tikzset inside it, so its #1 stopped the PDF. The declaration is kept whole.
+    [Fact]
+    public async Task A_declared_coordinate_system_is_kept_whole()
+    {
+        const string tex = """
+            \documentclass{article}
+            \usepackage{tikz}
+            \usetikzlibrary{calc}
+            \tikzset{3D/.cd, x/.store in=\xx, x=0}
+            \tikzdeclarecoordinatesystem{3D}{%
+              \tikzset{3D/.cd,#1}%
+              \pgfpoint{\xx pt}{0pt}%
+            }
+            \pgfmathdeclarefunction{twice}{1}{\pgfmathparse{2*#1}}
+            \begin{document}
+            \begin{tikzpicture}\draw (0,0) -- (3D cs:x=1);\end{tikzpicture}
+            \end{document}
+            """;
+        var doc = await ImportAsync(tex);
+
+        doc.CustomPreamble.Should().Contain("\\tikzdeclarecoordinatesystem{3D}{%\n  \\tikzset{3D/.cd,#1}%\n  \\pgfpoint{\\xx pt}{0pt}%\n}")
+            .And.Contain("\\pgfmathdeclarefunction{twice}{1}{\\pgfmathparse{2*#1}}")
+            .And.Contain("\\tikzset{3D/.cd, x/.store in=\\xx, x=0}");
+        System.Text.RegularExpressions.Regex.Matches(doc.CustomPreamble!, @"\\tikzset\{3D/\.cd,#1\}").Should().HaveCount(1,
+            "the \\tikzset inside the declaration isn't also taken out on its own");
+        TikzFigure.SetupLines(doc.CustomPreamble).Should().Contain("\\pgfpoint", "the figure's own compile gets the whole declaration");
+    }
+
     internal static async Task<Document> ImportAsync(string tex)
     {
         var parsed = await new LatexParser().ParseTextAsync(tex);
