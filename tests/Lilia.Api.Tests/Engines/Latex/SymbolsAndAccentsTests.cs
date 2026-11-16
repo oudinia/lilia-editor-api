@@ -13,11 +13,12 @@ namespace Lilia.Api.Tests.Engines.Latex;
 /// </summary>
 public class SymbolsAndAccentsTests
 {
-    private const string Text = "Results ✅ and caveats ⚠️, done ✓, failed ✗ ✘ ❌, note ❗ ❓, rating ★★☆, ℵ, café, naïve.";
+    private const string Text = "Results ✅ and caveats ⚠️, done ✓, failed ✗ ✘ ❌, note ❗ ❓, rating ★★☆, ℵ, café, naïve, ℝ ℕ ℤ ℚ ℂ ℍ ℙ ℓ.";
 
     [Theory]
     [InlineData("✅")] [InlineData("✓")] [InlineData("✔")] [InlineData("✗")] [InlineData("✘")] [InlineData("❌")]
     [InlineData("⚠")] [InlineData("❗")] [InlineData("❓")] [InlineData("★")] [InlineData("☆")] [InlineData("ℵ")] [InlineData("\uFE0F")]
+    [InlineData("ℝ")] [InlineData("ℕ")] [InlineData("ℤ")] [InlineData("ℚ")] [InlineData("ℂ")] [InlineData("ℍ")] [InlineData("ℙ")] [InlineData("ℓ")]
     public void The_shared_preamble_maps_the_symbol(string symbol)
         => LaTeXPreamble.Packages.Should().Contain($"\\newunicodechar{{{symbol}}}");
 
