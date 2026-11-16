@@ -215,6 +215,8 @@ public static class ModernCv
     internal static string Clean(string text)
     {
         var t = text.Replace("---", "—").Replace("--", "–").Replace("~", " ").Replace(@"\\", " ");
+        // A control space ("Prof.\ Alpha Beta") is a space (the launch bot's #119).
+        t = LatexParser.ControlSpaces(t);
         t = Regex.Replace(t, @"\\(textbf|emph|textit)\{([^{}]*)\}", "$2");
         return Regex.Replace(t, @"\s+", " ").Trim();
     }

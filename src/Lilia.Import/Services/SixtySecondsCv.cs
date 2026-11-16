@@ -22,7 +22,11 @@ public static class SixtySecondsCv
         Regex.IsMatch(content, @"(?m)^[^%\n]*\\documentclass\s*(\[[^\]]*\])?\s*\{sixtysecondscv\}", RegexOptions.Singleline);
 
     /// <summary>The header fields, from the preamble.</summary>
-    public sealed record Header(string Name, string JobTitle, string Email, string Phone, string Site, string Address);
+    public sealed record Header(string Name, string JobTitle, string Email, string Phone, string Site, string Address)
+    {
+        /// <summary>The sidebar's \social{icon}{link}{text}: (network, link).</summary>
+        public IReadOnlyList<(string Network, string Link)> Socials { get; init; } = [];
+    }
 
     public static Header ReadHeader(string content)
     {
@@ -34,7 +38,17 @@ public static class SixtySecondsCv
             ModernCv.Expand(preamble, name, 1, a => { if (value.Length == 0) value = a[0]; return ""; });
             return ModernCv.Clean(Regex.Replace(value, @"\\\\(\[[^\]]*\])?", " "));
         }
-        return new Header(Field("cvname"), Field("cvjobtitle"), Field("cvmail"), Field("cvphone"), Field("cvsite"), Field("cvaddress"));
+        // \social{\faGithub}{https://…}{text}: the icon names the network. The generic \social[network]{handle} reading
+        // took the icon as a "web" handle ("web: \aiOverleafSquare"; the launch bot's #119).
+        var socials = new List<(string, string)>();
+        ModernCv.Expand(preamble, "social", 3, a =>
+        {
+            var icon = Regex.Match(a[0], @"\\(?:fa|ai)([A-Za-z]+?)(?:Square|Alt)?\b");
+            var network = icon.Success ? icon.Groups[1].Value.ToLowerInvariant() : "web";
+            if (a[1].Trim().Length > 0) socials.Add((network, a[1].Trim()));
+            return "";
+        }, argumentsAcrossLines: true);
+        return new Header(Field("cvname"), Field("cvjobtitle"), Field("cvmail"), Field("cvphone"), Field("cvsite"), Field("cvaddress")) { Socials = socials };
     }
 
     /// <summary>Before the parse, on the body only.</summary>
@@ -47,7 +61,8 @@ public static class SixtySecondsCv
     private static string MarkBody(string body)
     {
         body = Regex.Replace(body, @"\\makefrontsidebar\b", $"\n\n{ModernCv.TitleMark}\n\n");
-        body = Regex.Replace(body, @"\\makebacksidebar\b", "");
+        // The back sidebar, the signature and the watermark print nothing in Lilia's CV: they go (\cvsignature stopped the PDF).
+        body = Regex.Replace(body, @"\\(?:makebacksidebar|cvsignature|watermark)\b", "");
         body = Regex.Replace(body, @"\\cvsection\*?\s*\{", @"\section{");
         body = Regex.Replace(body, @"\\cvsubsection\*?\s*\{", @"\subsection{");
         body = ModernCv.Expand(body, "cvpubitem", 4, a => ModernCv.EntryMarker([a[3], a[0], a[2], "", "", a[1]]), argumentsAcrossLines: true);
@@ -67,6 +82,8 @@ public static class SixtySecondsCv
         if (header.Phone.Length > 0) meta.Phones.Add(("mobile", header.Phone));
         if (header.Site.Length > 0) meta.Homepage = header.Site;
         if (header.Address.Length > 0) meta.Location = header.Address;
+        // The sidebar's own links, in place of what the generic \social reading made of them.
+        if (header.Socials.Count > 0) { meta.Socials.Clear(); meta.Socials.AddRange(header.Socials); }
         if (header.JobTitle.Length > 0) document.Title = header.JobTitle;
         ModernCv.Build(document, withPerson: true);
     }

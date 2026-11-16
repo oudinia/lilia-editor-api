@@ -51,6 +51,9 @@ public class AltaCvImportTests
         text.Should().NotContain("personalinfo").And.NotContain("accent!").And.NotContain("LILIACV").And.NotContain("{5}");
         text.Should().Contain("Sleep");                      // the wheel chart's slices, as a list
         text.Should().Contain("Hard-working · Eye for detail"); // the tags, as one line
+        // The launch bot's #119: control spaces ("Ph.D.\ in", "Prof.\ Alpha") stayed; the mailing address was dropped.
+        text.Should().NotContain(@".\ ");
+        J(person["extra"]).Should().Contain("Street");
     }
 
     [Fact]
