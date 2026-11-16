@@ -1615,10 +1615,49 @@ public class LatexParser : ILatexParser
             mathSpans.Add(written);
             return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
         });
+        text = DeclarationGroups(text);
         text = NormaliseInlineCommandsOutsideMath(text);
         return mathSpans.Count == 0
             ? text
             : Regex.Replace(text, $"\uE000{callId}:(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
+    }
+
+    private static readonly (Regex Rx, string Open, string Close)[] DeclarationGroupRules =
+    [
+        (new Regex(@"\{\\(?:bfseries|bf)\b\s*([^{}]*)\}", RegexOptions.Compiled), "**", "**"),
+        (new Regex(@"\{\\(?:itshape|it|em|slshape|sl)\b\s*([^{}]*)\}", RegexOptions.Compiled), "*", "*"),
+        (new Regex(@"\{\\(?:scshape|sc)\b\s*([^{}]*)\}", RegexOptions.Compiled), "^^", "^^"),
+        (new Regex(@"\{\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|rmfamily|sffamily|ttfamily|rm|sf|tt|mdseries|upshape|normalfont)\b\s*([^{}]*)\}", RegexOptions.Compiled), "", ""),
+    ];
+
+    /// <summary>
+    /// A group that starts with a declaration: {\bf x}, {\em x} and {\itshape x} become the editor's bold and italic marks,
+    /// small caps its ^^…^^, and a size or font family (no inline mark for those) just its text. The declaration alone
+    /// was stripped further on, and its braces stayed: {\small small text.} imported as "{ small text.}" (the document
+    /// sweep, D-067, 16 Nov 2026). Runs from the innermost group out.
+    /// </summary>
+    internal static string DeclarationGroups(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return text;
+        for (var pass = 0; pass < 6; pass++)
+        {
+            var before = text;
+            foreach (var (rx, open, close) in DeclarationGroupRules)
+            {
+                var current = text;
+                text = rx.Replace(current, m =>
+                {
+                    var inner = m.Groups[1].Value.Trim();
+                    var marked = inner.Length > 0 ? open + inner + close : "";
+                    // A command's argument (\textbf{\Large x}, \section[a]{\small x}, \href{u}{\bf x}) keeps its braces:
+                    // only the declaration inside goes. Removing them left "\textbfx" (the corpus tests).
+                    var argument = m.Index > 0 && (char.IsLetter(current[m.Index - 1]) || current[m.Index - 1] is ']' or '}');
+                    return argument ? "{" + marked + "}" : marked;
+                });
+            }
+            if (text == before) break;
+        }
+        return text;
     }
 
     private static long _mathSpanCallId;
