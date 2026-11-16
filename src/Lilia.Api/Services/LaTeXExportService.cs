@@ -838,8 +838,10 @@ public class LaTeXExportService : ILaTeXExportService
 
         // mhchem when the text uses \ce (LaTeXPreamble.MhchemLine), as the check loads it.
         if (!options.IncludeChemistry)
+            // Every block, not only the body's: \ce in an abstract (front matter, outside bodyBlocks) left mhchem unloaded,
+            // "Undefined control sequence" (the document sweep, chunk 2, M-058, 16 Nov 2026).
             sb.Append(LaTeXPreamble.MhchemLine(
-                (bodyBlocks ?? doc.Blocks ?? new List<Block>()).Select(b => b.Content.RootElement.ToString()),
+                (doc.Blocks ?? bodyBlocks ?? new List<Block>()).Select(b => b.Content.RootElement.ToString()),
                 doc.CustomPreamble, doc.LatexPackages));
 
         if (options.IncludeChemistry)
@@ -1178,7 +1180,10 @@ public class LaTeXExportService : ILaTeXExportService
         result = Regex.Replace(result, @"\$\$([^$]+)\$\$", m => Ph($"$${m.Groups[1].Value}$$"));
 
         // 1b. Inline math: $x^2$ → pass through as-is
-        result = Regex.Replace(result, @"\$([^$]+)\$", m => Ph($"${m.Groups[1].Value}$"));
+        // An escaped \$ (a dollar the author typed as text) is neither end of a formula: "costs \$5 and $x=1$" paired the
+        // escaped sign with the formula's opening one, set "5 and " as maths and escaped the formula's closing sign, so LaTeX
+        // said "Missing $ inserted" and the rest of the block was lost (the document sweep, chunk 2, M-006…M-078, 16 Nov 2026).
+        result = Regex.Replace(result, @"(?<!\\)\$([^$]+?)(?<!\\)\$", m => Ph($"${m.Groups[1].Value}$"));
 
         // 1b'. LaTeX-native math delimiters: \[ ... \] (display) and \( ... \) (inline).
         // Without this the EscapeLatex pass turns the backslashes into

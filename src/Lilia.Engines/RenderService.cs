@@ -900,7 +900,7 @@ public partial class RenderService : IRenderService
             m => $"<div class=\"display-math\" data-latex=\"{m.Groups[1].Value}\">$${m.Groups[1].Value}$$</div>");
 
         // Inline math: $...$ (but not $$...$$)
-        result = Regex.Replace(result, @"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)",
+        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$(?!\$)",
             m => $"<span class=\"inline-math\" data-latex=\"{m.Groups[1].Value}\">${m.Groups[1].Value}$</span>");
 
         // Bold: **...**
@@ -3158,7 +3158,7 @@ public partial class RenderService : IRenderService
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
-        result = Regex.Replace(result, @"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", m => {
+        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$(?!\$)", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
