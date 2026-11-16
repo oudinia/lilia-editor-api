@@ -593,7 +593,8 @@ public class DocumentService : IDocumentService
 
         if (dto.Title != null)
         {
-            document.Title = dto.Title;
+            // The name holds 255 characters (like a Title block's sync, API #557); the Title block gets the full text.
+            document.Title = BlockService.DocumentNameOf(dto.Title);
             // Bidirectional sync with the Title block: top-bar rename must
             // update content.title so LaTeX/Typst preview (which prefer the
             // Title block over documents.title) stays consistent.
@@ -776,9 +777,12 @@ public class DocumentService : IDocumentService
                     author = a.GetString() ?? "";
                 if (root.TryGetProperty("date", out var d) && d.ValueKind == JsonValueKind.String)
                     date = d.GetString() ?? "";
-                // Skip rewrite when title already matches (avoids dirty churn).
-                if (root.TryGetProperty("title", out var t) &&
-                    string.Equals(t.GetString()?.Trim(), title.Trim(), StringComparison.Ordinal))
+                // Skip rewrite when title already matches (avoids dirty churn), and when the name is only the block's
+                // title cut to the name's 255 characters: writing it back replaced a long title with its cut form,
+                // ellipsis and all, and the PDF printed that (the launch bot's #117, 16 Nov 2026).
+                if (root.TryGetProperty("title", out var t) && t.GetString() is { } current
+                    && (string.Equals(current.Trim(), title.Trim(), StringComparison.Ordinal)
+                        || string.Equals(BlockService.DocumentNameOf(current), title.Trim(), StringComparison.Ordinal)))
                     return;
             }
         }
