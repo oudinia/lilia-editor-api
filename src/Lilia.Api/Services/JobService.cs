@@ -654,7 +654,7 @@ public class JobService : IJobService
                 // The same reading as the paste preview (PastedText, 11 Nov 2026): a Lilia JSON export or Lilia text,
                 // Markdown or plain text, LaTeX (a full document or a fragment).
                 var pasted = PastedText.WithLeadingH1AsTitle(await PastedText.ParseAsync(request.Content, request.Format, _latexParser, _lmlTextParser,
-                    request.Options?.AutoDetectEquations ?? true, (ex, why) => _logger.LogWarning(ex, "[Import] {Why}", why)));
+                    request.Options?.AutoDetectEquations ?? true, (ex, why) => _logger.LogWarning(ex, "[Import] {Why}", why)), request.Content);
                 if (pasted.Fallback is not null)
                     _logger.LogWarning("[Import] {Format} import fell back to a single {Block} block", pasted.Format, pasted.Fallback);
 

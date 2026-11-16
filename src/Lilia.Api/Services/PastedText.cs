@@ -149,9 +149,24 @@ public static class PastedText
     /// becomes the title (in the title block, with any front-matter author and date). For a file's import only: pasted
     /// into a document, a level-1 heading is a section.
     /// </summary>
-    public static PastedBlocks WithLeadingH1AsTitle(PastedBlocks pasted)
+    public static PastedBlocks WithLeadingH1AsTitle(PastedBlocks pasted, string? source)
     {
         if (pasted.Format != "MARKDOWN" || pasted.Title is not null || pasted.Blocks.Count == 0) return pasted;
+        // The source's own "# " headings, outside code fences: the parsed levels are relative (a text whose top heading
+        // is "## Results" reads it as level 1), and "## Results" opening a chat answer is a section, not a title.
+        var fenced = false;
+        var h1 = new List<int>();
+        var lines = MarkdownFrontMatter.Read(source ?? "").Body.Split('\n');
+        var firstText = -1;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].TrimEnd('\r');
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal)) { fenced = !fenced; continue; }
+            if (fenced) continue;
+            if (firstText < 0 && line.Trim().Length > 0) firstText = i;
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, @"^#[ \t]+\S")) h1.Add(i);
+        }
+        if (h1.Count != 1 || h1[0] != firstText) return pasted;
         static int? Level(PastedBlock b) => b.Type == "heading" && ContentJson(b).RootElement is { ValueKind: JsonValueKind.Object } c
             && c.TryGetProperty("level", out var l) && l.TryGetInt32(out var n) ? n : null;
         if (Level(pasted.Blocks[0]) != 1 || pasted.Blocks.Skip(1).Any(b => Level(b) == 1)) return pasted;

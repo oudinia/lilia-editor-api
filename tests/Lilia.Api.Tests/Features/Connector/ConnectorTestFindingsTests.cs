@@ -63,8 +63,8 @@ public class ConnectorTestFindingsTests
     [Fact]
     public async Task A_markdown_file_opening_with_its_only_level_1_heading_takes_it_as_the_title()
     {
-        var pasted = PastedText.WithLeadingH1AsTitle(await PastedText.ParseAsync(
-            "# My paper\n\nSome text.\n\n## Method\n\nMore.", "MARKDOWN", new LatexParser(), null!, true, (_, _) => { }));
+        const string md = "# My paper\n\nSome text.\n\n## Method\n\nMore.";
+        var pasted = PastedText.WithLeadingH1AsTitle(await PastedText.ParseAsync(md, "MARKDOWN", new LatexParser(), null!, true, (_, _) => { }), md);
         pasted.Title.Should().Be("My paper");
         pasted.TitleBlock.Should().NotBeNull();
         JsonSerializer.Serialize(pasted.TitleBlock!.Content).Should().Contain("My paper");
@@ -75,9 +75,10 @@ public class ConnectorTestFindingsTests
     [Theory]
     [InlineData("Intro text first.\n\n# Section A\n\nText.")]
     [InlineData("# Part one\n\nText.\n\n# Part two\n\nText.")]
+    [InlineData("## Results\n\nThe loss drops.\n\n## Discussion\n\nMore.")]
     public async Task A_markdown_file_whose_level_1_headings_are_sections_keeps_them(string md)
     {
         var parsed = await PastedText.ParseAsync(md, "MARKDOWN", new LatexParser(), null!, true, (_, _) => { });
-        PastedText.WithLeadingH1AsTitle(parsed).Should().BeSameAs(parsed);
+        PastedText.WithLeadingH1AsTitle(parsed, md).Should().BeSameAs(parsed);
     }
 }
