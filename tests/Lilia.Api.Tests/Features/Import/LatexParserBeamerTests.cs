@@ -43,6 +43,36 @@ This slide introduces the topic.
                 "frame body lists should be emitted as list items");
     }
 
+    // W-315 (the document sweep's TeX Stack Exchange answers, 16 Nov 2026): an empty frame title left a bare
+    // \section* in the text, which took the figure after it as its title and stopped the PDF.
+    [Theory]
+    [InlineData(@"\begin{frame}
+  \frametitle{}
+")]
+    [InlineData(@"\begin{frame}{}
+")]
+    public async Task An_empty_frame_title_is_a_frame_without_a_title(string frameStart)
+    {
+        var src = @"
+\documentclass[demo]{beamer}
+\begin{document}
+" + frameStart + @"
+  \begin{figure}
+    \centering
+    \includegraphics{varweakness}
+    \caption{VaR as a quantile}
+  \end{figure}
+\end{frame}
+\end{document}";
+
+        var doc = await _parser.ParseTextAsync(src);
+
+        doc.Elements.OfType<ImportHeading>().Should().BeEmpty();
+        doc.Elements.OfType<ImportParagraph>().Should().NotContain(p => p.Text.Contains("section"));
+        doc.Elements.OfType<ImportImage>().Should().ContainSingle()
+            .Which.Caption.Should().Contain("VaR as a quantile");
+    }
+
     [Fact]
     public async Task Frame_with_options_and_title_still_emits_heading()
     {

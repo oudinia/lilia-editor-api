@@ -1188,6 +1188,15 @@ public class LatexParser : ILatexParser
             ? text
             : TikzToken.Replace(text, m => int.TryParse(m.Groups[1].Value, out var n) && n < stash.Count ? stash[n] : m.Value);
 
+    /// <summary>
+    /// A frame's title as an unnumbered heading; an empty one (<c>\frametitle{}</c>, <c>\begin{frame}{}</c>) is a frame
+    /// without a title. As <c>\section*{}</c> it wasn't read as a heading, and a bare <c>\section*</c> stayed in the
+    /// text, taking the next line as its title and stopping the PDF (the document sweep's TeX Stack Exchange answers,
+    /// W-315, 16 Nov 2026).
+    /// </summary>
+    private static string FrameHeading(string title) =>
+        string.IsNullOrWhiteSpace(title) ? "" : $"\\section*{{{title}}}";
+
     private static string RemoveSpans(string text, IReadOnlyList<(int Start, int Length)> spans)
     {
         if (spans.Count == 0) return text;
@@ -2889,7 +2898,7 @@ public class LatexParser : ILatexParser
         content = System.Text.RegularExpressions.Regex.Replace(
             content,
             @"\\begin\{frame\}\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}",
-            m => $"\\section*{{{m.Groups[1].Value}}}",
+            m => FrameHeading(m.Groups[1].Value),
             System.Text.RegularExpressions.RegexOptions.Multiline);
 
         // Frames that don't supply a brace title (title comes later via
@@ -2910,7 +2919,7 @@ public class LatexParser : ILatexParser
         content = System.Text.RegularExpressions.Regex.Replace(
             content,
             @"\\frametitle\s*\{([^}]*)\}",
-            m => $"\\section*{{{m.Groups[1].Value}}}",
+            m => FrameHeading(m.Groups[1].Value),
             System.Text.RegularExpressions.RegexOptions.Multiline);
 
         // \framesubtitle{subtitle} → bold paragraph (no kernel equivalent)
