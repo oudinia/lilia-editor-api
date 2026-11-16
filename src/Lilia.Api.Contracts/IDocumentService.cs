@@ -20,7 +20,10 @@ public interface IDocumentService
     Task<string?> GenerateSummaryAsync(Guid id, string userId);
 
     /// <summary>
-    /// Get paginated list of documents for a user
+    /// Get paginated list of documents for a user. <paramref name="skip"/>, when given, starts the
+    /// page at that many documents in instead of at <c>(page - 1) * pageSize</c> (the MCP
+    /// connector's offset, 16 Nov 2026). sortBy also takes "changed" (last change, newest first),
+    /// "warnings" and "errors" (the last validation's counts, most first), each with a stable tie-break.
     /// </summary>
     Task<PaginatedResult<DocumentListDto>> GetDocumentsPaginatedAsync(
         string userId,
@@ -30,7 +33,8 @@ public interface IDocumentService
         Guid? labelId = null,
         string sortBy = "updatedAt",
         string sortDir = "desc",
-        string? scope = null);
+        string? scope = null,
+        int? skip = null);
 
     /// <summary>
     /// Get all documents for a user (legacy, for backwards compatibility)

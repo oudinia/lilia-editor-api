@@ -5,6 +5,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Lilia.Api.Services;
 using Lilia.Api.Tests.Integration.Infrastructure;
+using Lilia.Core.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -151,6 +152,110 @@ public class LiliaMcpServerTests : IntegrationTestBase
         var url = list.GetProperty("documents").EnumerateArray().First(d => d.GetProperty("id").GetGuid() == doc.Id)
             .GetProperty("url").GetString();
         url.Should().Be($"https://editor.liliaeditor.com/d/{doc.Id}");
+    }
+
+    /// <summary>Documents for one owner in one go, each with its own last change and validation.</summary>
+    private async Task<List<Document>> SeedDocumentsAsync(string ownerId, int count, Func<int, (DateTime Updated, int? Warnings, int Errors)> shape, string title = "Doc")
+    {
+        await using var db = CreateDbContext();
+        var docs = Enumerable.Range(0, count).Select(i =>
+        {
+            var (updated, warnings, errors) = shape(i);
+            return new Document
+            {
+                Id = Guid.NewGuid(), OwnerId = ownerId, Title = $"{title} {i:D3}", Language = "en", PaperSize = "a4",
+                FontFamily = "serif", FontSize = 12, CreatedAt = updated, UpdatedAt = updated,
+                ValidationWarningCount = warnings ?? 0, ValidationErrorCount = errors,
+                ValidationCheckedAt = warnings is null ? null : updated,
+            };
+        }).ToList();
+        db.Documents.AddRange(docs);
+        await db.SaveChangesAsync();
+        return docs;
+    }
+
+    private static List<Guid> Ids(JsonElement list) =>
+        list.GetProperty("documents").EnumerateArray().Select(d => d.GetProperty("id").GetGuid()).ToList();
+
+    [Fact]
+    public async Task An_author_with_more_than_50_documents_pages_through_all_of_them()
+    {
+        // 16 Nov 2026: the owner's account returned exactly 50 and the real count was unknown.
+        await SeedUserAsync("mcp_many");
+        var start = DateTime.UtcNow.AddDays(-1);
+        // Opened in the reverse order of their change, so "last opened" can't pass for "last changed".
+        var docs = await SeedDocumentsAsync("mcp_many", 57, i => (start.AddMinutes(-i), null, 0));
+        await using (var db = CreateDbContext())
+        {
+            foreach (var d in db.Documents.Where(d => d.OwnerId == "mcp_many"))
+                d.LastOpenedAt = DateTime.UtcNow.AddMinutes(-(57 - int.Parse(d.Title[^3..])));
+            await db.SaveChangesAsync();
+        }
+        var client = CreateClientAs("mcp_many");
+
+        var first = await CallAsync(client, "list_documents", new { limit = 50 });
+        first.GetProperty("total").GetInt32().Should().Be(57);
+        first.GetProperty("offset").GetInt32().Should().Be(0);
+        first.GetProperty("sort").GetString().Should().Be("changed");
+        first.GetProperty("nextOffset").GetInt32().Should().Be(50);
+        Ids(first).Should().Equal(docs.Take(50).Select(d => d.Id), "most recently changed first");
+
+        var second = await CallAsync(client, "list_documents", new { limit = 50, offset = 50 });
+        second.GetProperty("total").GetInt32().Should().Be(57);
+        (second.TryGetProperty("nextOffset", out var n) && n.ValueKind != JsonValueKind.Null).Should().BeFalse("it is the last page");
+        Ids(second).Should().Equal(docs.Skip(50).Select(d => d.Id));
+
+        // A page in the middle, and past the end.
+        Ids(await CallAsync(client, "list_documents", new { limit = 5, offset = 20 })).Should().Equal(docs.Skip(20).Take(5).Select(d => d.Id));
+        var beyond = await CallAsync(client, "list_documents", new { offset = 500 });
+        beyond.GetProperty("documents").GetArrayLength().Should().Be(0);
+        beyond.GetProperty("total").GetInt32().Should().Be(57);
+    }
+
+    [Fact]
+    public async Task The_total_counts_only_what_the_search_finds()
+    {
+        await SeedUserAsync("mcp_total");
+        var start = DateTime.UtcNow.AddDays(-1);
+        await SeedDocumentsAsync("mcp_total", 3, i => (start.AddMinutes(-i), null, 0), "Tides");
+        await SeedDocumentsAsync("mcp_total", 4, i => (start.AddMinutes(-i), null, 0), "Orbits");
+        var client = CreateClientAs("mcp_total");
+
+        var tides = await CallAsync(client, "list_documents", new { search = "tides", limit = 2 });
+        tides.GetProperty("total").GetInt32().Should().Be(3);
+        tides.GetProperty("nextOffset").GetInt32().Should().Be(2);
+        tides.GetProperty("documents").EnumerateArray().Should().OnlyContain(d => d.GetProperty("title").GetString()!.StartsWith("Tides"));
+    }
+
+    [Fact]
+    public async Task Documents_sort_by_their_last_validations_warnings()
+    {
+        // The owner, 16 Nov 2026: "documents ordered by max warnings".
+        await SeedUserAsync("mcp_warn");
+        var start = DateTime.UtcNow.AddDays(-1);
+        int?[] warnings = [1, 7, null, 3, 7];
+        int[] errors = [0, 0, 0, 2, 1];
+        var docs = await SeedDocumentsAsync("mcp_warn", 5, i => (start.AddMinutes(-i), warnings[i], errors[i]));
+        var client = CreateClientAs("mcp_warn");
+
+        var byWarnings = await CallAsync(client, "list_documents", new { sort = "warnings" });
+        byWarnings.GetProperty("sort").GetString().Should().Be("warnings");
+        // 7 (1 error) before 7 (no error), then 3, 1, and the never-validated one last.
+        Ids(byWarnings).Should().Equal(docs[4].Id, docs[1].Id, docs[3].Id, docs[0].Id, docs[2].Id);
+        var top = byWarnings.GetProperty("documents")[0];
+        top.GetProperty("validation").GetProperty("warnings").GetInt32().Should().Be(7);
+        top.GetProperty("validation").GetProperty("errors").GetInt32().Should().Be(1);
+        // Never validated: no validation (the serializer leaves nulls out).
+        (byWarnings.GetProperty("documents")[4].TryGetProperty("validation", out var v) && v.ValueKind != JsonValueKind.Null)
+            .Should().BeFalse();
+
+        Ids(await CallAsync(client, "list_documents", new { sort = "errors", limit = 2 })).Should().Equal(docs[3].Id, docs[4].Id);
+
+        var paged = await CallAsync(client, "list_documents", new { sort = "warnings", limit = 2, offset = 2 });
+        Ids(paged).Should().Equal(docs[3].Id, docs[0].Id);
+
+        var wrong = await CallAsync(client, "list_documents", new { sort = "size" });
+        wrong.GetProperty("error").GetString().Should().Contain("Unknown sort");
     }
 
     [Fact]

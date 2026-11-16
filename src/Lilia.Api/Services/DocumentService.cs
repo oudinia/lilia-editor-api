@@ -130,7 +130,8 @@ public class DocumentService : IDocumentService
         Guid? labelId = null,
         string sortBy = "updatedAt",
         string sortDir = "desc",
-        string? scope = null)
+        string? scope = null,
+        int? skip = null)
     {
         // Ensure valid pagination params
         page = Math.Max(1, page);
@@ -182,6 +183,13 @@ public class DocumentService : IDocumentService
         // Apply sorting
         query = (sortBy.ToLower(), sortDir.ToLower()) switch
         {
+            // The MCP connector's orders (16 Nov 2026): the last change, and the owner's "documents
+            // ordered by max warnings". Each ends on the id, so an offset never repeats or skips one.
+            ("changed", _) => query.OrderByDescending(d => d.UpdatedAt).ThenBy(d => d.Id),
+            ("warnings", _) => query.OrderByDescending(d => d.ValidationWarningCount).ThenByDescending(d => d.ValidationErrorCount)
+                .ThenByDescending(d => d.UpdatedAt).ThenBy(d => d.Id),
+            ("errors", _) => query.OrderByDescending(d => d.ValidationErrorCount).ThenByDescending(d => d.ValidationWarningCount)
+                .ThenByDescending(d => d.UpdatedAt).ThenBy(d => d.Id),
             ("title", "asc") => query.OrderBy(d => d.Title),
             ("title", _) => query.OrderByDescending(d => d.Title),
             ("createdat", "asc") => query.OrderBy(d => d.CreatedAt),
@@ -193,7 +201,7 @@ public class DocumentService : IDocumentService
 
         // Apply pagination
         var documents = await query
-            .Skip((page - 1) * pageSize)
+            .Skip(skip is { } from ? Math.Max(0, from) : (page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
 
