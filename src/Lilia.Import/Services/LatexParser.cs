@@ -2289,6 +2289,11 @@ public class LatexParser : ILatexParser
                         // lines; the export keeps a body's own labels (EquationLatex).
                         var labelExtract = Regex.Match(rawLatex, @"\\label\{([^}]+)\}");
                         if (Regex.Matches(rawLatex, @"\\label\{").Count > 1) labelExtract = Match.Empty;
+                        // A label on a later row of align or gather numbers that row: lifted to the block, it went to the
+                        // top and \eqref printed the first row's number (the connector test, 17 Nov 2026). It stays on
+                        // its row; only a first row's label (or a single equation's) is the block's.
+                        if (labelExtract.Success && envName is not ("equation" or "multline")
+                            && rawLatex[..labelExtract.Index].Contains(@"\\", StringComparison.Ordinal)) labelExtract = Match.Empty;
                         if (labelExtract.Success)
                         {
                             rawLatex = rawLatex.Replace(labelExtract.Value, "").Trim();

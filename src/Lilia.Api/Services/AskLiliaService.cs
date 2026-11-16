@@ -959,11 +959,12 @@ public sealed partial class AskLiliaService : IAskLiliaService
             tools.Add(AIFunctionFactory.Create(
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
                  [System.ComponentModel.Description("Author name(s). Optional.")] string? author = null,
-                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date = null)
+                 [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date = null,
+                 [System.ComponentModel.Description("Keywords, comma-separated (venues ask for them). Optional.")] string? keywords = null)
                     => authorTitle is not null && !string.Equals(title?.Trim(), authorTitle, StringComparison.OrdinalIgnoreCase)
                         && !AsksForTitle(question)
                         ? Task.FromResult<object>(new { error = $"The author named this document \u201c{authorTitle}\u201d. Keep that title: rename it only when they ask. To set only the author or date, call set_title with title \u201c{authorTitle}\u201d.", category = "kept" })
-                        : SetTitleAsync(live.Dto, docGuid, title!, author, date, changed),
+                        : SetTitleAsync(live.Dto, docGuid, title!, author, date, keywords, changed),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
             tools.Add(AIFunctionFactory.Create(
@@ -1159,14 +1160,20 @@ public sealed partial class AskLiliaService : IAskLiliaService
         {
             var check = await _checker.CheckAsync(now);
             var mine = newIds.Select(x => x.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var problems = check.Problems
+                .Where(p => p.Severity == "error" || (p.BlockId is not null && mine.Contains(p.BlockId)))
+                .Select(p => new { blockId = p.BlockId, pasted = p.BlockId is not null && mine.Contains(p.BlockId), severity = p.Severity, message = p.Message })
+                .Take(12).ToList();
             verdict = new
             {
                 compiles = check.Compiles,
                 printsCorrectly = check.PrintsCorrectly,
-                problems = check.Problems
-                    .Where(p => p.Severity == "error" || (p.BlockId is not null && mine.Contains(p.BlockId)))
-                    .Select(p => new { blockId = p.BlockId, pasted = p.BlockId is not null && mine.Contains(p.BlockId), severity = p.Severity, message = p.Message })
-                    .Take(12),
+                problems,
+                // printsCorrectly is the whole document's; the problems listed are the pasted blocks'. Without a word, a
+                // false with no problems left the assistant nothing to act on (the connector test, 17 Nov 2026).
+                note = check.Compiles == true && check.PrintsCorrectly != true && !problems.Any(p => p.pasted)
+                    ? "The pasted blocks print correctly; something elsewhere in the document doesn't: call check_document to see it."
+                    : null,
             };
         }
 
@@ -1815,11 +1822,23 @@ public sealed partial class AskLiliaService : IAskLiliaService
     // Set the document title via the Title block (upsert at the top), keeping
     // the document name in sync (BlockService syncs documents.title on both
     // create and update). Deterministic so "change the title" always lands.
-    private async Task<object> SetTitleAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string title, string? author, string? date, List<string> changed)
+    /// <summary>
+    /// The title block, with only what was given changed. It was replaced whole: a call with the title alone erased the
+    /// author and date, and every call dropped the keywords and anything else the block held (a venue's affiliations;
+    /// the connector test, 17 Nov 2026).
+    /// </summary>
+    private async Task<object> SetTitleAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string title, string? author, string? date, string? keywords, List<string> changed)
     {
-        var content = System.Text.Json.JsonSerializer.SerializeToElement(
-            new { title = title ?? "", author = author ?? "", date = date ?? "" });
         var existing = doc.Blocks?.FirstOrDefault(b => b.Type == Lilia.Core.Entities.BlockTypes.Title);
+        var node = existing?.Content is JsonElement { ValueKind: JsonValueKind.Object } old && JsonNode.Parse(old.GetRawText()) is JsonObject o
+            ? o : new JsonObject { ["author"] = "", ["date"] = "" };
+        node["title"] = title ?? "";
+        if (author is not null) node["author"] = author;
+        if (date is not null) node["date"] = date;
+        if (keywords is not null)
+            node["keywords"] = new JsonArray(keywords.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(k => (JsonNode?)JsonValue.Create(k)).ToArray());
+        var content = JsonSerializer.SerializeToElement(node);
         if (existing is not null)
         {
             var updated = await _blockService.UpdateBlockAsync(docId, existing.Id,

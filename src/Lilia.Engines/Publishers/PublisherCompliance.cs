@@ -84,7 +84,8 @@ public static partial class PublisherCompliance
         foreach (var f in blocks.Where(b => b.Type == BlockTypes.Figure))
         {
             var sources = FigureFile.Sources([f]).Select(s => s.Src).ToList();
-            if (sources.Count == 0)
+            // A TikZ figure is drawn, not an image: it was reported as "has no image" (the connector test, 17 Nov 2026).
+            if (sources.Count == 0 && !(f.Content is { } c && Lilia.Core.Blocks.TikzFigure.IsTikz(c.RootElement)))
                 findings.Add(new("error", "figure_missing", "A figure has no image: it prints as an empty frame.", f.Id.ToString()));
             foreach (var name in sources.Select(s => FigureFile.Name(s)))
             {

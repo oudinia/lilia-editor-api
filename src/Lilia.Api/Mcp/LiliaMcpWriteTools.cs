@@ -154,13 +154,14 @@ public sealed class LiliaMcpWriteTools(
         WriteAsync(documentId, "reorder_blocks", new() { ["blockIds"] = blockIds });
 
     [McpServerTool(Name = "set_title", Title = "Set the title", Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the author and date.")]
+    [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the author, date and keywords. What you leave out stays as it is.")]
     public Task<object> SetTitle(
         [Description("The document id.")] string documentId,
         [Description("The title.")] string title,
         [Description("Author name(s).")] string? author = null,
-        [Description("Date, e.g. 'October 2026' or '\\\\today'.")] string? date = null) =>
-        WriteAsync(documentId, "set_title", new() { ["title"] = title, ["author"] = author, ["date"] = date });
+        [Description("Date, e.g. 'October 2026' or '\\\\today'.")] string? date = null,
+        [Description("Keywords, comma-separated, e.g. 'union-find, amortised analysis' (IEEE, ACM and other venues ask for them).")] string? keywords = null) =>
+        WriteAsync(documentId, "set_title", new() { ["title"] = title, ["author"] = author, ["date"] = date, ["keywords"] = keywords });
 
     // Paste → LaTeX, phase 3 (11 Nov 2026): move a paper over section by section, each one checked.
     [McpServerTool(Name = "paste_content", Title = "Paste text into a document", Destructive = false, Idempotent = false, OpenWorld = false)]
