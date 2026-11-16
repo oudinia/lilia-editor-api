@@ -647,6 +647,10 @@ public class LatexParser : ILatexParser
         var isAltaCv = !isModernCv && !isResume && AltaCv.Is(content);
         var altaHeader = isAltaCv ? AltaCv.ReadHeader(content) : null;
         if (isAltaCv) content = AltaCv.Mark(content);
+        // SixtySecondsCV: its four-argument \cvitem as CV entries, the preamble's \cvname… as Personal information (V-020).
+        var isSixty = !isModernCv && !isResume && !isAltaCv && SixtySecondsCv.Is(content);
+        var sixtyHeader = isSixty ? SixtySecondsCv.ReadHeader(content) : null;
+        if (isSixty) content = SixtySecondsCv.Mark(content);
         content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
@@ -957,6 +961,7 @@ public class LatexParser : ILatexParser
         if (isModernCv) ModernCv.Build(document);
         else if (isResume) ResumeTemplate.Build(document);
         else if (isAltaCv) AltaCv.Build(document, altaHeader!);
+        else if (isSixty) SixtySecondsCv.Build(document, sixtyHeader!);
 
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.
