@@ -235,6 +235,8 @@ public class LatexFixtureRoundtripTests
         ImportImage img => ("figure", new { src = img.Filename ?? "", caption = img.AltText ?? "", alt = img.AltText ?? "" }),
         ImportBlockquote bq => ("blockquote", new { text = bq.Text }),
         ImportLatexPassthrough lp => ("code", new { code = lp.LatexCode, language = "latex" }),
+        // \tableofcontents is imported as a contents block since 16 Nov 2026, as LatexImportJobExecutor maps it.
+        ImportTableOfContents => ("tableOfContents", new { title = "Table of Contents" }),
         _ => (null, new { }),
     };
 
