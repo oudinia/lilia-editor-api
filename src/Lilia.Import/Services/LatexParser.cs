@@ -643,6 +643,10 @@ public class LatexParser : ILatexParser
         // The "resume" template family (Jake's resume and forks): its own macros as CV entries (the document sweep, D-013, D-014).
         var isResume = !isModernCv && ResumeTemplate.Is(content);
         if (isResume) content = ResumeTemplate.Mark(content);
+        // AltaCV and maltacv: their own macros as CV entries, the header as Personal information (the document sweep, V-009, V-016).
+        var isAltaCv = !isModernCv && !isResume && AltaCv.Is(content);
+        var altaHeader = isAltaCv ? AltaCv.ReadHeader(content) : null;
+        if (isAltaCv) content = AltaCv.Mark(content);
         content = NormaliseCvMacros(content);
 
         // Collapse \verb<delim>...<delim> / \lstinline / \mintinline
@@ -952,6 +956,7 @@ public class LatexParser : ILatexParser
         ParseContent(documentContent, document, options, tikz);
         if (isModernCv) ModernCv.Build(document);
         else if (isResume) ResumeTemplate.Build(document);
+        else if (isAltaCv) AltaCv.Build(document, altaHeader!);
 
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.

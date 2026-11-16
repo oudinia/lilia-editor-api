@@ -25,7 +25,7 @@ public static class ModernCv
     /// <summary>The marker paragraph for one CV entry, in \cventry's argument order (years, title, employer, city, grade, description).</summary>
     internal static string EntryMarker(string[] cventryArgs) =>
         $"\n\n{EntryMark}{Convert.ToHexString(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cventryArgs)))}\n\n";
-    private const string TitleMark = "LILIACVTITLEX";
+    internal const string TitleMark = "LILIACVTITLEX";
 
     /// <summary>
     /// A moderncv source: its class, or its own commands used in the body. Only the body: Lilia's own LaTeX export
