@@ -164,6 +164,48 @@ public class LaTeXRenderService : ILaTeXRenderService
         _logger = logger;
     }
 
+    /// <summary>With the Unicode catalog (the app's wiring): the PDFs fill the shared preamble's gaps from it.</summary>
+    public LaTeXRenderService(ILogger<LaTeXRenderService> logger, IUnicodeShimService unicodeCatalog) : this(logger)
+    {
+        _unicodeCatalog = unicodeCatalog;
+    }
+
+    private readonly IUnicodeShimService? _unicodeCatalog;
+
+    /// <summary>The codepoints the shared preamble's static list maps (<see cref="LaTeXPreamble.UnicodeShims"/>).</summary>
+    private static readonly HashSet<int> StaticallyMapped = System.Text.RegularExpressions.Regex
+        .Matches(Lilia.Engines.LaTeXPreamble.UnicodeShims, @"\\newunicodechar\{(.+?)\}\{")
+        .Select(m => m.Groups[1].Value)
+        .Where(c => c.Length > 0)
+        .Select(c => char.ConvertToUtf32(c, 0))
+        .ToHashSet();
+
+    /// <summary>
+    /// The catalog's mappings for characters in the source that the static list doesn't map, injected before
+    /// \begin{document}. The document check used the catalog (161 rows) and the PDFs only the static list, so ∮ ⊗ ℝ passed
+    /// the check and stopped the PDF (the document sweep, E-015, 16 Nov 2026). Characters the static list maps keep
+    /// its replacement, so nothing that printed before prints differently.
+    /// </summary>
+    internal string WithCatalogGaps(string latex)
+    {
+        if (_unicodeCatalog is null) return latex;
+        try
+        {
+            var shimmed = _unicodeCatalog.Classify(latex).Shimmed.Where(kv => !StaticallyMapped.Contains(kv.Key)).ToList();
+            if (shimmed.Count == 0) return latex;
+            var sb = new StringBuilder("% [lilia] Unicode from the catalog, beyond the shared list\n\\usepackage{newunicodechar}\n");
+            foreach (var (cp, repl) in shimmed)
+                sb.Append(@"\newunicodechar{").Append(char.ConvertFromUtf32(cp)).Append("}{").Append(repl).Append("}\n");
+            return _unicodeCatalog.Inject(latex, sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            // A catalog hiccup never stops a compile: the PDF is made with the static list alone.
+            _logger.LogWarning(ex, "[Compile] Unicode catalog not applied");
+            return latex;
+        }
+    }
+
     /// <summary>
     /// Checks whether the precompiled .fmt file exists (cached after first check).
     /// </summary>
@@ -969,7 +1011,7 @@ public class LaTeXRenderService : ILaTeXRenderService
         // Accents typed as a letter plus a combining mark (e + U+0301) stopped pdflatex ("Unicode character ́ (U+0301)
         // not set up"; the document sweep, E-015, 15 Nov 2026). Composed (NFC), they are the one character inputenc
         // knows (é). Canonical composition changes no ASCII, so LaTeX and line numbers are untouched.
-        latex = ComposeAccents(latex);
+        latex = WithCatalogGaps(ComposeAccents(latex));
         var tmpDir = Path.Combine(Path.GetTempPath(), $"lilia-latex-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmpDir);
 
