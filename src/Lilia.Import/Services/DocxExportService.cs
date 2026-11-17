@@ -77,6 +77,9 @@ public class DocxExportService : IDocxExportService
                 foreach (var element in elements)
                 {
                     body.AppendChild(element);
+                    // A \footnote in its prose becomes a Word footnote, numbered in the order the notes come
+                    // (17 Nov 2026, launch-bot #157).
+                    AddPendingFootnotes(element, mainPart);
                 }
             }
 
@@ -128,6 +131,7 @@ public class DocxExportService : IDocxExportService
 
             AddHeaderFooter(mainPart, sectionProps, document);
             body.AppendChild(sectionProps);
+            if (document.Rtl) MarkRightToLeft(mainPart);
             SchemaOrder(mainPart);
 
             // Set document properties
@@ -150,6 +154,19 @@ public class DocxExportService : IDocxExportService
     {
         var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
         var styles = new Styles();
+
+        // The document's language, so Word spell-checks and lays it out as such: Latin, Cyrillic and Greek
+        // text in w:val, Chinese, Japanese and Korean in w:eastAsia, Arabic and Hebrew in w:bidi (17 Nov 2026,
+        // launch-bot #155, #156: the file set no language, and French was spell-checked as English).
+        var tag = WordLanguageTag(document.Language);
+        var lang = new Languages { Val = "en-US" };
+        switch (tag[..2])
+        {
+            case "zh" or "ja" or "ko": lang.EastAsia = tag; break;
+            case "ar" or "he": lang.Bidi = tag; break;
+            default: lang.Val = tag; break;
+        }
+        styles.Append(new DocDefaults(new RunPropertiesDefault(new RunPropertiesBaseStyle(lang))));
 
         // Normal, Title, Quote and TOC Heading (MCP-105): every style here is BasedOn Normal, which
         // wasn't defined, so Word fell back to its own defaults; the document's font size goes here.
@@ -244,6 +261,16 @@ public class DocxExportService : IDocxExportService
         stylesPart.Styles.Save();
     }
 
+    /// <summary>Word's tag for a Lilia language code (DocumentLanguage's codes), en-US when unknown (launch-bot #156).</summary>
+    internal static string WordLanguageTag(string? code) => (code ?? "").Trim().ToLowerInvariant() switch
+    {
+        "en-gb" => "en-GB",
+        "fr" => "fr-FR", "de" => "de-DE", "es" => "es-ES", "it" => "it-IT", "pt" => "pt-PT", "nl" => "nl-NL",
+        "pl" => "pl-PL", "sv" => "sv-SE", "tr" => "tr-TR", "ru" => "ru-RU", "el" => "el-GR",
+        "ar" => "ar-SA", "he" => "he-IL", "zh" => "zh-CN", "ja" => "ja-JP", "ko" => "ko-KR",
+        _ => "en-US",
+    };
+
     private string GetHeadingFontSize(int level)
     {
         return level switch
@@ -323,16 +350,16 @@ public class DocxExportService : IDocxExportService
             "heading" => ConvertHeading(block),
             "code" => ConvertCode(block),
             "list" => ConvertList(block, mainPart),
-            "table" => ConvertTable(block),
-            "figure" => ConvertFigure(block, mainPart),
+            "table" => ConvertTable(block, document.Names),
+            "figure" => ConvertFigure(block, mainPart, document.Names),
             "blockquote" => ConvertBlockquote(block),
             "theorem" => ConvertTheorem(block),
             "title" => ConvertTitle(block),
             "matter" => ConvertMatter(block),
-            "abstract" => ConvertAbstract(block),
+            "abstract" => ConvertAbstract(block, document.Names),
             "bibliography" => ConvertBibliography(options, document),
             "pagebreak" => ConvertPageBreak(),
-            "tableofcontents" => ConvertTableOfContents(block),
+            "tableofcontents" => ConvertTableOfContents(block, document.Names),
             "algorithm" => ConvertAlgorithm(block),
             "callout" => ConvertCallout(block),
             "footnote" => ConvertFootnote(block, mainPart),
@@ -765,18 +792,23 @@ public class DocxExportService : IDocxExportService
     /// at — Olivia, 23 Sep: use Word's own fields, so Word numbers them); the
     /// run inside it is the number shown before Word updates fields.
     /// </summary>
-    private Paragraph CaptionParagraph(string label, int? number, string text, bool center, List<ExportRichTextSpan>? runs = null, string? chapter = null)
+    // names: the label and separator shown in the document's language ("Tableau 1 – "); the field keeps the
+    // English identifier (SEQ Table), so Word's numbering and cross-references are unchanged (17 Nov 2026,
+    // launch-bot #156).
+    private Paragraph CaptionParagraph(string label, int? number, string text, bool center, List<ExportRichTextSpan>? runs = null, string? chapter = null, ExportNames? names = null)
     {
+        var shown = names is null ? label : label switch { "Table" => names.Table, "Figure" => names.Figure, _ => label };
+        var separator = names?.CaptionSeparator ?? ": ";
         var para = new Paragraph();
         var pPr = new ParagraphProperties(new ParagraphStyleId { Val = "Caption" });
         if (center) pPr.Append(new Justification { Val = JustificationValues.Center });
         para.Append(pPr);
         if (number is int n)
         {
-            para.Append(new Run(new Text($"{label} " + (chapter is { } c ? $"{c}." : "")) { Space = SpaceProcessingModeValues.Preserve }));
+            para.Append(new Run(new Text($"{shown} " + (chapter is { } c ? $"{c}." : "")) { Space = SpaceProcessingModeValues.Preserve }));
             // Within a chapter the field restarts at each Heading 1 (\\s 1), as the number does.
             para.Append(new SimpleField(new Run(new Text(n.ToString()))) { Instruction = chapter is null ? $" SEQ {label} \\* ARABIC " : $" SEQ {label} \\* ARABIC \\s 1 " });
-            para.Append(new Run(new Text(": ") { Space = SpaceProcessingModeValues.Preserve }));
+            para.Append(new Run(new Text(separator) { Space = SpaceProcessingModeValues.Preserve }));
         }
         if (runs is { Count: > 0 })
             foreach (var span in runs) para.AppendChild(CreateSpanElement(span));
@@ -785,11 +817,11 @@ public class DocxExportService : IDocxExportService
         return para;
     }
 
-    private IEnumerable<OpenXmlElement> ConvertTable(ExportBlock block)
+    private IEnumerable<OpenXmlElement> ConvertTable(ExportBlock block, ExportNames? names = null)
     {
         // The caption goes above the table, as the LaTeX export places it.
         if (!string.IsNullOrWhiteSpace(block.Content?.Caption))
-            yield return CaptionParagraph("Table", block.Content.CaptionNumber, block.Content.Caption!, center: true, block.Content.CaptionRichText, block.Content.CaptionChapter);
+            yield return CaptionParagraph("Table", block.Content.CaptionNumber, block.Content.Caption!, center: true, block.Content.CaptionRichText, block.Content.CaptionChapter, names);
         foreach (var element in ConvertTableBody(block)) yield return element;
     }
 
@@ -908,7 +940,7 @@ public class DocxExportService : IDocxExportService
         return elements;
     }
 
-    private IEnumerable<OpenXmlElement> ConvertFigure(ExportBlock block, MainDocumentPart mainPart)
+    private IEnumerable<OpenXmlElement> ConvertFigure(ExportBlock block, MainDocumentPart mainPart, ExportNames? names = null)
     {
         var elements = new List<OpenXmlElement>();
         var content = block.Content;
@@ -974,7 +1006,7 @@ public class DocxExportService : IDocxExportService
 
         // Add caption if present — "Figure N: …", as the PDF prints it.
         if (!string.IsNullOrEmpty(content.Caption))
-            elements.Add(CaptionParagraph("Figure", content.CaptionNumber, content.Caption, center: true, content.CaptionRichText, content.CaptionChapter));
+            elements.Add(CaptionParagraph("Figure", content.CaptionNumber, content.Caption, center: true, content.CaptionRichText, content.CaptionChapter, names));
 
         if (elements.Count == 0)
         {
@@ -1059,24 +1091,9 @@ public class DocxExportService : IDocxExportService
     /// </summary>
     private void AppendFootnote(ExportBlock block, MainDocumentPart mainPart, Body body)
     {
-        var part = mainPart.FootnotesPart ?? mainPart.AddNewPart<FootnotesPart>();
-        if (part.Footnotes is null)
-        {
-            part.Footnotes = new Footnotes(
-                new Footnote(new Paragraph(new Run(new SeparatorMark()))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
-                new Footnote(new Paragraph(new Run(new ContinuationSeparatorMark()))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 });
-        }
-        var id = part.Footnotes.Elements<Footnote>().Select(f => (int)(f.Id?.Value ?? 0)).DefaultIfEmpty(0).Max() + 1;
-
-        var text = new Paragraph(new Run(
-            new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
-            new FootnoteReferenceMark()));
-        text.AppendChild(new Run(new Text(" ") { Space = SpaceProcessingModeValues.Preserve }));
-        if (block.Content.RichText is { Count: > 0 } spans)
-            foreach (var span in spans) text.AppendChild(CreateSpanElement(span));
-        else
-            text.AppendChild(new Run(new Text(block.Content.Text ?? "") { Space = SpaceProcessingModeValues.Preserve }));
-        part.Footnotes.AppendChild(new Footnote(text) { Id = id });
+        var id = AddFootnote(mainPart, block.Content.RichText is { Count: > 0 } spans
+            ? spans.Select(CreateSpanElement).ToList()
+            : [new Run(new Text(block.Content.Text ?? "") { Space = SpaceProcessingModeValues.Preserve })]);
 
         var reference = new Run(
             new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
@@ -1093,6 +1110,95 @@ public class DocxExportService : IDocxExportService
             body.AppendChild(host);
         }
         host.AppendChild(reference);
+    }
+
+    /// <summary>
+    /// A note in the footnotes part (made on first use), its mark then <paramref name="content"/>; returns its id.
+    /// Shared by footnote blocks and \footnote in prose (17 Nov 2026, launch-bot #157).
+    /// </summary>
+    private static int AddFootnote(MainDocumentPart mainPart, IEnumerable<OpenXmlElement> content)
+    {
+        var part = mainPart.FootnotesPart ?? mainPart.AddNewPart<FootnotesPart>();
+        if (part.Footnotes is null)
+        {
+            part.Footnotes = new Footnotes(
+                new Footnote(new Paragraph(new Run(new SeparatorMark()))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
+                new Footnote(new Paragraph(new Run(new ContinuationSeparatorMark()))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 });
+        }
+        var id = part.Footnotes.Elements<Footnote>().Select(f => (int)(f.Id?.Value ?? 0)).DefaultIfEmpty(0).Max() + 1;
+
+        var text = new Paragraph(new Run(
+            new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
+            new FootnoteReferenceMark()));
+        text.AppendChild(new Run(new Text(" ") { Space = SpaceProcessingModeValues.Preserve }));
+        foreach (var element in content) text.AppendChild(element);
+        part.Footnotes.AppendChild(new Footnote(text) { Id = id });
+        return id;
+    }
+
+    /// <summary>
+    /// The marks <see cref="CreateSpanElement"/> made for footnote spans, each waiting for its note: keyed by
+    /// the mark itself, so this singleton service keeps nothing between exports (17 Nov 2026, launch-bot #157).
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FootnoteReference, List<ExportRichTextSpan>> PendingFootnotes = new();
+
+    /// <summary>Writes the notes of the footnote marks in <paramref name="element"/> and gives the marks their ids.</summary>
+    private void AddPendingFootnotes(OpenXmlElement element, MainDocumentPart mainPart)
+    {
+        foreach (var reference in element.Descendants<FootnoteReference>().ToList())
+        {
+            if (!PendingFootnotes.TryGetValue(reference, out var spans)) continue;
+            PendingFootnotes.Remove(reference);
+            reference.Id = AddFootnote(mainPart, spans.Select(CreateSpanElement).ToList());
+        }
+    }
+
+    // Arabic, Hebrew (and Syriac, Thaana…) letters, and their presentation forms.
+    private static bool HasRightToLeftLetters(string text) =>
+        text.Any(ch => ch is >= '\u0590' and <= '\u08FF' or >= '\uFB1D' and <= '\uFDFF' or >= '\uFE70' and <= '\uFEFF');
+
+    /// <summary>
+    /// A right-to-left document (Arabic, Hebrew) as Word reads one: every paragraph right to left (w:bidi), the
+    /// runs holding its letters too (w:rtl), tables with their first column on the right (w:bidiVisual), as the
+    /// PDF lays them out. Code and display equations stay left to right, as in the PDF. The file had none of
+    /// these and Word opened the Arabic as left-aligned, left-to-right paragraphs (17 Nov 2026, launch-bot #155).
+    /// </summary>
+    private static void MarkRightToLeft(MainDocumentPart mainPart)
+    {
+        IEnumerable<OpenXmlElement> Roots()
+        {
+            if (mainPart.Document?.Body is { } b) yield return b;
+            if (mainPart.FootnotesPart?.Footnotes is { } n) yield return n;
+            foreach (var h in mainPart.HeaderParts) if (h.Header is { } x) yield return x;
+            foreach (var f in mainPart.FooterParts) if (f.Footer is { } x) yield return x;
+        }
+        // A display equation: maths, and at most its number "(3)" beside it.
+        static bool DisplayEquation(Paragraph p) =>
+            p.ChildElements.Any(c => c.NamespaceUri == MathNs)
+            && p.Elements<Run>().All(r => System.Text.RegularExpressions.Regex.IsMatch(r.InnerText, @"^\s*(\([^()]*\))?\s*$"));
+
+        foreach (var root in Roots())
+        {
+            foreach (var p in root.Descendants<Paragraph>().ToList())
+            {
+                if (p.ParagraphProperties?.ParagraphStyleId?.Val?.Value == "Code" || DisplayEquation(p)) continue;
+                var pPr = p.ParagraphProperties ?? p.PrependChild(new ParagraphProperties());
+                if (pPr.GetFirstChild<BiDi>() is null) pPr.Append(new BiDi());
+                foreach (var r in p.Descendants<Run>())
+                {
+                    if (!HasRightToLeftLetters(r.InnerText)) continue;
+                    var rPr = r.RunProperties ?? r.PrependChild(new RunProperties());
+                    if (rPr.GetFirstChild<RightToLeftText>() is null) rPr.Append(new RightToLeftText());
+                }
+            }
+            // w:bidiVisual after w:tblStyle, w:tblpPr and w:tblOverlap (schema order).
+            foreach (var tblPr in root.Descendants<TableProperties>().Where(t => t.GetFirstChild<BiDiVisual>() is null).ToList())
+            {
+                var before = tblPr.ChildElements.LastOrDefault(c => c is TableStyle or TablePositionProperties or TableOverlap);
+                if (before is null) tblPr.PrependChild(new BiDiVisual());
+                else tblPr.InsertAfter(new BiDiVisual(), before);
+            }
+        }
     }
 
     private IEnumerable<OpenXmlElement> ConvertTheorem(ExportBlock block)
@@ -1137,7 +1243,7 @@ public class DocxExportService : IDocxExportService
         {
             foreach (var span in titleRuns)
             {
-                if (!string.IsNullOrEmpty(span.Equation)) { para.AppendChild(CreateSpanElement(span)); continue; }
+                if (!string.IsNullOrEmpty(span.Equation) || span.Footnote is not null) { para.AppendChild(CreateSpanElement(span)); continue; }
                 var run = CreateRun(span);
                 if (run.RunProperties is null) run.PrependChild(new RunProperties());
                 if (!run.RunProperties!.Elements<Bold>().Any()) run.RunProperties.Append(new Bold());
@@ -1152,7 +1258,7 @@ public class DocxExportService : IDocxExportService
             foreach (var span in bodySpans)
             {
                 // Maths is a Word equation, not italic LaTeX (13 Oct sweep: "g = \\SI{…}" in an abstract).
-                if (!string.IsNullOrEmpty(span.Equation)) { para.AppendChild(CreateSpanElement(span)); continue; }
+                if (!string.IsNullOrEmpty(span.Equation) || span.Footnote is not null) { para.AppendChild(CreateSpanElement(span)); continue; }
                 var run = CreateRun(span);
                 // Add italic to theorem body
                 var existingProps = run.RunProperties;
@@ -1199,7 +1305,7 @@ public class DocxExportService : IDocxExportService
     {
         if (!options.IncludeBibliography) yield break;
 
-        yield return BibliographyHeading();
+        yield return BibliographyHeading(document.Names.References);
 
         var entries = document.Bibliography;
         if (entries == null || entries.Count == 0)
@@ -1221,7 +1327,8 @@ public class DocxExportService : IDocxExportService
         }
     }
 
-    private static Paragraph BibliographyHeading()
+    // The heading in the document's language, "Références" (17 Nov 2026, launch-bot #156).
+    private static Paragraph BibliographyHeading(string text)
     {
         var para = new Paragraph();
         var pPr = new ParagraphProperties();
@@ -1232,7 +1339,7 @@ public class DocxExportService : IDocxExportService
         runProps.Append(new Bold());
         runProps.Append(new FontSize { Val = "32" }); // 16pt
         run.Append(runProps);
-        run.Append(new Text("References") { Space = SpaceProcessingModeValues.Preserve });
+        run.Append(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
         para.AppendChild(run);
         return para;
     }
@@ -1514,7 +1621,7 @@ public class DocxExportService : IDocxExportService
         return para;
     }
 
-    private IEnumerable<OpenXmlElement> ConvertAbstract(ExportBlock block)
+    private IEnumerable<OpenXmlElement> ConvertAbstract(ExportBlock block, ExportNames? names = null)
     {
         var elements = new List<OpenXmlElement>();
         var content = block.Content;
@@ -1531,7 +1638,8 @@ public class DocxExportService : IDocxExportService
         headingRunProps.Append(new Bold());
         headingRunProps.Append(new FontSize { Val = "28" }); // 14pt
         headingRun.Append(headingRunProps);
-        headingRun.Append(new Text("Abstract") { Space = SpaceProcessingModeValues.Preserve });
+        // In the document's language, "Résumé" (17 Nov 2026, launch-bot #156).
+        headingRun.Append(new Text(names?.Abstract ?? "Abstract") { Space = SpaceProcessingModeValues.Preserve });
         headingPara.AppendChild(headingRun);
         elements.Add(headingPara);
 
@@ -1546,7 +1654,7 @@ public class DocxExportService : IDocxExportService
             foreach (var span in content.RichText)
             {
                 // Maths is a Word equation, not italic LaTeX (13 Oct sweep: "g = \\SI{…}" in an abstract).
-                if (!string.IsNullOrEmpty(span.Equation)) { bodyPara.AppendChild(CreateSpanElement(span)); continue; }
+                if (!string.IsNullOrEmpty(span.Equation) || span.Footnote is not null) { bodyPara.AppendChild(CreateSpanElement(span)); continue; }
                 var run = CreateRun(span);
                 var existingProps = run.RunProperties;
                 if (existingProps == null)
@@ -1580,7 +1688,7 @@ public class DocxExportService : IDocxExportService
         return [para];
     }
 
-    private IEnumerable<OpenXmlElement> ConvertTableOfContents(ExportBlock block)
+    private IEnumerable<OpenXmlElement> ConvertTableOfContents(ExportBlock block, ExportNames? names = null)
     {
         var elements = new List<OpenXmlElement>();
 
@@ -1589,7 +1697,8 @@ public class DocxExportService : IDocxExportService
         var headingPPr = new ParagraphProperties();
         headingPPr.Append(new ParagraphStyleId { Val = "TOCHeading" });
         headingPara.Append(headingPPr);
-        headingPara.AppendChild(new Run(new Text(string.IsNullOrWhiteSpace(block.Content?.Text) ? "Contents" : block.Content.Text)));
+        // No title of the author's: the document's language's, "Table des matières" (17 Nov 2026, launch-bot #156).
+        headingPara.AppendChild(new Run(new Text(string.IsNullOrWhiteSpace(block.Content?.Text) ? names?.Contents ?? "Contents" : block.Content.Text)));
         elements.Add(headingPara);
 
         // TOC field
@@ -1817,6 +1926,14 @@ public class DocxExportService : IDocxExportService
     /// </summary>
     private OpenXmlElement CreateSpanElement(ExportRichTextSpan span)
     {
+        // A \footnote in prose: its mark here, its note written once the paragraph is in the body
+        // (AddPendingFootnotes). It printed in brackets inside the paragraph (17 Nov 2026, launch-bot #157).
+        if (span.Footnote is not null)
+        {
+            var reference = new FootnoteReference { Id = 0 };
+            PendingFootnotes.AddOrUpdate(reference, span.Footnote);
+            return new Run(new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }), reference);
+        }
         if (!string.IsNullOrEmpty(span.Equation) && _latexToOmmlConverter != null)
         {
             var (omml, success, _) = _latexToOmmlConverter.Convert(span.Equation);
