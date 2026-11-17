@@ -1969,7 +1969,8 @@ public partial class RenderService : IRenderService
         {
             var tikzSpan = content.TryGetProperty("span", out var ts) && ts.ValueKind == JsonValueKind.String ? ts.GetString() : null;
             return TikzFigure.ToLatex(content, string.IsNullOrEmpty(caption) ? "" : InlineArgument(caption), label,
-                string.Equals(tikzSpan, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure") + "\n";
+                string.Equals(tikzSpan, "page", StringComparison.OrdinalIgnoreCase) ? "figure*" : "figure",
+                describe ? EscapeLatex(alt.Trim()) : null) + "\n";
         }
 
 
@@ -3136,6 +3137,8 @@ public partial class RenderService : IRenderService
                     if (!string.IsNullOrEmpty(author)) citation.Add(BibTeXField.ToLatex(author));
                     if (!string.IsNullOrEmpty(title)) citation.Add($"\\textit{{{BibTeXField.ToLatex(title)}}}");
                     if (!string.IsNullOrEmpty(journal)) citation.Add(BibTeXField.ToLatex(journal));
+                    // An arXiv preprint names its number where a journal would be (launch-bot #127, 17 Nov 2026).
+                    if (string.IsNullOrEmpty(journal) && ArxivOf(data.Value) is { } arxiv) citation.Add(arxiv);
                     if (!string.IsNullOrEmpty(year)) citation.Add($"({year})");
 
                     sb.AppendLine(string.Join(", ", citation) + ".");
@@ -3149,6 +3152,19 @@ public partial class RenderService : IRenderService
 
         sb.AppendLine(@"\end{thebibliography}");
         return sb.ToString();
+    }
+
+    /// <summary>"arXiv:1612.01514 [cs.DC]" for an entry from arXiv (eprint with archivePrefix arXiv, or an older
+    /// entry's arxivid), or null.</summary>
+    internal static string? ArxivOf(JsonElement data)
+    {
+        string Field(string name) => data.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+        var prefix = Field("archiveprefix") is { Length: > 0 } ap ? ap : Field("eprinttype");
+        var id = prefix.Equals("arxiv", StringComparison.OrdinalIgnoreCase) ? Field("eprint") : "";
+        if (id.Length == 0) id = Field("arxivid");
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var cls = Field("primaryclass");
+        return BibTeXField.ToLatex($"arXiv:{id.Trim()}" + (cls.Length > 0 ? $" [{cls.Trim()}]" : ""));
     }
 
     /// <summary>

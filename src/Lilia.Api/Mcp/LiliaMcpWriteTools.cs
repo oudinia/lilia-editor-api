@@ -42,7 +42,8 @@ public sealed class LiliaMcpWriteTools(
     IJobService jobs,
     Lilia.Engines.IBibliographyService bibliography,
     IAssetService assets,
-    ILogger<LiliaMcpWriteTools> logger)
+    ILogger<LiliaMcpWriteTools> logger,
+    Lilia.Infrastructure.Data.LiliaDbContext? db = null)
 {
     public const string WriteScope = "documents:write";
     public static readonly TimeSpan UndoWindow = TimeSpan.FromMinutes(10);
@@ -92,7 +93,7 @@ public sealed class LiliaMcpWriteTools(
     // One field guide for add_block and edit_block. Run 2 (MCP-84): it had no embed fields (a
     // {"latex":…} embed printed nothing), no algorithm line shape (a wrong one gave empty \STATEs)
     // and no bibliography.
-    private const string FieldGuide = "Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?, rowColors?: {odd: hex like #F2F2F2, even: hex} (odd = first body row)}; figure {src, caption?, label?, width 0-1} or TikZ {kind:\"tikz\", source, caption?, label?}; code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {caption?, label?, lines:[{kind, text}]} with kind statement|require|ensure|if|elsif|else|endif|for|forall|endfor|while|endwhile|repeat|until|return|comment, or {code} with \\STATE / \\IF{…} lines; callout {text, title?, variant?}; footnote {text}; embed {code} — raw LaTeX printed as written; bibliography {text} — BibTeX entries (@article{key, …}) or lines \"@cite[key] Author — Title\"; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}; CV: personalInfo {name, headline, email, phones:[{number}], homepage, location}, cvSection {title}, cvEntry {period, role, org, location, highlight?, description, tech:[]} (firstName/lastName, organization, startDate/endDate are mapped). Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation. LaTeX typed in text stays LaTeX (commands, {…} groups, \\ control spaces): to print a brace write \\{ \\}, a backslash \\textbackslash{} (MCP-32); %, &, #, _ print as typed.";
+    private const string FieldGuide = "Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?, rowColors?: {odd: hex like #F2F2F2, even: hex} (odd = first body row)}; figure {src, caption?, label?, width 0-1, alt?} or TikZ {kind:\"tikz\", source, caption?, label?, alt?} (alt: a description for readers who can't see it; ACM prints it as \\Description); code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {caption?, label?, lines:[{kind, text}]} with kind statement|require|ensure|if|elsif|else|endif|for|forall|endfor|while|endwhile|repeat|until|return|comment, or {code} with \\STATE / \\IF{…} lines; callout {text, title?, variant?}; footnote {text}; embed {code} — raw LaTeX printed as written; bibliography {text} — BibTeX entries (@article{key, …}) or lines \"@cite[key] Author — Title\"; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}; CV: personalInfo {name, headline, email, phones:[{number}], homepage, location}, cvSection {title}, cvEntry {period, role, org, location, highlight?, description, tech:[]} (firstName/lastName, organization, startDate/endDate are mapped). Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation. LaTeX typed in text stays LaTeX (commands, {…} groups, \\ control spaces): to print a brace write \\{ \\}, a backslash \\textbackslash{} (MCP-32); %, &, #, _ print as typed.";
 
     [McpServerTool(Name = "add_block", Title = "Add a block", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Add a block to a document (small, targeted inserts). Returns the new block id. The open editor shows the change at once; to undo it, give the reply's undo.versionId to restore_version. An unknown type is refused. " + FieldGuide)]
@@ -264,14 +265,51 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "set_title", Title = "Set the title", Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the author, date and keywords. What you leave out stays as it is.")]
+    [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the authors, date, keywords and, for ACM, the rights and CCS lines. What you leave out stays as it is. Each author's affiliation, country and email go in authors (ACM, IEEE, Elsevier and the other venues print them in their own way); author is the plain alternative, one line each (name first).")]
     public Task<object> SetTitle(
         [Description("The document id.")] string documentId,
         [Description("The title.")] string title,
-        [Description("Author name(s).")] string? author = null,
+        [Description("Author name(s), plain. A new line starts the next line under the name (affiliation, then country, then email). Use authors instead for several authors with affiliations.")] string? author = null,
         [Description("Date, e.g. 'October 2026' or '\\\\today'.")] string? date = null,
-        [Description("Keywords, comma-separated, e.g. 'union-find, amortised analysis' (IEEE, ACM and other venues ask for them).")] string? keywords = null) =>
-        WriteAsync(documentId, "set_title", new() { ["title"] = title, ["author"] = author, ["date"] = date, ["keywords"] = keywords });
+        [Description("Keywords, comma-separated, e.g. 'union-find, amortised analysis' (IEEE, ACM and other venues ask for them).")] string? keywords = null,
+        [Description("The authors in order, each with name and optionally affiliation, city, country and email. Replaces author.")] TitleAuthorInput[]? authors = null,
+        [Description("ACM only: the rights lines from ACM's eRights email after acceptance (\\setcopyright{…}, \\acmDOI{…}, \\acmConference[…]{…}{…}{…}, \\acmISBN{…}, \\acmYear{…}…), one a line. Without them the PDF keeps acmart's placeholders. Other lines are left out.")] string? acmRights = null,
+        [Description("ACM only: the CCS concepts from ACM's tool (dl.acm.org/ccs): the CCSXML block and the \\ccsdesc[500]{…} lines.")] string? acmCcs = null) =>
+        WriteAsync(documentId, "set_title", new()
+        {
+            ["title"] = title,
+            ["author"] = authors is { Length: > 0 } ? AuthorText(authors) : author is null ? null : AuthorLines(author),
+            ["date"] = date,
+            ["keywords"] = keywords,
+            ["acmRights"] = acmRights,
+            ["acmCcs"] = acmCcs,
+        });
+
+    /// <summary>One author for set_title (launch-bot #129, 17 Nov 2026: the connector had no way to give an affiliation).</summary>
+    public sealed record TitleAuthorInput(
+        [property: Description("The author's name.")] string Name,
+        [property: Description("Institution or company, e.g. 'Lilia Editor' or 'Dept. of CS, University of X'.")] string? Affiliation = null,
+        [property: Description("City, optional.")] string? City = null,
+        [property: Description("Country (ACM asks for one).")] string? Country = null,
+        [property: Description("Email (ACM asks for one).")] string? Email = null);
+
+    /// <summary>
+    /// The title block's author string the title editor writes: each author's name, then a line each for
+    /// affiliation, city, country and email (<c>\\</c>), authors joined by <c>\and</c>. The venues read it back
+    /// (PublisherClasses.FrontMatter: the last line before the email is the country).
+    /// </summary>
+    internal static string AuthorText(IEnumerable<TitleAuthorInput> authors) =>
+        string.Join(" \\and ", authors.Where(a => !string.IsNullOrWhiteSpace(a.Name)).Select(a =>
+            string.Join(@"\\", new[] { a.Name, a.Affiliation, a.City, a.Country, a.Email }
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => OneLine(x!)))));
+
+    /// <summary>A plain author with new lines: each line a line under the name (Grok's "name\naffiliation\n…" was joined into one name).</summary>
+    internal static string AuthorLines(string author) =>
+        author.Contains('\n')
+            ? string.Join(@"\\", author.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            : author;
+
+    private static string OneLine(string s) => System.Text.RegularExpressions.Regex.Replace(s.Trim(), @"\s*\r?\n\s*", ", ");
 
     // Paste → LaTeX, phase 3 (11 Nov 2026): move a paper over section by section, each one checked.
     [McpServerTool(Name = "paste_content", Title = "Paste text into a document", Destructive = false, Idempotent = false, OpenWorld = false)]
@@ -785,20 +823,37 @@ public sealed class LiliaMcpWriteTools(
         var undo = tool == "apply_lml" ? await FreshUndoPointAsync(doc.Id, app, "rewrite") : await UndoPointAsync(doc.Id, app);
         var changed = new List<string>();
         var meta = false;
-        var live = new AskLiliaService.LiveDocument(doc);
-        var fn = ((AskLiliaService)ask)
-            .BuildDocumentTools(live, doc.Id, UserId, allowWrite: true, changed, () => meta = true, CancellationToken.None)
-            .OfType<AIFunction>().First(f => f.Name == tool);
-
-        object? result;
-        try
+        object? result = null;
+        // Two calls on one document at once (an app sends set_title and set_venue together) can meet in the
+        // database: the second found the document changed and failed with EF's own text (launch-bot #126,
+        // 17 Nov 2026). It runs once more on the document as it is now, then says so plainly.
+        for (var attempt = 0; ; attempt++)
         {
-            result = await fn.InvokeAsync(new AIFunctionArguments(args.Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value)));
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "[Mcp] {Tool} failed on {DocId}", tool, doc.Id);
-            return (new { error = $"Lilia could not {tool.Replace('_', ' ')}: {ex.Message}" }, false);
+            var live = new AskLiliaService.LiveDocument(doc);
+            var fn = ((AskLiliaService)ask)
+                .BuildDocumentTools(live, doc.Id, UserId, allowWrite: true, changed, () => meta = true, CancellationToken.None)
+                .OfType<AIFunction>().First(f => f.Name == tool);
+            try
+            {
+                result = await fn.InvokeAsync(new AIFunctionArguments(args.Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value)));
+                break;
+            }
+            catch (Exception ex) when (IsConcurrency(ex))
+            {
+                logger.LogInformation("[Mcp] {Tool} on {DocId} met another change (attempt {Attempt})", tool, doc.Id, attempt + 1);
+                if (attempt >= 2)
+                    return (new { error = $"Lilia could not {tool.Replace('_', ' ')}: the document was being changed at the same time (another call, or the author). Nothing was changed by this call; send it again.", category = "busy" }, false);
+                db?.ChangeTracker.Clear();
+                await Task.Delay(150 * (attempt + 1));
+                if (await documents.GetDocumentAsync(doc.Id, UserId) is not { } now)
+                    return (new { error = "This document is no longer available." }, false);
+                doc = now;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[Mcp] {Tool} failed on {DocId}", tool, doc.Id);
+                return (new { error = $"Lilia could not {tool.Replace('_', ' ')}: {ex.Message}" }, false);
+            }
         }
 
         if (changed.Count > 0 || meta)
@@ -822,6 +877,13 @@ public sealed class LiliaMcpWriteTools(
             url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}",
             image,
         }, changed.Count > 0 || meta);
+    }
+
+    internal static bool IsConcurrency(Exception? ex)
+    {
+        for (; ex is not null; ex = ex.InnerException)
+            if (ex is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) return true;
+        return false;
     }
 
     private string UndoKey(Guid docId) => $"mcp-undo:{docId}:{User?.FindFirst("client_id")?.Value ?? "lilia"}";

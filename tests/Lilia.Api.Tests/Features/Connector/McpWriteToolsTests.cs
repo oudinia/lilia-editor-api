@@ -95,6 +95,36 @@ public class McpWriteToolsTests : IntegrationTestBase
         title.GetProperty("keywords").EnumerateArray().Select(k => k.GetString()).Should().Equal("union-find", "amortised analysis");
     }
 
+    // #129 (Grok, 17 Nov 2026): ACM asked for each author's affiliation, country and email, the rights lines and the CCS
+    // concepts, and set_title had no way to give them. The title editor's own fields, through the connector.
+    [Fact]
+    public async Task Set_title_takes_authors_with_affiliations_and_ACMs_rights_and_CCS()
+    {
+        await SeedUserAsync("mcpw_acm");
+        var doc = await SeedDocumentAsync("mcpw_acm", "A paper");
+        var app = App("mcpw_acm", "openid documents:read documents:write");
+
+        var r = await CallAsync(app, "set_title", new
+        {
+            documentId = doc.Id.ToString(),
+            title = "A paper",
+            authors = new object[]
+            {
+                new { name = "Grok Tester", affiliation = "Lilia Editor", city = "Paris", country = "France", email = "grok@example.org" },
+                new { name = "Ada Lovelace", country = "UK" },
+            },
+            acmRights = "\\setcopyright{acmlicensed}\n\\acmDOI{10.1145/1234567.8901234}",
+            acmCcs = "\\ccsdesc[500]{Theory of computation~Data structures design and analysis}",
+        });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+
+        await using var db = CreateDbContext();
+        var title = (await db.Blocks.SingleAsync(b => b.DocumentId == doc.Id && b.Type == "title")).Content.RootElement;
+        title.GetProperty("author").GetString().Should().Be(@"Grok Tester\\Lilia Editor\\Paris\\France\\grok@example.org \and Ada Lovelace\\UK");
+        title.GetProperty("acmRights").GetString().Should().Contain(@"\setcopyright{acmlicensed}");
+        title.GetProperty("acmCcs").GetString().Should().StartWith(@"\ccsdesc[500]");
+    }
+
     // get_document's LML is what apply_lml takes: a rewrite can start from the document as it is.
     [Fact]
     public async Task The_LML_get_document_gives_goes_back_through_apply_lml_unchanged()

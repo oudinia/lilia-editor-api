@@ -45,7 +45,8 @@ public sealed partial class DocumentCheckService(
     IConfiguration config,
     ILogger<DocumentCheckService> logger,
     Lilia.Infrastructure.Data.LiliaDbContext? db = null,
-    Lilia.Core.Interfaces.IStorageService? storage = null) : IDocumentCheckService
+    Lilia.Core.Interfaces.IStorageService? storage = null,
+    IDocumentExportService? exports = null) : IDocumentCheckService
 {
     private const int MaxProblems = 30;
 
@@ -120,6 +121,27 @@ public sealed partial class DocumentCheckService(
         }
     }
 
+    /// <summary>
+    /// How many pages the PDF export_document gives has (launch-bot #125, 17 Nov 2026): the check compiles once, and
+    /// one LaTeX pass can be a page longer than the finished PDF (acmart said 3 for 2). The export is kept by document
+    /// version, so the download after the check is ready at once. Null when it can't be made: the check's own count stands.
+    /// </summary>
+    private async Task<int?> ExportedPagesAsync(Guid documentId)
+    {
+        if (exports is null) return null;
+        try
+        {
+            // Awaited to the end, never left running: it shares this request's database context. The compile has its own time limit.
+            var (pdf, _) = await exports.ExportToPdfWithEngineAsync(documentId, "auto");
+            return pdf is { Length: > 100 } ? PdfPages.Count(pdf) : null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogInformation(ex, "[Check] the PDF for the page count of {DocId} could not be made", documentId);
+            return null;
+        }
+    }
+
     private string EditorUrl(Guid id) => $"{McpOAuth.PublicOrigin(config)}/d/{id}";
 
     private async Task<DocumentCheck> CompileAsync(Lilia.Core.DTOs.DocumentDto d)
@@ -137,7 +159,8 @@ public sealed partial class DocumentCheckService(
                 return seen with { Cached = true };
             }
             var result = await latex.ValidateAsync(source, engine);
-            var check = Judge(d, source, engine, result, await PublisherAsync(d, source), await MissingFiguresAsync(d.Id));
+            var check = Judge(d, source, engine, result, await PublisherAsync(d, source), await MissingFiguresAsync(d.Id),
+                result.Valid ? await ExportedPagesAsync(d.Id) : null);
             if (ByVersion.Count >= MaxCachedVersions) ByVersion.Clear();
             ByVersion[key] = check;
             return check;
@@ -220,7 +243,8 @@ public sealed partial class DocumentCheckService(
     }
 
     private DocumentCheck Judge(Lilia.Core.DTOs.DocumentDto? d, string source, string engine, LatexValidationResult result,
-        Lilia.Engines.Publishers.ComplianceReport? publisher = null, IReadOnlyList<(Guid BlockId, string File)>? missingFigures = null)
+        Lilia.Engines.Publishers.ComplianceReport? publisher = null, IReadOnlyList<(Guid BlockId, string File)>? missingFigures = null,
+        int? exportedPages = null)
     {
         missingFigures ??= [];
         // T1 (MCP-27/61, MCP-08): judge references and citations from the LaTeX actually emitted,
@@ -268,7 +292,9 @@ public sealed partial class DocumentCheckService(
         var literalMarks = CheckHints.LiteralMarks(source);
         var hint = result.Valid ? null : CheckHints.ForError(result.Log is { Length: > 0 } ? result.Log : result.Error);
         // How long the PDF is (item E): venues limit pages. Read from the compile's log, so it costs nothing.
-        var pages = result.Valid ? CheckHints.Pages(result.Log) : null;
+        // The exported PDF's own count when it could be made (#125): one pass can be a page longer.
+        var onePass = result.Valid ? CheckHints.Pages(result.Log) : null;
+        var pages = result.Valid ? exportedPages ?? onePass : null;
 
         var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0 && wideCode.Count == 0
             && missingFigures.Count == 0 && literalMarks.Count == 0;
@@ -324,7 +350,8 @@ public sealed partial class DocumentCheckService(
             errorBlockId,
             hint,
             pages,
-            pagesNote = pages is null ? null : CheckHints.PagesNote(source),
+            pagesNote = pages is null || exportedPages is not null ? null : CheckHints.PagesNote(source)
+                ?? (d is null ? null : "Counted on one LaTeX pass: the exported PDF can differ by a page."),
             warnings = result.Warnings.Take(20),
             warningCount = result.Warnings.Length,
             references,

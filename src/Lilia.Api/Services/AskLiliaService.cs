@@ -960,11 +960,13 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 ([System.ComponentModel.Description("The document title. Becomes the document name AND the compiled LaTeX \\title.")] string title,
                  [System.ComponentModel.Description("Author name(s). Optional.")] string? author = null,
                  [System.ComponentModel.Description("Date, e.g. 'June 2026' or '\\\\today'. Optional.")] string? date = null,
-                 [System.ComponentModel.Description("Keywords, comma-separated (venues ask for them). Optional.")] string? keywords = null)
+                 [System.ComponentModel.Description("Keywords, comma-separated (venues ask for them). Optional.")] string? keywords = null,
+                 [System.ComponentModel.Description("ACM only: the rights lines from ACM's eRights email (\\setcopyright, \\acmDOI, \\acmConference…). Optional.")] string? acmRights = null,
+                 [System.ComponentModel.Description("ACM only: the CCS concepts from dl.acm.org/ccs (the CCSXML block and \\ccsdesc lines). Optional.")] string? acmCcs = null)
                     => authorTitle is not null && !string.Equals(title?.Trim(), authorTitle, StringComparison.OrdinalIgnoreCase)
                         && !AsksForTitle(question)
                         ? Task.FromResult<object>(new { error = $"The author named this document \u201c{authorTitle}\u201d. Keep that title: rename it only when they ask. To set only the author or date, call set_title with title \u201c{authorTitle}\u201d.", category = "kept" })
-                        : SetTitleAsync(live.Dto, docGuid, title!, author, date, keywords, changed),
+                        : SetTitleAsync(live.Dto, docGuid, title!, author, date, keywords, changed, acmRights, acmCcs),
                 name: "set_title",
                 description: "Set the document's title (and optionally author/date). Use this for any request to change/set the title — it creates or updates the Title block (\\title/\\author/\\date) and keeps the document name in sync. Never use a heading block as the title."));
             tools.Add(AIFunctionFactory.Create(
@@ -1832,7 +1834,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// author and date, and every call dropped the keywords and anything else the block held (a venue's affiliations;
     /// the connector test, 17 Nov 2026).
     /// </summary>
-    private async Task<object> SetTitleAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string title, string? author, string? date, string? keywords, List<string> changed)
+    private async Task<object> SetTitleAsync(Lilia.Core.DTOs.DocumentDto doc, Guid docId, string title, string? author, string? date, string? keywords, List<string> changed,
+        string? acmRights = null, string? acmCcs = null)
     {
         var existing = doc.Blocks?.FirstOrDefault(b => b.Type == Lilia.Core.Entities.BlockTypes.Title);
         var node = existing?.Content is JsonElement { ValueKind: JsonValueKind.Object } old && JsonNode.Parse(old.GetRawText()) is JsonObject o
@@ -1843,6 +1846,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
         if (keywords is not null)
             node["keywords"] = new JsonArray(keywords.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(k => (JsonNode?)JsonValue.Create(k)).ToArray());
+        // The title block's ACM fields, as the title editor writes them (launch-bot #129, 17 Nov 2026).
+        if (acmRights is not null) node["acmRights"] = acmRights.Trim();
+        if (acmCcs is not null) node["acmCcs"] = acmCcs.Trim();
         var content = JsonSerializer.SerializeToElement(node);
         if (existing is not null)
         {

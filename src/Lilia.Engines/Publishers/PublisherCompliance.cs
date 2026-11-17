@@ -214,7 +214,8 @@ public static partial class PublisherCompliance
                 yield return new("warning", "acm_email", $"ACM wants an email for each author: add one as a line under {a.Name}.", titleId);
 
         foreach (var f in blocks.Where(b => b.Type == BlockTypes.Figure))
-            if (!IsDescription(Text(f, "alt")))
+            // A TikZ figure may write its own \Description in its source (launch-bot #129).
+            if (!IsDescription(Text(f, "alt")) && Text(f, "source")?.Contains(@"\Description", StringComparison.Ordinal) != true)
                 yield return new("warning", "acm_description",
                     "ACM needs a description of every figure, for readers who can't see it: write one in the figure's alt text (not its caption again, not a file name).", f.Id.ToString());
 
