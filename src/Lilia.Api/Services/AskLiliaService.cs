@@ -1637,8 +1637,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 : !string.IsNullOrWhiteSpace(parsed.Title) ? parsed.Title!.Trim()
                 : "Untitled";
 
-            // If date still empty, default to today mode for new full rewrites.
-            if (string.IsNullOrWhiteSpace(date) && string.IsNullOrWhiteSpace(dateMode))
+            // If date still empty, default to today mode for a new title. A title block the author left without a date
+            // keeps none (#124 retest: a rewrite of the same text turned "" into \today).
+            if (existingTitle is null && string.IsNullOrWhiteSpace(date) && string.IsNullOrWhiteSpace(dateMode))
             {
                 date = "\\today";
                 dateMode = "today";
