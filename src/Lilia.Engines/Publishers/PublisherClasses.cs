@@ -102,8 +102,34 @@ public static class PublisherClasses
                 + "\\expandafter\\let\\csname endlongtable*\\endcsname\\relax}\n",
             _ => s,
         };
+        // The caption package (Lilia loads it for \captionof and subfigures) doesn't know IEEEtran, llncs or revtex4-2:
+        // it warned "Unknown document class" and set its own style, "Fig. 1:" where the class prints "Fig. 1." and IEEE
+        // sets "TABLE I" on its own line (launch-bot #136, 17 Nov 2026). Set to each class's own.
+        var captionStyle = c switch
+        {
+            "IEEEtran" => @"\captionsetup{labelsep=period,font=footnotesize}\captionsetup[table]{labelsep=newline,textfont=sc,justification=centering}",
+            "llncs" => @"\captionsetup{labelsep=period,labelfont=bf,font=small}",
+            "revtex4-2" => @"\captionsetup{labelsep=period}",
+            _ => null,
+        };
+        if (captionStyle is not null && s.Contains(@"\usepackage{subcaption}", StringComparison.Ordinal))
+            s = s.Replace(@"\usepackage{subcaption}", @"\usepackage{subcaption}" + "\n" + captionStyle);
         return s;
     }
+
+    /// <summary>
+    /// An author's address lines (emails already out) as institution, city and country: one line is the institution;
+    /// two, the institution and the country; more, the institution (the rest, joined), the city and the country. What
+    /// the connector's set_title authors write (affiliation, city, country), and how a person types an address.
+    /// </summary>
+    internal static (string Institution, string? City, string? Country) Address(IReadOnlyList<string> lines, Func<string, string> escape) =>
+        lines.Count switch
+        {
+            0 => ("", null, null),
+            1 => (escape(lines[0]), null, null),
+            2 => (escape(lines[0]), null, escape(lines[1])),
+            _ => (string.Join(", ", lines.Take(lines.Count - 2).Select(escape)), escape(lines[^2]), escape(lines[^1])),
+        };
 
     private static string Drop(string s, string line)
     {
@@ -148,11 +174,12 @@ public static class PublisherClasses
                     // country. acmart stops on an empty \country ("No country present"), so: no lines, no
                     // \affiliation (it compiles); one line, the institution with an unknown country
                     // (\relax: present, prints nothing). The compliance check asks for the country.
+                    // Three lines or more: the one before the country is the city (acmart warned "No city" when the
+                    // connector's authors gave one: launch-bot #129, #134).
                     if (a.Lines.Count > 0)
                     {
-                        var inst = a.Lines.Count > 1 ? Line(a.Lines.Take(a.Lines.Count - 1), ", ") : escape(a.Lines[0]);
-                        var country = a.Lines.Count > 1 ? escape(a.Lines[^1]) : @"\relax";
-                        pre.AppendLine($@"\affiliation{{\institution{{{inst}}}\country{{{country}}}}}");
+                        var (inst, city, country) = Address(a.Lines, escape);
+                        pre.AppendLine($@"\affiliation{{\institution{{{inst}}}" + (city is null ? "" : $@"\city{{{city}}}") + $@"\country{{{country ?? @"\relax"}}}}}");
                     }
                     // TAPS wants each author's \email.
                     foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
@@ -188,7 +215,11 @@ public static class PublisherClasses
                 {
                     body.AppendLine($@"\author{{{escape(a.Name)}}}");
                     foreach (var e in emails) body.AppendLine($@"\ead{{{e}}}");
-                    if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{organization={{{Line(a.Lines, ", ")}}}}}");
+                    // organization alone printed with a trailing comma ("Lilia Editor, Paris, France,": launch-bot #134);
+                    // one line goes as plain text, more as organization, city and country.
+                    if (a.Lines.Count == 1) body.AppendLine($@"\affiliation{{{escape(a.Lines[0])}}}");
+                    else if (a.Lines.Count > 1 && Address(a.Lines, escape) is var (org, city, country))
+                        body.AppendLine($@"\affiliation{{organization={{{org}}}" + (city is null ? "" : $@", city={{{city}}}") + $@", country={{{country}}}}}");
                 }
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\begin{{keyword}}{string.Join(@" \sep ", kw)}\end{{keyword}}");

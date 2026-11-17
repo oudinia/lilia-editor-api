@@ -37,7 +37,8 @@ public static partial class PublisherCompliance
         {
             if (!string.Equals(cls, profile.DocumentClass, StringComparison.Ordinal))
                 findings.Add(new("error", "class", $"{profile.Publisher} {profile.Venue} uses the {profile.DocumentClass} class; this document is set to {doc.LatexDocumentClass ?? "article"}."));
-            else if (Options(doc.LatexDocumentClassOptions) is var mine && !mine.SetEquals(Options(profile.ClassOptions)))
+            // A Physical Review journal added to REVTeX's options is what aps_journal asks for, not a change.
+            else if (Options(doc.LatexDocumentClassOptions) is var mine && !mine.Except(PhysicalReviewJournals).ToHashSet().SetEquals(Options(profile.ClassOptions)))
                 findings.Add(new("warning", "class_options",
                     $"The class options were changed from the profile's ({Show(profile.ClassOptions)}) to {Show(doc.LatexDocumentClassOptions)}."));
         }
@@ -112,6 +113,20 @@ public static partial class PublisherCompliance
                 findings.Add(new("warning", isFigure ? "figure_unreferenced" : "table_unreferenced",
                     $"{(isFigure ? "Figure" : "Table")} {n} is never referred to in the text: publishers ask that each one be cited (a reference to its label).",
                     b.Id.ToString()));
+        }
+
+        // ── APS (REVTeX): what the class decides silently (launch-bot #135, 17 Nov 2026) ──
+        if (cls == "revtex4-2")
+        {
+            var options = Options(doc.LatexDocumentClassOptions);
+            if (!options.Overlaps(PhysicalReviewJournals))
+                findings.Add(new("warning", "aps_journal",
+                    "No Physical Review journal is named, so REVTeX formats it for Physical Review A. Add your journal (prl, prb, prd, pre, prx…) to the class options in Document settings.",
+                    titleBlock?.Id.ToString()));
+            if (RenderService.TitleKeywords(new Document { Blocks = blocks.ToList() }).Count > 0)
+                findings.Add(new("info", "aps_keywords",
+                    "APS journals don't print keywords (they index papers with PhySH): the keywords stay in the source but not in the PDF.",
+                    titleBlock?.Id.ToString()));
         }
 
         // ── Layout the class refuses ──
@@ -192,6 +207,11 @@ public static partial class PublisherCompliance
     /// per author, a description in every figure, the review format, and no redefined standard commands
     /// or pushed-back spacing in the author's own LaTeX.
     /// </summary>
+    /// <summary>REVTeX's Physical Review journal options.</summary>
+    private static readonly HashSet<string> PhysicalReviewJournals = new(StringComparer.OrdinalIgnoreCase)
+        { "pra", "prb", "prc", "prd", "pre", "prl", "prx", "prxquantum", "prapplied", "prfluids", "prmaterials", "prresearch",
+          "prab", "prper", "rmp", "praccelbeams", "physrev" };
+
     private static IEnumerable<ComplianceFinding> Taps(Document doc, IReadOnlyList<Block> blocks, PublisherProfile? profile,
         Block? titleBlock, IReadOnlyList<TitleAuthor> authors, List<(string Source, string? BlockId)> own)
     {
