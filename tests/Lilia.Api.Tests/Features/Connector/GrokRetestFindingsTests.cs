@@ -239,6 +239,8 @@ public class GrokRetestFindingsTests : IDisposable
         BibliographyService.ProtectCapitals("On the Einstein Podolsky Rosen paradox").Should().Be("On the {Einstein} {Podolsky} {Rosen} paradox");
         BibliographyService.ProtectCapitals("Deep learning for DNA").Should().Be("Deep learning for {DNA}");
         BibliographyService.ProtectCapitals("Already {Braced} title").Should().Be("Already {Braced} title");
+        BibliographyService.ProtectCapitals("Deep Residual Learning for Image Recognition").Should().Be("Deep Residual Learning for Image Recognition", "a Title Case title is left as it is");
+        BibliographyService.ProtectCapitals("A study of LaTeX, in Paris.").Should().Be("A study of {LaTeX}, in {Paris}.");
         var entry = new BibliographyEntry
         {
             CiteKey = "bell1964", EntryType = "article",
