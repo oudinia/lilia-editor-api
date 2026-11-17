@@ -74,6 +74,14 @@ public sealed class EmittedLatexAudit
                 markers.Add((lineNo, id));
                 continue;
             }
+            // A label the emitter took out of an unnumbered alignment (EquationLatex.WithoutLabels): still a label
+            // that prints ?? when referred to.
+            if (raw.TrimStart().StartsWith(EquationLatex.DroppedLabelMark, StringComparison.Ordinal))
+            {
+                var k = raw.TrimStart()[EquationLatex.DroppedLabelMark.Length..].Trim();
+                if (k.Length > 0) starred[k] = starred.GetValueOrDefault(k) + 1;
+                continue;
+            }
             var text = CommentRx.Replace(raw, "");
             if (text.Length == 0) continue;
             if (!inBody)
