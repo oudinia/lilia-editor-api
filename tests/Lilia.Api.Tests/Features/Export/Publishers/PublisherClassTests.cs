@@ -120,7 +120,7 @@ public class PublisherClassTests
     {
         var tex = Export(Doc("elsarticle", null, "Ada Lovelace\\\\Analytical Engines \\and Alan Turing", new[] { "LaTeX", "blocks" }));
         var front = tex[tex.IndexOf(@"\begin{frontmatter}")..tex.IndexOf(@"\end{frontmatter}")];
-        front.Should().Contain(@"\author{Ada Lovelace}").And.Contain(@"\author{Alan Turing}").And.Contain(@"\affiliation{organization={Analytical Engines}}");
+        front.Should().Contain(@"\author{Ada Lovelace}").And.Contain(@"\author{Alan Turing}").And.Contain(@"\affiliation{Analytical Engines}");
         front.Should().Contain(@"\begin{keyword}LaTeX \sep blocks\end{keyword}").And.Contain(@"\begin{abstract}");
         tex.Should().NotContain(@"\maketitle").And.Contain(@"\bibliographystyle{elsarticle-num}");
     }

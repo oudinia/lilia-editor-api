@@ -241,9 +241,51 @@ public class GrokRetestFindingsTests : IDisposable
 
         var (pre, _) = PublisherClasses.FrontMatter("acmart", "A paper", text, null, [], s => s, "A paper");
         pre.Should().Contain(@"\author{Grok Tester}")
-            .And.Contain(@"\affiliation{\institution{Lilia Editor, Paris}\country{France}}")
+            .And.Contain(@"\affiliation{\institution{Lilia Editor}\city{Paris}\country{France}}")
             .And.Contain(@"\email{grok@example.org}")
             .And.Contain(@"\author{Ada Lovelace}");
+    }
+
+    // #134 (Grok's #133, 17 Nov 2026): Elsevier printed "Lilia Editor, Paris, France," with organization alone.
+    [Fact]
+    public void Elsevier_gets_organization_city_and_country_and_a_one_line_address_as_text()
+    {
+        var text = LiliaMcpWriteTools.AuthorText([
+            new("Grok Tester", "Lilia Editor", "Paris", "France", "grok@example.org"),
+            new("Ada Lovelace", "Analytical Society"),
+        ]);
+        var (_, body) = PublisherClasses.FrontMatter("elsarticle", "A paper", text, null, [], s => s, "A paper");
+        body.Should().Contain(@"\affiliation{organization={Lilia Editor}, city={Paris}, country={France}}")
+            .And.Contain(@"\affiliation{Analytical Society}")
+            .And.Contain(@"\ead{grok@example.org}");
+    }
+
+    // #136: the caption package set its own style for classes it doesn't know.
+    [Theory]
+    [InlineData("IEEEtran", "labelsep=newline")]
+    [InlineData("llncs", "labelfont=bf")]
+    [InlineData("revtex4-2", "labelsep=period")]
+    public void The_caption_package_follows_the_classs_style(string cls, string setting)
+    {
+        var packages = "\\usepackage{caption}\n\\usepackage{subcaption}\n";
+        PublisherClasses.Packages(packages, cls).Should().Contain(@"\captionsetup").And.Contain(setting);
+        PublisherClasses.Packages(packages, "acmart").Should().NotContain(@"\captionsetup", "acmart is a class caption knows");
+    }
+
+    // #135: REVTeX chose Physical Review A silently and APS prints no keywords, while the check said passed.
+    [Fact]
+    public void An_APS_paper_is_told_to_name_its_journal_and_that_keywords_do_not_print()
+    {
+        var p = PublisherProfiles.Find("aps-final")!;
+        var doc = PublisherClassTests.Doc(p.DocumentClass, p.ClassOptions, "Ada Lovelace\\\\Analytical Society\\\\UK", new[] { "union-find" });
+        doc.PublisherProfile = p.Id;
+        var blocks = doc.Blocks.OrderBy(b => b.SortOrder).ToList();
+        var findings = PublisherCompliance.Check(doc, blocks, "").Findings;
+        findings.Should().Contain(f => f.Code == "aps_journal").And.Contain(f => f.Code == "aps_keywords");
+
+        doc.LatexDocumentClassOptions = p.ClassOptions + ",prl";
+        var named = PublisherCompliance.Check(doc, blocks, "").Findings;
+        named.Should().NotContain(f => f.Code == "aps_journal").And.NotContain(f => f.Code == "class_options", "naming the journal is what was asked");
     }
 
     [Fact]
