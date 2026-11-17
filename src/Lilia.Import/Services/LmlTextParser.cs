@@ -224,6 +224,7 @@ public sealed class LmlTextParser : ILmlTextParser
         var sb = new StringBuilder();
         var i = start;
         var sawAny = false;
+        var sawIndented = false;
 
         while (i < lines.Length)
         {
@@ -242,6 +243,11 @@ public sealed class LmlTextParser : ILmlTextParser
                     // Leave the blank line for the outer loop; stop body.
                     break;
                 }
+                // An indented body, then a blank line, then text at the margin: that text is the next paragraph, not more
+                // of this block (#124, 17 Nov 2026: get_document's LML had an equation, a blank line and a paragraph, and
+                // apply_lml put the paragraph inside the equation, which then stopped the PDF).
+                if (sawIndented && !(peek.StartsWith("  ") || peek.StartsWith("\t")))
+                    break;
                 if (sawAny)
                 {
                     sb.AppendLine();
@@ -260,6 +266,7 @@ public sealed class LmlTextParser : ILmlTextParser
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append(content.TrimEnd());
                 sawAny = true;
+                sawIndented = true;
                 i++;
                 continue;
             }
@@ -387,7 +394,10 @@ public sealed class LmlTextParser : ILmlTextParser
                         latex = KeepLines(body),
                         equationMode = string.Equals(mode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : "display",
                         label,
-                        numbered = !string.IsNullOrEmpty(label),
+                        // numbered= wins (#124: an align numbers its rows with labels of its own, so "no block label"
+                        // isn't "unnumbered"); without it, a label still means numbered, as before.
+                        numbered = attrs.TryGetValue("numbered", out var num) && bool.TryParse(num, out var isNumbered)
+                            ? isNumbered : !string.IsNullOrEmpty(label),
                     },
                 });
                 return;
@@ -508,6 +518,9 @@ public sealed class LmlTextParser : ILmlTextParser
                                 ?? (string.IsNullOrWhiteSpace(body) ? "" : body.Trim()),
                         author = attrs.GetValueOrDefault("author") ?? "",
                         date = attrs.GetValueOrDefault("date") ?? "",
+                        // The keywords venues ask for (#124: apply_lml of get_document's LML dropped them).
+                        keywords = (attrs.GetValueOrDefault("keywords") ?? "")
+                            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                     },
                     Depth = 0,
                 });

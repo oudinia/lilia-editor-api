@@ -780,7 +780,9 @@ public sealed class LiliaMcpWriteTools(
     private async Task<(object Reply, bool Changed)> RunAsync(Lilia.Core.DTOs.DocumentDto doc, string tool, Dictionary<string, object?> args, object? image = null)
     {
         var app = await AppNameAsync();
-        var undo = await UndoPointAsync(doc.Id, app);
+        // A rewrite of the whole body saves the text as it is just before it, not the burst's first version (#124,
+        // 17 Nov 2026: undoing an apply_lml went back past every earlier edit too). That version becomes the burst's.
+        var undo = tool == "apply_lml" ? await FreshUndoPointAsync(doc.Id, app, "rewrite") : await UndoPointAsync(doc.Id, app);
         var changed = new List<string>();
         var meta = false;
         var live = new AskLiliaService.LiveDocument(doc);
@@ -840,6 +842,22 @@ public sealed class LiliaMcpWriteTools(
         {
             var v = await versions.CreateVersionAsync(docId, UserId, new Lilia.Core.DTOs.CreateVersionDto($"Before {app} edit"));
             cache.Set(key, v.Id, new MemoryCacheEntryOptions { SlidingExpiration = UndoWindow });
+            return v.Id;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Mcp] undo point failed for {DocId}", docId);
+            return null;
+        }
+    }
+
+    /// <summary>A new version now, made the burst's undo point; null when it can't be saved.</summary>
+    private async Task<Guid?> FreshUndoPointAsync(Guid docId, string app, string what)
+    {
+        try
+        {
+            var v = await versions.CreateVersionAsync(docId, UserId, new Lilia.Core.DTOs.CreateVersionDto($"Before {app} {what}"));
+            cache.Set(UndoKey(docId), v.Id, new MemoryCacheEntryOptions { SlidingExpiration = UndoWindow });
             return v.Id;
         }
         catch (Exception ex)

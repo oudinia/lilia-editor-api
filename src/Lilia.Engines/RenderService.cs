@@ -1412,8 +1412,13 @@ public partial class RenderService : IRenderService
     public static IReadOnlyList<string> TitleKeywords(Document doc)
     {
         var title = doc.Blocks?.FirstOrDefault(b => string.Equals(b.Type, BlockTypes.Title, StringComparison.OrdinalIgnoreCase));
-        if (title?.Content is null || title.Content.RootElement.ValueKind != JsonValueKind.Object
-            || !title.Content.RootElement.TryGetProperty("keywords", out var k)) return [];
+        return title?.Content is null ? [] : TitleKeywordsOf(title.Content.RootElement);
+    }
+
+    /// <summary>A title block's keywords, from its content (an array, or one comma-separated string).</summary>
+    public static IReadOnlyList<string> TitleKeywordsOf(JsonElement content)
+    {
+        if (content.ValueKind != JsonValueKind.Object || !content.TryGetProperty("keywords", out var k)) return [];
         return k.ValueKind switch
         {
             JsonValueKind.Array => k.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String)

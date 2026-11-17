@@ -123,8 +123,14 @@ public partial class RenderService
     {
         var latex = EquationContent.ReadMathSource(content);
         var equationMode = content.TryGetProperty("equationMode", out var em) ? em.GetString() ?? "display" : "display";
-        var attrs = BuildAttrs(("label", label), ("mode", string.Equals(equationMode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : null));
-        return $"@equation{attrs}\n{latex}";
+        // numbered= only when it isn't what the label says (#124: an align's rows carry their own labels, so it is
+        // numbered without a block label, and apply_lml made it unnumbered). The body is indented: unindented, a
+        // multi-line align ran into the paragraph after it.
+        var numbered = content.TryGetProperty("numbered", out var n) && n.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? n.GetBoolean() : !string.IsNullOrEmpty(label);
+        var attrs = BuildAttrs(("label", label), ("mode", string.Equals(equationMode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : null),
+            ("numbered", numbered == !string.IsNullOrEmpty(label) ? null : numbered ? "true" : "false"));
+        return $"@equation{attrs}\n{string.Join("\n", latex.Split('\n').Select(l => "  " + l))}";
     }
 
     /// <summary>
@@ -139,11 +145,13 @@ public partial class RenderService
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var author = content.TryGetProperty("author", out var a) ? a.GetString() ?? "" : "";
         var date = content.TryGetProperty("date", out var d) ? d.GetString() ?? "" : "";
+        var keywords = string.Join(", ", RenderService.TitleKeywordsOf(content));
 
         var attrs = BuildAttrs(
             ("title", string.IsNullOrWhiteSpace(title) ? null : title),
             ("author", string.IsNullOrWhiteSpace(author) ? null : author),
-            ("date", string.IsNullOrWhiteSpace(date) ? null : date));
+            ("date", string.IsNullOrWhiteSpace(date) ? null : date),
+            ("keywords", keywords.Length == 0 ? null : keywords));
 
         return $"@title{attrs}";
     }
