@@ -19,6 +19,12 @@ public interface IDocumentCheckService
     Task<DocumentCheck> CheckAsync(Lilia.Core.DTOs.DocumentDto d, CancellationToken ct = default);
 
     /// <summary>
+    /// The same check, with the page count of the PDF export_document gives (check_document). It makes that PDF, a full
+    /// compile: a paste's check, which paid for it each time, took 10–13 s (launch-bot #148, 17 Nov 2026).
+    /// </summary>
+    Task<DocumentCheck> CheckWithPagesAsync(Lilia.Core.DTOs.DocumentDto d, CancellationToken ct = default) => CheckAsync(d, ct);
+
+    /// <summary>
     /// Compile a LaTeX source that belongs to no saved document (the paste preview, 11 Nov 2026) and judge it the
     /// same way. Block ids in the verdict are the ones in the source's <c>% block:{id}</c> markers.
     /// </summary>
@@ -64,13 +70,17 @@ public sealed partial class DocumentCheckService(
             await Task.WhenAny(checking.Task, Task.Delay(max));
     }
 
-    public async Task<DocumentCheck> CheckAsync(Lilia.Core.DTOs.DocumentDto d, CancellationToken ct = default)
+    public Task<DocumentCheck> CheckAsync(Lilia.Core.DTOs.DocumentDto d, CancellationToken ct = default) => RunAsync(d, pages: false);
+
+    public Task<DocumentCheck> CheckWithPagesAsync(Lilia.Core.DTOs.DocumentDto d, CancellationToken ct = default) => RunAsync(d, pages: true);
+
+    private async Task<DocumentCheck> RunAsync(Lilia.Core.DTOs.DocumentDto d, bool pages)
     {
         var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Running[d.Id] = running;
         try
         {
-            return await CompileAsync(d);
+            return await CompileAsync(d, pages);
         }
         finally
         {
@@ -144,7 +154,7 @@ public sealed partial class DocumentCheckService(
 
     private string EditorUrl(Guid id) => $"{McpOAuth.PublicOrigin(config)}/d/{id}";
 
-    private async Task<DocumentCheck> CompileAsync(Lilia.Core.DTOs.DocumentDto d)
+    private async Task<DocumentCheck> CompileAsync(Lilia.Core.DTOs.DocumentDto d, bool pages)
     {
         try
         {
@@ -152,7 +162,7 @@ public sealed partial class DocumentCheckService(
             // MCP-08: compile with the engine the emitted LaTeX needs (it loads fontspec for
             // xelatex/lualatex), or the document's own; validation was hard-wired to pdflatex.
             var engine = LiliaMcpTools.EngineFor(source, d.LatexEngine);
-            var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{d.Id}|{engine}|{source}")));
+            var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{d.Id}|{engine}|{(pages ? "pages" : "")}|{source}")));
             if (ByVersion.TryGetValue(key, out var seen))
             {
                 checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, seen.Compiles == true, seen.PrintsCorrectly, ErrorOf(seen)));
@@ -160,7 +170,7 @@ public sealed partial class DocumentCheckService(
             }
             var result = await latex.ValidateAsync(source, engine);
             var check = Judge(d, source, engine, result, await PublisherAsync(d, source), await MissingFiguresAsync(d.Id),
-                result.Valid ? await ExportedPagesAsync(d.Id) : null);
+                result.Valid && pages ? await ExportedPagesAsync(d.Id) : null);
             if (ByVersion.Count >= MaxCachedVersions) ByVersion.Clear();
             ByVersion[key] = check;
             return check;

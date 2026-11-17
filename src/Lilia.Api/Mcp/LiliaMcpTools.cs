@@ -255,7 +255,7 @@ public sealed class LiliaMcpTools(
     [McpServerTool(Name = "check_document", Title = "Check the document compiles", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), printsCorrectly, problems: each error and warning with its block id and line, hint: what to change when the error has a common cause (a TikZ library to load), and pages: how many pages the PDF export_document gives has (pagesNote says when it could only be counted on one LaTeX pass, which can differ). Takes a few seconds; the PDF is then ready to export at once. It does not change the document or its saved validation.")]
     public async Task<object> CheckDocument([Description("The document id.")] string documentId) =>
-        await OpenAsync(documentId) is { } d ? (await checker.CheckAsync(d)).Report : NoDocument(documentId);
+        await OpenAsync(documentId) is { } d ? (await checker.CheckWithPagesAsync(d)).Report : NoDocument(documentId);
 
     internal static string EngineFor(string source, string? documentEngine)
     {

@@ -73,7 +73,7 @@ public class GrokRetestFindingsTests : IDisposable
         var doc = Doc(Block(block));
         var exports = new Mock<IDocumentExportService>();
         exports.Setup(e => e.ExportToPdfWithEngineAsync(doc.Id, "auto")).ReturnsAsync((PdfWithCompressedPageTree(2), "pdflatex"));
-        var report = JsonSerializer.SerializeToElement((await Checker(doc, source, exports.Object).CheckAsync(doc)).Report);
+        var report = JsonSerializer.SerializeToElement((await Checker(doc, source, exports.Object).CheckWithPagesAsync(doc)).Report);
         report.GetProperty("compiles").GetBoolean().Should().BeTrue(report.ToString());
         report.GetProperty("pages").GetInt32().Should().Be(2, "the PDF export_document gives has 2, whatever one pass counted");
         report.GetProperty("pagesNote").ValueKind.Should().Be(JsonValueKind.Null);
@@ -81,9 +81,16 @@ public class GrokRetestFindingsTests : IDisposable
         var other = Doc(Block(block));
         var failing = new Mock<IDocumentExportService>();
         failing.Setup(e => e.ExportToPdfWithEngineAsync(other.Id, "auto")).ThrowsAsync(new InvalidOperationException("no PDF"));
-        var fallback = JsonSerializer.SerializeToElement((await Checker(other, source + "% other\n", failing.Object).CheckAsync(other)).Report);
+        var fallback = JsonSerializer.SerializeToElement((await Checker(other, source + "% other\n", failing.Object).CheckWithPagesAsync(other)).Report);
         fallback.GetProperty("pages").GetInt32().Should().Be(1);
         fallback.GetProperty("pagesNote").GetString().Should().Contain("one LaTeX pass");
+
+        // A paste's check (CheckAsync) doesn't make the PDF: it cost each paste 10–13 s (#148).
+        var quick = Doc(Block(block));
+        var unused = new Mock<IDocumentExportService>();
+        var plain = JsonSerializer.SerializeToElement((await Checker(quick, source + "% quick\n", unused.Object).CheckAsync(quick)).Report);
+        plain.GetProperty("pages").GetInt32().Should().Be(1);
+        unused.Verify(e => e.ExportToPdfWithEngineAsync(It.IsAny<Guid>(), It.IsAny<string?>()), Times.Never());
     }
 
     // ── #126: two calls at once ──────────────────────────────────────────
