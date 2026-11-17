@@ -110,10 +110,15 @@ public static class TikzFigure
     /// </summary>
     /// <param name="captionLatex">The caption already escaped the way the caller escapes captions, or empty.</param>
     /// <param name="labelLatex">The label key as the caller writes labels, or empty.</param>
-    public static string ToLatex(JsonElement content, string captionLatex, string labelLatex, string environment = "figure")
+    public static string ToLatex(JsonElement content, string captionLatex, string labelLatex, string environment = "figure",
+        string? descriptionLatex = null)
     {
         var floatSpecifier = FloatSpecifier(content);
         var source = Source(content);
+        // ACM's \Description from the figure's alt text, as an image figure has it (launch-bot #129, 17 Nov 2026: a
+        // TikZ figure's alt was ignored). Not when the source already writes one.
+        var describe = !string.IsNullOrWhiteSpace(descriptionLatex) && !source.Contains(@"\Description", StringComparison.Ordinal)
+            ? $@"\Description{{{descriptionLatex}}}" + "\n" : "";
         if (!IsFloating(content))
         {
             // MCP-20: not floating (float:false, or no caption) but captioned or labelled — keep both,
@@ -124,6 +129,7 @@ public static class TikzFigure
             inPlace.Append(@"\captionof{figure}{").Append(captionLatex).Append("}\n");
             if (!string.IsNullOrEmpty(labelLatex))
                 inPlace.Append(@"\label{").Append(labelLatex).Append("}\n");
+            inPlace.Append(describe);
             inPlace.Append(@"\end{center}");
             return inPlace.ToString();
         }
@@ -144,6 +150,7 @@ public static class TikzFigure
             sb.Append(@"\caption{").Append(captionLatex).Append("}\n");
         if (!string.IsNullOrEmpty(labelLatex))
             sb.Append(@"\label{").Append(labelLatex).Append("}\n");
+        sb.Append(describe);
         sb.Append(@"\end{").Append(environment).Append('}');
         return sb.ToString();
     }

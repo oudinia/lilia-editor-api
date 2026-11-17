@@ -23,6 +23,40 @@ public static partial class PdfPages
         return Math.Max(1, pages);
     }
 
+    /// <summary>
+    /// The exact number of pages of a PDF Lilia made, or null when it can't be read: the page tree's root
+    /// <c>/Count</c>, looked for in the file and inside its compressed object streams, where pdflatex puts it
+    /// (check_document counted one LaTeX pass and said 3 pages for a 2-page PDF: launch-bot #125, 17 Nov 2026).
+    /// </summary>
+    public static int? Count(byte[] pdf)
+    {
+        var text = Encoding.Latin1.GetString(pdf);
+        var best = MaxCount(text);
+        foreach (Match m in ObjectStream().Matches(text))
+        {
+            if (!m.Groups["dict"].Value.Contains("/FlateDecode", StringComparison.Ordinal)) continue;
+            var start = m.Index + m.Length;
+            var end = text.IndexOf("endstream", start, StringComparison.Ordinal);
+            if (end <= start) continue;
+            try
+            {
+                using var input = new MemoryStream(pdf, start, end - start);
+                using var z = new System.IO.Compression.ZLibStream(input, System.IO.Compression.CompressionMode.Decompress);
+                using var output = new MemoryStream();
+                z.CopyTo(output);
+                best = Math.Max(best, MaxCount(Encoding.Latin1.GetString(output.ToArray())));
+            }
+            catch (InvalidDataException) { /* a stream cut short at its end: what was read is all there is */ }
+        }
+        return best > 0 ? best : null;
+    }
+
+    private static int MaxCount(string text) =>
+        CountEntry().Matches(text).Select(m => int.TryParse(m.Groups["n"].Value, out var n) ? n : 0).DefaultIfEmpty(0).Max();
+
+    [GeneratedRegex(@"<<(?<dict>(?:[^<>]|<<[^<>]*>>)*?/Type\s*/ObjStm(?:[^<>]|<<[^<>]*>>)*?)>>\s*stream\r?\n")]
+    private static partial Regex ObjectStream();
+
     public static bool LooksLikePdf(byte[] bytes) =>
         bytes.Length >= 5 && bytes[0] == '%' && bytes[1] == 'P' && bytes[2] == 'D' && bytes[3] == 'F' && bytes[4] == '-';
 

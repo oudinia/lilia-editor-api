@@ -175,13 +175,26 @@ public static class PastedText
         if (title.Length == 0) return pasted;
         var front = pasted.TitleBlock is { } tb ? ContentJson(tb).RootElement : default;
         string Field(string name) => front.ValueKind == JsonValueKind.Object && front.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
+        // Its "## " headings are then the sections: they move up a level, or the PDF printed "0.1 Section"
+        // with no section before it (launch-bot #128, 17 Nov 2026).
+        var rest = pasted.Blocks.Skip(1).ToList();
+        var top = rest.Select(Level).Where(n => n is not null).Min();
+        if (top is > 1)
+            rest = rest.Select(b => Level(b) is int n ? WithLevel(b, n - (top.Value - 1)) : b).ToList();
         return pasted with
         {
             Title = title,
             TitleFromText = true,
-            Blocks = pasted.Blocks.Skip(1).ToList(),
+            Blocks = rest,
             TitleBlock = new PastedBlock("title", new Dictionary<string, object> { ["title"] = title, ["author"] = Field("author"), ["date"] = Field("date") }),
         };
+    }
+
+    private static PastedBlock WithLevel(PastedBlock heading, int level)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(ContentJson(heading).RootElement.GetRawText())!.AsObject();
+        node["level"] = level;
+        return heading with { Content = JsonSerializer.SerializeToElement(node) };
     }
 
     /// <summary>The block's content as stored (a JSON document).</summary>

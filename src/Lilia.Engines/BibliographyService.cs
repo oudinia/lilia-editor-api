@@ -219,8 +219,12 @@ public partial class BibliographyService : IBibliographyService
             if (message.TryGetProperty("volume", out var volume))
                 data["volume"] = volume.GetString() ?? "";
 
+            // The issue too (#127: Crossref had it), and the page range with BibTeX's en dash.
+            if (message.TryGetProperty("issue", out var issue) && issue.GetString() is { Length: > 0 } number)
+                data["number"] = number;
+
             if (message.TryGetProperty("page", out var page))
-                data["pages"] = page.GetString() ?? "";
+                data["pages"] = PageRange(page.GetString() ?? "");
 
             data["doi"] = doi;
 
@@ -295,6 +299,9 @@ public partial class BibliographyService : IBibliographyService
 
         return sb.ToString();
     }
+
+    /// <summary>"215-225" as BibTeX writes a range, "215--225"; anything else as it is.</summary>
+    public static string PageRange(string pages) => Regex.Replace(pages.Trim(), @"^(\w+)\s*[-\u2013]\s*(\w+)$", "$1--$2");
 
     private static string GenerateCiteKey(Dictionary<string, string> data)
     {
@@ -570,12 +577,7 @@ public partial class BibliographyService : IBibliographyService
                 data["author"] = string.Join(" and ", formattedAuthors);
             }
 
-            // Abstract
-            var summary = entry.Element(ns + "summary")?.Value;
-            if (!string.IsNullOrEmpty(summary))
-            {
-                data["abstract"] = Regex.Replace(summary, @"\s+", " ").Trim();
-            }
+            // No abstract: a reference doesn't print it, and it filled the entry (launch-bot #127, 17 Nov 2026).
 
             // Published date
             var published = entry.Element(ns + "published")?.Value;
@@ -585,9 +587,10 @@ public partial class BibliographyService : IBibliographyService
                 data["month"] = pubDate.ToString("MMMM").ToLower();
             }
 
-            // arXiv ID and URL
-            data["arxivid"] = normalizedId;
+            // arXiv ID and URL. A preprint is @misc with archivePrefix, so the styles print "arXiv:1612.01514 [cs.DC]"
+            // where an @article with no journal printed "(2016)." (launch-bot #127).
             data["eprint"] = normalizedId;
+            data["archiveprefix"] = "arXiv";
             data["url"] = $"https://arxiv.org/abs/{normalizedId}";
 
             // Primary category
@@ -617,7 +620,7 @@ public partial class BibliographyService : IBibliographyService
 
             var citeKey = GenerateCiteKey(data);
 
-            return new DoiLookupResultDto(citeKey, "article", JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
+            return new DoiLookupResultDto(citeKey, "misc", JsonDocument.Parse(JsonSerializer.Serialize(data)).RootElement);
         }
         catch (Exception ex)
         {
