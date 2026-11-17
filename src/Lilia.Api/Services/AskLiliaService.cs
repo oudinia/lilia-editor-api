@@ -1645,13 +1645,18 @@ public sealed partial class AskLiliaService : IAskLiliaService
             var batch = new List<BatchUpdateBlockDto>();
             var sort = 0;
             var titleId = existingTitle?.Id ?? Guid.NewGuid();
-            var titleContent = JsonSerializer.SerializeToElement(new
-            {
-                title = resolvedTitle,
-                author,
-                date,
-                dateMode,
-            });
+            // The existing title block's other fields (keywords, a venue's affiliations…) stay; the LML's keywords, when it
+            // gives some, win (#124, 17 Nov 2026: a rewrite dropped the keywords venues ask for).
+            var titleNode = existingTitle is { Content.ValueKind: JsonValueKind.Object } && JsonNode.Parse(existingTitle.Content.GetRawText()) is JsonObject kept
+                ? kept : new JsonObject();
+            titleNode["title"] = resolvedTitle;
+            titleNode["author"] = author;
+            titleNode["date"] = date;
+            titleNode["dateMode"] = dateMode;
+            if (lmlTitleEl is { ValueKind: JsonValueKind.Object } lt && lt.TryGetProperty("keywords", out var kw)
+                && kw.ValueKind == JsonValueKind.Array && kw.GetArrayLength() > 0)
+                titleNode["keywords"] = JsonNode.Parse(kw.GetRawText());
+            var titleContent = JsonSerializer.SerializeToElement(titleNode);
             batch.Add(new BatchUpdateBlockDto(titleId, BlockTypes.Title, titleContent, sort++, null, 0));
 
             // A block keeps its id where one of the same type stood in the same place, so ids an app

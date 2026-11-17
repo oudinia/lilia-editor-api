@@ -126,6 +126,42 @@ public class McpWriteToolsTests : IntegrationTestBase
         Shape(after).Should().Equal(Shape(before));
     }
 
+    // #124 (Grok, 17 Nov 2026): a title with keywords, an align numbered by its rows' own labels, then a paragraph. Through
+    // get_document's LML and apply_lml, the paragraph went into the equation (which stopped the PDF), the keywords and the
+    // numbering were lost, and the rewrite's undo point was the burst's first version.
+    [Fact]
+    public async Task An_align_a_paragraph_and_title_keywords_survive_get_document_and_apply_lml()
+    {
+        await SeedUserAsync("mcpw_124");
+        var doc = await SeedDocumentAsync("mcpw_124", "LTX-154");
+        await SeedBlockAsync(doc.Id, "title", """{"title":"LTX-154","author":"Grok Tester","date":"17 November 2026","keywords":["union-find","amortised analysis"]}""", 0);
+        await SeedBlockAsync(doc.Id, "equation", """{"latex":"\\begin{align}\nx &= 1 \\\\\n  y &= 2 \\label{eq:second}\n\\end{align}","equationMode":"display","label":"","numbered":true}""", 1);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Equation \\eqref{eq:second} is the second row."}""", 2);
+        var app = App("mcpw_124", "openid documents:read documents:write");
+
+        // An earlier edit in the same burst, so the burst already has an undo point.
+        (await CallAsync(app, "set_title", new { documentId = doc.Id.ToString(), title = "LTX-154" })).TryGetProperty("error", out _).Should().BeFalse();
+        var before = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
+        var rewrite = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = before.GetProperty("lml").GetString() });
+        rewrite.TryGetProperty("error", out _).Should().BeFalse(rewrite.ToString());
+        var after = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
+
+        var blocks = after.GetProperty("blocks").EnumerateArray().ToList();
+        blocks.Select(b => b.GetProperty("type").GetString()).Should().Equal("title", "equation", "paragraph");
+        blocks[0].GetProperty("content").GetProperty("keywords").EnumerateArray().Select(k => k.GetString()).Should().Equal("union-find", "amortised analysis");
+        var eq = blocks[1].GetProperty("content");
+        eq.GetProperty("latex").GetString().Should().Contain(@"y &= 2 \label{eq:second}").And.NotContain("second row");
+        eq.GetProperty("numbered").GetBoolean().Should().BeTrue();
+        blocks[2].GetProperty("content").GetProperty("text").GetString().Should().Contain("is the second row");
+
+        // The rewrite's undo point is a version saved just before it, not the burst's first one.
+        var undo = rewrite.GetProperty("undo").GetProperty("versionId").GetGuid();
+        await using var db = CreateDbContext();
+        var versions = await db.DocumentVersions.Where(v => v.DocumentId == doc.Id).OrderBy(v => v.CreatedAt).ToListAsync();
+        versions.Should().HaveCountGreaterThanOrEqualTo(2);
+        versions.Last().Id.Should().Be(undo);
+    }
+
     [Fact]
     public async Task An_app_without_the_write_scope_may_read_but_not_edit_and_is_told_how_to_allow_it()
     {
