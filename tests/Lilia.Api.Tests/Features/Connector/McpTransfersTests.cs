@@ -193,6 +193,33 @@ public class McpTransfersTests : IntegrationTestBase
         check.GetProperty("note").GetString().Should().Contain("Missing figure");
     }
 
+    // The connector test (17 Nov 2026, item F): an @footnote{…} written in a paragraph printed as typed, and the check said
+    // the document printed correctly. Through Lilia's own emitter, so the mark is what the PDF really gets.
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task The_check_names_an_LML_mark_that_a_paragraph_prints_as_typed()
+    {
+        await SeedUserAsync("mcpx_literalmark");
+        var app = CreateClientAs("mcpx_literalmark");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+        var doc = await SeedDocumentAsync("mcpx_literalmark", "Marks");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Cited @cite{knuth} properly."}""", 0);
+        var bad = await SeedBlockAsync(doc.Id, "paragraph", """{"text":"The result holds.@footnote{Measured in 2025.}"}""", 1);
+
+        var check = await CallAsync(app, "check_document", new { documentId = doc.Id.ToString() });
+        check.GetProperty("compiles").GetBoolean().Should().BeTrue(check.ToString());
+        check.GetProperty("printsCorrectly").GetBoolean().Should().BeFalse(check.ToString());
+        var problems = check.GetProperty("problems").EnumerateArray()
+            .Where(p => p.GetProperty("message").GetString()!.Contains("@footnote")).ToList();
+        problems.Should().ContainSingle(check.ToString());
+        problems[0].GetProperty("blockId").GetString().Should().Be(bad.Id.ToString());
+        problems[0].GetProperty("message").GetString().Should().Contain(@"\footnote{");
+        check.GetProperty("problems").EnumerateArray().Should().NotContain(p => p.GetProperty("message").GetString()!.Contains("is not a Lilia mark"),
+            "@cite{key} is Lilia's own mark, turned into \\cite");
+        check.GetProperty("pages").GetInt32().Should().Be(1);
+    }
+
     // MCP-124 (retested 14 Nov): a Word file on US Letter with 1 in / 1.25 in margins and a Title-style
     // paragraph came in titled by its file name, the title as body text, on A4 with no margins.
     [Fact]

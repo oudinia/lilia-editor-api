@@ -40,6 +40,7 @@ public sealed class LiliaMcpWriteTools(
     ConnectorTransfers transfers,
     IJobService jobs,
     Lilia.Engines.IBibliographyService bibliography,
+    IAssetService assets,
     ILogger<LiliaMcpWriteTools> logger)
 {
     public const string WriteScope = "documents:write";
@@ -519,6 +520,151 @@ public sealed class LiliaMcpWriteTools(
         };
     }
 
+    /// <summary>The editor's image upload limit (AssetsController): 10 MB.</summary>
+    internal const int FigureImageMaxBytes = 10 * 1024 * 1024;
+
+    // The connector test (17 Nov 2026, item C): a figure could only be TikZ. An image link printed "Missing figure" and
+    // there was no upload, so a plot the assistant made had no way in. The file comes in the call; nothing is fetched.
+    [McpServerTool(Name = "add_figure_image", Title = "Put an image in a figure", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Put an image you have in a figure, from the file itself (a plot or diagram you made, a picture the author gave you): PNG, JPEG or PDF (its first page prints), up to 10 MB, sent as base64. Lilia stores it as the editor's upload does and adds a figure block after afterId (or at the end); with blockId it puts the image in that figure instead, keeping its caption, label and width unless you give new ones. Lilia never fetches a link: send the file. SVG, GIF, WebP and other formats are refused: convert to PNG, or to PDF for a vector drawing. Then check_document.")]
+    public async Task<object> AddFigureImage(
+        [Description("The document id.")] string documentId,
+        [Description("The file name, e.g. results-plot.png. The file's own bytes decide its type.")] string filename,
+        [Description("The file as base64 (a data: prefix is fine).")] string contentBase64,
+        [Description("Optional caption. Lilia marks work in it, e.g. @cite{key}.")] string? caption = null,
+        [Description("Optional label to refer to it, e.g. fig:results (in text: Figure~(fig:results)).")] string? label = null,
+        [Description("Optional width as a fraction of the line, 0.05 to 1 (default 0.8).")] double? width = null,
+        [Description("Optional short description for readers who can't see the image (ACM asks for one). Default: the file name.")] string? alt = null,
+        [Description("Add the new figure after this block id; omit to add it at the end.")] string? afterId = null,
+        [Description("Put the image in this existing figure block (from get_outline) instead of adding one.")] string? blockId = null)
+    {
+        if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        if (UnsafeIn(new object?[] { caption, label, alt }) is { } refused) return new { error = refused, category = "refused" };
+        var raw = (contentBase64 ?? "").Trim();
+        var comma = raw.IndexOf(',');
+        if (raw.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0) raw = raw[(comma + 1)..].Trim();
+        if (raw.Length == 0)
+            return new { error = "contentBase64 is empty: send the image file itself, as base64. Lilia does not fetch links.", category = "invalid" };
+        if (raw.Length > ImportMaxChars) return new { error = TooLarge(raw.Length / 4L * 3), category = "invalid" };
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(raw); }
+        catch (FormatException) { return new { error = "contentBase64 isn't valid base64: send the image file's bytes as base64. Lilia does not fetch links.", category = "invalid" }; }
+        if (bytes.Length > FigureImageMaxBytes) return new { error = TooLarge(bytes.Length), category = "invalid" };
+        var (mime, extension, other) = FigureImageKind(bytes);
+        if (mime is null)
+            return new
+            {
+                error = $"Lilia puts PNG, JPEG or PDF images in figures{(other is null ? "" : $", and this file is {other}")}. Convert it to PNG (or PDF for a vector drawing) and send it again.",
+                category = "invalid",
+            };
+        if (width is { } w && (double.IsNaN(w) || w < 0.05 || w > 1))
+            return new { error = "width is a fraction of the line, from 0.05 to 1 (e.g. 0.6).", category = "invalid" };
+
+        var (doc, refusal) = await WritableAsync(documentId);
+        if (doc is null) return refusal!;
+
+        System.Text.Json.Nodes.JsonObject content;
+        Lilia.Core.DTOs.BlockDto? figure = null;
+        if (!string.IsNullOrWhiteSpace(blockId))
+        {
+            figure = Guid.TryParse(blockId.Trim(), out var bid) ? doc.Blocks?.FirstOrDefault(b => b.Id == bid) : null;
+            if (figure is null) return new { error = $"No block '{blockId}' in this document. Call get_outline for ids.", category = "invalid" };
+            if (figure.Type is not ("figure" or "image"))
+                return new { error = $"Block {blockId} is a {figure.Type}, not a figure. Omit blockId to add a figure (after it: afterId).", category = "invalid" };
+            content = System.Text.Json.Nodes.JsonNode.Parse(figure.Content.GetRawText()) as System.Text.Json.Nodes.JsonObject ?? new();
+            if (content["subfigures"] is System.Text.Json.Nodes.JsonArray { Count: > 0 })
+                return new { error = "This figure holds subfigures, each with its own image, and prints those, not one image. Add a new figure instead (afterId).", category = "invalid" };
+            // A TikZ figure becomes an image figure: the drawing would print instead of the image.
+            content.Remove("kind");
+            content.Remove("source");
+        }
+        else content = new();
+
+        var name = FigureImageFileName(filename, extension!);
+        Lilia.Core.DTOs.AssetDto asset;
+        try
+        {
+            await using var stream = new MemoryStream(bytes);
+            asset = await assets.UploadAssetAsync(doc.Id, UserId, name, mime, bytes.Length, stream);
+        }
+        catch (AssetTooLargeException tooLarge)
+        {
+            return new { error = tooLarge.Message, category = "invalid" };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Mcp] add_figure_image could not store {File} for {DocId}", name, doc.Id);
+            return new { error = $"Lilia could not store the image: {ex.Message}" };
+        }
+
+        // The fields the editor's upload sets (src, assetId, alt), and what the call gives.
+        content["src"] = asset.Url;
+        content["assetId"] = asset.Id.ToString();
+        if (!string.IsNullOrWhiteSpace(alt)) content["alt"] = alt.Trim();
+        else if (!(content["alt"] is System.Text.Json.Nodes.JsonValue kept && kept.TryGetValue<string>(out var keptAlt) && !string.IsNullOrWhiteSpace(keptAlt)))
+            content["alt"] = name;
+        if (caption is not null) content["caption"] = caption;
+        if (label is not null) content["label"] = label;
+        if (width is not null) content["width"] = width;
+
+        var args = figure is null
+            ? new Dictionary<string, object?> { ["type"] = "figure", ["content"] = content.ToJsonString(), ["afterId"] = afterId }
+            : new Dictionary<string, object?> { ["blockId"] = figure.Id.ToString(), ["content"] = content.ToJsonString() };
+        var image = new
+        {
+            assetId = asset.Id,
+            url = asset.Url,
+            file = Lilia.Engines.FigureFile.Name(asset.Url),
+            contentType = asset.FileType,
+            bytes = asset.FileSize,
+            widthPx = asset.Width,
+            heightPx = asset.Height,
+        };
+        var (reply, changedAny) = await RunAsync(doc, figure is null ? "add_block" : "edit_block", args, image);
+        if (!changedAny)
+        {
+            // The block wasn't written: the image is nobody's.
+            try { await assets.DeleteAssetAsync(doc.Id, asset.Id); }
+            catch (Exception ex) { logger.LogWarning(ex, "[Mcp] add_figure_image could not remove unused asset {AssetId}", asset.Id); }
+        }
+        return reply;
+    }
+
+    private static string TooLarge(long bytes) =>
+        $"The image is {bytes / 1048576.0:0.#} MB; Lilia takes images up to {FigureImageMaxBytes / 1048576} MB, as the editor does. "
+        + "Make it smaller (fewer pixels, or JPEG for a photo) and send it again.";
+
+    /// <summary>
+    /// What the file is, from its first bytes: the MIME type and extension of a PNG, JPEG or PDF, which LaTeX includes;
+    /// otherwise null and, when known, what it is instead ("an SVG drawing"), for the refusal.
+    /// </summary>
+    internal static (string? Mime, string? Extension, string? Other) FigureImageKind(byte[] bytes)
+    {
+        bool StartsWith(int at, params byte[] sig) => bytes.Length >= at + sig.Length && bytes.AsSpan(at, sig.Length).SequenceEqual(sig);
+        if (StartsWith(0, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) return ("image/png", ".png", null);
+        if (StartsWith(0, 0xFF, 0xD8, 0xFF)) return ("image/jpeg", ".jpg", null);
+        if (StartsWith(0, "%PDF-"u8.ToArray())) return ("application/pdf", ".pdf", null);
+        if (StartsWith(0, "GIF8"u8.ToArray())) return (null, null, "a GIF");
+        if (StartsWith(0, "RIFF"u8.ToArray()) && StartsWith(8, "WEBP"u8.ToArray())) return (null, null, "a WebP image");
+        if (StartsWith(0, "BM"u8.ToArray())) return (null, null, "a BMP image");
+        if (StartsWith(0, 0x49, 0x49, 0x2A, 0x00) || StartsWith(0, 0x4D, 0x4D, 0x00, 0x2A)) return (null, null, "a TIFF image");
+        if (StartsWith(4, "ftyp"u8.ToArray())) return (null, null, "a HEIC or AVIF photo");
+        if (StartsWith(0, "%!PS"u8.ToArray())) return (null, null, "an EPS file");
+        var head = Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 1024)).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+        if (head.Contains("<svg", StringComparison.OrdinalIgnoreCase)) return (null, null, "an SVG drawing");
+        return (null, null, null);
+    }
+
+    /// <summary>The name the asset keeps: the one given, safe, with the extension of what the file really is.</summary>
+    internal static string FigureImageFileName(string? filename, string extension)
+    {
+        var name = Path.GetFileName((filename ?? "").Trim().Replace('\\', '/'));
+        var stem = Path.GetFileNameWithoutExtension(name);
+        if (string.IsNullOrWhiteSpace(stem)) stem = "figure";
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext == extension || (extension == ".jpg" && ext == ".jpeg") ? stem + ext : stem + extension;
+    }
+
     // ── one write ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -547,13 +693,26 @@ public sealed class LiliaMcpWriteTools(
         // A type Lilia has but the PDF can't print was accepted and printed nothing (MCP-42: cover).
         if (args.TryGetValue("type", out var t2) && t2 is string printed && string.Equals(printed.Trim(), "cover", StringComparison.OrdinalIgnoreCase))
             return new { error = "A cover block is for ePub books; the PDF has no place for it. Use set_title for the title page, and a figure for an image.", category = "invalid" };
-        var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
-        if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
-        if (doc.PlanLocked)
-            return new { error = "This document is read-only on its owner's plan: the plan holds fewer documents than they own. The owner can choose it as one to keep editing, move another to the Trash, or upgrade.", category = "refused" };
-        if (!AskLiliaService.MayEditWithAi(true, doc))
-            return new { error = "You can only read this document (view-only access). Its owner can give you edit access." };
+        var (doc, refusal) = await WritableAsync(documentId);
+        if (doc is null) return refusal!;
+        return (await RunAsync(doc, tool, args)).Reply;
+    }
 
+    /// <summary>The document, when the author may change it through an app; else why not.</summary>
+    private async Task<(Lilia.Core.DTOs.DocumentDto? Doc, object? Refusal)> WritableAsync(string? documentId)
+    {
+        var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
+        if (doc is null) return (null, new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." });
+        if (doc.PlanLocked)
+            return (null, new { error = "This document is read-only on its owner's plan: the plan holds fewer documents than they own. The owner can choose it as one to keep editing, move another to the Trash, or upgrade.", category = "refused" });
+        if (!AskLiliaService.MayEditWithAi(true, doc))
+            return (null, new { error = "You can only read this document (view-only access). Its owner can give you edit access." });
+        return (doc, null);
+    }
+
+    /// <summary>Run Ask Lilia's own tool on a document the author may change; the reply, and whether anything changed.</summary>
+    private async Task<(object Reply, bool Changed)> RunAsync(Lilia.Core.DTOs.DocumentDto doc, string tool, Dictionary<string, object?> args, object? image = null)
+    {
         var app = await AppNameAsync();
         var undo = await UndoPointAsync(doc.Id, app);
         var changed = new List<string>();
@@ -571,7 +730,7 @@ public sealed class LiliaMcpWriteTools(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[Mcp] {Tool} failed on {DocId}", tool, doc.Id);
-            return new { error = $"Lilia could not {tool.Replace('_', ' ')}: {ex.Message}" };
+            return (new { error = $"Lilia could not {tool.Replace('_', ' ')}: {ex.Message}" }, false);
         }
 
         if (changed.Count > 0 || meta)
@@ -587,13 +746,14 @@ public sealed class LiliaMcpWriteTools(
                 at = DateTime.UtcNow,
             });
         }
-        return new
+        return (new
         {
             result,
             changedBlocks = changed,
             undo = undo is null ? null : new { versionId = undo, note = "Restore this version in History to undo every change made since it was saved." },
             url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}",
-        };
+            image,
+        }, changed.Count > 0 || meta);
     }
 
     /// <summary>

@@ -87,7 +87,7 @@ public sealed class OperationLog(LiliaDbContext db, ILogger<OperationLog> logger
         "list_documents" or "get_outline" or "get_block" or "search_document" or "get_document_settings"
             or "get_lilia_latex" or "import_status" => "read",
         "add_block" or "edit_block" or "remove_block" or "reorder_blocks" or "set_title"
-            or "set_document_settings" or "set_venue" => "edit.small",
+            or "set_document_settings" or "set_venue" or "add_figure_image" => "edit.small",
         "create_document" => withBody ? "document.write" : "document.create",
         "apply_lml" or "paste_content" => "document.write",
         "check_document" => "check",
