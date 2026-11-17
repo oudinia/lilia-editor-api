@@ -2142,7 +2142,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
         && v.ValueKind == System.Text.Json.JsonValueKind.Number
             ? v.GetInt32() : 1;
 
-    private static string Snippet(System.Text.Json.JsonElement c, int max)
+    internal static string Snippet(System.Text.Json.JsonElement c, int max)
     {
         var t = TextOf(c);
         // A list's items, an algorithm's lines: their text, not the raw JSON (MCP-87).

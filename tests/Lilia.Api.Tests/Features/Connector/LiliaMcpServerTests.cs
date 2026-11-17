@@ -26,6 +26,8 @@ public class LiliaMcpServerTests : IntegrationTestBase
         "get_document_settings", "check_document", "search_help", "get_help",
         // Read-only too: a download link, and where an import is.
         "export_document", "import_status",
+        // The connector test, 17 Nov 2026 (items D and G): the saved versions and the comments.
+        "list_versions", "list_comments",
     ];
 
     /// <summary>One JSON-RPC call; the reply may come as JSON or as one SSE "data:" line.</summary>
@@ -86,7 +88,9 @@ public class LiliaMcpServerTests : IntegrationTestBase
         await SeedUserAsync("mcp_titles");
         var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-        tools.Should().HaveCount(26); // add_reference and add_figure_image, 17 Nov 2026 (the connector test)
+        // get_document, add_reference, add_figure_image, then list_versions, restore_version and the four comment tools,
+        // 17 Nov 2026 (the connector test).
+        tools.Should().HaveCount(32);
         foreach (var t in tools)
         {
             var name = t.GetProperty("name").GetString();

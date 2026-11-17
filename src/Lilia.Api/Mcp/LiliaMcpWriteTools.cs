@@ -22,7 +22,8 @@ namespace Lilia.Api.Mcp;
 ///   <c>Mcp:RequireWriteScope</c> on, an app's token must also carry <see cref="WriteScope"/> (the
 ///   author allowed edits on the consent page); on since 16 Oct.</item>
 /// <item><b>Undo.</b> Before an app's first change to a document (again after
-///   <see cref="UndoWindow"/> without changes), a version is saved; every reply gives its id.</item>
+///   <see cref="UndoWindow"/> without changes), a version is saved; every reply gives its id, which
+///   <c>restore_version</c> takes (17 Nov 2026: before, only the author could restore it, in History).</item>
 /// <item><b>Live.</b> The open editor hears <c>DocumentChangedExternally</c> on the document's
 ///   SignalR room, names the app, reloads, and offers Undo.</item>
 /// </list>
@@ -73,7 +74,7 @@ public sealed class LiliaMcpWriteTools(
 
     public static bool RequireWriteScope(IConfiguration config) => config.GetValue<bool>("Mcp:RequireWriteScope");
 
-    private const string ReconnectMessage =
+    internal const string ReconnectMessage =
         "This app was connected to Lilia before it could edit, so it may only read. To let it edit, " +
         "disconnect Lilia in the app (for Claude: Settings → Connectors) and connect again: Lilia will ask " +
         "whether to allow edits.";
@@ -94,7 +95,7 @@ public sealed class LiliaMcpWriteTools(
     private const string FieldGuide = "Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?, rowColors?: {odd: hex like #F2F2F2, even: hex} (odd = first body row)}; figure {src, caption?, label?, width 0-1} or TikZ {kind:\"tikz\", source, caption?, label?}; code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {caption?, label?, lines:[{kind, text}]} with kind statement|require|ensure|if|elsif|else|endif|for|forall|endfor|while|endwhile|repeat|until|return|comment, or {code} with \\STATE / \\IF{…} lines; callout {text, title?, variant?}; footnote {text}; embed {code} — raw LaTeX printed as written; bibliography {text} — BibTeX entries (@article{key, …}) or lines \"@cite[key] Author — Title\"; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}; CV: personalInfo {name, headline, email, phones:[{number}], homepage, location}, cvSection {title}, cvEntry {period, role, org, location, highlight?, description, tech:[]} (firstName/lastName, organization, startDate/endDate are mapped). Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation. LaTeX typed in text stays LaTeX (commands, {…} groups, \\ control spaces): to print a brace write \\{ \\}, a backslash \\textbackslash{} (MCP-32); %, &, #, _ print as typed.";
 
     [McpServerTool(Name = "add_block", Title = "Add a block", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Add a block to a document (small, targeted inserts). Returns the new block id. The open editor shows the change at once; the reply gives the version to restore to undo it. An unknown type is refused. " + FieldGuide)]
+    [Description("Add a block to a document (small, targeted inserts). Returns the new block id. The open editor shows the change at once; to undo it, give the reply's undo.versionId to restore_version. An unknown type is refused. " + FieldGuide)]
     public Task<object> AddBlock(
         [Description("The document id.")] string documentId,
         [Description("Block type, e.g. paragraph, heading, equation.")] string type,
@@ -142,7 +143,7 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "remove_block", Title = "Remove a block", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Delete one block by id. The version saved before the change can restore it.")]
+    [Description("Delete one block by id. To put it back, give the reply's undo.versionId to restore_version.")]
     public Task<object> RemoveBlock(
         [Description("The document id.")] string documentId,
         [Description("The block id to delete.")] string blockId) =>
@@ -283,7 +284,7 @@ public sealed class LiliaMcpWriteTools(
         WriteAsync(documentId, "paste_content", new() { ["content"] = content, ["format"] = format, ["afterId"] = afterId });
 
     [McpServerTool(Name = "apply_lml", Title = "Rewrite the whole document", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Replace the WHOLE document body with LML, Lilia's block markup, in one step (for rewrites; prefer edit_block for small changes). Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography; bodies indented 2 spaces. The version saved before can restore the old text.")]
+    [Description("Replace the WHOLE document body with LML, Lilia's block markup, in one step (for rewrites; prefer edit_block for small changes). Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography; bodies indented 2 spaces. To put the old text back, give the reply's undo.versionId to restore_version.")]
     public Task<object> ApplyLml(
         [Description("The document id.")] string documentId,
         [Description("The full LML source for the body.")] string lml,
@@ -665,6 +666,71 @@ public sealed class LiliaMcpWriteTools(
         return ext == extension || (extension == ".jpg" && ext == ".jpeg") ? stem + ext : stem + extension;
     }
 
+    /// <summary>
+    /// Undo from the assistant (the connector test, 17 Nov 2026, item D): every write's reply gave an undo point, but
+    /// only the author could restore it, in History. This restores through the same <see cref="IVersionService"/> as
+    /// History's Restore, for someone who may edit. The document as it is is saved first, always (not the burst's undo
+    /// point: restoring that very version would leave nothing to go back to), so the restore can be undone the same way.
+    /// The next edit starts a new undo point, at the restored text.
+    /// </summary>
+    [McpServerTool(Name = "restore_version", Title = "Restore a saved version", Destructive = true, Idempotent = false, OpenWorld = false)]
+    [Description("Put a document back to one of its saved versions, as History's Restore does: its blocks, bibliography and page setup become the version's. The version id comes from list_versions, or is the undo.versionId an edit's reply gave (restoring it undoes every change made since). The document as it is now is saved first and the reply gives that version's id: restore it the same way to undo the restore. Only someone who may edit the document can restore it.")]
+    public async Task<object> RestoreVersion(
+        [Description("The document id.")] string documentId,
+        [Description("The version id, from list_versions or an edit's undo.versionId.")] string versionId)
+    {
+        if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
+        var (doc, refusal) = await WritableAsync(documentId);
+        if (doc is null) return refusal!;
+        if (!Guid.TryParse(versionId?.Trim(), out var vid) || await versions.GetVersionAsync(doc.Id, vid) is not { } target)
+            return new { error = $"No version '{versionId}' in this document. Call list_versions for ids." };
+
+        var app = await AppNameAsync();
+        Guid before;
+        try
+        {
+            before = (await versions.CreateVersionAsync(doc.Id, UserId,
+                new Lilia.Core.DTOs.CreateVersionDto($"Before {app} restored v{target.VersionNumber}"))).Id;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Mcp] restore_version could not save {DocId} first", doc.Id);
+            return new { error = "Lilia could not save the document as it is before restoring, so nothing was changed. Try again." };
+        }
+        Lilia.Core.DTOs.DocumentDto? restored;
+        try
+        {
+            restored = await versions.RestoreVersionAsync(doc.Id, vid, UserId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Mcp] restore_version of {VersionId} failed on {DocId}", vid, doc.Id);
+            return new { error = $"Lilia could not restore this version: {ex.Message}" };
+        }
+        if (restored is null) return new { error = $"No version '{versionId}' in this document. Call list_versions for ids." };
+        // The burst's undo point was the text before the restore; the next edit saves a new one.
+        cache.Remove(UndoKey(doc.Id));
+        logger.LogInformation("[Mcp] restore_version {DocId} to v{Number} by {App}", doc.Id, target.VersionNumber, app);
+
+        // The open editor reloads, names the app and offers Undo (to the version saved just before).
+        await hub.Clients.Group($"doc-{doc.Id}").SendAsync("DocumentChangedExternally", new
+        {
+            source = "mcp",
+            app,
+            tool = "restore_version",
+            blockIds = Array.Empty<string>(),
+            undoVersionId = before,
+            at = DateTime.UtcNow,
+        });
+        return new
+        {
+            restored = new { versionId = target.Id, number = target.VersionNumber, name = target.Name, savedAt = target.CreatedAt },
+            blockCount = restored.Blocks?.Count ?? 0,
+            undo = new { versionId = before, note = "The document as it was before this restore. To undo the restore, call restore_version with this versionId." },
+            url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}",
+        };
+    }
+
     // ── one write ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -750,11 +816,13 @@ public sealed class LiliaMcpWriteTools(
         {
             result,
             changedBlocks = changed,
-            undo = undo is null ? null : new { versionId = undo, note = "Restore this version in History to undo every change made since it was saved." },
+            undo = undo is null ? null : new { versionId = undo, note = "To undo every change made since this version was saved, call restore_version with this versionId (the author can also restore it in History)." },
             url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}",
             image,
         }, changed.Count > 0 || meta);
     }
+
+    private string UndoKey(Guid docId) => $"mcp-undo:{docId}:{User?.FindFirst("client_id")?.Value ?? "lilia"}";
 
     /// <summary>
     /// A version before an app's first change, then one per <see cref="UndoWindow"/> of quiet:
@@ -762,7 +830,7 @@ public sealed class LiliaMcpWriteTools(
     /// </summary>
     private async Task<Guid?> UndoPointAsync(Guid docId, string app)
     {
-        var key = $"mcp-undo:{docId}:{User?.FindFirst("client_id")?.Value ?? "lilia"}";
+        var key = UndoKey(docId);
         if (cache.TryGetValue(key, out Guid known))
         {
             cache.Set(key, known, new MemoryCacheEntryOptions { SlidingExpiration = UndoWindow });
