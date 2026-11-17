@@ -121,6 +121,7 @@ public class DocumentExportService : IDocumentExportService
                 Modified = doc.UpdatedAt
             }
         };
+        ApplyLanguage(exportDoc, doc);
 
         // The document's entries, then what its bibliography blocks hold (BibTeX and @cite[key] text),
         // as the LaTeX export takes them (LaTeXExportService.WithTextEntries). MCP-98: the cited ones,
@@ -185,6 +186,25 @@ public class DocumentExportService : IDocumentExportService
         if (listed.Count > 0) exportDoc.Bibliography = listed;
 
         return exportDoc;
+    }
+
+    /// <summary>
+    /// The document's language as the PDF typesets it (its setting, or what its text reads as when "auto"):
+    /// its code, whether it reads right to left, and babel's words for Lilia's headings and caption labels.
+    /// The Word file had "auto" or nothing, left-to-right Arabic and English words (17 Nov 2026,
+    /// launch-bot #155, #156).
+    /// </summary>
+    internal static void ApplyLanguage(ExportDocument exportDoc, Document doc)
+    {
+        var spec = DocumentLanguage.For(doc);
+        var names = DocumentLanguage.Names(spec);
+        exportDoc.Language = spec.Code;
+        exportDoc.Rtl = spec.Rtl;
+        exportDoc.Names = new ExportNames
+        {
+            Abstract = names.Abstract, Figure = names.Figure, Table = names.Table,
+            References = names.References, Contents = names.Contents, CaptionSeparator = names.CaptionSeparator,
+        };
     }
 
     /// <summary>
@@ -762,7 +782,10 @@ public class DocumentExportService : IDocumentExportService
 
             foreach (var piece in ParseInlineFormatting(spanText, _labelNumber))
             {
-                spans.Add(WithMarks(marks, piece.Text, piece.Equation));
+                // A \footnote in the span stays a footnote (17 Nov 2026, launch-bot #157).
+                var withMarks = WithMarks(marks, piece.Text, piece.Equation);
+                withMarks.Footnote = piece.Footnote;
+                spans.Add(withMarks);
             }
         }
 
@@ -1608,9 +1631,18 @@ public class DocumentExportService : IDocumentExportService
     /// </summary>
     public static List<ExportRichTextSpan> ParseInlineFormatting(string? text, Func<string, string?>? labelNumber)
     {
-        var spans = ParseMarks(ProseLatex.ForWord(text, labelNumber));
+        return Finish(ParseMarks(ProseLatex.ForWord(text, labelNumber)));
+    }
+
+    private static List<ExportRichTextSpan> Finish(List<ExportRichTextSpan> spans)
+    {
         foreach (var span in spans)
         {
+            // A footnote's own spans, read the same way (17 Nov 2026, launch-bot #157).
+            if (span.Footnote is not null) { Finish(span.Footnote); continue; }
+            // A note inside a mark read whole (**a\footnote{b}**) keeps its brackets, as before launch-bot #157.
+            if (span.Text.IndexOf(ProseLatex.FootnoteOpen) >= 0 || span.Text.IndexOf(ProseLatex.FootnoteClose) >= 0)
+                span.Text = span.Text.Replace(ProseLatex.FootnoteOpen.ToString(), " (").Replace(ProseLatex.FootnoteClose.ToString(), ")");
             if (span.Equation is null && span.Text.Contains(ProseLatex.PriceDollar))
                 span.Text = span.Text.Replace(ProseLatex.PriceDollar, '$');
             if (span.Equation is not null)
@@ -1648,6 +1680,20 @@ public class DocumentExportService : IDocumentExportService
 
         while (i < text.Length)
         {
+            // A \footnote in the prose (ProseLatex marks its text): a footnote span, its text's own spans, for
+            // the Word export to make a real footnote (17 Nov 2026, launch-bot #157: it printed in brackets).
+            if (text[i] == ProseLatex.FootnoteOpen)
+            {
+                var close = text.IndexOf(ProseLatex.FootnoteClose, i + 1);
+                if (close > i)
+                {
+                    FlushCurrent();
+                    spans.Add(new ExportRichTextSpan { Text = "", Footnote = ParseMarks(text[(i + 1)..close]) });
+                    i = close + 1;
+                    continue;
+                }
+            }
+
             // Display math: $$...$$
             //
             // This ran second to the single-$ case below, which explicitly

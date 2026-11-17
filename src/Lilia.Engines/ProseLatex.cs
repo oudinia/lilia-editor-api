@@ -15,6 +15,10 @@ public static class ProseLatex
     /// <summary>Stands in for a price's dollar, which the Word parser would read as maths.</summary>
     public const char PriceDollar = '';
 
+    /// <summary>Around a \footnote's text in <see cref="ForWord(string?, Func{string, string?}?)"/>'s result: the Word
+    /// export makes it a footnote (17 Nov 2026, launch-bot #157).</summary>
+    public const char FootnoteOpen = '\ue010', FootnoteClose = '\ue011';
+
     private static readonly Dictionary<string, string> Marks = new(StringComparer.Ordinal)
     {
         ["textbf"] = "**", ["emph"] = "*", ["textit"] = "*", ["textsl"] = "*",
@@ -195,8 +199,11 @@ public static class ProseLatex
                 return ChemText(args.FirstOrDefault() ?? "");
             case "label" or "index" or "hspace" or "vspace" or "phantom" or "nocite":
                 return "";
+            // In prose, the note between FootnoteOpen and FootnoteClose: the Word export makes it a real
+            // footnote (17 Nov 2026, launch-bot #157: it printed in brackets inside the paragraph). A plain
+            // field (a heading, a caption's plain text) keeps it in brackets.
             case "footnote":
-                return " (" + Arg(0) + ")";
+                return plain ? " (" + Arg(0) + ")" : FootnoteOpen + Arg(0) + FootnoteClose;
             case "url":
                 return args.FirstOrDefault() ?? "";
             case "href":

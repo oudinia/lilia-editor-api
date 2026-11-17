@@ -22,6 +22,18 @@ public class ExportDocument
     public string Language { get; set; } = "en";
 
     /// <summary>
+    /// The language reads right to left (Arabic, Hebrew): paragraphs and their runs are marked so in Word
+    /// (17 Nov 2026, launch-bot #155: an Arabic document opened as left-to-right paragraphs).
+    /// </summary>
+    public bool Rtl { get; set; }
+
+    /// <summary>
+    /// Lilia's own words in the document's language, as the PDF prints them (17 Nov 2026, launch-bot #156:
+    /// "Abstract", "Table" and "References" stayed English). English by default.
+    /// </summary>
+    public ExportNames Names { get; set; } = new();
+
+    /// <summary>
     /// Paper size (a4, letter, legal).
     /// </summary>
     public string PaperSize { get; set; } = "a4";
@@ -358,6 +370,13 @@ public class ExportRichTextSpan
     /// Hyperlink URL.
     /// </summary>
     public string? Link { get; set; }
+
+    /// <summary>
+    /// A footnote at this point of the text (\footnote{…} in prose): its text's spans, which go to Word's
+    /// footnotes part, with only its mark here. <see cref="Text"/> is then empty (17 Nov 2026, launch-bot #157:
+    /// the note printed in brackets inside the paragraph).
+    /// </summary>
+    public List<ExportRichTextSpan>? Footnote { get; set; }
 }
 
 /// <summary>
@@ -500,6 +519,21 @@ public class ExportBibliographyEntry
 
     /// <summary>Its number in the reference list, which citations print ([1]). Null: unnumbered.</summary>
     public int? Number { get; set; }
+}
+
+/// <summary>
+/// The words the Word export prints for the abstract's heading, the caption labels, the references' heading
+/// and the contents' heading, and the separator after a caption's number. The API fills them from
+/// DocumentLanguage.Names (babel's words); English by default (17 Nov 2026, launch-bot #156).
+/// </summary>
+public class ExportNames
+{
+    public string Abstract { get; set; } = "Abstract";
+    public string Figure { get; set; } = "Figure";
+    public string Table { get; set; } = "Table";
+    public string References { get; set; } = "References";
+    public string Contents { get; set; } = "Contents";
+    public string CaptionSeparator { get; set; } = ": ";
 }
 
 /// <summary>

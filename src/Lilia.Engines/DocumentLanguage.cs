@@ -20,6 +20,16 @@ public sealed record LanguageSpec(
     string? Cleveref = null, bool Rtl = false, bool Cjk = false);
 
 /// <summary>
+/// The words a language prints for Lilia's own headings and caption labels, as babel prints them in the PDF
+/// (<see cref="DocumentLanguage.NamesByLanguage"/>; 17 Nov 2026, launch-bot #156).
+/// </summary>
+public sealed record LanguageNames(
+    string Abstract, string Figure, string Table, string References, string Contents, string CaptionSeparator = ": ")
+{
+    public static readonly LanguageNames English = new("Abstract", "Figure", "Table", "References", "Contents");
+}
+
+/// <summary>
 /// The document's language in its PDF (19 Oct; the user: "support more languages, keep the UI with
 /// the chosen ones"). Until now every PDF was English: a French document printed "Contents",
 /// "Figure 1" and "References" and hyphenated as English, and Arabic did not run right to left.
@@ -205,6 +215,37 @@ public static class DocumentLanguage
         ["ja"] = new Dictionary<string, string> { ["theorem"] = "定理", ["lemma"] = "補題", ["proposition"] = "命題", ["corollary"] = "系", ["definition"] = "定義", ["example"] = "例", ["remark"] = "注意", ["claim"] = "主張", ["assumption"] = "仮定", ["axiom"] = "公理", ["conjecture"] = "予想", ["hypothesis"] = "仮説", ["exercise"] = "演習", ["problem"] = "問題", ["question"] = "質問", ["observation"] = "観察", ["fact"] = "事実", ["notation"] = "記法", ["property"] = "性質" },
         ["ko"] = new Dictionary<string, string> { ["theorem"] = "정리", ["lemma"] = "보조정리", ["proposition"] = "명제", ["corollary"] = "따름정리", ["definition"] = "정의", ["example"] = "예", ["remark"] = "비고", ["claim"] = "주장", ["assumption"] = "가정", ["axiom"] = "공리", ["conjecture"] = "추측", ["hypothesis"] = "가설", ["exercise"] = "연습문제", ["problem"] = "문제", ["question"] = "질문", ["observation"] = "관찰", ["fact"] = "사실", ["notation"] = "표기법", ["property"] = "성질" },
     };
+
+    /// <summary>
+    /// The words babel prints for each language (its .ini files' abstract, figure, table, ref and contents; Lilia's
+    /// own choices where the preamble changes them: French "Tableau", Spanish "Tabla" by es-tabla), and the
+    /// caption's separator (babel-french's " – "). For formats babel does not typeset: the Word export printed
+    /// "Abstract", "Table 1:" and "References" in French, German, Chinese and Arabic documents whose PDF
+    /// translated them (17 Nov 2026, launch-bot #156). English, and anything missing, keeps the English words.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, LanguageNames> NamesByLanguage = new Dictionary<string, LanguageNames>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["fr"] = new("Résumé", "Figure", "Tableau", "Références", "Table des matières", " – "),
+        ["de"] = new("Zusammenfassung", "Abbildung", "Tabelle", "Literatur", "Inhaltsverzeichnis"),
+        ["es"] = new("Resumen", "Figura", "Tabla", "Referencias", "Índice"),
+        ["it"] = new("Sommario", "Figura", "Tabella", "Riferimenti bibliografici", "Indice"),
+        ["pt"] = new("Resumo", "Figura", "Tabela", "Referências", "Índice"),
+        ["nl"] = new("Samenvatting", "Figuur", "Tabel", "Referenties", "Inhoudsopgave"),
+        ["pl"] = new("Streszczenie", "Rysunek", "Tablica", "Literatura", "Spis treści"),
+        ["sv"] = new("Sammanfattning", "Figur", "Tabell", "Referenser", "Innehåll"),
+        ["tr"] = new("Özet", "Şekil", "Tablo", "Kaynaklar", "İçindekiler"),
+        ["ru"] = new("Аннотация", "Рис.", "Таблица", "Список литературы", "Содержание"),
+        ["el"] = new("Περίληψη", "Σχήμα", "Πίνακας", "Αναφορές", "Περιεχόμενα"),
+        ["ar"] = new("ملخص", "شكل", "جدول", "المراجع", "المحتويات"),
+        ["he"] = new("תקציר", "איור", "טבלה", "מקורות", "תוכן העניינים"),
+        ["zh"] = new("摘要", "图", "表", "参考文献", "目录"),
+        ["ja"] = new("概要", "図", "表", "参考文献", "目次"),
+        ["ko"] = new("요 약", "그림", "표", "참고 문헌", "차 례"),
+    };
+
+    /// <summary>The words for <paramref name="spec"/>, English when it has none (launch-bot #156).</summary>
+    public static LanguageNames Names(LanguageSpec? spec) =>
+        spec is not null && NamesByLanguage.TryGetValue(spec.Code, out var names) ? names : LanguageNames.English;
 
     /// <summary>The theorem names for <paramref name="spec"/>, or null to keep Lilia's English ones.</summary>
     public static IReadOnlyDictionary<string, string>? TheoremNames(LanguageSpec? spec) =>
