@@ -338,6 +338,36 @@ public partial class BibliographyService : IBibliographyService
         }
     }
 
+    /// <summary>
+    /// A title's capitals kept, as BibTeX needs: styles lower-case a title but what is in braces, and "On the Einstein
+    /// Podolsky Rosen paradox" printed "einstein podolsky rosen" (launch-bot #153, 17 Nov 2026). Each word after the
+    /// first that has a capital (a name, an acronym: Einstein, DNA, LaTeX) is braced. A title already holding braces is
+    /// left as it is. Only where BibTeX reads it (references.bib): the entry itself keeps the title as written.
+    /// </summary>
+    public static string ProtectCapitals(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title) || title.Contains('{')) return title;
+        // A Title Case title (every word of four letters or more capitalised, as Crossref often gives them) is left as
+        // it is: bracing every word only cluttered the entry (CI, 17 Nov 2026). In a sentence-case title the capitals
+        // are names. An acronym or a mixed-case word (DNA, LaTeX) is braced either way. Punctuation stays outside.
+        var words = Word().Matches(title).Select(m => m.Value).ToList();
+        var later = words.Skip(1).Where(w => w.Length >= 4).ToList();
+        var titleCase = later.Count > 0 && later.All(w => char.IsUpper(w[0]));
+        var first = true;
+        return Word().Replace(title, m =>
+        {
+            var w = m.Value;
+            var isFirst = first;
+            first = false;
+            var innerCapital = w.Skip(1).Any(char.IsUpper);
+            return innerCapital || (!isFirst && !titleCase && char.IsUpper(w[0])) ? "{" + w + "}" : w;
+        });
+    }
+
+    // A word: letters (and digits, hyphens, apostrophes after the first), not a LaTeX command's name.
+    [GeneratedRegex(@"(?<![\\\p{L}])\p{L}[\p{L}\p{Nd}'\-]*")]
+    private static partial Regex Word();
+
     /// <summary>"215-225" as BibTeX writes a range, "215--225"; anything else as it is.</summary>
     public static string PageRange(string pages) => Regex.Replace(pages.Trim(), @"^(\w+)\s*[-\u2013]\s*(\w+)$", "$1--$2");
 

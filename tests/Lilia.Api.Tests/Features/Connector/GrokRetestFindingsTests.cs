@@ -73,7 +73,7 @@ public class GrokRetestFindingsTests : IDisposable
         var doc = Doc(Block(block));
         var exports = new Mock<IDocumentExportService>();
         exports.Setup(e => e.ExportToPdfWithEngineAsync(doc.Id, "auto")).ReturnsAsync((PdfWithCompressedPageTree(2), "pdflatex"));
-        var report = JsonSerializer.SerializeToElement((await Checker(doc, source, exports.Object).CheckAsync(doc)).Report);
+        var report = JsonSerializer.SerializeToElement((await Checker(doc, source, exports.Object).CheckWithPagesAsync(doc)).Report);
         report.GetProperty("compiles").GetBoolean().Should().BeTrue(report.ToString());
         report.GetProperty("pages").GetInt32().Should().Be(2, "the PDF export_document gives has 2, whatever one pass counted");
         report.GetProperty("pagesNote").ValueKind.Should().Be(JsonValueKind.Null);
@@ -81,9 +81,16 @@ public class GrokRetestFindingsTests : IDisposable
         var other = Doc(Block(block));
         var failing = new Mock<IDocumentExportService>();
         failing.Setup(e => e.ExportToPdfWithEngineAsync(other.Id, "auto")).ThrowsAsync(new InvalidOperationException("no PDF"));
-        var fallback = JsonSerializer.SerializeToElement((await Checker(other, source + "% other\n", failing.Object).CheckAsync(other)).Report);
+        var fallback = JsonSerializer.SerializeToElement((await Checker(other, source + "% other\n", failing.Object).CheckWithPagesAsync(other)).Report);
         fallback.GetProperty("pages").GetInt32().Should().Be(1);
         fallback.GetProperty("pagesNote").GetString().Should().Contain("one LaTeX pass");
+
+        // A paste's check (CheckAsync) doesn't make the PDF: it cost each paste 10–13 s (#148).
+        var quick = Doc(Block(block));
+        var unused = new Mock<IDocumentExportService>();
+        var plain = JsonSerializer.SerializeToElement((await Checker(quick, source + "% quick\n", unused.Object).CheckAsync(quick)).Report);
+        plain.GetProperty("pages").GetInt32().Should().Be(1);
+        unused.Verify(e => e.ExportToPdfWithEngineAsync(It.IsAny<Guid>(), It.IsAny<string?>()), Times.Never());
     }
 
     // ── #126: two calls at once ──────────────────────────────────────────
@@ -213,6 +220,41 @@ public class GrokRetestFindingsTests : IDisposable
             + "\n" + numbered + "\nSee \\eqref{eq:third}.\n\\end{document}\n";
         var result = await new LaTeXRenderService(NullLogger<LaTeXRenderService>.Instance).ValidateAsync(source, "pdflatex");
         result.Valid.Should().BeTrue(result.Error);
+    }
+
+    // ── #151's findings: a cell's \%, a title's capitals, the PDF's properties ──
+
+    [Theory]
+    [InlineData("71.3\\%", "71.3\\%")]
+    [InlineData("Accuracy (\\%)", "Accuracy (\\%)")]
+    [InlineData("A \\& B", "A \\& B")]
+    [InlineData("50%", "50\\%")]
+    [InlineData("a\\b", "a\\textbackslash{}b")]
+    public void An_escaped_special_character_in_a_cell_prints_that_character(string cell, string latex) =>
+        Lilia.Engines.LatexText.EscapeCell(cell).Should().Be(latex);
+
+    [Fact]
+    public void A_titles_names_keep_their_capitals_in_references_bib()
+    {
+        BibliographyService.ProtectCapitals("On the Einstein Podolsky Rosen paradox").Should().Be("On the {Einstein} {Podolsky} {Rosen} paradox");
+        BibliographyService.ProtectCapitals("Deep learning for DNA").Should().Be("Deep learning for {DNA}");
+        BibliographyService.ProtectCapitals("Already {Braced} title").Should().Be("Already {Braced} title");
+        BibliographyService.ProtectCapitals("Deep Residual Learning for Image Recognition").Should().Be("Deep Residual Learning for Image Recognition", "a Title Case title is left as it is");
+        BibliographyService.ProtectCapitals("A study of LaTeX, in Paris.").Should().Be("A study of {LaTeX}, in {Paris}.");
+        var entry = new BibliographyEntry
+        {
+            CiteKey = "bell1964", EntryType = "article",
+            Data = JsonDocument.Parse("""{"title":"On the Einstein Podolsky Rosen paradox","author":"Bell, J. S.","year":"1964"}"""),
+        };
+        BibTeXSerializer.Serialize([entry]).Should().Contain("title = {On the {Einstein} {Podolsky} {Rosen} paradox}");
+        entry.Data.RootElement.GetProperty("title").GetString().Should().Be("On the Einstein Podolsky Rosen paradox", "the entry itself is unchanged");
+    }
+
+    [Fact]
+    public void The_PDF_carries_its_title_and_language()
+    {
+        var doc = new Document { Title = "Un article", Language = "fr", Blocks = [] };
+        RenderService.PdfProperties(doc, "Un article").Should().Contain("pdftitle={Un article}").And.Contain("pdflang={fr}");
     }
 
     // ── #128: Markdown headings after the title ──────────────────────────

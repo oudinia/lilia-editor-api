@@ -151,6 +151,8 @@ public static class BibTeXSerializer
         if (data.TryGetProperty(field, out var val) && val.ValueKind == JsonValueKind.String)
         {
             var value = val.GetString();
+            // Names and acronyms in a title keep their capitals in the styles that lower-case titles (launch-bot #153).
+            if (field == "title" && value is not null) value = Lilia.Engines.BibliographyService.ProtectCapitals(value);
             if (!string.IsNullOrEmpty(value))
                 sb.AppendLine($"  {field} = {{{value}}},");
         }

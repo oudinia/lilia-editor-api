@@ -818,9 +818,12 @@ public sealed class LiliaMcpWriteTools(
     private async Task<(object Reply, bool Changed)> RunAsync(Lilia.Core.DTOs.DocumentDto doc, string tool, Dictionary<string, object?> args, object? image = null)
     {
         var app = await AppNameAsync();
-        // A rewrite of the whole body saves the text as it is just before it, not the burst's first version (#124,
-        // 17 Nov 2026: undoing an apply_lml went back past every earlier edit too). That version becomes the burst's.
-        var undo = tool == "apply_lml" ? await FreshUndoPointAsync(doc.Id, app, "rewrite") : await UndoPointAsync(doc.Id, app);
+        // A rewrite of the whole body or a paste saves the text as it is just before it, not the burst's first version
+        // (#124, 17 Nov 2026: undoing an apply_lml went back past every earlier edit too). And the burst starts again
+        // after it (below): undoing an edit made after ten pastes went back to the empty document, 610 blocks gone
+        // (launch-bot #149).
+        var bulk = tool is "apply_lml" or "paste_content";
+        var undo = bulk ? await FreshUndoPointAsync(doc.Id, app, tool == "apply_lml" ? "rewrite" : "paste") : await UndoPointAsync(doc.Id, app);
         var changed = new List<string>();
         var meta = false;
         object? result = null;
@@ -856,6 +859,9 @@ public sealed class LiliaMcpWriteTools(
             }
         }
 
+        // After a paste or a rewrite, the next edit saves its own undo point: the document as the paste left it.
+        if (bulk && (changed.Count > 0 || meta)) cache.Remove(UndoKey(doc.Id));
+
         if (changed.Count > 0 || meta)
         {
             // The open editor reloads, names the app and offers Undo.
@@ -873,7 +879,9 @@ public sealed class LiliaMcpWriteTools(
         {
             result,
             changedBlocks = changed,
-            undo = undo is null ? null : new { versionId = undo, note = "To undo every change made since this version was saved, call restore_version with this versionId (the author can also restore it in History)." },
+            undo = undo is null ? null : new { versionId = undo, note = bulk
+                ? "To undo this paste or rewrite, call restore_version with this versionId (the author can also restore it in History)."
+                : "To undo, call restore_version with this versionId: it undoes this change and the app's other small edits made since its last paste or rewrite (within 10 minutes of each other). The author can also restore it in History." },
             url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}",
             image,
         }, changed.Count > 0 || meta);
