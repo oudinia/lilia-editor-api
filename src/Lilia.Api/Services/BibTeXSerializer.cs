@@ -110,6 +110,11 @@ public static class BibTeXSerializer
         // rescue in SerializeForTypst wrote to a field nobody emitted, and
         // "c. 300 BCE" was silently rounded to "300".
         "note",
+        // What an arXiv preprint is (launch-bot #127, 17 Nov 2026: the entry had them and ACM's style prints
+        // "arXiv:1612.01514 [cs.DC]" from them, but they never reached references.bib, so the PDF printed the URL),
+        // and the fields books, chapters and reports are cited by.
+        "eprint", "archiveprefix", "eprinttype", "primaryclass", "eprintclass",
+        "editor", "edition", "series", "address", "institution", "school", "howpublished", "isbn",
     };
 
     public static string Serialize(IReadOnlyCollection<BibliographyEntry> entries)

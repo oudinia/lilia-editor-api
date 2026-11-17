@@ -213,8 +213,6 @@ public partial class BibliographyService : IBibliographyService
                 }
             }
 
-            if (message.TryGetProperty("container-title", out var journal) && journal.GetArrayLength() > 0)
-                data["journal"] = journal[0].GetString() ?? "";
 
             if (message.TryGetProperty("volume", out var volume))
                 data["volume"] = volume.GetString() ?? "";
@@ -228,9 +226,7 @@ public partial class BibliographyService : IBibliographyService
 
             data["doi"] = doi;
 
-            var entryType = message.TryGetProperty("type", out var type) && type.GetString() == "journal-article"
-                ? "article"
-                : "misc";
+            var entryType = CrossrefKind(message, data);
 
             var citeKey = GenerateCiteKey(data);
 
@@ -298,6 +294,48 @@ public partial class BibliographyService : IBibliographyService
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// The BibTeX type of a Crossref work, with its venue where that type prints it (launch-bot #131, 17 Nov 2026: a
+    /// conference paper and a book chapter were @misc with the venue in journal, and ACM's PDF printed no venue).
+    /// A journal article: journal. A conference paper: @inproceedings, booktitle (and the series when Crossref names two
+    /// containers, as for LNCS). A book chapter: @incollection the same way. A book: @book. The publisher for all but articles.
+    /// </summary>
+    internal static string CrossrefKind(JsonElement work, Dictionary<string, string> data)
+    {
+        var type = work.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+        var containers = work.TryGetProperty("container-title", out var c) && c.ValueKind == JsonValueKind.Array
+            ? c.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : [];
+        var publisher = work.TryGetProperty("publisher", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
+        void Venue()
+        {
+            if (containers.Count == 0) return;
+            data["booktitle"] = containers[^1];
+            if (containers.Count > 1) data["series"] = containers[0];
+        }
+        switch (type)
+        {
+            case "journal-article":
+                if (containers.Count > 0) data["journal"] = containers[0];
+                return "article";
+            case "proceedings-article":
+                Venue();
+                if (publisher.Length > 0) data["publisher"] = publisher;
+                return "inproceedings";
+            case "book-chapter" or "book-section" or "book-part" or "reference-entry":
+                Venue();
+                if (publisher.Length > 0) data["publisher"] = publisher;
+                return "incollection";
+            case "book" or "monograph" or "edited-book" or "reference-book":
+                if (publisher.Length > 0) data["publisher"] = publisher;
+                if (containers.Count > 0) data["series"] = containers[0];
+                return "book";
+            default:
+                if (containers.Count > 0) data["howpublished"] = containers[0];
+                if (publisher.Length > 0) data["publisher"] = publisher;
+                return "misc";
+        }
     }
 
     /// <summary>"215-225" as BibTeX writes a range, "215--225"; anything else as it is.</summary>

@@ -42,4 +42,21 @@ public class UnnumberedLabelTests
     [Fact]
     public void A_pageref_still_prints_a_page() =>
         Audit("Page \\pageref{x}.\n\\label{x}").EmptyReferences.Should().BeEmpty();
+
+    // The #124 retest (17 Nov 2026): a label in align* is never written (amsmath), so \eqref printed (??) and the check
+    // said all was well. Checked with pdflatex: in equation* the label takes the section's number, in align* it is undefined.
+    [Theory]
+    [InlineData("align*")]
+    [InlineData("gather*")]
+    [InlineData("multline*")]
+    public void A_label_in_a_starred_amsmath_display_is_never_written(string env)
+    {
+        var a = Audit($"\\section{{Intro}}\nSee \\eqref{{eq:b}}.\n\\begin{{{env}}}\ny &= 1 \\label{{eq:b}}\n\\end{{{env}}}");
+        a.DanglingReferences.Select(r => r.Key).Should().BeEquivalentTo(["eq:b"]);
+        a.StarredMathLabels.Should().Contain("eq:b");
+    }
+
+    [Fact]
+    public void A_label_in_a_numbered_align_is_written() =>
+        Audit("\\section{Intro}\nSee \\eqref{eq:b}.\n\\begin{align}\ny &= 1 \\label{eq:b}\n\\end{align}").DanglingReferences.Should().BeEmpty();
 }

@@ -3139,6 +3139,9 @@ public partial class RenderService : IRenderService
                     if (!string.IsNullOrEmpty(journal)) citation.Add(BibTeXField.ToLatex(journal));
                     // An arXiv preprint names its number where a journal would be (launch-bot #127, 17 Nov 2026).
                     if (string.IsNullOrEmpty(journal) && ArxivOf(data.Value) is { } arxiv) citation.Add(arxiv);
+                    // A conference paper or a chapter names its book (#131).
+                    else if (string.IsNullOrEmpty(journal) && data.Value.TryGetProperty("booktitle", out var bt) && bt.GetString() is { Length: > 0 } booktitle)
+                        citation.Add("In " + BibTeXField.ToLatex(booktitle));
                     if (!string.IsNullOrEmpty(year)) citation.Add($"({year})");
 
                     sb.AppendLine(string.Join(", ", citation) + ".");
@@ -3249,6 +3252,15 @@ public partial class RenderService : IRenderService
         if (string.IsNullOrEmpty(text)) return "";
 
         var result = text;
+
+        // A footnote's argument is text like the paragraph's: processed the same way, so "check_document" in it prints
+        // (launch-bot #132, 17 Nov 2026: the footnote went out as typed and its _ stopped the PDF, "Missing $ inserted").
+        var footnotes = new List<string>();
+        result = FootnoteArgument.Replace(result, m =>
+        {
+            footnotes.Add($@"\footnote{m.Groups["opt"].Value}{{{ProcessLatexText(m.Groups["body"].Value).Trim()}}}");
+            return $"\x00FOOT{footnotes.Count - 1}\x00";
+        });
 
         // Step 1: Extract and protect math regions and LaTeX commands from escaping.
         // Replace $...$ and $$...$$ with placeholders to avoid mangling them.
@@ -3485,7 +3497,12 @@ public partial class RenderService : IRenderService
         // Newest first here too: a price protected before the maths can sit inside a formula's region.
         for (int i = mathRegions.Count - 1; i >= 0; i--)
             result = result.Replace($"\x00MATH{i}\x00", mathRegions[i]);
+        for (int i = footnotes.Count - 1; i >= 0; i--)
+            result = result.Replace($"\x00FOOT{i}\x00", footnotes[i]);
 
         return result;
     }
+
+    /// <summary>\footnote[opt]{text}, its text holding at most one level of braces.</summary>
+    private static readonly Regex FootnoteArgument = new(@"\\footnote(?<opt>\[[^\]]*\])?\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}", RegexOptions.Compiled);
 }

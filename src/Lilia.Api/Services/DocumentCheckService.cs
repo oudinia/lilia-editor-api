@@ -313,7 +313,9 @@ public sealed partial class DocumentCheckService(
             problems.Add(new BlockProblem(at is int n ? audit.BlockAtLine(n)?.ToString() : null, at, "warning", w));
         }
         foreach (var r in audit.DanglingReferences.Where(u => u.BlockId is not null).DistinctBy(u => (u.Key, u.BlockId)))
-            problems.Add(new BlockProblem(r.BlockId.ToString(), r.Line, "warning", $"Reference to '{r.Key}', a label the document never writes: it prints ??."));
+            problems.Add(new BlockProblem(r.BlockId.ToString(), r.Line, "warning", audit.StarredMathLabels.Contains(r.Key)
+                ? $"Reference to '{r.Key}', a label inside an unnumbered equation: it prints ??. Number the equation (numbered: true) or refer to it in words."
+                : $"Reference to '{r.Key}', a label the document never writes: it prints ??."));
         foreach (var c in audit.MissingCitations.Where(u => u.BlockId is not null).DistinctBy(u => (u.Key, u.BlockId)))
             problems.Add(new BlockProblem(c.BlockId.ToString(), c.Line, "warning", $"Citation '{c.Key}' has no bibliography entry: it prints ?."));
         foreach (var o in wideFound)
