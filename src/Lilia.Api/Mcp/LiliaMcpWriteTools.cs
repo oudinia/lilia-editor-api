@@ -879,7 +879,9 @@ public sealed class LiliaMcpWriteTools(
         {
             result,
             changedBlocks = changed,
-            undo = undo is null ? null : new { versionId = undo, note = "To undo every change made since this version was saved, call restore_version with this versionId (the author can also restore it in History)." },
+            undo = undo is null ? null : new { versionId = undo, note = bulk
+                ? "To undo this paste or rewrite, call restore_version with this versionId (the author can also restore it in History)."
+                : "To undo, call restore_version with this versionId: it undoes this change and the app's other small edits made since its last paste or rewrite (within 10 minutes of each other). The author can also restore it in History." },
             url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}",
             image,
         }, changed.Count > 0 || meta);
