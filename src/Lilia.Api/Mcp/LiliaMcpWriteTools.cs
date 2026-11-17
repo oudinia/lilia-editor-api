@@ -39,6 +39,7 @@ public sealed class LiliaMcpWriteTools(
     IConfiguration config,
     ConnectorTransfers transfers,
     IJobService jobs,
+    Lilia.Engines.IBibliographyService bibliography,
     ILogger<LiliaMcpWriteTools> logger)
 {
     public const string WriteScope = "documents:write";
@@ -152,6 +153,113 @@ public sealed class LiliaMcpWriteTools(
         [Description("The document id.")] string documentId,
         [Description("All block ids in the new order.")] string[] blockIds) =>
         WriteAsync(documentId, "reorder_blocks", new() { ["blockIds"] = blockIds });
+
+    /// <summary>
+    /// A reference from its DOI, arXiv id or ISBN (the connector test, 17 Nov 2026): the editor looks references up, but
+    /// through the connector an assistant had to type the BibTeX itself, and could get the details wrong. The entry goes
+    /// in the document's bibliography block (made at the end when there is none), under a key no other entry uses.
+    /// </summary>
+    [McpServerTool(Name = "add_reference", Title = "Add a reference", Destructive = false, Idempotent = false, OpenWorld = true)]
+    [Description("Add a reference to the document's bibliography from its DOI, arXiv id or ISBN (give one): Lilia looks it up (Crossref, arXiv, Open Library) and writes the entry, so its authors, title, venue and year are the real ones. Returns the cite key and what to write in the text to cite it (@cite{key}). A DOI the document already holds is not added twice: its key is returned. The bibliography block is made at the end when there is none.")]
+    public async Task<object> AddReference(
+        [Description("The document id.")] string documentId,
+        [Description("A DOI, e.g. 10.1145/321879.321884 (a https://doi.org/ link is fine).")] string? doi = null,
+        [Description("An arXiv id, e.g. 2106.09685 or arXiv:2106.09685.")] string? arxiv = null,
+        [Description("An ISBN, for a book.")] string? isbn = null,
+        [Description("Optional cite key to use instead of Lilia's (author and year), e.g. tarjan1975.")] string? citeKey = null)
+    {
+        var given = new[] { doi, arxiv, isbn }.Count(v => !string.IsNullOrWhiteSpace(v));
+        if (given != 1) return new { error = "Give exactly one of doi, arxiv or isbn.", category = "invalid" };
+        var doc = Guid.TryParse(documentId?.Trim(), out var id) ? await documents.GetDocumentAsync(id, UserId) : null;
+        if (doc is null) return new { error = $"No document '{documentId}' that you can open. Call list_documents for ids." };
+
+        var cleanDoi = string.IsNullOrWhiteSpace(doi) ? null
+            : System.Text.RegularExpressions.Regex.Replace(doi.Trim(), @"^(https?://(dx\.)?doi\.org/|doi:)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var cleanArxiv = string.IsNullOrWhiteSpace(arxiv) ? null
+            : System.Text.RegularExpressions.Regex.Replace(arxiv.Trim(), @"^(https?://arxiv\.org/(abs|pdf)/|arxiv:)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var biblio = doc.Blocks?.FirstOrDefault(b => string.Equals(b.Type, "bibliography", StringComparison.OrdinalIgnoreCase));
+        var text = biblio is not null && biblio.Content.ValueKind == JsonValueKind.Object && biblio.Content.TryGetProperty("text", out var t)
+            ? t.GetString() ?? "" : "";
+
+        // Already there: the same DOI or arXiv id in the block.
+        var known = cleanDoi ?? cleanArxiv;
+        if (known is not null && text.Contains(known, StringComparison.OrdinalIgnoreCase)
+            && ExistingKeyFor(text, known) is { } existing)
+            return new { citeKey = existing, cite = $"@cite{{{existing}}}", alreadyThere = true, note = "The bibliography already holds this reference." };
+
+        Lilia.Core.DTOs.DoiLookupResultDto? found;
+        try
+        {
+            found = cleanDoi is not null ? await bibliography.LookupDoiAsync(cleanDoi)
+                : cleanArxiv is not null ? await bibliography.LookupArxivAsync(cleanArxiv)
+                : await bibliography.LookupIsbnAsync(isbn!.Trim());
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Mcp] add_reference lookup failed");
+            found = null;
+        }
+        if (found is null)
+            return new { error = $"Lilia found no work for that {(cleanDoi is not null ? "DOI" : cleanArxiv is not null ? "arXiv id" : "ISBN")}. Check it, or add the entry yourself (BibTeX in the bibliography block).", category = "not-found" };
+
+        var taken = TakenKeys(text, doc);
+        var key = UniqueKey(string.IsNullOrWhiteSpace(citeKey) ? found.CiteKey : citeKey.Trim(), taken);
+        var data = found.Data;
+        if (cleanArxiv is not null && !(data.ValueKind == JsonValueKind.Object && data.TryGetProperty("eprint", out _)))
+        {
+            var withId = System.Text.Json.Nodes.JsonNode.Parse(data.GetRawText())!.AsObject();
+            withId["eprint"] = cleanArxiv;
+            withId["archivePrefix"] = "arXiv";
+            data = JsonSerializer.SerializeToElement(withId);
+        }
+        var bibtex = Lilia.Engines.BibliographyService.ToBibTex(found.EntryType, key, data);
+
+        var newText = string.IsNullOrWhiteSpace(text) ? bibtex : text.TrimEnd() + "\n" + bibtex;
+        var content = JsonSerializer.Serialize(new { text = newText });
+        var written = biblio is not null
+            ? await WriteAsync(documentId!, "edit_block", new() { ["blockId"] = biblio.Id.ToString(), ["content"] = content })
+            : await WriteAsync(documentId!, "add_block", new() { ["type"] = "bibliography", ["content"] = content });
+
+        string? F(string name) => data.ValueKind == JsonValueKind.Object && data.TryGetProperty(name, out var v) ? v.ToString() : null;
+        return new
+        {
+            citeKey = key,
+            cite = $"@cite{{{key}}}",
+            reference = new { type = found.EntryType, title = F("title"), authors = F("author"), year = F("year"), venue = F("journal") ?? F("booktitle") ?? F("publisher") },
+            bibtex,
+            written,
+        };
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex BibKey = new(@"@\w+\s*\{\s*([^,\s]+)\s*,", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The key of the BibTeX entry in <paramref name="text"/> that holds <paramref name="id"/> (a DOI or arXiv id).</summary>
+    internal static string? ExistingKeyFor(string text, string id)
+    {
+        string? key = null;
+        foreach (System.Text.RegularExpressions.Match m in BibKey.Matches(text))
+        {
+            var end = BibKey.Match(text, m.Index + m.Length) is { Success: true } next ? next.Index : text.Length;
+            if (text.AsSpan(m.Index, end - m.Index).Contains(id.AsSpan(), StringComparison.OrdinalIgnoreCase)) key = m.Groups[1].Value;
+        }
+        return key;
+    }
+
+    private static HashSet<string> TakenKeys(string text, Lilia.Core.DTOs.DocumentDto doc)
+    {
+        var keys = BibKey.Matches(text).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return keys;
+    }
+
+    /// <summary><paramref name="key"/>, or with a, b, c… after it when the document already uses it.</summary>
+    internal static string UniqueKey(string key, IReadOnlySet<string> taken)
+    {
+        key = System.Text.RegularExpressions.Regex.Replace(key, @"[^A-Za-z0-9:_\-]", "");
+        if (key.Length == 0) key = "ref";
+        if (!taken.Contains(key)) return key;
+        for (var c = 'a'; c <= 'z'; c++) if (!taken.Contains(key + c)) return key + c;
+        return key + Guid.NewGuid().ToString("N")[..6];
+    }
 
     [McpServerTool(Name = "set_title", Title = "Set the title", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the author, date and keywords. What you leave out stays as it is.")]
