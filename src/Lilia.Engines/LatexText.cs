@@ -233,6 +233,15 @@ public static class LatexText
                 }
             }
 
+            // An escaped special character is LaTeX for that character, as in a paragraph: \% printed "\%" in a pasted
+            // table, its backslash escaped again (launch-bot #152, 17 Nov 2026).
+            if (text[i] == '\\' && i + 1 < text.Length && text[i + 1] is '%' or '&' or '#' or '_' or '$' or '{' or '}')
+            {
+                sb.Append(text, i, 2);
+                i += 2;
+                continue;
+            }
+
             AppendEscaped(sb, text[i]);
             i++;
         }

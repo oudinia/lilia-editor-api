@@ -1293,6 +1293,9 @@ public partial class RenderService : IRenderService
         // FormatTitleMetaLatex preserves \and / \thanks{…} / \today tokens
         // that bare EscapeLatex would mangle into \textbackslash{}.
         var (titleText, authorText, dateText) = ResolveTitleMeta(doc);
+        // The PDF's own properties: its title and language, which screen readers and search read (launch-bot #158,
+        // 17 Nov 2026: both were empty). After hyperref has loaded, whichever class loaded it.
+        latex.AppendLine(PdfProperties(doc, titleText));
         IReadOnlyList<Block> bodyBlocks = blocks;
         IReadOnlyList<string> bodyRendered = renderedBlocks;
         // A publisher class: its own front matter (acmart wants the abstract before \maketitle, elsarticle
@@ -1573,6 +1576,14 @@ public partial class RenderService : IRenderService
 
         return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}{labelPart}";
     }
+
+    /// <summary>
+    /// The PDF's title and language in its properties (pdftitle, pdflang), set once hyperref has loaded, whichever class
+    /// loaded it: both were empty, and screen readers and search read them (launch-bot #158, 17 Nov 2026). The render
+    /// and the export (LaTeXExportService) both write it.
+    /// </summary>
+    public static string PdfProperties(Document doc, string? titleText) =>
+        $@"\AtBeginDocument{{\ifdefined\hypersetup\hypersetup{{pdftitle={{{LatexText.Escape(TitleWithoutAnd(titleText ?? "").Trim())}}}, pdflang={{{DocumentLanguage.For(doc).Code}}}}}\fi}}";
 
     private string RenderParagraphToLatex(JsonElement content)
     {

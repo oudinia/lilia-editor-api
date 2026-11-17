@@ -338,6 +338,25 @@ public partial class BibliographyService : IBibliographyService
         }
     }
 
+    /// <summary>
+    /// A title's capitals kept, as BibTeX needs: styles lower-case a title but what is in braces, and "On the Einstein
+    /// Podolsky Rosen paradox" printed "einstein podolsky rosen" (launch-bot #153, 17 Nov 2026). Each word after the
+    /// first that has a capital (a name, an acronym: Einstein, DNA, LaTeX) is braced. A title already holding braces is
+    /// left as it is. Only where BibTeX reads it (references.bib): the entry itself keeps the title as written.
+    /// </summary>
+    public static string ProtectCapitals(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title) || title.Contains('{')) return title;
+        var first = true;
+        return Regex.Replace(title, @"[^\s]+", m =>
+        {
+            var word = m.Value;
+            var keep = !first && word.Any(char.IsUpper) && !word.StartsWith('$') && !word.Contains('\\');
+            first = false;
+            return keep ? "{" + word + "}" : word;
+        });
+    }
+
     /// <summary>"215-225" as BibTeX writes a range, "215--225"; anything else as it is.</summary>
     public static string PageRange(string pages) => Regex.Replace(pages.Trim(), @"^(\w+)\s*[-\u2013]\s*(\w+)$", "$1--$2");
 

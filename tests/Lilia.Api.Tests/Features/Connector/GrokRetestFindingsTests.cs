@@ -222,6 +222,39 @@ public class GrokRetestFindingsTests : IDisposable
         result.Valid.Should().BeTrue(result.Error);
     }
 
+    // ── #151's findings: a cell's \%, a title's capitals, the PDF's properties ──
+
+    [Theory]
+    [InlineData("71.3\\%", "71.3\\%")]
+    [InlineData("Accuracy (\\%)", "Accuracy (\\%)")]
+    [InlineData("A \\& B", "A \\& B")]
+    [InlineData("50%", "50\\%")]
+    [InlineData("a\\b", "a\\textbackslash{}b")]
+    public void An_escaped_special_character_in_a_cell_prints_that_character(string cell, string latex) =>
+        Lilia.Engines.LatexText.EscapeCell(cell).Should().Be(latex);
+
+    [Fact]
+    public void A_titles_names_keep_their_capitals_in_references_bib()
+    {
+        BibliographyService.ProtectCapitals("On the Einstein Podolsky Rosen paradox").Should().Be("On the {Einstein} {Podolsky} {Rosen} paradox");
+        BibliographyService.ProtectCapitals("Deep learning for DNA").Should().Be("Deep learning for {DNA}");
+        BibliographyService.ProtectCapitals("Already {Braced} title").Should().Be("Already {Braced} title");
+        var entry = new BibliographyEntry
+        {
+            CiteKey = "bell1964", EntryType = "article",
+            Data = JsonDocument.Parse("""{"title":"On the Einstein Podolsky Rosen paradox","author":"Bell, J. S.","year":"1964"}"""),
+        };
+        BibTeXSerializer.Serialize([entry]).Should().Contain("title = {On the {Einstein} {Podolsky} {Rosen} paradox}");
+        entry.Data.RootElement.GetProperty("title").GetString().Should().Be("On the Einstein Podolsky Rosen paradox", "the entry itself is unchanged");
+    }
+
+    [Fact]
+    public void The_PDF_carries_its_title_and_language()
+    {
+        var doc = new Document { Title = "Un article", Language = "fr", Blocks = [] };
+        RenderService.PdfProperties(doc, "Un article").Should().Contain("pdftitle={Un article}").And.Contain("pdflang={fr}");
+    }
+
     // ── #128: Markdown headings after the title ──────────────────────────
 
     [Fact]

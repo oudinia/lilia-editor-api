@@ -934,6 +934,8 @@ public class LaTeXExportService : ILaTeXExportService
         string? AbstractEnv() => abstractBlock is null ? null
             : $"\\begin{{abstract}}\n{FormatInlineContent(GetContentText(abstractBlock))}\n\\end{{abstract}}";
         sb.AppendLine("% Document info");
+        // The PDF's title and language in its properties (launch-bot #158), as the render writes them.
+        sb.AppendLine(RenderService.PdfProperties(doc, TitleMeta(doc, blocks).Title));
         if (PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) is { } publisher)
         {
             var (title, author, _) = TitleMeta(doc, blocks);
