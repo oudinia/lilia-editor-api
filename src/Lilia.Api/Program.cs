@@ -517,6 +517,7 @@ builder.Services.AddScoped<Lilia.Api.Directories.ISharingDirectory, SharingDirec
 builder.Services.AddScoped<IDocumentAccess, DocumentAccess>();
 builder.Services.AddScoped<Lilia.Api.Directories.ISharingAccounts, SharingAccounts>();
 builder.Services.AddScoped<ICollaboratorService, CollaboratorService>();
+builder.Services.AddScoped<IDocumentComments, DocumentComments>();
 builder.Services.AddScoped<ISharingService, SharingService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISharingNotifier, SharingNotifier>();

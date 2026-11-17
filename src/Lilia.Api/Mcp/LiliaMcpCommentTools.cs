@@ -1,9 +1,7 @@
 using System.ComponentModel;
 using Lilia.Api.Directories;
-using Lilia.Api.Features.Sharing.Data;
 using Lilia.Api.Services;
 using Lilia.Core.Entities;
-using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 
 namespace Lilia.Api.Mcp;
@@ -11,7 +9,7 @@ namespace Lilia.Api.Mcp;
 /// <summary>
 /// The comments, from the assistant (the connector test, 17 Nov 2026, item G: collaboration happens in comments, and
 /// the assistant couldn't see them). One reading tool and three that write, on the editor's own rules
-/// (<c>CommentsController</c>, the same tables through Sharing's context):
+/// (<c>CommentsController</c>, the same tables, through Sharing's <see cref="IDocumentComments"/>):
 ///
 /// <list type="bullet">
 /// <item><b>Who.</b> Everyone the document is shared with may read, comment and reply, viewers included (the owner,
@@ -28,7 +26,7 @@ namespace Lilia.Api.Mcp;
 public sealed class LiliaMcpCommentTools(
     IHttpContextAccessor http,
     IDocumentService documents,
-    SharingDbContext db,
+    IDocumentComments comments,
     IPeopleDirectory people,
     IConfiguration config,
     ILogger<LiliaMcpCommentTools> logger)
@@ -77,14 +75,10 @@ public sealed class LiliaMcpCommentTools(
         [Description("Also return the resolved comments. Default false.")] bool includeResolved = false)
     {
         if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
-        var query = db.Comments.AsNoTracking().Include(c => c.Replies).Where(c => c.DocumentId == d.Id);
-        if (!includeResolved) query = query.Where(c => !c.Resolved);
-        var comments = await query.OrderByDescending(c => c.CreatedAt).Take(MaxComments).ToListAsync();
-        var resolved = await db.Comments.CountAsync(c => c.DocumentId == d.Id && c.Resolved);
-        var total = await db.Comments.CountAsync(c => c.DocumentId == d.Id);
+        var (list, total, resolved) = await comments.ListAsync(d.Id, includeResolved, MaxComments);
 
         var me = UserId;
-        var names = await people.FindManyAsync(comments.Select(c => c.UserId).Concat(comments.SelectMany(c => c.Replies.Select(r => r.UserId))));
+        var names = await people.FindManyAsync(list.Select(c => c.UserId).Concat(list.SelectMany(c => c.Replies.Select(r => r.UserId))));
         string NameOf(string userId) => names.GetValueOrDefault(userId)?.Name ?? "Someone";
         return new
         {
@@ -92,7 +86,7 @@ public sealed class LiliaMcpCommentTools(
             title = d.Title,
             open = total - resolved,
             resolved,
-            comments = comments.Select(c => new
+            comments = list.Select(c => new
             {
                 id = c.Id,
                 block = BlockOf(d, c.BlockId),
@@ -127,14 +121,7 @@ public sealed class LiliaMcpCommentTools(
             return new { error = $"No block '{blockId}' in this document. Call get_outline for block ids." };
         if (TextProblem(text) is { } problem) return new { error = problem, category = "invalid" };
 
-        var now = DateTime.UtcNow;
-        var comment = new Comment
-        {
-            Id = Guid.NewGuid(), DocumentId = d.Id, BlockId = bid, UserId = UserId,
-            Content = text.Trim(), Resolved = false, CreatedAt = now, UpdatedAt = now,
-        };
-        db.Comments.Add(comment);
-        await db.SaveChangesAsync();
+        var comment = await comments.AddAsync(d.Id, bid, UserId, text.Trim());
         logger.LogInformation("[Mcp] add_comment {CommentId} on {DocId} by {UserId}", comment.Id, d.Id, comment.UserId);
         return new { id = comment.Id, block = BlockOf(d, bid), text = comment.Content, createdAt = comment.CreatedAt, url = EditorUrl(d.Id) };
     }
@@ -148,14 +135,12 @@ public sealed class LiliaMcpCommentTools(
     {
         if (!MayWrite) return new { error = LiliaMcpWriteTools.ReconnectMessage };
         if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
-        if (!Guid.TryParse(commentId?.Trim(), out var cid)
-            || !await db.Comments.AnyAsync(c => c.Id == cid && c.DocumentId == d.Id))
+        if (!Guid.TryParse(commentId?.Trim(), out var cid) || await comments.FindAsync(d.Id, cid) is null)
             return NoComment(commentId!);
         if (TextProblem(text) is { } problem) return new { error = problem, category = "invalid" };
 
-        var reply = new CommentReply { Id = Guid.NewGuid(), CommentId = cid, UserId = UserId, Content = text.Trim(), CreatedAt = DateTime.UtcNow };
-        db.CommentReplies.Add(reply);
-        await db.SaveChangesAsync();
+        var reply = await comments.ReplyAsync(d.Id, cid, UserId, text.Trim());
+        if (reply is null) return NoComment(commentId!);
         logger.LogInformation("[Mcp] reply_to_comment {ReplyId} on {CommentId} by {UserId}", reply.Id, cid, reply.UserId);
         return new { id = reply.Id, commentId = cid, text = reply.Content, createdAt = reply.CreatedAt, url = EditorUrl(d.Id) };
     }
@@ -168,17 +153,13 @@ public sealed class LiliaMcpCommentTools(
     {
         if (!MayWrite) return new { error = LiliaMcpWriteTools.ReconnectMessage };
         if (await OpenAsync(documentId) is not { } d) return NoDocument(documentId);
-        var comment = Guid.TryParse(commentId?.Trim(), out var cid)
-            ? await db.Comments.FirstOrDefaultAsync(c => c.Id == cid && c.DocumentId == d.Id)
-            : null;
+        var comment = Guid.TryParse(commentId?.Trim(), out var cid) ? await comments.FindAsync(d.Id, cid) : null;
         if (comment is null) return NoComment(commentId!);
         if (comment.UserId != UserId && d.OwnerId != UserId)
             return new { error = "Only the comment's author or the document's owner can resolve it. Reply with reply_to_comment instead.", category = "refused" };
         if (comment.Resolved) return new { id = comment.Id, resolved = true, note = "It was already resolved." };
 
-        comment.Resolved = true;
-        comment.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        if (!await comments.ResolveAsync(d.Id, comment.Id)) return NoComment(commentId!);
         logger.LogInformation("[Mcp] resolve_comment {CommentId} on {DocId} by {UserId}", comment.Id, d.Id, UserId);
         return new { id = comment.Id, resolved = true, url = EditorUrl(d.Id) };
     }
