@@ -668,8 +668,10 @@ public class JobService : IJobService
 
                 var sortOrder = 0;
                 // A Markdown file's front matter: its title, author and date as the new document's title block
-                // (#106, 14 Nov 2026). LaTeX's text import leaves the title to the document, as before.
-                var blocksToAdd = pasted.Format == "MARKDOWN" && pasted.TitleBlock is { } frontTitle
+                // (#106, 14 Nov 2026). LaTeX's \title, \author and \date too, as the upload import does: without the
+                // block every paper imported here lost its authors, and an empty \date{} printed today's date
+                // (launch-bot #143, 17 Nov 2026).
+                var blocksToAdd = pasted.Format is "MARKDOWN" or "LATEX" && pasted.TitleBlock is { } frontTitle
                     ? new[] { frontTitle }.Concat(pasted.Blocks)
                     : pasted.Blocks;
                 foreach (var block in blocksToAdd)

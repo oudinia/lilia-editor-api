@@ -31,7 +31,7 @@ public static partial class PublisherFrontMatterReader
         var authors = cls switch
         {
             "acmart" => Sequential(src, "affiliation", AcmAffiliation),
-            "revtex4-2" or "revtex4-1" => Sequential(src, "affiliation", Plain),
+            "revtex4-2" or "revtex4-1" => Sequential(src, "affiliation", Plain, notes: true),
             "amsart" or "amsproc" or "amsbook" => Sequential(src, "address", Plain),
             "IEEEtran" => Ieee(src),
             "elsarticle" => Elsevier(src),
@@ -46,15 +46,32 @@ public static partial class PublisherFrontMatterReader
 
     // ── authors ────────────────────────────────────────────────────────
 
-    /// <summary>\author{Name} then its \affiliation / \address / \email, in order (ACM, REVTeX, AMS).</summary>
-    private static List<Author> Sequential(string src, string affiliationCommand, Func<string, IEnumerable<string>> affiliationLines)
+    /// <summary>\author{Name} then its \affiliation / \address / \email, in order (ACM, REVTeX, AMS).
+    /// <para>With <paramref name="notes"/> (REVTeX), an author's <c>\thanks</c> and <c>\altaffiliation</c> stay with the
+    /// name as <c>\thanks{…}</c>, the title editor's form (launch-bot #143, 17 Nov 2026: both were lost, and the
+    /// altaffiliation printed as a loose paragraph under the abstract).</para></summary>
+    private static List<Author> Sequential(string src, string affiliationCommand, Func<string, IEnumerable<string>> affiliationLines, bool notes = false)
     {
         var authors = new List<Author>();
         var front = FrontPart(src);
-        foreach (var (cmd, arg) in Commands(front, "author", affiliationCommand, "email"))
+        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation" } : new[] { "author", affiliationCommand, "email" };
+        foreach (var (cmd, arg) in Commands(front, names))
         {
-            if (cmd == "author") { authors.Add(new Author(Clean(arg), [])); continue; }
+            if (cmd == "author")
+            {
+                var name = Clean(notes ? RemoveCommand(arg, "thanks") : arg);
+                if (notes) name += string.Concat(Commands(arg, "thanks").Select(t => $@"\thanks{{{Clean(t.Arg)}}}"));
+                authors.Add(new Author(name, []));
+                continue;
+            }
             if (authors.Count == 0) continue;
+            if (cmd is "thanks" or "altaffiliation")
+            {
+                // A \thanks inside \author{…} was read with it; Commands also finds it on its own, so only one outside.
+                if (cmd == "thanks" && authors[^1].Name.Contains($@"\thanks{{{Clean(arg)}}}", StringComparison.Ordinal)) continue;
+                if (Clean(arg) is { Length: > 0 } note) authors[^1] = authors[^1] with { Name = authors[^1].Name + $@"\thanks{{{note}}}" };
+                continue;
+            }
             if (cmd == "email") authors[^1].Lines.AddRange(Split(arg, ',').Select(Clean).Where(e => e.Contains('@')));
             else authors[^1].Lines.AddRange(affiliationLines(arg));
         }

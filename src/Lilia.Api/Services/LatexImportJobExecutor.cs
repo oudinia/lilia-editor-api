@@ -364,6 +364,9 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         // A publisher paper's keywords, and ACM's CCS concepts and rights block (Overleaf import,
         // 25 Oct 2026; PublisherFrontMatterReader), only when the paper had them.
         var content = new Dictionary<string, object> { ["title"] = title, ["author"] = author, ["date"] = date };
+        // \date{} written empty means no date; an empty date is otherwise \today (launch-bot #143, 17 Nov 2026: a paper
+        // without a date printed today's). dateMode "none" keeps it empty in the PDF.
+        if (doc.Metadata?.Date is { } written && written.Trim().Length == 0) content["dateMode"] = "none";
         if (doc.Metadata?.Keywords is { Length: > 0 } keywords)
             content["keywords"] = keywords.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (doc.Metadata?.AcmCcs is { Length: > 0 } ccs) content["acmCcs"] = ccs;
@@ -469,6 +472,20 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         var blocks = new List<(string type, object content)>(elements.Count);
         for (var i = 0; i < elements.Count; i++)
         {
+            // A thebibliography's \bibitem entries: one bibliography block of references written as text, one
+            // "@cite[key] text" line each, the form the bibliography block reads (BibliographyText), so \cite{key}
+            // resolves. Each entry was an empty paragraph and every citation printed ? (launch-bot #142, 17 Nov 2026).
+            if (elements[i] is ImportBibliographyEntry)
+            {
+                var references = new List<string>();
+                for (; i < elements.Count && elements[i] is ImportBibliographyEntry entry; i++)
+                    if (entry.ReferenceLabel is { Length: > 0 } key)
+                        references.Add($"@cite[{key}] {System.Text.RegularExpressions.Regex.Replace(entry.Text, @"\s+", " ").Trim()}");
+                i--;
+                if (references.Count > 0)
+                    blocks.Add(("bibliography", new { title = "References", text = string.Join("\n", references) }));
+                continue;
+            }
             if (elements[i] is ImportListItem { ListGroup: { } group } first)
             {
                 var items = new List<object> { ListItemContent(first) };

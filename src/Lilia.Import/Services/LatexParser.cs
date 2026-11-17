@@ -696,7 +696,11 @@ public class LatexParser : ILatexParser
         if (authorMatch.HasValue)
         {
             CheckRegexDispatchDrift("author", "metadata-extract");
-            document.Metadata.Author = StripInlineCommandsForPlainText(authorMatch.Value.Inner);
+            // On one line, as the title editor writes it: "Ann Author \and Bob Author\\Example University" (launch-bot #143,
+            // 17 Nov 2026). A source line break inside \author is a space; \\ and \and stay the separators.
+            document.Metadata.Author = Regex.Replace(
+                Regex.Replace(StripInlineCommandsForPlainText(authorMatch.Value.Inner), @"\s+", " "),
+                @"\s*\\\\\s*", @"\\");
         }
 
         // Extract \date{} if present.
@@ -889,6 +893,9 @@ public class LatexParser : ILatexParser
         documentContent = StripBalancedCommand(documentContent, "thanks");
         documentContent = StripBalancedCommand(documentContent, "affil");
         documentContent = StripBalancedCommand(documentContent, "affiliation");
+        // REVTeX's second affiliation: front matter too (PublisherFrontMatterReader puts it on its author as a \thanks). It was
+        // flattened into a loose "E-mail: …" paragraph under the abstract (launch-bot #143, 17 Nov 2026).
+        documentContent = StripBalancedCommand(documentContent, "altaffiliation");
         if (publisherFront is not null) documentContent = StripPublisherFrontMatter(documentContent, publisherFront);
 
         // Also strip preamble commands that the metadata pass already captured so
@@ -919,7 +926,8 @@ public class LatexParser : ILatexParser
         // definitions onto the document's custom preamble.)
         documentContent = Regex.Replace(documentContent, @"\\def\s*\\[A-Za-z@]+\s*(?:#\d)*\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\theoremstyle\s*\{[^}]*\}", "");
-        documentContent = Regex.Replace(documentContent, @"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*\{[^}]*\}", "");
+        // Its text may hold a group ({\mathrm{Tr}}): [^}]* stopped at the inner brace and left a } in the body (launch-bot #139, 17 Nov 2026).
+        documentContent = Regex.Replace(documentContent, @"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}", "");
         // And the rest of what defines rather than prints (LatexDefinitions: xparse, expl3 and \makeatletter blocks,
         // fonts, colours, lengths, \let). The flattener ate the unknown command and kept its arguments:
         // \colorlet{quack}{black} printed "quack{black}" (launch bot #102, 14 Nov 2026). LatexPreambleExtractor
@@ -931,6 +939,10 @@ public class LatexParser : ILatexParser
         // flattener would turn them into a stray "document" paragraph.
         documentContent = Regex.Replace(documentContent, @"\\begin\{document\}", "");
         documentContent = Regex.Replace(documentContent, @"\\end\{document\}", "");
+        // REVTeX's appendix environment is the \appendix switch around its content: read as \appendix, so its sections,
+        // theorems and equations are blocks. As an unknown environment it was one raw block (launch-bot #146, 17 Nov 2026).
+        documentContent = Regex.Replace(documentContent, @"\\begin\{appendix\}", @"\appendix ");
+        documentContent = Regex.Replace(documentContent, @"\\end\{appendix\}", "");
 
         // Inline math \(...\) — promote to TeX-style $...$ so the
         // imported paragraph renders the math (the editor's inline-math
@@ -1721,6 +1733,31 @@ public class LatexParser : ILatexParser
 
     private static long _mathSpanCallId;
 
+    private static readonly Regex CaptionOf = new(@"\\captionof\s*\{(figure|table)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// A minipage's content, spliced into the text: a figure or table made with capt-of's <c>\captionof{figure}{…}</c>
+    /// becomes that float, so the caption and its <c>\label</c> are the figure's; and <c>\prevdepth=…</c>, which only
+    /// means something at a minipage's end, is left out. The caption printed as "figure{A caption.}", the label named
+    /// the section, and a loose \prevdepth stopped the PDF, "You can't use \prevdepth in horizontal mode" (launch-bot #140,
+    /// 17 Nov 2026). Only a minipage with one \captionof and the picture, image or tabular it captions.
+    /// </summary>
+    internal static string MinipageBody(string body)
+    {
+        body = Regex.Replace(body, @"\\prevdepth\s*=?\s*(?:-?[\d.]+\s*[a-z]{2}|(?:\\(?:dp|ht|wd)\s*)?\\[A-Za-z@]+)", "");
+        var captions = CaptionOf.Matches(body);
+        if (captions.Count != 1) return body;
+        var env = captions[0].Groups[1].Value;
+        var holds = env == "figure"
+            ? Regex.IsMatch(body, @"\\begin\{tikzpicture\}|\\includegraphics\b|" + TikzTokenPattern)
+            : Regex.IsMatch(body, @"\\begin\{tabular[x*]?\}");
+        if (!holds) return body;
+        return $"\n\\begin{{{env}}}\n" + CaptionOf.Replace(body, @"\caption") + $"\n\\end{{{env}}}\n";
+    }
+
+    /// <summary>Not preceded by an odd run of backslashes: the next character is not escaped (launch-bot #144, 17 Nov 2026).</summary>
+    private const string NotEscaped = @"(?<!(?<!\\)(?:\\\\)*\\)";
+
     private static readonly Regex UnknownEnvRx = new(
         @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline | RegexOptions.Compiled);
 
@@ -1993,7 +2030,10 @@ public class LatexParser : ILatexParser
             // Display math $$...$$ and \[...\]
             if (options.ConvertDisplayMath)
             {
-                var displayMathMatch = Regex.Match(remaining, @"\$\$([\s\S]*?)\$\$", RegexOptions.Singleline);
+                // Neither $$ may be an escaped \$ and a $: in $\$$1000 … $\$$5 the two "\$$" were read as a display
+                // formula, which swallowed everything between them (11,895 characters in one paper; launch-bot #144,
+                // 17 Nov 2026). A $ is escaped when an odd run of backslashes precedes it (\\$$ is a line break, then $$).
+                var displayMathMatch = Regex.Match(remaining, NotEscaped + @"\$\$([\s\S]*?)" + NotEscaped + @"\$\$", RegexOptions.Singleline);
                 if (displayMathMatch.Success)
                     matches.Add((displayMathMatch, "displaymath_dollar"));
 
@@ -2197,6 +2237,7 @@ public class LatexParser : ILatexParser
             {
                 var before = remaining[..passThroughMatch.Index];
                 var body = passThroughMatch.Groups[2].Value;
+                if (passThroughMatch.Groups[1].Value == "minipage") body = MinipageBody(body);
                 var after = remaining[(passThroughMatch.Index + passThroughMatch.Length)..];
                 remaining = before + body + after;
                 continue; // restart the match search against the rewritten stream
@@ -2679,6 +2720,9 @@ public class LatexParser : ILatexParser
             // and the export (where a newline is a new paragraph) split the paragraph in two
             // (LaTeX coverage text.comments and refs.section-ref, 15 Oct).
             normalised = Regex.Replace(normalised, @"[ \t]*\r?\n[ \t]*", " ");
+            // Nothing left once the layout commands are out (a \noindent before a minipage figure): no block. It was an
+            // empty paragraph (launch-bot #140, 17 Nov 2026).
+            if (string.IsNullOrWhiteSpace(normalised)) continue;
 
             document.Elements.Add(new ImportParagraph
             {

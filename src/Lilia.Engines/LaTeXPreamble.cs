@@ -35,6 +35,13 @@ public static partial class LaTeXPreamble
         name is "biblatex" or "natbib";
 
     /// <summary>
+    /// A package that clashes with the algorithm + algorithmic pair Lilia's algorithm blocks use (algorithm2e,
+    /// algpseudocode…). An imported preamble's copy is left out, as the custom preamble's is (launch-bot #138,
+    /// 17 Nov 2026: a paper's preserved algorithm2e stopped the PDF, "Command \listofalgorithms already defined").
+    /// </summary>
+    public static bool ClashesWithAlgorithmPackages(string name) => ClashingCustomPackages.Contains(name);
+
+    /// <summary>
     /// Every package name the preamble actually loads, read out of the preamble
     /// itself.
     /// </summary>

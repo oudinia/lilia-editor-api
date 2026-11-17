@@ -716,6 +716,9 @@ public class LaTeXExportService : ILaTeXExportService
                 // The citation package is the export's to choose (natbib, or biblatex as an option): an
                 // imported biblatex beside it stopped the compile ("\bibhang already defined"; 26 Oct 2026).
                 if (LaTeXPreamble.IsCitationPackage(name)) continue;
+                // algorithm2e / algpseudocode clash with the algorithm + algorithmic pair Lilia loads for its algorithm
+                // blocks: left out, as from the custom preamble (launch-bot #138, 17 Nov 2026: "\listofalgorithms already defined").
+                if (LaTeXPreamble.ClashesWithAlgorithmPackages(name)) continue;
                 if (!emitted.Add(name)) continue;
                 var opts = pkg.TryGetProperty("options", out var o) ? o.GetString() : null;
                 var load = string.IsNullOrWhiteSpace(opts)
@@ -991,6 +994,8 @@ public class LaTeXExportService : ILaTeXExportService
             // Keep \today / free text / LaTeX tokens via FormatTitleMetaLatex
             // (bare EscapeLatex turns \and / \today into \textbackslash{}).
             if (!string.IsNullOrWhiteSpace(d)) date = FormatTitleMetaLatex(d!);
+            // An imported \date{} (dateMode "none") prints no date, not today's (launch-bot #143, 17 Nov 2026).
+            if (root.TryGetProperty("dateMode", out var dm) && dm.ValueKind == JsonValueKind.String && dm.GetString() == "none") date = "";
         }
         sb.AppendLine($@"\title{{{FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title))}}}");
         sb.AppendLine($@"\author{{{Lilia.Engines.AuthorLatex.For(author, FormatTitleMetaLatex)}}}");
@@ -1308,7 +1313,8 @@ public class LaTeXExportService : ILaTeXExportService
             m => Ph($@"\hl{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 2. Inline code: `text` → \texttt{text}
-        result = Regex.Replace(result, @"`([^`]+)`", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        //    Not TeX's opening quote: ``a'' and ``b'' became \texttt{a'' and } (launch-bot #141, 17 Nov 2026).
+        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`]+)`(?!`)", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 2b. Underline: __text__ → \underline{text}. The editor serialises its
         //     underline mark as __text__ (content-converter.ts) and the preview

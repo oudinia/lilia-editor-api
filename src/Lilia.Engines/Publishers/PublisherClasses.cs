@@ -272,6 +272,9 @@ public static class PublisherClasses
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     body.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    // An author's \thanks notes (an imported paper's \thanks and \altaffiliation): they were dropped
+                    // (launch-bot #143, 17 Nov 2026).
+                    foreach (var note in a.Notes) body.AppendLine($@"\thanks{{{escape(note)}}}");
                     foreach (var e in emails) body.AppendLine($@"\email{{{e}}}");
                     if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{{Line(a.Lines, ", ")}}}");
                 }

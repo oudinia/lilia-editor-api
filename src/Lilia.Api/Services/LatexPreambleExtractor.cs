@@ -35,8 +35,9 @@ public static class LatexPreambleExtractor
         new(@"\\(?:re|provide)?newcommand\*?\s*\{?\\[A-Za-z@]+\}?\s*(?:\[[^\]]*\])*\s*" + Braced, RegexOptions.Compiled),
         // \newenvironment / \renewenvironment {name}[n][default]{begin}{end}
         new(@"\\(?:re)?newenvironment\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])*\s*" + Braced + @"\s*" + Braced, RegexOptions.Compiled),
-        // \DeclareMathOperator{\name}{text}
-        new(@"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*\{[^}]*\}", RegexOptions.Compiled),
+        // \DeclareMathOperator{\name}{text}. The text may hold a group: {\mathrm{Tr}} lost its last brace with [^}]*,
+        // and the preamble didn't compile (launch-bot #139, 17 Nov 2026: "File ended while scanning use of \@declmathop").
+        new(@"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*" + Braced, RegexOptions.Compiled),
         // \def\name{body}  (TeX primitive form, no args captured beyond the body)
         new(@"\\def\s*\\[A-Za-z@]+\s*" + Braced, RegexOptions.Compiled),
     };
