@@ -47,6 +47,7 @@ public sealed class LiliaMcpTools(
         edit_block, remove_block, reorder_blocks, set_title, apply_lml, set_document_settings) change a document the
         author owns or edits: the open editor shows each change at once, and a version saved before the first change
         lets the author undo. Read before you edit: get_outline for block ids, get_block for a block's content.
+        add_figure_image puts an image file you have (PNG, JPEG or PDF, as base64) in a figure; Lilia never fetches links.
         Prefer small edits; tell the author what you changed.
         Exports never pass through the conversation: export_document returns a download link to give the author. To
         import, import_document takes a file you have (.tex or .lml text, .docx base64); start_import returns a link to
@@ -200,7 +201,7 @@ public sealed class LiliaMcpTools(
         await OpenAsync(documentId) is { } d ? AskLiliaService.SettingsView(d) : NoDocument(documentId);
 
     [McpServerTool(Name = "check_document", Title = "Check the document compiles", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), printsCorrectly, and problems: each error and warning with its block id and line. Takes a few seconds. It does not change the document or its saved validation.")]
+    [Description("Compile the document now with Lilia's LaTeX and say whether it compiles and prints correctly: the error (its category and the block it is in) if not, the LaTeX warnings, references to labels the document never writes (they print ??), citations with no bibliography entry (they print ?), printsCorrectly, problems: each error and warning with its block id and line, hint: what to change when the error has a common cause (a TikZ library to load), and pages: how many pages the PDF has (pagesNote says when the exported PDF can be longer). Takes a few seconds. It does not change the document or its saved validation.")]
     public async Task<object> CheckDocument([Description("The document id.")] string documentId) =>
         await OpenAsync(documentId) is { } d ? (await checker.CheckAsync(d)).Report : NoDocument(documentId);
 

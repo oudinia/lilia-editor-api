@@ -263,15 +263,24 @@ public sealed partial class DocumentCheckService(
             .Select(o => new { blockId = audit.BlockAtLine(o.FirstLine), tooWidePt = Math.Round(o.Points, 1) })
             .ToList();
 
+        // Lilia marks the emitter left in the text, which print as typed (an @footnote{…} in a paragraph), and a plain
+        // hint for an error TeX words obscurely (a TikZ library to load): the connector test of 17 Nov 2026, item F.
+        var literalMarks = CheckHints.LiteralMarks(source);
+        var hint = result.Valid ? null : CheckHints.ForError(result.Log is { Length: > 0 } ? result.Log : result.Error);
+        // How long the PDF is (item E): venues limit pages. Read from the compile's log, so it costs nothing.
+        var pages = result.Valid ? CheckHints.Pages(result.Log) : null;
+
         var prints = result.Valid && references.Count + citations.Count == 0 && dropped is null && unprinted.Count == 0 && wide.Count == 0 && wideCode.Count == 0
-            && missingFigures.Count == 0;
+            && missingFigures.Count == 0 && literalMarks.Count == 0;
         if (d is not null) checks.Set(d.Id, new CheckMemoStore.Memo(d.UpdatedAt, DateTime.UtcNow, result.Valid, prints, result.Error));
 
         // Per block: what is wrong, where (15 Oct, for Ask Lilia's repair loop).
         var problems = new List<BlockProblem>();
         if (!result.Valid)
-            problems.Add(new BlockProblem(errorBlockId?.ToString(), errorLine, "error",
-                FirstLine(result.ParsedError?.ErrorRaw) ?? FirstLine(result.Error?.Replace("LaTeX compilation failed:", "")) ?? "It does not compile."));
+        {
+            var message = FirstLine(result.ParsedError?.ErrorRaw) ?? FirstLine(result.Error?.Replace("LaTeX compilation failed:", "")) ?? "It does not compile.";
+            problems.Add(new BlockProblem(errorBlockId?.ToString(), errorLine, "error", hint is null ? message : $"{message} {hint}"));
+        }
         foreach (var w in result.Warnings)
         {
             var at = InputLine().Match(w) is { Success: true } m && int.TryParse(m.Groups[1].Value, out var l) ? l : (int?)null;
@@ -295,6 +304,8 @@ public sealed partial class DocumentCheckService(
         foreach (var fracLine in EmptyFractionLines(source))
             problems.Add(new BlockProblem(audit.BlockAtLine(fracLine)?.ToString(), fracLine, "warning",
                 "A fraction has an empty part (like \\frac{a}{}): it prints a blank there."));
+        foreach (var mark in literalMarks)
+            problems.Add(new BlockProblem(audit.BlockAtLine(mark.Line)?.ToString(), mark.Line, "warning", mark.Message));
         var listed = problems.Take(MaxProblems).ToList();
 
         var report = new
@@ -311,6 +322,9 @@ public sealed partial class DocumentCheckService(
             // The command LaTeX doesn't know (MCP-37: only "Undefined control sequence." was said).
             errorCommand = result.ParsedError is { Category: "undefined_control_sequence", Token: { } token } ? token : null,
             errorBlockId,
+            hint,
+            pages,
+            pagesNote = pages is null ? null : CheckHints.PagesNote(source),
             warnings = result.Warnings.Take(20),
             warningCount = result.Warnings.Length,
             references,
@@ -330,7 +344,9 @@ public sealed partial class DocumentCheckService(
                             ? "It compiles, but a line of code is wider than its column and runs into the margin (wideCode)."
                             : missingFigures.Count > 0
                                 ? "It compiles, but an image can't be found: the PDF prints a \"Missing figure\" frame (missingFigures)."
-                                : null,
+                                : literalMarks.Count > 0
+                                    ? "It compiles, but a Lilia mark is printed as typed (see problems)."
+                                    : null,
             url = d is null ? null : EditorUrl(d.Id),
             // What the publisher would reject or query, beside whether it compiles. Not in problems:
             // most are the author's to supply (an abstract, keywords, a country), not LaTeX to repair.

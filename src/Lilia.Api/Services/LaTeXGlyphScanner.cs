@@ -57,7 +57,7 @@ public static partial class LaTeXGlyphScanner
     /// The font name straddles the break. Only the font group needs this — the
     /// character and its code point always sit well before the wrap point.
     /// </summary>
-    private static string Unwrap(string rawLog)
+    internal static string Unwrap(string rawLog)
     {
         var sb = new StringBuilder(rawLog.Length);
         var lines = rawLog.Replace("\r\n", "\n").Split('\n');
