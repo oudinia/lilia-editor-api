@@ -69,6 +69,44 @@ public class McpVersionsAndCommentsTests : IntegrationTestBase
 
     // ── D. versions ──────────────────────────────────────────────────────
 
+    // launch-bot #149 (17 Nov 2026): ten pastes, then an edit. The edit's undo was the burst's first version, the empty
+    // document: restoring it took all 610 pasted blocks too. A paste saves its own undo point, and the burst starts again
+    // after it.
+    [Fact]
+    public async Task An_edit_after_pastes_undoes_only_the_edit_and_a_paste_undoes_only_itself()
+    {
+        await SeedUserAsync("mcpv_paste");
+        var doc = await SeedDocumentAsync("mcpv_paste", "Pasted");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Start."}""", 0);
+        var app = App("mcpv_paste");
+
+        var first = await CallAsync(app, "paste_content", new { documentId = doc.Id.ToString(), content = "\\section{One}\nAlpha text.\n\nBeta text.", format = "LATEX" });
+        NoError(first);
+        var second = await CallAsync(app, "paste_content", new { documentId = doc.Id.ToString(), content = "\\section{Two}\nGamma text.", format = "LATEX" });
+        NoError(second);
+        var afterPastes = await BlockCountAsync(doc.Id);
+        afterPastes.Should().BeGreaterThan(4);
+
+        // The second paste's undo removes only the second paste.
+        var secondUndo = second.GetProperty("undo").GetProperty("versionId").GetGuid();
+        secondUndo.Should().NotBe(first.GetProperty("undo").GetProperty("versionId").GetGuid());
+
+        Guid editedId;
+        await using (var db = CreateDbContext())
+            editedId = (await db.Blocks.AsNoTracking().Where(b => b.DocumentId == doc.Id && b.Type == "paragraph").ToListAsync())
+                .First(b => b.Content.RootElement.GetProperty("text").GetString()!.Contains("Gamma")).Id;
+        var edit = await CallAsync(app, "edit_block", new { documentId = doc.Id.ToString(), blockId = editedId.ToString(), content = """{"text":"Gamma, edited."}""" });
+        NoError(edit);
+        var editUndo = edit.GetProperty("undo").GetProperty("versionId").GetGuid();
+        editUndo.Should().NotBe(secondUndo, "the edit's undo point is the document as the pastes left it");
+
+        NoError(await CallAsync(app, "restore_version", new { documentId = doc.Id.ToString(), versionId = editUndo.ToString() }));
+        (await BlockCountAsync(doc.Id)).Should().Be(afterPastes, "only the edit is undone, not the pastes");
+        await using (var db = CreateDbContext())
+            (await db.Blocks.AsNoTracking().Where(b => b.DocumentId == doc.Id && b.Type == "paragraph").ToListAsync())
+                .Select(b => b.Content.RootElement.GetProperty("text").GetString()).Should().Contain(t => t!.Contains("Gamma text"));
+    }
+
     [Fact]
     public async Task An_app_undoes_its_edit_with_restore_version_and_the_restore_can_be_undone_too()
     {

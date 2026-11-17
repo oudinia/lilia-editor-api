@@ -334,7 +334,10 @@ public sealed partial class DocumentCheckService(
                 "A fraction has an empty part (like \\frac{a}{}): it prints a blank there."));
         foreach (var mark in literalMarks)
             problems.Add(new BlockProblem(audit.BlockAtLine(mark.Line)?.ToString(), mark.Line, "warning", mark.Message));
-        var listed = problems.Take(MaxProblems).ToList();
+        // The errors first, then what prints ? or ?? (references and citations), then the rest: with more than MaxProblems,
+        // missing citations were the ones cut, and nothing said the list was cut (launch-bot #150, 17 Nov 2026).
+        static int Rank(BlockProblem p) => p.Severity == "error" ? 0 : p.Message.Contains("prints ?", StringComparison.Ordinal) ? 1 : 2;
+        var listed = problems.Select((p, i) => (p, i)).OrderBy(x => Rank(x.p)).ThenBy(x => x.i).Select(x => x.p).Take(MaxProblems).ToList();
 
         var report = new
         {
@@ -359,6 +362,10 @@ public sealed partial class DocumentCheckService(
             references,
             citations,
             problems = listed.Select(p => new { blockId = p.BlockId, line = p.Line, severity = p.Severity, message = p.Message }),
+            problemCount = problems.Count,
+            problemsNote = problems.Count > listed.Count
+                ? $"{problems.Count} problems; the first {listed.Count} are listed (errors first, then references and citations that print ? or ??). Fix these and check again for the rest."
+                : null,
             durationMs = result.DurationMs,
             // MCP-108: "It compiles, but…" was said of a document that doesn't compile.
             note = !result.Valid

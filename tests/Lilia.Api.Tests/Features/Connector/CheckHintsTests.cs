@@ -236,4 +236,19 @@ public class CheckHintsTests : IDisposable
         check.Problems.Should().ContainSingle(p => p.BlockId == bad.ToString() && p.Line == 7 && p.Message.Contains(@"\footnote{"));
         Report(check).GetProperty("note").GetString().Should().Contain("printed as typed");
     }
+
+    // launch-bot #150 (17 Nov 2026): over 30 problems, the list was cut without a word, and the missing citations went.
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task For_real_a_long_problem_list_says_it_is_cut_and_keeps_what_prints_question_marks()
+    {
+        var block = Guid.NewGuid();
+        var doc = Doc(Block(block));
+        var fractions = string.Join("\n", Enumerable.Range(1, 35).Select(i => $"Line {i}: $\\frac{{a}}{{}}$."));
+        var check = await Checker(doc, $"\\documentclass{{article}}\n\\begin{{document}}\n% block:{block}\n{fractions}\nSee \\cite{{nobody}}.\n\\end{{document}}\n").CheckAsync(doc);
+        var report = Report(check);
+        report.GetProperty("problemCount").GetInt32().Should().BeGreaterThan(30);
+        report.GetProperty("problemsNote").GetString().Should().Contain("are listed");
+        check.Problems.Should().HaveCount(30).And.Contain(p => p.Message.Contains("nobody"), "a citation that prints ? comes before the other warnings");
+    }
 }
