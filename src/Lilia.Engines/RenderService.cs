@@ -919,8 +919,8 @@ public partial class RenderService : IRenderService
         result = Regex.Replace(result, @"~~(.+?)~~",
             m => $"<del>{m.Groups[1].Value}</del>");
 
-        // Inline code: `...`
-        result = Regex.Replace(result, @"`(.+?)`",
+        // Inline code: `...`. Not TeX's opening quote ``…'' (launch-bot #141, 17 Nov 2026).
+        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`\n]+?)`(?!`)",
             m => $"<code>{m.Groups[1].Value}</code>");
 
         // Citations: \cite{{...}}
@@ -1003,6 +1003,9 @@ public partial class RenderService : IRenderService
                 // The citation package is the export's to choose (natbib, or biblatex as an option): an
                 // imported biblatex beside it stopped the compile ("\bibhang already defined"; 26 Oct 2026).
                 if (LaTeXPreamble.IsCitationPackage(name)) continue;
+                // algorithm2e / algpseudocode clash with the algorithm + algorithmic pair Lilia loads for its algorithm
+                // blocks: left out, as from the custom preamble (launch-bot #138, 17 Nov 2026: "\listofalgorithms already defined").
+                if (LaTeXPreamble.ClashesWithAlgorithmPackages(name)) continue;
                 if (!emitted.Add(name)) continue;
                 var o = pkg.TryGetProperty("options", out var opel) ? opel.GetString() : null;
                 var load = string.IsNullOrWhiteSpace(o)
@@ -1317,8 +1320,11 @@ public partial class RenderService : IRenderService
         // rail's Validate dot lit for a warning the author never caused.
         latex.AppendLine($@"\author{{{AuthorLatex.For(authorText, FormatTitleMetaLatex)}}}");
         // Empty date → LaTeX default (\today). Explicit value is formatted
-        // so a user-typed \today still works.
-        if (!string.IsNullOrWhiteSpace(dateText))
+        // so a user-typed \today still works. dateMode "none" (an imported \date{}) prints no date
+        // (launch-bot #143, 17 Nov 2026).
+        if (TitleText(doc, "dateMode") == "none")
+            latex.AppendLine(@"\date{}");
+        else if (!string.IsNullOrWhiteSpace(dateText))
             latex.AppendLine($@"\date{{{FormatTitleMetaLatex(dateText)}}}");
         else
             latex.AppendLine(@"\date{\today}");
@@ -2902,11 +2908,11 @@ public partial class RenderService : IRenderService
                 descriptionText = descProp.GetString() ?? "";
             }
             // Braced when it holds a ], so the term can't end the label early (MCP-33).
-            sb.AppendLine($@"\item[{OptionalArgument(ProcessLatexText(itemText).Trim())}] {ProcessLatexText(descriptionText)}");
+            sb.AppendLine($@"\item[{OptionalArgument(ProcessLatexText(itemText).Trim())}] {ProcessLatexText(descriptionText, singleNewlines: true)}");
         }
         else
         {
-            sb.AppendLine($@"\item {GuardLeadingBracket(ProcessLatexText(itemText))}");
+            sb.AppendLine($@"\item {GuardLeadingBracket(ProcessLatexText(itemText, singleNewlines: true))}");
         }
 
         // Render nested list if children present. A nested list is of the
@@ -3034,7 +3040,7 @@ public partial class RenderService : IRenderService
         {
             sb.AppendLine($@"\label{{{label}}}");
         }
-        sb.AppendLine(GuardLeadingBracket(ProcessLatexText(text)));
+        sb.AppendLine(GuardLeadingBracket(ProcessLatexText(text, singleNewlines: true)));
         sb.Append($@"\end{{{envName}}}");
         return sb.ToString();
     }
@@ -3247,7 +3253,14 @@ public partial class RenderService : IRenderService
         @"\\begin\{(equation|align|alignat|gather|multline|flalign|eqnarray|displaymath)(\*?)\}.*?\\end\{\1\2\}",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
-    private string ProcessLatexText(string text)
+    /// <param name="singleNewlines">
+    /// Keep a single line break as one (a space to LaTeX) instead of doubling it into a paragraph break: theorem
+    /// bodies and list items (launch-bot #145, 17 Nov 2026). A blank line the text holds stays a paragraph break.
+    /// Paragraph blocks keep the doubling.
+    /// </param>
+    private string ProcessLatexText(string text) => ProcessLatexText(text, singleNewlines: false);
+
+    private string ProcessLatexText(string text, bool singleNewlines)
     {
         if (string.IsNullOrEmpty(text)) return "";
 
@@ -3288,11 +3301,13 @@ public partial class RenderService : IRenderService
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
-        result = Regex.Replace(result, @"\$\$(.+?)\$\$", m => {
+        // An escaped \$ in a formula is a dollar sign, not a delimiter: $\$$1000 … $x=1$ paired the wrong signs and the
+        // PDF stopped, "Missing $ inserted" (launch-bot #144, 17 Nov 2026). Neither $$ may be one, and $…$ reads \$ inside.
+        result = Regex.Replace(result, @"(?<!(?<!\\)(?:\\\\)*\\)\$\$(.+?)(?<!(?<!\\)(?:\\\\)*\\)\$\$", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
-        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)(.+?)(?<![\\$])\$(?!\$)", m => {
+        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)((?:\\.|[^\\$\n])+?)\$(?!\$)", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
@@ -3391,7 +3406,9 @@ public partial class RenderService : IRenderService
         // a command placeholder so later steps see only the placeholder.
         // (User reported `\texttt{test''}` — smart-quote-in-code bug,
         // 2026-05-14.)
-        result = Regex.Replace(result, @"`(.+?)`", m =>
+        // Two backticks are TeX's opening quote, not a code span: ``a'' and ``b'' became \texttt{`a'' and }`b''
+        // (launch-bot #141, 17 Nov 2026). A mark next to another backtick is not a code mark.
+        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`\n]+?)`(?!`)", m =>
         {
             // Escape LaTeX special chars inside the code content — texttt
             // is not verbatim (unlike \verb), so `_`, `%`, etc. still
@@ -3487,8 +3504,12 @@ public partial class RenderService : IRenderService
         // Yellow highlight: ==text== → \hl{text} (soul package)
         result = Regex.Replace(result, @"==(.+?)==", @"\hl{$1}");
 
-        // Step 4: Convert newlines to paragraph breaks
-        result = Regex.Replace(result, @"\r?\n", "\n\n");
+        // Step 4: Convert newlines to paragraph breaks. Not in a theorem or a list item: there a single line break
+        // split the item in two, and a TikZ picture's options on two lines stopped the PDF ("Paragraph ended before
+        // \tikz@picture was complete"; launch-bot #145, 17 Nov 2026). Their blank lines stay paragraph breaks.
+        result = singleNewlines
+            ? Regex.Replace(result, @"\r\n", "\n")
+            : Regex.Replace(result, @"\r?\n", "\n\n");
 
         // Step 5: Restore protected regions. Newest first: a region can hold an earlier one —
         // a tie protected before \parencite[p.~12]{…} was, sits inside it.

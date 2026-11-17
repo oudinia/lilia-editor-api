@@ -230,6 +230,7 @@ public static partial class PreambleMacroCollector
     [GeneratedRegex(@"\G(?:\\[a-zA-Z]+|\\.)")]
     private static partial Regex CommandName();
 
-    [GeneratedRegex(@"\\DeclareMathOperator(?<star>\*?)\s*\{(?<name>[^}]*)\}\s*\{(?<body>[^}]*)\}")]
+    // The body may hold one group ({\mathrm{Tr}}): [^}]* read "\mathrm{Tr" (launch-bot #139, 17 Nov 2026).
+    [GeneratedRegex(@"\\DeclareMathOperator(?<star>\*?)\s*\{(?<name>[^}]*)\}\s*\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}")]
     private static partial Regex DeclareMathOperator();
 }
