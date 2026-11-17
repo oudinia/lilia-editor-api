@@ -169,6 +169,52 @@ public class GrokRetestFindingsTests : IDisposable
         latex.Should().Contain(@"\footnote{check\_document reported it, with $x_1$.}");
     }
 
+    [Fact]
+    public void A_chapter_read_from_BibTeX_stays_a_chapter()
+    {
+        var e = BibTexParser.Parse("@incollection{charikar2002, title = {Finding Frequent Items}, booktitle = {Automata, Languages and Programming}, series = {Lecture Notes in Computer Science}}").Single();
+        e.EntryType.Should().Be("incollection", "as @misc ACM's style printed no book or series (#131 retest)");
+        e.Fields["booktitle"].Should().Be("Automata, Languages and Programming");
+        BibTexParser.Parse("@inbook{k, title = {T}}").Single().EntryType.Should().Be("inbook");
+        BibTexParser.Parse("@weird{k, title = {T}}").Single().EntryType.Should().Be("misc");
+    }
+
+    // ── #124 note: a label in an unnumbered alignment ────────────────────
+
+    private static readonly JsonElement UnnumberedAlign = JsonSerializer.SerializeToElement(new
+    {
+        latex = "\\begin{align}\nx &= 1 \\\\\n  y &= 2 \\label{eq:second}\n\\end{align}",
+        equationMode = "display",
+        numbered = false,
+    });
+
+    [Fact]
+    public void An_unnumbered_alignment_keeps_no_label_and_says_which_it_dropped()
+    {
+        var latex = EquationLatex.Render(UnnumberedAlign);
+        latex.Should().Contain(@"\begin{align*}").And.NotContain(@"\label{");
+        latex.Should().Contain(EquationLatex.DroppedLabelMark + "eq:second");
+
+        var audit = new EmittedLatexAudit("\\documentclass{article}\n\\begin{document}\n\\section{A}\nSee \\eqref{eq:second}.\n" + latex + "\n\\end{document}\n");
+        audit.DanglingReferences.Select(r => r.Key).Should().Contain("eq:second");
+        audit.StarredMathLabels.Should().Contain("eq:second", "the check says it is in an unnumbered equation");
+    }
+
+    [Trait("Category", "RequiresTeX")]
+    [Fact]
+    public async Task For_real_an_unnumbered_alignment_no_longer_stops_the_next_labelled_equation()
+    {
+        var numbered = EquationLatex.Render(JsonSerializer.SerializeToElement(new
+        {
+            latex = "\\begin{align}\nz &= 3 \\label{eq:third}\n\\end{align}",
+            equationMode = "display",
+        }));
+        var source = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n" + EquationLatex.Render(UnnumberedAlign)
+            + "\n" + numbered + "\nSee \\eqref{eq:third}.\n\\end{document}\n";
+        var result = await new LaTeXRenderService(NullLogger<LaTeXRenderService>.Instance).ValidateAsync(source, "pdflatex");
+        result.Valid.Should().BeTrue(result.Error);
+    }
+
     // ── #128: Markdown headings after the title ──────────────────────────
 
     [Fact]

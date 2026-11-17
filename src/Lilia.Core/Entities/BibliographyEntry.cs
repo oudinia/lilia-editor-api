@@ -22,6 +22,7 @@ public static class BibliographyEntryTypes
     public const string Article = "article";
     public const string Book = "book";
     public const string InProceedings = "inproceedings";
+    public const string InCollection = "incollection";
     public const string PhdThesis = "phdthesis";
     public const string MastersThesis = "mastersthesis";
     public const string TechReport = "techreport";

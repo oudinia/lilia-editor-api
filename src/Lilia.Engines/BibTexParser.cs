@@ -167,6 +167,14 @@ public static class BibTexParser
         "article" => "article",
         "book" => "book",
         "inproceedings" or "conference" => "inproceedings",
+        // A chapter and the other standard types keep theirs: as @misc a chapter lost its book in every style
+        // (launch-bot #131, 17 Nov 2026: ACM printed no book or series).
+        "incollection" => "incollection",
+        "inbook" => "inbook",
+        "proceedings" => "proceedings",
+        "manual" => "manual",
+        "booklet" => "booklet",
+        "unpublished" => "unpublished",
         "phdthesis" => "phdthesis",
         "mastersthesis" => "mastersthesis",
         "techreport" => "techreport",

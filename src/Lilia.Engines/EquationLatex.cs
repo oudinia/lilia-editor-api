@@ -81,7 +81,7 @@ public static class EquationLatex
         return mode switch
         {
             "inline" => $"${latex}$",
-            "align" or "gather" => $@"\begin{{{mode}{(numbered ? "" : "*")}}}{labelPart}" + "\n" + latex + "\n" + $@"\end{{{mode}{(numbered ? "" : "*")}}}",
+            "align" or "gather" => $@"\begin{{{mode}{(numbered ? "" : "*")}}}{labelPart}" + "\n" + (numbered ? latex : WithoutLabels(latex)) + "\n" + $@"\end{{{mode}{(numbered ? "" : "*")}}}",
             _ when numbered => $@"\begin{{equation}}{labelPart}" + "\n" + latex + "\n" + @"\end{equation}",
             _ => @"\begin{equation*}" + "\n" + latex + "\n" + @"\end{equation*}",
         };
@@ -101,6 +101,25 @@ public static class EquationLatex
             arg = argMatch.Value;
             body = body[argMatch.Length..];
         }
+        if (!numbered && env != "equation*") body = WithoutLabels(body);
         return $@"\begin{{{env}}}{arg}" + (labelPart.Length > 0 ? "\n" + labelPart : "") + "\n" + body.Trim('\n', '\r', ' ') + "\n" + $@"\end{{{env}}}";
     }
+
+    /// <summary>The comment that stands for a label taken out of an unnumbered alignment (EmittedLatexAudit reads it).</summary>
+    public const string DroppedLabelMark = "% lilia: unnumbered, label dropped: ";
+
+    /// <summary>
+    /// An unnumbered alignment (align*, gather*, multline*…) without its \label{…}s: amsmath never writes them, and one
+    /// left over is taken by the next numbered equation, which then stops ("Multiple \label's: label … will be lost",
+    /// the launch bot's #124 note, 17 Nov 2026). Each goes to a comment line, so the check still says a reference to it
+    /// prints ??. In equation* a label takes the current number and stays.
+    /// </summary>
+    public static string WithoutLabels(string body)
+    {
+        var dropped = new List<string>();
+        var kept = LabelCommand.Replace(body, m => { dropped.Add(m.Groups["k"].Value.Trim()); return ""; });
+        return dropped.Count == 0 ? body : kept.TrimEnd() + "\n" + string.Join("\n", dropped.Select(k => DroppedLabelMark + k));
+    }
+
+    private static readonly Regex LabelCommand = new(@"\\label\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
 }
