@@ -192,6 +192,30 @@ public class McpWriteToolsTests : IntegrationTestBase
         versions.Last().Id.Should().Be(undo);
     }
 
+    // #124 retest (Grok, 17 Nov 2026, 15:40): an align pasted as LaTeX has no numbered field at all and no block label.
+    // The PDF numbers it, but the LML was written without numbered= and read back unnumbered: \eqref printed ??. And the
+    // title's empty date came back as \today.
+    [Fact]
+    public async Task An_equation_with_no_numbered_field_stays_numbered_and_an_empty_date_stays_empty_through_apply_lml()
+    {
+        await SeedUserAsync("mcpw_124b");
+        var doc = await SeedDocumentAsync("mcpw_124b", "Retest");
+        await SeedBlockAsync(doc.Id, "title", """{"title":"Retest","author":"Grok Tester","date":"","keywords":["union-find"]}""", 0);
+        await SeedBlockAsync(doc.Id, "equation", """{"latex":"\\begin{align}\nx &= 1 \\\\\n  y &= 2 \\label{eq:second}\n\\end{align}","equationMode":"display"}""", 1);
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Equation \\eqref{eq:second} is the second row."}""", 2);
+        var app = App("mcpw_124b", "openid documents:read documents:write");
+
+        var before = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
+        before.GetProperty("lml").GetString().Should().Contain("numbered=true");
+        var rewrite = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = before.GetProperty("lml").GetString() });
+        rewrite.TryGetProperty("error", out _).Should().BeFalse(rewrite.ToString());
+        var after = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
+
+        var blocks = after.GetProperty("blocks").EnumerateArray().ToList();
+        blocks[1].GetProperty("content").GetProperty("numbered").GetBoolean().Should().BeTrue();
+        blocks[0].GetProperty("content").GetProperty("date").GetString().Should().BeEmpty();
+    }
+
     [Fact]
     public async Task An_app_without_the_write_scope_may_read_but_not_edit_and_is_told_how_to_allow_it()
     {

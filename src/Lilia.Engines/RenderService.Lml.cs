@@ -126,8 +126,10 @@ public partial class RenderService
         // numbered= only when it isn't what the label says (#124: an align's rows carry their own labels, so it is
         // numbered without a block label, and apply_lml made it unnumbered). The body is indented: unindented, a
         // multi-line align ran into the paragraph after it.
+        // No numbered field is numbered, as the PDF prints it (#124 retest, 17 Nov 2026: a pasted align with no field and no
+        // block label was written without numbered=, read back unnumbered, and its \eqref printed ??).
         var numbered = content.TryGetProperty("numbered", out var n) && n.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? n.GetBoolean() : !string.IsNullOrEmpty(label);
+            ? n.GetBoolean() : true;
         var attrs = BuildAttrs(("label", label), ("mode", string.Equals(equationMode, "inline", StringComparison.OrdinalIgnoreCase) ? "inline" : null),
             ("numbered", numbered == !string.IsNullOrEmpty(label) ? null : numbered ? "true" : "false"));
         return $"@equation{attrs}\n{string.Join("\n", latex.Split('\n').Select(l => "  " + l))}";
