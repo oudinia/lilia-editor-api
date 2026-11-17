@@ -86,7 +86,7 @@ public class LiliaMcpServerTests : IntegrationTestBase
         await SeedUserAsync("mcp_titles");
         var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-        tools.Should().HaveCount(24); // get_document, 17 Nov 2026 (the connector test)
+        tools.Should().HaveCount(25); // add_reference, 17 Nov 2026 (the connector test)
         foreach (var t in tools)
         {
             var name = t.GetProperty("name").GetString();

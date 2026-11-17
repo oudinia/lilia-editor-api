@@ -150,25 +150,23 @@ public partial class BibliographyService : IBibliographyService
             .ToListAsync();
 
         var sb = new StringBuilder();
-
         foreach (var entry in entries)
-        {
-            sb.AppendLine($"@{entry.EntryType}{{{entry.CiteKey},");
+            sb.AppendLine(ToBibTex(entry.EntryType, entry.CiteKey, entry.Data.RootElement)).AppendLine();
+        return sb.ToString();
+    }
 
-            var data = entry.Data.RootElement;
+    /// <summary>One entry as BibTeX (<c>@type{key, field = {value}, …}</c>); empty fields are left out.</summary>
+    public static string ToBibTex(string entryType, string citeKey, JsonElement data)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"@{entryType}{{{citeKey},");
+        if (data.ValueKind == JsonValueKind.Object)
             foreach (var prop in data.EnumerateObject())
             {
-                var value = prop.Value.GetString();
-                if (!string.IsNullOrEmpty(value))
-                {
-                    sb.AppendLine($"  {prop.Name} = {{{value}}},");
-                }
+                var value = prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : prop.Value.ToString();
+                if (!string.IsNullOrEmpty(value)) sb.AppendLine($"  {prop.Name} = {{{value}}},");
             }
-
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
-
+        sb.Append('}');
         return sb.ToString();
     }
 
