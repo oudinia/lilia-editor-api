@@ -22,6 +22,10 @@ public sealed class EmittedLatexAudit
     /// <summary>Labels with no number to print: no counter was stepped where they stand (MCP-92: a
     /// \label after a verbatim embed at the top of a report; "see also Listing ." in the PDF).</summary>
     public IReadOnlySet<string> UnnumberedLabels { get; }
+    /// <summary>Labels inside amsmath's starred displays (align*, gather*…): amsmath never writes them, so a reference
+    /// prints "??" (the launch bot's #124 retest, 17 Nov 2026: check_document said all was well). In equation* a label
+    /// takes the current number, as any other (UnnumberedLabels).</summary>
+    public IReadOnlySet<string> StarredMathLabels { get; }
     private readonly IReadOnlyList<(int Line, Guid Block)> _markers;
 
     private static readonly Regex LabelRx = new(@"\\label\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
@@ -36,6 +40,8 @@ public sealed class EmittedLatexAudit
     private static readonly Regex NewTheoremRx = new(@"\\newtheorem(?<star>\*)?\{(?<env>[^{}]+)\}", RegexOptions.Compiled);
     private static readonly HashSet<string> NumberedMath = new(StringComparer.Ordinal)
         { "equation", "align", "gather", "multline", "flalign", "alignat", "eqnarray" };
+    private static readonly HashSet<string> StarredMath = new(StringComparer.Ordinal)
+        { "align*", "gather*", "multline*", "flalign*", "alignat*" };
     private static readonly Regex CiteRx = new(@"\\(?:cite|citep|citet|citealp|citealt|parencite|textcite|footcite|autocite|nocite)\*?(?:\[[^\]]*\]){0,2}\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
     private static readonly Regex BibItemRx = new(@"\\bibitem(?:\[[^\]]*\])?\{(?<k>[^{}]+)\}", RegexOptions.Compiled);
     private static readonly Regex MarkerRx = new(@"^% block:(?<id>[0-9a-fA-F-]{36})\s*$", RegexOptions.Compiled);
@@ -49,6 +55,7 @@ public sealed class EmittedLatexAudit
         var bib = new HashSet<string>(StringComparer.Ordinal);
         var markers = new List<(int, Guid)>();
         var unnumbered = new HashSet<string>(StringComparer.Ordinal);
+        var starred = new Dictionary<string, int>(StringComparer.Ordinal);
         var theorems = new HashSet<string>(StringComparer.Ordinal);
         var envs = new List<(string Name, bool Numbered)>();
         var inBody = false;
@@ -98,6 +105,8 @@ public sealed class EmittedLatexAudit
                     }
                     else if (m.Groups["section"].Success && !m.Groups["star"].Success)
                         sectioned = true;
+                    else if (m.Groups["label"].Success && envs.Count > 0 && StarredMath.Contains(envs[^1].Name))
+                        starred[m.Groups["label"].Value.Trim()] = starred.GetValueOrDefault(m.Groups["label"].Value.Trim()) + 1;
                     else if (m.Groups["label"].Success && !sectioned && !envs.Any(e => e.Numbered))
                         unnumbered.Add(m.Groups["label"].Value.Trim());
                 }
@@ -113,6 +122,11 @@ public sealed class EmittedLatexAudit
             foreach (Match m in BibItemRx.Matches(text))
                 bib.Add(m.Groups["k"].Value.Trim());
         }
+        // A label only ever inside an unnumbered display is not a label a reference can use: it counts as never written.
+        foreach (var (k, n) in starred)
+            if (labels.TryGetValue(k, out var all) && all - n <= 0) labels.Remove(k);
+            else if (labels.ContainsKey(k)) labels[k] = all - n;
+        StarredMathLabels = starred.Keys.Where(k => !labels.ContainsKey(k)).ToHashSet(StringComparer.Ordinal);
         Labels = labels;
         References = refs;
         Citations = cites;

@@ -120,6 +120,55 @@ public class GrokRetestFindingsTests : IDisposable
             .Should().StartWith("@misc{jayanti2016,").And.Contain("archiveprefix = {arXiv}");
     }
 
+    [Fact]
+    public void An_arXiv_preprint_reaches_references_bib_with_what_ACMs_style_prints_it_from()
+    {
+        var entry = new BibliographyEntry
+        {
+            CiteKey = "jayanti2016",
+            EntryType = "misc",
+            Data = JsonDocument.Parse(JsonSerializer.Serialize(new { author = "Jayanti, Siddhartha V.", title = "A Randomized Concurrent Algorithm", year = "2016",
+                eprint = "1612.01514", archiveprefix = "arXiv", primaryclass = "cs.DC", url = "https://arxiv.org/abs/1612.01514" })),
+        };
+        var bib = BibTeXSerializer.Serialize([entry]);
+        bib.Should().Contain("eprint = {1612.01514}").And.Contain("archiveprefix = {arXiv}").And.Contain("primaryclass = {cs.DC}");
+    }
+
+    // ── #131: conference papers and book chapters ────────────────────────
+
+    [Fact]
+    public void A_Crossref_conference_paper_and_book_chapter_keep_their_venue()
+    {
+        var cvpr = new Dictionary<string, string>();
+        var cvprWork = JsonDocument.Parse("""{"type":"proceedings-article","container-title":["2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)"],"publisher":"IEEE"}""").RootElement;
+        BibliographyService.CrossrefKind(cvprWork, cvpr).Should().Be("inproceedings");
+        cvpr.Should().Contain("booktitle", "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)").And.Contain("publisher", "IEEE").And.NotContainKey("journal");
+
+        var lncs = new Dictionary<string, string>();
+        var lncsWork = JsonDocument.Parse("""{"type":"book-chapter","container-title":["Lecture Notes in Computer Science","Automata, Languages and Programming"],"publisher":"Springer Berlin Heidelberg"}""").RootElement;
+        BibliographyService.CrossrefKind(lncsWork, lncs).Should().Be("incollection");
+        lncs.Should().Contain("booktitle", "Automata, Languages and Programming").And.Contain("series", "Lecture Notes in Computer Science");
+
+        var article = new Dictionary<string, string>();
+        BibliographyService.CrossrefKind(JsonDocument.Parse("""{"type":"journal-article","container-title":["Journal of the ACM"],"publisher":"ACM"}""").RootElement, article).Should().Be("article");
+        article.Should().Contain("journal", "Journal of the ACM").And.NotContainKey("publisher");
+    }
+
+    // ── #132: an underscore in a footnote ────────────────────────────────
+
+    [Fact]
+    public void A_footnotes_text_is_escaped_like_the_paragraphs()
+    {
+        var block = new Block
+        {
+            Id = Guid.NewGuid(),
+            Type = "paragraph",
+            Content = JsonDocument.Parse("""{"text":"A sentence with a footnote\\footnote{check_document reported it, with $x_1$.} in it."}"""),
+        };
+        var latex = new RenderService(null!, NullLogger<RenderService>.Instance).RenderBlockToLatex(block);
+        latex.Should().Contain(@"\footnote{check\_document reported it, with $x_1$.}");
+    }
+
     // ── #128: Markdown headings after the title ──────────────────────────
 
     [Fact]
