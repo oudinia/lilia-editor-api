@@ -698,6 +698,11 @@ public class TypstRenderService : ITypstRenderService
         // Be careful not to double-convert bold markers
         result = Regex.Replace(result, @"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", "_$1_");
 
+        // TeX's quotes before inline code: ``goes down'' (or closed by a straight ") printed as code in the Typst PDF
+        // (launch-bot #165, 18 Nov 2026). Maths is already set aside, so f'' stays a prime there.
+        result = result.Replace("``", "\u201C").Replace("''", "\u201D");
+        result = Regex.Replace(result, "\u201C([^\u201C\u201D\"\n]*)\"", "\u201C$1\u201D");
+
         // Convert inline code: `text` to #raw("text")
         result = Regex.Replace(result, @"`([^`]+)`", "```$1```");
 

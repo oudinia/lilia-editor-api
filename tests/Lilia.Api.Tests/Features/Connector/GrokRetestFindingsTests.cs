@@ -267,6 +267,17 @@ public class GrokRetestFindingsTests : IDisposable
     public void A_table_row_splits_on_its_own_ampersands_only(string row, string[] cells) =>
         Lilia.Import.Services.LatexParser.SplitCells(row).Should().Equal(cells);
 
+    // #165: TeX quotes printed as inline code in the Typst PDF.
+    [Fact]
+    public void The_Typst_PDF_prints_TeX_quotes_as_quotes_not_code()
+    {
+        var block = new Block { Id = Guid.NewGuid(), Type = "paragraph",
+            Content = JsonDocument.Parse("""{"text":"Informally, ``goes down\"), and ``goes up''). Code `x` stays code; $f''$ stays a prime."}""") };
+        var typst = new TypstRenderService(null!, NullLogger<TypstRenderService>.Instance).RenderBlockToTypst(block);
+        typst.Should().Contain("\u201Cgoes down\u201D").And.Contain("\u201Cgoes up\u201D").And.Contain("```x```").And.Contain("f''");
+        typst.Should().NotContain("```goes");
+    }
+
     // ── #128: Markdown headings after the title ──────────────────────────
 
     [Fact]
