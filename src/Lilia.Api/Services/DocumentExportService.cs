@@ -711,6 +711,24 @@ public class DocumentExportService : IDocumentExportService
     internal static string TitleDate(JsonElement content, Func<string, string?>? labelNumber = null) =>
         GetString(content, "dateMode") == "none" ? "" : ProseLatex.PlainForWord(GetString(content, "date"), labelNumber);
 
+    /// <summary>
+    /// A column's chosen alignment for Word: "center" or "right", else null (left, decimal and automatic print left).
+    /// Word cells had no alignment while the PDF centred and right-aligned them (launch-bot #199, 18 Nov 2026).
+    /// </summary>
+    private static string? ColumnAlignAt(JsonElement content, int col)
+    {
+        if (content.ValueKind != JsonValueKind.Object) return null;
+        var prop = content.TryGetProperty("columnAlign", out var ca) && ca.ValueKind == JsonValueKind.Array ? ca
+            : content.TryGetProperty("alignments", out var al) && al.ValueKind == JsonValueKind.Array ? al : default;
+        if (prop.ValueKind != JsonValueKind.Array || col >= prop.GetArrayLength()) return null;
+        return (prop[col].ValueKind == JsonValueKind.String ? prop[col].GetString() : null)?.Trim().ToLowerInvariant() switch
+        {
+            "c" or "center" or "centre" => "center",
+            "r" or "right" => "right",
+            _ => null,
+        };
+    }
+
     private ExportBlock ConvertParagraphBlock(JsonElement content)
     {
         // Content may be a string (legacy) or an object with a "text" property
@@ -1138,6 +1156,7 @@ public class DocumentExportService : IDocumentExportService
                     RichText = rich.Count > 0 ? rich : null,
                     ColSpan = colspan,
                     RowSpan = Math.Min(rowspan, stored.Count - g),
+                    Align = ColumnAlignAt(content, col),
                 });
                 for (var k = 1; k < rowspan && g + k < stored.Count; k++) covered[(g + k, col)] = colspan;
                 col += colspan;
@@ -1647,6 +1666,9 @@ public class DocumentExportService : IDocumentExportService
         {
             // A footnote's own spans, read the same way (17 Nov 2026, launch-bot #157).
             if (span.Footnote is not null) { Finish(span.Footnote); continue; }
+            // A link inside a mark read whole keeps its text (launch-bot #198).
+            if (span.Text.IndexOfAny([ProseLatex.LinkOpen, ProseLatex.LinkText, ProseLatex.LinkClose]) >= 0)
+                span.Text = StripLinkMarks(span.Text);
             // A note inside a mark read whole (**a\footnote{b}**) keeps its brackets, as before launch-bot #157.
             if (span.Text.IndexOf(ProseLatex.FootnoteOpen) >= 0 || span.Text.IndexOf(ProseLatex.FootnoteClose) >= 0)
                 span.Text = span.Text.Replace(ProseLatex.FootnoteOpen.ToString(), " (").Replace(ProseLatex.FootnoteClose.ToString(), ")");
@@ -1658,6 +1680,12 @@ public class DocumentExportService : IDocumentExportService
         return spans;
     }
 
+    /// <summary>A link's text without its marks and address: "…LinkOpen url LinkText text LinkClose…" → "…text…".</summary>
+    private static string StripLinkMarks(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text,
+            $"{ProseLatex.LinkOpen}[^{ProseLatex.LinkText}]*{ProseLatex.LinkText}", "").Replace(ProseLatex.LinkClose.ToString(), "")
+            .Replace(ProseLatex.LinkOpen.ToString(), "").Replace(ProseLatex.LinkText.ToString(), "");
+
     /// <summary>A caption's runs, or null when it is plain text.</summary>
     private List<ExportRichTextSpan>? CaptionRuns(string? caption)
     {
@@ -1665,6 +1693,18 @@ public class DocumentExportService : IDocumentExportService
         var spans = ParseInlineFormatting(caption, _labelNumber);
         return spans.Count == 1 && spans[0].Equation is null && !spans[0].Bold && !spans[0].Italic && !spans[0].Superscript
             && !spans[0].Subscript && spans[0].Highlight is null ? null : spans;
+    }
+
+    /// <summary>The LinkClose that ends the link whose text starts at <paramref name="from"/>, nested links counted.</summary>
+    private static int FindLinkClose(string text, int from)
+    {
+        var depth = 0;
+        for (var k = from; k < text.Length; k++)
+        {
+            if (text[k] == ProseLatex.LinkOpen) depth++;
+            else if (text[k] == ProseLatex.LinkClose) { if (depth == 0) return k; depth--; }
+        }
+        return -1;
     }
 
     private static List<ExportRichTextSpan> ParseMarks(string? text)
@@ -1687,6 +1727,26 @@ public class DocumentExportService : IDocumentExportService
 
         while (i < text.Length)
         {
+            // A link (ProseLatex marks it): its text's spans, each carrying the address, for the Word export to make a
+            // hyperlink (launch-bot #198, 18 Nov 2026: the .docx had no links at all).
+            if (text[i] == ProseLatex.LinkOpen)
+            {
+                var sep = text.IndexOf(ProseLatex.LinkText, i + 1);
+                var close = sep > i ? FindLinkClose(text, sep + 1) : -1;
+                if (sep > i && close > sep)
+                {
+                    FlushCurrent();
+                    var address = text[(i + 1)..sep];
+                    foreach (var inner in ParseMarks(text[(sep + 1)..close]))
+                    {
+                        if (inner.Footnote is null && inner.Link is null) inner.Link = address;
+                        spans.Add(inner);
+                    }
+                    i = close + 1;
+                    continue;
+                }
+            }
+
             // A \footnote in the prose (ProseLatex marks its text): a footnote span, its text's own spans, for
             // the Word export to make a real footnote (17 Nov 2026, launch-bot #157: it printed in brackets).
             if (text[i] == ProseLatex.FootnoteOpen)

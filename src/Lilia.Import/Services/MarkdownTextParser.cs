@@ -133,13 +133,19 @@ public static class MarkdownTextParser
             {
                 FlushParagraph();
                 var rows = new List<List<ImportTableCell>> { Cells(line) };
+                var aligns = Alignments(lines[i + 1]);
                 for (i += 2; i < lines.Length && lines[i].Contains('|') && lines[i].Trim().Length > 0; i++)
                     rows.Add(Cells(lines[i]));
                 i--;
                 var width = rows.Max(r => r.Count);
                 foreach (var r in rows)
                     while (r.Count < width) r.Add(new ImportTableCell());
-                elements.Add(new ImportTable { Order = order++, Rows = rows, HasHeaderRow = true });
+                // ":---:" and "---:" were ignored: centred and right columns printed left (launch-bot #199).
+                elements.Add(new ImportTable
+                {
+                    Order = order++, Rows = rows, HasHeaderRow = true,
+                    ColumnAlign = aligns.Any(a => a != "l") ? aligns.Take(width).Concat(Enumerable.Repeat("l", Math.Max(0, width - aligns.Count))).ToList() : null,
+                });
                 continue;
             }
 
@@ -200,9 +206,9 @@ public static class MarkdownTextParser
                         ListGroup = group,
                         IsNumbered = isOrdered,
                         ListMarker = m.Groups[2].Value,
-                        Text = Inline(m.Groups[3].Value),
+                        Text = Inline(TaskBox(m.Groups[3].Value)),
                     };
-                    rawOf[item] = m.Groups[3].Value;
+                    rawOf[item] = TaskBox(m.Groups[3].Value);
                     while (stack.Count > 0 && stack[^1].Indent >= indent) stack.RemoveAt(stack.Count - 1);
                     item.Level = stack.Count;
                     if (stack.Count == 0) top.Add(item);
@@ -237,6 +243,26 @@ public static class MarkdownTextParser
         return Regex.Split(t, @"(?<!\\)\|").Select(c => new ImportTableCell { Text = Inline(c.Trim().Replace(@"\|", "|")) }).ToList();
     }
 
+    /// <summary>
+    /// A GitHub task item, "[x] done" or "[ ] open", with its box ($\boxtimes$, $\square$): it printed a literal "[x]"
+    /// (launch-bot #201, 18 Nov 2026).
+    /// </summary>
+    private static string TaskBox(string text)
+    {
+        var m = Regex.Match(text, @"^\[([ xX])\]\s+");
+        return m.Success ? (m.Groups[1].Value == " " ? @"$\square$ " : @"$\boxtimes$ ") + text[m.Length..] : text;
+    }
+
+    /// <summary>A table's column alignments from its separator row: ":---:" centre, "---:" right, else left (#199).</summary>
+    private static List<string> Alignments(string separator)
+    {
+        var t = separator.Trim();
+        if (t.StartsWith('|')) t = t[1..];
+        if (t.EndsWith('|')) t = t[..^1];
+        return t.Split('|').Select(c => c.Trim()).Select(c =>
+            c.StartsWith(':') && c.EndsWith(':') ? "c" : c.EndsWith(':') ? "r" : "l").ToList();
+    }
+
     /// <summary>A paragraph's lines as one: a line break inside a paragraph is a space.</summary>
     private static string JoinLines(IEnumerable<string> lines) =>
         string.Join(" ", lines.Select(l => l.Trim().TrimEnd('\\').TrimEnd()));
@@ -265,8 +291,14 @@ public static class MarkdownTextParser
         // Links first, so an underscore in a URL is not italics.
         // A link's # and % are LaTeX's own characters: unescaped, a page's anchor (…/extended-syntax/#tables) broke the
         // compile, in a heading above all (the launch bot's #64 row 5, 11 Nov 2026). hyperref prints \# and \% as # and %.
+        // A linked image (a README badge, [![CI](badge.svg)](actions)) is one link with the image's alt text: it became a
+        // link to the .svg wrapped round the real one (launch-bot #201, 18 Nov 2026).
+        s = Regex.Replace(s, @"\[!\[([^\]]*)\]\(([^)\s]+)(?:\s+""[^""]*"")?\)\]\(([^)\s]+)\)",
+            m => $@"\href{{{UrlArg(m.Groups[3].Value)}}}{{{(m.Groups[1].Value.Length > 0 ? m.Groups[1].Value : "image")}}}");
         s = Regex.Replace(s, @"(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+""[^""]*"")?\)", m => $@"\href{{{UrlArg(m.Groups[2].Value)}}}{{{m.Groups[1].Value}}}");
         s = Regex.Replace(s, @"<(https?://[^>\s]+)>", m => $@"\url{{{UrlArg(m.Groups[1].Value)}}}");
+        // <someone@example.org> is a mail link (#201): the angle brackets printed.
+        s = Regex.Replace(s, @"<([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})>", m => $@"\href{{mailto:{m.Groups[1].Value}}}{{{m.Groups[1].Value}}}");
         s = Regex.Replace(s, @"!\[([^\]]*)\]\(([^)\s]+)\)", m => $@"\href{{{m.Groups[2].Value}}}{{{(m.Groups[1].Value.Length > 0 ? m.Groups[1].Value : "image")}}}");
         var links = new List<string>();
         s = Regex.Replace(s, @"\\(?:href|url)\{[^{}]*\}", m => { links.Add(m.Value); return $"\u0001{links.Count - 1}\u0001"; });

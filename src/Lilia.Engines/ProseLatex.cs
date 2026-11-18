@@ -19,6 +19,14 @@ public static class ProseLatex
     /// export makes it a footnote (17 Nov 2026, launch-bot #157).</summary>
     public const char FootnoteOpen = '\ue010', FootnoteClose = '\ue011';
 
+    /// <summary>Around a link in prose: LinkOpen url LinkText text LinkClose. The Word export makes it a hyperlink; it
+    /// kept only the text (launch-bot #198, 18 Nov 2026).</summary>
+    public const char LinkOpen = '\ue012', LinkText = '\ue013', LinkClose = '\ue014';
+
+    /// <summary>A link target as typed in LaTeX (\%, \#, \&amp;, \_ escaped) as a URL.</summary>
+    public static string LinkTarget(string raw) =>
+        raw.Trim().Replace(@"\%", "%").Replace(@"\#", "#").Replace(@"\&", "&").Replace(@"\_", "_").Replace(@"\~", "~");
+
     private static readonly Dictionary<string, string> Marks = new(StringComparer.Ordinal)
     {
         ["textbf"] = "**", ["emph"] = "*", ["textit"] = "*", ["textsl"] = "*",
@@ -205,9 +213,16 @@ public static class ProseLatex
             case "footnote":
                 return plain ? " (" + Arg(0) + ")" : FootnoteOpen + Arg(0) + FootnoteClose;
             case "url":
-                return args.FirstOrDefault() ?? "";
+            {
+                var address = LinkTarget(args.FirstOrDefault() ?? "");
+                return plain || address.Length == 0 ? address : LinkOpen + address + LinkText + address + LinkClose;
+            }
             case "href":
-                return args.Count > 1 ? Arg(1) : (args.FirstOrDefault() ?? "");
+            {
+                var text = args.Count > 1 ? Arg(1) : LinkTarget(args.FirstOrDefault() ?? "");
+                var address = LinkTarget(args.FirstOrDefault() ?? "");
+                return plain || address.Length == 0 ? text : LinkOpen + address + LinkText + text + LinkClose;
+            }
             case "today":
                 return DateTime.UtcNow.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
         }

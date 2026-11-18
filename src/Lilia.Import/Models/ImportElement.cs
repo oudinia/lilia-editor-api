@@ -286,6 +286,9 @@ public class ImportTable : ImportElement
     /// <summary>Body rows (0-based, header excluded) that a <c>\midrule</c> starts a group at.</summary>
     public List<int> RowGroupStarts { get; set; } = [];
 
+    /// <summary>The columns' alignments ("l", "c", "r") when the source chose them (a Markdown separator row); else null.</summary>
+    public List<string>? ColumnAlign { get; set; }
+
     /// <summary>The notes under the table (<c>tablenotes</c>), by mark.</summary>
     public Dictionary<string, string> Notes { get; set; } = new(StringComparer.Ordinal);
 }

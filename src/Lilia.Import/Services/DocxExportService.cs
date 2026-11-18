@@ -80,6 +80,8 @@ public class DocxExportService : IDocxExportService
                     // A \footnote in its prose becomes a Word footnote, numbered in the order the notes come
                     // (17 Nov 2026, launch-bot #157).
                     AddPendingFootnotes(element, mainPart);
+                    // A link in its prose becomes a Word hyperlink (launch-bot #198).
+                    AddPendingLinks(element, mainPart);
                 }
             }
 
@@ -888,8 +890,11 @@ public class DocxExportService : IDocxExportService
                         continue;
                     }
 
-                    // Cell content
+                    // Cell content, aligned as its column (launch-bot #199).
                     var para = new Paragraph();
+                    if (cellData.Align is { } cellAlign)
+                        para.Append(new ParagraphProperties(new Justification
+                        { Val = cellAlign == "center" ? JustificationValues.Center : JustificationValues.Right }));
                     if (isFirstRow && cellData.RichText is { Count: > 0 })
                     {
                         // Bold, with its maths as equations.
@@ -1141,6 +1146,36 @@ public class DocxExportService : IDocxExportService
     /// the mark itself, so this singleton service keeps nothing between exports (17 Nov 2026, launch-bot #157).
     /// </summary>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FootnoteReference, List<ExportRichTextSpan>> PendingFootnotes = new();
+
+    /// <summary>The runs <see cref="CreateRun"/> made for link spans, each with its address (launch-bot #198).</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Run, string> PendingLinks = new();
+
+    /// <summary>
+    /// Wraps the link runs in <paramref name="element"/> in w:hyperlink with an external relationship, one hyperlink for
+    /// the runs of one link side by side. The .docx kept every link's text and none of its address (launch-bot #198,
+    /// 18 Nov 2026). An address Word can't take as a URL stays plain text.
+    /// </summary>
+    private static void AddPendingLinks(OpenXmlElement element, MainDocumentPart mainPart)
+    {
+        foreach (var run in element.Descendants<Run>().ToList())
+        {
+            if (!PendingLinks.TryGetValue(run, out var address)) continue;
+            PendingLinks.Remove(run);
+            if (run.Parent is null || !Uri.TryCreate(address, UriKind.Absolute, out var uri)) continue;
+            var relId = mainPart.HyperlinkRelationships.FirstOrDefault(r => r.Uri.OriginalString == uri.OriginalString)?.Id
+                ?? mainPart.AddHyperlinkRelationship(uri, true).Id;
+            if (run.PreviousSibling() is Hyperlink previous && previous.Id?.Value == relId)
+            {
+                run.Remove();
+                previous.Append(run);
+                continue;
+            }
+            var hyperlink = new Hyperlink { Id = relId, History = true };
+            run.InsertBeforeSelf(hyperlink);
+            run.Remove();
+            hyperlink.Append(run);
+        }
+    }
 
     /// <summary>Writes the notes of the footnote marks in <paramref name="element"/> and gives the marks their ids.</summary>
     private void AddPendingFootnotes(OpenXmlElement element, MainDocumentPart mainPart)
@@ -1879,6 +1914,7 @@ public class DocxExportService : IDocxExportService
     {
         var run = new Run();
         var runProps = new RunProperties();
+        if (!string.IsNullOrWhiteSpace(span.Link)) PendingLinks.AddOrUpdate(run, span.Link);
 
         if (span.Bold)
             runProps.Append(new Bold());
@@ -1934,6 +1970,14 @@ public class DocxExportService : IDocxExportService
         }
 
         run.Append(new Text(span.Text) { Space = SpaceProcessingModeValues.Preserve });
+
+        // A link reads as one: Word's blue, underlined (launch-bot #198). The typed setters keep the schema's order.
+        if (!string.IsNullOrWhiteSpace(span.Link))
+        {
+            var linkProps = run.RunProperties ?? run.PrependChild(new RunProperties());
+            linkProps.Color ??= new Color { Val = "0563C1" };
+            linkProps.Underline ??= new Underline { Val = UnderlineValues.Single };
+        }
 
         return run;
     }
