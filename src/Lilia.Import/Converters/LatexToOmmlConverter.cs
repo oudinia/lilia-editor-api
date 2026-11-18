@@ -46,6 +46,8 @@ public class LatexToOmmlConverter : ILatexToOmmlConverter
         [@"\Rightarrow"] = "⇒", [@"\Leftarrow"] = "⇐", [@"\Leftrightarrow"] = "⇔",
         [@"\uparrow"] = "↑", [@"\downarrow"] = "↓",
         [@"\cdot"] = "·", [@"\ldots"] = "…", [@"\cdots"] = "⋯", [@"\vdots"] = "⋮", [@"\ddots"] = "⋱",
+        // A task item's box (Markdown "[x]") printed as the word "boxtimes" in Word (launch-bot #201, 18 Nov 2026).
+        [@"\boxtimes"] = "⊠", [@"\boxplus"] = "⊞", [@"\boxminus"] = "⊟", [@"\boxdot"] = "⊡", [@"\blacksquare"] = "■",
         [@"\propto"] = "∝", [@"\perp"] = "⊥", [@"\parallel"] = "∥",
         [@"\angle"] = "∠", [@"\circ"] = "∘", [@"\bullet"] = "•",
         [@"\sim"] = "∼", [@"\simeq"] = "≃", [@"\cong"] = "≅",
