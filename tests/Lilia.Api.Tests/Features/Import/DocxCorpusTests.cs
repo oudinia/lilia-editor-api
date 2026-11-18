@@ -117,7 +117,14 @@ public class DocxCorpusTests
         var name = Path.GetFileNameWithoutExtension(fixtureRel).ToLowerInvariant();
         var types = doc.Elements.Select(e => e.Type).ToHashSet();
 
-        if (name.StartsWith("equation-") && name.Contains("omml"))
+        // An inline equation stays in its paragraph as $…$ (launch-bot #187, 18 Nov 2026): it used to become a display
+        // equation and the paragraph lost its words.
+        if (name.StartsWith("equation-inline") && name.Contains("omml"))
+        {
+            doc.Elements.OfType<ImportParagraph>().Should().Contain(p => p.Text.Contains('$'),
+                $"{fixtureRel}: an inline OMML equation stays inline in its paragraph");
+        }
+        else if (name.StartsWith("equation-") && name.Contains("omml"))
         {
             types.Should().Contain(ImportElementType.Equation,
                 $"{fixtureRel}: OMML equation fixture must produce at least one Equation block");

@@ -127,10 +127,12 @@ public class DocxParser : IDocxParser
             SourcePath = filePath,
             Title = Path.GetFileNameWithoutExtension(filePath)
         };
+        string? repairedCopy = null;
 
         try
         {
-            using var doc = WordprocessingDocument.Open(filePath, false);
+            using var doc = OpenTolerant(filePath, out repairedCopy);
+            _currentMainPart = doc.MainDocumentPart;
 
             // Extract metadata
             importDoc.Metadata = ExtractMetadata(doc);
@@ -210,6 +212,11 @@ public class DocxParser : IDocxParser
                 ImportWarningType.UnsupportedElement,
                 $"Failed to parse document: {ex.Message}"));
             importDoc.Warnings = [.. _warnings];
+            importDoc.ParseError = ex.Message;
+        }
+        finally
+        {
+            if (repairedCopy is not null) try { File.Delete(repairedCopy); } catch (IOException) { }
         }
 
         // FT-TELEMETRY-001 stage 2: drain ImportWarnings to the central
@@ -219,6 +226,63 @@ public class DocxParser : IDocxParser
         EmitWarningsAsTelemetry();
 
         return Task.FromResult(importDoc);
+    }
+
+    /// <summary>
+    /// Opens the package, and when it won't open, a copy with its exact duplicates removed: a part declared twice in
+    /// [Content_Types].xml, or a relationship given twice (same type and target). Word and LibreOffice open such files;
+    /// the SDK refused them, and the import came back empty (launch-bot #196, 18 Nov 2026).
+    /// </summary>
+    private WordprocessingDocument OpenTolerant(string filePath, out string? repairedCopy)
+    {
+        repairedCopy = null;
+        try
+        {
+            return WordprocessingDocument.Open(filePath, false);
+        }
+        catch (Exception first) when (first is not OutOfMemoryException)
+        {
+            var copy = Path.Combine(Path.GetTempPath(), $"lilia-docx-repair-{Guid.NewGuid():N}.docx");
+            File.Copy(filePath, copy);
+            if (!RemoveDuplicatePackageEntries(copy))
+            {
+                File.Delete(copy);
+                throw;
+            }
+            repairedCopy = copy;
+            var doc = WordprocessingDocument.Open(copy, false);
+            _warnings.Add(new ImportWarning(ImportWarningType.UnsupportedElement,
+                $"The file declared a part or relationship twice; the duplicate was ignored ({first.Message})"));
+            return doc;
+        }
+    }
+
+    /// <summary>Removes duplicate Override entries and duplicate relationships in place. True when something changed.</summary>
+    internal static bool RemoveDuplicatePackageEntries(string path)
+    {
+        var changed = false;
+        using var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Update);
+        foreach (var entry in zip.Entries.ToList())
+        {
+            var isTypes = entry.FullName == "[Content_Types].xml";
+            if (!isTypes && !entry.FullName.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)) continue;
+            System.Xml.Linq.XDocument xml;
+            using (var s = entry.Open()) xml = System.Xml.Linq.XDocument.Load(s);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var dupes = xml.Root!.Elements()
+                .Where(e => !seen.Add(isTypes
+                    ? e.Name.LocalName + "|" + ((string?)e.Attribute("PartName") ?? (string?)e.Attribute("Extension") ?? "")
+                    : (string?)e.Attribute("Type") + "|" + (string?)e.Attribute("Target")))
+                .ToList();
+            if (dupes.Count == 0) continue;
+            foreach (var d in dupes) d.Remove();
+            var name = entry.FullName;
+            entry.Delete();
+            var replacement = zip.CreateEntry(name);
+            using (var w = replacement.Open()) xml.Save(w);
+            changed = true;
+        }
+        return changed;
     }
 
     // ========================================================================
@@ -286,6 +350,7 @@ public class DocxParser : IDocxParser
             StyleId = styleId,
             StyleName = styleName,
             Text = text,
+            TextOutsideMath = string.Concat(para.Descendants<Text>().Select(t => t.Text)),
             Formatting = formatting,
             FontFamily = GetFontFamily(para),
             FontSizePoints = fontSize,
@@ -953,17 +1018,131 @@ public class DocxParser : IDocxParser
     // Internal helper methods (used by detection rules via DocxParser reference)
     // ========================================================================
 
+    /// <summary>
+    /// A paragraph's text in reading order, with its inline LaTeX (launch-bot #187–#197, 18 Nov 2026). Before, only the
+    /// runs' w:t were read, so a paragraph lost its inline equations ($…$), its links (\href), its footnotes (\footnote)
+    /// and its line breaks (a code block's lines ran into one).
+    /// </summary>
     internal void ExtractTextAndFormatting(Paragraph para, out string text, out List<FormattingSpan> formatting)
     {
         var sb = new System.Text.StringBuilder();
-        formatting = [];
+        var spans = new List<FormattingSpan>();
+        WalkInline(para, sb, spans, _currentMainPart, depth: 0);
+        formatting = spans;
+        text = sb.ToString();
+    }
 
-        foreach (var run in para.Descendants<Run>())
+    private MainDocumentPart? _currentMainPart;
+
+    private void WalkInline(OpenXmlElement container, System.Text.StringBuilder sb, List<FormattingSpan> formatting, MainDocumentPart? mainPart, int depth)
+    {
+        foreach (var child in container.ChildElements)
         {
-            var runText = string.Concat(run.Descendants<Text>().Select(t => t.Text));
-            var startIndex = sb.Length;
+            switch (child)
+            {
+                case Run run:
+                    AppendRun(run, sb, formatting, mainPart, depth);
+                    break;
+                case DeletedRun:
+                    break; // a tracked deletion is not in the text
+                case Hyperlink link:
+                    AppendHyperlink(link, sb, formatting, mainPart, depth);
+                    break;
+                case M.OfficeMath math:
+                    AppendInlineMath(math.OuterXml, sb);
+                    break;
+                case M.Paragraph mathPara:
+                    foreach (var m in mathPara.Elements<M.OfficeMath>()) AppendInlineMath(m.OuterXml, sb);
+                    break;
+                case ParagraphProperties:
+                    break;
+                default:
+                    if (child.HasChildren) WalkInline(child, sb, formatting, mainPart, depth);
+                    break;
+            }
+        }
+    }
 
-            sb.Append(runText);
+    private void AppendInlineMath(string ommlXml, System.Text.StringBuilder sb)
+    {
+        var latex = "";
+        if (_ommlConverter is not null && _ommlConverter.Convert(ommlXml) is (var converted, true, _)) latex = converted.Trim();
+        // Without a converter (or when it fails), the equation's own characters, still as maths.
+        if (latex.Length == 0)
+            latex = string.Concat(System.Xml.Linq.XElement.Parse(ommlXml).Descendants()
+                .Where(e => e.Name.LocalName == "t").Select(e => e.Value)).Trim();
+        if (latex.Length > 0) sb.Append('$').Append(latex).Append('$');
+    }
+
+    // A link keeps its target: \href{url}{text}, or \url{url} when the text is the address (launch-bot #197).
+    private void AppendHyperlink(Hyperlink link, System.Text.StringBuilder sb, List<FormattingSpan> formatting, MainDocumentPart? mainPart, int depth)
+    {
+        var id = link.Id?.Value;
+        var url = id is null || mainPart is null ? null
+            : mainPart.HyperlinkRelationships.FirstOrDefault(r => r.Id == id)?.Uri?.OriginalString;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            WalkInline(link, sb, formatting, mainPart, depth);
+            return;
+        }
+        var escaped = url.Replace("\\", "/").Replace("%", "\\%").Replace("#", "\\#").Replace("{", "%7B").Replace("}", "%7D");
+        var linkText = string.Concat(link.Descendants<Text>().Select(t => t.Text)).Trim();
+        if (linkText.Length == 0 || string.Equals(linkText, url.Trim(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals("mailto:" + linkText, url.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            sb.Append("\\url{").Append(escaped).Append('}');
+            return;
+        }
+        sb.Append("\\href{").Append(escaped).Append("}{");
+        WalkInline(link, sb, formatting, mainPart, depth);
+        sb.Append('}');
+    }
+
+    // A footnote's text at its mark: \footnote{…} (launch-bot #188). Word kept the note in footnotes.xml, and the
+    // reference was dropped.
+    private void AppendNote(OpenXmlElement noteRoot, System.Text.StringBuilder sb, MainDocumentPart? mainPart, int depth)
+    {
+        if (depth > 2) return;
+        var inner = new System.Text.StringBuilder();
+        var ignored = new List<FormattingSpan>();
+        foreach (var p in noteRoot.Elements<Paragraph>())
+        {
+            if (inner.Length > 0) inner.Append(' ');
+            WalkInline(p, inner, ignored, mainPart, depth + 1);
+        }
+        var note = inner.ToString().Trim();
+        if (note.Length > 0) sb.Append("\\footnote{").Append(note).Append('}');
+    }
+
+    private void AppendRun(Run run, System.Text.StringBuilder sb, List<FormattingSpan> formatting, MainDocumentPart? mainPart, int depth)
+    {
+        var startIndex = sb.Length;
+        foreach (var part in run.ChildElements)
+        {
+            switch (part)
+            {
+                case Text t:
+                    sb.Append(t.Text);
+                    break;
+                // A line break is a new line: a code block's lines stayed apart (launch-bot #192). Page and column breaks
+                // are read elsewhere.
+                case Break br when br.Type is null || br.Type.Value == BreakValues.TextWrapping:
+                    sb.Append('\n');
+                    break;
+                case TabChar:
+                    sb.Append(' ');
+                    break;
+                case FootnoteReference fr when mainPart?.FootnotesPart?.Footnotes is { } notes:
+                    if (notes.Elements<Footnote>().FirstOrDefault(n => n.Id?.Value == fr.Id?.Value) is { } footnote)
+                        AppendNote(footnote, sb, mainPart, depth);
+                    break;
+                case EndnoteReference er when mainPart?.EndnotesPart?.Endnotes is { } endnotes:
+                    if (endnotes.Elements<Endnote>().FirstOrDefault(n => n.Id?.Value == er.Id?.Value) is { } endnote)
+                        AppendNote(endnote, sb, mainPart, depth);
+                    break;
+            }
+        }
+        var runText = sb.ToString(startIndex, sb.Length - startIndex);
 
             if (_options.PreserveFormatting && runText.Length > 0)
             {
@@ -1015,9 +1194,6 @@ public class DocxParser : IDocxParser
                     }
                 }
             }
-        }
-
-        text = sb.ToString();
     }
 
     internal bool IsNumberedList(int? numId, int level, MainDocumentPart mainPart)

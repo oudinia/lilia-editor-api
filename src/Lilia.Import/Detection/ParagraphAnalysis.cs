@@ -32,6 +32,12 @@ public class ParagraphAnalysis
     public string Text { get; init; } = string.Empty;
 
     /// <summary>
+    /// The paragraph's words outside its equations. <see cref="Text"/> carries inline equations as $…$ (launch-bot #187,
+    /// 18 Nov 2026), so "only maths" is read here: a paragraph is a display equation only when this is blank.
+    /// </summary>
+    public string TextOutsideMath { get; init; } = string.Empty;
+
+    /// <summary>
     /// Formatting spans extracted from the paragraph.
     /// </summary>
     public List<FormattingSpan> Formatting { get; init; } = [];
