@@ -3508,8 +3508,9 @@ public partial class RenderService : IRenderService
         // After Step 1 all math regions are replaced with placeholders so
         // the replacements below cannot accidentally touch math content.
         result = Regex.Replace(result, @"(?<!\\)([&%#])", @"\$1");
-        // Escape underscores NOT part of __underline__ markers
-        result = Regex.Replace(result, @"(?<!_)_(?!_)", @"\_");
+        // Escape underscores NOT part of __underline__ markers, nor already escaped: "WHAM\_v2" in a caption became
+        // "WHAM\\_v2", a line break and a bare _, and the compile stopped ("Missing $ inserted": launch-bot #178, 18 Nov 2026).
+        result = Regex.Replace(result, @"(?<![_\\])_(?!_)", @"\_");
         // ^ is only valid in math mode — escape to \textasciicircum{} in text
         // Not the accent commands \^{z} and \~{e} (an imported accent pdflatex can't print as a character): they became
         // \\textasciicircum{}{z} (18 Nov 2026, launch-bot #169).
