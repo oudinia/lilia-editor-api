@@ -18,6 +18,12 @@ public class ImportDocument
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
+    /// Why the file couldn't be read at all, or null. A file that failed to open used to import as an empty document
+    /// and report success (launch-bot #196, 18 Nov 2026); the import now fails with this.
+    /// </summary>
+    public string? ParseError { get; set; }
+
+    /// <summary>
     /// The pages the reading service read and charged (Mathpix's num_pages), when it says (11 Nov 2026: a PDF
     /// import's pages are counted against the plan by this, not by an estimate from the file).
     /// </summary>

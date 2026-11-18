@@ -116,6 +116,9 @@ public class DocxImportService : IDocxImportService
             var parseStart = Stopwatch.StartNew();
             var importDocument = await _parser.ParseAsync(filePath, importOptions);
             var parseTime = parseStart.Elapsed;
+            // A file that can't be read fails the import instead of "succeeding" as an empty document (launch-bot #196).
+            if (importDocument.ParseError is { } parseError)
+                return ImportResult.Failed($"This Word file couldn't be read: {parseError}");
 
             // Stage 2: Convert to Lilia format
             var convertStart = Stopwatch.StartNew();

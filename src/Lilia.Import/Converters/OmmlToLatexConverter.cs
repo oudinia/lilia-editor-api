@@ -52,7 +52,27 @@ public class OmmlToLatexConverter : IOmmlConverter
         ['·'] = @"\cdot", ['…'] = @"\ldots", ['⋯'] = @"\cdots",
         ['ℕ'] = @"\mathbb{N}", ['ℤ'] = @"\mathbb{Z}", ['ℚ'] = @"\mathbb{Q}",
         ['ℝ'] = @"\mathbb{R}", ['ℂ'] = @"\mathbb{C}",
+        // Word writes these as characters; pdflatex stops on them (launch-bot #191, 18 Nov 2026: "Unicode character ⋅").
+        ['−'] = "-", ['⋅'] = @"\cdot", ['∥'] = @"\|", ['‖'] = @"\|", ['∣'] = @"\mid", ['⋆'] = @"\star",
+        ['∗'] = "*", ['∘'] = @"\circ", ['≪'] = @"\ll", ['≫'] = @"\gg", ['⟨'] = @"\langle", ['⟩'] = @"\rangle",
+        ['∼'] = @"\sim", ['≃'] = @"\simeq", ['≅'] = @"\cong", ['⊤'] = @"\top", ['⊥'] = @"\perp",
+        ['∖'] = @"\setminus", ['↦'] = @"\mapsto", ['⟶'] = @"\longrightarrow", ['⟹'] = @"\Longrightarrow",
+        ['ℓ'] = @"\ell", ['⌈'] = @"\lceil", ['⌉'] = @"\rceil", ['⌊'] = @"\lfloor", ['⌋'] = @"\rfloor",
+        ['⋮'] = @"\vdots", ['⋱'] = @"\ddots", ['≜'] = @"\triangleq", ['∠'] = @"\angle",
+        ['°'] = @"^{\circ}", ['≺'] = @"\prec", ['≻'] = @"\succ", ['≼'] = @"\preceq", ['≽'] = @"\succeq",
+        ['∋'] = @"\ni", ['⊊'] = @"\subsetneq", ['△'] = @"\triangle", ['□'] = @"\square", ['†'] = @"\dagger",
+        // Spaces: Word keeps \, \: \; \quad as Unicode spaces.
+        [' '] = @"\,", [' '] = @"\,", [' '] = @"\,", [' '] = @"\:", [' '] = @"\;",
+        [' '] = @"\enspace", [' '] = @"\quad", [' '] = @"\qquad", [' '] = "~", ['​'] = "",
         ['′'] = "'", ['″'] = "''", ['‴'] = "'''"
+    };
+
+    // Upright names that are LaTeX operators: "min" in Word's plain style is \min, not italic m·i·n (launch-bot #191).
+    private static readonly HashSet<string> OperatorNames = new(StringComparer.Ordinal)
+    {
+        "sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "coth", "arcsin", "arccos", "arctan",
+        "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "min", "max", "inf", "sup", "det", "dim", "ker", "gcd",
+        "deg", "hom", "arg", "Pr",
     };
 
     /// <inheritdoc />
@@ -109,11 +129,37 @@ public class OmmlToLatexConverter : IOmmlConverter
     private string ConvertChildren(XElement element)
     {
         var sb = new StringBuilder();
+        var word = new StringBuilder();
+        void FlushWord()
+        {
+            if (word.Length == 0) return;
+            var w = word.ToString();
+            sb.Append(OperatorNames.Contains(w) ? $@"\{w} " : $@"\mathrm{{{w}}}");
+            word.Clear();
+        }
         foreach (var child in element.Elements())
         {
+            // Word's upright (m:sty p) letters, split one per run, are one upright word: \mathrm{top}, \min (launch-bot #191).
+            if (PlainLetters(child) is { } letters)
+            {
+                word.Append(letters);
+                continue;
+            }
+            FlushWord();
             sb.Append(ConvertElement(child));
         }
+        FlushWord();
         return sb.ToString();
+    }
+
+    /// <summary>The ASCII letters of an upright run (m:sty p, no other script), or null.</summary>
+    private static string? PlainLetters(XElement child)
+    {
+        if (child.Name != M + "r") return null;
+        var rPr = child.Element(M + "rPr");
+        if (rPr?.Element(M + "sty")?.Attribute(M + "val")?.Value != "p" || rPr.Element(M + "scr") is not null) return null;
+        var text = string.Concat(child.Elements(M + "t").Select(t => t.Value));
+        return text.Length > 0 && text.All(char.IsAsciiLetter) ? text : null;
     }
 
     private string ConvertOmath(XElement element) => ConvertChildren(element);
@@ -126,8 +172,25 @@ public class OmmlToLatexConverter : IOmmlConverter
 
     // A run marked as an equation array's alignment point (m:aln) begins after an alignment tab: Word's aligned rows
     // come back as aligned LaTeX (MCP-94, the export now writes it).
-    private string ConvertRun(XElement element) =>
-        (element.Element(M + "rPr")?.Element(M + "aln") is not null ? "&" : "") + ConvertChildren(element);
+    private string ConvertRun(XElement element)
+    {
+        var rPr = element.Element(M + "rPr");
+        var prefix = rPr?.Element(M + "aln") is not null ? "&" : "";
+        // Double-struck, script and fraktur letters: \mathbb{E} came back as a plain E (launch-bot #191).
+        var font = rPr?.Element(M + "scr")?.Attribute(M + "val")?.Value switch
+        {
+            "double-struck" => "mathbb",
+            "script" => "mathcal",
+            "fraktur" => "mathfrak",
+            _ => null,
+        };
+        if (font is not null)
+        {
+            var text = string.Concat(element.Elements(M + "t").Select(t => t.Value));
+            if (text.Length > 0 && text.All(char.IsAsciiLetter)) return prefix + $@"\{font}{{{text}}}";
+        }
+        return prefix + ConvertChildren(element);
+    }
 
     private string ConvertText(XElement element)
     {
@@ -414,6 +477,10 @@ public class OmmlToLatexConverter : IOmmlConverter
         var eLatex = e != null ? ConvertChildren(e) : "";
         var limLatex = lim != null ? ConvertChildren(lim) : "";
 
+        // \min_{t<T}, not \underset{t<T}{min} (launch-bot #191).
+        var op = eLatex.Trim();
+        if (op.Length > 1 && op[0] == '\\' && OperatorNames.Contains(op[1..]))
+            return $@"{op}_{{{limLatex}}}";
         return $@"\underset{{{limLatex}}}{{{eLatex}}}";
     }
 
@@ -447,6 +514,8 @@ public class OmmlToLatexConverter : IOmmlConverter
             "det", "dim", "ker", "gcd"
         };
 
+        // The name is already LaTeX: \min_{x} (from a limLow) or \sin (from upright runs).
+        if (funcName.StartsWith('\\')) return $@"{funcName} {eLatex}";
         var funcLower = funcName.ToLowerInvariant();
         if (knownFuncs.Contains(funcLower))
         {

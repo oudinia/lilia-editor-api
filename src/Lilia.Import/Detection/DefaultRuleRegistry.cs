@@ -673,8 +673,9 @@ public static class DefaultRuleRegistry
 
     private static bool parser_IsEquationOnlyParagraph(ParagraphAnalysis analysis)
     {
-        // Check if the paragraph contains only math and whitespace
-        return string.IsNullOrWhiteSpace(analysis.Text) || analysis.MathElements.Count > 0;
+        // Only maths and whitespace. It read "|| MathElements.Count > 0", so every paragraph holding an inline equation
+        // became display equations and lost its words (launch-bot #187, 18 Nov 2026).
+        return analysis.MathElements.Count > 0 && string.IsNullOrWhiteSpace(analysis.TextOutsideMath);
     }
 
     // ========================================================================
