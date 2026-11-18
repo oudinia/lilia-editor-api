@@ -167,6 +167,11 @@ public static partial class LaTeXPreamble
 
     private static readonly Regex CustomNewTheorem = new(@"\\newtheorem\*?\{([A-Za-z]+)\*?\}(?:\[[^\]]*\])?\{[^}]*\}(?:\[[^\]]*\])?", RegexOptions.Compiled);
 
+    // A \newenvironment's whole definition: {name}[n][default]{begin}{end}, nested braces balanced.
+    private const string NestedBraces = @"\{(?>[^{}]+|\{(?<d>)|\}(?<-d>))*(?(d)(?!))\}";
+    private static readonly Regex CustomNewEnvironment = new(
+        @"\\newenvironment\*?\s*\{(?<n>[A-Za-z@*]+)\}\s*(?:\[[^\]]*\])*\s*" + NestedBraces + @"\s*" + NestedBraces, RegexOptions.Compiled);
+
     private static readonly Regex CustomRenewCommand = new(@"\\renewcommand\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?", RegexOptions.Compiled);
 
     // A whole line using a command only natbib defines, its braces balanced on the line (launch-bot #161, 18 Nov 2026).
@@ -189,12 +194,19 @@ public static partial class LaTeXPreamble
         // whole PDF failed (the document sweep, D-018, 15 Nov 2026). A \providecommand first makes it defined; on a
         // command that exists it does nothing.
         custom = CustomRenewCommand.Replace(custom, m => $"\\providecommand{{\\{m.Groups[1].Value}}}{{}}{m.Value}");
+        // A \newenvironment the class already defines stops the compile ("already defined"): an arXiv paper made for
+        // IEEEtran 1.6 defined IEEEkeywords, which TeX Live's IEEEtran has (launch-bot #235, 18 Nov 2026). Only when
+        // undefined, so the class's own stays.
+        custom = CustomNewEnvironment.Replace(custom, m => $"\\ifcsname {m.Groups["n"].Value}\\endcsname\\else {m.Value}\\fi");
         // A \newtheorem of a kind Lilia declares stops the compile ("already defined"): left out.
         custom = CustomNewTheorem.Replace(custom, m => KnownTheoremEnvironments.Contains(m.Groups[1].Value)
             ? $"% [lilia] left out \\newtheorem{{{m.Groups[1].Value}}}: Lilia declares it." : m.Value);
         // A natbib-only setting (\setlength{\bibsep}, \bibpunct, \setcitestyle…) applies only when natbib is loaded: an
         // imported paper's natbib is left out (the export loads it for \citep and \citet), and its \setlength{\bibsep}
         // stopped the compile, "Undefined control sequence" (18 Nov 2026, launch-bot #161).
+        // The source's \theoremstyle lines (launch-bot #230) set the style of what follows: back to plain after them, so
+        // Lilia's own kinds keep theirs.
+        if (custom.Contains(@"\theoremstyle", StringComparison.Ordinal)) custom = custom.TrimEnd() + "\n\\theoremstyle{plain}";
         custom = NatbibOnlyLine.Replace(custom, m => $"\\ifcsname ver@natbib.sty\\endcsname{m.Groups["cmd"].Value}\\fi"
             + (m.Groups["comment"].Success ? " " + m.Groups["comment"].Value : ""));
         return CustomUsePackage.Replace(custom.Trim(), m =>

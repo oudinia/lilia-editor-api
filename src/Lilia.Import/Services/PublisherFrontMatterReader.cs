@@ -328,6 +328,9 @@ public static partial class PublisherFrontMatterReader
         var lines = new List<string>();
         foreach (Match m in Regex.Matches(src, @"\\(?<cmd>" + string.Join("|", RightsCommands) + @")\b"))
         {
+            // A command the text only names ("Use the \texttt{\string\acmSubmissionID} command") isn't metadata: lifted into
+            // the preamble bare, it stopped the compile ("Missing \begin{document}": launch-bot #224, 18 Nov 2026).
+            if (m.Index >= 7 && src.AsSpan(m.Index - 7, 7).SequenceEqual(@"\string")) continue;
             var end = m.Index + m.Length;
             var full = new StringBuilder(m.Value);
             while (true)
@@ -342,6 +345,8 @@ public static partial class PublisherFrontMatterReader
             }
             // One command, one line: a multi-line \acmConference{…} was cut at its line breaks and every piece set aside,
             // so the class default "Conference'17, Washington, DC" printed (launch-bot #219, 18 Nov 2026).
+            // Every rights command takes an argument: one with none is a mention, not the command (#224).
+            if (full.Length == m.Value.Length) continue;
             lines.Add(System.Text.RegularExpressions.Regex.Replace(full.ToString(), @"\s*\n\s*", " "));
         }
         return lines.Count > 0 ? string.Join("\n", lines) : null;

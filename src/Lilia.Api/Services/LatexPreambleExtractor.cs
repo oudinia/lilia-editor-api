@@ -40,6 +40,11 @@ public static class LatexPreambleExtractor
         new(@"\\DeclareMathOperator\*?\s*\{[^}]*\}\s*" + Braced, RegexOptions.Compiled),
         // \def\name{body}  (TeX primitive form, no args captured beyond the body)
         new(@"\\def\s*\\[A-Za-z@]+\s*" + Braced, RegexOptions.Compiled),
+        // The source's theorem kinds and styles: an amsart paper's \newtheorem{df}{Definition} was lost, so
+        // \begin{df} was undefined and the paper didn't compile (launch-bot #230, 18 Nov 2026). The emitter leaves out
+        // the kinds Lilia declares itself (CustomPreambleForEmit).
+        new(@"\\theoremstyle\s*\{[^}]*\}", RegexOptions.Compiled),
+        new(@"\\newtheorem\*?\s*\{[^}]*\}\s*(?:\[[^\]]*\])?\s*\{[^}]*\}\s*(?:\[[^\]]*\])?", RegexOptions.Compiled),
     };
 
     public static Result Extract(string? rawLatex)

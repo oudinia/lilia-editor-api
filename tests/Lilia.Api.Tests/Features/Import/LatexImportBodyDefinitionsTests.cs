@@ -49,6 +49,8 @@ public class LatexImportBodyDefinitionsTests
             @"\newcommand{\pre}{P}",
             @"\newcommand{\R}{\mathbb{R}}",
             @"\def\ours{our method}",
+            // The source's theorem style reaches the preamble too (launch-bot #230, 18 Nov 2026).
+            @"\theoremstyle{definition}",
             @"\DeclareMathOperator{\Tr}{Tr}");
     }
 }

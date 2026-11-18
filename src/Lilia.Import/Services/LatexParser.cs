@@ -641,6 +641,11 @@ public class LatexParser : ILatexParser
         var tikz = new List<string>();
         content = StashTikz(content, tikz);
 
+        // \verb|…| is text, not LaTeX: read as LaTeX, \verb|\end{document}| ended the import and \verb+\section{#1}+ became a
+        // heading (launch-bot #222, 18 Nov 2026). It becomes \texttt with its characters escaped, before anything reads
+        // the source; verbatim and listing environments keep theirs.
+        content = VerbAsTexttt(content);
+
         // % comments are not content. Nothing removed them, so a trailing
         // "% note to self" imported as paragraph text and exported as a
         // printed "\% note to self". Verbatim-like bodies, \verb and URL
@@ -2645,6 +2650,8 @@ public class LatexParser : ILatexParser
                         var listGroup = elementOrder;             // unique per list environment
                         foreach (var item in ReadListItems(body, listKind == "enumerate"))
                         {
+                            // A description list keeps its \item[term] labels (launch-bot #227, 18 Nov 2026: the terms went).
+                            item.IsDescription = listKind == "description";
                             item.Order = elementOrder++;
                             item.ListGroup = listGroup;
                             document.Elements.Add(item);
@@ -3383,6 +3390,49 @@ public class LatexParser : ILatexParser
             }
         }
         return null;
+    }
+
+    private static readonly Regex VerbatimRegion = new(
+        @"\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment|alltt)\}[\s\S]*?\\end\{\1\}", RegexOptions.Compiled);
+    private static readonly Regex VerbCommand = new(@"\\verb\*?([^a-zA-Z\s*])(.*?)\1", RegexOptions.Compiled);
+
+    /// <summary>Every \verb|…| outside verbatim environments as \texttt{…}, its LaTeX characters escaped.</summary>
+    internal static string VerbAsTexttt(string content)
+    {
+        if (content.IndexOf(@"\verb", StringComparison.Ordinal) < 0) return content;
+        var sb = new System.Text.StringBuilder(content.Length);
+        var last = 0;
+        foreach (Match region in VerbatimRegion.Matches(content))
+        {
+            sb.Append(VerbIn(content[last..region.Index]));
+            sb.Append(region.Value);
+            last = region.Index + region.Length;
+        }
+        sb.Append(VerbIn(content[last..]));
+        return sb.ToString();
+
+        static string VerbIn(string text) => VerbCommand.Replace(text, m => @"\texttt{" + EscapeVerb(m.Groups[2].Value) + "}");
+    }
+
+    private static string EscapeVerb(string raw)
+    {
+        var sb = new System.Text.StringBuilder(raw.Length + 8);
+        foreach (var c in raw)
+            sb.Append(c switch
+            {
+                '\\' => @"\textbackslash{}",
+                '{' => @"\{",
+                '}' => @"\}",
+                '$' => @"\$",
+                '&' => @"\&",
+                '#' => @"\#",
+                '%' => @"\%",
+                '_' => @"\_",
+                '^' => @"\textasciicircum{}",
+                '~' => @"\textasciitilde{}",
+                _ => c.ToString(),
+            });
+        return sb.ToString();
     }
 
     /// <summary>Removes todonotes' \todo[opts]{text}, \missingfigure[opts]{text} and \listoftodos (brace-balanced).</summary>
