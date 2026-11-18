@@ -3478,7 +3478,7 @@ public partial class RenderService : IRenderService
         // Smallcaps `^^…^^` — must precede `^…^` superscript below.
         result = Regex.Replace(result, @"\^\^(.+?)\^\^", @"\textsc{$1}");
         // Superscript `^…^` — single carets.
-        result = Regex.Replace(result, @"(?<!\^)\^([^^\s\\]+)\^(?!\^)", @"\textsuperscript{$1}");
+        result = Regex.Replace(result, @"(?<![\^\\])\^([^^\s\\]+)\^(?!\^)", @"\textsuperscript{$1}");   // not an accent \^ (#169)
         // Subscript `%%…%%`.
         result = Regex.Replace(result, @"%%(.+?)%%", @"\textsubscript{$1}");
         // Strikethrough `~~…~~` — soul package's \st (was Step 3 but broken
@@ -3505,9 +3505,11 @@ public partial class RenderService : IRenderService
         // Escape underscores NOT part of __underline__ markers
         result = Regex.Replace(result, @"(?<!_)_(?!_)", @"\_");
         // ^ is only valid in math mode — escape to \textasciicircum{} in text
-        result = result.Replace("^", @"\textasciicircum{}");
+        // Not the accent commands \^{z} and \~{e} (an imported accent pdflatex can't print as a character): they became
+        // \\textasciicircum{}{z} (18 Nov 2026, launch-bot #169).
+        result = Regex.Replace(result, @"(?<!\\)\^", @"\textasciicircum{}");
         // ~ produces a non-breaking space in LaTeX — escape to \textasciitilde{}
-        result = result.Replace("~", @"\textasciitilde{}");
+        result = Regex.Replace(result, @"(?<!\\)~", @"\textasciitilde{}");
         // Escape any remaining literal $ that were not part of a $...$ math pair
         // (e.g. currency "$100"). These arrive here as plain $ because the math
         // protection in Step 1 only replaced matched pairs.
