@@ -647,6 +647,10 @@ public class LatexParser : ILatexParser
         // arguments keep their percent signs.
         content = StripComments(content);
 
+        // A reviewer's \todo notes aren't the paper: "Body text.\todo{a note}" printed "Body text.a note" (launch-bot
+        // #204, 18 Nov 2026). \todo[…]{…}, \missingfigure[…]{…} and \listoftodos go, like comments.
+        content = StripReviewNotes(content);
+
         // Batch A coverage — normalise well-known environment variants to
         // their kernel equivalents so the rest of the parser doesn't need
         // special cases for each. Cheap regex rewrites; the catalog rows
@@ -3345,6 +3349,25 @@ public class LatexParser : ILatexParser
             }
         }
         return null;
+    }
+
+    /// <summary>Removes todonotes' \todo[opts]{text}, \missingfigure[opts]{text} and \listoftodos (brace-balanced).</summary>
+    internal static string StripReviewNotes(string text)
+    {
+        text = Regex.Replace(text, @"\\listoftodos\b(\[[^\]]*\])?", "");
+        foreach (var name in new[] { "todo", "missingfigure" })
+        {
+            var pattern = new Regex(@"\\" + name + @"\b\s*(\[[^\]]*\])?\s*\{");
+            for (var guard = 0; guard < 256; guard++)
+            {
+                var m = pattern.Match(text);
+                if (!m.Success) break;
+                var body = ExtractBraceBody(text, m.Index + m.Length - 1);
+                if (body == null) break;
+                text = text[..m.Index] + text[body.Value.EndExclusive..];
+            }
+        }
+        return text;
     }
 
     /// <summary>Remove every occurrence of <c>\name{…}</c> (including the
