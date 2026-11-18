@@ -575,6 +575,7 @@ Lilia.Engines.CompileSlots.Configure(
     builder.Configuration.GetValue<int?>("Compilation:Slots"),
     builder.Configuration.GetValue<int?>("Compilation:MaxWaitSeconds"),
     builder.Configuration.GetValue<int?>("Compilation:TypstSlots"));
+Lilia.Engines.CompileSlots.PerUserSlots = builder.Configuration.GetValue("Compilation:PerUserSlots", 2);
 builder.Services.AddScoped<ITypstRenderService, TypstRenderService>();
 builder.Services.AddScoped<ILicenseService, LicenseService>();
 builder.Services.AddScoped<IMathAstService, MathAstService>();
@@ -697,9 +698,42 @@ else
 // Rate limiting — strict policy partitions by client IP so one abuser can't
 // exhaust the bucket for everyone. Auth-sensitive and anonymous endpoints
 // (convert, latex render) opt in via [EnableRateLimiting("strict")].
+// A limit on every request, per signed-in person (per IP when signed out): the editor's own API had none, so a script
+// driving it with a session got past the connector's limits (the owner, 18 Nov 2026: "people who will automate Lilia…
+// any good rate limiting?"). Generous enough that nobody working by hand meets it: RateLimit:PerUserPerMinute (600)
+// and RateLimit:AnonymousPerMinute (120). Not for health checks, live collaboration (/hubs), the connector (its own
+// limit), Stripe's webhook or files, nor in the test host.
+var perUserPerMinute = builder.Configuration.GetValue("RateLimit:PerUserPerMinute", 600);
+var anonymousPerMinute = builder.Configuration.GetValue("RateLimit:AnonymousPerMinute", 120);
+var globalLimit = builder.Configuration.GetValue("RateLimit:Enabled", true) && !builder.Environment.IsEnvironment("Testing");
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"message\":\"Too many requests at once: wait a minute and try again.\",\"code\":\"rate-limited\"}", ct);
+    };
+    if (globalLimit)
+        options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(http =>
+        {
+            var path = http.Request.Path;
+            if (path.StartsWithSegments("/health") || path.StartsWithSegments("/hubs") || path.StartsWithSegments("/api/mcp")
+                || path.StartsWithSegments("/api/billing/webhook") || path.StartsWithSegments("/uploads"))
+                return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("exempt");
+            var user = http.User.FindFirst("sub")?.Value
+                ?? http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var key = user is not null ? "u:" + user : "ip:" + (http.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            var limit = user is not null ? perUserPerMinute : anonymousPerMinute;
+            return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(key, _ => new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = limit,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+            });
+        });
     options.AddFixedWindowLimiter("default", config =>
     {
         config.PermitLimit = 100;
@@ -1172,6 +1206,12 @@ app.UseConnectedAppBoundary();
 // authentication: every per-user limit was really per IP, and every MCP app (one IP range for
 // all of Claude's users) would have shared one budget (12 Oct, MCP hardening T0).
 app.UseRateLimiter();
+// Each request's compiles count against its person's share of the compile slots (CompileSlots.PerUserSlots).
+app.Use(async (http, next) =>
+{
+    var user = http.User.FindFirst("sub")?.Value ?? http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    using (Lilia.Engines.CompileSlots.ForUser(user)) await next();
+});
 
 // M2M auth - map client_credentials tokens (no sub claim) to a service account user.
 app.UseM2MAuth();

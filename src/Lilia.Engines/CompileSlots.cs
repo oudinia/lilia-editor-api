@@ -47,6 +47,31 @@ public static class CompileSlots
     private static readonly AsyncLocal<Request?> Ambient = new();
     internal static Request? Current => Ambient.Value;
 
+    /// <summary>Who a request's compiles are for (the signed-in user), for <see cref="PerUserSlots"/>.</summary>
+    private static readonly AsyncLocal<string?> AmbientUser = new();
+    internal static string? CurrentUser => AmbientUser.Value;
+
+    /// <summary>
+    /// How many compile slots one person may hold at once (<c>Compilation:PerUserSlots</c>, default 2). Their next
+    /// compile waits for one of their own, not for everyone's: one script exporting in a loop filled every slot and
+    /// slowed every author's PDF (the owner, 18 Nov 2026: "people who will automate Lilia… any good rate limiting?").
+    /// 0 or less: no share.
+    /// </summary>
+    public static int PerUserSlots { get; set; } = 2;
+
+    /// <summary>For the rest of this request's async flow, compiles count against <paramref name="userId"/>'s share.</summary>
+    public static IDisposable ForUser(string? userId)
+    {
+        var previous = AmbientUser.Value;
+        AmbientUser.Value = string.IsNullOrEmpty(userId) ? null : userId;
+        return new RestoreUser(previous);
+    }
+
+    private sealed class RestoreUser(string? previous) : IDisposable
+    {
+        public void Dispose() => AmbientUser.Value = previous;
+    }
+
     /// <summary>Set the sizes at startup, before any compile. Only an idle line is replaced.</summary>
     public static void Configure(int? slots, int? maxWaitSeconds, int? typstSlots = null)
     {
@@ -116,6 +141,8 @@ public sealed class CompileLine(int slots, TimeSpan maxWait)
     private readonly ConcurrentDictionary<long, string?> _waiting = new();
     /// <summary>Tickets holding a slot, with how many (a request can hold one while another of its compiles waits).</summary>
     private readonly ConcurrentDictionary<string, int> _holding = new();
+    /// <summary>Each person's share of the slots (<see cref="CompileSlots.PerUserSlots"/>).</summary>
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _shares = new();
 
     public int WaitingCount => _waiting.Count;
     public int RunningCount => Volatile.Read(ref _running);
@@ -135,10 +162,23 @@ public sealed class CompileLine(int slots, TimeSpan maxWait)
 
         var arrival = Interlocked.Increment(ref _arrivals);
         _waiting[arrival] = request?.Ticket;
+        var wait = request is null ? Timeout.InfiniteTimeSpan : MaxWait;
+        // The person's own share first: past it, their compile waits for one of theirs to finish, and the machine's
+        // slots stay free for everyone else (CompileSlots.PerUserSlots).
+        var user = CompileSlots.CurrentUser;
+        var share = user is not null && CompileSlots.PerUserSlots > 0
+            ? _shares.GetOrAdd(user, _ => new SemaphoreSlim(CompileSlots.PerUserSlots, CompileSlots.PerUserSlots))
+            : null;
         bool entered;
         try
         {
-            entered = await _gate.WaitAsync(request is null ? Timeout.InfiniteTimeSpan : MaxWait, token);
+            entered = share is null || await share.WaitAsync(wait, token);
+            if (entered)
+            {
+                try { entered = await _gate.WaitAsync(wait, token); }
+                catch { share?.Release(); throw; }
+                if (!entered) share?.Release();
+            }
         }
         finally
         {
@@ -148,7 +188,7 @@ public sealed class CompileLine(int slots, TimeSpan maxWait)
 
         Interlocked.Increment(ref _running);
         if (request?.Ticket is { } ticket) _holding.AddOrUpdate(ticket, 1, (_, n) => n + 1);
-        return new Slot(this, request?.Ticket);
+        return new Slot(this, request?.Ticket, share);
     }
 
     /// <summary>
@@ -164,8 +204,9 @@ public sealed class CompileLine(int slots, TimeSpan maxWait)
         return _holding.ContainsKey(ticket) ? 0 : null;
     }
 
-    private void Leave(string? ticket)
+    private void Leave(string? ticket, SemaphoreSlim? share)
     {
+        share?.Release();
         if (ticket is not null)
         {
             var left = _holding.AddOrUpdate(ticket, 0, (_, n) => n - 1);
@@ -179,13 +220,14 @@ public sealed class CompileLine(int slots, TimeSpan maxWait)
     {
         private readonly CompileLine _line;
         private readonly string? _ticket;
+        private readonly SemaphoreSlim? _share;
         private int _released;
 
-        internal Slot(CompileLine line, string? ticket) { _line = line; _ticket = ticket; }
+        internal Slot(CompileLine line, string? ticket, SemaphoreSlim? share = null) { _line = line; _ticket = ticket; _share = share; }
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _released, 1) == 0) _line.Leave(_ticket);
+            if (Interlocked.Exchange(ref _released, 1) == 0) _line.Leave(_ticket, _share);
         }
     }
 }
