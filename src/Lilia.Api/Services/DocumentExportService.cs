@@ -697,12 +697,19 @@ public class DocumentExportService : IDocumentExportService
                     // Read as the PDF reads them: \and between authors is a comma (13 Oct sweep, LTX-56).
                     Text = ProseLatex.PlainForWord(GetString(content, "title"), _labelNumber),
                     Author = ProseLatex.PlainForWord(Regex.Replace(GetString(content, "author"), @"\s*\\and\b\s*", ", "), _labelNumber),
-                    DateText = ProseLatex.PlainForWord(GetString(content, "date"), _labelNumber),
+                    DateText = TitleDate(content, _labelNumber),
                 }
             },
             _ => ConvertParagraphBlock(content) // fallback
         };
     }
+
+    /// <summary>
+    /// The title block's date as Word prints it. dateMode "none" (an imported \date{}) prints no date, as the PDF does
+    /// (LaTeXExportService.AppendTitleMeta): Word printed today's date from a stored "\today" (launch-bot #154, 18 Nov 2026).
+    /// </summary>
+    internal static string TitleDate(JsonElement content, Func<string, string?>? labelNumber = null) =>
+        GetString(content, "dateMode") == "none" ? "" : ProseLatex.PlainForWord(GetString(content, "date"), labelNumber);
 
     private ExportBlock ConvertParagraphBlock(JsonElement content)
     {

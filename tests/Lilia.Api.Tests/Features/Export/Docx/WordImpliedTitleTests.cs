@@ -60,4 +60,17 @@ public class WordImpliedTitleTests
     [Fact]
     public async Task A_document_without_a_name_gets_no_title()
         => (await Paragraphs(new ExportDocument { Title = "  ", Blocks = [Para("Body.")] })).Should().Equal("Body.");
+
+    // launch-bot #154 (18 Nov 2026): a title block with dateMode "none" (an imported \date{}) and a stored "\today"
+    // printed today's date in Word; the PDF prints none.
+    [Theory]
+    [InlineData("""{"date":"\\today","dateMode":"none"}""", "")]
+    [InlineData("""{"date":"","dateMode":"none"}""", "")]
+    [InlineData("""{"date":"Spring 2026","dateMode":""}""", "Spring 2026")]
+    [InlineData("""{"date":"Spring 2026"}""", "Spring 2026")]
+    public void A_title_dated_none_prints_no_date_in_word(string json, string expected)
+    {
+        using var content = System.Text.Json.JsonDocument.Parse(json);
+        Lilia.Api.Services.DocumentExportService.TitleDate(content.RootElement).Should().Be(expected);
+    }
 }
