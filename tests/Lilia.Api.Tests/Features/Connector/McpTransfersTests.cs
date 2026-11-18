@@ -257,7 +257,9 @@ public class McpTransfersTests : IntegrationTestBase
         doc.Title.Should().Be("Sediment Transport in Flumes");
         doc.PaperSize.Should().Be("letter");
         (doc.MarginTop, doc.MarginBottom, doc.MarginLeft, doc.MarginRight).Should().Be(("1in", "1in", "1.25in", "1.25in"));
-        doc.Blocks.Should().NotContain(b => b.Content.RootElement.GetRawText().Contains("Sediment Transport"), "the title is the document's, not body text");
+        // The title is front matter (a Title block, without a date since the file has none: 18 Nov 2026), not body text.
+        doc.Blocks.Should().NotContain(b => b.Type != "title" && b.Content.RootElement.GetRawText().Contains("Sediment Transport"), "the title is the document's, not body text");
+        doc.Blocks.Single(b => b.Type == "title").Content.RootElement.GetProperty("dateMode").GetString().Should().Be("none");
         doc.Blocks.Should().NotContain(b => b.Type == "tableOfContents");
     }
 
