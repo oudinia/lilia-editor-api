@@ -83,4 +83,16 @@ public class WordImportBatch9Tests
         doc.ParseError.Should().BeNull();
         doc.Elements.OfType<ImportParagraph>().Should().Contain(p => p.Text.Contains("Each client"));
     }
+
+    // #188 (18 Nov 2026): imports started together share the API's one parser, and the first r2 import lost its footnote.
+    [Fact]
+    public async Task Imports_at_the_same_time_on_one_parser_keep_their_own_footnotes()
+    {
+        var parser = new DocxParser(new OmmlToLatexConverter());
+        string Path_(string n) => Path.Combine(AppContext.BaseDirectory, "Fixtures", "docx-corpus", "launch-bot", n + ".docx");
+        var names = Enumerable.Range(0, 20).Select(i => i % 2 == 0 ? "r2-footnote" : "r5-math-symbols").ToList();
+        var docs = await Task.WhenAll(names.Select(n => Task.Run(() => parser.ParseAsync(Path_(n)))));
+        for (var i = 0; i < names.Count; i += 2)
+            docs[i].Elements.OfType<ImportParagraph>().Single().Text.Should().Contain(@"\footnote{The footnote text.}");
+    }
 }
