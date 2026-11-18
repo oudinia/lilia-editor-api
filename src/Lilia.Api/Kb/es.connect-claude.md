@@ -1,12 +1,12 @@
 ---
 slug: connect-claude
 lang: es
-title: Conecta tu IA a Lilia: Claude, ChatGPT, Cursor, VS Code y más
-summary: Deja que tu aplicación de IA lea tus documentos, compruebe que compilan y haga cambios que ves y puedes deshacer, con el conector de Lilia. Pasos para Claude, Claude Code, ChatGPT, Codex, Cursor, VS Code, Gemini CLI y más.
+title: Conecta tu IA a Lilia: Claude, ChatGPT, Grok, Cursor, VS Code y más
+summary: Deja que tu aplicación de IA lea tus documentos, compruebe que compilan y haga cambios que ves y puedes deshacer, con el conector de Lilia. Pasos para Claude, Claude Code, ChatGPT, Grok, Codex, Cursor, VS Code, Gemini CLI y más.
 skill: lilia-tutor
 audience: all
-tags: [claude, chatgpt, cursor, vscode, gemini, conector, mcp, aplicaciones de ia]
-keywords: claude claude-code chatgpt codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio conector mcp conectar aplicación integración conector personalizado asistente ia externo
+tags: [claude, chatgpt, grok, cursor, vscode, gemini, conector, mcp, aplicaciones de ia]
+keywords: claude claude-code chatgpt grok codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio conector mcp conectar aplicación integración conector personalizado asistente ia externo
 ---
 # Conecta tu IA a Lilia
 
@@ -37,6 +37,12 @@ Después ejecuta `/mcp` en Claude Code, elige **lilia** e inicia sesión en el n
 2. Nombre **lilia**, conexión **Public endpoint**, dirección `https://editor.liliaeditor.com/api/mcp`, autenticación **OAuth**.
 3. Confirma el aviso, crea el plugin e instálalo. En un chat, escribe **@** y elige **lilia**.
 - Qué planes de ChatGPT pueden añadir un servidor personalizado, y escribir con él, depende del plan: consulta la ayuda de OpenAI. ChatGPT te pide confirmar cada cambio.
+
+## Grok {#grok}
+1. En un chat con Grok, envía: *Add this MCP server: https://editor.liliaeditor.com/api/mcp*
+2. Confirma cuando Grok pida añadir el servidor.
+3. Cuando aparezca la tarjeta de conexión, inicia sesión en Lilia en el navegador y haz clic en **Permitir**. Las herramientas de Lilia funcionan desde tu siguiente mensaje.
+- Comprobado en la aplicación de Grok el 18 de noviembre de 2026. Que grok.com o X ofrezcan lo mismo depende de xAI: consulta su ayuda.
 
 ## Codex (la línea de comandos de OpenAI) {#codex}
 ```

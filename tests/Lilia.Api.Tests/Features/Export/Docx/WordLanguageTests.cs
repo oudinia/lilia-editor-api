@@ -98,6 +98,24 @@ public class WordLanguageTests
         SchemaErrors(bytes).Should().BeEmpty();
     }
 
+    // launch-bot #154 (18 Nov 2026): Arabic bold and italic runs had w:b and w:i only, which Word ignores for Arabic,
+    // so the emphasis printed plain. Arabic emphasis is bold, as in the PDF; Latin italics stay italic.
+    [Fact]
+    public async Task Arabic_emphasis_is_bold_in_word_and_latin_italics_stay()
+    {
+        var doc = Doc("ar", Paragraph("هذه **فقرة** مع *تأكيد* و *italic* في النص."));
+
+        var bytes = await new DocxExportService().ExportAsync(doc);
+        var body = Part(bytes, "word/document.xml").Descendants(W + "body").Single();
+        XElement Run(string text) => body.Descendants(W + "r").Single(r => Text(r) == text);
+
+        Run("فقرة").Element(W + "rPr")!.Element(W + "bCs").Should().NotBeNull("Word shows Arabic bold only with w:bCs");
+        Run("تأكيد").Element(W + "rPr")!.Element(W + "bCs").Should().NotBeNull("Arabic emphasis is bold, as in the PDF");
+        Run("italic").Element(W + "rPr")!.Element(W + "bCs").Should().BeNull("Latin italics stay italic");
+        Run("italic").Element(W + "rPr")!.Element(W + "i").Should().NotBeNull();
+        SchemaErrors(bytes).Should().BeEmpty();
+    }
+
     // launch-bot #154/#155 (18 Nov 2026): English references in an Arabic document were right-to-left paragraphs, so
     // Word printed "… Codes. [1]" and the full stop at the wrong end.
     [Fact]

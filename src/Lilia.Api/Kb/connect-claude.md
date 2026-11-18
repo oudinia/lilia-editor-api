@@ -1,12 +1,12 @@
 ---
 slug: connect-claude
 lang: en
-title: Connect your AI to Lilia: Claude, ChatGPT, Cursor, VS Code and more
-summary: Let your own AI app read your documents, check they compile and make changes you can see and undo, through Lilia's connector. Steps for Claude, Claude Code, ChatGPT, Codex, Cursor, VS Code, Gemini CLI and more.
+title: Connect your AI to Lilia: Claude, ChatGPT, Grok, Cursor, VS Code and more
+summary: Let your own AI app read your documents, check they compile and make changes you can see and undo, through Lilia's connector. Steps for Claude, Claude Code, ChatGPT, Grok, Codex, Cursor, VS Code, Gemini CLI and more.
 skill: lilia-tutor
 audience: all
-tags: [claude, chatgpt, cursor, vscode, gemini, connector, mcp, ai apps]
-keywords: claude claude-code chatgpt codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio connector mcp chatgpt connect app integration custom connector claude.ai claude desktop claude code outside app external ai assistant
+tags: [claude, chatgpt, grok, cursor, vscode, gemini, connector, mcp, ai apps]
+keywords: claude claude-code chatgpt grok codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio connector mcp chatgpt connect app integration custom connector claude.ai claude desktop claude code outside app external ai assistant
 ---
 # Connect your AI to Lilia
 
@@ -37,6 +37,12 @@ Then run `/mcp` in Claude Code, choose **lilia** and sign in in the browser (or 
 2. Name **lilia**, connection **Public endpoint**, address `https://editor.liliaeditor.com/api/mcp`, authentication **OAuth**.
 3. Confirm the warning, create the plugin and install it. In a chat, type **@** and pick **lilia**.
 - Which ChatGPT plans can add custom servers, and whether they may write, depends on the plan: see OpenAI's help. ChatGPT asks you to confirm each change before it is made.
+
+## Grok {#grok}
+1. In a chat with Grok, send: *Add this MCP server: https://editor.liliaeditor.com/api/mcp*
+2. Confirm when Grok asks to add the server.
+3. When the connect card appears, sign in to Lilia in the browser and click **Allow**. Lilia's tools work from your next message.
+- Checked in Grok's own app on 18 Nov 2026. Whether grok.com or X offer the same depends on xAI: see their help.
 
 ## Codex (OpenAI's command line) {#codex}
 ```
