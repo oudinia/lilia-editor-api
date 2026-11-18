@@ -578,6 +578,17 @@ public class ImportReviewService : IImportReviewService
                 _logger.LogWarning(ex, "[ImportReview] Failed to stage zip assets for session {SessionId}", sessionId);
             }
 
+            // A Word file's images arrive inline (data: URLs): stored as assets, or the PDF printed "Missing figure"
+            // (launch-bot #190, 18 Nov 2026). Non-fatal, like the zip assets.
+            try
+            {
+                await StageInlineFigureImagesAsync(documentId, ownerId, now, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] Failed to store inline figure images for session {SessionId}", sessionId);
+            }
+
             // Mark session as imported and link the new document.
             await _context.ImportReviewSessions
                 .Where(s => s.Id == sessionId)
@@ -2661,6 +2672,77 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
         }
         if (extracted.Notices.Count > 0)
             await _context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Figure blocks whose src is a data: URL (a Word file's embedded images) get the image stored as an asset and src
+    /// pointed at it. The Word export read the bytes from the data: URL, but the PDF build reads figures from storage, so
+    /// the PDF printed "[Missing figure: image-0.png]" (launch-bot #190, 18 Nov 2026).
+    /// </summary>
+    private async Task StageInlineFigureImagesAsync(Guid documentId, string ownerId, DateTime now, CancellationToken ct)
+    {
+        var figureBlocks = await _context.Blocks
+            .Where(b => b.DocumentId == documentId && b.Type == "figure")
+            .ToListAsync(ct);
+        var stored = 0;
+        foreach (var block in figureBlocks)
+        {
+            var contentObj = JsonSerializer.Deserialize<Dictionary<string, object?>>(block.Content.RootElement.GetRawText()) ?? new();
+            if (!contentObj.TryGetValue("src", out var srcObj) || srcObj?.ToString() is not { } src) continue;
+            if (!src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+            var comma = src.IndexOf(',');
+            var header = comma > 0 ? src[5..comma] : "";
+            if (comma < 0 || !header.Contains(";base64", StringComparison.OrdinalIgnoreCase)) continue;
+            var mime = header.Split(';')[0].Trim().ToLowerInvariant();
+            var ext = mime switch
+            {
+                "image/png" => ".png",
+                "image/jpeg" or "image/jpg" => ".jpg",
+                "image/gif" => ".gif",
+                "image/svg+xml" => ".svg",
+                "image/webp" => ".webp",
+                "application/pdf" => ".pdf",
+                _ => null,
+            };
+            if (ext is null) continue;
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(src[(comma + 1)..]); }
+            catch (FormatException) { continue; }
+
+            var assetId = Guid.NewGuid();
+            var storageKey = $"{ownerId}/documents/{documentId}/import-assets/{assetId}{ext}";
+            string url;
+            try
+            {
+                using var stream = new MemoryStream(bytes);
+                await _storageService.UploadAsync(storageKey, stream, mime);
+                url = _storageService.GetPublicUrl(storageKey);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] Failed to store inline image of block {BlockId}", block.Id);
+                continue;
+            }
+            _context.Assets.Add(new Asset
+            {
+                Id = assetId,
+                DocumentId = documentId,
+                FileName = $"figure-{assetId:N}{ext}",
+                FileType = mime,
+                FileSize = bytes.Length,
+                StorageKey = storageKey,
+                Url = url,
+                UserId = ownerId,
+                CreatedAt = now,
+            });
+            contentObj["src"] = url;
+            contentObj["assetId"] = assetId.ToString();
+            block.Content = JsonDocument.Parse(JsonSerializer.Serialize(contentObj));
+            block.UpdatedAt = now;
+            stored++;
+        }
+        if (stored > 0) await _context.SaveChangesAsync(ct);
+        _logger.LogInformation("[ImportReview] Stored {Count} inline figure images as assets", stored);
     }
 
     private async Task RewriteFigureBlocksToAssetsAsync(

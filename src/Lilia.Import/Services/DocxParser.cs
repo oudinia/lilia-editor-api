@@ -113,6 +113,8 @@ public class DocxParser : IDocxParser
         _options = options ?? ImportOptions.Default;
         _warnings.Clear();
         _elementOrder = 0;
+        _frontAuthors.Clear();
+        _frontDate = null;
         _currentSourceFile = Path.GetFileName(filePath);
 
         // Build the detection pipeline
@@ -185,6 +187,8 @@ public class DocxParser : IDocxParser
                 ReadPageSetup(body, importDoc.Metadata);
 
                 importDoc.Elements = allElements;
+                if (_frontAuthors.Count > 0) importDoc.Metadata.SourceAuthor = string.Join(" \\and ", _frontAuthors);
+                if (_frontDate is not null) importDoc.Metadata.SourceDate = _frontDate;
                 importDoc.Metadata.HeadingNumbering = Lilia.Import.Detection.HeadingNumbering.Detect(elements);
 
                 // If no title from properties, use first heading
@@ -864,6 +868,17 @@ public class DocxParser : IDocxParser
 
         foreach (var element in body.ChildElements)
         {
+            if (element is Paragraph frontPara && FrontMatterStyle(frontPara, mainPart) is { } front)
+            {
+                // pandoc's Author and Date paragraphs go to the title block, and its "Abstract" label isn't a section
+                // above the abstract (launch-bot #195, 18 Nov 2026).
+                ExtractTextAndFormatting(frontPara, out var frontText, out _);
+                frontText = frontText.Trim();
+                if (front == "author" && frontText.Length > 0) _frontAuthors.Add(frontText);
+                else if (front == "date" && frontText.Length > 0) _frontDate = frontText;
+                _pipeline?.AddNonParagraphTrace("Paragraph", frontText, 0, "FrontMatter:" + front);
+                continue;
+            }
             if (element is Paragraph para)
             {
                 // Paragraphs are traced by the pipeline's Evaluate method
@@ -897,7 +912,71 @@ public class DocxParser : IDocxParser
             }
         }
 
+        PairCaptions(elements);
         return elements;
+    }
+
+    private readonly List<string> _frontAuthors = [];
+    private string? _frontDate;
+
+    private string? FrontMatterStyle(Paragraph para, MainDocumentPart mainPart)
+    {
+        var styleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+        if (styleId is null) return null;
+        var name = ResolveStyleName(mainPart, styleId) ?? styleId;
+        foreach (var candidate in new[] { styleId, name })
+        {
+            if (string.Equals(candidate, "Author", StringComparison.OrdinalIgnoreCase)) return "author";
+            if (string.Equals(candidate, "Date", StringComparison.OrdinalIgnoreCase)) return "date";
+            if (string.Equals(candidate, "AbstractTitle", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, "Abstract Title", StringComparison.OrdinalIgnoreCase)) return "abstractTitle";
+        }
+        return null;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex TableCaptionText = new(
+        @"^\s*(Table|Tableau|Tabla|Tabelle)\s*\d+\s*[.:]\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex FigureCaptionText = new(
+        @"^\s*(Figure|Fig\.?|Figura|Abbildung|Abb\.)\s*\d+\s*[.:]\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// A caption paragraph next to its table or image is that float's caption, said once: the Word caption stayed a body
+    /// paragraph, so a figure's caption printed twice and "Figure 1: Figure 1. …", and a table had none (launch-bot #189,
+    /// #190, 18 Nov 2026). A table's caption is the paragraph before it (Word's and pandoc's place) or after it; an
+    /// image's, the paragraph after it. Caption style, or text starting "Table 3." / "Figure 2:".
+    /// </summary>
+    internal static void PairCaptions(List<ImportElement> elements)
+    {
+        static bool IsCaption(ImportElement? e, System.Text.RegularExpressions.Regex label) =>
+            e is ImportParagraph p && !string.IsNullOrWhiteSpace(p.Text)
+            && (p.Style == ParagraphStyle.Caption || label.IsMatch(p.Text));
+        static string Clean(string text, System.Text.RegularExpressions.Regex label) => label.Replace(text.Trim(), "", 1).Trim();
+
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (elements[i] is ImportTable table && string.IsNullOrWhiteSpace(table.Caption))
+            {
+                var before = i > 0 ? elements[i - 1] : null;
+                var after = i + 1 < elements.Count ? elements[i + 1] : null;
+                if (IsCaption(before, TableCaptionText))
+                {
+                    table.Caption = Clean(((ImportParagraph)before!).Text, TableCaptionText);
+                    elements.RemoveAt(i - 1);
+                    i--;
+                }
+                else if (IsCaption(after, TableCaptionText) && !FigureCaptionText.IsMatch(((ImportParagraph)after!).Text))
+                {
+                    table.Caption = Clean(((ImportParagraph)after).Text, TableCaptionText);
+                    elements.RemoveAt(i + 1);
+                }
+            }
+            else if (elements[i] is ImportImage image && i + 1 < elements.Count && IsCaption(elements[i + 1], FigureCaptionText)
+                     && !TableCaptionText.IsMatch(((ImportParagraph)elements[i + 1]).Text))
+            {
+                image.Caption = Clean(((ImportParagraph)elements[i + 1]).Text, FigureCaptionText);
+                elements.RemoveAt(i + 1);
+            }
+        }
     }
 
     private IEnumerable<ImportElement>? ParseElement(OpenXmlElement element, MainDocumentPart mainPart)
@@ -1456,6 +1535,32 @@ public class DocxParser : IDocxParser
         }
     }
 
+    /// <summary>
+    /// A vertical merge's first cell spans the cells marked <see cref="ImportTableCell.MergedAbove"/> under it, found by
+    /// grid column (gridSpan counted).
+    /// </summary>
+    internal static void CountRowSpans(List<List<ImportTableCell>> rows)
+    {
+        static int GridColumn(List<ImportTableCell> row, int index) => row.Take(index).Sum(c => Math.Max(1, c.ColSpan));
+        for (var r = 0; r < rows.Count; r++)
+        {
+            for (var c = 0; c < rows[r].Count; c++)
+            {
+                var cell = rows[r][c];
+                if (cell.MergedAbove) continue;
+                var col = GridColumn(rows[r], c);
+                var span = 1;
+                for (var below = r + 1; below < rows.Count; below++)
+                {
+                    var under = rows[below].Select((x, i) => (x, i)).FirstOrDefault(t => GridColumn(rows[below], t.i) == col).x;
+                    if (under is null || !under.MergedAbove) break;
+                    span++;
+                }
+                cell.RowSpan = span;
+            }
+        }
+    }
+
     private IEnumerable<ImportElement>? ParseTable(Table table, MainDocumentPart mainPart)
     {
         if (!_options.ExtractTables)
@@ -1519,18 +1624,17 @@ public class DocxParser : IDocxParser
                         importCell.ColSpan = (int)gridSpan.Value;
                     }
 
+                    // w:vMerge without a value continues the merge above (launch-bot #189: merges were lost).
                     var vMerge = cell.TableCellProperties?.VerticalMerge;
-                    if (vMerge != null && vMerge.Val?.Value == MergedCellValues.Restart)
-                    {
-                        // This is the start of a vertical merge
-                        importCell.RowSpan = 1; // Will need to count following cells
-                    }
+                    if (vMerge != null && vMerge.Val?.Value != MergedCellValues.Restart)
+                        importCell.MergedAbove = true;
 
                     importRow.Add(importCell);
                 }
 
                 importTable.Rows.Add(importRow);
             }
+            CountRowSpans(importTable.Rows);
 
             return [importTable];
         }

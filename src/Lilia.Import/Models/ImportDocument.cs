@@ -105,6 +105,13 @@ public class ImportMetadata
     /// <summary>The title the source shows (a Word file's Title-style paragraph, else its title property); null when none.</summary>
     public string? SourceTitle { get; set; }
 
+    /// <summary>
+    /// A Word file's Author and Date paragraphs (pandoc's styles), for the title block; null when it has none. They were
+    /// body text, and the PDF printed today's date (launch-bot #195, 18 Nov 2026). Several authors are joined by \and.
+    /// </summary>
+    public string? SourceAuthor { get; set; }
+    public string? SourceDate { get; set; }
+
     /// <summary>A Word file's page margins, as Lilia stores them ("1in", "2.5cm"); null when the source sets none.</summary>
     public string? MarginTop { get; set; }
     public string? MarginBottom { get; set; }

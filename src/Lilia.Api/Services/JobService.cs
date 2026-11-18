@@ -412,6 +412,7 @@ public class JobService : IJobService
 
                     // Build review blocks from intermediate elements using shared conversion
                     var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
+                    reviewBlocks = WithWordTitleBlock(reviewBlocks, title, importResult.IntermediateDocument?.Metadata);
 
                     // Report saving phase
                     await tracker.ReportSavingAsync(1, reviewBlocks.Count);
@@ -892,6 +893,28 @@ public class JobService : IJobService
     /// Shared method to convert ImportElement list into CreateReviewBlockDto list.
     /// Used by both DOCX and PDF import paths.
     /// </summary>
+    /// <summary>
+    /// A Word file's Author and Date paragraphs make a title block, first: they were body text, \author was empty and the
+    /// PDF printed today's date (launch-bot #195, 18 Nov 2026). No Date paragraph means no date (dateMode "none").
+    /// Nothing changes for a file without them.
+    /// </summary>
+    internal static List<CreateReviewBlockDto> WithWordTitleBlock(List<CreateReviewBlockDto> blocks, string title, Lilia.Import.Models.ImportMetadata? metadata)
+    {
+        if (metadata is null || (string.IsNullOrWhiteSpace(metadata.SourceAuthor) && string.IsNullOrWhiteSpace(metadata.SourceDate)))
+            return blocks;
+        var content = new Dictionary<string, object>
+        {
+            ["title"] = title,
+            ["author"] = metadata.SourceAuthor ?? "",
+            ["date"] = metadata.SourceDate ?? "",
+        };
+        if (string.IsNullOrWhiteSpace(metadata.SourceDate)) content["dateMode"] = "none";
+        var titleBlock = new CreateReviewBlockDto(
+            Id: Guid.NewGuid().ToString(), Type: "title", Content: JsonSerializer.SerializeToElement(content),
+            Confidence: 90, Warnings: null, SortOrder: 0, Depth: 0);
+        return new[] { titleBlock }.Concat(blocks).Select((b, i) => b with { SortOrder = i }).ToList();
+    }
+
     private static async Task<List<CreateReviewBlockDto>> ConvertElementsToReviewBlocksAsync(
         List<ImportElement> elements,
         ImportProgressTracker tracker)
@@ -977,8 +1000,9 @@ public class JobService : IJobService
                     Content: JsonSerializer.SerializeToElement(new
                     {
                         src = img.Data.Length > 0 ? $"data:{img.MimeType};base64,{Convert.ToBase64String(img.Data)}" : "",
-                        caption = img.AltText ?? "",
-                        alt = img.AltText ?? ""
+                        // The caption paragraph under the image, once (launch-bot #190); else the alt text.
+                        caption = Lilia.Import.Services.InlineMarkers.Apply(img.Caption ?? img.AltText ?? "", null),
+                        alt = img.AltText ?? img.Caption ?? ""
                     }),
                     Confidence: img.Data.Length > 0 ? 85 : 40,
                     Warnings: img.Data.Length == 0
@@ -1028,14 +1052,12 @@ public class JobService : IJobService
                     SortOrder: sortOrder++,
                     Depth: 0
                 ),
+                // A reference written as text stays a paragraph: a "bibliography" block prints only from BibTeX entries, so
+                // the list under "References" vanished from the PDF (launch-bot #193, 18 Nov 2026).
                 ImportBibliographyEntry bib => new CreateReviewBlockDto(
                     Id: Guid.NewGuid().ToString(),
-                    Type: "bibliography",
-                    Content: JsonSerializer.SerializeToElement(new
-                    {
-                        text = bib.Text,
-                        referenceLabel = bib.ReferenceLabel
-                    }),
+                    Type: "paragraph",
+                    Content: JsonSerializer.SerializeToElement(new { text = bib.Text }),
                     Confidence: 75,
                     Warnings: null,
                     SortOrder: sortOrder++,
@@ -1065,13 +1087,14 @@ public class JobService : IJobService
             // Accumulate list items to create a single list block
             else if (element is ImportListItem listItem)
             {
-                if (currentListItems.Any() && currentListIsOrdered != listItem.IsNumbered)
+                // A sub-list of the other kind stays in its list (launch-bot #194); only a top-level change starts a new one.
+                if (currentListItems.Any() && listItem.Level == 0 && currentListIsOrdered != listItem.IsNumbered)
                 {
                     reviewBlocks.Add(CreateReviewListBlock(currentListItems, currentListIsOrdered, sortOrder++));
                     currentListItems.Clear();
                 }
+                if (currentListItems.Count == 0 || listItem.Level == 0) currentListIsOrdered = listItem.IsNumbered;
                 currentListItems.Add(listItem);
-                currentListIsOrdered = listItem.IsNumbered;
             }
             else if (reviewBlock != null)
             {
@@ -1109,7 +1132,7 @@ public class JobService : IJobService
     /// <summary>
     /// Convert ImportTable to editor-expected format { headers: string[], rows: string[][] }
     /// </summary>
-    private static object ConvertTableToEditorFormat(Lilia.Import.Models.ImportTable table)
+    internal static object ConvertTableToEditorFormat(Lilia.Import.Models.ImportTable table)
     {
         if (table.Rows.Count == 0)
         {
@@ -1120,8 +1143,18 @@ public class JobService : IJobService
             };
         }
 
-        // Extract text from each cell
-        var allRows = table.Rows.Select(row => row.Select(cell => cell.Text).ToArray()).ToArray();
+        // Each cell with its bold and italic, and a merged cell as {content, colspan, rowspan} with the cells it covers left
+        // out, as the editor stores merges (launch-bot #189, 18 Nov 2026: merges and bold in cells were lost).
+        static object Cell(Lilia.Import.Models.ImportTableCell cell)
+        {
+            var text = Lilia.Import.Services.InlineMarkers.Apply(cell.Text, cell.Formatting);
+            return cell.ColSpan > 1 || cell.RowSpan > 1
+                ? new Dictionary<string, object> { ["content"] = text, ["colspan"] = Math.Max(1, cell.ColSpan), ["rowspan"] = Math.Max(1, cell.RowSpan) }
+                : text;
+        }
+        var allRows = table.Rows.Select(row => row.Where(c => !c.MergedAbove).Select(Cell).ToArray()).ToArray();
+        var colCount = table.Rows.Max(row => row.Sum(c => Math.Max(1, c.ColSpan)));
+        var caption = string.IsNullOrWhiteSpace(table.Caption) ? null : Lilia.Import.Services.InlineMarkers.Apply(table.Caption, null);
 
         if (table.HasHeaderRow && allRows.Length > 0)
         {
@@ -1132,18 +1165,53 @@ public class JobService : IJobService
             // Ensure at least one data row
             if (dataRows.Length == 0)
             {
-                dataRows = new[] { headers.Select(_ => "").ToArray() };
+                dataRows = new[] { Enumerable.Repeat((object)"", colCount).ToArray() };
             }
 
-            return new { headers, rows = dataRows };
+            return caption is null ? new { headers, rows = dataRows } : new { headers, rows = dataRows, caption };
         }
         else
         {
             // Generate column headers
-            var colCount = allRows[0].Length;
-            var headers = Enumerable.Range(1, colCount).Select(i => $"Column {i}").ToArray();
-            return new { headers, rows = allRows };
+            var headers = Enumerable.Range(1, colCount).Select(i => (object)$"Column {i}").ToArray();
+            return caption is null ? new { headers, rows = allRows } : new { headers, rows = allRows, caption };
         }
+    }
+
+    /// <summary>
+    /// A list's items with their levels: a deeper item is a child of the item before it, as the editor stores a nested
+    /// list ({text, children, childrenOrdered}). Word's w:ilvl was dropped, and sub-items came out flat (launch-bot #194,
+    /// 18 Nov 2026). An item without children stays a string.
+    /// </summary>
+    internal static List<object> NestListItems(IReadOnlyList<Lilia.Import.Models.ImportListItem> items)
+    {
+        var top = new List<Node>();
+        var stack = new List<(int Level, Node Node)>();
+        foreach (var li in items)
+        {
+            var node = new Node(Lilia.Import.Services.InlineMarkers.Apply(li.Text, li.Formatting), li.IsNumbered);
+            while (stack.Count > 0 && stack[^1].Level >= li.Level) stack.RemoveAt(stack.Count - 1);
+            if (stack.Count == 0) top.Add(node);
+            else
+            {
+                var parent = stack[^1].Node;
+                parent.ChildrenOrdered ??= li.IsNumbered;
+                parent.Children.Add(node);
+            }
+            stack.Add((li.Level, node));
+        }
+        return top.Select(n => n.ToJson()).ToList();
+    }
+
+    private sealed class Node(string text, bool ordered)
+    {
+        public string Text { get; } = text;
+        public bool Ordered { get; } = ordered;
+        public bool? ChildrenOrdered { get; set; }
+        public List<Node> Children { get; } = [];
+        public object ToJson() => Children.Count == 0
+            ? Text
+            : new Dictionary<string, object> { ["text"] = Text, ["children"] = Children.Select(c => c.ToJson()).ToList(), ["childrenOrdered"] = ChildrenOrdered ?? false };
     }
 
     /// <summary>
@@ -1154,11 +1222,10 @@ public class JobService : IJobService
         bool ordered,
         int sortOrder)
     {
-        var itemTexts = items.Select(li => Lilia.Import.Services.InlineMarkers.Apply(li.Text, li.Formatting)).ToArray();
         return new CreateReviewBlockDto(
             Id: Guid.NewGuid().ToString(),
             Type: "list",
-            Content: JsonSerializer.SerializeToElement(new { items = itemTexts, ordered }),
+            Content: JsonSerializer.SerializeToElement(new { items = NestListItems(items), ordered }),
             Confidence: 90,
             Warnings: null,
             SortOrder: sortOrder,

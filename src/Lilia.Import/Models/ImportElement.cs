@@ -315,6 +315,9 @@ public class ImportTableCell
     /// </summary>
     public int RowSpan { get; set; } = 1;
 
+    /// <summary>A cell under a vertical merge (w:vMerge continue): it belongs to the cell above and isn't written.</summary>
+    public bool MergedAbove { get; set; }
+
     /// <summary>The <c>\tnote</c> mark the cell carried, if any.</summary>
     public string? NoteMark { get; set; }
 }
