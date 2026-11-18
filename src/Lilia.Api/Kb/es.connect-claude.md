@@ -39,10 +39,11 @@ Después ejecuta `/mcp` en Claude Code, elige **lilia** e inicia sesión en el n
 - Qué planes de ChatGPT pueden añadir un servidor personalizado, y escribir con él, depende del plan: consulta la ayuda de OpenAI. ChatGPT te pide confirmar cada cambio.
 
 ## Grok {#grok}
-1. En un chat con Grok, envía: *Add this MCP server: https://editor.liliaeditor.com/api/mcp*
-2. Confirma cuando Grok pida añadir el servidor.
-3. Cuando aparezca la tarjeta de conexión, inicia sesión en Lilia en el navegador y haz clic en **Permitir**. Las herramientas de Lilia funcionan desde tu siguiente mensaje.
-- Comprobado en la aplicación de Grok el 18 de noviembre de 2026. Que grok.com o X ofrezcan lo mismo depende de xAI: consulta su ayuda.
+1. Abre **grok.com/connectors**, haz clic en **New Connector** y luego en **Custom**.
+2. Pega la dirección `https://editor.liliaeditor.com/api/mcp` y continúa.
+3. Se abre Lilia: inicia sesión (o crea una cuenta gratuita) y haz clic en **Permitir**.
+- En las aplicaciones de Grok que lo permiten, también puedes enviar a Grok en un chat: *Add this MCP server: https://editor.liliaeditor.com/api/mcp*
+- Con Grok Business o Enterprise, un administrador del equipo añade primero el conector en la consola de xAI. La guía de xAI: docs.x.ai/grok/connectors.
 
 ## Codex (la línea de comandos de OpenAI) {#codex}
 ```
