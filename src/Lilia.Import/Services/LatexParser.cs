@@ -1677,11 +1677,43 @@ public class LatexParser : ILatexParser
 
     // Size and series switches in a title are layout: "\LARGE \bf Residual-Guided…" and IEEE's
     // "{\footnotesize \textsuperscript{*}Note: …}" printed as text (launch-bot #226, 18 Nov 2026).
+    // The group a switch opened goes with it: {\footnotesize \textsuperscript{*}Note…} printed its braces, and the
+    // superscript stays a superscript (launch-bot #226 retest, 19 Nov 2026).
+    private static readonly Regex TypeSwitch = new(
+        @"\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|bf|it|rm|sf|tt|sc|bfseries|itshape|mdseries|normalfont)\b\s*",
+        RegexOptions.Compiled);
+
     private static string WithoutTypeSwitches(string text)
     {
-        text = Regex.Replace(text, @"\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|bf|it|rm|sf|tt|sc|bfseries|itshape|mdseries|normalfont)\b\s*", "");
-        text = Regex.Replace(text, @"\\textsuperscript\s*\{([^{}]*)\}", "$1");
-        return text;
+        var sb = new System.Text.StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '{' && (i == 0 || text[i - 1] != '\\')
+                && TypeSwitch.Match(text, i + 1) is { Success: true } sw && text[(i + 1)..sw.Index].Trim().Length == 0)
+            {
+                var close = MatchingBrace(text, i);
+                if (close > i)
+                {
+                    sb.Append(text[(sw.Index + sw.Length)..close]);
+                    i = close;
+                    continue;
+                }
+            }
+            sb.Append(text[i]);
+        }
+        return TypeSwitch.Replace(sb.ToString(), "");
+
+        static int MatchingBrace(string s, int open)
+        {
+            var depth = 0;
+            for (var k = open; k < s.Length; k++)
+            {
+                if (s[k] == '\\') { k++; continue; }
+                if (s[k] == '{') depth++;
+                else if (s[k] == '}' && --depth == 0) return k;
+            }
+            return -1;
+        }
     }
 
     private static string StripInlineCommandsForPlainText(string text)
@@ -3426,40 +3458,76 @@ public class LatexParser : ILatexParser
     private const char VerbOpen = '\uE0F2';
     private const char VerbClose = '\uE0F3';
     private static readonly Regex VerbToken = new("\uE0F2(\\d+)\uE0F3", RegexOptions.Compiled);
+    private const char BodyOpen = '\uE0F4';
+    private const char BodyClose = '\uE0F5';
+    private static readonly Regex BodyToken = new("\uE0F4(\\d+)\uE0F5", RegexOptions.Compiled);
+    private static readonly Regex VerbatimHead = new(@"^\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted)\}(?:\[[^\]\n]*\])?", RegexOptions.Compiled);
 
-    /// <summary>Every \verb|…| outside verbatim environments swapped for a placeholder; the stash holds its code span.</summary>
+    /// <summary>Every \verb|…| outside verbatim environments swapped for a placeholder (the stash holds its code span), and
+    /// every verbatim or listing body (the stash holds its lines).</summary>
     internal static string StashVerb(string content, List<string> stash)
     {
-        if (content.IndexOf(@"\verb", StringComparison.Ordinal) < 0) return content;
+        if (content.IndexOf(@"\verb", StringComparison.Ordinal) < 0 && !VerbatimRegion.IsMatch(content)) return content;
         var sb = new System.Text.StringBuilder(content.Length);
         var last = 0;
         foreach (Match region in VerbatimRegion.Matches(content))
         {
             sb.Append(Stash(content[last..region.Index]));
-            sb.Append(region.Value);
+            sb.Append(Body(region.Value));
             last = region.Index + region.Length;
         }
         sb.Append(Stash(content[last..]));
         return sb.ToString();
 
+        // One mark each side, never two: two backticks are TeX's opening quote, and ``\verb|x|'' paired the wrong marks. A
+        // backtick inside the code is printed as a left quote, which the code span can hold (launch-bot #222, 19 Nov 2026).
         string Stash(string text) => VerbCommand.Replace(text, m =>
         {
-            var code = m.Groups[2].Value;
-            stash.Add(code.Contains('`') ? "``" + code + "``" : "`" + code + "`");
+            var code = m.Groups[2].Value.Replace('`', '\u2018');
+            if (code.Length == 0) return "";
+            stash.Add("`" + code + "`");
             return $"{VerbOpen}{stash.Count - 1}{VerbClose}";
         });
+
+        // A verbatim or listing body is set aside too, its lines as typed: what reads the preamble and strips \documentclass,
+        // \title, \author, \renewcommand and \bibliographystyle from the body emptied six of ACM's eleven verbatim blocks
+        // (launch-bot #222, 19 Nov 2026). The \begin line and the line breaks around the body stay for the parser.
+        string Body(string region)
+        {
+            var head = VerbatimHead.Match(region);
+            if (!head.Success) return region;
+            var start = head.Length;
+            if (head.Groups[1].Value == "minted" && Regex.Match(region[start..], @"^\{[^}\n]*\}") is { Success: true } language)
+                start += language.Length;
+            var end = region.LastIndexOf(@"\end{", StringComparison.Ordinal);
+            var firstBreak = region.IndexOf('\n', start);
+            if (firstBreak < 0 || firstBreak >= end || region[start..firstBreak].Trim().Length > 0) return region;
+            var lastBreak = region.LastIndexOf('\n', end - 1);
+            if (lastBreak <= firstBreak || region[(lastBreak + 1)..end].Trim().Length > 0) return region;
+            var body = region[(firstBreak + 1)..lastBreak].TrimEnd('\r');
+            if (body.Trim().Length == 0) return region;
+            stash.Add(body);
+            return region[..(firstBreak + 1)] + $"{BodyOpen}{stash.Count - 1}{BodyClose}" + region[lastBreak..];
+        }
     }
 
     /// <summary>Every \verb placeholder back in the text it sat in, as its code span.</summary>
     private static void RestoreVerbInElements(ImportDocument document, IReadOnlyList<string> stash)
     {
-        string Restore(string v) => VerbToken.Replace(v, m => int.TryParse(m.Groups[1].Value, out var n) && n < stash.Count ? stash[n] : m.Value);
+        string Restore(string v)
+        {
+            // TeX's opening quote right before a code span is a typographic one, so the span's mark stays single.
+            v = v.Replace("``" + VerbOpen, "\u201C" + VerbOpen);
+            v = Regex.Replace(v, "(?<!`)`(?=\uE0F2)", "\u2018");
+            v = VerbToken.Replace(v, m => int.TryParse(m.Groups[1].Value, out var n) && n < stash.Count ? stash[n] : m.Value);
+            return BodyToken.Replace(v, m => int.TryParse(m.Groups[1].Value, out var n) && n < stash.Count ? stash[n] : m.Value);
+        }
         void Fix(object target)
         {
             foreach (var prop in target.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
             {
                 if (prop.PropertyType != typeof(string) || !prop.CanRead || !prop.CanWrite || prop.GetIndexParameters().Length > 0) continue;
-                if (prop.GetValue(target) is string v && v.IndexOf(VerbOpen) >= 0) prop.SetValue(target, Restore(v));
+                if (prop.GetValue(target) is string v && (v.IndexOf(VerbOpen) >= 0 || v.IndexOf(BodyOpen) >= 0)) prop.SetValue(target, Restore(v));
             }
         }
         foreach (var element in document.Elements)

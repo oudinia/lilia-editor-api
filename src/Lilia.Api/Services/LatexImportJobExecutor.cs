@@ -331,10 +331,10 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         return content;
     }
 
+    // The name is the title's text: "for\\Risk-Aware", "\thanks{Funding…}" and "{*Note…}" were in it (launch-bot #226
+    // retest, 19 Nov 2026).
     internal static string DocumentName(string latexTitle) =>
-        Lilia.Engines.TitleAuthors.Parse(latexTitle) is { Count: > 0 } parsed
-            ? string.Join(" ", new[] { parsed[0].Name }.Concat(parsed[0].Lines)).Trim()
-            : latexTitle.Trim();
+        Lilia.Engines.LatexText.Plain(latexTitle) is { Length: > 0 } plain ? plain : latexTitle.Trim();
 
     /// <summary>
     /// The title block a LaTeX preamble implies, or null if it implies none.
