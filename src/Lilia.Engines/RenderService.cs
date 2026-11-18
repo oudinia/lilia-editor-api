@@ -1314,7 +1314,7 @@ public partial class RenderService : IRenderService
             latex.Append(frontPre);
             latex.Append(frontBody);
             latex.AppendLine();
-            return AppendBodyAndBibliography(doc, latex, blocks, bodyBlocks, bodyRendered, usesNatbib);
+            return AppendBodyAndBibliography(doc, latex, blocks, bodyBlocks, bodyRendered, usesNatbib, language.Spec is { Rtl: true });
         }
         latex.AppendLine($@"\title{{{FormatTitleMetaLatex(TitleWithoutAnd(titleText))}}}");
         // Always written, empty when there is none — as the export does.
@@ -1336,7 +1336,7 @@ public partial class RenderService : IRenderService
         if (!CvHeader.ReplacesTitle(blocks)) latex.AppendLine(@"\maketitle");
         latex.AppendLine();
 
-        return AppendBodyAndBibliography(doc, latex, blocks, blocks, renderedBlocks, usesNatbib);
+        return AppendBodyAndBibliography(doc, latex, blocks, blocks, renderedBlocks, usesNatbib, language.Spec is { Rtl: true });
     }
 
     /// <summary>
@@ -1345,7 +1345,7 @@ public partial class RenderService : IRenderService
     /// <paramref name="bodyRendered"/> what the body prints (a publisher class takes the abstract out).
     /// </summary>
     private string AppendBodyAndBibliography(Document doc, StringBuilder latex, List<Block> blocks,
-        IReadOnlyList<Block> bodyBlocks, IReadOnlyList<string> bodyRendered, bool usesNatbib)
+        IReadOnlyList<Block> bodyBlocks, IReadOnlyList<string> bodyRendered, bool usesNatbib, bool rtl = false)
     {
 
         // Multi-column wrapper. Only emitted for balanced multicol docs;
@@ -1396,6 +1396,11 @@ public partial class RenderService : IRenderService
         if (tableEntries.Count > 0 || textEntries.Count > 0)
         {
             latex.AppendLine();
+            // In an Arabic or Hebrew document, the Latin-script references are set left to right (18 Nov 2026, launch-bot #154).
+            if (rtl)
+                latex.Append(DocumentLanguage.LatinReferencesLine(
+                    textEntries.Select(t => (LabelKey.Safe(t.Key), t.Text))
+                        .Concat(tableEntries.Select(e => (e.CiteKey, DocumentLanguage.ReferenceText(e))))));
             latex.AppendLine(RenderBibliographyToLatex(tableEntries, usesNatbib, textEntries));
         }
 
@@ -3483,6 +3488,10 @@ public partial class RenderService : IRenderService
         // then any leftover straight pairs (e.g. pasted from elsewhere).
         result = result.Replace("“", "``").Replace("”", "''");
         result = result.Replace("‘", "`").Replace("’", "'");
+        // A straight " after an opening `` closes that quote: ``goes down") and ``goes up") had their two " paired with
+        // each other, so the first became a second opening quote, "goes down" printed with two opening marks
+        // (18 Nov 2026, launch-bot #163). Only when no '' or `` comes between them.
+        result = Regex.Replace(result, "(?<!`)``((?:\\\\\"|(?!''|``)[^\"\\n])*?)(?<!\\\\)\"", "``$1''");
         // A `\"` is an umlaut (M\"obius), not a quote: neither mark of a pair may follow a backslash.
         result = Regex.Replace(result, "(?<!\\\\)\"((?:\\\\\"|[^\"\\n])+?)(?<!\\\\)\"", "``$1''");
         // 'single' quotes too: the opening mark was a closing one (MCP-32). Only a pair that starts

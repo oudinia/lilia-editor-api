@@ -98,6 +98,30 @@ public class WordLanguageTests
         SchemaErrors(bytes).Should().BeEmpty();
     }
 
+    // launch-bot #154/#155 (18 Nov 2026): English references in an Arabic document were right-to-left paragraphs, so
+    // Word printed "… Codes. [1]" and the full stop at the wrong end.
+    [Fact]
+    public async Task An_arabic_documents_english_reference_stays_left_to_right()
+    {
+        var doc = Doc("ar", Paragraph("هذه فقرة عربية."));
+        doc.Bibliography =
+        [
+            new ExportBibliographyEntry { CiteKey = "h", Number = 1, Fields = new() { ["author"] = "D. Huffman", ["title"] = "A Method for the Construction of Minimum-Redundancy Codes", ["year"] = "1952" } },
+            new ExportBibliographyEntry { CiteKey = "a", Number = 2, Fields = new() { ["author"] = "مؤلف", ["title"] = "عنوان", ["year"] = "2020" } },
+        ];
+
+        var bytes = await new DocxExportService().ExportAsync(doc);
+        var body = Part(bytes, "word/document.xml").Descendants(W + "body").Single();
+
+        var english = body.Elements(W + "p").Single(p => Text(p).Contains("Huffman"));
+        english.Descendants(W + "bidi").Should().BeEmpty();
+        english.Descendants(W + "rtl").Should().BeEmpty();
+        var arabic = body.Elements(W + "p").Single(p => Text(p).Contains("عنوان"));
+        arabic.Element(W + "pPr")!.Element(W + "bidi").Should().NotBeNull("an Arabic reference still reads right to left");
+        body.Elements(W + "p").Single(p => Text(p).Contains("فقرة")).Element(W + "pPr")!.Element(W + "bidi").Should().NotBeNull();
+        SchemaErrors(bytes).Should().BeEmpty();
+    }
+
     [Fact]
     public async Task An_english_document_has_no_right_to_left_marks()
     {

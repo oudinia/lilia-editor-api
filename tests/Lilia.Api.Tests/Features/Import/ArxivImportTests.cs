@@ -207,4 +207,50 @@ public class ArxivImportTests
         blocks.Should().Contain(b => b.Type == "theorem").And.Contain(b => b.Type == "equation");
         blocks.Should().NotContain(b => Text(b.Content).Contains("appendix"));
     }
+
+    // launch-bot #162 (18 Nov 2026): a \label inside an equation (or a minipage figure) in a proof was given to the
+    // proof, leaving a whitespace-only line in the maths ("Missing $ inserted") and \eqref pointing at the proof.
+    [Fact]
+    public async Task A_label_inside_an_equation_in_a_proof_stays_with_the_equation()
+    {
+        var (blocks, _) = await ImportBody("""
+            \begin{proof}
+            We define
+            \begin{equation}
+            	\label{eq:w}
+            	w = 1
+            \end{equation}
+            and use \eqref{eq:w}.
+            \end{proof}
+            """);
+
+        var proof = blocks.Should().ContainSingle(b => b.Type == "theorem").Subject.Content;
+        Text(proof, "label").Should().BeEmpty();
+        Text(proof).Should().Contain("\\begin{equation}\n\t\\label{eq:w}\n\tw = 1\n\\end{equation}");
+    }
+
+    [Fact]
+    public async Task A_label_in_a_minipage_in_a_proof_is_not_the_proofs()
+    {
+        var (blocks, _) = await ImportBody("""
+            \begin{proof}
+            See below.
+            \begin{minipage}{0.4\textwidth}
+            \captionof{figure}{A caption.}\label{fig:p}
+            \end{minipage}
+            \end{proof}
+            """);
+
+        Text(blocks.Should().ContainSingle(b => b.Type == "theorem").Subject.Content, "label").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_theorems_own_label_is_still_its_label_and_leaves_no_blank_line()
+    {
+        var (blocks, _) = await ImportBody("\\begin{lemma}\nFirst line.\n\\label{lem:a}\nSecond line, $x$.\n\\end{lemma}");
+
+        var lemma = blocks.Should().ContainSingle(b => b.Type == "theorem").Subject.Content;
+        Text(lemma, "label").Should().Be("lem:a");
+        Text(lemma).Should().Be("First line.\nSecond line, $x$.");
+    }
 }

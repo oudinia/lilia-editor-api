@@ -352,6 +352,15 @@ public class LaTeXExportService : ILaTeXExportService
     private bool _tagged;
 
     /// <summary>
+    /// In an Arabic or Hebrew document, the keys of the Latin-script references, which are set left to right
+    /// (DocumentLanguage.RtlLatinReferences; 18 Nov 2026, launch-bot #154). Empty otherwise.
+    /// </summary>
+    private static string LatinReferencesLine(Document doc, List<BibliographyEntry> bibEntries) =>
+        DocumentLanguage.PlanFor(doc, BuildImportedPackageLines(doc), LatexEngine.Pdflatex, false).Spec is { Rtl: true }
+            ? DocumentLanguage.LatinReferencesLine(bibEntries.Select(e => (e.CiteKey, DocumentLanguage.ReferenceText(e))))
+            : "";
+
+    /// <summary>
     /// References written as text in a bibliography block (<c>@cite[key] Author - Title</c>), as
     /// <c>@misc</c> entries in the .bib beside the document's own. The check printed them; the
     /// export printed nothing and every citation of them was [?] (MCP-04, run 2's MCP-76).
@@ -436,6 +445,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine();
             sb.AppendLine("% Bibliography");
+            sb.Append(LatinReferencesLine(doc, bibEntries));
             sb.AppendLine($@"\bibliographystyle{{{PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             sb.AppendLine(@"\bibliography{references}");
         }
@@ -505,6 +515,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
+            main.Append(LatinReferencesLine(doc, bibEntries));
             main.AppendLine($@"\bibliographystyle{{{PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }
@@ -586,6 +597,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             main.AppendLine();
             main.AppendLine("% Bibliography");
+            main.Append(LatinReferencesLine(doc, bibEntries));
             main.AppendLine($@"\bibliographystyle{{{PublisherProfiles.BibliographyStyleFor(doc.PublisherProfile, LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) ?? BibStyleName(options.BibliographyStyle, usesNatbib)}}}");
             main.AppendLine(@"\bibliography{references}");
         }

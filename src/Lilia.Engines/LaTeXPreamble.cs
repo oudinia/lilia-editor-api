@@ -169,6 +169,11 @@ public static partial class LaTeXPreamble
 
     private static readonly Regex CustomRenewCommand = new(@"\\renewcommand\*?\s*\{?\s*\\([A-Za-z]+)\s*\}?", RegexOptions.Compiled);
 
+    // A whole line using a command only natbib defines, its braces balanced on the line (launch-bot #161, 18 Nov 2026).
+    private static readonly Regex NatbibOnlyLine = new(
+        @"^[ \t]*(?<cmd>(?=[^\r\n%]*\\(?:bibsep|bibhang|bibpunct|setcitestyle|citestyle|defcitealias)(?![A-Za-z]))(?:\\%|[^{}\r\n%]|\{(?:[^{}\r\n]|\{[^{}\r\n]*\})*\})+?)[ \t]*(?<comment>%[^\r\n]*)?\r?$",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
     private static readonly Regex CustomUsePackage = new(
         @"\\usepackage\s*(\[[^\]]*\])?\s*\{([^}]*)\}", RegexOptions.Compiled);
 
@@ -187,6 +192,11 @@ public static partial class LaTeXPreamble
         // A \newtheorem of a kind Lilia declares stops the compile ("already defined"): left out.
         custom = CustomNewTheorem.Replace(custom, m => KnownTheoremEnvironments.Contains(m.Groups[1].Value)
             ? $"% [lilia] left out \\newtheorem{{{m.Groups[1].Value}}}: Lilia declares it." : m.Value);
+        // A natbib-only setting (\setlength{\bibsep}, \bibpunct, \setcitestyle…) applies only when natbib is loaded: an
+        // imported paper's natbib is left out (the export loads it for \citep and \citet), and its \setlength{\bibsep}
+        // stopped the compile, "Undefined control sequence" (18 Nov 2026, launch-bot #161).
+        custom = NatbibOnlyLine.Replace(custom, m => $"\\ifcsname ver@natbib.sty\\endcsname{m.Groups["cmd"].Value}\\fi"
+            + (m.Groups["comment"].Success ? " " + m.Groups["comment"].Value : ""));
         return CustomUsePackage.Replace(custom.Trim(), m =>
         {
             var names = m.Groups[2].Value.Split(',').Select(n => n.Trim()).Where(n => n.Length > 0).ToList();

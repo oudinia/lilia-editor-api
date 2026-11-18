@@ -1107,6 +1107,13 @@ public class LatexParser : ILatexParser
     private static readonly Regex SubfigureEnv = new(
         @"\\begin\{subfigure\}(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}([\s\S]*?)\\end\{subfigure\}", RegexOptions.Compiled);
     private static readonly Regex LabelCommand = new(@"\\label\{([^}]+)\}", RegexOptions.Compiled);
+
+    private static readonly Regex BeginOrEnd = new(@"\\(begin|end)\s*\{[^}]*\}", RegexOptions.Compiled);
+
+    /// <summary>How many environments are open at <paramref name="index"/> of <paramref name="text"/> (launch-bot #162, 18 Nov 2026).</summary>
+    private static int EnvironmentDepth(string text, int index) =>
+        BeginOrEnd.Matches(text[..index]).Sum(m => m.Groups[1].Value == "begin" ? 1 : -1);
+
     private static readonly Regex IncludeGraphics = new(@"\\includegraphics\*?(?:\[([^\]]*)\])?\{([^}]+)\}", RegexOptions.Compiled);
 
     /// <summary>
@@ -2571,12 +2578,22 @@ public class LatexParser : ILatexParser
                             ? firstMatch.match.Groups[2].Value.Trim('[', ']')
                             : null;
                         var body = firstMatch.match.Groups[3].Value.Trim();
-                        var labelExtract = Regex.Match(body, @"\\label\{([^}]+)\}");
+                        // The theorem's own label is one outside any environment in it: a \label in an equation or a
+                        // minipage inside a proof was moved to the proof, leaving a whitespace-only line in the maths
+                        // ("Missing $ inserted") and \eqref pointing at the proof (18 Nov 2026, launch-bot #162). Taken
+                        // out with its line when it stands alone, so no blank line (a paragraph break) is left behind.
+                        var labelExtract = Regex.Matches(body, @"\\label\{([^}]+)\}")
+                            .FirstOrDefault(m => EnvironmentDepth(body, m.Index) == 0);
                         string? label = null;
-                        if (labelExtract.Success)
+                        if (labelExtract is not null)
                         {
                             label = labelExtract.Groups[1].Value;
-                            body = body.Replace(labelExtract.Value, "").Trim();
+                            var lineStart = body.LastIndexOf('\n', Math.Max(0, labelExtract.Index - 1)) + 1;
+                            var lineEnd = body.IndexOf('\n', labelExtract.Index + labelExtract.Length);
+                            var line = body[lineStart..(lineEnd < 0 ? body.Length : lineEnd)];
+                            body = line.Trim() == labelExtract.Value
+                                ? (body[..lineStart] + (lineEnd < 0 ? "" : body[(lineEnd + 1)..])).Trim()
+                                : body.Remove(labelExtract.Index, labelExtract.Length).Trim();
                         }
                         document.Elements.Add(new ImportTheorem
                         {
