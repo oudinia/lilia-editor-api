@@ -13,7 +13,7 @@ keywords: plan gratis gratuito pro precio límite 3 documentos tres documentos i
 ## Pasos {#steps}
 1. Ver tu plan: **Ajustes → Plan**. Muestra **Documentos**, **Importaciones este mes** y **Preguntar a Lilia este mes** (como parte del mes, con el día en que se renueva).
 2. El plan **Free** (gratuito) incluye 3 documentos de tu propiedad, 3 importaciones al mes, todos los formatos de exportación, la comprobación de compilación y una pequeña asignación mensual de Preguntar a Lilia. Compartir para leer y comentar es gratis.
-3. **Pro** (10,99 $ al mes) no tiene límite de documentos ni de importaciones, tiene una asignación de Preguntar a Lilia más amplia y coautores que editan.
+3. **Pro** (10,99 € al mes, o 99 € al año) no tiene límite de documentos ni de importaciones, tiene una asignación de Preguntar a Lilia más amplia y coautores que editan.
 4. Al llegar al límite, empezar un 4.º documento (Nuevo, una plantilla, una copia, una importación) muestra **Todos los documentos de tu plan están en uso**. No se crea nada. **Abrir mis documentos** para mover a la papelera uno que ya no necesites y empezar el nuevo.
 5. Cuando el mes de Preguntar a Lilia está usado, su cuadro indica el día en que se renueva. **Validar** (**Revisar el documento** en un teléfono) sigue funcionando. Con Free, también ofrece seguir con tu propia IA: **Conectar Claude** (el conector de Lilia) o **Descargar la habilidad** (la habilidad de redacción, para cualquier chat de IA).
 

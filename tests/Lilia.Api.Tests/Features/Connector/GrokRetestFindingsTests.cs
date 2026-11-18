@@ -254,8 +254,18 @@ public class GrokRetestFindingsTests : IDisposable
     public void The_PDF_carries_its_title_and_language()
     {
         var doc = new Document { Title = "Un article", Language = "fr", Blocks = [] };
-        RenderService.PdfProperties(doc, "Un article").Should().Contain("pdftitle={Un article}").And.Contain("pdflang={fr}");
+        var props = RenderService.PdfProperties(doc, "Un article");
+        props.Should().Contain("pdftitle={Un article}").And.Contain(@"\LiliaPdfLang{fr}")
+            .And.NotContain("pdflang", "hyperref's pdflang after it loaded warned on every check and wrote no /Lang (#158 retest)");
     }
+
+    // #152 retest: R\&D in a cell was split into two cells, "R" and "D".
+    [Theory]
+    [InlineData(@"Model & R\&D (\%)", new[] { "Model ", @" R\&D (\%)" })]
+    [InlineData(@"\multicolumn{2}{c}{A & B} & C", new[] { @"\multicolumn{2}{c}{A & B} ", " C" })]
+    [InlineData("a&b&c", new[] { "a", "b", "c" })]
+    public void A_table_row_splits_on_its_own_ampersands_only(string row, string[] cells) =>
+        Lilia.Import.Services.LatexParser.SplitCells(row).Should().Equal(cells);
 
     // ── #128: Markdown headings after the title ──────────────────────────
 

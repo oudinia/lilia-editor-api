@@ -271,7 +271,7 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone
 - **Free**: 3 documents the author owns (documents in the Trash and documents shared with them don't
   count), 3 imports a month, every export format and page, the compile check, sharing to read and
   comment, and a small monthly Ask Lilia allowance.
-- **Pro** ($10.99 a month): no document or import limit, a larger Ask Lilia allowance, co-authors who
+- **Pro** (€10.99 a month, or €99 a year): no document or import limit, a larger Ask Lilia allowance, co-authors who
   edit. Buying Pro isn't open yet: say so if asked how to upgrade.
 - At the limit, starting a 4th document (New, a template, a copy, an import) shows **Your plan's
   documents are all in use**; nothing is created; **Open my documents** to move one to the Trash.

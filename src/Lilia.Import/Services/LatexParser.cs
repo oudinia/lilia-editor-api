@@ -11,6 +11,28 @@ namespace Lilia.Import.Services;
 /// </summary>
 public class LatexParser : ILatexParser
 {
+    /// <summary>A tabular row's cells: split at each &amp; that is neither escaped (\&amp;) nor inside braces.</summary>
+    internal static string[] SplitCells(string row)
+    {
+        var cells = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < row.Length; i++)
+        {
+            var c = row[i];
+            if (c == '\\') { i++; continue; }
+            if (c == '{') depth++;
+            else if (c == '}' && depth > 0) depth--;
+            else if (c == '&' && depth == 0)
+            {
+                cells.Add(row[start..i]);
+                start = i + 1;
+            }
+        }
+        cells.Add(row[start..]);
+        return cells.ToArray();
+    }
+
     private static readonly string[] SupportedExtensions = [".tex"];
 
     // Router that resolves (name, kind) → parser-handler decision via
@@ -3365,7 +3387,9 @@ public class LatexParser : ILatexParser
             if (string.IsNullOrEmpty(stripped))
                 continue;
 
-            var cells = stripped.Split('&');
+            // On the row's own & only: \& is an ampersand, and one inside braces belongs to a command (R\&D was two
+            // cells, "R" and "D": launch-bot #152, 18 Nov 2026).
+            var cells = SplitCells(stripped);
             var row = new List<ImportTableCell>();
 
             foreach (var cell in cells)
