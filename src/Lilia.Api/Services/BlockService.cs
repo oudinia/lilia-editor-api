@@ -315,6 +315,90 @@ public class BlockService : IBlockService
             newVersion);
     }
 
+    /// <summary>
+    /// New blocks after <paramref name="afterBlockId"/> (null: at the end), every other block left as it is
+    /// (launch-bot #148, 18 Nov 2026). A paste sent the whole document through <see cref="BatchUpdateBlocksAsync"/>
+    /// with every block's sort order rewritten, so each paste on a 600-block document updated 600 rows. Now an
+    /// insert at the end touches no existing row, one in a gap fits in it, and otherwise only the blocks after the
+    /// insert are shifted. Existing sort orders with ties fall back to the old renumbering, so the order is never
+    /// guessed. Same version guard, normalisation, title sync and cache invalidation as the batch.
+    /// </summary>
+    public async Task<BatchUpdateResultDto> InsertBlocksAsync(Guid documentId, Guid? afterBlockId, List<BatchUpdateBlockDto> newBlocks, int? expectedVersion = null)
+    {
+        var all = await _context.Blocks.Where(b => b.DocumentId == documentId).ToListAsync();
+        var ordered = all.OrderBy(b => b.SortOrder).ToList();
+        var at = ordered.Count;
+        if (afterBlockId is { } after)
+        {
+            var i = ordered.FindIndex(b => b.Id == after);
+            if (i < 0) throw new KeyNotFoundException($"No block {after} in document {documentId}");
+            at = i + 1;
+        }
+
+        var now = DateTime.UtcNow;
+        var count = newBlocks.Count;
+        var ties = ordered.Zip(ordered.Skip(1)).Any(p => p.First.SortOrder == p.Second.SortOrder);
+        int first;
+        if (ties)
+        {
+            // The old way: everything renumbered 0…n around the insert.
+            for (var k = 0; k < ordered.Count; k++)
+            {
+                var sort = k < at ? k : k + count;
+                if (ordered[k].SortOrder != sort) { ordered[k].SortOrder = sort; ordered[k].UpdatedAt = now; }
+            }
+            first = at;
+        }
+        else
+        {
+            first = at == 0 ? Math.Max(0, ordered.Count == 0 ? 0 : ordered[0].SortOrder - count) : ordered[at - 1].SortOrder + 1;
+            if (at < ordered.Count && ordered[at].SortOrder < first + count)
+            {
+                // No room before the next block: it and the ones after it move down by what is missing, in order.
+                var shift = first + count - ordered[at].SortOrder;
+                for (var k = at; k < ordered.Count; k++) { ordered[k].SortOrder += shift; ordered[k].UpdatedAt = now; }
+            }
+        }
+
+        var macros = await GetDocumentMacrosAsync(documentId, newBlocks.Any(b => IsEquationType(b.Type)));
+        var created = new List<Block>();
+        for (var k = 0; k < count; k++)
+        {
+            var dto = newBlocks[k];
+            var type = dto.Type ?? "paragraph";
+            var block = new Block
+            {
+                Id = dto.Id,
+                DocumentId = documentId,
+                Type = type,
+                Content = dto.Content.HasValue ? BlockContentNormaliser.Normalise(type, dto.Content.Value, macros) : JsonDocument.Parse("{}"),
+                SortOrder = first + k,
+                ParentId = dto.ParentId,
+                Depth = dto.Depth ?? 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            _context.Blocks.Add(block);
+            created.Add(block);
+        }
+
+        var resultBlocks = ordered.Take(at).Concat(created).Concat(ordered.Skip(at)).ToList();
+        var document = await FreshDocumentAsync(documentId);
+        if (document != null)
+        {
+            document.UpdatedAt = now;
+            document.LastAutoSavedAt = now;
+            document.Version += 1;
+            if (expectedVersion.HasValue)
+                _context.Entry(document).Property(d => d.Version).OriginalValue = expectedVersion.Value;
+            SyncDocumentTitleFromTitleBlock(document, resultBlocks);
+        }
+
+        await _context.SaveChangesAsync();
+        await _previewCacheService.InvalidateCacheAsync(documentId);
+        return new BatchUpdateResultDto(resultBlocks.Select(MapToDto).ToList(), document?.Version ?? 0);
+    }
+
     public async Task<List<BlockDto>> ReorderBlocksAsync(Guid documentId, List<Guid> blockIds)
     {
         var blocks = await _context.Blocks

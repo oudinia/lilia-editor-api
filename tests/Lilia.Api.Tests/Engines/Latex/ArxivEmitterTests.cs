@@ -99,6 +99,46 @@ public class ArxivEmitterTests
         body.Should().Contain("\\author{Ann Author}\n\\thanks{Funded by X.}\n").And.Contain(@"\affiliation{Example University}");
     }
 
+    // launch-bot #146 (18 Nov 2026): an imported appendix is the bare Appendix block, which prints \appendix alone, so
+    // the sections after it are A, B.
+    [Fact]
+    public void An_imported_appendix_block_prints_appendix_before_its_sections()
+    {
+        var tex = Render().RenderToLatex(Doc(null,
+            B("heading", new { text = "Main", level = 1 }),
+            B("backMatter", new { subType = "appendix", text = "" }),
+            B("heading", new { text = "First", level = 1 })));
+
+        var main = tex.IndexOf(@"\section{Main}", StringComparison.Ordinal);
+        var appendix = tex.IndexOf("\\appendix\n", StringComparison.Ordinal);
+        main.Should().BeGreaterThan(0);
+        appendix.Should().BeGreaterThan(main).And.BeLessThan(tex.IndexOf(@"\section{First}", StringComparison.Ordinal));
+        tex.Should().NotContain(@"\section{Appendix}");
+    }
+
+    // launch-bot #143, retest (18 Nov 2026): amsart printed no \thanks; REVTeX printed an ORCID as text and merged an
+    // author's two affiliations into one.
+    [Fact]
+    public void Amsart_front_matter_prints_an_authors_thanks()
+    {
+        var (pre, _) = Lilia.Engines.Publishers.PublisherClasses.FrontMatter("amsart", "T",
+            @"Ann Author\thanks{Funded by X.}\\Example University", null, [], s => s, "T");
+
+        pre.Should().Contain("\\author{Ann Author}\n").And.Contain(@"\thanks{Funded by X.}").And.Contain(@"\address{Example University}");
+    }
+
+    [Fact]
+    public void Aps_front_matter_prints_an_orcid_as_orcidlink_and_each_full_affiliation_on_its_own()
+    {
+        var (_, body) = Lilia.Engines.Publishers.PublisherClasses.FrontMatter("revtex4-2", "T",
+            @"Ann Author\orcidlink{0009-0009-9005-702X}\\German Aerospace Center, Weßling, Germany\\Institut für Theoretische Physik, Ulm, Germany"
+            + @" \and Bob Author\\Lilia Editor\\Paris\\France", null, [], s => s, "T");
+
+        body.Should().Contain(@"\author{Ann Author\orcidlink{0009-0009-9005-702X}}");
+        body.Should().Contain("\\affiliation{German Aerospace Center, Weßling, Germany}\n\\affiliation{Institut für Theoretische Physik, Ulm, Germany}");
+        body.Should().Contain(@"\affiliation{Lilia Editor, Paris, France}", "an institution, city and country are one address");
+    }
+
     // #144
     [Fact]
     public void A_dollar_sign_in_maths_keeps_the_formulas_paired()

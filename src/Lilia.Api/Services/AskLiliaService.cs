@@ -1124,19 +1124,18 @@ public sealed partial class AskLiliaService : IAskLiliaService
             at = i + 1;
         }
 
+        // Only the new blocks are written (18 Nov 2026, launch-bot #148): every existing block's sort order was
+        // rewritten, so a paste on a 600-block document updated 600 rows.
         var newIds = blocks.Select(_ => Guid.NewGuid()).ToList();
         var batch = new List<BatchUpdateBlockDto>();
-        var sort = 0;
-        foreach (var b in existing.Take(at)) batch.Add(new BatchUpdateBlockDto(b.Id, null, null, sort++, null, null));
         for (var k = 0; k < blocks.Count; k++)
             batch.Add(new BatchUpdateBlockDto(newIds[k], blocks[k].Type,
-                JsonSerializer.SerializeToElement(blocks[k].Content), sort++, null, blocks[k].Depth));
-        foreach (var b in existing.Skip(at)) batch.Add(new BatchUpdateBlockDto(b.Id, null, null, sort++, null, null));
+                JsonSerializer.SerializeToElement(blocks[k].Content), null, null, blocks[k].Depth));
 
         BatchUpdateResultDto result;
         try
         {
-            result = await _blockService.BatchUpdateBlocksAsync(docId, batch, fresh.Version);
+            result = await _blockService.InsertBlocksAsync(docId, at == 0 ? null : existing[at - 1].Id, batch, fresh.Version);
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {

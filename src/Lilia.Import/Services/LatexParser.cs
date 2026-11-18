@@ -761,6 +761,11 @@ public class LatexParser : ILatexParser
         if (publisherFront is not null)
         {
             if (publisherFront.Authors.Count > 0) document.Metadata.Author = publisherFront.AuthorText;
+            // amsart's and REVTeX's title \thanks is now the first author's note (PublisherFrontMatterReader): not in the
+            // title, which names the document (launch-bot #143 retest, 18 Nov 2026).
+            if (publisherFront.Authors.Count > 0 && PublisherFrontMatterReader.KeepsNotes(document.Metadata.DocumentClass)
+                && document.Title is { } t && t.Contains(@"\thanks", StringComparison.Ordinal))
+                document.Title = StripBalancedCommand(t, "thanks").Trim();
             if (publisherFront.Keywords.Count > 0) document.Metadata.Keywords = string.Join(", ", publisherFront.Keywords);
             document.Metadata.AcmCcs = publisherFront.AcmCcs;
             document.Metadata.AcmRights = publisherFront.AcmRights;
@@ -1762,6 +1767,9 @@ public class LatexParser : ILatexParser
 
     private static long _mathSpanCallId;
 
+    private static readonly Regex MinipageEnv = new(
+        @"\\begin\{minipage\}(?:\s*(?:\[[^\]]*\]|\{(?:[^{}]|\{[^{}]*\})*\}))*([\s\S]*?)\\end\{minipage\}", RegexOptions.Compiled);
+
     private static readonly Regex CaptionOf = new(@"\\captionof\s*\{(figure|table)\}", RegexOptions.Compiled);
 
     /// <summary>
@@ -2042,6 +2050,10 @@ public class LatexParser : ILatexParser
             var tocMatch = Regex.Match(remaining, @"\\tableofcontents\b");
             if (tocMatch.Success)
                 matches.Add((tocMatch, "toc"));
+            // \appendix starts the appendices (launch-bot #146, 18 Nov 2026): it was dropped, so their sections numbered on.
+            var appendixMatch = Regex.Match(remaining, @"\\appendix(?![A-Za-z@])\s*");
+            if (appendixMatch.Success)
+                matches.Add((appendixMatch, "appendix"));
 
             // Equation environments
             if (options.ConvertEquationEnvironments)
@@ -2301,6 +2313,8 @@ public class LatexParser : ILatexParser
 
             // Source consumed beyond the match itself (a heading's trailing \label).
             var consumedAfterMatch = 0;
+            // Source put back in front of what is left, read next (a minipage figure taken out of a theorem).
+            var readNext = "";
 
             // Handle the matched element
             switch (firstMatch.type)
@@ -2451,6 +2465,10 @@ public class LatexParser : ILatexParser
                     document.Elements.Add(new ImportTableOfContents { Order = elementOrder++ });
                     break;
 
+                case "appendix":
+                    document.Elements.Add(new ImportAppendixStart { Order = elementOrder++ });
+                    break;
+
                 case "tikz":
                     {
                         var raw = RestoreTikz(firstMatch.match.Value, tikz);
@@ -2578,6 +2596,22 @@ public class LatexParser : ILatexParser
                             ? firstMatch.match.Groups[2].Value.Trim('[', ']')
                             : null;
                         var body = firstMatch.match.Groups[3].Value.Trim();
+                        // A minipage figure or table (\captionof) in a theorem or proof is its own float after it, with its
+                        // caption and label: in the proof's text, its caption sat in a narrow column beside the proof and
+                        // its \ref printed the wrong number (18 Nov 2026, launch-bot #140).
+                        var floats = new System.Text.StringBuilder();
+                        body = MinipageEnv.Replace(body, mp =>
+                        {
+                            var asFloat = MinipageBody(mp.Groups[1].Value);
+                            if (!asFloat.StartsWith("\n\\begin{", StringComparison.Ordinal)) return mp.Value;
+                            floats.Append(asFloat);
+                            return "";
+                        });
+                        if (floats.Length > 0)
+                        {
+                            body = Regex.Replace(body, @"\\noindent\s*(?=\n|$)", "").Trim();
+                            readNext = floats.ToString();
+                        }
                         // The theorem's own label is one outside any environment in it: a \label in an equation or a
                         // minipage inside a proof was moved to the proof, leaving a whitespace-only line in the maths
                         // ("Missing $ inserted") and \eqref pointing at the proof (18 Nov 2026, launch-bot #162). Taken
@@ -2640,13 +2674,17 @@ public class LatexParser : ILatexParser
                             : bodyWithoutMeta.Trim();
                         var lineNumbers = algorithmicMatch.Success
                             && algorithmicMatch.Groups[1].Value.Contains("1", StringComparison.Ordinal);
+                        // An algorithm2e body read as algorithm2e, into lines Lilia's algorithmic prints: read as algorithmic,
+                        // \KwTo, \tcp, \nl and \; stayed and stopped the PDF (18 Nov 2026, launch-bot #138).
+                        var a2e = !algorithmicMatch.Success && Algorithm2e.Is(code) ? Algorithm2e.Lines(code) : null;
+                        if (a2e is not null) lineNumbers = Algorithm2e.NumbersLines(code);
                         document.Elements.Add(new ImportAlgorithm
                         {
                             Order = elementOrder++,
                             Caption = capBalanced.HasValue ? capBalanced.Value.Inner.Trim() : null,
                             Label = lblMatch.Success ? lblMatch.Groups[1].Value.Trim() : null,
                             Code = code,
-                            Lines = ParseAlgorithmicLines(code),
+                            Lines = a2e ?? ParseAlgorithmicLines(code),
                             LineNumbers = lineNumbers,
                         });
                     }
@@ -2731,7 +2769,7 @@ public class LatexParser : ILatexParser
             }
 
             // Continue with remaining content
-            remaining = remaining[(firstMatch.match.Index + firstMatch.match.Length + consumedAfterMatch)..];
+            remaining = readNext + remaining[(firstMatch.match.Index + firstMatch.match.Length + consumedAfterMatch)..];
         }
     }
 

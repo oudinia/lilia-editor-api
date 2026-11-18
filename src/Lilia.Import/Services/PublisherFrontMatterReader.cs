@@ -32,7 +32,8 @@ public static partial class PublisherFrontMatterReader
         {
             "acmart" => Sequential(src, "affiliation", AcmAffiliation),
             "revtex4-2" or "revtex4-1" => Sequential(src, "affiliation", Plain, notes: true),
-            "amsart" or "amsproc" or "amsbook" => Sequential(src, "address", Plain),
+            // amsart's \thanks too (launch-bot #143 retest, 18 Nov 2026: the affiliations, e-mails and grants in them were lost).
+            "amsart" or "amsproc" or "amsbook" => Sequential(src, "address", Plain, notes: true),
             "IEEEtran" => Ieee(src),
             "elsarticle" => Elsevier(src),
             "llncs" => Llncs(src),
@@ -44,6 +45,10 @@ public static partial class PublisherFrontMatterReader
         return new Result(authors, Keywords(src), cls == "acmart" ? Ccs(src) : null, cls == "acmart" ? Rights(src) : null);
     }
 
+    /// <summary>The classes whose \thanks (title's included) are read as authors' notes: REVTeX and AMS.</summary>
+    public static bool KeepsNotes(string? documentClass) =>
+        (documentClass ?? "").Trim() is "revtex4-2" or "revtex4-1" or "amsart" or "amsproc" or "amsbook";
+
     // ── authors ────────────────────────────────────────────────────────
 
     /// <summary>\author{Name} then its \affiliation / \address / \email, in order (ACM, REVTeX, AMS).
@@ -54,17 +59,34 @@ public static partial class PublisherFrontMatterReader
     {
         var authors = new List<Author>();
         var front = FrontPart(src);
-        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation" } : new[] { "author", affiliationCommand, "email" };
-        foreach (var (cmd, arg) in Commands(front, names))
+        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid" } : new[] { "author", affiliationCommand, "email" };
+        // A \thanks on the title (amsart prints every \thanks as a first-page footnote): the first author's note, as the
+        // title block has no place for it (launch-bot #143 retest, 18 Nov 2026).
+        var titleNotes = notes
+            ? Commands(front, "title").Take(1).SelectMany(t => Commands(t.Arg, "thanks")).Select(t => Clean(t.Arg)).Where(n => n.Length > 0).ToList()
+            : [];
+        foreach (var (cmd, opt, arg) in CommandsWithOption(notes ? RemoveCommand(front, "title") : front, names))
         {
             if (cmd == "author")
             {
-                var name = Clean(notes ? RemoveCommand(arg, "thanks") : arg);
+                // An ORCID (\orcidlink{…}, \orcid{…}, or \author[0000-…]{…}) stays one \orcidlink after the name; Clean
+                // printed its number as text (launch-bot #143 retest, 18 Nov 2026).
+                var orcid = notes ? OrcidIn(arg, opt) : null;
+                var bare = notes ? OrcidCommand().Replace(RemoveCommand(arg, "thanks"), "") : arg;
+                var name = Clean(bare);
+                if (orcid is not null) name += $@"\orcidlink{{{orcid}}}";
+                if (notes && authors.Count == 0) name += string.Concat(titleNotes.Select(n => $@"\thanks{{{n}}}"));
                 if (notes) name += string.Concat(Commands(arg, "thanks").Select(t => $@"\thanks{{{Clean(t.Arg)}}}"));
                 authors.Add(new Author(name, []));
                 continue;
             }
             if (authors.Count == 0) continue;
+            if (cmd == "orcid")
+            {
+                if (OrcidIn($@"\orcid{{{arg}}}", null) is { } id && !authors[^1].Name.Contains(@"\orcidlink{", StringComparison.Ordinal))
+                    authors[^1] = authors[^1] with { Name = InsertBeforeThanks(authors[^1].Name, $@"\orcidlink{{{id}}}") };
+                continue;
+            }
             if (cmd is "thanks" or "altaffiliation")
             {
                 // A \thanks inside \author{…} was read with it; Commands also finds it on its own, so only one outside.
@@ -83,6 +105,24 @@ public static partial class PublisherFrontMatterReader
             a.Lines.AddRange(emails);
         }
         return authors.Where(a => a.Name.Length > 0).ToList();
+    }
+
+    private static readonly Regex OrcidId = new(@"^\s*(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])\s*$");
+
+    /// <summary>\orcidlink{…}, \orcid{…}, \orcidID{…} inside an author's argument.</summary>
+    [GeneratedRegex(@"\\orcid(?:link|ID)?\s*\{\s*(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])\s*\}")]
+    private static partial Regex OrcidCommand();
+
+    private static string? OrcidIn(string arg, string? option)
+    {
+        if (OrcidCommand().Match(arg) is { Success: true } m) return m.Groups[1].Value;
+        return option is not null && OrcidId.Match(option) is { Success: true } o ? o.Groups[1].Value : null;
+    }
+
+    private static string InsertBeforeThanks(string name, string insert)
+    {
+        var i = name.IndexOf(@"\thanks{", StringComparison.Ordinal);
+        return i < 0 ? name + insert : name[..i] + insert + name[i..];
     }
 
     /// <summary>ACM's \affiliation{\institution{…}\department{…}\city{…}\country{…}}: institution (with department), then country.</summary>
@@ -296,17 +336,29 @@ public static partial class PublisherFrontMatterReader
     }
 
     /// <summary>Each occurrence of the named commands with its (last) brace argument, in order. Optional [..] skipped.</summary>
-    private static IEnumerable<(string Cmd, string Arg)> Commands(string src, params string[] names)
+    private static IEnumerable<(string Cmd, string Arg)> Commands(string src, params string[] names) =>
+        CommandsWithOption(src, names).Select(c => (c.Cmd, c.Arg));
+
+    /// <summary>As <see cref="Commands"/>, with the first optional [..] argument (or null).</summary>
+    private static IEnumerable<(string Cmd, string? Opt, string Arg)> CommandsWithOption(string src, params string[] names)
     {
         foreach (Match m in Regex.Matches(src, @"\\(?<cmd>" + string.Join("|", names.Select(Regex.Escape)) + @")\*?(?![A-Za-z@])"))
         {
             var i = m.Index + m.Length;
+            string? opt = null;
             while (i < src.Length && char.IsWhiteSpace(src[i])) i++;
-            while (i < src.Length && src[i] == '[') { var c = MatchingBracket(src, i); if (c < 0) break; i = c + 1; while (i < src.Length && char.IsWhiteSpace(src[i])) i++; }
+            while (i < src.Length && src[i] == '[')
+            {
+                var c = MatchingBracket(src, i);
+                if (c < 0) break;
+                opt ??= src[(i + 1)..c];
+                i = c + 1;
+                while (i < src.Length && char.IsWhiteSpace(src[i])) i++;
+            }
             if (i >= src.Length || src[i] != '{') continue;
             var close = MatchingBrace(src, i);
             if (close < 0) continue;
-            yield return (m.Groups["cmd"].Value, src[(i + 1)..close]);
+            yield return (m.Groups["cmd"].Value, opt, src[(i + 1)..close]);
         }
     }
 
@@ -395,6 +447,10 @@ public static partial class PublisherFrontMatterReader
         s = Regex.Replace(s, @"\\\\|\\newline|~", " ");
         s = Regex.Replace(s, @"\\(?:textbf|textit|emph|textsc|mbox|text|url|href\{[^}]*\})\s*\{([^{}]*)\}", "$1");
         s = Regex.Replace(s, @"\\(?:IEEEauthorrefmark|orcid|orcidID|corref|fnref|footnotemark)\{[^}]*\}", "");
+        // Spacing is layout, not text: \vspace{5pt} between two affiliations left "5pt" in the address (launch-bot #143
+        // retest, 18 Nov 2026).
+        s = Regex.Replace(s, @"\\(?:vspace|hspace|vskip|hskip)\*?\s*(?:\{[^{}]*\}|-?[\d.]+\s*[a-z]{2})", " ");
+        s = Regex.Replace(s, @"\\(?:smallskip|medskip|bigskip|vfill|hfill|noindent|par)(?![A-Za-z@])", " ");
         s = Regex.Replace(s, @"\\[,;:! ]", " ");
         s = s.Replace("{", "").Replace("}", "");
         return Regex.Replace(s, @"\s+", " ").Trim().Trim(',', ';');

@@ -131,6 +131,11 @@ public static class PublisherClasses
             _ => (string.Join(", ", lines.Take(lines.Count - 2).Select(escape)), escape(lines[^2]), escape(lines[^1])),
         };
 
+    /// <summary>The author's ORCID iD as <c>\orcidlink{…}</c>, or nothing (launch-bot #143 retest, 18 Nov 2026).</summary>
+    private static string Orcidlink(TitleAuthor a) =>
+        a.Orcid is { Length: > 0 } id && Regex.IsMatch(id, @"^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$")
+            ? $@"\orcidlink{{{id}}}" : "";
+
     private static string Drop(string s, string line)
     {
         var i = s.IndexOf(line, StringComparison.Ordinal);
@@ -271,12 +276,19 @@ public static class PublisherClasses
                 body.AppendLine($@"\title{{{titleLatex}}}");
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
-                    body.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    // An ORCID as \orcidlink (the paper's orcidlink, or the shim that prints nothing): its number printed
+                    // as text (launch-bot #143 retest, 18 Nov 2026).
+                    body.AppendLine($@"\author{{{escape(a.Name)}{Orcidlink(a)}}}");
                     // An author's \thanks notes (an imported paper's \thanks and \altaffiliation): they were dropped
                     // (launch-bot #143, 17 Nov 2026).
                     foreach (var note in a.Notes) body.AppendLine($@"\thanks{{{escape(note)}}}");
                     foreach (var e in emails) body.AppendLine($@"\email{{{e}}}");
-                    if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{{Line(a.Lines, ", ")}}}");
+                    // Lines that are each a whole address (an imported paper's affiliations) are one \affiliation each;
+                    // they were merged into one (launch-bot #143 retest, 18 Nov 2026). Institution, city and country
+                    // lines (the title editor's) stay one address.
+                    if (a.Lines.Count > 1 && a.Lines.All(l => l.Contains(',')))
+                        foreach (var l in a.Lines) body.AppendLine($@"\affiliation{{{escape(l)}}}");
+                    else if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{{Line(a.Lines, ", ")}}}");
                 }
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
@@ -290,6 +302,9 @@ public static class PublisherClasses
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    // An author's \thanks (affiliations, grants in an imported paper): dropped before (launch-bot #143 retest,
+                    // 18 Nov 2026). amsart prints each as a first-page footnote.
+                    foreach (var note in a.Notes) pre.AppendLine($@"\thanks{{{escape(note)}}}");
                     if (a.Lines.Count > 0) pre.AppendLine($@"\address{{{Line(a.Lines, @"\\")}}}");
                     foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                 }

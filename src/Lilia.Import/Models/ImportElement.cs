@@ -846,6 +846,20 @@ public class ImportLatexPassthrough : ImportElement
 }
 
 /// <summary>
+/// <c>\appendix</c> (or REVTeX's appendix environment): where the appendices start, so their sections number A, B
+/// (launch-bot #146, 18 Nov 2026: it was dropped, and they numbered on). The import maps it to the Appendix block
+/// (back matter, subType appendix); a consumer that doesn't know it keeps the passthrough's <c>\appendix</c>.
+/// </summary>
+public class ImportAppendixStart : ImportLatexPassthrough
+{
+    public ImportAppendixStart()
+    {
+        LatexCode = @"\appendix";
+        Description = "Appendices start";
+    }
+}
+
+/// <summary>
 /// A CV block (<c>personalInfo</c>, <c>cvSection</c>, <c>cvEntry</c>) read from a moderncv source (the launch bot's #112,
 /// 15 Nov 2026; <see cref="Lilia.Import.Services.ModernCv"/>). A passthrough too, like <see cref="ImportTikzFigure"/>:
 /// <see cref="ImportLatexPassthrough.LatexCode"/> holds the LaTeX it came from, so a consumer that doesn't know CV
