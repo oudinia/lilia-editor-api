@@ -901,8 +901,13 @@ public class JobService : IJobService
     /// </summary>
     internal static List<CreateReviewBlockDto> WithWordTitleBlock(List<CreateReviewBlockDto> blocks, string title, Lilia.Import.Models.ImportMetadata? metadata)
     {
-        if (metadata is null || (string.IsNullOrWhiteSpace(metadata.SourceAuthor) && string.IsNullOrWhiteSpace(metadata.SourceDate)))
-            return blocks;
+        if (metadata is null) return blocks;
+        var hasFront = !string.IsNullOrWhiteSpace(metadata.SourceAuthor) || !string.IsNullOrWhiteSpace(metadata.SourceDate);
+        // A Word file with its own title (a Title paragraph or its title property) but no Date paragraph has no date: it
+        // printed \today, while Markdown and a LaTeX \date{} print none (launch-bot regression note, 18 Nov 2026). Not when
+        // its first block is a heading saying the title, which would then print twice.
+        var ownTitle = !string.IsNullOrWhiteSpace(metadata.SourceTitle) && !FirstHeadingIs(blocks, metadata.SourceTitle!);
+        if (!hasFront && !ownTitle) return blocks;
         var content = new Dictionary<string, object>
         {
             ["title"] = title,
@@ -915,6 +920,11 @@ public class JobService : IJobService
             Confidence: 90, Warnings: null, SortOrder: 0, Depth: 0);
         return new[] { titleBlock }.Concat(blocks).Select((b, i) => b with { SortOrder = i }).ToList();
     }
+
+    private static bool FirstHeadingIs(List<CreateReviewBlockDto> blocks, string title) =>
+        blocks.FirstOrDefault() is { Type: "heading" } first
+        && first.Content.TryGetProperty("text", out var text)
+        && string.Equals(text.GetString()?.Trim(), title.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static async Task<List<CreateReviewBlockDto>> ConvertElementsToReviewBlocksAsync(
         List<ImportElement> elements,

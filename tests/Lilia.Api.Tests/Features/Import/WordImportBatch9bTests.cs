@@ -121,4 +121,21 @@ public class WordImportBatch9bTests
     [Fact]
     public void A_word_file_without_author_or_date_gets_no_title_block()
         => JobService.WithWordTitleBlock([], "T", new ImportMetadata()).Should().BeEmpty();
+
+    // A Word file with a title and no date prints no date, as Markdown and LaTeX \date{} (18 Nov 2026).
+    [Fact]
+    public void A_word_title_without_a_date_gets_no_date()
+    {
+        var title = JobService.WithWordTitleBlock([], "A Paper", new ImportMetadata { SourceTitle = "A Paper" }).Single();
+        title.Content.GetProperty("dateMode").GetString().Should().Be("none");
+    }
+
+    [Fact]
+    public void A_title_the_first_heading_already_says_gets_no_title_block()
+    {
+        var heading = new Lilia.Core.DTOs.CreateReviewBlockDto(Guid.NewGuid().ToString(), "heading",
+            JsonSerializer.SerializeToElement(new { text = "A Paper", level = 1 }), 90, null, 0, 0);
+        JobService.WithWordTitleBlock([heading], "A Paper", new ImportMetadata { SourceTitle = "A Paper" })
+            .Should().ContainSingle().Which.Type.Should().Be("heading");
+    }
 }
