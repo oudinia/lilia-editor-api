@@ -41,12 +41,13 @@ public class PublisherFrontMatterReaderTests
     {
         var r = PublisherFrontMatterReader.Read(Acm, "acmart")!;
         r.Authors.Select(a => a.Name).Should().Equal("Ada Lovelace", "Alan Turing");
-        r.Authors[0].Lines.Should().Equal("Mathematics, Analytical Engines", "UK", "ada@engines.uk");
+        // The city is kept since launch-bot #219 (18 Nov 2026).
+        r.Authors[0].Lines.Should().Equal("Mathematics, Analytical Engines", "London", "UK", "ada@engines.uk");
         r.Authors[1].Lines.Should().Equal("Bletchley Park", "UK");
         r.Keywords.Should().Equal("LaTeX", "publishing");
         r.AcmCcs.Should().Contain(@"\ccsdesc[500]{Software and its engineering~Compilers}").And.Contain("CCSXML");
         r.AcmRights.Should().Contain(@"\setcopyright{acmlicensed}").And.Contain(@"\acmConference[CHI '27]{CHI Conference}{April 2027}{Paris, France}");
-        r.AuthorText.Should().Be(@"Ada Lovelace\\Mathematics, Analytical Engines\\UK\\ada@engines.uk \and Alan Turing\\Bletchley Park\\UK");
+        r.AuthorText.Should().Be(@"Ada Lovelace\\Mathematics, Analytical Engines\\London\\UK\\ada@engines.uk \and Alan Turing\\Bletchley Park\\UK");
     }
 
     [Theory]

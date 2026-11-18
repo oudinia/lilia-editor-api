@@ -734,6 +734,10 @@ public class LatexParser : ILatexParser
             document.Metadata.TitleRunning = Regex.Replace(titleRunning.Inner, @"\s+", " ").Trim();
         if (MatchBalanced(content, "authorrunning") is { } authorRunning)
             document.Metadata.AuthorRunning = Regex.Replace(authorRunning.Inner, @"\s+", " ").Trim();
+        // acmart's running authors, \renewcommand{\shortauthors}{…} (launch-bot #219).
+        else if (Regex.Match(content, @"\\renewcommand\s*\{?\s*\\shortauthors\s*\}?\s*\{") is { Success: true } shortAuthors
+                 && ExtractBraceBody(content, shortAuthors.Index + shortAuthors.Length - 1) is { } shortBody)
+            document.Metadata.AuthorRunning = Regex.Replace(shortBody.Content, @"\s+", " ").Trim();
 
         // Extract \date{} if present.
         var dateMatch = MatchBalanced(content, "date");

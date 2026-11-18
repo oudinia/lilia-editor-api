@@ -146,11 +146,29 @@ public static class BibTexParser
 
             // Normalise: strip nested single braces commonly used for
             // capitalisation preservation, collapse whitespace.
+            // A title written {{…}} keeps its case as written: the extra layer goes, and the entry remembers it
+            // (titleprotected), so references.bib writes it back. IEEEtran lower-cased "The Transport Layer Security…"
+            // (launch-bot #220, 18 Nov 2026).
+            if (key.Equals("title", StringComparison.OrdinalIgnoreCase) && WholeBraced(value.Trim())) fields["titleprotected"] = "true";
             value = StripOuterBraces(value).Trim();
             value = Regex.Replace(value, @"\s+", " ");
             if (key.Length > 0) fields[key.ToLowerInvariant()] = value;
         }
         return fields;
+    }
+
+    /// <summary>Whether the value is one braced group from its first character to its last ("{A B}", not "{A} and {B}").</summary>
+    internal static bool WholeBraced(string v)
+    {
+        if (v.Length < 2 || v[0] != '{' || v[^1] != '}') return false;
+        var depth = 0;
+        for (var i = 0; i < v.Length; i++)
+        {
+            if (v[i] == '\\') { i++; continue; }
+            if (v[i] == '{') depth++;
+            else if (v[i] == '}' && --depth == 0) return i == v.Length - 1;
+        }
+        return false;
     }
 
     private static string StripOuterBraces(string v)

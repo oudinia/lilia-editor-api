@@ -59,7 +59,8 @@ public static partial class PublisherFrontMatterReader
     {
         var authors = new List<Author>();
         var front = FrontPart(src);
-        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid" } : new[] { "author", affiliationCommand, "email" };
+        // \orcid after an author for every class (acmart's own command: launch-bot #219, the ORCID was lost).
+        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid" } : new[] { "author", affiliationCommand, "email", "orcid" };
         // A \thanks on the title (amsart prints every \thanks as a first-page footnote): the first author's note, as the
         // title block has no place for it (launch-bot #143 retest, 18 Nov 2026).
         var titleNotes = notes
@@ -132,6 +133,9 @@ public static partial class PublisherFrontMatterReader
         var country = Commands(arg, "country").Select(x => Clean(x.Arg)).FirstOrDefault(s => s.Length > 0);
         if (inst.Length == 0 && country is null) { var plain = Clean(arg); if (plain.Length > 0) yield return plain; yield break; }
         if (inst.Length > 0) yield return inst;
+        // The city (with the state): "Mountain View, California" was lost, only "USA" printed (launch-bot #219).
+        var city = string.Join(", ", new[] { "city", "state" }.SelectMany(c => Commands(arg, c).Select(x => Clean(x.Arg))).Where(s => s.Length > 0));
+        if (city.Length > 0 && inst.Length > 0) yield return city;
         if (country is not null) yield return country;
     }
 
@@ -336,7 +340,9 @@ public static partial class PublisherFrontMatterReader
                 full.Append(src, i, close - i + 1);
                 end = close + 1;
             }
-            lines.Add(full.ToString());
+            // One command, one line: a multi-line \acmConference{…} was cut at its line breaks and every piece set aside,
+            // so the class default "Conference'17, Washington, DC" printed (launch-bot #219, 18 Nov 2026).
+            lines.Add(System.Text.RegularExpressions.Regex.Replace(full.ToString(), @"\s*\n\s*", " "));
         }
         return lines.Count > 0 ? string.Join("\n", lines) : null;
     }
