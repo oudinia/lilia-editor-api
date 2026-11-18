@@ -953,6 +953,8 @@ public static partial class LaTeXPreamble
     public const string JournalShims = @"% Shims for common journal-class commands (defined only if missing)
 \makeatletter
 \providecommand{\affiliation}[1]{}
+% REVTeX's \onlinecite (the number without brackets) where the class has none (launch-bot #231).
+\providecommand{\onlinecite}{\cite}
 \providecommand{\affil}[2][]{#2}
 \providecommand{\orcidlink}[1]{}
 \providecommand{\orcid}[1]{}

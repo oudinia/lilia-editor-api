@@ -67,6 +67,7 @@ public class LatexImportEditorInlineMarksTests
             """);
         var table = LatexImportJobExecutor.MapElements(doc.Elements).Single(b => b.type == "table");
         JsonSerializer.SerializeToElement(table.content).GetProperty("caption").GetString()
-            .Should().Be("Same as Table tab:a");
+            // A caption's reference stays a reference (launch-bot #233, 18 Nov 2026): it printed the key, "tab:a".
+            .Should().Be(@"Same as Table \ref{tab:a}");
     }
 }
