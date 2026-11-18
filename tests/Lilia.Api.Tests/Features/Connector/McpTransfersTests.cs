@@ -308,4 +308,37 @@ public class McpTransfersTests : IntegrationTestBase
         var figure = doc.Blocks.Single(b => b.Type == "figure");
         figure.Content.RootElement.GetProperty("src").GetString().Should().NotBe("plot.png", "the figure points at the stored image");
     }
+
+    // #241/#242: a project with several main files and .bib files sharing keys answered an error yet made a document
+    // (twice on a retry), and nothing said which .tex was used or which files the PDF can't use.
+    [Fact]
+    public async Task A_project_with_several_mains_imports_once_and_says_what_it_used()
+    {
+        await SeedUserAsync("mcpx_zip2");
+        var app = CreateClientAs("mcpx_zip2");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+        using var zip = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            async Task Add(string name, string text) { await using var e = archive.CreateEntry(name).Open(); await e.WriteAsync(Encoding.UTF8.GetBytes(text)); }
+            await Add("sorsamp.tex", "\\documentclass{article}\n\\begin{document}\nSOR sample \\cite{epr}.\n\\bibliography{sorsamp}\n\\end{document}\n");
+            await Add("apssamp.tex", "\\documentclass{article}\n\\begin{document}\nAPS sample \\cite{epr}.\n\\bibliography{apssamp}\n\\end{document}\n");
+            await Add("sorsamp.bib", "@article{epr, author={A. Einstein}, title={EPR}, journal={Phys. Rev.}, year={1935}}\n");
+            await Add("apssamp.bib", "@article{epr, author={A. Einstein}, title={EPR}, journal={Phys. Rev.}, year={1935}}\n");
+            await Add("revtex4-2.cls", "% a class\n");
+            await Add("fig1.eps", "%!PS-Adobe-3.0 EPSF-3.0\n");
+        }
+
+        var before = await CreateDbContext().Documents.CountAsync(d => d.OwnerId == "mcpx_zip2");
+        var result = await CallAsync(app, "import_document", new { filename = "RevTeX_Sample.zip", content = Convert.ToBase64String(zip.ToArray()) });
+        result.TryGetProperty("error", out _).Should().BeFalse(result.ToString());
+        (await CreateDbContext().Documents.CountAsync(d => d.OwnerId == "mcpx_zip2")).Should().Be(before + 1);
+        var project = result.GetProperty("project");
+        project.GetProperty("mainFile").GetString().Should().Be("apssamp.tex", "same length, so the name's order decides");
+        project.GetProperty("otherMainFiles").EnumerateArray().Select(e => e.GetString()).Should().Equal("sorsamp.tex");
+        project.GetProperty("notUsedByThePdf").EnumerateArray().Select(e => e.GetString()).Should().BeEquivalentTo("revtex4-2.cls", "fig1.eps");
+        var id = result.GetProperty("documentId").GetGuid();
+        (await CreateDbContext().BibliographyEntries.CountAsync(b => b.DocumentId == id && b.CiteKey == "epr")).Should().Be(1);
+    }
 }

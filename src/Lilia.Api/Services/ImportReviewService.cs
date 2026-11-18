@@ -2638,6 +2638,8 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
         }
 
         // Wire 2/3 — parse .bib files and create BibliographyEntry rows.
+        var seenKeys = (await _context.BibliographyEntries.Where(b => b.DocumentId == documentId).Select(b => b.CiteKey).ToListAsync(ct))
+            .ToHashSet(StringComparer.Ordinal);
         var bibs = extracted.Files
             .Where(f => f.Kind == Lilia.Import.Services.LatexProjectFileKinds.Bib)
             .ToList();
@@ -2649,6 +2651,10 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
                 var entries = BibTexParser.Parse(content);
                 foreach (var e in entries)
                 {
+                    // One entry per key: a project with several .bib files sharing keys (RevTeX's samples) broke the unique
+                    // index after the document was made, so the import answered an error and a retry made a duplicate
+                    // (launch-bot #241, 18 Nov 2026). The first file's entry stays.
+                    if (!seenKeys.Add(e.CiteKey)) continue;
                     _context.BibliographyEntries.Add(new BibliographyEntry
                     {
                         Id = Guid.NewGuid(),

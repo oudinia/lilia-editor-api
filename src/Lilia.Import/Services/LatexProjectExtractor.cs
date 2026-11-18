@@ -31,7 +31,11 @@ public record LatexProjectResult(
     string MainFileName,
     IReadOnlyList<LatexProjectFile> Files,
     IReadOnlyList<string> UnresolvedIncludes,
-    IReadOnlyList<string> Notices);
+    IReadOnlyList<string> Notices)
+{
+    /// <summary>Every file that could be the main one (\documentclass and \begin{document}), the chosen one first.</summary>
+    public IReadOnlyList<string> MainCandidates { get; init; } = [];
+}
 
 /// <summary>
 /// A non-.tex file pulled from the zip. One shape for every category
@@ -193,7 +197,12 @@ public class LatexProjectExtractor : ILatexProjectExtractor
             MainFileName: mainKey,
             Files: files,
             UnresolvedIncludes: unresolved,
-            Notices: notices);
+            Notices: notices)
+        {
+            MainCandidates = texFiles
+                .Where(kv => DocumentClassPattern.IsMatch(kv.Value) && BeginDocumentPattern.IsMatch(kv.Value))
+                .Select(kv => kv.Key).OrderBy(k => k == mainKey ? 0 : 1).ThenBy(k => k, StringComparer.OrdinalIgnoreCase).ToList(),
+        };
     }
 
     private static string? SelectMainFile(Dictionary<string, string> texFiles)
@@ -204,11 +213,13 @@ public class LatexProjectExtractor : ILatexProjectExtractor
             .ToList();
 
         if (candidates.Count == 0) return null;
-        // Preference: "main.tex" / "main" > shortest path.
+        // Preference: "main.tex" > shortest path, then the file name in alphabetical order, so the same zip always gives the
+        // same document (RevTeX's sample zip took whichever of its four samples the zip listed first: launch-bot #241,
+        // 18 Nov 2026). The connector's reply names the file used and the others (MainCandidates).
         var mainExact = candidates.FirstOrDefault(k =>
             string.Equals(Path.GetFileName(k), "main.tex", StringComparison.OrdinalIgnoreCase));
         if (mainExact != null) return mainExact;
-        return candidates.OrderBy(k => k.Count(c => c == '/')).ThenBy(k => k.Length).First();
+        return candidates.OrderBy(k => k.Count(c => c == '/')).ThenBy(k => k.Length).ThenBy(k => k, StringComparer.OrdinalIgnoreCase).First();
     }
 
     private static string InlineIncludes(
