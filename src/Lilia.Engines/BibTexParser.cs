@@ -29,9 +29,13 @@ public static class BibTexParser
         var entries = new List<BibEntry>();
         if (string.IsNullOrWhiteSpace(content)) return entries;
 
-        // Strip comment lines (BibTeX convention: % at line start)
+        // Strip comment lines (BibTeX convention: % at line start). A comment line that holds entries is a file whose
+        // line breaks were lost: only the comment before the first entry goes. A .bib starting "% Journals" stored on
+        // one line lost all 102 of its entries (launch-bot #225, 18 Nov 2026).
         var lines = content.Split('\n')
-            .Where(l => !l.TrimStart().StartsWith('%'))
+            .Select(l => !l.TrimStart().StartsWith('%') ? l
+                : EntryStart.Match(l) is { Success: true } first ? l[first.Index..] : null)
+            .Where(l => l is not null)
             .ToArray();
         var cleaned = string.Join("\n", lines);
 
@@ -170,6 +174,8 @@ public static class BibTexParser
         }
         return false;
     }
+
+    private static readonly Regex EntryStart = new(@"@[A-Za-z]+\s*[{(]", RegexOptions.Compiled);
 
     private static string StripOuterBraces(string v)
     {

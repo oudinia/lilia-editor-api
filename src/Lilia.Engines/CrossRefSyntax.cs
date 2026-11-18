@@ -70,7 +70,10 @@ public static class CrossRefSyntax
                 keys[i] = found[0];
                 changed = true;
             }
-            return changed ? m.Value.Replace(m.Groups["k"].Value, string.Join(",", keys)) : m.Value;
+            // Only the argument: a Replace on the whole match also rewrote the command, \eqref{eq} → \eq:eqref{eq:eq}
+            // (launch-bot #223, 18 Nov 2026: "Undefined control sequence").
+            var arg = m.Groups["k"];
+            return changed ? m.Value[..(arg.Index - m.Index)] + string.Join(",", keys) + m.Value[(arg.Index + arg.Length - m.Index)..] : m.Value;
         });
     }
 

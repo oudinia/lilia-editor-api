@@ -446,6 +446,9 @@ public class ImportListItem : ImportElement
     /// List number/bullet text (e.g., "1.", "a)", "•").
     /// </summary>
     public string? ListMarker { get; set; }
+
+    /// <summary>An item of a description list: <see cref="ListMarker"/> is its term (\item[term]).</summary>
+    public bool IsDescription { get; set; }
 }
 
 /// <summary>

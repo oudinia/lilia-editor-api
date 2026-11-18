@@ -323,6 +323,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
     /// </summary>
     private static object ListItemContent(ImportListItem item)
     {
+        if (item.IsDescription)
+            return new Dictionary<string, object> { ["text"] = item.ListMarker ?? "", ["description"] = item.Text };
         if (item.Children.Count == 0) return item.Text;
         var content = new Dictionary<string, object> { ["text"] = item.Text, ["children"] = item.Children.Select(ListItemContent).ToList() };
         if (item.Children[0].IsNumbered != item.IsNumbered) content["childrenOrdered"] = item.Children[0].IsNumbered;
@@ -496,7 +498,11 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                     items.Add(ListItemContent(next));
                     i++;
                 }
-                blocks.Add(("list", new { items, ordered = first.IsNumbered }));
+                // A description list: {text: term, description} items, kind "description" (launch-bot #227).
+                if (first.IsDescription)
+                    blocks.Add(("list", new { items, ordered = false, kind = "description" }));
+                else
+                    blocks.Add(("list", new { items, ordered = first.IsNumbered }));
                 continue;
             }
             blocks.Add(MapImportElementToBlock(elements[i]));
