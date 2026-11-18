@@ -176,6 +176,11 @@ public static class PublisherClasses
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    // The email under the name and the ORCID as acmart's own \orcid, as in ACM's template (launch-bot #219:
+                    // the ORCID was lost and the email came after the country).
+                    if (a.Orcid is { Length: > 0 } orcid && Regex.IsMatch(orcid, @"^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$"))
+                        pre.AppendLine($@"\orcid{{{orcid}}}");
+                    foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                     // ACM wants an affiliation per author: the lines under the name, the last one as the
                     // country. acmart stops on an empty \country ("No country present"), so: no lines, no
                     // \affiliation (it compiles); one line, the institution with an unknown country
@@ -187,14 +192,14 @@ public static class PublisherClasses
                         var (inst, city, country) = Address(a.Lines, escape);
                         pre.AppendLine($@"\affiliation{{\institution{{{inst}}}" + (city is null ? "" : $@"\city{{{city}}}") + $@"\country{{{country ?? @"\relax"}}}}}");
                     }
-                    // TAPS wants each author's \email.
-                    foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                 }
                 if (AcmMetadata.Ccs(acmCcs).Accepted is { Length: > 0 } ccs) pre.Append(ccs);
                 body.AppendLine(@"\begin{document}");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");
                 body.AppendLine(@"\maketitle");
+                // The running head's authors (\renewcommand{\shortauthors}{…}), after \maketitle, which sets the default (#219).
+                if (!string.IsNullOrWhiteSpace(authorRunning)) body.AppendLine($@"\renewcommand{{\shortauthors}}{{{escape(authorRunning)}}}");
                 break;
 
             case "IEEEtran":

@@ -161,11 +161,17 @@ public partial class BibliographyService : IBibliographyService
         var sb = new StringBuilder();
         sb.AppendLine($"@{entryType}{{{citeKey},");
         if (data.ValueKind == JsonValueKind.Object)
+        {
+            // titleprotected is Lilia's note that the source wrote the title {{…}} (launch-bot #220): its braces, not a field.
+            var protectedTitle = data.TryGetProperty("titleprotected", out var tp) && tp.ValueKind == JsonValueKind.String && tp.GetString() == "true";
             foreach (var prop in data.EnumerateObject())
             {
+                if (prop.Name == "titleprotected") continue;
                 var value = prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : prop.Value.ToString();
+                if (protectedTitle && prop.Name == "title" && !string.IsNullOrEmpty(value)) value = "{" + value + "}";
                 if (!string.IsNullOrEmpty(value)) sb.AppendLine($"  {prop.Name} = {{{value}}},");
             }
+        }
         sb.Append('}');
         return sb.ToString();
     }

@@ -115,6 +115,9 @@ public static class BibTeXSerializer
         // and the fields books, chapters and reports are cited by.
         "eprint", "archiveprefix", "eprinttype", "primaryclass", "eprintclass",
         "editor", "edition", "series", "address", "institution", "school", "howpublished", "isbn",
+        // A report's kind ("RFC 8446", not "Tech. Rep. 8446") and a proceedings' organiser (launch-bot #220, 18 Nov 2026),
+        // with the other standard fields styles print.
+        "type", "organization", "month", "chapter", "issn",
     };
 
     public static string Serialize(IReadOnlyCollection<BibliographyEntry> entries)
@@ -151,8 +154,12 @@ public static class BibTeXSerializer
         if (data.TryGetProperty(field, out var val) && val.ValueKind == JsonValueKind.String)
         {
             var value = val.GetString();
-            // Names and acronyms in a title keep their capitals in the styles that lower-case titles (launch-bot #153).
-            if (field == "title" && value is not null) value = Lilia.Engines.BibliographyService.ProtectCapitals(value);
+            // A title the source wrote {{…}} keeps its case whole (launch-bot #220); otherwise names and acronyms keep their
+            // capitals in the styles that lower-case titles (launch-bot #153).
+            if (field == "title" && value is not null)
+                value = data.TryGetProperty("titleprotected", out var p) && p.ValueKind == JsonValueKind.String && p.GetString() == "true"
+                    ? "{" + value + "}"
+                    : Lilia.Engines.BibliographyService.ProtectCapitals(value);
             if (!string.IsNullOrEmpty(value))
                 sb.AppendLine($"  {field} = {{{value}}},");
         }
