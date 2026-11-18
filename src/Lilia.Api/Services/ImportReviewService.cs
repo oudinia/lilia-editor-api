@@ -2557,6 +2557,19 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
             return;
         }
 
+        await StageZipProjectAsync(zipBytes, documentId, ownerId, now, ct, sessionId);
+    }
+
+    /// <summary>
+    /// A LaTeX project zip's files on a document: each image, .bib and other file stored as an asset, figures pointed at
+    /// their images, and the .bib's entries as the document's references. The review's finalize does it from the zip the
+    /// upload kept; the connector's import_document, which makes the document at once, does it with the zip it was
+    /// given (an Overleaf project through the connector: launch-bot Overleaf round trip, 18 Nov 2026). With a session,
+    /// the extractor's notices become its diagnostics.
+    /// </summary>
+    public async Task StageZipProjectAsync(byte[] zipBytes, Guid documentId, string ownerId, DateTime now, CancellationToken ct = default, Guid? sessionId = null)
+    {
+        if (_storageService is null || _projectExtractor is null) return;
         Lilia.Import.Services.LatexProjectResult extracted;
         try
         {
@@ -2664,19 +2677,19 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
         // Surface extractor notices as ImportDiagnostic rows so the
         // review panel shows the summary. Info severity because these
         // are informational, not blocking.
-        foreach (var notice in extracted.Notices)
+        foreach (var notice in sessionId is null ? [] : extracted.Notices)
         {
             _context.ImportDiagnostics.Add(new ImportDiagnostic
             {
                 Id = Guid.NewGuid(),
-                SessionId = sessionId,
+                SessionId = sessionId!.Value,
                 Severity = "warning",
                 Category = "auto_shimmed",
                 Message = notice,
                 CreatedAt = now,
             });
         }
-        if (extracted.Notices.Count > 0)
+        if (sessionId is not null && extracted.Notices.Count > 0)
             await _context.SaveChangesAsync(ct);
     }
 

@@ -138,7 +138,7 @@ public class ConnectorFilesController(
         if (t.Status == "done") return Conflict(new { error = "This link was already used.", documentId = t.DocumentId });
         var format = (file.Format ?? "").Trim().ToUpperInvariant();
         if (format is not ("LATEX" or "DOCX" or "LML" or "MARKDOWN"))
-            return BadRequest(new { error = "Lilia imports .tex, .docx, .md and .lml files here." });
+            return BadRequest(new { error = "Lilia imports .tex, .zip (an Overleaf project), .docx, .md and .lml files here." });
         try
         {
             var result = await jobs.CreateImportJobFromBase64Async(userId,

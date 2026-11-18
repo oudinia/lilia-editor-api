@@ -274,4 +274,38 @@ public class McpTransfersTests : IntegrationTestBase
             new { content = "\\documentclass{article}\\begin{document}x\\end{document}", format = "latex", filename = "x.tex" });
         res.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the file comes from the author's browser, not the app");
     }
+
+    // The launch bot's Overleaf round trip (18 Nov 2026): an Overleaf project as it downloads, a zip with \input files,
+    // a .bib and an image, through the connector. import_document took one .tex only.
+    [Fact]
+    public async Task An_overleaf_project_zip_imports_through_the_connector()
+    {
+        await SeedUserAsync("mcpx_zip");
+        var app = CreateClientAs("mcpx_zip");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+        using var zip = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            async Task Add(string name, byte[] bytes) { await using var e = archive.CreateEntry(name).Open(); await e.WriteAsync(bytes); }
+            await Add("main.tex", Encoding.UTF8.GetBytes("\\documentclass{article}\n\\usepackage{graphicx}\n\\graphicspath{{figures/}}\n\\title{Flume Study}\n\\begin{document}\n\\maketitle\n\\input{sections/intro}\n\\begin{figure}\\centering\\includegraphics{plot.png}\\caption{A plot.}\\end{figure}\n\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}\n"));
+            await Add("sections/intro.tex", Encoding.UTF8.GetBytes("\\section{Introduction}\nSediment moves, as shown before~\\cite{smith2020}.\n"));
+            await Add("refs.bib", Encoding.UTF8.GetBytes("@article{smith2020, author={J. Smith}, title={Flumes}, journal={Water}, year={2020}}\n"));
+            await Add("figures/plot.png", png);
+        }
+
+        var result = await CallAsync(app, "import_document", new { filename = "flume-project.zip", content = Convert.ToBase64String(zip.ToArray()) });
+        result.TryGetProperty("error", out _).Should().BeFalse(result.ToString());
+        var id = result.GetProperty("documentId").GetGuid();
+        await using var db = CreateDbContext();
+        var doc = await db.Documents.AsNoTracking().Include(d => d.Blocks).Include(d => d.BibliographyEntries).FirstAsync(d => d.Id == id);
+        doc.Title.Should().Be("Flume Study");
+        doc.Blocks.Should().Contain(b => b.Content.RootElement.GetRawText().Contains("Sediment moves"), "the \\input file is read into the document");
+        doc.BibliographyEntries.Select(e => e.CiteKey).Should().Contain("smith2020", "the zip's .bib is the document's references");
+        (await db.Assets.AsNoTracking().Where(a => a.DocumentId == id).Select(a => a.FileName).ToListAsync()).Should().Contain(n => n.EndsWith("plot.png"));
+        var figure = doc.Blocks.Single(b => b.Type == "figure");
+        figure.Content.RootElement.GetProperty("src").GetString().Should().NotBe("plot.png", "the figure points at the stored image");
+    }
 }
