@@ -458,7 +458,7 @@ public sealed class LiliaMcpWriteTools(
     private const int ImportMaxChars = 14_000_000;
 
     [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file you have as a new Lilia document, in one call: .tex, .md or .lml as text, .docx as base64 (up to 10 MB). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
+    [Description("Import a file you have as a new Lilia document, in one call: .tex, .md or .lml as text, .docx or an Overleaf project .zip as base64 (up to 10 MB; a zip's \\input files are read as one document, its images and .bib kept with it). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
         [Description("The file name, e.g. paper.tex, thesis.docx, notes.md, notes.lml. Its extension gives the format unless format is set.")] string filename,
         [Description("The file: its text for .tex, .md and .lml, base64 for .docx (a data: prefix is fine).")] string content,
@@ -473,12 +473,21 @@ public sealed class LiliaMcpWriteTools(
         var kind = ((format ?? Path.GetExtension(name)).Trim().TrimStart('.').ToLowerInvariant()) switch
         {
             "tex" or "latex" => "LATEX",
+            // An Overleaf project as it downloads: the zip, base64. Its .tex files are read as one, its images and .bib
+            // stored with the document (the launch bot's Overleaf round trip, 18 Nov 2026).
+            "zip" => "LATEX",
             "docx" or "word" => "DOCX",
             "lml" => "LML",
             "md" or "markdown" or "txt" => "MARKDOWN",
             _ => null,
         };
-        if (kind is null) return new { error = "Lilia imports .tex, .docx, .md and .lml files: give one of these extensions, or format.", category = "invalid" };
+        if (kind is null) return new { error = "Lilia imports .tex, .zip (an Overleaf project, base64), .docx, .md and .lml files: give one of these extensions, or format.", category = "invalid" };
+        if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            var comma = content.IndexOf(',');
+            if (content.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0) content = content[(comma + 1)..];
+            content = content.Trim();
+        }
         if (kind == "DOCX")
         {
             var comma = content.IndexOf(',');
@@ -522,7 +531,7 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "start_import", Title = "Start a file import", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file (.tex, .docx or .lml) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. When you have the file yourself, import_document does it in one call.")]
+    [Description("Import a file (.tex, an Overleaf project .zip, .docx, .md or .lml) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. When you have the file yourself, import_document does it in one call.")]
     public async Task<object> StartImport()
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
@@ -531,7 +540,7 @@ public sealed class LiliaMcpWriteTools(
         {
             importId = token,
             url = $"{McpOAuth.PublicOrigin(config)}/connect/import/{token}",
-            accepts = new[] { ".tex", ".docx", ".lml" },
+            accepts = new[] { ".tex", ".zip", ".docx", ".md", ".lml" },
             expiresAt = ticket.ExpiresAt,
             note = "Give the author this link to drop the file. When they say it's done, call import_status with the importId.",
         };

@@ -112,6 +112,9 @@ public interface IImportReviewService
     Task<List<ReviewActivityDto>> GetActivitiesAsync(Guid sessionId, string userId, int limit = 50);
     Task<List<ReviewActivityDto>> GetRecentActivitiesAsync(Guid sessionId, string userId, DateTime since);
 
+    /// <summary>A LaTeX project zip's images, .bib and other files as the document's assets and references.</summary>
+    Task StageZipProjectAsync(byte[] zipBytes, Guid documentId, string ownerId, DateTime now, CancellationToken ct = default, Guid? sessionId = null);
+
     // Called by JobService to auto-create session from DOCX import
     Task<CreateSessionResponseDto> CreateSessionFromImportAsync(
         string userId,

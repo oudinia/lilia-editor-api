@@ -609,11 +609,13 @@ public class JobService : IJobService
                 // LATEX format). Detect the "PK\x03\x04" magic bytes and
                 // flatten the project into a single resolved .tex before
                 // continuing on the existing text path.
+                byte[]? projectZip = null;
                 if (request.Format.ToUpperInvariant() == "LATEX" && LooksLikeBase64Zip(request.Content))
                 {
                     try
                     {
                         var zipBytes = Convert.FromBase64String(request.Content);
+                        projectZip = zipBytes;
                         var extracted = _latexProjectExtractor.Extract(zipBytes);
                         _logger.LogInformation(
                             "[Import] Flattened zip project {Filename} → main {Main}, {FileCount} files, {Notices} notices",
@@ -697,6 +699,10 @@ public class JobService : IJobService
                 // import_document) dropped them, so an imported paper lost its macros and TikZ libraries (10 Nov).
                 if (pasted.Format == "LATEX" && !string.IsNullOrWhiteSpace(request.Content))
                     await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId, request.Content, $"job {job.Id}");
+                // A project zip's images and .bib as the document's assets and references, as the upload's finalize
+                // does: through the connector they were left behind (the launch bot's Overleaf round trip, 18 Nov 2026).
+                if (projectZip is not null)
+                    await _reviewService.StageZipProjectAsync(projectZip, createdDocument.Id, userId, DateTime.UtcNow);
                 // A Markdown file's header-includes, read as a preamble the same way: packages to the package list,
                 // definitions to the custom preamble (#106: pandoc's isodate line never reached the PDF).
                 else if (pasted.Format == "MARKDOWN" && pasted.PreambleLatex.Count > 0)
