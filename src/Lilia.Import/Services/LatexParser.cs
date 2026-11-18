@@ -1421,6 +1421,11 @@ public class LatexParser : ILatexParser
         var last = 0;
         foreach (Match m in CommentProtected.Matches(content))
         {
+            // A \url (or \verb, or a verbatim) inside a comment is part of the comment: protected, it split the commented
+            // line, and the half after it came back as text ("} is commented out …", "Too many }'s": launch-bot #217,
+            // 18 Nov 2026). From the line's start, or the end of the last protected region on that line.
+            var lineStart = Math.Max(last, content.LastIndexOf('\n', Math.Max(0, m.Index - 1)) + 1);
+            if (m.Index > lineStart && TrailingComment.IsMatch(content[lineStart..m.Index])) continue;
             sb.Append(StripCommentsIn(content[last..m.Index]));
             sb.Append(m.Value);
             last = m.Index + m.Length;
@@ -3313,7 +3318,13 @@ public class LatexParser : ILatexParser
         s = Regex.Replace(s, @"\\liliaHeadRow\b\s*", "").Trim();
         if (s.StartsWith('{') && ExtractBraceBody(s, 0) is { } whole && whole.EndExclusive == s.Length)
             s = whole.Content.Trim();
+        var liliaHead = s.Contains(@"\liliaTableHead", StringComparison.Ordinal);
         s = UnwrapBraceArgCommand(s, "liliaTableHead");
+        // Lilia's header style is \liliaTableHead{\textbf{…}}: its bold is the header's, not the author's (#218 keeps the
+        // author's bold as **…** below).
+        if (liliaHead && Regex.Match(s.Trim(), @"^\\textbf\s*\{") is { Success: true } && ExtractBraceBody(s.Trim(), s.Trim().IndexOf('{')) is { } headBold
+            && headBold.EndExclusive == s.Trim().Length)
+            s = headBold.Content.Trim();
         s = s.Replace(@"{\%}", @"\%");
 
         // 1. Standalone font shape/series/family commands — apply to
@@ -3339,8 +3350,11 @@ public class LatexParser : ILatexParser
         s = UnwrapNAryCommand(s, "multirow*", argCount: 3, keepArg: 3);
         s = UnwrapNAryCommand(s, "multirow", argCount: 3, keepArg: 3);
 
-        // 6. Content-bearing wrappers — unwrap to the inner body.
-        foreach (var name in new[] { "textbf", "textit", "emph", "underline", "texttt", "textsf", "textrm", "textsc", "textmd", "textnormal" })
+        // 6. Bold, italics and underline as Lilia's marks (**…**, *…*, __…__): unwrapped, a table's best results lost their
+        //    bold (launch-bot #218, 18 Nov 2026). The other content-bearing wrappers unwrap to their inner body.
+        foreach (var (name, mark) in new[] { ("textbf", "**"), ("textit", "*"), ("emph", "*"), ("underline", "__") })
+            s = MarkBraceArgCommand(s, name, mark);
+        foreach (var name in new[] { "texttt", "textsf", "textrm", "textsc", "textmd", "textnormal" })
         {
             s = UnwrapBraceArgCommand(s, name);
         }
@@ -3401,6 +3415,27 @@ public class LatexParser : ILatexParser
             var body = ExtractBraceBody(text, openIdx);
             if (body == null) break;
             text = text.Substring(0, m.Index) + text.Substring(body.Value.EndExclusive);
+        }
+        return text;
+    }
+
+    /// <summary>A group header's label without the bold that is the group header's style ("**Scores**" → "Scores").</summary>
+    private static string WithoutWholeBold(string label) =>
+        label.Length > 4 && label.StartsWith("**", StringComparison.Ordinal) && label.EndsWith("**", StringComparison.Ordinal)
+        && label.IndexOf("**", 2, StringComparison.Ordinal) == label.Length - 2 ? label[2..^2] : label;
+
+    /// <summary>Every <c>\name{X}</c> as <c>{mark}X{mark}</c> (X trimmed; an empty X goes). Brace-balanced.</summary>
+    private static string MarkBraceArgCommand(string text, string name, string mark)
+    {
+        var pattern = new Regex(@"\\" + Regex.Escape(name) + @"\s*\{");
+        for (var guard = 0; guard < 64; guard++)
+        {
+            var m = pattern.Match(text);
+            if (!m.Success) break;
+            var body = ExtractBraceBody(text, m.Index + m.Length - 1);
+            if (body == null) break;
+            var inner = body.Value.Content.Trim();
+            text = text[..m.Index] + (inner.Length == 0 ? "" : mark + inner + mark) + text[body.Value.EndExclusive..];
         }
         return text;
     }
@@ -3587,7 +3622,7 @@ public class LatexParser : ILatexParser
                 var m = Regex.Match(Regex.Replace(c, @"^\\liliaHeadRow\b\s*", ""), @"^\\multicolumn\s*\{\s*(\d+)\s*\}");
                 var span = m.Success ? Math.Max(1, int.Parse(m.Groups[1].Value)) : 1;
                 if (m.Success)
-                    table.HeaderGroups.Add((col, span, CleanCellText(c)));
+                    table.HeaderGroups.Add((col, span, WithoutWholeBold(CleanCellText(c))));
                 col += span;
             }
             table.Rows.RemoveAt(0);
