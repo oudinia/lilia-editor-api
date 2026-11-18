@@ -220,6 +220,8 @@ public static partial class PublisherFrontMatterReader
                 .Select(n => int.TryParse(n, out var i) ? i : 0).Where(i => i > 0 && i <= institutes.Count).ToList();
             if (numbers.Count == 0 && institutes.Count == 1) numbers = [1];
             var name = Clean(Regex.Replace(part, @"\\inst\{[^}]*\}|\\orcidID\{[^}]*\}", ""));
+            // The ORCID stays, as \orcidlink after the name (launch-bot #203: it was dropped).
+            if (OrcidIn(part, null) is { } orcid) name += $@"\orcidlink{{{orcid}}}";
             return (Author: new Author(name, numbers.Select(i => institutes[i - 1]).ToList()), Numbers: numbers);
         }).Where(a => a.Author.Name.Length > 0).ToList();
 

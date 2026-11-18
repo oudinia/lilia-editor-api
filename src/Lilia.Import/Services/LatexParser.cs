@@ -729,6 +729,12 @@ public class LatexParser : ILatexParser
                 @"\s*\\\\\s*", @"\\");
         }
 
+        // llncs running heads go to the Title block, not the body (launch-bot #203, 18 Nov 2026).
+        if (MatchBalanced(content, "titlerunning") is { } titleRunning)
+            document.Metadata.TitleRunning = Regex.Replace(titleRunning.Inner, @"\s+", " ").Trim();
+        if (MatchBalanced(content, "authorrunning") is { } authorRunning)
+            document.Metadata.AuthorRunning = Regex.Replace(authorRunning.Inner, @"\s+", " ").Trim();
+
         // Extract \date{} if present.
         var dateMatch = MatchBalanced(content, "date");
         if (dateMatch.HasValue)
@@ -927,6 +933,8 @@ public class LatexParser : ILatexParser
         // REVTeX's second affiliation: front matter too (PublisherFrontMatterReader puts it on its author as a \thanks). It was
         // flattened into a loose "E-mail: …" paragraph under the abstract (launch-bot #143, 17 Nov 2026).
         documentContent = StripBalancedCommand(documentContent, "altaffiliation");
+        documentContent = StripBalancedCommand(documentContent, "titlerunning");
+        documentContent = StripBalancedCommand(documentContent, "authorrunning");
         if (publisherFront is not null) documentContent = StripPublisherFrontMatter(documentContent, publisherFront);
 
         // Also strip preamble commands that the metadata pass already captured so
@@ -3354,6 +3362,8 @@ public class LatexParser : ILatexParser
     /// <summary>Removes todonotes' \todo[opts]{text}, \missingfigure[opts]{text} and \listoftodos (brace-balanced).</summary>
     internal static string StripReviewNotes(string text)
     {
+        // A paper that defines \todo itself keeps it: its own macro, as written (OverleafImportFidelityTests).
+        if (Regex.IsMatch(text, @"\\(?:re|provide)?(?:new)?command\*?\s*\{?\s*\\todo\b|\\def\s*\\todo\b")) return text;
         text = Regex.Replace(text, @"\\listoftodos\b(\[[^\]]*\])?", "");
         foreach (var name in new[] { "todo", "missingfigure" })
         {

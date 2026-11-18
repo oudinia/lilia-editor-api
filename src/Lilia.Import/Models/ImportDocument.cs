@@ -222,6 +222,13 @@ public class ImportMetadata
     public string? AcmRights { get; set; }
 
     /// <summary>
+    /// llncs's running heads, \titlerunning{…} and \authorrunning{…}, as written; null when absent. They were printed as
+    /// body paragraphs after the abstract (launch-bot #203, 18 Nov 2026).
+    /// </summary>
+    public string? TitleRunning { get; set; }
+    public string? AuthorRunning { get; set; }
+
+    /// <summary>
     /// 10 / 11 / 12 — extracted from "10pt" / "11pt" / "12pt" in the
     /// \documentclass options. Null when the source didn't request a
     /// specific size; caller should keep the existing default.

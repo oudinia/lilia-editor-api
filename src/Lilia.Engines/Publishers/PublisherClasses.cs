@@ -153,7 +153,8 @@ public static class PublisherClasses
     /// </summary>
     public static (string Preamble, string BodyStart) FrontMatter(
         string cls, string title, string? authorText, string? abstractEnv, IReadOnlyList<string> keywords,
-        Func<string, string> escape, string titleLatex, string? acmCcs = null, string? acmRights = null)
+        Func<string, string> escape, string titleLatex, string? acmCcs = null, string? acmRights = null,
+        string? titleRunning = null, string? authorRunning = null)
     {
         // An affiliation line that is an email address is the author's email (the title editor's Email
         // field writes it as one): each class gets it in its own command, not as a line of the address.
@@ -239,20 +240,37 @@ public static class PublisherClasses
                 var institutes = new List<string>();
                 var instEmails = new List<List<string>>();
                 var names = new List<string>();
+                int Institute(string inst, List<string> emails)
+                {
+                    var i = institutes.IndexOf(inst);
+                    if (i < 0) { institutes.Add(inst); instEmails.Add([]); i = institutes.Count - 1; }
+                    instEmails[i].AddRange(emails);
+                    return i + 1;
+                }
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
-                    var inst = a.Lines.Count > 0 ? Line(a.Lines, ", ") : emails.Count > 0 ? "" : null;
-                    var n = 0;
-                    if (inst is not null)
+                    var numbers = new List<int>();
+                    var escaped = a.Lines.Select(escape).ToList();
+                    // Several institutes (\inst{1,2}): a line that is already another author's institute is that one, the rest
+                    // one more. "First Institute" + "Second Lab" became one institute "First Institute, Second Lab" (#203).
+                    var shared = escaped.Count > 1 ? escaped.Where(institutes.Contains).ToList() : [];
+                    if (shared.Count > 0)
                     {
-                        var i = institutes.IndexOf(inst);
-                        if (i < 0) { institutes.Add(inst); instEmails.Add([]); i = institutes.Count - 1; }
-                        instEmails[i].AddRange(emails);
-                        n = i + 1;
+                        numbers.AddRange(shared.Select(s => Institute(s, [])));
+                        var rest = escaped.Where(l => !shared.Contains(l)).ToList();
+                        if (rest.Count > 0) numbers.Add(Institute(string.Join(", ", rest), []));
+                        if (emails.Count > 0) instEmails[numbers[0] - 1].AddRange(emails);
                     }
-                    names.Add(escape(a.Name) + (n > 0 ? $@"\inst{{{n}}}" : ""));
+                    else if (a.Lines.Count > 0 || emails.Count > 0)
+                        numbers.Add(Institute(a.Lines.Count > 0 ? Line(a.Lines, ", ") : "", emails));
+                    // llncs's own \orcidID after the name (#203: ORCIDs were dropped).
+                    var orcid = a.Orcid is { Length: > 0 } id && Regex.IsMatch(id, @"^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$") ? $@"\orcidID{{{id}}}" : "";
+                    names.Add(escape(a.Name) + (numbers.Count > 0 ? $@"\inst{{{string.Join(",", numbers.Distinct())}}}" : "") + orcid);
                 }
                 pre.AppendLine($@"\author{{{string.Join(@" \and ", names)}}}");
+                // Running heads (#203): they printed as body text.
+                if (!string.IsNullOrWhiteSpace(titleRunning)) pre.AppendLine($@"\titlerunning{{{escape(titleRunning)}}}");
+                if (!string.IsNullOrWhiteSpace(authorRunning)) pre.AppendLine($@"\authorrunning{{{escape(authorRunning)}}}");
                 var institutesText = institutes.Select((inst, i) => instEmails[i].Count == 0 ? inst
                     : (inst.Length > 0 ? inst + @"\\ " : "") + $@"\email{{{string.Join(", ", instEmails[i])}}}");
                 // llncs prints \inst numbers only with more than one institute; one is fine as is.

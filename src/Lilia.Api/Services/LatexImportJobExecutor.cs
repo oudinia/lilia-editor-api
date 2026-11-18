@@ -371,6 +371,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             content["keywords"] = keywords.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (doc.Metadata?.AcmCcs is { Length: > 0 } ccs) content["acmCcs"] = ccs;
         if (doc.Metadata?.AcmRights is { Length: > 0 } rights) content["acmRights"] = rights;
+        if (doc.Metadata?.TitleRunning is { Length: > 0 } titleRunning) content["titleRunning"] = titleRunning;
+        if (doc.Metadata?.AuthorRunning is { Length: > 0 } authorRunning) content["authorRunning"] = authorRunning;
         return ("title", content);
     }
 

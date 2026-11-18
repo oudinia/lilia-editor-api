@@ -40,4 +40,11 @@ public class Batch11XcolorTodoTests
     [InlineData(@"\listoftodos Body. \missingfigure{plot here}", " Body. ")]
     public void Review_notes_are_dropped_on_import(string source, string expected)
         => LatexParser.StripReviewNotes(source).Should().Be(expected);
+
+    [Fact]
+    public void A_paper_that_defines_todo_keeps_it()
+    {
+        const string source = @"\newcommand{\todo}[1]{[TODO: #1]} Body.\todo{add the data}";
+        LatexParser.StripReviewNotes(source).Should().Be(source);
+    }
 }
