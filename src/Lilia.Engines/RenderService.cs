@@ -1582,8 +1582,16 @@ public partial class RenderService : IRenderService
     /// loaded it: both were empty, and screen readers and search read them (launch-bot #158, 17 Nov 2026). The render
     /// and the export (LaTeXExportService) both write it.
     /// </summary>
-    public static string PdfProperties(Document doc, string? titleText) =>
-        $@"\AtBeginDocument{{\ifdefined\hypersetup\hypersetup{{pdftitle={{{LatexText.Escape(TitleWithoutAnd(titleText ?? "").Trim())}}}, pdflang={{{DocumentLanguage.For(doc).Code}}}}}\fi}}";
+    public static string PdfProperties(Document doc, string? titleText)
+    {
+        // The language goes in the catalog directly (/Lang), each engine its own way: hyperref's pdflang after it loaded
+        // warned "Option pdflang has already been used" on every check and wrote no /Lang (launch-bot #158 retest,
+        // 18 Nov 2026). Not with \DocumentMetadata (the accessible PDF), which writes its own.
+        var lang = DocumentLanguage.For(doc).Code;
+        return @"\providecommand\LiliaPdfLang[1]{\ifdefined\pdfcatalog\pdfcatalog{/Lang (#1)}\else\ifdefined\pdfextension\pdfextension catalog{/Lang (#1)}\else\special{pdf:put @catalog <</Lang (#1)>>}\fi\fi}" + "\n"
+            + $@"\AtBeginDocument{{\ifdefined\hypersetup\hypersetup{{pdftitle={{{LatexText.Escape(TitleWithoutAnd(titleText ?? "").Trim())}}}}}\fi"
+            + $@"\ifdefined\IfDocumentMetadataTF\IfDocumentMetadataTF{{}}{{\LiliaPdfLang{{{lang}}}}}\else\LiliaPdfLang{{{lang}}}\fi}}";
+    }
 
     private string RenderParagraphToLatex(JsonElement content)
     {
