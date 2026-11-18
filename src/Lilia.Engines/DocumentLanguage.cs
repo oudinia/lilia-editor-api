@@ -68,7 +68,10 @@ public static class DocumentLanguage
         // From babel's .ini: the classic option, on LuaLaTeX with Lilia's packages, printed a lunate epsilon (ϵ) for ε.
         new LanguageSpec("el", "greek", LatexEngine.Lualatex, Provide: true),
         new LanguageSpec("ar", "arabic", LatexEngine.Lualatex, Provide: true, Rtl: true,
-            Fonts: @"\babelfont[arabic]{rm}[BoldFont=Amiri-Bold.ttf]{Amiri-Regular.ttf}"),
+            // Amiri has no italic. Substituted by the upright face, italic and upright were one font, and babel's Latin
+            // runs (onchar fonts) took the italic Latin face for both: after one \em every Latin word stayed italic,
+            // a whole English reference among them (18 Nov 2026, launch-bot #154). A slanted Amiri keeps them apart.
+            Fonts: @"\babelfont[arabic]{rm}[BoldFont=Amiri-Bold.ttf,ItalicFont=Amiri-Regular.ttf,ItalicFeatures={FakeSlant=0.2},BoldItalicFont=Amiri-Bold.ttf,BoldItalicFeatures={FakeSlant=0.2}]{Amiri-Regular.ttf}"),
         new LanguageSpec("he", "hebrew", LatexEngine.Lualatex, Provide: true, Rtl: true,
             Fonts: @"\babelfont[hebrew]{rm}[BoldFont=FreeSerifBold.otf,ItalicFont=FreeSerifItalic.otf]{FreeSerif.otf}"),
         new LanguageSpec("zh", "chinese", LatexEngine.Xelatex, Provide: true, Cjk: true),
@@ -154,6 +157,7 @@ public static class DocumentLanguage
                 // block was set right to left, print('ok') printed as ('ok')print (the document sweep, L-368, L-397,
                 // 16 Nov 2026). Each listing is set in English, which babel lays out left to right.
                 sb.Append(RtlCodeHooks);
+                sb.Append(RtlLatinReferences);
             }
         }
         else
@@ -169,6 +173,52 @@ public static class DocumentLanguage
     /// <summary>A code listing in a right-to-left document, set left to right (in English).</summary>
     internal const string RtlCodeHooks =
         "\\AddToHook{env/lstlisting/before}{\\begin{otherlanguage}{english}}\n\\AddToHook{env/lstlisting/after}{\\end{otherlanguage}}\n";
+
+    /// <summary>
+    /// A Latin-script reference in a right-to-left document, set in English, left to right. Each \bibitem whose key
+    /// <c>\liliaLtrRefs{…}</c> names (<see cref="LatinReferencesLine"/>, written before the bibliography) runs in
+    /// otherlanguage* until the next one or the list's end; the heading keeps the document's word. The entries were
+    /// right to left, their full stop at the left of the next line (18 Nov 2026, launch-bot #154). Checked with
+    /// lualatex: BibTeX's and Lilia's own lists, \bibitem with and without its [label], natbib and hyperref.
+    /// </summary>
+    internal const string RtlLatinReferences =
+        "\\makeatletter\n"
+        + "\\def\\liliaLtrRefs#1{\\@for\\lilia@key:=#1\\do{\\expandafter\\let\\csname lilia@ltr@\\lilia@key\\endcsname\\@empty}}\n"
+        + "\\let\\lilia@endref\\relax\n"
+        + "\\def\\lilia@ltrref#1{\\ifcsname lilia@ltr@#1\\endcsname\\leavevmode\\begin{otherlanguage*}{english}"
+        + "\\gdef\\lilia@endref{\\end{otherlanguage*}\\global\\let\\lilia@endref\\relax}\\fi\\ignorespaces}\n"
+        + "\\def\\lilia@obibitem[#1]#2{\\lilia@bibitem[#1]{#2}\\lilia@ltrref{#2}}\n"
+        + "\\def\\lilia@nbibitem#1{\\lilia@bibitem{#1}\\lilia@ltrref{#1}}\n"
+        + "\\AtBeginDocument{\\let\\lilia@bibitem\\bibitem"
+        + "\\def\\bibitem{\\lilia@endref\\@ifnextchar[\\lilia@obibitem\\lilia@nbibitem}}\n"
+        + "\\AddToHook{env/thebibliography/end}{\\lilia@endref}\n"
+        + "\\makeatother\n";
+
+    /// <summary>
+    /// <c>\liliaLtrRefs{k1,k2}</c>, the references with no Arabic or Hebrew letter, for a right-to-left document's
+    /// bibliography (<see cref="RtlLatinReferences"/>); empty when there is none (launch-bot #154, 18 Nov 2026).
+    /// </summary>
+    public static string LatinReferencesLine(IEnumerable<(string Key, string Text)> references)
+    {
+        var keys = references
+            .Where(r => r.Key.Length > 0 && !r.Key.Any(ch => ch is ',' or '{' or '}' or '\\' or '%' or '#' or ' '))
+            .Where(r => !r.Text.Any(IsRightToLeftLetter))
+            .Select(r => r.Key).Distinct(StringComparer.Ordinal).ToList();
+        return keys.Count == 0 ? "" : "\\liliaLtrRefs{" + string.Join(",", keys) + "}\n";
+    }
+
+    /// <summary>All the text a bibliography entry prints: its fields and its formatted text.</summary>
+    public static string ReferenceText(BibliographyEntry entry)
+    {
+        var sb = new StringBuilder(entry.FormattedText ?? "");
+        if (entry.Data?.RootElement is { ValueKind: JsonValueKind.Object } data)
+            foreach (var field in data.EnumerateObject())
+                if (field.Value.ValueKind == JsonValueKind.String) sb.Append(' ').Append(field.Value.GetString());
+        return sb.ToString();
+    }
+
+    private static bool IsRightToLeftLetter(char ch) =>
+        ch is >= '\u0590' and <= '\u08FF' or >= '\uFB1D' and <= '\uFDFF' or >= '\uFE70' and <= '\uFEFF';
 
     private static string PreambleWith(LanguageSpec spec, IReadOnlyList<LanguageSpec> others)
     {

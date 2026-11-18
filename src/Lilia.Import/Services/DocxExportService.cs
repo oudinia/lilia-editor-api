@@ -1182,6 +1182,9 @@ public class DocxExportService : IDocxExportService
             foreach (var p in root.Descendants<Paragraph>().ToList())
             {
                 if (p.ParagraphProperties?.ParagraphStyleId?.Val?.Value == "Code" || DisplayEquation(p)) continue;
+                // An English reference in an Arabic document reads left to right, as in the PDF: set right to left, Word
+                // printed "… Codes. [1]" with its full stop at the wrong end (18 Nov 2026, launch-bot #154, #155).
+                if (ReferenceParagraphs.TryGetValue(p, out _) && !HasRightToLeftLetters(p.InnerText)) continue;
                 var pPr = p.ParagraphProperties ?? p.PrependChild(new ParagraphProperties());
                 if (pPr.GetFirstChild<BiDi>() is null) pPr.Append(new BiDi());
                 foreach (var r in p.Descendants<Run>())
@@ -1367,8 +1370,13 @@ public class DocxExportService : IDocxExportService
         var label = entry.Number is int n ? $"[{n}] " : "";
         para.AppendChild(new Run(
             new Text(label + FormatBibliographyEntry(entry)) { Space = SpaceProcessingModeValues.Preserve }));
+        ReferenceParagraphs.AddOrUpdate(para, entry);
         return para;
     }
+
+    // The reference list's paragraphs: in a right-to-left document, one with no Arabic or Hebrew letter stays left to right
+    // (MarkRightToLeft; 18 Nov 2026, launch-bot #154).
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Paragraph, ExportBibliographyEntry> ReferenceParagraphs = new();
 
     /// <summary>
     /// One reference, rendered plainly: author, year, title, then whatever
