@@ -2654,6 +2654,14 @@ public class LatexParser : ILatexParser
                         // caption and label: in the proof's text, its caption sat in a narrow column beside the proof and
                         // its \ref printed the wrong number (18 Nov 2026, launch-bot #140).
                         var floats = new System.Text.StringBuilder();
+                        // A whole figure or table in a theorem is its own float after it, read as one: its minipages were
+                        // taken out one by one below, so a figure's subfigures spilled after the example as text and
+                        // "\linewidth" stopped the compile (launch-bot #202, 18 Nov 2026).
+                        body = Regex.Replace(body, @"\\begin\{(figure\*?|table\*?)\}.*?\\end\{\1\}", fl =>
+                        {
+                            floats.Append('\n').Append(fl.Value).Append('\n');
+                            return "";
+                        }, RegexOptions.Singleline);
                         body = MinipageEnv.Replace(body, mp =>
                         {
                             var asFloat = MinipageBody(mp.Groups[1].Value);
