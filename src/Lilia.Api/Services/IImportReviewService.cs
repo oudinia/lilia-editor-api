@@ -6,7 +6,7 @@ namespace Lilia.Api.Services;
 public interface IImportReviewService
 {
     // Session management
-    Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false);
+    Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false, bool autoToc = true);
 
     /// <summary>FT-SANDBOX-SCOPE: create a real-but-throwaway playground review
     /// session seeded with canned blocks (excluded from lists/quotas, can't be
@@ -123,7 +123,8 @@ public interface IImportReviewService
         string? sourceFilePath = null,
         string? rawImportData = null,
         int? headingNumbering = null,
-        string? pageSetup = null
+        string? pageSetup = null,
+        bool autoToc = true
     );
 
     // Paragraph traces
