@@ -457,6 +457,33 @@ public sealed class LiliaMcpWriteTools(
     /// <summary>Base64 for 10 MB, the largest file import_document takes.</summary>
     private const int ImportMaxChars = 14_000_000;
 
+    /// <summary>What a project zip held, for import_document's reply: the main file used, the other candidates, and the
+    /// files kept with the document but not used by Lilia's PDF.</summary>
+    private static object? ProjectReport(string base64)
+    {
+        try
+        {
+            var extracted = new Lilia.Import.Services.LatexProjectExtractor().Extract(Convert.FromBase64String(base64));
+            var unused = extracted.Files
+                .Where(f => f.Kind is Lilia.Import.Services.LatexProjectFileKinds.Style
+                    || f.Path.EndsWith(".eps", StringComparison.OrdinalIgnoreCase) || f.Path.EndsWith(".ps", StringComparison.OrdinalIgnoreCase))
+                .Select(f => f.Path).ToList();
+            return new
+            {
+                mainFile = extracted.MainFileName,
+                otherMainFiles = extracted.MainCandidates.Skip(1).ToList(),
+                notUsedByThePdf = unused,
+                note = (extracted.MainCandidates.Count > 1
+                        ? $"The zip has {extracted.MainCandidates.Count} main .tex files; Lilia used {extracted.MainFileName} (a main.tex is used first: rename the one you want to main.tex and import again). "
+                        : "")
+                    + (unused.Count > 0
+                        ? "Kept with the document but not used by Lilia's PDF: the project's own class and style files (Lilia compiles with TeX Live's) and EPS images (convert them to PDF or PNG)."
+                        : ""),
+            };
+        }
+        catch (Exception) { return null; }
+    }
+
     [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Import a file you have as a new Lilia document, in one call: .tex, .md or .lml as text, .docx or an Overleaf project .zip as base64 (up to 10 MB; a zip's \\input files are read as one document, its images and .bib kept with it). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
@@ -506,12 +533,16 @@ public sealed class LiliaMcpWriteTools(
             // dropped, the body's kept as text), though every other write tool refuses it (MCP-45) and
             // the compile does. The file is still imported, so the author can fix it in the editor; the
             // reply says what the compile will refuse, in the guard's own words.
-            var unsafeSource = kind == "DOCX" ? null : Lilia.Engines.TexSafety.TexSourceGuard.Violation(content);
+            var project = name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ProjectReport(content) : null;
+            var unsafeSource = kind == "DOCX" || project is not null ? null : Lilia.Engines.TexSafety.TexSourceGuard.Violation(content);
             return new
             {
                 documentId = result.Document.Id,
                 title = result.Document.Title,
                 url = $"{McpOAuth.PublicOrigin(config)}/d/{result.Document.Id}",
+                // A project zip: which .tex was the main one, the others that could have been, and the files the PDF won't
+                // use (a project's own .cls/.sty/.bst, EPS images). Both were silent (launch-bot #241, #242, 18 Nov 2026).
+                project,
                 warning = unsafeSource is null ? null
                     : $"{unsafeSource} The document was imported, but it will not compile until that is removed; anything the importer dropped is gone.",
                 next = unsafeSource is null

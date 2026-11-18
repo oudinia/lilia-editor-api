@@ -701,8 +701,17 @@ public class JobService : IJobService
                     await _reviewService.ApplyLatexSourceAsync(createdDocument.Id, userId, request.Content, $"job {job.Id}");
                 // A project zip's images and .bib as the document's assets and references, as the upload's finalize
                 // does: through the connector they were left behind (the launch bot's Overleaf round trip, 18 Nov 2026).
+                // The document exists: a failure here is logged, not the import's failure (launch-bot #241: an error reply, and
+                // a retry made a second document).
                 if (projectZip is not null)
-                    await _reviewService.StageZipProjectAsync(projectZip, createdDocument.Id, userId, DateTime.UtcNow);
+                {
+                    try { await _reviewService.StageZipProjectAsync(projectZip, createdDocument.Id, userId, DateTime.UtcNow); }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogWarning(ex, "[Import] The project's files could not all be stored with document {DocumentId}", createdDocument.Id);
+                        _context.ChangeTracker.Clear();
+                    }
+                }
                 // A Markdown file's header-includes, read as a preamble the same way: packages to the package list,
                 // definitions to the custom preamble (#106: pandoc's isodate line never reached the PDF).
                 else if (pasted.Format == "MARKDOWN" && pasted.PreambleLatex.Count > 0)
