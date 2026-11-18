@@ -292,8 +292,9 @@ public class ArxivEmitterBatch5Tests
 
         tex.Should().Contain(@"\def\liliaLtrRefs");
         tex.Should().Contain("\\liliaLtrRefs{huffman1952}\n\\begin{thebibliography}");
-        // Amiri has no italic: babel's Latin runs took the substituted shape's font and stayed italic after an \em.
-        tex.Should().Contain("ItalicFont=Amiri-Regular.ttf,ItalicFeatures={FakeSlant=0.2}");
+        // Amiri has no italic: babel's Latin runs took the substituted shape's font and stayed italic after an \em. Arabic
+        // emphasis is Amiri Bold (Oussama, 18 Nov 2026), never a mechanical slant.
+        tex.Should().Contain("ItalicFont=Amiri-Bold.ttf").And.NotContain("FakeSlant");
     }
 
     [Fact]

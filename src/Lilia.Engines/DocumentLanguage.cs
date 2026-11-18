@@ -70,8 +70,10 @@ public static class DocumentLanguage
         new LanguageSpec("ar", "arabic", LatexEngine.Lualatex, Provide: true, Rtl: true,
             // Amiri has no italic. Substituted by the upright face, italic and upright were one font, and babel's Latin
             // runs (onchar fonts) took the italic Latin face for both: after one \em every Latin word stayed italic,
-            // a whole English reference among them (18 Nov 2026, launch-bot #154). A slanted Amiri keeps them apart.
-            Fonts: @"\babelfont[arabic]{rm}[BoldFont=Amiri-Bold.ttf,ItalicFont=Amiri-Regular.ttf,ItalicFeatures={FakeSlant=0.2},BoldItalicFont=Amiri-Bold.ttf,BoldItalicFeatures={FakeSlant=0.2}]{Amiri-Regular.ttf}"),
+            // a whole English reference among them (18 Nov 2026, launch-bot #154). Arabic has no true italic: emphasis (\em, \emph,
+            // \textit) in Arabic prints in Amiri Bold, as Arabic typography emphasises (Oussama, 18 Nov 2026: "yes for bold arabic";
+            // a slanted Amiri leaned against the reading direction). Latin text keeps its italics.
+            Fonts: @"\babelfont[arabic]{rm}[BoldFont=Amiri-Bold.ttf,ItalicFont=Amiri-Bold.ttf,BoldItalicFont=Amiri-Bold.ttf]{Amiri-Regular.ttf}"),
         new LanguageSpec("he", "hebrew", LatexEngine.Lualatex, Provide: true, Rtl: true,
             Fonts: @"\babelfont[hebrew]{rm}[BoldFont=FreeSerifBold.otf,ItalicFont=FreeSerifItalic.otf]{FreeSerif.otf}"),
         new LanguageSpec("zh", "chinese", LatexEngine.Xelatex, Provide: true, Cjk: true),
