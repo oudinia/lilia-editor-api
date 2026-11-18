@@ -5,13 +5,16 @@ namespace Lilia.Engines;
 /// <summary>
 /// One author of the Title block: the name, the affiliation lines under it and
 /// the <c>\thanks</c> notes attached to it. <see cref="NoteSymbols"/> holds the
-/// footnote mark of each note, numbered across the whole title.
+/// footnote mark of each note, numbered across the whole title. <see cref="Orcid"/>: the iD of an
+/// <c>\orcidlink{…}</c> in the author's text (launch-bot #143 retest, 18 Nov 2026), so a publisher class can
+/// print it rather than lose it with the other commands.
 /// </summary>
 public sealed record TitleAuthor(
     string Name,
     IReadOnlyList<string> Lines,
     IReadOnlyList<string> Notes,
-    IReadOnlyList<string> NoteSymbols);
+    IReadOnlyList<string> NoteSymbols,
+    string? Orcid = null);
 
 /// <summary>
 /// Reads the Title block's <c>author</c> string, which is one LaTeX string
@@ -45,6 +48,7 @@ public static class TitleAuthors
         var cur = new StringBuilder();
         var noteCounter = 0;
         var perAuthorSymbols = new List<string>();
+        string? orcid = null;
 
         void EndLine()
         {
@@ -59,11 +63,12 @@ public static class TitleAuthors
             if (lines.Count > 0 || notes.Count > 0)
             {
                 var name = lines.Count > 0 ? lines[0] : "";
-                result.Add(new TitleAuthor(name, lines.Skip(1).ToList(), notes.ToList(), perAuthorSymbols.ToList()));
+                result.Add(new TitleAuthor(name, lines.Skip(1).ToList(), notes.ToList(), perAuthorSymbols.ToList(), orcid));
             }
             lines.Clear();
             notes.Clear();
             perAuthorSymbols.Clear();
+            orcid = null;
         }
 
         var depth = 0;
@@ -158,11 +163,16 @@ public static class TitleAuthors
                 continue;
             }
 
-            // Unknown command: drop it with its optional and mandatory argument.
+            // Unknown command: drop it with its optional and mandatory argument (an \orcidlink's iD is kept aside).
             j = SkipOptional(text, j);
             var m = j;
             while (m < text.Length && text[m] == ' ') m++;
-            if (m < text.Length && text[m] == '{') j = Math.Min(MatchingBrace(text, m) + 1, text.Length);
+            if (m < text.Length && text[m] == '{')
+            {
+                var close = MatchingBrace(text, m);
+                if (name is "orcidlink" or "orcid" && close > m) orcid ??= text[(m + 1)..close].Trim();
+                j = Math.Min(close + 1, text.Length);
+            }
             i = j;
         }
         EndAuthor();

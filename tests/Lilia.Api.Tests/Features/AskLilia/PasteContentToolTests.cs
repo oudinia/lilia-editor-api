@@ -20,8 +20,17 @@ public class PasteContentToolTests
         var doc = Doc(existing);
         var batch = new List<BatchUpdateBlockDto>();
         h.Documents.Setup(d => d.GetDocumentAsync(doc.Id, "u1")).ReturnsAsync(() => doc);
-        h.Blocks.Setup(b => b.BatchUpdateBlocksAsync(doc.Id, It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()))
-            .Callback<Guid, List<BatchUpdateBlockDto>, int?>((_, l, _) => { batch.Clear(); batch.AddRange(l); })
+        // The whole document as it is after the insert, existing blocks as id-only entries (launch-bot #148: only the
+        // new blocks are written).
+        h.Blocks.Setup(b => b.InsertBlocksAsync(doc.Id, It.IsAny<Guid?>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()))
+            .Callback<Guid, Guid?, List<BatchUpdateBlockDto>, int?>((_, after, l, _) =>
+            {
+                var at = after is null ? existing.Length : Array.FindIndex(existing, e => e.Id == after) + 1;
+                batch.Clear();
+                batch.AddRange(existing.Take(at).Select(e => new BatchUpdateBlockDto(e.Id, null, null, null, null, null)));
+                batch.AddRange(l);
+                batch.AddRange(existing.Skip(at).Select(e => new BatchUpdateBlockDto(e.Id, null, null, null, null, null)));
+            })
             .ReturnsAsync(() => new BatchUpdateResultDto(
                 batch.Select((b, i) => new BlockDto(b.Id, doc.Id, b.Type ?? existing.FirstOrDefault(e => e.Id == b.Id)?.Type ?? "paragraph",
                     b.Content ?? System.Text.Json.JsonDocument.Parse("{}").RootElement, i, null, 0, DateTime.UtcNow, DateTime.UtcNow)).ToList(), 1));
@@ -69,6 +78,28 @@ public class PasteContentToolTests
         batch.Skip(1).Select(b => b.Type).Should().Contain("heading");
     }
 
+    // launch-bot #148 (18 Nov 2026): every existing block went through the batch with its sort order rewritten.
+    [Fact]
+    public async Task Only_the_pasted_blocks_are_written_after_the_block_asked_for()
+    {
+        var first = Guid.NewGuid();
+        var last = Guid.NewGuid();
+        var (h, doc, _) = Setup(Block(first, "heading"), Block(last));
+        List<BatchUpdateBlockDto>? written = null;
+        Guid? afterSeen = Guid.Empty;
+        h.Blocks.Setup(b => b.InsertBlocksAsync(doc.Id, It.IsAny<Guid?>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()))
+            .Callback<Guid, Guid?, List<BatchUpdateBlockDto>, int?>((_, after, l, _) => { afterSeen = after; written = l; })
+            .ReturnsAsync(() => new BatchUpdateResultDto(new List<BlockDto>(), 2));
+
+        await Call(Fn(h.Tools(doc, true), "paste_content"), ("content", "One.\n\nTwo."), ("afterId", first.ToString()));
+
+        afterSeen.Should().Be(first);
+        written.Should().NotBeNull();
+        written!.Select(b => b.Id).Should().NotContain(first).And.NotContain(last);
+        written.Should().OnlyContain(b => b.Type != null && b.SortOrder == null);
+        h.Blocks.Verify(b => b.BatchUpdateBlocksAsync(It.IsAny<Guid>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()), Times.Never);
+    }
+
     [Fact]
     public async Task An_unknown_block_changes_nothing_and_says_where_to_find_ids()
     {
@@ -77,7 +108,7 @@ public class PasteContentToolTests
         var r = await Call(Fn(h.Tools(doc, true), "paste_content"), ("content", "Hello."), ("afterId", Guid.NewGuid().ToString()));
 
         r.GetProperty("error").GetString().Should().Contain("get_outline");
-        h.Blocks.Verify(b => b.BatchUpdateBlocksAsync(It.IsAny<Guid>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()), Times.Never);
+        h.Blocks.Verify(b => b.InsertBlocksAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()), Times.Never);
     }
 
     [Theory]
@@ -88,6 +119,6 @@ public class PasteContentToolTests
         var (h, doc, _) = Setup();
         var r = await Call(Fn(h.Tools(doc, true), "paste_content"), ("content", content), ("format", content == "x" ? "DOCX" : null));
         r.GetProperty("error").GetString().Should().Contain(said);
-        h.Blocks.Verify(b => b.BatchUpdateBlocksAsync(It.IsAny<Guid>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()), Times.Never);
+        h.Blocks.Verify(b => b.InsertBlocksAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<List<BatchUpdateBlockDto>>(), It.IsAny<int?>()), Times.Never);
     }
 }

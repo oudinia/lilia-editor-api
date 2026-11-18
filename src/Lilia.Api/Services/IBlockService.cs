@@ -16,6 +16,12 @@ public interface IBlockService
     /// <see cref="Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException"/>.
     /// </summary>
     Task<BatchUpdateResultDto> BatchUpdateBlocksAsync(Guid documentId, List<BatchUpdateBlockDto> blocks, int? expectedVersion = null);
+    /// <summary>
+    /// New blocks after <paramref name="afterBlockId"/> (null: at the end) without rewriting the other blocks'
+    /// sort orders (launch-bot #148, 18 Nov 2026); same version guard as <see cref="BatchUpdateBlocksAsync"/>.
+    /// Returns every block of the document in order.
+    /// </summary>
+    Task<BatchUpdateResultDto> InsertBlocksAsync(Guid documentId, Guid? afterBlockId, List<BatchUpdateBlockDto> newBlocks, int? expectedVersion = null);
     Task<List<BlockDto>> ReorderBlocksAsync(Guid documentId, List<Guid> blockIds);
     Task<BlockDto?> ConvertBlockAsync(Guid documentId, Guid blockId, string newType);
 

@@ -168,6 +168,60 @@ public class ArxivImportTests
         authors[1].Notes.Should().Equal("Funded by X.");
     }
 
+    // launch-bot #143, retest (18 Nov 2026): amsart's \thanks after the authors (affiliations, e-mails, grants) and on the
+    // title were lost; it is the last author's note, as REVTeX's is, and a title's goes to the first author (amsart prints
+    // every \thanks as a first-page footnote).
+    [Fact]
+    public async Task Amsart_thanks_after_the_authors_and_on_the_title_are_kept()
+    {
+        var (_, doc) = await Import("""
+            \documentclass{amsart}
+            \title{Minimal\thanks{Title note.}}
+            \author{Ann Author}
+            \address{Example University}
+            \author{Bob Author}
+            \thanks{Funded by X.}
+            \begin{document}
+            \maketitle
+            Text.
+            \end{document}
+            """);
+
+        doc.Metadata.Author.Should().Be(@"Ann Author\thanks{Title note.}\\Example University \and Bob Author\thanks{Funded by X.}");
+        doc.Title.Should().Be("Minimal");
+        var authors = Lilia.Engines.TitleAuthors.Parse(doc.Metadata.Author);
+        authors[0].Notes.Should().Equal("Title note.");
+        authors[1].Notes.Should().Equal("Funded by X.");
+    }
+
+    // launch-bot #143, retest: REVTeX's \orcidlink printed its number as text, and \vspace{5pt} between two affiliations
+    // left "5pt" in the address.
+    [Fact]
+    public async Task Revtex_orcid_is_kept_as_orcidlink_and_affiliation_spacing_goes()
+    {
+        var (_, doc) = await Import("""
+            \documentclass[aps,pra]{revtex4-2}
+            \usepackage{orcidlink}
+            \begin{document}
+            \title{Minimal}
+            \author{Philipp Kleinpa\ss\,\orcidlink{0009-0009-9005-702X}}
+            \affiliation{German Aerospace Center, Weßling, Germany\\ \vspace{5pt} Institut f\"ur Theoretische Physik, Ulm, Germany}
+            \author[0000-0002-1825-0097]{Ann Author}
+            \affiliation{Example University, Ulm, Germany}
+            \author{Bob Author}
+            \orcid{0000-0001-2345-6789}
+            \maketitle
+            Text.
+            \end{document}
+            """);
+
+        var authors = Lilia.Engines.TitleAuthors.Parse(doc.Metadata.Author);
+        authors.Select(a => a.Name).Should().Equal("Philipp Kleinpaß", "Ann Author", "Bob Author");
+        authors.Select(a => a.Orcid).Should().Equal("0009-0009-9005-702X", "0000-0002-1825-0097", "0000-0001-2345-6789");
+        authors[0].Lines.Should().HaveCount(2).And.NotContain(l => l.Contains("5pt") || l.Contains("vspace"));
+        doc.Metadata.Author.Should().NotContain("0009-0009-9005-702X}}").And.Contain(@"\orcidlink{0009-0009-9005-702X}");
+    }
+
     // #144
     [Fact]
     public async Task An_escaped_dollar_in_maths_doesnt_open_a_display_formula()
@@ -208,6 +262,30 @@ public class ArxivImportTests
         blocks.Should().NotContain(b => Text(b.Content).Contains("appendix"));
     }
 
+    // launch-bot #146 (18 Nov 2026): the appendix's sections numbered on (VII, VIII; 4, 5) instead of A, B: \appendix was
+    // dropped. It is now the Appendix block (back matter, which prints \appendix) before the first appendix section.
+    [Theory]
+    [InlineData("\\begin{appendix}\n\\section{First}\nText.\n\\section{Second}\nMore.\n\\end{appendix}")]
+    [InlineData("\\appendix\n\\section{First}\nText.\n\\section{Second}\nMore.")]
+    public async Task The_appendix_switch_is_an_appendix_block_before_its_sections(string appendix)
+    {
+        var (blocks, _) = await ImportBody("\\section{Main}\nBody.\n" + appendix);
+
+        blocks.Select(b => b.Type).Should().Equal("heading", "paragraph", "backMatter", "heading", "paragraph", "heading", "paragraph");
+        var start = blocks[2].Content;
+        Text(start, "subType").Should().Be("appendix");
+        Text(start).Should().BeEmpty();
+        Text(start, "title").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_appendixname_is_not_the_appendix_switch()
+    {
+        var (blocks, _) = await ImportBody("See \\appendixname{} below.");
+
+        blocks.Should().NotContain(b => b.Type == "backMatter");
+    }
+
     // launch-bot #162 (18 Nov 2026): a \label inside an equation (or a minipage figure) in a proof was given to the
     // proof, leaving a whitespace-only line in the maths ("Missing $ inserted") and \eqref pointing at the proof.
     [Fact]
@@ -244,6 +322,41 @@ public class ArxivImportTests
         Text(blocks.Should().ContainSingle(b => b.Type == "theorem").Subject.Content, "label").Should().BeEmpty();
     }
 
+    // launch-bot #140, the part left (18 Nov 2026): a minipage figure inside a proof stayed in the proof's text, so its
+    // caption sat in a narrow column beside the proof and "Figure~\ref{fig:p}" printed the wrong number. It is now its own
+    // figure block, with its caption and label, after the proof.
+    [Fact]
+    public async Task A_minipage_figure_in_a_proof_is_a_figure_after_the_proof()
+    {
+        var (blocks, _) = await ImportBody("""
+            \begin{proof}
+            See below.
+            \noindent\begin{minipage}[t]{0.4\textwidth}
+            \begin{tikzpicture}\draw (0,0)--(1,1);\end{tikzpicture}
+            \captionof{figure}{In a proof.}\label{fig:p}
+            \prevdepth=\dp\strutbox
+            \end{minipage}
+            See Figure~\ref{fig:p}.
+            \end{proof}
+            """);
+
+        blocks.Select(b => b.Type).Should().Equal("theorem", "figure");
+        var proof = blocks[0].Content;
+        Text(proof, "label").Should().BeEmpty();
+        Text(proof).Should().NotContain("minipage").And.NotContain("captionof").And.NotContain("tikzpicture").And.Contain(@"\ref{fig:p}");
+        Text(blocks[1].Content, "caption").Should().Be("In a proof.");
+        Text(blocks[1].Content, "label").Should().Be("fig:p");
+    }
+
+    [Fact]
+    public async Task A_minipage_without_a_float_stays_in_the_theorem()
+    {
+        var (blocks, _) = await ImportBody("\\begin{theorem}\nA.\n\\begin{minipage}{0.4\\textwidth}Side text.\\end{minipage}\n\\end{theorem}");
+
+        blocks.Should().ContainSingle(b => b.Type == "theorem").Which.Content.GetProperty("text").GetString().Should().Contain("Side text.");
+        blocks.Should().NotContain(b => b.Type == "figure");
+    }
+
     [Fact]
     public async Task A_theorems_own_label_is_still_its_label_and_leaves_no_blank_line()
     {
@@ -253,6 +366,66 @@ public class ArxivImportTests
         Text(lemma, "label").Should().Be("lem:a");
         Text(lemma).Should().Be("First line.\nSecond line, $x$.");
     }
+
+    // launch-bot #138, the gap (18 Nov 2026): an algorithm2e body was read as algorithmic, so \KwTo, \tcp, \nl and \; stayed
+    // in Lilia's algorithm and the PDF stopped ("Undefined control sequence \KwTo"). It is read into the block's lines.
+    [Fact]
+    public async Task An_algorithm2e_body_becomes_the_algorithm_blocks_lines()
+    {
+        var doc = await new LatexParser().ParseTextAsync("""
+            \documentclass{article}
+            \usepackage[ruled,vlined]{algorithm2e}
+            \begin{document}
+            \begin{algorithm}[!t]
+            \caption{Main}\label{alg:m}
+            \DontPrintSemicolon
+            \SetKwFunction{FSum}{Sum}
+            \KwIn{an instance $I$}
+            \KwOut{a path}
+            \nl $x \gets 0$\;
+            \For{$i=1$ \KwTo $n$}{
+              \eIf{$a_i > 0$}{
+                $x \gets x + a_i$ \tcp*{add}
+              }{
+                \tcp{skip it}
+                $y \gets \FSum{y, 1}$\;
+              }
+            }
+            \While{$x > 0$}{ $x \gets x - 1$\; }
+            \lIf{$x = 0$}{\KwRet{$x$}}
+            \KwRet $y$\;
+            \end{algorithm}
+            \end{document}
+            """);
+
+        var algo = doc.Elements.OfType<Lilia.Import.Models.ImportAlgorithm>().Single();
+        algo.Caption.Should().Be("Main");
+        algo.Label.Should().Be("alg:m");
+        algo.LineNumbers.Should().BeTrue();
+        algo.Lines.Select(l => (l.Kind, l.Text, l.Comment)).Should().Equal(
+            ("require", "an instance $I$", ""),
+            ("ensure", "a path", ""),
+            ("statement", @"$x \gets 0$", ""),
+            ("for", "$i=1$ to $n$", ""),
+            ("if", "$a_i > 0$", ""),
+            ("statement", @"$x \gets x + a_i$", "add"),
+            ("else", "", ""),
+            ("comment", "skip it", ""),
+            ("statement", @"$y \gets \textsc{Sum}(y, 1)$", ""),
+            ("endif", "", ""),
+            ("endfor", "", ""),
+            ("while", "$x > 0$", ""),
+            ("statement", @"$x \gets x - 1$", ""),
+            ("endwhile", "", ""),
+            ("if", "$x = 0$", ""),
+            ("return", "$x$", ""),
+            ("endif", "", ""),
+            ("return", "$y$", ""));
+    }
+
+    [Fact]
+    public void An_algorithmic_body_is_not_read_as_algorithm2e()
+        => Algorithm2e.Is("\\begin{algorithmic}\\STATE $x \\gets 0$\\end{algorithmic}").Should().BeFalse();
 
     // launch-bot #164 (18 Nov 2026): an algorithm's caption with nested braces was cut at the first }, and the caption and
     // label printed again as a step.

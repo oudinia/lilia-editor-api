@@ -535,6 +535,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         ImportTikzFigure tikz => ("figure", TikzFigureBlockContent.From(tikz)),
         // A moderncv CV's blocks (#112): before the passthrough they derive from, like TikZ figures.
         ImportCvBlock cv => (cv.BlockType, cv.Content),
+        // \appendix: the bare Appendix block, which prints \appendix alone (launch-bot #146, 18 Nov 2026).
+        ImportAppendixStart => ("backMatter", new { subType = "appendix", text = "" }),
         // An environment the parser doesn't model (ACM's acks, Elsevier's highlights, LNCS's credits, a
         // user's own): raw LaTeX, which the export writes as is. As a code block it printed as a listing
         // of its own source (26 Oct 2026, the Overleaf test projects).
