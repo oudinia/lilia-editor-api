@@ -642,9 +642,10 @@ public class LatexParser : ILatexParser
         content = StashTikz(content, tikz);
 
         // \verb|…| is text, not LaTeX: read as LaTeX, \verb|\end{document}| ended the import and \verb+\section{#1}+ became a
-        // heading (launch-bot #222, 18 Nov 2026). It becomes \texttt with its characters escaped, before anything reads
-        // the source; verbatim and listing environments keep theirs.
-        content = VerbAsTexttt(content);
+        // heading (launch-bot #222, 18 Nov 2026). Each is set aside before anything reads the source and comes back as a
+        // code span (`…`, printed as typed) in whatever text it sat in; verbatim and listing environments keep theirs.
+        var verbs = new List<string>();
+        content = StashVerb(content, verbs);
 
         // % comments are not content. Nothing removed them, so a trailing
         // "% note to self" imported as paragraph text and exported as a
@@ -714,7 +715,7 @@ public class LatexParser : ILatexParser
             if (titleMatch.HasValue)
             {
                 CheckRegexDispatchDrift("title", "metadata-extract");
-                document.Title = StripInlineCommandsForPlainText(titleMatch.Value.Inner);
+                document.Title = StripInlineCommandsForPlainText(WithoutTypeSwitches(titleMatch.Value.Inner));
             }
         }
 
@@ -1043,6 +1044,7 @@ public class LatexParser : ILatexParser
         // A picture that did not become a figure (inside an equation, a table cell,
         // a list item) goes back into that text exactly as it was written.
         if (tikz.Count > 0) RestoreTikzInElements(document, tikz);
+        if (verbs.Count > 0) RestoreVerbInElements(document, verbs);
 
         // Walk all text-bearing elements and harvest citation keys + reference labels.
         // The editor uses these to validate "you cited X but it's not in your bibliography"
@@ -1176,7 +1178,7 @@ public class LatexParser : ILatexParser
             Label = label,
             AltText = description.HasValue
                 ? StripInlineCommandsForPlainText(Regex.Replace(description.Value.Inner, @"\s+", " "))
-                : caption is null ? null : StripInlineCommandsForPlainText(caption),
+                : caption is null ? null : CaptionText(caption),
             Description = description.HasValue ? Regex.Replace(description.Value.Inner, @"\s+", " ").Trim() : null,
             Width = graphics.Success ? WidthOf(graphics.Groups[1].Value) : null,
             Subfigures = subfigures,
@@ -1332,7 +1334,7 @@ public class LatexParser : ILatexParser
                 var arg = MatchBalanced(body, name, i);
                 if (arg is { } a && a.Start == i)
                 {
-                    if (name == "caption") caption ??= StripInlineCommandsForPlainText(a.Inner).Trim();
+                    if (name == "caption") caption ??= CaptionText(a.Inner).Trim();
                     else label ??= a.Inner.Trim();
                     i = a.End;
                     continue;
@@ -1659,6 +1661,29 @@ public class LatexParser : ILatexParser
 
     private static readonly Regex ControlSpaceOrMath = new(@"\$\$[\s\S]*?\$\$|\$[^$]*\$|\\\([\s\S]*?\\\)|(?<!\\)\\(?:[ \t]|(?=\n))", RegexOptions.Compiled);
 
+    /// <summary>
+    /// A caption's text: as plain text, but its references stay references (\Cref{algo:1,algo:2} printed the keys:
+    /// launch-bot #233) and a \label inside it goes, since the float's label is read on its own and was written twice
+    /// (launch-bot #234, 18 Nov 2026).
+    /// </summary>
+    private static string CaptionText(string text)
+    {
+        text = Regex.Replace(text, @"\\label\s*\{[^}]*\}\s*", "");
+        var refs = new List<string>();
+        text = CrossReference.Replace(text, m => { refs.Add(m.Value); return $"\uE0F4{refs.Count - 1}\uE0F5"; });
+        text = StripInlineCommandsForPlainText(text);
+        return Regex.Replace(text, "\uE0F4(\\d+)\uE0F5", m => refs[int.Parse(m.Groups[1].Value)]);
+    }
+
+    // Size and series switches in a title are layout: "\LARGE \bf Residual-Guided…" and IEEE's
+    // "{\footnotesize \textsuperscript{*}Note: …}" printed as text (launch-bot #226, 18 Nov 2026).
+    private static string WithoutTypeSwitches(string text)
+    {
+        text = Regex.Replace(text, @"\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|bf|it|rm|sf|tt|sc|bfseries|itshape|mdseries|normalfont)\b\s*", "");
+        text = Regex.Replace(text, @"\\textsuperscript\s*\{([^{}]*)\}", "$1");
+        return text;
+    }
+
     private static string StripInlineCommandsForPlainText(string text)
     {
         text = CrossReference.Replace(text, "$1");
@@ -1677,6 +1702,8 @@ public class LatexParser : ILatexParser
     private static readonly HashSet<string> PreservedInlineCommands = new(StringComparer.Ordinal)
     {
         "cite", "citep", "citet", "citeauthor", "citeyear", "nocite",
+        // REVTeX's \onlinecite and the other forms papers use: flattened, the key printed (launch-bot #231, 18 Nov 2026).
+        "onlinecite", "citenum", "citealp", "citealt", "parencite", "textcite", "autocite",
         "ref", "pageref", "eqref", "autoref", "cref", "Cref",
         "label", "href", "url", "hyperref",
         "footnote", "footnotemark", "footnotetext",
@@ -2575,7 +2602,7 @@ public class LatexParser : ILatexParser
                             document.Elements.Add(new ImportAlgorithm
                             {
                                 Order = elementOrder++,
-                                Caption = figCaption.HasValue ? StripInlineCommandsForPlainText(figCaption.Value.Inner) : null,
+                                Caption = figCaption.HasValue ? CaptionText(figCaption.Value.Inner) : null,
                                 Label = figLabel.Success ? figLabel.Groups[1].Value.Trim() : null,
                                 Code = algoCode,
                                 Lines = ParseAlgorithmicLines(algoCode),
@@ -2606,7 +2633,7 @@ public class LatexParser : ILatexParser
                         var outside = tableContent.Remove(tabularMatch.Index, tabularMatch.Length);
                         var tableCaption = MatchBalanced(outside, "caption");
                         if (tableCaption.HasValue)
-                            table.Caption = StripInlineCommandsForPlainText(tableCaption.Value.Inner).Trim();
+                            table.Caption = CaptionText(tableCaption.Value.Inner).Trim();
                         var tableLabel = Regex.Match(outside, @"\\label\{([^}]+)\}");
                         if (tableLabel.Success) table.Label = tableLabel.Groups[1].Value.Trim();
                         // A threeparttable's notes, under the tabular.
@@ -3396,6 +3423,53 @@ public class LatexParser : ILatexParser
         @"\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment|alltt)\}[\s\S]*?\\end\{\1\}", RegexOptions.Compiled);
     private static readonly Regex VerbCommand = new(@"\\verb\*?([^a-zA-Z\s*])(.*?)\1", RegexOptions.Compiled);
 
+    private const char VerbOpen = '\uE0F2';
+    private const char VerbClose = '\uE0F3';
+    private static readonly Regex VerbToken = new("\uE0F2(\\d+)\uE0F3", RegexOptions.Compiled);
+
+    /// <summary>Every \verb|…| outside verbatim environments swapped for a placeholder; the stash holds its code span.</summary>
+    internal static string StashVerb(string content, List<string> stash)
+    {
+        if (content.IndexOf(@"\verb", StringComparison.Ordinal) < 0) return content;
+        var sb = new System.Text.StringBuilder(content.Length);
+        var last = 0;
+        foreach (Match region in VerbatimRegion.Matches(content))
+        {
+            sb.Append(Stash(content[last..region.Index]));
+            sb.Append(region.Value);
+            last = region.Index + region.Length;
+        }
+        sb.Append(Stash(content[last..]));
+        return sb.ToString();
+
+        string Stash(string text) => VerbCommand.Replace(text, m =>
+        {
+            var code = m.Groups[2].Value;
+            stash.Add(code.Contains('`') ? "``" + code + "``" : "`" + code + "`");
+            return $"{VerbOpen}{stash.Count - 1}{VerbClose}";
+        });
+    }
+
+    /// <summary>Every \verb placeholder back in the text it sat in, as its code span.</summary>
+    private static void RestoreVerbInElements(ImportDocument document, IReadOnlyList<string> stash)
+    {
+        string Restore(string v) => VerbToken.Replace(v, m => int.TryParse(m.Groups[1].Value, out var n) && n < stash.Count ? stash[n] : m.Value);
+        void Fix(object target)
+        {
+            foreach (var prop in target.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                if (prop.PropertyType != typeof(string) || !prop.CanRead || !prop.CanWrite || prop.GetIndexParameters().Length > 0) continue;
+                if (prop.GetValue(target) is string v && v.IndexOf(VerbOpen) >= 0) prop.SetValue(target, Restore(v));
+            }
+        }
+        foreach (var element in document.Elements)
+        {
+            Fix(element);
+            if (element is ImportTable table) foreach (var row in table.Rows) foreach (var cell in row) Fix(cell);
+            if (element is ImportListItem item) foreach (var child in item.Children) Fix(child);
+        }
+    }
+
     /// <summary>Every \verb|…| outside verbatim environments as \texttt{…}, its LaTeX characters escaped.</summary>
     internal static string VerbAsTexttt(string content)
     {
@@ -3584,7 +3658,7 @@ public class LatexParser : ILatexParser
             {
                 var cap = MatchBalanced(trimmedRow, "caption");
                 if (cap.HasValue && string.IsNullOrEmpty(table.Caption))
-                    table.Caption = StripInlineCommandsForPlainText(cap.Value.Inner).Trim();
+                    table.Caption = CaptionText(cap.Value.Inner).Trim();
                 var lbl = Regex.Match(trimmedRow, @"\\label\{([^}]+)\}");
                 if (lbl.Success && string.IsNullOrEmpty(table.Label)) table.Label = lbl.Groups[1].Value.Trim();
                 continue;
