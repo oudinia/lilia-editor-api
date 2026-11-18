@@ -278,6 +278,18 @@ public class GrokRetestFindingsTests : IDisposable
         typst.Should().NotContain("```goes");
     }
 
+    // #165 retest: the export builds Typst in TypstExportService, where ``quotes'' were still code.
+    [Fact]
+    public void The_Typst_export_prints_TeX_quotes_as_quotes_not_code()
+    {
+        var doc = new Document { Id = Guid.NewGuid(), Title = "Quotes", Blocks = [] };
+        var para = new Block { Id = Guid.NewGuid(), DocumentId = doc.Id, Type = "paragraph", SortOrder = 0,
+            Content = JsonDocument.Parse("""{"text":"Informally, ``goes down\"), and ``goes up''). Code `x` stays; $f''$ stays."}""") };
+        var source = new TypstExportService().BuildTypstDocument(doc, [para], null);
+        source.Should().Contain("\u201Cgoes down\u201D").And.Contain("\u201Cgoes up\u201D").And.Contain("`x`");
+        source.Should().NotContain("`goes");
+    }
+
     // ── #128: Markdown headings after the title ──────────────────────────
 
     [Fact]

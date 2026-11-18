@@ -1303,6 +1303,12 @@ public class TypstExportService : ITypstExportService
                 return Ph($"#text(size: {em}em)[{content}]");
             });
 
+        // TeX's quotes before inline code: ``goes down'' (or closed by a straight ") printed as code in the Typst PDF
+        // (launch-bot #165, 18 Nov 2026; the export builds Typst here, not in TypstRenderService). Maths is already a
+        // placeholder, so f'' stays a prime.
+        s = s.Replace("``", "\u201C").Replace("''", "\u201D");
+        s = Regex.Replace(s, "\u201C([^\u201C\u201D\"\n]*)\"", "\u201C$1\u201D");
+
         // 2. Inline code `text` — same backtick syntax in Typst.
         s = Regex.Replace(s, @"`([^`]+)`", m => Ph($"`{m.Groups[1].Value}`"));
 
