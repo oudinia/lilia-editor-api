@@ -1,12 +1,12 @@
 ---
 slug: connect-claude
 lang: fr
-title: Connecter votre IA à Lilia : Claude, ChatGPT, Cursor, VS Code et d’autres
-summary: Permettre à votre application d’IA de lire vos documents, de vérifier qu’ils compilent et de faire des modifications visibles et annulables, grâce au connecteur de Lilia. Les étapes pour Claude, Claude Code, ChatGPT, Codex, Cursor, VS Code, Gemini CLI et d’autres.
+title: Connecter votre IA à Lilia : Claude, ChatGPT, Grok, Cursor, VS Code et d’autres
+summary: Permettre à votre application d’IA de lire vos documents, de vérifier qu’ils compilent et de faire des modifications visibles et annulables, grâce au connecteur de Lilia. Les étapes pour Claude, Claude Code, ChatGPT, Grok, Codex, Cursor, VS Code, Gemini CLI et d’autres.
 skill: lilia-tutor
 audience: all
-tags: [claude, chatgpt, cursor, vscode, gemini, connecteur, mcp, applications d'ia]
-keywords: claude claude-code chatgpt codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio connecteur mcp connecter application intégration connecteur personnalisé assistant ia externe
+tags: [claude, chatgpt, grok, cursor, vscode, gemini, connecteur, mcp, applications d'ia]
+keywords: claude claude-code chatgpt grok codex cursor vscode copilot gemini zed junie lm-studio mistral le-chat copilot-studio connecteur mcp connecter application intégration connecteur personnalisé assistant ia externe
 ---
 # Connecter votre IA à Lilia
 
@@ -37,6 +37,12 @@ Puis lancez `/mcp` dans Claude Code, choisissez **lilia** et connectez-vous dans
 2. Nom **lilia**, connexion **Public endpoint**, adresse `https://editor.liliaeditor.com/api/mcp`, authentification **OAuth**.
 3. Confirmez l’avertissement, créez le plugin et installez-le. Dans une conversation, tapez **@** et choisissez **lilia**.
 - Les offres ChatGPT qui peuvent ajouter un serveur personnalisé, et y écrire, dépendent de l’offre : voir l’aide d’OpenAI. ChatGPT vous demande de confirmer chaque modification.
+
+## Grok {#grok}
+1. Dans une conversation avec Grok, envoyez : *Add this MCP server: https://editor.liliaeditor.com/api/mcp*
+2. Confirmez quand Grok demande d’ajouter le serveur.
+3. Quand la carte de connexion apparaît, connectez-vous à Lilia dans le navigateur et cliquez sur **Autoriser**. Les outils de Lilia fonctionnent dès votre message suivant.
+- Vérifié dans l’application de Grok le 18 novembre 2026. Que grok.com ou X proposent la même chose dépend de xAI : voir leur aide.
 
 ## Codex (la ligne de commande d’OpenAI) {#codex}
 ```
