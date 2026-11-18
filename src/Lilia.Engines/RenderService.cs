@@ -1014,7 +1014,12 @@ public partial class RenderService : IRenderService
                 body.AppendLine($"\\IfFileExists{{{name}.sty}}{{{load}}}{{}}");
             }
             if (body.Length == 0) return string.Empty;
+            // xcolor's options first: a source package that loads xcolor itself (todonotes, tikz) came before Lilia's own
+            // \usepackage[dvipsnames,svgnames,table]{xcolor} and stopped the compile with "Option clash for package
+            // xcolor" (launch-bot #204, 18 Nov 2026).
             return "% Packages preserved from imported preamble (IfFileExists-wrapped)"
+                 + Environment.NewLine
+                 + @"\PassOptionsToPackage{dvipsnames,svgnames,table}{xcolor}"
                  + Environment.NewLine
                  + body.ToString();
         }
@@ -1310,7 +1315,8 @@ public partial class RenderService : IRenderService
             }
             var (frontPre, frontBody) = Publishers.PublisherClasses.FrontMatter(publisher, titleText, authorText,
                 lead >= 0 ? renderedBlocks[lead] : null, TitleKeywords(doc), FormatTitleMetaLatex,
-                FormatTitleMetaLatex(TitleWithoutAnd(titleText)), TitleText(doc, "acmCcs"), TitleText(doc, "acmRights"));
+                FormatTitleMetaLatex(TitleWithoutAnd(titleText)), TitleText(doc, "acmCcs"), TitleText(doc, "acmRights"),
+                TitleText(doc, "titleRunning"), TitleText(doc, "authorRunning"));
             latex.Append(frontPre);
             latex.Append(frontBody);
             latex.AppendLine();

@@ -379,6 +379,9 @@ public class ImportReviewService : IImportReviewService
             {
                 var imported = await _context.Documents.FirstAsync(d => d.Id == documentId, ct);
                 DocumentService.ApplyPublisherProfile(imported, venue);
+                // The source's own options the venue doesn't set (llncs runningheads: launch-bot #203, the running heads went).
+                imported.LatexDocumentClassOptions = Lilia.Engines.Publishers.PublisherProfiles.WithSourceOptions(
+                    imported.LatexDocumentClass, imported.LatexDocumentClassOptions, parsed.Metadata.RawClassOptions);
                 imported.PublisherTemplateVersion = await Lilia.Engines.Publishers.PublisherClassVersions.InstalledAsync(imported.LatexDocumentClass!);
                 await _context.SaveChangesAsync(ct);
                 _logger.LogInformation("Import {Source}: venue {Venue} from \\documentclass[{Options}]{{{Class}}}", source, venue, parsed.Metadata.RawClassOptions, parsed.Metadata.DocumentClass);
