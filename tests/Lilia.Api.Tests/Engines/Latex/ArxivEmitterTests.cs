@@ -302,4 +302,32 @@ public class ArxivEmitterBatch5Tests
                 new List<BibliographyEntry> { Entry("k", new { author = "A. Author", title = "T", year = "2020" }) },
                 B("paragraph", new { text = "Text \\cite{k}." })))
             .Should().NotContain("liliaLtrRefs");
+
+    // launch-bot #167 (18 Nov 2026): a TikZ figure imported with its \captionof left in the source (no caption field) got a
+    // second, empty \captionof that was numbered too and took the label.
+    [Fact]
+    public void A_tikz_figure_whose_source_captions_itself_gets_no_second_caption()
+    {
+        var latex = Render().RenderBlockToLatex(B("figure", new
+        {
+            kind = "tikz",
+            source = "\\begin{tikzpicture}\\draw (0,0)--(1,1);\\end{tikzpicture}\n\\captionof{figure}{A lune.}",
+            caption = "",
+            label = "fig:lune",
+            placement = "auto",
+        }));
+
+        System.Text.RegularExpressions.Regex.Matches(latex, @"\\caption").Should().HaveCount(1);
+        latex.Should().Contain("\\captionof{figure}{A lune.}\n\\label{fig:lune}");
+    }
+
+    // launch-bot #169 (18 Nov 2026): an accent pdflatex can't print as a character stays a command in the imported text;
+    // \^{z} and \~{e} were escaped as \\textasciicircum{}{z} and \\textasciitilde{}{e}.
+    [Fact]
+    public void Accent_commands_in_text_are_not_escaped_as_a_caret_or_tilde()
+    {
+        var latex = Render().RenderBlockToLatex(B("paragraph", new { text = "Umeå, \\^{z}, \\~{e}, \\d{o}, a ^ b ~ c, x^2^." }));
+
+        latex.Should().Contain("Umeå, \\^{z}, \\~{e}, \\d{o}, a \\textasciicircum{} b \\textasciitilde{} c, x\\textsuperscript{2}.");
+    }
 }

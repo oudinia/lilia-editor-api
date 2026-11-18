@@ -1714,6 +1714,18 @@ public class LatexParser : ILatexParser
             mathSpans.Add(written);
             return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
         });
+        // Text accents and \char as their characters, before the flattener takes \r{a} for an unknown command ("Umea") and
+        // the backticks of \char`\{ for a code span; one pdflatex can't print as a character (\d{o}) is set aside as written
+        // (18 Nov 2026, launch-bot #169).
+        text = TextAccents.Resolve(text, written =>
+        {
+            mathSpans.Add(written);
+            return $"\uE000{callId}:{mathSpans.Count - 1}\uE001";
+        });
+        // \vspace{…} and \hspace{…} are layout, gone with their argument as the bare commands already were: the flattener
+        // kept the argument as text, "0pt Each set is…" from the \vspace{0pt} topping a [t] minipage (18 Nov 2026,
+        // launch-bot #168).
+        text = SpacingCommand.Replace(text, " ");
         text = DeclarationGroups(text);
         text = NormaliseInlineCommandsOutsideMath(text);
         return mathSpans.Count == 0
@@ -1721,12 +1733,16 @@ public class LatexParser : ILatexParser
             : Regex.Replace(text, $"\uE000{callId}:(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
     }
 
+    // launch-bot #168 (18 Nov 2026): \vspace{…} / \hspace{…} in running text.
+    private static readonly Regex SpacingCommand = new(@"\\[vh]space\*?\s*\{[^{}]*\}", RegexOptions.Compiled);
+
+    // An escaped brace inside is text: {\tt \{ann, bob\}@example.org} kept its \tt and braces (18 Nov 2026, launch-bot #169).
     private static readonly (Regex Rx, string Open, string Close)[] DeclarationGroupRules =
     [
-        (new Regex(@"\{\\(?:bfseries|bf)\b\s*([^{}]*)\}", RegexOptions.Compiled), "**", "**"),
-        (new Regex(@"\{\\(?:itshape|it|em|slshape|sl)\b\s*([^{}]*)\}", RegexOptions.Compiled), "*", "*"),
-        (new Regex(@"\{\\(?:scshape|sc)\b\s*([^{}]*)\}", RegexOptions.Compiled), "^^", "^^"),
-        (new Regex(@"\{\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|rmfamily|sffamily|ttfamily|rm|sf|tt|mdseries|upshape|normalfont)\b\s*([^{}]*)\}", RegexOptions.Compiled), "", ""),
+        (new Regex(@"\{\\(?:bfseries|bf)\b\s*((?:[^{}\\]|\\[\s\S])*)\}", RegexOptions.Compiled), "**", "**"),
+        (new Regex(@"\{\\(?:itshape|it|em|slshape|sl)\b\s*((?:[^{}\\]|\\[\s\S])*)\}", RegexOptions.Compiled), "*", "*"),
+        (new Regex(@"\{\\(?:scshape|sc)\b\s*((?:[^{}\\]|\\[\s\S])*)\}", RegexOptions.Compiled), "^^", "^^"),
+        (new Regex(@"\{\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge|rmfamily|sffamily|ttfamily|rm|sf|tt|mdseries|upshape|normalfont)\b\s*((?:[^{}\\]|\\[\s\S])*)\}", RegexOptions.Compiled), "", ""),
     ];
 
     /// <summary>
@@ -1771,6 +1787,26 @@ public class LatexParser : ILatexParser
         @"\\begin\{minipage\}(?:\s*(?:\[[^\]]*\]|\{(?:[^{}]|\{[^{}]*\})*\}))*([\s\S]*?)\\end\{minipage\}", RegexOptions.Compiled);
 
     private static readonly Regex CaptionOf = new(@"\\captionof\s*\{(figure|table)\}", RegexOptions.Compiled);
+    private static readonly Regex CaptionOfFigure = new(@"\\captionof\s*\{figure\}", RegexOptions.Compiled);   // launch-bot #167
+
+    /// <summary>How deep <paramref name="index"/> sits in groups and environments of <paramref name="text"/> (launch-bot #167).</summary>
+    private static int NestingAt(string text, int index)
+    {
+        var depth = 0;
+        for (var i = 0; i < index && i < text.Length; i++)
+        {
+            if (text[i] == '\\')
+            {
+                if (string.CompareOrdinal(text, i, @"\begin{", 0, 7) == 0) depth++;
+                else if (string.CompareOrdinal(text, i, @"\end{", 0, 5) == 0) depth--;
+                i++;
+                continue;
+            }
+            if (text[i] == '{') depth++;
+            else if (text[i] == '}') depth--;
+        }
+        return depth;
+    }
 
     /// <summary>
     /// A minipage's content, spliced into the text: a figure or table made with capt-of's <c>\captionof{figure}{…}</c>
@@ -2491,6 +2527,12 @@ public class LatexParser : ILatexParser
                         // With starred/regular handling the content is now group 2; group 1 is the "*" flag.
                         // The wrapfigure / marginfigure matchers have only the body (group 1).
                         var figContent = firstMatch.match.Groups.Count > 2 ? firstMatch.match.Groups[2].Value : firstMatch.match.Groups[1].Value;
+                        // In a figure, \captionof{figure}{…} is its \caption. It stayed in the picture's source, the block had
+                        // no caption, and the export added an empty one that took the label: "Figure 1. A lune.", a bare
+                        // "Figure 2", "See Figure 2" (18 Nov 2026, launch-bot #167). Only the figure's own, not one inside a
+                        // minipage or group in it, where \caption would be outside a float once the block prints in place.
+                        var withinFigure = figContent;
+                        figContent = CaptionOfFigure.Replace(withinFigure, m => NestingAt(withinFigure, m.Index) == 0 ? @"\caption" : m.Value);
                         if (figContent.Contains(TikzOpen))
                         {
                             document.Elements.Add(TikzFigureFrom(firstMatch.match.Value, figContent, firstMatch.type == "figure*", tikz, elementOrder++));

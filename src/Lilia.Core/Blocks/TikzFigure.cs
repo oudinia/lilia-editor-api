@@ -67,6 +67,8 @@ public static class TikzFigure
         @"\\begin\{(?:axis|semilogxaxis|semilogyaxis|loglogaxis|polaraxis|groupplot|ternaryaxis|smithchart)\}|\\addplot\b|\\pgfplotsset\b",
         RegexOptions.Compiled);
 
+    // A \captionof{figure}{…} or \caption{…} in the source itself (launch-bot #167, 18 Nov 2026).
+    private static readonly Regex OwnCaption = new(@"\\caption(?:of\s*\{figure\})?\s*(?:\[[^\]]*\])?\s*\{", RegexOptions.Compiled);
     private static readonly Regex UsePackage = new(@"\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}", RegexOptions.Compiled);
 
     // ── Reading block content ────────────────────────────────────────────
@@ -126,7 +128,10 @@ public static class TikzFigure
             if (string.IsNullOrEmpty(captionLatex) && string.IsNullOrEmpty(labelLatex)) return source;
             var inPlace = new StringBuilder();
             inPlace.Append(@"\begin{center}").Append('\n').Append(source).Append('\n');
-            inPlace.Append(@"\captionof{figure}{").Append(captionLatex).Append("}\n");
+            // A source that captions itself (a figure imported before 18 Nov 2026 with its \captionof left in the source)
+            // gets no second, empty caption: it was numbered too and took the label (launch-bot #167).
+            if (!string.IsNullOrEmpty(captionLatex) || !OwnCaption.IsMatch(source))
+                inPlace.Append(@"\captionof{figure}{").Append(captionLatex).Append("}\n");
             if (!string.IsNullOrEmpty(labelLatex))
                 inPlace.Append(@"\label{").Append(labelLatex).Append("}\n");
             inPlace.Append(describe);

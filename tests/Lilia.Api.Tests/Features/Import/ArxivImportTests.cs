@@ -449,4 +449,111 @@ public class ArxivImportTests
         algo.Label.Should().Be("alg:main");
         algo.Code.Should().NotContain(@"\caption").And.NotContain(@"\label");
     }
+
+    // launch-bot #167 (18 Nov 2026): a figure captioned with \captionof kept it in the picture's source, so the block had no
+    // caption, the export added an empty one that took the label, and every later figure was numbered one too high.
+    [Theory]
+    [InlineData(@"\begin{tikzpicture}\draw (0,0)--(1,1);\end{tikzpicture}")]
+    [InlineData(@"\includegraphics[width=0.5\textwidth]{lune.png}")]
+    public async Task A_figure_captioned_with_captionof_has_that_caption_and_label(string picture)
+    {
+        var (blocks, _) = await ImportBody(
+            "\\begin{figure}[htbp]\n\\centering\n" + picture + "\n\\captionof{figure}{A lune.}\n\\label{fig:lune}\n\\end{figure}\nSee Figure~\\ref{fig:lune}.");
+
+        var figure = blocks.Should().ContainSingle(b => b.Type == "figure").Subject.Content;
+        Text(figure, "caption").Should().Be("A lune.");
+        Text(figure, "label").Should().Be("fig:lune");
+        Text(figure, "source").Should().NotContain("captionof");
+    }
+
+    // launch-bot #168 (18 Nov 2026): \vspace{0pt} at the top of a text minipage printed as the text "0pt".
+    [Fact]
+    public async Task A_vspace_doesnt_leave_its_length_as_text()
+    {
+        var (blocks, _) = await ImportBody("""
+            \noindent
+            \begin{minipage}[t]{0.59\textwidth}
+            \vspace{0pt}
+            Each set is an increasing sequence. See Figure~\ref{fig:side}.
+            \end{minipage}\hfill
+            \begin{minipage}[t]{0.37\textwidth}
+            \vspace{0pt}\centering
+            \begin{tikzpicture}\draw (0,0)--(1,0);\end{tikzpicture}
+            \captionof{figure}{Beside the text.}
+            \label{fig:side}
+            \end{minipage}\par
+            After a gap\vspace{3pt} it goes on\hspace{1cm} here.
+            """);
+
+        var text = blocks.Where(b => b.Type == "paragraph").Select(b => Text(b.Content)).ToList();
+        text[0].Should().StartWith("Each set is an increasing sequence.");
+        text.Should().NotContain(t => t.Contains("0pt") || t.Contains("1cm"));
+        text[^1].Should().Be("After a gap it goes on here.");
+        Text(blocks.Single(b => b.Type == "figure").Content, "caption").Should().Be("Beside the text.");
+    }
+
+    // launch-bot #169 (18 Nov 2026): \r{a} was dropped in an amsart \thanks and became "a" in the body, and
+    // {\tt \char`\{ann, bob\char`\}@example.org} lost "{ann" and both braces (the body version did not compile).
+    [Fact]
+    public async Task Accents_and_char_survive_in_the_thanks_and_the_body()
+    {
+        var (blocks, doc) = await Import("""
+            \documentclass{amsart}
+            \title{Accents in thanks}
+            \author{Ann Author}
+            \thanks{AA: Ume\r{a} University, Sweden. Email: {\tt \char`\{ann, bob\char`\}@example.org}.}
+            \date{}
+            \begin{document}
+            \maketitle
+            \section{Intro}
+            Body: Ume\r{a} University and {\tt \char`\{ann, bob\char`\}@example.org}.
+            \end{document}
+            """);
+
+        var authors = Lilia.Engines.TitleAuthors.Parse(doc.Metadata.Author);
+        authors.Single().Notes.Should().Equal("AA: Umeå University, Sweden. Email: {ann, bob}@example.org.");
+        Text(blocks.Single(b => b.Type == "paragraph").Content)
+            .Should().Be(@"Body: Umeå University and \{ann, bob\}@example.org.");
+    }
+
+    [Theory]
+    [InlineData(@"\r{a} \r a \u{a} \v{s} \v s \H{o} \c{c} \k{a}", "å å ă š š ő ç ą")]
+    [InlineData(@"\`a \'e \'{\i} \^o \""u \~n \=a \.z", "à é í ô ü ñ ā ż")]
+    [InlineData(@"\d{o} \b{o} \t{oo}", @"\d{o} \b{o} \t{oo}")]
+    [InlineData(@"name\char64 domain, \char""41, \char'101, \char`\}", @"name@domain, A, A, \}")]
+    public async Task Text_accents_and_char_are_their_characters_in_the_body(string written, string expected)
+    {
+        var (blocks, _) = await ImportBody("Say " + written + ".");
+
+        Text(blocks.Single().Content).Should().Be("Say " + expected + ".");
+    }
+
+    // launch-bot #143 leftover (18 Nov 2026): a \\ inside one REVTeX \affiliation split it into two, and REVTeX printed the
+    // street address as a second affiliation ("…Weßling, Germany and").
+    [Fact]
+    public async Task A_line_break_inside_a_revtex_affiliation_keeps_it_one_affiliation()
+    {
+        var (_, doc) = await Import("""
+            \documentclass[aps,pra]{revtex4-2}
+            \begin{document}
+            \title{Minimal}
+            \author{Philipp Kleinpass}
+            \affiliation{%
+             Deutsches Zentrum f\"ur Luft- und Raumfahrt (DLR) e.V., Institute of Communications and Navigation,\\
+             M\"unchener Stra\ss e 20, 82234 We\ss ling, Germany}
+            \affiliation{Institut f\"ur Theoretische Physik, Universit\"at Ulm, 89069 Ulm, Germany}
+            \maketitle
+            Text.
+            \end{document}
+            """);
+
+        var lines = Lilia.Engines.TitleAuthors.Parse(doc.Metadata.Author).Single().Lines;
+        lines.Should().Equal(
+            "Deutsches Zentrum für Luft- und Raumfahrt (DLR) e.V., Institute of Communications and Navigation, Münchener Straße 20, 82234 Weßling, Germany",
+            "Institut für Theoretische Physik, Universität Ulm, 89069 Ulm, Germany");
+        var (_, body) = Lilia.Engines.Publishers.PublisherClasses.FrontMatter(
+            "revtex4-2", "Minimal", doc.Metadata.Author, null, [], s => s, "Minimal");
+        System.Text.RegularExpressions.Regex.Matches(body, @"\\affiliation\{").Should().HaveCount(2);
+        body.Should().Contain(@"\affiliation{Deutsches Zentrum für Luft- und Raumfahrt (DLR) e.V., Institute of Communications and Navigation, Münchener Straße 20, 82234 Weßling, Germany}");
+    }
 }

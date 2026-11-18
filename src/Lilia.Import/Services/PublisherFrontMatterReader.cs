@@ -31,7 +31,7 @@ public static partial class PublisherFrontMatterReader
         var authors = cls switch
         {
             "acmart" => Sequential(src, "affiliation", AcmAffiliation),
-            "revtex4-2" or "revtex4-1" => Sequential(src, "affiliation", Plain, notes: true),
+            "revtex4-2" or "revtex4-1" => Sequential(src, "affiliation", RevtexAffiliation, notes: true),
             // amsart's \thanks too (launch-bot #143 retest, 18 Nov 2026: the affiliations, e-mails and grants in them were lost).
             "amsart" or "amsproc" or "amsbook" => Sequential(src, "address", Plain, notes: true),
             "IEEEtran" => Ieee(src),
@@ -136,6 +136,20 @@ public static partial class PublisherFrontMatterReader
     }
 
     private static IEnumerable<string> Plain(string arg) => Split(arg, "\\\\").Select(Clean).Where(s => s.Length > 0);
+
+    /// <summary>
+    /// A REVTeX \affiliation is one address: a \\ inside it is a line break, so its lines are one line, joined with a comma.
+    /// Split at the \\, the DLR address became two affiliations and REVTeX printed "…Weßling, Germany and" (launch-bot
+    /// #143 leftover, 18 Nov 2026). A \\ followed by vertical space (\vspace{5pt}, \\[5pt]) still starts another address,
+    /// as in a source that stacks two in one \affiliation.
+    /// </summary>
+    private static IEnumerable<string> RevtexAffiliation(string arg) =>
+        AddressBreak().Split(arg)
+            .Select(address => string.Join(", ", Split(address, "\\\\").Select(Clean).Where(s => s.Length > 0)))
+            .Where(s => s.Length > 0);
+
+    [GeneratedRegex(@"\\\\\*?\s*(?:\[[^\]]*\]|\\(?:vspace|vskip)\*?\s*(?:\{[^{}]*\}|-?[\d.]+\s*[a-z]{2})|\\(?:smallskip|medskip|bigskip)(?![A-Za-z@]))")]
+    private static partial Regex AddressBreak();
 
     /// <summary>IEEE: \author{\IEEEauthorblockN{Name}\IEEEauthorblockA{line\\line} \and …}.</summary>
     private static List<Author> Ieee(string src)
@@ -444,6 +458,10 @@ public static partial class PublisherFrontMatterReader
     /// <summary>Plain text: line breaks, ~, simple formatting and stray braces out; spaces collapsed.</summary>
     private static string Clean(string s)
     {
+        // Accents and \char as characters, and an escaped brace kept, before the braces go: Ume\r{a} became "Ume" and
+        // {\tt \char`\{ann, bob\char`\}@example.org} "`, bob`@example.org" (18 Nov 2026, launch-bot #169).
+        s = TextAccents.Resolve(s);
+        s = Regex.Replace(s, @"\\(?:tt|ttfamily|bf|bfseries|it|itshape|em|rm|sf|sc|scshape|normalfont)(?![A-Za-z@])\s*", "");
         s = Regex.Replace(s, @"\\\\|\\newline|~", " ");
         s = Regex.Replace(s, @"\\(?:textbf|textit|emph|textsc|mbox|text|url|href\{[^}]*\})\s*\{([^{}]*)\}", "$1");
         s = Regex.Replace(s, @"\\(?:IEEEauthorrefmark|orcid|orcidID|corref|fnref|footnotemark)\{[^}]*\}", "");
@@ -452,7 +470,7 @@ public static partial class PublisherFrontMatterReader
         s = Regex.Replace(s, @"\\(?:vspace|hspace|vskip|hskip)\*?\s*(?:\{[^{}]*\}|-?[\d.]+\s*[a-z]{2})", " ");
         s = Regex.Replace(s, @"\\(?:smallskip|medskip|bigskip|vfill|hfill|noindent|par)(?![A-Za-z@])", " ");
         s = Regex.Replace(s, @"\\[,;:! ]", " ");
-        s = s.Replace("{", "").Replace("}", "");
+        s = Regex.Replace(s, @"(?<!\\)[{}]", "");
         return Regex.Replace(s, @"\s+", " ").Trim().Trim(',', ';');
     }
 
