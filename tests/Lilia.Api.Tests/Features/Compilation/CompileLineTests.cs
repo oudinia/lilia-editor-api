@@ -184,4 +184,34 @@ public class CompileLineTests
     [Fact]
     public void A_ticket_longer_than_64_characters_is_refused() =>
         CompileController.TicketOf("user-1", new string('x', 65)).Should().BeNull();
+
+    // The owner, 18 Nov 2026 ("people who will automate Lilia… any good rate limiting?"): one person holds at most
+    // PerUserSlots of the line at once, so a script exporting in a loop can't fill every slot.
+    [Fact]
+    public async Task One_person_holds_at_most_their_share_and_others_still_get_a_slot()
+    {
+        var line = new CompileLine(4, TimeSpan.FromSeconds(10));
+        var held = new List<CompileLine.Slot>();
+        using (CompileSlots.ForUser("script"))
+        {
+            held.Add(await line.EnterAsync());
+            held.Add(await line.EnterAsync());
+            var third = line.EnterAsync();
+            await Task.Delay(200);
+            third.IsCompleted.Should().BeFalse("the script's third compile waits for one of its own");
+            line.RunningCount.Should().Be(2);
+
+            using (CompileSlots.ForUser("author"))
+            {
+                var author = await line.EnterAsync().WaitAsync(TimeSpan.FromSeconds(2));
+                line.RunningCount.Should().Be(3, "another person still gets a slot at once");
+                author.Dispose();
+            }
+
+            held[0].Dispose();
+            held.Add(await third.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        foreach (var slot in held) slot.Dispose();
+        line.RunningCount.Should().Be(0);
+    }
 }
