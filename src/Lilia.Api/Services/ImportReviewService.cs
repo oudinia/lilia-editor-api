@@ -53,7 +53,7 @@ public class ImportReviewService : IImportReviewService
 
     // --- Session Management ---
 
-    public async Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false)
+    public async Task<CreateSessionResponseDto> CreateSessionAsync(string userId, CreateReviewSessionDto dto, bool isPlayground = false, bool autoToc = true)
     {
         // The review's title names the format (web #638), read from the session. Sessions made from a job
         // all kept the default "tex", so a Word import was titled "LaTeX import review" (launch-bot #76,
@@ -117,7 +117,9 @@ public class ImportReviewService : IImportReviewService
         var hasTocBlock = blockReviews.Any(b =>
             b.OriginalType == BlockTypes.TableOfContents || b.OriginalType == "toc");
 
-        if (headingCount >= AutoTocMinHeadings && !hasTocBlock)
+        // Not for a Word file, which says itself whether it has a contents list: a paper without one got one, above its
+        // title (launch-bot #195, 18 Nov 2026). A PDF can't say, so it keeps the guess.
+        if (autoToc && headingCount >= AutoTocMinHeadings && !hasTocBlock)
         {
             var tocWarningMessage = _localizer["AutoTocWarning"].Value;
             var tocWarnings = JsonDocument.Parse(
@@ -1264,7 +1266,8 @@ public class ImportReviewService : IImportReviewService
         string? sourceFilePath = null,
         string? rawImportData = null,
         int? headingNumbering = null,
-        string? pageSetup = null)
+        string? pageSetup = null,
+        bool autoToc = true)
     {
         var warningsJson = warnings != null
             ? JsonSerializer.SerializeToElement(warnings)
@@ -1277,7 +1280,7 @@ public class ImportReviewService : IImportReviewService
             Warnings: warningsJson
         );
 
-        var result = await CreateSessionAsync(userId, dto);
+        var result = await CreateSessionAsync(userId, dto, autoToc: autoToc);
 
         // Store paragraph traces and source file path if provided
         if (paragraphTraces.HasValue || sourceFilePath != null || rawImportData != null || headingNumbering != null || pageSetup != null)

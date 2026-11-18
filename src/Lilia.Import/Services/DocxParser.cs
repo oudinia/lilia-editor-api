@@ -108,7 +108,23 @@ public class DocxParser : IDocxParser
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// One file at a time per parser. The API holds one DocxParser for every import (a singleton), and a parse keeps its
+    /// file's state on the instance (the open document, warnings, element order, front matter): two imports at once
+    /// read each other's, and a footnote was looked up in the other file and dropped (launch-bot #188, 18 Nov 2026:
+    /// the first of several imports started together lost its footnote). The parse itself is synchronous.
+    /// </summary>
     public Task<ImportDocument> ParseAsync(string filePath, ImportOptions? options = null)
+    {
+        lock (_parseLock)
+        {
+            return ParseOne(filePath, options);
+        }
+    }
+
+    private readonly object _parseLock = new();
+
+    private Task<ImportDocument> ParseOne(string filePath, ImportOptions? options)
     {
         _options = options ?? ImportOptions.Default;
         _warnings.Clear();

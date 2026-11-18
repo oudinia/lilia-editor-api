@@ -453,7 +453,8 @@ public class JobService : IJobService
                         paragraphTraces: tracesJson,
                         sourceFilePath: persistentPath,
                         headingNumbering: importResult.IntermediateDocument?.Metadata.HeadingNumbering,
-                        pageSetup: ImportReviewService.PageSetupJson(importResult.IntermediateDocument?.Metadata));
+                        pageSetup: ImportReviewService.PageSetupJson(importResult.IntermediateDocument?.Metadata),
+                        autoToc: false);
 
                     reviewSessionId = sessionResult.Session.Id;
 
