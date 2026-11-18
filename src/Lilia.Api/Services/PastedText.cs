@@ -86,7 +86,7 @@ public static class PastedText
             var front = MarkdownFrontMatter.Read(content);
             var title = string.IsNullOrWhiteSpace(front.Title) ? null : front.Title;
             PastedBlock? titleBlock = front.Found && (title ?? front.Author ?? front.Date) is not null
-                ? new PastedBlock("title", new Dictionary<string, object> { ["title"] = title ?? "", ["author"] = front.Author ?? "", ["date"] = front.Date ?? "" })
+                ? new PastedBlock("title", NoDateIsNone(new Dictionary<string, object> { ["title"] = title ?? "", ["author"] = front.Author ?? "", ["date"] = front.Date ?? "" }))
                 : null;
             return new PastedBlocks(f, title, title is not null,
                 LatexImportJobExecutor.MapElements(MarkdownTextParser.Parse(front.Body)).Select(x => new PastedBlock(x.type, x.content)).ToList(), null)
@@ -149,6 +149,16 @@ public static class PastedText
     /// becomes the title (in the title block, with any front-matter author and date). For a file's import only: pasted
     /// into a document, a level-1 heading is a section.
     /// </summary>
+    /// <summary>
+    /// A Markdown title without a date prints none: an empty date is otherwise \today, so the PDF printed today's date
+    /// and the Word export none (launch-bot #200, 18 Nov 2026). dateMode "none", as for a LaTeX \date{} and Word.
+    /// </summary>
+    internal static Dictionary<string, object> NoDateIsNone(Dictionary<string, object> title)
+    {
+        if (title.TryGetValue("date", out var d) && string.IsNullOrWhiteSpace(d as string)) title["dateMode"] = "none";
+        return title;
+    }
+
     public static PastedBlocks WithLeadingH1AsTitle(PastedBlocks pasted, string? source)
     {
         if (pasted.Format != "MARKDOWN" || pasted.Title is not null || pasted.Blocks.Count == 0) return pasted;
@@ -186,7 +196,7 @@ public static class PastedText
             Title = title,
             TitleFromText = true,
             Blocks = rest,
-            TitleBlock = new PastedBlock("title", new Dictionary<string, object> { ["title"] = title, ["author"] = Field("author"), ["date"] = Field("date") }),
+            TitleBlock = new PastedBlock("title", NoDateIsNone(new Dictionary<string, object> { ["title"] = title, ["author"] = Field("author"), ["date"] = Field("date") })),
         };
     }
 

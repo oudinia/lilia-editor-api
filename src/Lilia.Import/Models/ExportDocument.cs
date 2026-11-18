@@ -406,6 +406,9 @@ public class ExportTableCell
 
     /// <summary>A place covered by a cell above that spans rows: Word continues its vertical merge here.</summary>
     public bool MergedAbove { get; set; }
+
+    /// <summary>The column's alignment for Word: "center", "right", or null for left (launch-bot #199).</summary>
+    public string? Align { get; set; }
 }
 
 /// <summary>

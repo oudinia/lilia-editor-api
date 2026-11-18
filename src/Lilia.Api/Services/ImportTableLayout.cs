@@ -26,6 +26,9 @@ internal static class ImportTableLayout
             content["headerGroups"] = t.HeaderGroups.Select(g => new { label = g.Label, start = g.Start, span = g.Span }).ToArray();
         if (t.RowGroupStarts.Count > 0)
             content["rowGroups"] = t.RowGroupStarts.ToArray();
+        // Centre and right columns as the source chose them (launch-bot #199).
+        if (t.ColumnAlign is { Count: > 0 } align)
+            content["columnAlign"] = align.ToArray();
         return content;
     }
 }
