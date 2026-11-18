@@ -1192,6 +1192,16 @@ public class DocxExportService : IDocxExportService
                     if (!HasRightToLeftLetters(r.InnerText)) continue;
                     var rPr = r.RunProperties ?? r.PrependChild(new RunProperties());
                     if (rPr.GetFirstChild<RightToLeftText>() is null) rPr.Append(new RightToLeftText());
+                    // Word draws an Arabic run bold or italic only from w:bCs and w:iCs, so Arabic emphasis printed plain.
+                    // Emphasis is bold in Arabic, as in the PDF (the owner, 18 Nov 2026, launch-bot #154): w:bCs for both.
+                    var bold = rPr.GetFirstChild<Bold>();
+                    var italic = rPr.GetFirstChild<Italic>();
+                    if ((bold is not null || italic is not null) && rPr.GetFirstChild<BoldComplexScript>() is null)
+                    {
+                        // Schema order: w:b, w:bCs, w:i.
+                        if (bold is not null) rPr.InsertAfter(new BoldComplexScript(), bold);
+                        else rPr.InsertBefore(new BoldComplexScript(), italic!);
+                    }
                 }
             }
             // w:bidiVisual after w:tblStyle, w:tblpPr and w:tblOverlap (schema order).
