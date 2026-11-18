@@ -253,4 +253,27 @@ public class ArxivImportTests
         Text(lemma, "label").Should().Be("lem:a");
         Text(lemma).Should().Be("First line.\nSecond line, $x$.");
     }
+
+    // launch-bot #164 (18 Nov 2026): an algorithm's caption with nested braces was cut at the first }, and the caption and
+    // label printed again as a step.
+    [Fact]
+    public async Task An_algorithm_caption_keeps_its_nested_braces_and_is_not_a_step()
+    {
+        var doc = await new LatexParser().ParseTextAsync("""
+            \documentclass{article}
+            \usepackage[ruled,vlined]{algorithm2e}
+            \begin{document}
+            \begin{algorithm}[!t]
+            \caption{\textup{\textsc{PathTSP}}$(V,c,s,t)$}
+            \label{alg:main}
+            \KwIn{an instance}
+            \KwOut{a path}
+            \end{algorithm}
+            \end{document}
+            """);
+        var algo = doc.Elements.OfType<Lilia.Import.Models.ImportAlgorithm>().Single();
+        algo.Caption.Should().Be(@"\textup{\textsc{PathTSP}}$(V,c,s,t)$");
+        algo.Label.Should().Be("alg:main");
+        algo.Code.Should().NotContain(@"\caption").And.NotContain(@"\label");
+    }
 }

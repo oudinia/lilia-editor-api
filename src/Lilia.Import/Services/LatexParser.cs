@@ -2623,21 +2623,27 @@ public class LatexParser : ILatexParser
                 case "algorithm":
                     {
                         var algoBody = firstMatch.match.Groups[1].Value;
-                        var capMatch = Regex.Match(algoBody, @"\\caption\{([^}]+)\}");
+                        // The caption read with balanced braces: \caption{\textup{\textsc{PathTSP}}$(V,c,s,t)$} was cut at the
+                        // first }, and the compile stopped (launch-bot #164, 18 Nov 2026).
+                        var capBalanced = MatchBalanced(algoBody, "caption");
                         var lblMatch = Regex.Match(algoBody, @"\\label\{([^}]+)\}");
+                        // Without algorithmic (algorithm2e's body) the code is the body: without its caption and label,
+                        // which printed again as a step.
+                        var bodyWithoutMeta = capBalanced is { } cb ? algoBody.Remove(cb.Start, cb.End - cb.Start) : algoBody;
+                        bodyWithoutMeta = Regex.Replace(bodyWithoutMeta, @"\\label\{[^}]+\}", "");
                         var algorithmicMatch = Regex.Match(
                             algoBody,
                             @"\\begin\{algorithmic\}(\[[^\]]*\])?([\s\S]*?)\\end\{algorithmic\}",
                             RegexOptions.Singleline);
                         var code = algorithmicMatch.Success
                             ? algorithmicMatch.Groups[2].Value.Trim()
-                            : algoBody.Trim();
+                            : bodyWithoutMeta.Trim();
                         var lineNumbers = algorithmicMatch.Success
                             && algorithmicMatch.Groups[1].Value.Contains("1", StringComparison.Ordinal);
                         document.Elements.Add(new ImportAlgorithm
                         {
                             Order = elementOrder++,
-                            Caption = capMatch.Success ? capMatch.Groups[1].Value.Trim() : null,
+                            Caption = capBalanced.HasValue ? capBalanced.Value.Inner.Trim() : null,
                             Label = lblMatch.Success ? lblMatch.Groups[1].Value.Trim() : null,
                             Code = code,
                             Lines = ParseAlgorithmicLines(code),
