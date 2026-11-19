@@ -130,6 +130,54 @@ public static class FigureFile
     /// instead (RenderService prints those and not the figure's src); and a CV's photo, which printed as a
     /// "[photo]" frame because its file never reached figures/ (the launch bot's #114, 15 Nov 2026).
     /// </summary>
+    /// <summary>
+    /// The images a raw LaTeX block (<c>embed</c>, engine latex) includes, as written: <c>\includegraphics[…]{fig_1}</c>. A
+    /// paper's figures can stay raw LaTeX (launch-bot #222: an APS template's), and their images were neither packed nor reported
+    /// missing: the export's zip had no fig_1 and nothing said so (launch-bot #236, 19 Nov 2026). TeX Live's own example images
+    /// are left out, as for figure blocks.
+    /// </summary>
+    public static IEnumerable<(Block Block, string Name)> RawIncludes(IEnumerable<Block> blocks)
+    {
+        foreach (var block in blocks.Where(b => b.Type == "embed"))
+        {
+            var content = block.Content.RootElement;
+            if (content.ValueKind != JsonValueKind.Object) continue;
+            if (content.TryGetProperty("engine", out var engine) && engine.ValueKind == JsonValueKind.String
+                && engine.GetString() is { Length: > 0 } e && !e.Equals("latex", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!content.TryGetProperty("code", out var code) || code.ValueKind != JsonValueKind.String) continue;
+            var latex = Regex.Replace(code.GetString() ?? "", @"(?<!\\)%[^\n]*", "");
+            foreach (Match m in RawInclude.Matches(latex))
+            {
+                var name = m.Groups[1].Value.Trim();
+                if (name.Length > 0 && TexLiveImage(name) is null) yield return (block, name);
+            }
+        }
+    }
+
+    private static readonly Regex RawInclude = new(@"\\includegraphics\*?\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The document file (an asset's name, as a zip import stores it) a raw <c>\includegraphics</c> means, and the path under
+    /// figures/ where LaTeX finds it through the export's <c>\graphicspath{{./figures/}}</c>: <c>fig_1</c> is <c>fig_1.pdf</c> at
+    /// figures/fig_1.pdf, <c>./img/plot.png</c> is plot.png at figures/img/plot.png. Null when no file matches. A name without an
+    /// extension matches a file of that stem in LaTeX's own order (PDF, PNG, JPEG, EPS).
+    /// </summary>
+    public static (string FileName, string Path)? MatchRawInclude(string name, IEnumerable<string> fileNames)
+    {
+        var written = name.Trim().Replace('\\', '/');
+        while (written.StartsWith("./", StringComparison.Ordinal)) written = written[2..];
+        var dir = System.IO.Path.GetDirectoryName(written)?.Replace('\\', '/') ?? "";
+        var file = System.IO.Path.GetFileName(written);
+        var names = fileNames.ToList();
+        string? found = System.IO.Path.HasExtension(file)
+            ? names.FirstOrDefault(n => string.Equals(n, file, StringComparison.OrdinalIgnoreCase))
+            : new[] { ".pdf", ".png", ".jpg", ".jpeg", ".eps" }
+                .Select(ext => names.FirstOrDefault(n => string.Equals(n, file + ext, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(n => n is not null);
+        if (found is null) return null;
+        return (found, dir.Length > 0 ? $"{dir}/{found}" : found);
+    }
+
     public static IEnumerable<(Block Block, string Src)> Sources(IEnumerable<Block> blocks)
     {
         foreach (var block in blocks.Where(b => b.Type is "figure" or "photo"))
