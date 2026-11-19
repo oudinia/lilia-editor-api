@@ -42,6 +42,9 @@ public static class PublisherClasses
 
     public static bool Is(string? cls) => Canonical(cls) is not null;
 
+    private static readonly System.Text.RegularExpressions.Regex AmsFrontLine = new(
+        @"^\\(?:subjclass(?:\[[^\]]*\])?|dedicatory)\s*\{(?:[^{}]|\{[^{}]*\})*\}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static readonly System.Text.RegularExpressions.Regex TitleThanks = new(
         @"\s*\\thanks\{(?:[^{}]|\{[^{}]*\})*\}", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -164,7 +167,7 @@ public static class PublisherClasses
     public static (string Preamble, string BodyStart) FrontMatter(
         string cls, string title, string? authorText, string? abstractEnv, IReadOnlyList<string> keywords,
         Func<string, string> escape, string titleLatex, string? acmCcs = null, string? acmRights = null,
-        string? titleRunning = null, string? authorRunning = null)
+        string? titleRunning = null, string? authorRunning = null, string? frontExtra = null)
     {
         // An affiliation line that is an email address is the author's email (the title editor's Email
         // field writes it as one): each class gets it in its own command, not as a line of the address.
@@ -348,6 +351,10 @@ public static class PublisherClasses
                     if (a.Lines.Count > 0) pre.AppendLine($@"\address{{{Line(a.Lines, @"\\")}}}");
                     foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                 }
+                // The paper's own \subjclass and \dedicatory (launch-bot #243): only those two commands, as written.
+                foreach (var line in (frontExtra ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                             .Where(l => AmsFrontLine.IsMatch(l)))
+                    pre.AppendLine(line);
                 body.AppendLine(@"\begin{document}");
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");

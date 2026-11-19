@@ -1320,7 +1320,8 @@ public partial class RenderService : IRenderService
             var (frontPre, frontBody) = Publishers.PublisherClasses.FrontMatter(publisher, titleText, authorText,
                 lead >= 0 ? renderedBlocks[lead] : null, TitleKeywords(doc), FormatTitleMetaLatex,
                 FormatTitleMetaLatex(TitleWithoutAnd(titleText)), TitleText(doc, "acmCcs"), TitleText(doc, "acmRights"),
-                TitleText(doc, "titleRunning"), TitleText(doc, "authorRunning"));
+                TitleText(doc, "titleRunning"), TitleText(doc, "authorRunning"),
+                TitleText(doc, "frontExtra"));
             if (teaser >= 0) frontBody = Publishers.TeaserFigure.BeforeMaketitle(frontBody, Publishers.TeaserFigure.AsTeaser(renderedBlocks[teaser]));
             latex.Append(frontPre);
             latex.Append(frontBody);
@@ -3412,7 +3413,9 @@ public partial class RenderService : IRenderService
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         }, RegexOptions.Singleline);
-        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)((?:\\.|[^\\$\n])+?)\$(?!\$)", m => {
+        // One line break may fall inside it ("then $f$ is $E\cup⏎F$-regular", launch-bot #243): it was escaped to text and
+        // the PDF stopped, "Missing $ inserted". Not a blank line, which ends the paragraph.
+        result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)((?:\\.|[^\\$\n]|\n(?![ \t]*\n))+?)\$(?!\$)", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
         });
