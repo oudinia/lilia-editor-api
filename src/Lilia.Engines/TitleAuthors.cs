@@ -126,7 +126,7 @@ public static class TitleAuthors
                 {
                     var end = MatchingBrace(text, k);
                     var inner = text[(k + 1)..end];
-                    var note = Tidy(Flatten(inner));
+                    var note = Tidy(FlattenNote(inner));
                     if (note.Length > 0)
                     {
                         noteCounter++;
@@ -187,6 +187,23 @@ public static class TitleAuthors
     /// became <c>G"odel</c>, <c>Erd\H{o}s</c> became <c>Erds</c>, and a name in <c>\textbf{}</c> or
     /// <c>\textsc{}</c> vanished, sometimes taking its author's column with it.</para>
     /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex NoteKept = new(
+        @"\\(?:no)?cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{[^{}]*\}|\\(?:ref|eqref|cref|Cref|autoref|url)\{[^{}]*\}"
+        + @"|\\href\{[^{}]*\}\{[^{}]*\}|(?<!\\)\$[^$]+(?<!\\)\$",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// A note's text flattened as a name is, with its citations, references, links and maths kept: Flatten dropped an
+    /// unknown command with its argument, and "published in~\cite{key}." printed "published in ." (launch-bot #249 retest,
+    /// 19 Nov 2026).
+    /// </summary>
+    private static string FlattenNote(string s)
+    {
+        var kept = new List<string>();
+        var marked = NoteKept.Replace(s, m => { kept.Add(m.Value); return $"\uE0F8{kept.Count - 1}\uE0F9"; });
+        return System.Text.RegularExpressions.Regex.Replace(Flatten(marked), "\uE0F8(\\d+)\uE0F9", m => kept[int.Parse(m.Groups[1].Value)]);
+    }
+
     private static string Flatten(string s)
     {
         var sb = new StringBuilder();
