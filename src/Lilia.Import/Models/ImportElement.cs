@@ -439,6 +439,9 @@ public class ImportListItem : ImportElement
 
     public bool IsNumbered { get; set; }
 
+    /// <summary>A numbered list's first number when it isn't 1 (\setcounter{enumi}{4} or [start=5]: 5); null otherwise.</summary>
+    public int? StartNumber { get; set; }
+
     /// <summary>The items of a list nested in this one (an itemize inside an item), in order.</summary>
     public List<ImportListItem> Children { get; set; } = [];
 

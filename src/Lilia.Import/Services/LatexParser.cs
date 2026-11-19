@@ -226,6 +226,15 @@ public class LatexParser : ILatexParser
     /// <summary>
     /// Theorem-style environments LaTeX papers use. Mapped to TheoremEnvironmentType.
     /// </summary>
+    /// <summary>
+    /// beamer's block, alertblock and exampleblock in a beamer deck: kept as written, title and colour, as raw LaTeX. They
+    /// were unwrapped to one plain paragraph and their titles lost (launch-bot #247, 19 Nov 2026). Elsewhere (a class
+    /// without them) they are still unwrapped.
+    /// </summary>
+    private static bool KeptBeamerBlock(ImportDocument document, string env) =>
+        env is "block" or "alertblock" or "exampleblock"
+        && string.Equals(document.Metadata.DocumentClass, "beamer", StringComparison.OrdinalIgnoreCase);
+
     private static readonly Dictionary<string, TheoremEnvironmentType> TheoremEnvironments = new(StringComparer.OrdinalIgnoreCase)
     {
         ["theorem"]     = TheoremEnvironmentType.Theorem,
@@ -1043,6 +1052,11 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\maketitle\b", "");
         // \tableofcontents is kept: it becomes a contents block (the dispatcher's "toc"). Stripped here, every imported
         // document lost its contents (the document sweep's chunk 7, 16 Nov 2026).
+        // A numbered list that starts later (\setcounter{enumi}{4} first, the usual way) as enumitem's [start=5], which the
+        // list reads: the counter went with the line below and the slide printed 1. Five (launch-bot #247, 19 Nov 2026).
+        documentContent = Regex.Replace(documentContent,
+            @"\\begin\{enumerate\}(?:\[(?<opt>[^\]]*)\])?\s*\\setcounter\s*\{enumi\}\s*\{(?<n>\d+)\}",
+            m => $@"\begin{{enumerate}}[{(m.Groups["opt"].Success && m.Groups["opt"].Value.Trim().Length > 0 ? m.Groups["opt"].Value.Trim() + "," : "")}start={int.Parse(m.Groups["n"].Value) + 1}]");
         // A counter set by hand goes with its arguments: \setcounter{page}{123} left "page{123}" in the text.
         documentContent = Regex.Replace(documentContent, @"\\(?:setcounter|addtocounter)\s*\{[^{}]*\}\s*\{[^{}]*\}", "");
         // A sectioning command with an empty title (\subsection*{} to start a layout, a template's placeholder) has no
@@ -2430,6 +2444,7 @@ public class LatexParser : ILatexParser
             // Not one the source declares as a theorem: "rem" is unwrapped here as a Spanish wrapper, and an amsart paper's
             // \newtheorem{rem}{Remark} lost its label, "Remark text." (launch-bot #230, 19 Nov 2026).
             if (passThroughMatch.Success && IsPassThroughEnvironment(passThroughMatch.Groups[1].Value)
+                && !KeptBeamerBlock(document, passThroughMatch.Groups[1].Value)
                 && !document.Metadata.DeclaredTheorems.ContainsKey(passThroughMatch.Groups[1].Value))
             {
                 var before = remaining[..passThroughMatch.Index];
@@ -2447,7 +2462,9 @@ public class LatexParser : ILatexParser
             // Not one inside inline maths: `$A = \begin{pmatrix}…\end{pmatrix}$` was cut into a paragraph ending in "$", a
             // raw block and a paragraph starting with "$", which LaTeX refused ("Missing $ inserted"; bot #51, 10 Nov).
             var unknownEnvMatch = FirstOutsideInlineMath(UnknownEnvRx, remaining);
-            if (unknownEnvMatch is { Success: true } && !IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) && !IsTheoremEnvironment(unknownEnvMatch.Groups[1].Value))
+            if (unknownEnvMatch is { Success: true }
+                && (!IsKnownEnvironment(unknownEnvMatch.Groups[1].Value) || KeptBeamerBlock(document, unknownEnvMatch.Groups[1].Value))
+                && !IsTheoremEnvironment(unknownEnvMatch.Groups[1].Value))
                 matches.Add((unknownEnvMatch, "unknown_env"));
 
             // Find the first match
@@ -2745,8 +2762,13 @@ public class LatexParser : ILatexParser
                         var listKind = firstMatch.match.Groups[1].Value; // itemize | enumerate | description
                         var body = firstMatch.match.Groups[2].Value;
                         var listGroup = elementOrder;             // unique per list environment
+                        // A numbered list's own start (enumitem's start=N, or \setcounter{enumi} read as one above).
+                        int? startNumber = listKind == "enumerate"
+                            && Regex.Match(body, @"^\s*\[[^\]]*\bstart\s*=\s*(\d+)") is { Success: true } startOpt
+                            && int.Parse(startOpt.Groups[1].Value) is var n && n != 1 ? n : null;
                         foreach (var item in ReadListItems(body, listKind == "enumerate"))
                         {
+                            item.StartNumber = startNumber;
                             // A description list keeps its \item[term] labels (launch-bot #227, 18 Nov 2026: the terms went).
                             item.IsDescription = listKind == "description";
                             item.Order = elementOrder++;

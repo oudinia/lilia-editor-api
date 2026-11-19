@@ -2620,7 +2620,9 @@ public partial class RenderService : IRenderService
             var body = frame.ToString();
             if (body.Trim().Length > 0)
             {
-                var fragile = Regex.IsMatch(body, @"\\begin\{(?:lstlisting|verbatim|Verbatim|minted)\}|\\lstinline|\\verb\W");
+                // And a definition with a parameter (#1) in the body: a frame reads its body as an argument, where # is
+                // illegal unless the frame is fragile (launch-bot #247, 19 Nov 2026).
+                var fragile = Regex.IsMatch(body, @"\\begin\{(?:lstlisting|verbatim|Verbatim|minted)\}|\\lstinline|\\verb\W|\\(?:(?:provide|new|renew)command\*?|def|gdef|edef)\b[^\n]*#\d");
                 latex.Append(@"\begin{frame}").Append(fragile ? "[fragile]" : "");
                 if (!string.IsNullOrWhiteSpace(frameTitle)) latex.Append(@"\frametitle{").Append(frameTitle).Append('}');
                 latex.AppendLine();
