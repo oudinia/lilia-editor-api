@@ -71,12 +71,22 @@ public class TypstCompileService : ITypstCompileService
         CancellationToken ct = default) =>
         CompileAsync(source, format, assetFiles, binaryAssets, evalAfter: null, ct);
 
+    public Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
+        IReadOnlyDictionary<string, byte[]>? binaryAssets,
+        string? evalAfter,
+        CancellationToken ct = default) =>
+        CompileAsync(source, format, assetFiles, binaryAssets, evalAfter, TypstPdfStandard.Default, ct);
+
     public async Task<TypstCompileResult> CompileAsync(
         string source,
         TypstOutputFormat format,
         IReadOnlyDictionary<string, string>? assetFiles,
         IReadOnlyDictionary<string, byte[]>? binaryAssets,
         string? evalAfter,
+        TypstPdfStandard standard,
         CancellationToken ct = default)
     {
         using var timed = Lilia.Core.Diagnostics.Timing.Measure("typst.compile");
@@ -166,6 +176,13 @@ public class TypstCompileService : ITypstCompileService
             psi.ArgumentList.Add("compile");
             psi.ArgumentList.Add("--root");
             psi.ArgumentList.Add(workDir);
+            // The accessible PDF (launch-bot #259, 19 Nov 2026): Typst writes PDF/UA-1 and refuses, with an error, what
+            // the standard forbids (no title, an image without alt text, maths without alt text, a skipped heading level).
+            if (standard == TypstPdfStandard.Ua1 && format == TypstOutputFormat.Pdf)
+            {
+                psi.ArgumentList.Add("--pdf-standard");
+                psi.ArgumentList.Add("ua-1");
+            }
             psi.ArgumentList.Add(sourceFile);
             psi.ArgumentList.Add(outputFile);
 
@@ -479,6 +496,28 @@ public interface ITypstCompileService
         IReadOnlyDictionary<string, byte[]>? binaryAssets,
         string? evalAfter,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// As above, with the PDF standard Typst must meet (<see cref="TypstPdfStandard.Ua1"/>: the accessible PDF,
+    /// launch-bot #259, 19 Nov 2026). Ignored for SVG and PNG.
+    /// </summary>
+    Task<TypstCompileResult> CompileAsync(
+        string source,
+        TypstOutputFormat format,
+        IReadOnlyDictionary<string, string>? assetFiles,
+        IReadOnlyDictionary<string, byte[]>? binaryAssets,
+        string? evalAfter,
+        TypstPdfStandard standard,
+        CancellationToken ct = default);
+}
+
+/// <summary>The PDF standard a Typst compile enforces (launch-bot #259, 19 Nov 2026).</summary>
+public enum TypstPdfStandard
+{
+    /// <summary>Typst's own PDF: what every preview and normal Typst PDF is.</summary>
+    Default,
+    /// <summary>PDF/UA-1 (<c>--pdf-standard ua-1</c>): tagged, titled, every image and equation with alt text.</summary>
+    Ua1,
 }
 
 public enum TypstOutputFormat

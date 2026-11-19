@@ -235,8 +235,9 @@ public class ExportController : ControllerBase
     /// "auto" (default — Typst with pdflatex fallback), "typst", or "pdflatex".
     /// <c>look</c> (a theme id) and <c>printSafe=true</c> (white paper, dark grounds to their light
     /// pair) change the look of this export only; the document keeps its own.
-    /// <c>accessible=true</c>: the accessible PDF, tagged to PDF/UA-2 for screen readers (TaggedPdf). It can take
-    /// minutes, so its compile outlives the request: 202 with Retry-After while it runs, the PDF once it is done.
+    /// <c>accessible=true</c>: the accessible PDF, tagged for screen readers: Typst's PDF/UA-1 for a document that
+    /// compiles with Typst and has no maths (launch-bot #259, 19 Nov 2026), else LaTeX's PDF/UA-2 (TaggedPdf). The LaTeX
+    /// one can take minutes, so its compile outlives the request: 202 with Retry-After while it runs, the PDF once it is done.
     /// </summary>
     [HttpGet("pdf")]
     [Lilia.Api.Filters.RecordsExport("pdf")]

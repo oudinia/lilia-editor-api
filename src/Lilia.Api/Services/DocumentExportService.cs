@@ -402,7 +402,9 @@ public class DocumentExportService : IDocumentExportService
     {
         // engineHint = "typst"     → Typst only, throw if it fails
         // engineHint = "pdflatex"  → skip Typst, go straight to pdflatex
-        // engineHint = "tagged"    → the accessible PDF: LaTeX made tagged PDF/UA-2 (TaggedPdf), LuaLaTeX
+        // engineHint = "tagged"    → the accessible PDF: Typst's PDF/UA-1 for a document that compiles with Typst
+        //                            and has no maths (launch-bot #259, 19 Nov 2026); else, or when Typst refuses,
+        //                            LaTeX made tagged PDF/UA-2 (TaggedPdf), LuaLaTeX
         // null / "auto" / anything else → existing behavior (Typst first,
         //                                  silent fallback to pdflatex)
         var hint = (engineHint ?? "auto").Trim().ToLowerInvariant();
@@ -417,7 +419,9 @@ public class DocumentExportService : IDocumentExportService
         var documentEngine = engines?.LatexEngine ?? "pdflatex";
         // The document's own choice of how its PDF is made (Document.PdfEngine, 14 Nov 2026): "latex" skips Typst
         // whenever the caller didn't name an engine. A named one (the preview's switch, Export → PDF) still wins.
-        var documentWantsLatex = engines?.PdfEngine == "latex" && hint == "auto";
+        // The accessible PDF follows the document's choice too (launch-bot #259): it is made the way its PDF is.
+        var tagged = hint == "tagged";
+        var documentWantsLatex = engines?.PdfEngine == "latex" && (hint == "auto" || tagged);
 
         // Typst is a different typesetting system, not a faster pdflatex. It is
         // a fair default for a document on the default engine, and it is the
@@ -428,10 +432,11 @@ public class DocumentExportService : IDocumentExportService
         //
         // So: an explicit LaTeX engine in the query skips Typst, and so does a
         // document that has chosen a non-default engine for itself.
-        var tagged = hint == "tagged";
         // "latex" (the preview's switch, 14 Nov 2026) is LaTeX with the document's own engine (XeLaTeX for one that
         // chose it), where "pdflatex" names that engine.
-        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex" or "latex" || tagged || documentWantsLatex
+        // The accessible PDF no longer goes to LaTeX by itself (launch-bot #259, 19 Nov 2026): a document Typst
+        // compiles gets Typst's PDF/UA-1 below, by the same routing as its normal PDF.
+        var wantsLatex = hint is "pdflatex" or "xelatex" or "lualatex" or "latex" || documentWantsLatex
                          || documentEngine is "xelatex" or "lualatex";
 
         // This export's look (Export PDF: Look ▾ / Print-safe). Null: the document's own.
@@ -457,7 +462,21 @@ public class DocumentExportService : IDocumentExportService
         }
 
         routing.Dispose();
-        if (!wantsLatex)
+        if (!wantsLatex && tagged)
+        {
+            // The accessible PDF of a document that compiles with Typst (launch-bot #259, 19 Nov 2026): Typst's
+            // PDF/UA-1, in under a second, looking like the document's own PDF. LaTeX's tagged PDF/UA-2 took a minute
+            // or more and looked like the LaTeX PDF. A document with maths, or one Typst refuses as PDF/UA-1, keeps
+            // the LaTeX path below.
+            TypstAccessiblePdf? accessible;
+            using (Lilia.Core.Diagnostics.Timing.Measure("pdf.typst-ua"))
+                accessible = await _previewRender.TryAccessibleTypstPdfAsync(documentId);
+            if (accessible?.Pdf is { Length: > 0 } uaPdf)
+                return (uaPdf, "typst", []);
+            _logger.LogInformation("[Export] Accessible PDF of {DocumentId} goes to LaTeX: {Why}",
+                documentId, accessible?.WhyLatex ?? "Typst gave no answer");
+        }
+        else if (!wantsLatex)
         {
             // Phase 2 step 9 — Typst-first preview path. Sub-second compile
             // when it works; on any failure we silently fall through to the
