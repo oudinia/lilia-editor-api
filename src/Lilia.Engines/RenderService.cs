@@ -1600,6 +1600,9 @@ public partial class RenderService : IRenderService
         // it, so every reference to a section printed "??".
         (text, var label) = HeadingAnchor.Read(content, text);
         text = HeadingAnchor.WithoutTypedNumber(text);
+        // A heading is one line: a source line break inside it is a space. The text pipeline made it a blank line, a
+        // paragraph break inside \section{…}, and REVTeX's sample stopped with "Runaway argument" (launch-bot #145, 19 Nov 2026).
+        text = Regex.Replace(text, @"[ \t]*\r?\n[ \t]*", " ");
         var labelPart = string.IsNullOrWhiteSpace(label) ? "" : $@"\label{{{LabelKey.Safe(label)}}}";
 
         return $@"\{command}{star}{shortPart}{{{ProcessLatexText(text).TrimEnd()}}}{labelPart}";
