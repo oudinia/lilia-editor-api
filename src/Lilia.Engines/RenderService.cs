@@ -1321,7 +1321,7 @@ public partial class RenderService : IRenderService
                 lead >= 0 ? renderedBlocks[lead] : null, TitleKeywords(doc), FormatTitleMetaLatex,
                 FormatTitleMetaLatex(TitleWithoutAnd(titleText)), TitleText(doc, "acmCcs"), TitleText(doc, "acmRights"),
                 TitleText(doc, "titleRunning"), TitleText(doc, "authorRunning"),
-                TitleText(doc, "frontExtra"));
+                TitleText(doc, "frontExtra"), TitleText(doc, "dateMode") == "none" ? null : dateText);
             if (teaser >= 0) frontBody = Publishers.TeaserFigure.BeforeMaketitle(frontBody, Publishers.TeaserFigure.AsTeaser(renderedBlocks[teaser]));
             latex.Append(frontPre);
             latex.Append(frontBody);
