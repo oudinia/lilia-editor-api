@@ -38,12 +38,15 @@ public partial class MathpixPdfImportService : IPdfParser
     {
         _logger.LogInformation("[Mathpix] Starting parse of {FilePath}", filePath);
 
+        // The tex.zip wait's deadline counts from here, the upload included (PDF import via tex.zip, 19 Nov 2026).
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
         // Step 1: Submit PDF to Mathpix
         var pdfId = await _mathpixClient.SubmitPdfAsync(filePath, cancellationToken);
 
         try
         {
-            return await ReadResultAsync(pdfId, filePath, cancellationToken);
+            return await ReadResultAsync(pdfId, filePath, started, cancellationToken);
         }
         finally
         {
@@ -64,7 +67,7 @@ public partial class MathpixPdfImportService : IPdfParser
         }
     }
 
-    private async Task<ImportDocument> ReadResultAsync(string pdfId, string filePath, CancellationToken cancellationToken)
+    private async Task<ImportDocument> ReadResultAsync(string pdfId, string filePath, System.Diagnostics.Stopwatch started, CancellationToken cancellationToken)
     {
         // Step 2: Poll until complete, get Markdown
         var markdown = await _mathpixClient.WaitForCompletionAsync(pdfId, cancellationToken);
@@ -85,7 +88,13 @@ public partial class MathpixPdfImportService : IPdfParser
 
         // Step 2b: the LaTeX project (tex.zip), imported as an Overleaf zip is; the Markdown below when it fails or
         // takes too long (PDF import via tex.zip, 19 Nov 2026).
-        if (_options.RequestTexZip && await TryReadTexZipAsync(pdfId, cancellationToken) is { } project)
+        // The import runs inside the web request, which Cloudflare cuts at 100 s: the tex.zip wait ends by
+        // TexZipDeadlineSeconds from the upload, and a Markdown that took that long leaves it no time at all.
+        var left = TimeSpan.FromSeconds(_options.TexZipDeadlineSeconds) - started.Elapsed;
+        if (_options.RequestTexZip && left <= TimeSpan.Zero)
+            _logger.LogWarning("[Mathpix] PDF {PdfId}: {Seconds:F0}s already spent, no time left for the tex.zip; using the Markdown",
+                pdfId, started.Elapsed.TotalSeconds);
+        else if (_options.RequestTexZip && await TryReadTexZipAsync(pdfId, left, cancellationToken) is { } project)
         {
             _logger.LogInformation("[Mathpix] PDF {PdfId} imported from its tex.zip ({Bytes} bytes)", pdfId, project.Zip.Length);
             return new ImportDocument
@@ -129,11 +138,11 @@ public partial class MathpixPdfImportService : IPdfParser
     /// The PDF's tex.zip and its flattened .tex, or null (logged) when the conversion failed, timed out, or the zip
     /// isn't a LaTeX project the extractor reads (PDF import via tex.zip, 19 Nov 2026).
     /// </summary>
-    private async Task<(byte[] Zip, string Tex)?> TryReadTexZipAsync(string pdfId, CancellationToken ct)
+    private async Task<(byte[] Zip, string Tex)?> TryReadTexZipAsync(string pdfId, TimeSpan maxWait, CancellationToken ct)
     {
         try
         {
-            var zip = await _mathpixClient.GetTexZipAsync(pdfId, ct);
+            var zip = await _mathpixClient.GetTexZipAsync(pdfId, ct, maxWait);
             if (zip is not { Length: > 0 })
             {
                 _logger.LogWarning("[Mathpix] PDF {PdfId}: the tex.zip is empty; using the Markdown", pdfId);

@@ -87,6 +87,8 @@ public class MathpixTexZipTests
         public string PdfStatus { get; init; } = "completed";
         public Queue<string> TexZipStatuses { get; init; } = new(["completed"]);
         public Func<HttpResponseMessage> TexZipDownload { get; init; } = () => Zip(TexZip());
+        /// <summary>How long the Markdown download takes: a slow Mathpix conversion, for the deadline.</summary>
+        public TimeSpan MarkdownDelay { get; init; } = TimeSpan.Zero;
 
         private static HttpResponseMessage Zip(byte[] bytes) => new(HttpStatusCode.OK)
         {
@@ -114,7 +116,10 @@ public class MathpixTexZipTests
             if (request.Method == HttpMethod.Get && path == $"/v3/pdf/{PdfId}")
                 return Json(new { status = PdfStatus, num_pages = 2, num_pages_completed = 2, percent_done = 100.0, error = PdfStatus == "error" ? "PDF is encrypted" : null });
             if (request.Method == HttpMethod.Get && path == $"/v3/pdf/{PdfId}.md")
+            {
+                if (MarkdownDelay > TimeSpan.Zero) await Task.Delay(MarkdownDelay, ct);
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Markdown) };
+            }
             if (request.Method == HttpMethod.Get && path == $"/v3/converter/{PdfId}")
             {
                 var texStatus = TexZipStatuses.Count > 1 ? TexZipStatuses.Dequeue() : TexZipStatuses.Peek();
@@ -266,6 +271,45 @@ public class MathpixTexZipTests
 
         doc.LatexProjectZip.Should().BeNull();
         doc.Elements.Should().Contain(e => e is ImportHeading);
+    }
+
+    // ── The deadline: the import runs inside the web request, which Cloudflare cuts at 100 s ──
+
+    [Fact]
+    public void The_tex_zip_wait_defaults_to_25_seconds_and_ends_80_seconds_after_the_upload()
+    {
+        var defaults = new MathpixOptions();
+
+        defaults.TexZipTimeoutSeconds.Should().Be(25);
+        defaults.TexZipDeadlineSeconds.Should().Be(80);
+    }
+
+    [Fact]
+    public async Task A_Markdown_conversion_that_used_up_the_deadline_goes_straight_to_the_Markdown_without_asking_for_the_tex_zip()
+    {
+        // The deadline (1 s here, 80 s in production) is spent by the time the Markdown arrives.
+        var api = new FakeMathpix { MarkdownDelay = TimeSpan.FromMilliseconds(1300) };
+        var doc = await ImportAsync(api, Settings(o => o.TexZipDeadlineSeconds = 1));
+
+        api.Requests.Should().NotContain(r => r.Contains("/v3/converter/") || r.EndsWith(".tex.zip"));
+        doc.LatexProjectZip.Should().BeNull();
+        doc.Elements.OfType<ImportHeading>().Should().ContainSingle(h => h.Text == "Introduction");
+        api.Requests.Last().Should().Be($"DELETE api.mathpix.com/v3/pdf/{PdfId}");
+    }
+
+    [Fact]
+    public async Task The_tex_zip_wait_stops_at_the_deadline_even_when_its_own_timeout_is_longer()
+    {
+        // tex.zip never finishes; its own timeout (25 s) is longer than what is left of a 2 s deadline.
+        var api = new FakeMathpix { TexZipStatuses = new(["processing"]) };
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var doc = await ImportAsync(api, Settings(o => { o.TexZipTimeoutSeconds = 25; o.TexZipDeadlineSeconds = 2; }));
+        clock.Stop();
+
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+        api.Requests.Should().Contain(r => r.EndsWith($"/v3/converter/{PdfId}"));
+        doc.LatexProjectZip.Should().BeNull();
+        doc.Elements.OfType<ImportHeading>().Should().ContainSingle(h => h.Text == "Introduction");
     }
 
     // ── Deleting at Mathpix ───────────────────────────────────────────

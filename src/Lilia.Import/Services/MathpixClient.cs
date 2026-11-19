@@ -212,12 +212,13 @@ public class MathpixClient : IMathpixClient
         }
     }
 
-    public async Task<byte[]> GetTexZipAsync(string pdfId, CancellationToken ct = default)
+    public async Task<byte[]> GetTexZipAsync(string pdfId, CancellationToken ct = default, TimeSpan? maxWait = null)
     {
         // The PDF is read ("completed" on /v3/pdf/{id}) before its conversions are: each requested format has its own
         // status on /v3/converter/{id}, and its download answers 202 while it is still converting
         // (docs.mathpix.com/reference/post-v3-pdf; PDF import via tex.zip, 19 Nov 2026).
         var timeout = TimeSpan.FromSeconds(_options.TexZipTimeoutSeconds);
+        if (maxWait is { } cap && cap < timeout) timeout = cap;
         var pollInterval = TimeSpan.FromMilliseconds(_options.PollIntervalMs);
         var startTime = DateTime.UtcNow;
         var id = Uri.EscapeDataString(pdfId);
@@ -263,7 +264,7 @@ public class MathpixClient : IMathpixClient
                 throw new LiliaExternalServiceException(
                     "Mathpix", LiliaErrorCodes.MathpixTimeout,
                     "PDF conversion to LaTeX is taking longer than expected.",
-                    internalDetails: $"Mathpix tex.zip not ready after {_options.TexZipTimeoutSeconds}s for pdf_id {pdfId} (last status: {texZip?.Status ?? "none"})");
+                    internalDetails: $"Mathpix tex.zip not ready after {timeout.TotalSeconds:F0}s for pdf_id {pdfId} (last status: {texZip?.Status ?? "none"})");
 
             await Task.Delay(pollInterval, ct);
         }

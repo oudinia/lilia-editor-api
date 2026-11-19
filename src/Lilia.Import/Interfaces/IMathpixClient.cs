@@ -13,9 +13,10 @@ public interface IMathpixClient
     /// <summary>
     /// Waits for the PDF's tex.zip conversion (<c>GET /v3/converter/{pdf_id}</c>) and downloads it
     /// (<c>GET /v3/pdf/{pdf_id}.tex.zip</c>). Throws when the conversion fails or takes longer than
-    /// <c>TexZipTimeoutSeconds</c> (PDF import via tex.zip, 19 Nov 2026).
+    /// <c>TexZipTimeoutSeconds</c>, or than <paramref name="maxWait"/> when that is shorter (the import's deadline)
+    /// (PDF import via tex.zip, 19 Nov 2026).
     /// </summary>
-    Task<byte[]> GetTexZipAsync(string pdfId, CancellationToken ct = default);
+    Task<byte[]> GetTexZipAsync(string pdfId, CancellationToken ct = default, TimeSpan? maxWait = null);
 
     /// <summary>
     /// Deletes the PDF and its outputs at Mathpix (<c>DELETE /v3/pdf/{pdf_id}</c>). True when Mathpix said yes
