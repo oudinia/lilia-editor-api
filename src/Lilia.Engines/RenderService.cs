@@ -1308,15 +1308,18 @@ public partial class RenderService : IRenderService
         if (Publishers.PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc)) is { } publisher)
         {
             var lead = blocks.FindIndex(b => string.Equals(b.Type, "abstract", StringComparison.OrdinalIgnoreCase));
-            if (lead >= 0)
+            // acmart's teaser goes before \maketitle, so it leaves the body too (Publishers.TeaserFigure).
+            var teaser = Publishers.TeaserFigure.For(publisher, blocks) is { } t ? blocks.IndexOf(t) : -1;
+            if (lead >= 0 || teaser >= 0)
             {
-                bodyBlocks = blocks.Where((_, i) => i != lead).ToList();
-                bodyRendered = renderedBlocks.Where((_, i) => i != lead).ToList();
+                bodyBlocks = blocks.Where((_, i) => i != lead && i != teaser).ToList();
+                bodyRendered = renderedBlocks.Where((_, i) => i != lead && i != teaser).ToList();
             }
             var (frontPre, frontBody) = Publishers.PublisherClasses.FrontMatter(publisher, titleText, authorText,
                 lead >= 0 ? renderedBlocks[lead] : null, TitleKeywords(doc), FormatTitleMetaLatex,
                 FormatTitleMetaLatex(TitleWithoutAnd(titleText)), TitleText(doc, "acmCcs"), TitleText(doc, "acmRights"),
                 TitleText(doc, "titleRunning"), TitleText(doc, "authorRunning"));
+            if (teaser >= 0) frontBody = Publishers.TeaserFigure.BeforeMaketitle(frontBody, Publishers.TeaserFigure.AsTeaser(renderedBlocks[teaser]));
             latex.Append(frontPre);
             latex.Append(frontBody);
             latex.AppendLine();

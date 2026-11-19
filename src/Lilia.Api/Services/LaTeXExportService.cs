@@ -389,7 +389,11 @@ public class LaTeXExportService : ILaTeXExportService
         _headingClass = LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass);
         _longtableAllowed = RenderService.SupportsLongtable(doc);
         _tagged = options.Tagged;
+        _teaser = Lilia.Engines.Publishers.TeaserFigure.For(_headingClass, doc.Blocks);
     }
+
+    /// <summary>acmart's teaser, written before \maketitle by the front matter and not in the body (launch-bot #242).</summary>
+    private Block? _teaser;
 
     // ── Single-file structure ──────────────────────────────────────────
 
@@ -960,6 +964,12 @@ public class LaTeXExportService : ILaTeXExportService
                 RenderService.TitleKeywords(doc), FormatTitleMetaLatex, FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title)),
                 RenderService.TitleText(doc, "acmCcs"), RenderService.TitleText(doc, "acmRights"),
                 RenderService.TitleText(doc, "titleRunning"), RenderService.TitleText(doc, "authorRunning"));
+            if (_teaser is not null)
+            {
+                if (_teaser.Document is null) _teaser.Document = doc;
+                body = Lilia.Engines.Publishers.TeaserFigure.BeforeMaketitle(body,
+                    Lilia.Engines.Publishers.TeaserFigure.AsTeaser(_check.RenderBlockToLatex(_teaser, false)));
+            }
             sb.Append(pre);
             sb.AppendLine();
             sb.Append(body);
@@ -1083,6 +1093,7 @@ public class LaTeXExportService : ILaTeXExportService
             // under figures/ with a placeholder, FigureFile). The export keeps only the bibliography
             // (a .bib, with the text references added: WithTextEntries).
             if (block.Type == "bibliography") return "";
+            if (_teaser is not null && block.Id == _teaser.Id) return "";
             if (_doc is not null && block.Document is null) block.Document = _doc;
             var latex = _check.RenderBlockToLatex(block, _longtableAllowed && RenderService.IsLongTable(block));
             if (_tagged && block.Type is "figure" or "image") latex = TaggedPdf.WithAlt(latex, TaggedPdf.AltOf(content));

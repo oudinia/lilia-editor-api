@@ -296,7 +296,9 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
         };
         if (img.Label is { Length: > 0 } label) content["label"] = label;
         if (img.Width is { } width) content["width"] = width;
-        if (img.Span == "page") content["span"] = "page";
+        if (img.Span is "page" or "teaser") content["span"] = "page";
+        // acmart's teaser (Publishers.TeaserFigure): before \maketitle there, a full-width figure elsewhere.
+        if (img.Span == "teaser") content["teaser"] = true;
         if (img.Subfigures.Count > 0)
             content["subfigures"] = img.Subfigures.Select(s => new Dictionary<string, object>
             {

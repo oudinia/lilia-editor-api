@@ -2258,6 +2258,12 @@ public class LatexParser : ILatexParser
                 if (marginFigureMatch.Success)
                     matches.Add((marginFigureMatch, "figure"));
 
+                // acmart's teaser, the figure under the title: a figure marked as the teaser, its image kept. As an unknown
+                // environment it was raw LaTeX after \maketitle, never printed, and its image was dropped (launch-bot #242).
+                var teaserMatch = Regex.Match(remaining, @"\\begin\{teaserfigure\}([\s\S]*?)\\end\{teaserfigure\}", RegexOptions.Singleline);
+                if (teaserMatch.Success)
+                    matches.Add((teaserMatch, "teaser"));
+
                 // Replace wrapfigure regex with a flexible opener — real
                 // usage is `\begin{wrapfigure}[lines]{l|r}[overhang]{width}`
                 // (4 args: [lines]{align}[overhang]{width}). The previous
@@ -2607,6 +2613,7 @@ public class LatexParser : ILatexParser
 
                 case "figure":
                 case "figure*":
+                case "teaser":
                     {
                         // Extract includegraphics filename and caption (with balanced-brace caption walker).
                         // With starred/regular handling the content is now group 2; group 1 is the "*" flag.
@@ -2642,7 +2649,9 @@ public class LatexParser : ILatexParser
                             });
                             break;
                         }
-                        document.Elements.Add(ReadImageFigure(figContent, firstMatch.type == "figure*", elementOrder++));
+                        var figure = ReadImageFigure(figContent, firstMatch.type is "figure*" or "teaser", elementOrder++);
+                        if (firstMatch.type == "teaser") figure.Span = "teaser";
+                        document.Elements.Add(figure);
                     }
                     break;
 
