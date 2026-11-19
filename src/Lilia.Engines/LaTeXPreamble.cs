@@ -979,6 +979,9 @@ public static partial class LaTeXPreamble
 \providecommand{\affil}[2][]{#2}
 \providecommand{\orcidlink}[1]{}
 \providecommand{\orcid}[1]{}
+% ACM's author marks, which an imported acmart paper keeps in its author text (launch-bot #239).
+\providecommand{\correspondingauthor}{}
+\providecommand{\authornotemark}[1][]{}
 \providecommand{\keywords}[1]{\paragraph*{Keywords:} #1}
 \providecommand{\email}[1]{\texttt{#1}}
 \providecommand{\corresp}[1]{#1}

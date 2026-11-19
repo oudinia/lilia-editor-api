@@ -502,6 +502,10 @@ public class LatexParser : ILatexParser
             body = body.Replace(line, "");
         foreach (var cmd in new[] { "keywords", "email", "institute", "address", "curraddr", "affil", "additionalaffiliation", "orcid", "authornote", "authorsaddresses", "shortauthors" })
             body = StripBalancedCommand(body, cmd);
+        // ACM's argumentless author marks travel with their author now (PublisherFrontMatterReader): left here, they printed
+        // in the body after \maketitle, "Undefined control sequence" (launch-bot #239, 19 Nov 2026).
+        body = Regex.Replace(body, @"\\correspondingauthor(?![A-Za-z@])\s*", "");
+        body = Regex.Replace(body, @"\\authornotemark(?:\[[^\]]*\])?(?![A-Za-z@])\s*", "");
         return body;
     }
 
