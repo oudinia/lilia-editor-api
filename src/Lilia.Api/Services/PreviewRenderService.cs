@@ -29,7 +29,17 @@ public interface IPreviewRenderService
     /// (strict pdflatex, tolerant pdflatex, etc.) when this returns null.
     /// </summary>
     Task<byte[]?> TryTypstPdfAsync(Guid documentId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The accessible PDF made by Typst as PDF/UA-1 (launch-bot #259, 19 Nov 2026), or why it goes to LaTeX's tagged
+    /// PDF instead: the document has maths (LaTeX tags it as MathML), or Typst refused something PDF/UA-1 forbids
+    /// that Lilia doesn't fix by itself (a skipped heading level, for example).
+    /// </summary>
+    Task<TypstAccessiblePdf> TryAccessibleTypstPdfAsync(Guid documentId, CancellationToken ct = default);
 }
+
+/// <summary>The accessible PDF from Typst (PDF/UA-1), or null and the reason it goes to LaTeX (launch-bot #259).</summary>
+public sealed record TypstAccessiblePdf(byte[]? Pdf, string? WhyLatex);
 
 public sealed record PreviewRenderResult(
     byte[] Pdf,
@@ -152,19 +162,18 @@ public class PreviewRenderService : IPreviewRenderService
         return new PreviewRenderResult(pdflatexPdf, engine, sw.ElapsedMilliseconds);
     }
 
-    public async Task<byte[]?> TryTypstPdfAsync(Guid documentId, CancellationToken ct = default)
+    /// <summary>What a Typst build of the document reads: the document, its blocks, references and layout groups.</summary>
+    private sealed record TypstInput(Document Doc, List<Block> Blocks, List<BibliographyEntry> BibEntries, List<BlockGroup> LayoutGroups);
+
+    private async Task<TypstInput?> LoadTypstInputAsync(Guid documentId, CancellationToken ct)
     {
-        Document? doc;
-        List<Block> blocks;
-        List<BibliographyEntry> bibEntries;
-        List<BlockGroup> layoutGroups;
         try
         {
-            doc = await _db.Documents.AsNoTracking()
+            var doc = await _db.Documents.AsNoTracking()
                 .FirstOrDefaultAsync(d => d.Id == documentId, ct);
             if (doc == null) return null;
 
-            blocks = await _db.Blocks.AsNoTracking()
+            var blocks = await _db.Blocks.AsNoTracking()
                 .Where(b => b.DocumentId == documentId)
                 .OrderBy(b => b.SortOrder)
                 .ToListAsync(ct);
@@ -172,7 +181,7 @@ public class PreviewRenderService : IPreviewRenderService
             // Load bib entries so #bibliography("references.bib") in
             // the generated Typst source resolves at compile time. Empty
             // list is fine — we just don't write the asset.
-            bibEntries = await _db.BibliographyEntries.AsNoTracking()
+            var bibEntries = await _db.BibliographyEntries.AsNoTracking()
                 .Where(b => b.DocumentId == documentId)
                 .ToListAsync(ct);
             // And the references written in the bibliography blocks, as the LaTeX PDF reads them.
@@ -181,17 +190,35 @@ public class PreviewRenderService : IPreviewRenderService
             // Layout-dimension groups so the exporter can wrap the
             // right runs in `#columns(N)` (LILIA-136). Other dimensions
             // are not consulted here.
-            layoutGroups = await _db.BlockGroups.AsNoTracking()
+            var layoutGroups = await _db.BlockGroups.AsNoTracking()
                 .Where(g => g.DocumentId == documentId
                          && g.Dimension == BlockGroupDimensions.Layout)
                 .Include(g => g.Memberships)
                 .ToListAsync(ct);
+            return new TypstInput(doc, blocks, bibEntries, layoutGroups);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Preview] Typst pre-flight DB load failed for {DocId} — falling back", documentId);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Drop a references.bib alongside main.typ when there are entries.
+    /// The directive is only emitted when there are, so an unfilled
+    /// References section no longer costs a "file not found".
+    /// </summary>
+    private static Dictionary<string, string>? BibAsset(List<BibliographyEntry> bibEntries) =>
+        bibEntries.Count == 0 ? null : new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["references.bib"] = BibTeXSerializer.SerializeForTypst(bibEntries),
+        };
+
+    public async Task<byte[]?> TryTypstPdfAsync(Guid documentId, CancellationToken ct = default)
+    {
+        if (await LoadTypstInputAsync(documentId, ct) is not { } input) return null;
+        var (doc, blocks, bibEntries, layoutGroups) = input;
 
         // Resolve the document's figure images first: the generator needs to
         // know where each one will sit in the compile directory, or it emits a
@@ -211,17 +238,7 @@ public class PreviewRenderService : IPreviewRenderService
             return null;
         }
 
-        // Drop a references.bib alongside main.typ when there are entries.
-        // The directive is only emitted when there are, so an unfilled
-        // References section no longer costs a "file not found".
-        Dictionary<string, string>? assets = null;
-        if (bibEntries.Count > 0)
-        {
-            assets = new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["references.bib"] = BibTeXSerializer.SerializeForTypst(bibEntries),
-            };
-        }
+        var assets = BibAsset(bibEntries);
 
         // A document with labels also asks Typst which number each got, so the
         // editor can show "table 1" after a preview rather than only after a
@@ -239,6 +256,53 @@ public class PreviewRenderService : IPreviewRenderService
 
         EmitFallback(documentId, "typst-compile-failed", result.Error, sample: source);
         return null;
+    }
+
+    public async Task<TypstAccessiblePdf> TryAccessibleTypstPdfAsync(Guid documentId, CancellationToken ct = default)
+    {
+        if (await LoadTypstInputAsync(documentId, ct) is not { } input)
+            return new TypstAccessiblePdf(null, "the document could not be read for Typst");
+        var (doc, blocks, bibEntries, layoutGroups) = input;
+
+        // The language as the LaTeX accessible PDF reads it: the setting, or what the text reads as ("auto").
+        doc.Blocks = blocks;
+        var language = DocumentLanguage.For(doc).Code;
+
+        var staged = await _imageStager.StageAsync(documentId, ct);
+        TypstAccessibleSource built;
+        try
+        {
+            built = _typstExporter.BuildAccessibleTypstDocument(doc, blocks, layoutGroups, new TypstExportOptions
+            {
+                LocalImagePaths = staged.Paths, TikzFigures = staged.Tikz, HasBibliography = bibEntries.Count > 0, Language = language,
+            });
+        }
+        catch (Exception ex)
+        {
+            return new TypstAccessiblePdf(null, "the Typst source could not be built: " + ex.Message);
+        }
+
+        // PDF/UA-1 carries a formula only as alt text; LaTeX's tagged PDF gives it as MathML, which a screen reader
+        // can walk through. A document with maths keeps LaTeX's.
+        if (built.HasMaths)
+            return new TypstAccessiblePdf(null, "it has maths, which the LaTeX accessible PDF tags as MathML");
+
+        var result = await _typstCompiler.CompileAsync(
+            built.Source, TypstOutputFormat.Pdf, BibAsset(bibEntries), staged.Files, evalAfter: null, TypstPdfStandard.Ua1, ct);
+        if (result.Success && result.Output is { Length: > 0 })
+            return new TypstAccessiblePdf(result.Output, null);
+
+        // What PDF/UA-1 refused, as Typst words it ("PDF/UA-1 error: skipped from heading level 1 to 3").
+        var why = UaRefusal(result.Error);
+        EmitFallback(documentId, "typst-ua1-refused", result.Error, sample: null);
+        return new TypstAccessiblePdf(null, why);
+    }
+
+    /// <summary>The first error line of a refused Typst compile, without its "error: " prefix (launch-bot #259).</summary>
+    internal static string UaRefusal(string? stderr)
+    {
+        var line = (stderr ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("error:", StringComparison.Ordinal));
+        return line is null ? "Typst could not make a PDF/UA-1 file" : line["error:".Length..].Trim();
     }
 
     /// <summary>

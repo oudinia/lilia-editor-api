@@ -54,6 +54,18 @@ public class TypstExportService : ITypstExportService
     /// <summary>The TikZ figures drawn for this build, by source (see <see cref="TypstExportOptions.TikzFigures"/>).</summary>
     [ThreadStatic]
     private static IReadOnlyDictionary<string, TikzStaged>? TikzFigures;
+
+    // The accessible PDF's build (PDF/UA-1, launch-bot #259, 19 Nov 2026): every figure gets alt text, its number
+    // counted here for a figure with no description, and any maths is noted (the accessible PDF then goes to LaTeX,
+    // which tags maths as MathML). Per build and per thread, like the state above.
+    [ThreadStatic]
+    private static bool Accessible;
+    [ThreadStatic]
+    private static int FigureCount;
+    [ThreadStatic]
+    private static string? FigureWord;
+    [ThreadStatic]
+    private static bool EmittedMath;
     private readonly IImportTelemetrySink _telemetry;
 
     public TypstExportService(
@@ -84,18 +96,48 @@ public class TypstExportService : ITypstExportService
         Document doc,
         List<Block> blocks,
         IReadOnlyList<BlockGroup>? layoutGroups = null,
-        TypstExportOptions? options = null)
-    {
-        options ??= new TypstExportOptions();
+        TypstExportOptions? options = null) =>
+        Build(doc, blocks, layoutGroups, options ?? new TypstExportOptions(), out _);
 
+    /// <summary>
+    /// The document as a PDF/UA-1 source (launch-bot #259, 19 Nov 2026): the same Typst as
+    /// <see cref="BuildTypstDocument"/>, plus what PDF/UA-1 requires that the normal build leaves out: a title that
+    /// is never empty, the document's language (<c>set text(lang:)</c>) and alt text on every figure (its description,
+    /// else its caption, else "Figure N"). <see cref="TypstAccessibleSource.HasMaths"/> says whether the document has
+    /// maths, which PDF/UA-1 wants alt text for: the caller sends such a document to LaTeX, which tags maths as MathML.
+    /// </summary>
+    public TypstAccessibleSource BuildAccessibleTypstDocument(
+        Document doc,
+        List<Block> blocks,
+        IReadOnlyList<BlockGroup>? layoutGroups,
+        TypstExportOptions options)
+    {
+        options.Accessible = true;
+        var source = Build(doc, blocks, layoutGroups, options, out var hasMaths);
+        return new TypstAccessibleSource(source, hasMaths);
+    }
+
+    private string Build(
+        Document doc,
+        List<Block> blocks,
+        IReadOnlyList<BlockGroup>? layoutGroups,
+        TypstExportOptions options,
+        out bool hasMaths)
+    {
         // The bibliography block renderer is static and cannot see the
         // document, so tell it here whether there is anything to cite.
         HasBibliographyEntries = options.HasBibliography ?? doc.BibliographyEntries?.Count > 0;
         LocalImagePaths = options.LocalImagePaths;
         TikzFigures = options.TikzFigures;
+        Accessible = options.Accessible;
+        FigureCount = 0;
+        EmittedMath = false;
+        FigureWord = options.Accessible ? FigureName(options.Language) : null;
         try
         {
-            return BuildTypstDocumentCore(doc, blocks, layoutGroups, options);
+            var source = BuildTypstDocumentCore(doc, blocks, layoutGroups, options);
+            hasMaths = EmittedMath;
+            return source;
         }
         finally
         {
@@ -112,6 +154,50 @@ public class TypstExportService : ITypstExportService
         HasBibliographyEntries = false;
         LocalImagePaths = null;
         TikzFigures = null;
+        Accessible = false;
+        FigureCount = 0;
+        FigureWord = null;
+        EmittedMath = false;
+    }
+
+    /// <summary>"Figure", in the document's language, for a figure's alt text when it has no description or caption.</summary>
+    private static string FigureName(string? language) =>
+        DocumentLanguage.Names(language is not null && DocumentLanguage.Specs.TryGetValue(language, out var spec) ? spec : null).Figure;
+
+    /// <summary>
+    /// <c>set text(lang:, region:)</c> for a BCP 47 code ("fr", "en-GB"); English when the code isn't one Typst reads.
+    /// PDF/UA-1 does not refuse a PDF without it, but a screen reader picks its voice from it (launch-bot #259).
+    /// </summary>
+    internal static string TypstLanguageRule(string? language)
+    {
+        var m = Regex.Match(language ?? "", @"^(?<lang>[a-z]{2,3})(?:-(?<region>[A-Z]{2}))?$");
+        if (!m.Success) return "#set text(lang: \"en\")";
+        return m.Groups["region"].Success
+            ? $"#set text(lang: \"{m.Groups["lang"].Value}\", region: \"{m.Groups["region"].Value}\")"
+            : $"#set text(lang: \"{m.Groups["lang"].Value}\")";
+    }
+
+    /// <summary>
+    /// A figure's alt text for PDF/UA-1 (launch-bot #259, 19 Nov 2026): its description, else its caption (as plain
+    /// text, the way TaggedPdf chooses for the LaTeX accessible PDF), else "Figure N" in the document's language.
+    /// </summary>
+    internal static string FigureAlt(JsonElement content, int number, string figureWord)
+    {
+        var described = TaggedPdf.AltOf(content);
+        var plain = described is null ? "" : ProseLatex.PlainForWord(described);
+        // The editor's own marks (**bold**, *italic*, ==highlight==, ~~strike~~, `code`), which PlainForWord leaves.
+        plain = Regex.Replace(plain, @"\*\*|==|~~|`", "");
+        plain = Regex.Replace(plain, @"(?<![\w*])[*_](?=\S)([^*_]+?)(?<=\S)[*_](?![\w*])", "$1");
+        plain = Regex.Replace(plain, @"\s+", " ").Trim();
+        return plain.Length > 0 ? plain : $"{figureWord} {number}";
+    }
+
+    /// <summary>The figure's alt text as a Typst argument (<c>, alt: "…"</c>); empty outside the accessible build.</summary>
+    private static string AltArgument(JsonElement content, bool numbered)
+    {
+        if (!Accessible) return "";
+        var number = numbered ? ++FigureCount : FigureCount;
+        return $", alt: {QuoteTypst(FigureAlt(content, number, FigureWord ?? "Figure"))}";
     }
 
     private string BuildTypstDocumentCore(
@@ -133,20 +219,24 @@ public class TypstExportService : ITypstExportService
         // styles. Body content follows directly; no \documentclass
         // ceremony like LaTeX needs.
         sb.AppendLine($"// {EscapeTypstComment(titleText)}");
+        // PDF/UA-1 refuses a PDF with no title (launch-bot #259, 19 Nov 2026). Only the file's title: the page prints
+        // what it always printed.
+        var metaTitle = titleText;
+        if (options.Accessible && string.IsNullOrWhiteSpace(metaTitle)) metaTitle = "Untitled document";
         var gridAuthors = TypstTitleAuthors.ParseForGrid(authorText);
         if (gridAuthors.Count > 0)
         {
             sb.AppendLine(
-                $"#set document(title: {QuoteTypst(titleText)}, author: ({TypstTitleAuthors.NameArray(gridAuthors, QuoteTypst)}))");
+                $"#set document(title: {QuoteTypst(metaTitle)}, author: ({TypstTitleAuthors.NameArray(gridAuthors, QuoteTypst)}))");
         }
         else if (!string.IsNullOrWhiteSpace(authorText))
         {
             sb.AppendLine(
-                $"#set document(title: {QuoteTypst(titleText)}, author: ({QuoteTypst(PlainTitleMetaForTypst(authorText))}))");
+                $"#set document(title: {QuoteTypst(metaTitle)}, author: ({QuoteTypst(PlainTitleMetaForTypst(authorText))}))");
         }
         else
         {
-            sb.AppendLine($"#set document(title: {QuoteTypst(titleText)})");
+            sb.AppendLine($"#set document(title: {QuoteTypst(metaTitle)})");
         }
         sb.AppendLine($"#set page(paper: {QuoteTypst(MapPaper(doc.PaperSize))})");
         // Font fallback list — Typst tries each in order, and the list always
@@ -159,6 +249,8 @@ public class TypstExportService : ITypstExportService
         // The document's own size (the default is 12pt). This was 11pt for every document, so the
         // preview and the LaTeX PDF of the same document set text at different sizes (5 Oct review).
         sb.AppendLine($"#set text(font: ({MapFontList(doc.FontFamily)}), size: {TypstFontSize(doc.FontSize)}pt)");
+        // The accessible PDF says which language it is in (launch-bot #259, 19 Nov 2026); the normal one is unchanged.
+        if (options.Accessible) sb.AppendLine(TypstLanguageRule(options.Language));
         sb.AppendLine($"#set par(justify: true)");
         // Number what the PDF numbers, so a reference has a number to print:
         // sections and display equations, as pdflatex does. Tables carry their
@@ -584,16 +676,20 @@ public class TypstExportService : ITypstExportService
         if (TikzFigure.IsTikz(content))
             return RenderTikzFigure(content, captionPart);
 
+        // The accessible build gives each figure its alt text (PDF/UA-1, launch-bot #259): on the image, or on the
+        // figure when its body is a drawn box. Empty otherwise, so the normal PDF is unchanged.
+        var alt = AltArgument(content, numbered: true);
+
         // Subfigures are LaTeX's to lay out (Automatic sends them there): with Typst forced, a note in their place,
         // under the figure's own caption. Before, the figure had no src of its own and was dropped whole, caption and
         // all, while Automatic chose Typst for it (the document sweep, A-033, 15 Nov 2026).
         if (HasSubfigures(content))
-            return $"#figure([{LatexOnlyNote(SubfiguresNote)}]{captionPart})";
+            return $"#figure([{LatexOnlyNote(SubfiguresNote)}]{alt}{captionPart})";
 
         // A figure with no image yet keeps its caption, in a placeholder box, as the LaTeX PDF keeps it; it used to
         // become a comment, and the caption was lost (the document sweep, A-035, 15 Nov 2026).
         if (string.IsNullOrEmpty(src))
-            return $"#figure({ImagePlaceholder}{captionPart})";
+            return $"#figure({ImagePlaceholder}{alt}{captionPart})";
 
         // Figures with external / placeholder URLs can't be resolved
         // inside Typst's sandboxed file system at compile time. Render
@@ -604,17 +700,17 @@ public class TypstExportService : ITypstExportService
         // open, and the caller has already checked it belongs to this document.
         if (LocalImagePaths is not null && LocalImagePaths.TryGetValue(src, out var localPath))
         {
-            return $"#figure(image({QuoteTypst(localPath)}){captionPart})";
+            return $"#figure(image({QuoteTypst(localPath)}{alt}){captionPart})";
         }
 
         if (IsUnresolvableFigureSrc(src))
         {
             // Typst rect with fill+stroke; placed inside #figure so
             // captions still render via the standard caption slot.
-            return $"#figure({ImagePlaceholder}{captionPart})";
+            return $"#figure({ImagePlaceholder}{alt}{captionPart})";
         }
 
-        return $"#figure(image({QuoteTypst(src)}){captionPart})";
+        return $"#figure(image({QuoteTypst(src)}{alt}){captionPart})";
     }
 
     /// <summary>
@@ -628,11 +724,13 @@ public class TypstExportService : ITypstExportService
         var floating = TikzFigure.IsFloating(content);
         TikzStaged? staged = null;
         TikzFigures?.TryGetValue(source, out staged);
+        // Alt text in the accessible build (#259); a picture outside a figure takes no figure number.
+        var alt = AltArgument(content, numbered: floating);
 
         string drawing;
         if (staged?.Path is { } path)
         {
-            drawing = $"image({QuoteTypst(path)})";
+            drawing = $"image({QuoteTypst(path)}{alt})";
             if (!floating) return $"#{drawing}";
         }
         else
@@ -643,6 +741,8 @@ public class TypstExportService : ITypstExportService
             drawing = "rect(width: 80%, inset: 1em, fill: rgb(\"#fef2f2\"), stroke: rgb(\"#fca5a5\"), radius: 4pt)"
                 + $"[#text(size: 0.85em, fill: rgb(\"#991b1b\"))[#{QuoteTypst(message)}]]";
             if (!floating) return $"#align(center)[#{drawing}]";
+            // A drawn box as the figure's body: the alt text goes on the figure.
+            return $"#figure({drawing}{alt}{captionPart})";
         }
         return $"#figure({drawing}{captionPart})";
     }
@@ -1385,7 +1485,11 @@ public class TypstExportService : ITypstExportService
     /// and anything it cannot express is reported rather than dropped.</para>
     /// </summary>
     private static string LatexMathToTypst(string latex)
-        => LatexToTypst.Convert(latex);
+    {
+        // Every formula the build writes passes here: the accessible PDF goes to LaTeX when there is one (#259).
+        EmittedMath = true;
+        return LatexToTypst.Convert(latex);
+    }
 
     /// <summary>
     /// Separate adjacent single-letter variables so Typst reads them as a
@@ -2094,8 +2198,22 @@ public interface ITypstExportService
         List<Block> blocks,
         IReadOnlyList<BlockGroup>? layoutGroups = null,
         TypstExportOptions? options = null);
+
+    /// <summary>The document as a PDF/UA-1 source, and whether it has maths (launch-bot #259, 19 Nov 2026).</summary>
+    TypstAccessibleSource BuildAccessibleTypstDocument(
+        Document doc,
+        List<Block> blocks,
+        IReadOnlyList<BlockGroup>? layoutGroups,
+        TypstExportOptions options);
+
     string RenderBlockForTest(Block block);
 }
+
+/// <summary>
+/// The accessible PDF's Typst source (launch-bot #259, 19 Nov 2026). <paramref name="HasMaths"/>: the document has
+/// maths, which the LaTeX accessible PDF tags as MathML and PDF/UA-1 would only carry as alt text.
+/// </summary>
+public sealed record TypstAccessibleSource(string Source, bool HasMaths);
 
 public class TypstExportOptions
 {
@@ -2133,4 +2251,14 @@ public class TypstExportOptions
     /// neutral placeholder.
     /// </summary>
     public IReadOnlyDictionary<string, TikzStaged>? TikzFigures { get; set; }
+
+    /// <summary>
+    /// The accessible PDF (PDF/UA-1, launch-bot #259, 19 Nov 2026): a title that is never empty, the language and
+    /// alt text on every figure. Set by <see cref="ITypstExportService.BuildAccessibleTypstDocument"/>; false keeps
+    /// the normal Typst exactly as it was.
+    /// </summary>
+    public bool Accessible { get; set; }
+
+    /// <summary>The document's language as a BCP 47 code ("fr", "en-GB"), for the accessible PDF's <c>set text(lang:)</c>.</summary>
+    public string? Language { get; set; }
 }
