@@ -307,8 +307,9 @@ public class BeamerFrameOverflowTests
             B("heading", new { text = "Sub", level = 2 }),
         };
         FrameOverflow.FramesBefore([], null).Should().Be(1, "the title frame");
-        FrameOverflow.FramesBefore(blocks, null).Should().Be(4, "title, a slide and an embed's two frames");
+        // The paragraph is a frame of its own since API #586 (ComposeBeamerBody; 19 Nov 2026).
+        FrameOverflow.FramesBefore(blocks, null).Should().Be(5, "title, a slide, an embed's two frames and the paragraph's");
         FrameOverflow.FramesBefore(blocks, @"\AtBeginSection[]{\begin{frame}\sectionpage\end{frame}}")
-            .Should().Be(5, "and the numbered section's divider");
+            .Should().Be(6, "and the numbered section's divider");
     }
 }

@@ -226,6 +226,12 @@ public class ImportMetadata
     /// body paragraphs after the abstract (launch-bot #203, 18 Nov 2026).
     /// </summary>
     public string? TitleRunning { get; set; }
+
+    /// <summary>
+    /// The theorem-like environments the source declares itself (\newtheorem{prop}{Proposition}), by name, with the kind
+    /// its printed name says. Read so \begin{rem}…\end{rem} is a theorem and \begin{prop} keeps its name (launch-bot #230).
+    /// </summary>
+    public Dictionary<string, TheoremEnvironmentType> DeclaredTheorems { get; set; } = new(StringComparer.Ordinal);
     public string? AuthorRunning { get; set; }
 
     /// <summary>

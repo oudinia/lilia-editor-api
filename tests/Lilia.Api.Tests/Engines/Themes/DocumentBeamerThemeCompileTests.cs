@@ -100,7 +100,9 @@ public class DocumentBeamerThemeCompileTests
                 .BuildSingleFileLatex(doc, doc.Blocks.ToList(), [], new LaTeXExportOptions { CompileHere = true, LookOverride = lookOverride });
         TexSourceGuard.Violation(tex).Should().BeNull("the guard must accept the generated deck");
         tex.Should().Contain(@"\documentclass[11pt,a4paper]{beamer}").And.Contain(@"\begin{frame}{The mixing matrix}")
-            .And.Contain(@"\section{Data}").And.Contain(@"\section*{Aside}").And.Contain(@"\appendix");
+            .And.Contain(@"\section{Data}").And.Contain(@"\section*{Aside}").And.Contain(@"\appendix")
+            // A frame the author wrote in an embed stays one frame, not wrapped in another (19 Nov 2026).
+            .And.NotContain("\\begin{frame}\n\\begin{frame}");
         return tex;
     }
 

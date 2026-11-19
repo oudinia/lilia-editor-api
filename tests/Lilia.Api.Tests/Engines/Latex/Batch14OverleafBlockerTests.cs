@@ -101,7 +101,8 @@ public class Batch14OverleafBlockerTests
             """);
         extracted.CustomPreamble.Should().Contain(@"\newtheorem{df}{Definition}").And.Contain(@"\theoremstyle{remark}");
         var emitted = LaTeXPreamble.CustomPreambleForEmit(extracted.CustomPreamble);
-        emitted.Should().Contain(@"\newtheorem{df}{Definition}").And.NotContain(@"\newtheorem{theorem}{Theorem}");
+        // Kept, where the class hasn't one, and Lilia leaves it to the author (TheoremEnvironmentsFor; #230, 19 Nov 2026).
+        emitted.Should().Contain(@"\newtheorem{df}{Definition}").And.Contain(@"\ifcsname theorem\endcsname\else \newtheorem{theorem}{Theorem}\fi");
         emitted.TrimEnd().Should().EndWith(@"\theoremstyle{plain}");
         emitted.Should().Contain(@"\ifcsname IEEEkeywords\endcsname\else \newenvironment{IEEEkeywords}{\begin{keywords}}{\end{keywords}}\fi");
     }
