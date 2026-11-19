@@ -1977,8 +1977,14 @@ public class LatexParser : ILatexParser
         @"\\begin\{([A-Za-z*]+)\}(?:\[[^\]]*\])?(?:\{[^}]*\})?([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline | RegexOptions.Compiled);
 
     /// <summary>Inline maths in running text: $…$ (not $$) and \(…\).</summary>
+    /// <remarks>
+    /// Each backslash is read one way only (\\. takes it with the next character), and \\( — a line break, then a bracket —
+    /// opens nothing. The \(…\) branch had two ways to read a backslash, and every \shortstack{1.0\\(2…)} in a table row
+    /// started an unclosed \( whose ways doubled with each cell: 6 cells took 1.2 s, 8 timed out the import after 124 s and
+    /// left an empty document (launch-bot #176, 19 Nov 2026).
+    /// </remarks>
     private static readonly Regex InlineMathRange = new(
-        @"(?<![\\$])\$(?!\$)(?:\\.|[^$\\])+\$|\\\((?:\\.|[^\\]|\\(?!\)))*?\\\)", RegexOptions.Singleline | RegexOptions.Compiled);
+        @"(?<![\\$])\$(?!\$)(?:\\.|[^$\\])+\$|(?<!\\)\\\((?:\\.|[^\\])*?\\\)", RegexOptions.Singleline | RegexOptions.Compiled);
 
     /// <summary>The first match of <paramref name="rx"/> that doesn't start inside inline maths.</summary>
     private static Match? FirstOutsideInlineMath(Regex rx, string text)
