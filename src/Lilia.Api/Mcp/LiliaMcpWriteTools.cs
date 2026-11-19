@@ -509,6 +509,15 @@ public sealed class LiliaMcpWriteTools(
             _ => null,
         };
         if (kind is null) return new { error = "Lilia imports .tex, .zip (an Overleaf project, base64), .docx, .md and .lml files: give one of these extensions, or format.", category = "invalid" };
+        // A text file (.tex, .md, .lml) sent as a base64 data URI, as some apps send every file: imported as its literal
+        // "data:…;base64,…" text (the launch bot's #226 retest, 19 Nov 2026). Its text, decoded.
+        if (kind is "LATEX" or "MARKDOWN" or "LML" && !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+            && content.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            && content.IndexOf(";base64,", StringComparison.OrdinalIgnoreCase) is var b64 and > 0 and < 200)
+        {
+            try { content = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(content[(b64 + 8)..].Trim())); }
+            catch (FormatException) { return new { error = "This data URI's base64 isn't valid: send the file's text, or valid base64.", category = "invalid" }; }
+        }
         if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
             var comma = content.IndexOf(',');

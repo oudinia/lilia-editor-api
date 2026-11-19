@@ -1054,6 +1054,9 @@ public class LaTeXExportService : ILaTeXExportService
         result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
         result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
         // IEEE's subtitle mark, \textsuperscript{*}, as in RenderService (launch-bot #226, 19 Nov 2026).
+        // A note in a title, \footnote{…} as REVTeX and article write it: escaped, it printed as typed (launch-bot #246).
+        result = Regex.Replace(result, @"\\footnote\{([^{}]*)\}",
+            m => Ph($@"\footnote{{{EscapeLatex(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\textsuperscript\{([^{}]*)\}",
             m => Ph($@"\textsuperscript{{{EscapeLatex(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\\\", _ => Ph(@"\\"));
