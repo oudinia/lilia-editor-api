@@ -1092,7 +1092,9 @@ public class LatexParser : ILatexParser
         // argument as text: a thesis's "\pagenumbering{roman}\thispagestyle{empty}" printed "romanempty", and "empty"
         // stood under an article's title. The document's numbering is read from the source on its own
         // (LatexPageSetupExtractor), so nothing is lost here (launch-bot #183, 19 Nov 2026).
-        documentContent = Regex.Replace(documentContent, @"\\(?:pagenumbering|thispagestyle|pagestyle)\s*\{[^{}]*\}", "");
+        // \setstretch{1.3} too: the line spacing is the document's own setting, and the thesis template printed "1.3" and
+        // "1.5" in its front matter (launch-bot #237, 19 Nov 2026).
+        documentContent = Regex.Replace(documentContent, @"\\(?:pagenumbering|thispagestyle|pagestyle|setstretch)\s*\{[^{}]*\}", "");
 
         // TikZ setup lines (\usetikzlibrary, \tikzset, …) are not text. The
         // preamble extractor carries them onto the document's custom preamble.
@@ -1888,8 +1890,11 @@ public class LatexParser : ILatexParser
             : Regex.Replace(text, $"\uE000{callId}:(\\d+)\uE001", m => mathSpans[int.Parse(m.Groups[1].Value)]);
     }
 
-    // launch-bot #168 (18 Nov 2026): \vspace{…} / \hspace{…} in running text.
-    private static readonly Regex SpacingCommand = new(@"\\[vh]space\*?\s*\{[^{}]*\}", RegexOptions.Compiled);
+    // launch-bot #168 (18 Nov 2026): \vspace{…} / \hspace{…} in running text. Launch-bot #237 (19 Nov 2026): a \rule,
+    // \setstretch or \addtocontents inside text (a cell, a centred line) goes the same way rather than printing its arguments.
+    private static readonly Regex SpacingCommand = new(
+        @"\\[vh]space\*?\s*\{[^{}]*\}|\\rule\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}\s*\{[^{}]*\}|\\setstretch\s*\{[^{}]*\}"
+        + @"|\\addtocontents\s*\{[^{}]*\}\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}", RegexOptions.Compiled);
 
     // An escaped brace inside is text: {\tt \{ann, bob\}@example.org} kept its \tt and braces (18 Nov 2026, launch-bot #169).
     private static readonly (Regex Rx, string Open, string Close)[] DeclarationGroupRules =
@@ -2272,6 +2277,17 @@ public class LatexParser : ILatexParser
             var contentsLineMatch = Regex.Match(remaining, @"\\addcontentsline\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}");
             if (contentsLineMatch.Success)
                 matches.Add((contentsLineMatch, "contentsline"));
+            // \addtocontents{toc}{\vspace{1em}} likewise: it shapes the contents page, and printed "toc{ }" (launch-bot #237,
+            // 19 Nov 2026). Kept as raw LaTeX, as \addcontentsline is.
+            var addToContentsMatch = Regex.Match(remaining, @"\\addtocontents\s*\{[^{}]*\}\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}");
+            if (addToContentsMatch.Success)
+                matches.Add((addToContentsMatch, "contentsline"));
+            // A \rule on its own (a thesis's "Signed:" line, a title page's horizontal line) is kept as raw LaTeX, so it still
+            // draws: the flattener printed its sizes, "25em0.5pt" (launch-bot #237, 19 Nov 2026).
+            // Only one that starts its own line: inside a group (\textbf{…}) a split would break it; the flattener drops that one.
+            var ruleMatch = Regex.Match(remaining, @"(?m)^[ \t]*\\rule\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}\s*\{[^{}]*\}");
+            if (ruleMatch.Success)
+                matches.Add((ruleMatch, "rule"));
 
             // Equation environments
             if (options.ConvertEquationEnvironments)
@@ -2701,6 +2717,15 @@ public class LatexParser : ILatexParser
                         Order = elementOrder++,
                         LatexCode = firstMatch.match.Value.Trim(),
                         Description = "Contents entry (raw LaTeX)",
+                    });
+                    break;
+
+                case "rule":
+                    document.Elements.Add(new ImportLatexPassthrough
+                    {
+                        Order = elementOrder++,
+                        LatexCode = firstMatch.match.Value.Trim(),
+                        Description = "Rule (raw LaTeX)",
                     });
                     break;
 
