@@ -31,7 +31,8 @@ public static class LatexPageSetupExtractor
         string? Sides,
         bool TitlePage,
         IReadOnlyList<string> Applied,
-        IReadOnlyList<string> NotApplied);
+        IReadOnlyList<string> NotApplied,
+        string? ClassOptions = null);
 
     /// <summary>The body size each class sets when \documentclass names none.</summary>
     private static readonly Dictionary<string, int> ClassDefaultSize = new(StringComparer.Ordinal)
@@ -41,6 +42,19 @@ public static class LatexPageSetupExtractor
         ["memoir"] = 10, ["llncs"] = 10, ["IEEEtran"] = 10,
         ["scrartcl"] = 11, ["scrreprt"] = 11, ["scrbook"] = 11,
     };
+
+    /// <summary>
+    /// <paramref name="first"/>'s options, then <paramref name="then"/>'s, each once (case-insensitive), comma-joined; null
+    /// when there are none. The source's kept class options go first, the ones the settings wrote (twoside) after
+    /// (launch-bot #240, 19 Nov 2026).
+    /// </summary>
+    public static string? MergeOptions(string? first, string? then)
+    {
+        var list = new List<string>();
+        foreach (var o in $"{first},{then}".Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            if (!list.Contains(o, StringComparer.OrdinalIgnoreCase)) list.Add(o);
+        return list.Count == 0 ? null : string.Join(",", list);
+    }
 
     private static readonly Regex Comment = new(@"(?<!\\)%[^\n]*", RegexOptions.Compiled);
 
@@ -83,7 +97,6 @@ public static class LatexPageSetupExtractor
             && !o.Equals("titlepage", StringComparison.OrdinalIgnoreCase)
             && !o.Equals("notitlepage", StringComparison.OrdinalIgnoreCase)
             && !o.Equals("portrait", StringComparison.OrdinalIgnoreCase)).ToList();
-        if (leftover.Count > 0) notes.Add($"documentclass options not applied: {string.Join(", ", leftover)}");
 
         // ── geometry ───────────────────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(meta.GeometryOptions))
@@ -269,7 +282,29 @@ public static class LatexPageSetupExtractor
             Set("fontSize", i => i with { FontSize = size }, $"{size}pt (the {cls} class's default)");
         if (pre2.PackagesJson is not null) applied.Add("packages = the \\usepackage list");
 
-        return new Result(input, pre2.DocumentClass, pre2.PackagesJson, twoside ? "two" : null, titlePage, applied, notes);
+        // The class options the source wrote, kept for the \documentclass line (launch-bot #240, 19 Nov 2026). They were only
+        // noted as "not applied" and dropped: amsart's [11pt,reqno] came out with none (32 pp against arXiv's 37, equation
+        // numbers on the left), [fleqn] lost its flush-left displays, REVTeX's [reprint,amsmath,amssymb,aps] became [aps,reprint].
+        // A publisher class's \documentclass line takes only these options (LaTeXPreambleBuilder: size and paper are the
+        // publisher's), so it keeps them all as written, size included; any other class keeps those the settings don't hold.
+        var cls2 = pre2.DocumentClass ?? meta.DocumentClass;
+        var publisher = Lilia.Engines.Publishers.PublisherClasses.Canonical(cls2) is not null;
+        var keptOptions = publisher
+            ? (meta.RawClassOptions ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList()
+            : leftover.Where(o => Lilia.Engines.LaTeXPreambleBuilder.PrintsClassOption(cls2, o)).ToList();
+        // A class that falls back to article prints only article's own options: the rest is named, not kept (extarticle's 14pt).
+        var unprinted = publisher ? [] : leftover.Except(keptOptions).ToList();
+        if (unprinted.Count > 0)
+            notes.Add($"documentclass options not applied: {string.Join(", ", unprinted)} (the {cls2} class falls back to article, which doesn't take them)");
+        var classOptions = keptOptions.Count > 0 ? string.Join(",", keptOptions) : null;
+        if (classOptions is not null) applied.Add($"classOptions = {classOptions}");
+
+        // No paper option means LaTeX's default, US letter, not the document's A4: arXiv 2611.23177's [10pt]{article} came
+        // out with a4paper added (launch-bot #240). KOMA-Script's classes default to A4; a publisher class sets its own.
+        if (input.PaperSize is null && !publisher && !(cls2 ?? "").StartsWith("scr", StringComparison.Ordinal))
+            Set("paperSize", i => i with { PaperSize = "letter" }, "letter (LaTeX's default: the source names no paper size)");
+
+        return new Result(input, pre2.DocumentClass, pre2.PackagesJson, twoside ? "two" : null, titlePage, applied, notes, classOptions);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────

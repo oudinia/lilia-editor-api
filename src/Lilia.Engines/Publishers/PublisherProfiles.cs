@@ -153,21 +153,19 @@ public static class PublisherProfiles
     }
 
     // A class's own options that change the paper and that no venue sets: kept from an imported source.
-    private static readonly Dictionary<string, string[]> KeptSourceOptions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["llncs"] = ["runningheads", "oribibl", "orivec", "envcountsame", "envcountsect", "envcountreset"],
-    };
-
     /// <summary>
-    /// <paramref name="options"/> with the source's own class options added (llncs's runningheads), once each: the
-    /// venue's options replaced them, and the running heads went (launch-bot #203, 18 Nov 2026).
+    /// <paramref name="options"/> (the venue's) with the source's own class options, as written and first, each once. Only
+    /// llncs's running heads were kept (launch-bot #203); every other option went: amsart's [11pt,reqno] came out with none
+    /// and REVTeX's [reprint,amsmath,amssymb,aps] as [aps,reprint] (launch-bot #240, 19 Nov 2026). The venue is read from these
+    /// same options (FromClass), so the two agree; a publisher class's \documentclass line takes only these options.
     /// </summary>
     public static string? WithSourceOptions(string? documentClass, string? options, string? sourceOptions)
     {
-        if (documentClass is null || !KeptSourceOptions.TryGetValue(documentClass.Trim(), out var keep)) return options;
-        var list = (options ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
-        foreach (var o in (sourceOptions ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-            if (keep.Contains(o, StringComparer.OrdinalIgnoreCase) && !list.Contains(o, StringComparer.OrdinalIgnoreCase)) list.Add(o);
+        if (PublisherClasses.Canonical(documentClass) is null) return options;
+        var list = new List<string>();
+        foreach (var o in (sourceOptions ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                     .Concat((options ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)))
+            if (!list.Contains(o, StringComparer.OrdinalIgnoreCase)) list.Add(o);
         return list.Count == 0 ? null : string.Join(",", list);
     }
 

@@ -224,6 +224,15 @@ public static class LaTeXPreambleBuilder
             _ => "a4paper",
         };
 
+    /// <summary>
+    /// Whether <see cref="BuildClassDirective"/> prints <paramref name="option"/> for a document set to
+    /// <paramref name="documentClass"/>: any option for a class Lilia keeps, only article's own for one that falls back to
+    /// article (extarticle's 14pt is dropped there). The import keeps only these, and names the rest (launch-bot #240).
+    /// </summary>
+    public static bool PrintsClassOption(string? documentClass, string option) =>
+        (!string.IsNullOrWhiteSpace(documentClass) && SafeDocumentClasses.Contains(documentClass.Trim()))
+        || ArticleKnownOptions.Contains(option.Trim());
+
     public static string BuildClassDirective(
         Document doc,
         string? fontSizeOverride = null,
