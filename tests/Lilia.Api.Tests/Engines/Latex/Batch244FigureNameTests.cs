@@ -106,6 +106,52 @@ public class Batch244FigureNameTests
         report.Findings.Should().NotContain(f => f.Code == "figure_file");
     }
 
+    // Zayd's review of API #652: a data: source's last segment is base64, and a Lilia upload's file name is a GUID.
+
+    private const string Png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    private const string Upload = "https://files.liliaeditor.com/user_2wh3/documents/035db167-2769-40f8-8b56-83ad20d13cb4/images/9b52e5f8-1c2d-4e5f-8a9b-0c1d2e3f4a5b.png";
+
+    [Fact]
+    public void An_embedded_image_is_labelled_not_named_by_its_base64()
+    {
+        FigureFile.WrittenName(Png).Should().Be(FigureFile.EmbeddedLabel);
+        FigureFile.Subject(FigureFile.EmbeddedLabel).Should().Be("An embedded image");
+    }
+
+    [Fact]
+    public void An_image_Lilia_stored_is_labelled_not_named_by_its_GUID()
+    {
+        FigureFile.WrittenName(Upload).Should().Be(FigureFile.UploadedLabel);
+        FigureFile.WrittenName("/uploads/user_2wh3/documents/035db167-2769-40f8-8b56-83ad20d13cb4/images/9b52e5f8-1c2d-4e5f-8a9b-0c1d2e3f4a5b.jpg")
+            .Should().Be(FigureFile.UploadedLabel, "local storage serves the same key under /uploads/");
+        FigureFile.WrittenName("https://cdn.example.org/papers/plot.png").Should().Be("plot.png", "an outside URL keeps its file name");
+        FigureFile.Subject("plot.png").Should().Be("The image plot.png");
+    }
+
+    [Fact]
+    public async Task An_embedded_image_is_reported_missing_because_the_PDF_reads_only_uploaded_images()
+    {
+        // The Word export embeds a data: image (DocumentExportService.ImageFromDataUri), but the LaTeX export reads figures
+        // from storage only (CollectImagesAsync), so the PDF prints a "Missing figure" frame: the warning is true there.
+        var figure = B("figure", new { src = Png, caption = "Pasted" });
+
+        var missing = await DocumentCheckService.FindMissingFigures(FigureFile.Sources([figure]), Missing);
+
+        missing.Should().ContainSingle().Which.File.Should().Be(FigureFile.EmbeddedLabel);
+        FigureFile.MissingAdvice(FigureFile.EmbeddedLabel).Should().Contain("upload it as a file").And.NotContain("again");
+    }
+
+    [Fact]
+    public void A_publisher_finding_for_an_embedded_image_prints_no_base64()
+    {
+        var doc = Doc("IEEEtran");
+        var report = PublisherCompliance.WithMissingFiles(PublisherCompliance.Check(doc, doc.Blocks.ToList(), ""),
+            [(Guid.NewGuid().ToString(), FigureFile.WrittenName(Png))])!;
+
+        var finding = report.Findings.Single(f => f.Code == "figure_file");
+        finding.Message.Should().StartWith("An embedded image can't be found").And.NotContain("base64").And.Contain("upload it as a file");
+    }
+
     [Fact]
     public void Without_a_publisher_there_is_still_no_checklist()
     {

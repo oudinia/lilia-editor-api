@@ -33,7 +33,7 @@ public static partial class PublisherCompliance
     {
         if (report is null) return null;
         var added = missing.Select(m => new ComplianceFinding("error", "figure_file",
-            $"The image {m.File} can't be found: it prints as a framed \"Missing figure\". Upload it again.", m.BlockId)).ToList();
+            $"{FigureFile.Subject(m.File)} can't be found: it prints as a framed \"Missing figure\". {FigureFile.MissingAdvice(m.File)}", m.BlockId)).ToList();
         if (added.Count == 0) return report;
         var findings = report.Findings.Concat(added).DistinctBy(f => (f.Code, f.Message, f.BlockId)).ToList();
         return report with { Status = "errors", Findings = findings };

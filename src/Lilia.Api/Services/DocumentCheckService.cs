@@ -353,7 +353,7 @@ public sealed partial class DocumentCheckService(
                 $"The table is {Math.Round(o.Points, 1)}pt wider than its column."));
         foreach (var (blockId, file) in missingFigures)
             problems.Add(new BlockProblem(blockId.ToString(), null, "warning",
-                $"The image {file} can't be found: the PDF prints a \"Missing figure\" frame here. Upload it again."));
+                $"{Lilia.Engines.FigureFile.Subject(file)} can't be found: the PDF prints a \"Missing figure\" frame here. {Lilia.Engines.FigureFile.MissingAdvice(file)}"));
         foreach (var o in wideCodeFound)
             problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
                 $"A line of this code is {Math.Round(o.Points, 1)}pt wider than its column (listings wraps only at spaces)."));
