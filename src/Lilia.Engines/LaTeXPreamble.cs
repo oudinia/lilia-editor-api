@@ -198,9 +198,10 @@ public static partial class LaTeXPreamble
         // IEEEtran 1.6 defined IEEEkeywords, which TeX Live's IEEEtran has (launch-bot #235, 18 Nov 2026). Only when
         // undefined, so the class's own stays.
         custom = CustomNewEnvironment.Replace(custom, m => $"\\ifcsname {m.Groups["n"].Value}\\endcsname\\else {m.Value}\\fi");
-        // A \newtheorem of a kind Lilia declares stops the compile ("already defined"): left out.
-        custom = CustomNewTheorem.Replace(custom, m => KnownTheoremEnvironments.Contains(m.Groups[1].Value)
-            ? $"% [lilia] left out \\newtheorem{{{m.Groups[1].Value}}}: Lilia declares it." : m.Value);
+        // Lilia no longer declares an environment the author's preamble declares (TheoremEnvironmentsFor), so the author's
+        // stays, shared counter and style included (launch-bot #230, 19 Nov 2026). Only where the class hasn't one already
+        // (llncs's theorem, lemma…), which would stop the compile ("already defined").
+        custom = CustomNewTheorem.Replace(custom, m => $"\\ifcsname {m.Groups[1].Value}\\endcsname\\else {m.Value}\\fi");
         // A natbib-only setting (\setlength{\bibsep}, \bibpunct, \setcitestyle…) applies only when natbib is loaded: an
         // imported paper's natbib is left out (the export loads it for \citep and \citet), and its \setlength{\bibsep}
         // stopped the compile, "Undefined control sequence" (18 Nov 2026, launch-bot #161).
@@ -770,16 +771,34 @@ public static partial class LaTeXPreamble
     /// beamer document each is declared only where the class has not; every other class gets
     /// <see cref="TheoremEnvironments"/> unchanged.
     /// </summary>
-    public static string TheoremEnvironmentsFor(string? className, IReadOnlyDictionary<string, string>? names = null)
+    public static string TheoremEnvironmentsFor(string? className, IReadOnlyDictionary<string, string>? names = null,
+        string? customPreamble = null)
     {
         // beamer, and publisher classes (llncs defines theorem, lemma…), keep the ones the class defines.
         var envs = string.Equals(className?.Trim(), "beamer", StringComparison.OrdinalIgnoreCase) || Publishers.PublisherClasses.Is(className)
             ? GuardedTheoremEnvironments.Value
             : TheoremEnvironments;
+        // One the document's own preamble declares is the author's, with its shared counter and \theoremstyle: Lilia's
+        // came first and the author's was left out (launch-bot #230, 19 Nov 2026).
+        if (!string.IsNullOrWhiteSpace(customPreamble))
+        {
+            var own = TheoremLineName.Matches(customPreamble).Select(m => m.Groups["env"].Value).ToHashSet(StringComparer.Ordinal);
+            if (own.Count > 0)
+                envs = string.Join("\n", envs.Split('\n').Where(line =>
+                    TheoremLineName.Match(line) is not { Success: true } d || !own.Contains(d.Groups["env"].Value)));
+        }
         // In the document's language (DocumentLanguage.TheoremNames): \newtheorem{lemma}{Lemme}.
         return names is null ? envs : TheoremName.Replace(envs, m =>
             names.TryGetValue(m.Groups["env"].Value, out var name) ? m.Groups["head"].Value + "{" + name + "}" : m.Value);
     }
+
+    // The environment a line of Lilia's list declares: \newtheorem{lemma}… or, guarded, \@ifundefined{lemma}{\newtheorem….
+    private static readonly Regex TheoremLineName = new(@"\\newtheorem\{(?<env>[A-Za-z]+)\}", RegexOptions.Compiled);
+
+    /// <summary>Whether this preamble declares the theorem-like environment <paramref name="env"/> (numbered).</summary>
+    public static bool DeclaresTheorem(string? preamble, string env) =>
+        !string.IsNullOrEmpty(preamble) && System.Text.RegularExpressions.Regex.IsMatch(env, "^[A-Za-z]+$")
+        && Regex.IsMatch(preamble, @"\\newtheorem\s*\{" + env + @"\}");
 
     private static readonly Regex TheoremName = new(@"(?<head>\\newtheorem\*?\{(?<env>[a-z]+)\*?\})\{[^}]*\}", RegexOptions.Compiled);
 

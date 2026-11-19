@@ -134,11 +134,19 @@ public static class FrameOverflow
     /// embed block's code, and, when the author's preamble turns on section divider frames
     /// (<c>\AtBeginSection</c>), one per numbered section.
     /// </summary>
+    // Raw LaTeX that is frames (or frame-level commands) itself, as ComposeBeamerBody tells it.
+    private static readonly Regex OwnFrame = new(
+        @"^\s*\\(?:begin\{frame\}|appendix\b|AtBeginSection|AtBeginSubsection|againframe|setbeamertemplate|usebackgroundtemplate|part\b|mode\s*<)",
+        RegexOptions.Compiled);
+
     public static int FramesBefore(IEnumerable<Block> preceding, string? customPreamble)
     {
         var dividers = DividersOn(customPreamble);
 
         var frames = 1;
+        // Since API #586 the blocks between a heading, a slide, a page break or a frame the author wrote are one frame of
+        // their own (RenderService.ComposeBeamerBody), counted once at its first block (19 Nov 2026).
+        var open = false;
         foreach (var block in preceding)
         {
             var type = block.Type.ToLowerInvariant();
@@ -146,19 +154,31 @@ public static class FrameOverflow
             if (type == "slide")
             {
                 frames++;
+                open = false;
             }
             else if (type == "embed" && content.ValueKind == JsonValueKind.Object
                      && content.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String)
             {
-                var lines = (code.GetString() ?? "").Replace("\r\n", "\n").Split('\n').Select(StripComment).ToArray();
-                frames = Scan(lines, 0, dividers, frames, null);
+                var source = code.GetString() ?? "";
+                if (OwnFrame.IsMatch(source))
+                {
+                    var lines = source.Replace("\r\n", "\n").Split('\n').Select(StripComment).ToArray();
+                    frames = Scan(lines, 0, dividers, frames, null);
+                    open = false;
+                }
+                else if (source.Trim().Length > 0 && !open) { frames++; open = true; }
             }
-            else if (dividers && type is "heading" or "header" && content.ValueKind == JsonValueKind.Object
-                     && (!content.TryGetProperty("level", out var level) || level.ValueKind != JsonValueKind.Number || level.GetInt32() == 1)
-                     && !(content.TryGetProperty("numbered", out var numbered) && numbered.ValueKind == JsonValueKind.False))
+            else if (type is "heading" or "header")
             {
-                frames++;
+                open = false;
+                if (dividers && content.ValueKind == JsonValueKind.Object
+                    && (!content.TryGetProperty("level", out var level) || level.ValueKind != JsonValueKind.Number || level.GetInt32() == 1)
+                    && !(content.TryGetProperty("numbered", out var numbered) && numbered.ValueKind == JsonValueKind.False))
+                    frames++;
             }
+            else if (type is "pagebreak" or "backmatter" or "frontmatter") open = false;
+            else if (type is "title" or "bibliography" or "footnote") { }
+            else if (!open) { frames++; open = true; }
         }
         return frames;
     }

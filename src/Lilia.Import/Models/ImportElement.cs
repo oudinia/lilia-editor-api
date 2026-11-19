@@ -780,6 +780,9 @@ public class ImportTheorem : ImportElement
     /// </summary>
     public TheoremEnvironmentType EnvironmentType { get; set; } = TheoremEnvironmentType.Theorem;
 
+    /// <summary>The source's own environment name when the source declares it (prop, rem, df); null otherwise.</summary>
+    public string? EnvironmentName { get; set; }
+
     /// <summary>
     /// Optional label (e.g., "thm:main-result").
     /// </summary>

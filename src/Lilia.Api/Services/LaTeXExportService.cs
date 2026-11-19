@@ -858,7 +858,7 @@ public class LaTeXExportService : ILaTeXExportService
 
         // Shared theorem environments
         sb.AppendLine();
-        sb.Append(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass), DocumentLanguage.TheoremNames(language.Spec)));
+        sb.Append(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass), DocumentLanguage.TheoremNames(language.Spec), doc.CustomPreamble));
 
         // Optional domain-specific packages
         if (options.IncludePhysics)

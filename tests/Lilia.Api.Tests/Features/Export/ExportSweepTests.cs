@@ -153,7 +153,9 @@ public class ExportSweepTests
     public void New_theorem_kinds_print_as_themselves()
     {
         _render.RenderBlockToLatex(B("theorem", new { theoremType = "exercise", text = "Do it." })).Should().Contain(@"\begin{exercise}");
-        LaTeXPreamble.CustomPreambleForEmit(@"\newtheorem{exercise}{Exercise}").Should().Contain("left out");
+        // The author's own declaration is kept (Lilia no longer declares it then; launch-bot #230, 19 Nov 2026).
+        LaTeXPreamble.CustomPreambleForEmit(@"\newtheorem{exercise}{Exercise}").Should().Be(@"\ifcsname exercise\endcsname\else \newtheorem{exercise}{Exercise}\fi");
+        LaTeXPreamble.TheoremEnvironmentsFor("article", null, @"\newtheorem{exercise}{Exercise}").Should().NotContain(@"\newtheorem{exercise}{");
         var r = new Lilia.Import.Services.LmlTextParser().Parse("@theorem[kind=claim]\n  It holds.");
         System.Text.Json.JsonSerializer.Serialize(r.Blocks[0].Content).Should().Contain("claim");
     }

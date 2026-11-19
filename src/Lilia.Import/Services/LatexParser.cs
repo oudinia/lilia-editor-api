@@ -219,6 +219,10 @@ public class LatexParser : ILatexParser
         return localVerdict;
     }
 
+    /// <summary>\newtheorem{env}[shared]{Printed}[within], numbered or not (\newtheorem*).</summary>
+    private static readonly Regex DeclaredTheorem = new(
+        @"\\newtheorem\*?\s*\{(?<env>[A-Za-z]+)\}\s*(?:\[[^\]]*\]\s*)?\{(?<printed>[^{}]*)\}", RegexOptions.Compiled);
+
     /// <summary>
     /// Theorem-style environments LaTeX papers use. Mapped to TheoremEnvironmentType.
     /// </summary>
@@ -742,6 +746,19 @@ public class LatexParser : ILatexParser
         if (Regex.Match(content, @"\\title\s*\[(?<short>[^\]]*)\]\s*\{") is { Success: true } shortTitle
             && shortTitle.Groups["short"].Value.Trim() is { Length: > 0 } shortText)
             document.Metadata.TitleRunning = Regex.Replace(shortText, @"\s+", " ");
+        // The source's own theorem-like environments (launch-bot #230, 19 Nov 2026): \begin{rem} was dropped to bare text, and
+        // \begin{prop} became Lilia's proposition with a counter of its own.
+        foreach (Match decl in DeclaredTheorem.Matches(content))
+        {
+            var envName = decl.Groups["env"].Value;
+            if (envName == "proof" || document.Metadata.DeclaredTheorems.ContainsKey(envName)) continue;
+            var printed = decl.Groups["printed"].Value.Trim();
+            document.Metadata.DeclaredTheorems[envName] =
+                Enum.TryParse<TheoremEnvironmentType>(printed, ignoreCase: true, out var kind) && kind != TheoremEnvironmentType.Algorithm
+                    ? kind
+                    : TheoremEnvironments.TryGetValue(envName, out var known) ? known : TheoremEnvironmentType.Theorem;
+        }
+
         // llncs running heads go to the Title block, not the body (launch-bot #203, 18 Nov 2026).
         if (MatchBalanced(content, "titlerunning") is { } titleRunning)
             document.Metadata.TitleRunning = Regex.Replace(titleRunning.Inner, @"\s+", " ").Trim();
@@ -2366,7 +2383,9 @@ public class LatexParser : ILatexParser
                 matches.Add((listMatch, "list"));
 
             // Theorem-style environments (P0-6) — we accept any of the names in TheoremEnvironments
-            var theoremPattern = @"\\begin\{(" + string.Join("|", TheoremEnvironments.Keys) + @")\}(\[[^\]]*\])?([\s\S]*?)\\end\{\1\}";
+            // And those the source declares itself (launch-bot #230).
+            var theoremPattern = @"\\begin\{(" + string.Join("|", TheoremEnvironments.Keys.Concat(document.Metadata.DeclaredTheorems.Keys)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Select(Regex.Escape)) + @")\}(\[[^\]]*\])?([\s\S]*?)\\end\{\1\}";
             var theoremMatch = Regex.Match(remaining, theoremPattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
             if (theoremMatch.Success)
                 matches.Add((theoremMatch, "theorem"));
@@ -2408,7 +2427,10 @@ public class LatexParser : ILatexParser
                 remaining,
                 @"\\begin\{([A-Za-z*]+)\}(?:\s*(?:\[[^\]]*\]|\{(?:[^{}]|\{[^{}]*\})*\}))*([\s\S]*?)\\end\{\1\}",
                 RegexOptions.Singleline);
-            if (passThroughMatch.Success && IsPassThroughEnvironment(passThroughMatch.Groups[1].Value))
+            // Not one the source declares as a theorem: "rem" is unwrapped here as a Spanish wrapper, and an amsart paper's
+            // \newtheorem{rem}{Remark} lost its label, "Remark text." (launch-bot #230, 19 Nov 2026).
+            if (passThroughMatch.Success && IsPassThroughEnvironment(passThroughMatch.Groups[1].Value)
+                && !document.Metadata.DeclaredTheorems.ContainsKey(passThroughMatch.Groups[1].Value))
             {
                 var before = remaining[..passThroughMatch.Index];
                 var body = passThroughMatch.Groups[2].Value;
@@ -2785,7 +2807,10 @@ public class LatexParser : ILatexParser
                         document.Elements.Add(new ImportTheorem
                         {
                             Order = elementOrder++,
-                            EnvironmentType = TheoremEnvironments[envName],
+                            // The source's own declaration first: its printed name says the kind, and the name stays.
+                            EnvironmentType = document.Metadata.DeclaredTheorems.TryGetValue(envName, out var declared) ? declared
+                                : TheoremEnvironments.TryGetValue(envName, out var kindOf) ? kindOf : TheoremEnvironmentType.Theorem,
+                            EnvironmentName = document.Metadata.DeclaredTheorems.ContainsKey(envName) ? envName : null,
                             Title = optTitle,
                             Label = label,
                             Text = body,

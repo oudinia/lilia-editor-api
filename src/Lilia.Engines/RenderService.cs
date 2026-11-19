@@ -1100,7 +1100,7 @@ public partial class RenderService : IRenderService
 
         latex.AppendLine();
 
-        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc), DocumentLanguage.TheoremNames(language.Spec)));
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc), DocumentLanguage.TheoremNames(language.Spec), doc.CustomPreamble));
 
         // The document theme, as the full-document path writes it. Left out (not failed) when this
         // server cannot compile it: validation should not mark every block for a font problem.
@@ -1192,6 +1192,8 @@ public partial class RenderService : IRenderService
         // context and leaves it as it is: the deck compiled with its slides shuffled, and a frame
         // that didn't fit was named by a number from the shuffled deck (7 Oct 2026).
         var blocks = (doc.Blocks ?? new List<Block>()).OrderBy(b => b.SortOrder).ToList();
+        // Each block sees its document (its class, its own preamble's theorem environments), as the export's do.
+        foreach (var b in blocks) b.Document ??= doc;
         var renderedBlocks = blocks
             .Select(b => RenderBlockToLatex(b, canUseLongtable
                 && ((longtableBlocks?.Contains(b.Id) ?? false) || IsLongTable(b))))
@@ -1268,7 +1270,7 @@ public partial class RenderService : IRenderService
         latex.AppendLine();
 
         // Theorem environments, named in the document's language
-        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc), DocumentLanguage.TheoremNames(language.Spec)));
+        latex.AppendLine(LaTeXPreamble.TheoremEnvironmentsFor(LaTeXPreambleBuilder.ResolveClassName(doc), DocumentLanguage.TheoremNames(language.Spec), doc.CustomPreamble));
 
         // The document theme (Document settings → Look): one managed line, just before the custom
         // preamble so the author's settings win. Empty for Classic and for classes that set their
@@ -1526,7 +1528,7 @@ public partial class RenderService : IRenderService
                 "code" => RenderCodeToLatex(content),
                 "list" => RenderListToLatex(content),
                 "blockquote" or "quote" => RenderBlockquoteToLatex(content),
-                "theorem" => RenderTheoremToLatex(content),
+                "theorem" => RenderTheoremToLatex(content, block.Document?.CustomPreamble),
                 "abstract" => RenderAbstractToLatex(content),
                 // Title is preamble metadata (\title/\author/\date) consumed into
                 // the preamble + \maketitle; it renders nothing in the body.
@@ -2602,6 +2604,10 @@ public partial class RenderService : IRenderService
     /// gets an untitled frame. A slide block is its own frame; a page break ends a frame. A frame holding code or
     /// verbatim text is [fragile], as beamer needs.
     /// </summary>
+    private static readonly Regex FrameLevel = new(
+        @"^\s*\\(?:begin\{frame\}|appendix\b|AtBeginSection|AtBeginSubsection|againframe|setbeamertemplate|usebackgroundtemplate|part\b|mode\s*<)",
+        RegexOptions.Compiled);
+
     private static string ComposeBeamerBody(IReadOnlyList<Block> blocks, IReadOnlyList<string> rendered, bool pageMap)
     {
         var latex = new StringBuilder();
@@ -2653,9 +2659,17 @@ public partial class RenderService : IRenderService
                     frameTitle = Regex.Replace(m.Groups[2].Value, @"\\label\{[^{}]*\}", "").Trim();
                     if (!numbered) frame.Append(marker);
                 }
+                // An unnumbered heading with no content of its own (a slide or another heading follows) divides the deck: its
+                // \section* ends the section before it, so a theme colouring by section (Index) shows none current. Lost
+                // since API #586; the nightly run's deck tests (19 Nov 2026).
+                else if (!numbered && m.Success) latex.Append(marker).AppendLine(text);
                 continue;
             }
-            if (type.Equals("slide", StringComparison.OrdinalIgnoreCase))
+            // A slide, and raw LaTeX that is a frame or a frame-level command itself (an embed holding
+            // \begin{frame}…\end{frame}, \appendix, \AtBeginSection…): its own, outside any frame. An embedded frame was
+            // wrapped in a second one, "\begin{frame} \begin{frame}{Blocks}", and the deck stopped compiling (the nightly
+            // run since API #586; 19 Nov 2026).
+            if (type.Equals("slide", StringComparison.OrdinalIgnoreCase) || FrameLevel.IsMatch(text))
             {
                 Close();
                 latex.Append(marker).AppendLine(text);
@@ -3066,12 +3080,18 @@ public partial class RenderService : IRenderService
         };
     }
 
-    private string RenderTheoremToLatex(JsonElement content)
+    private string RenderTheoremToLatex(JsonElement content, string? customPreamble = null)
     {
         // Normalize to a preamble-declared env ("Theorem" → "theorem"); raw
         // capitalized types yield \begin{Theorem} → "Environment Theorem undefined".
         var theoremType = LaTeXPreamble.NormalizeTheoremEnv(
             content.TryGetProperty("theoremType", out var tt) ? tt.GetString() : null);
+        // The source's own environment (prop, rem, df) while the document's preamble still declares it: its counter, shared
+        // counters and style are the source's (launch-bot #230, 19 Nov 2026). Unnumbered, or no longer declared: Lilia's.
+        if (content.TryGetProperty("environment", out var envProp) && envProp.GetString() is { Length: > 0 } own
+            && LaTeXPreamble.DeclaresTheorem(customPreamble, own)
+            && (content.TryGetProperty("numbered", out var ownNumbered) ? ownNumbered.ValueKind != JsonValueKind.False : true))
+            theoremType = own;
         var title = content.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
         var text = content.TryGetProperty("text", out var tx) ? tx.GetString() ?? "" : "";
         var numbered = !content.TryGetProperty("numbered", out var numProp) || numProp.ValueKind != JsonValueKind.False;

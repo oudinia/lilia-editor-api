@@ -532,7 +532,10 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
             ["label"] = t.Label ?? "",
         })),
         ImportAbstract a => ("abstract", new { text = a.Text }),
-        ImportTheorem th => ("theorem", new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
+        // environment: the source's own name when it declares one (launch-bot #230); the export writes it back.
+        ImportTheorem th => ("theorem", th.EnvironmentName is { } env
+            ? new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "", environment = env }
+            : (object)new { text = th.Text, theoremType = th.EnvironmentType.ToString().ToLowerInvariant(), title = th.Title ?? "", label = th.Label ?? "" }),
         ImportListItem li => ("list", new { items = new[] { li.Text }, ordered = li.IsNumbered }),
         ImportPageBreak => ("pageBreak", new { }),
         // 2026-04-25 fix: carry the parsed \includegraphics filename into
