@@ -29,6 +29,19 @@ public static class FigureFile
         @"^example-(?:image|grid-100x100(?:bp|pt)|movie)(?:-(?:a|b|c|golden|plain|duck|1x1|10x16|16x10|16x9|3x4|4x3|9x16|a4|a5|letter|landscape|portrait|golden-upright|a4-numbered|letter-numbered)){0,2}(?:\.(?:pdf|png|jpg|eps))?$",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// The image's name as the source wrote it (its last path segment), for messages to the author. <see cref="Name"/> is the
+    /// file the export writes, and a name without an image extension becomes image-0.png there; the check then asked the
+    /// author to upload "image-0.png", a file they never had, for \includegraphics{lilia-launch-no-such-image}
+    /// (launch-bot #244, 19 Nov 2026).
+    /// </summary>
+    public static string WrittenName(string? src)
+    {
+        if (string.IsNullOrWhiteSpace(src)) return "(no file)";
+        var last = src.Trim().Split('/')[^1].Split('?')[0].Split('#')[0];
+        return last.Length > 0 ? last : src.Trim();
+    }
+
     public static string Name(string? src, int index = 0)
     {
         if (TexLiveImage(src) is { } texLive) return texLive;

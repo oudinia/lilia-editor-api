@@ -24,6 +24,21 @@ public sealed record ComplianceReport(string? Profile, string Status, IReadOnlyL
 /// </summary>
 public static partial class PublisherCompliance
 {
+    /// <summary>
+    /// The report with an error for each image that can't be found (the document check asks storage; this check reads only
+    /// the document). It saw only a figure with no src at all, so a submission checklist passed a figure whose image was
+    /// gone, which a publisher's system rejects (launch-bot #244, 19 Nov 2026). Null stays null: no publisher, no checklist.
+    /// </summary>
+    public static ComplianceReport? WithMissingFiles(ComplianceReport? report, IEnumerable<(string BlockId, string File)> missing)
+    {
+        if (report is null) return null;
+        var added = missing.Select(m => new ComplianceFinding("error", "figure_file",
+            $"The image {m.File} can't be found: it prints as a framed \"Missing figure\". Upload it again.", m.BlockId)).ToList();
+        if (added.Count == 0) return report;
+        var findings = report.Findings.Concat(added).DistinctBy(f => (f.Code, f.Message, f.BlockId)).ToList();
+        return report with { Status = "errors", Findings = findings };
+    }
+
     public static ComplianceReport Check(Document doc, IReadOnlyList<Block> blocks, string emittedLatex, string? installedClassVersion = null)
     {
         var profile = PublisherProfiles.Find(doc.PublisherProfile);
