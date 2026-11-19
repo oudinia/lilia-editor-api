@@ -646,6 +646,9 @@ public class LatexParser : ILatexParser
         // code span (`…`, printed as typed) in whatever text it sat in; verbatim and listing environments keep theirs.
         var verbs = new List<string>();
         content = StashVerb(content, verbs);
+        // A \texttt holding only printable escapes is code as printed: {\char'134}begin printed "\char92 begin", the
+        // character code set aside as LaTeX inside what became a code span (launch-bot #245, 19 Nov 2026).
+        content = StashPrintedTexttt(content, verbs);
 
         // % comments are not content. Nothing removed them, so a trailing
         // "% note to self" imported as paragraph text and exported as a
@@ -3517,6 +3520,85 @@ public class LatexParser : ILatexParser
             if (body.Trim().Length == 0) return region;
             stash.Add(body);
             return region[..(firstBreak + 1)] + $"{BodyOpen}{stash.Count - 1}{BodyClose}" + region[lastBreak..];
+        }
+    }
+
+    private static readonly Regex PrintedEscape = new(
+        @"\\char\s*(?:'(?<oct>[0-7]+)|""(?<hex>[0-9A-Fa-f]+)|`\\?(?<chr>\S)|(?<dec>\d+))\s?"
+        + @"|\\(?<word>ldots|dots|textbackslash|textasciitilde|textasciicircum|textunderscore|textbar|textless|textgreater)\b(?:\{\})?\s?"
+        + @"|\\(?<sym>[{}$%&#_ ,;:!~^])(?:\{\})?",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Every <c>\texttt{…}</c> whose argument is only text and printable escapes (\char codes, \ldots, \textbackslash,
+    /// \{, \$, \, …) swapped for a placeholder whose code span holds what it prints: <c>\texttt{{\char'134}begin}</c>
+    /// is <c>`\begin`</c>. One with any other command (\textbf, \url, maths) is left to the usual reading.
+    /// </summary>
+    internal static string StashPrintedTexttt(string content, List<string> stash)
+    {
+        const string key = @"\texttt{";
+        if (content.IndexOf(key, StringComparison.Ordinal) < 0) return content;
+        var sb = new System.Text.StringBuilder(content.Length);
+        var last = 0;
+        for (var at = content.IndexOf(key, StringComparison.Ordinal); at >= 0; at = content.IndexOf(key, last, StringComparison.Ordinal))
+        {
+            var open = at + key.Length - 1;
+            var close = Closing(content, open);
+            if (close < 0) break;
+            var arg = content[(open + 1)..close];
+            if (Printed(arg) is { } code)
+            {
+                sb.Append(content, last, at - last);
+                stash.Add("`" + code.Replace('`', '\u2018') + "`");
+                sb.Append(VerbOpen).Append(stash.Count - 1).Append(VerbClose);
+            }
+            else sb.Append(content, last, close + 1 - last);
+            last = close + 1;
+        }
+        sb.Append(content, last, content.Length - last);
+        return sb.ToString();
+
+        static int Closing(string s, int open)
+        {
+            var depth = 0;
+            for (var k = open; k < s.Length; k++)
+            {
+                if (s[k] == '\\') { k++; continue; }
+                if (s[k] == '{') depth++;
+                else if (s[k] == '}' && --depth == 0) return k;
+            }
+            return -1;
+        }
+
+        // What the argument prints, or null when it holds anything else than text, groups and printable escapes, or
+        // nothing to resolve at all (plain text reads fine the usual way).
+        static string? Printed(string arg)
+        {
+            if (arg.IndexOf('\\') < 0 || arg.Contains('\n') || arg.Contains('$') && !arg.Contains(@"\$")) return null;
+            var text = PrintedEscape.Replace(arg, m =>
+            {
+                if (m.Groups["word"].Success)
+                    return m.Groups["word"].Value switch
+                    {
+                        "ldots" or "dots" => "\u2026", "textbackslash" => "\uE0F6", "textasciitilde" => "~", "textasciicircum" => "^",
+                        "textunderscore" => "_", "textbar" => "|", "textless" => "<", _ => ">",
+                    };
+                if (m.Groups["sym"].Success)
+                    return m.Groups["sym"].Value[0] switch
+                    {
+                        ',' or ';' or ':' or ' ' => " ", '!' => "", '{' => "\uE0F7", '}' => "\uE0F8", var c => c.ToString(),
+                    };
+                int code;
+                if (m.Groups["chr"].Success) code = m.Groups["chr"].Value[0];
+                else if (m.Groups["hex"].Success) code = Convert.ToInt32(m.Groups["hex"].Value, 16);
+                else if (m.Groups["oct"].Success) code = Convert.ToInt32(m.Groups["oct"].Value, 8);
+                else code = int.Parse(m.Groups["dec"].Value);
+                return code is >= 32 and <= 126 ? (code switch { '\\' => "\uE0F6", '{' => "\uE0F7", '}' => "\uE0F8", _ => ((char)code).ToString() }) : m.Value;
+            });
+            // Anything still a command is not plain printed text.
+            if (text.IndexOf('\\') >= 0) return null;
+            // Grouping braces print nothing; the escaped ones come back as characters.
+            return text.Replace("{", "").Replace("}", "").Replace('\uE0F6', '\\').Replace('\uE0F7', '{').Replace('\uE0F8', '}');
         }
     }
 

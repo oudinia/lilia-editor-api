@@ -668,7 +668,9 @@ public class JobService : IJobService
                     && (pasted.Format == "LATEX"
                         || string.IsNullOrWhiteSpace(request.Title)
                         || string.Equals(createdDocument.Title, Path.GetFileNameWithoutExtension(request.Filename), StringComparison.Ordinal)))
-                    createdDocument.Title = textTitle;
+                    // LaTeX's is the name as text: "for\\Risk-Aware", "\thanks{…}" and "\textsuperscript{*}" were in the import
+                    // reply and the documents list (launch-bot #226 retest, 19 Nov 2026). The title block keeps the LaTeX.
+                    createdDocument.Title = pasted.Format == "LATEX" ? LatexImportJobExecutor.DocumentName(textTitle) : textTitle;
 
                 var sortOrder = 0;
                 // A Markdown file's front matter: its title, author and date as the new document's title block

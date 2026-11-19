@@ -1463,11 +1463,23 @@ public partial class RenderService : IRenderService
     private static readonly Regex DuplicateDocClassRe =
         new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
 
+    private static readonly Regex VerbatimBody = new(
+        @"\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|alltt)\}[\s\S]*?\\end\{\1\}|\\verb\*?([^a-zA-Z\s*]).*?\2",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// A second \documentclass commented out, so a stray one in a block can't fail the compile. One shown in a verbatim
+    /// or listing block, or a \verb, is text and stays: the connector's LaTeX view replaced ACM's documented
+    /// \documentclass lines with the note (launch-bot #222 retest, 19 Nov 2026).
+    /// </summary>
     public static string DedupeDocumentClass(string source)
     {
+        if (string.IsNullOrEmpty(source)) return source;
+        var verbatim = VerbatimBody.Matches(source).Select(v => (v.Index, End: v.Index + v.Length)).ToList();
         var first = true;
         return DuplicateDocClassRe.Replace(source, m =>
         {
+            if (verbatim.Any(v => m.Index >= v.Index && m.Index < v.End)) return m.Value;
             if (first) { first = false; return m.Value; }
             return "% [lilia] removed duplicate \\documentclass";
         });
