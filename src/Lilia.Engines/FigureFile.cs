@@ -164,8 +164,12 @@ public static class FigureFile
     /// </summary>
     public static (string FileName, string Path)? MatchRawInclude(string name, IEnumerable<string> fileNames)
     {
-        var written = name.Trim().Replace('\\', '/');
+        var written = name.Trim();
         while (written.StartsWith("./", StringComparison.Ordinal)) written = written[2..];
+        // The folder part is the author's text and becomes a path the API writes (WriteFiguresAsync, the zip), outside the TeX
+        // sandbox: a rooted, drive, backslash, ".." or odd-character name is refused, and reported missing (Zayd's review of
+        // API #665, 19 Nov 2026: {../../x/fig} escaped the folder, {/abs/fig} replaced it).
+        if (!SafeRelativePath(written)) return null;
         var dir = System.IO.Path.GetDirectoryName(written)?.Replace('\\', '/') ?? "";
         var file = System.IO.Path.GetFileName(written);
         var names = fileNames.ToList();
@@ -176,6 +180,28 @@ public static class FigureFile
                 .FirstOrDefault(n => n is not null);
         if (found is null) return null;
         return (found, dir.Length > 0 ? $"{dir}/{found}" : found);
+    }
+
+    /// <summary>
+    /// A relative path built from a user's text that is safe to write under a folder: plain segments of letters, digits, '.',
+    /// '_' and '-' separated by '/'; never rooted, never a drive, never "." or "..", never a backslash (Zayd's review of #665).
+    /// </summary>
+    public static bool SafeRelativePath(string? path) =>
+        !string.IsNullOrEmpty(path) && path.Length <= 255 && SafeSegments.IsMatch(path)
+        && path.Split('/').All(s => s.Length > 0 && s != "." && s != "..");
+
+    private static readonly Regex SafeSegments = new(@"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// <paramref name="relative"/> under <paramref name="root"/> as a full path, or null when it would land outside it once
+    /// normalised (Path.GetFullPath): the last check before a file built from a user's text is written (Zayd's review of #665).
+    /// </summary>
+    public static string? ContainedPath(string root, string relative)
+    {
+        var rootFull = System.IO.Path.GetFullPath(root);
+        var prefix = rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar) ? rootFull : rootFull + System.IO.Path.DirectorySeparatorChar;
+        var full = System.IO.Path.GetFullPath(System.IO.Path.Combine(rootFull, relative));
+        return full.StartsWith(prefix, StringComparison.Ordinal) ? full : null;
     }
 
     public static IEnumerable<(Block Block, string Src)> Sources(IEnumerable<Block> blocks)
