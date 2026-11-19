@@ -221,6 +221,9 @@ public class ImportMetadata
     public string? AcmCcs { get; set; }
     public string? AcmRights { get; set; }
 
+    /// <summary>amsart's other front matter, as written: \subjclass[…]{…} and \dedicatory{…}, one per line (launch-bot #243).</summary>
+    public string? FrontExtra { get; set; }
+
     /// <summary>
     /// llncs's running heads, \titlerunning{…} and \authorrunning{…}, as written; null when absent. They were printed as
     /// body paragraphs after the abstract (launch-bot #203, 18 Nov 2026).

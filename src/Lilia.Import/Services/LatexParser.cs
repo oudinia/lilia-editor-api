@@ -235,6 +235,11 @@ public class LatexParser : ILatexParser
         env is "block" or "alertblock" or "exampleblock"
         && string.Equals(document.Metadata.DocumentClass, "beamer", StringComparison.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> AmsAuthorClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "proc-l", "tran-l", "mcom-l", "jams-l", "bull-l", "memo-l", "ecgd-l", "ert-l", "proc", "tran", "conm-p-l", "pspum-l",
+    };
+
     private static readonly Dictionary<string, TheoremEnvironmentType> TheoremEnvironments = new(StringComparer.OrdinalIgnoreCase)
     {
         ["theorem"]     = TheoremEnvironmentType.Theorem,
@@ -493,7 +498,7 @@ public class LatexParser : ILatexParser
             body = Regex.Replace(body, @"\\begin\{" + env + @"\}.*?\\end\{" + env + @"\}", "", RegexOptions.Singleline);
         body = Regex.Replace(body, @"\\(?:begin|end)\{frontmatter\}", "");
         body = Regex.Replace(body, @"\\ccsdesc(?:\[\d+\])?\{[^{}]*\}", "");
-        foreach (var line in (front.AcmRights ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var line in ((front.AcmRights ?? "") + "\n" + (front.FrontExtra ?? "")).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             body = body.Replace(line, "");
         foreach (var cmd in new[] { "keywords", "email", "institute", "address", "affil", "additionalaffiliation", "orcid", "authornote", "authorsaddresses", "shortauthors" })
             body = StripBalancedCommand(body, cmd);
@@ -804,6 +809,10 @@ public class LatexParser : ILatexParser
         if (docClassMatch.Success)
         {
             document.Metadata.DocumentClass = docClassMatch.Groups[2].Value.Trim();
+            // An AMS author-package class (proc-l, tran-l…) isn't in TeX Live: read and written as amsart, which has its
+            // \specialsection, \address, \subjclass and \dedicatory. It fell back to article, which has none of them
+            // (launch-bot #243, 19 Nov 2026).
+            if (AmsAuthorClasses.Contains(document.Metadata.DocumentClass)) document.Metadata.DocumentClass = "amsart";
             if (docClassMatch.Groups[1].Success)
             {
                 var rawOptions = docClassMatch.Groups[1].Value.Trim();
@@ -831,6 +840,7 @@ public class LatexParser : ILatexParser
             if (publisherFront.Keywords.Count > 0) document.Metadata.Keywords = string.Join(", ", publisherFront.Keywords);
             document.Metadata.AcmCcs = publisherFront.AcmCcs;
             document.Metadata.AcmRights = publisherFront.AcmRights;
+            document.Metadata.FrontExtra = publisherFront.FrontExtra;
         }
 
         // Extract all \usepackage[...]{name1,name2,...} references.
@@ -2207,7 +2217,9 @@ public class LatexParser : ILatexParser
             // Section title allows one level of nested braces so cases
             // like \section{The \texttt{deploy} command} capture the
             // full title instead of truncating at the first `}`.
-            var sectionMatch = Regex.Match(remaining, @"\\(chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
+            // amsart's \specialsection{…} (a section head in capitals) too: its braces were dropped and it ran into the next
+            // paragraph, "Undefined control sequence" (launch-bot #243, 19 Nov 2026). A section heading here.
+            var sectionMatch = Regex.Match(remaining, @"\\(chapter|section|subsection|subsubsection|paragraph|subparagraph|specialsection)\*?\s*\{((?:[^{}]|\{[^{}]*\})+)\}");
             if (sectionMatch.Success)
             {
                 CheckRegexDispatchDrift(sectionMatch.Groups[1].Value, "section-regex");
@@ -2507,8 +2519,10 @@ public class LatexParser : ILatexParser
             {
                 case "section":
                     var sectionType = firstMatch.match.Groups[1].Value;
+                    var sectionStarredCheckName = sectionType;
+                    if (sectionType == "specialsection") sectionType = "section";
                     // \section*{…} — unnumbered, and out of the table of contents.
-                    var sectionStarred = firstMatch.match.Value.StartsWith($"\\{sectionType}*", StringComparison.Ordinal);
+                    var sectionStarred = firstMatch.match.Value.StartsWith($"\\{sectionStarredCheckName}*", StringComparison.Ordinal);
                     // The \label that names the section follows its title. It used to
                     // be left in the stream, where the paragraph splitter saw a
                     // paragraph starting with \label and dropped the whole of it —

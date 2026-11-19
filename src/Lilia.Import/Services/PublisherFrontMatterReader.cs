@@ -17,7 +17,8 @@ public static partial class PublisherFrontMatterReader
 {
     public sealed record Author(string Name, List<string> Lines);
 
-    public sealed record Result(IReadOnlyList<Author> Authors, IReadOnlyList<string> Keywords, string? AcmCcs, string? AcmRights)
+    public sealed record Result(IReadOnlyList<Author> Authors, IReadOnlyList<string> Keywords, string? AcmCcs, string? AcmRights,
+        string? FrontExtra = null)
     {
         /// <summary>The Title block's author text.</summary>
         public string AuthorText => string.Join(" \\and ", Authors.Select(a => string.Join("\\\\", new[] { a.Name }.Concat(a.Lines))));
@@ -42,7 +43,8 @@ public static partial class PublisherFrontMatterReader
             _ => null,
         };
         if (authors is null) return null;
-        return new Result(authors, Keywords(src), cls == "acmart" ? Ccs(src) : null, cls == "acmart" ? Rights(src) : null);
+        return new Result(authors, Keywords(src), cls == "acmart" ? Ccs(src) : null, cls == "acmart" ? Rights(src) : null,
+            cls == "amsart" ? AmsExtra(src) : null);
     }
 
     /// <summary>The classes whose \thanks (title's included) are read as authors' notes: REVTeX and AMS.</summary>
@@ -505,6 +507,15 @@ public static partial class PublisherFrontMatterReader
         var kept = new List<string>();
         var marked = NoteKept.Replace(s, m => { kept.Add(m.Value); return $"\uE0F8{kept.Count - 1}\uE0F9"; });
         return Regex.Replace(Clean(marked), "\uE0F8(\\d+)\uE0F9", m => kept[int.Parse(m.Groups[1].Value)]);
+    }
+
+    /// <summary>amsart's \subjclass[…]{…} and \dedicatory{…}, as written, one per line; null when there are none. They
+    /// printed as body paragraphs after \maketitle (launch-bot #243, 19 Nov 2026).</summary>
+    private static string? AmsExtra(string src)
+    {
+        var lines = Regex.Matches(src, @"\\(?:subjclass(?:\[[^\]]*\])?|dedicatory)\s*\{(?:[^{}]|\{[^{}]*\})*\}")
+            .Select(m => Regex.Replace(m.Value, @"\s+", " ")).Distinct().ToList();
+        return lines.Count > 0 ? string.Join("\n", lines) : null;
     }
 
     private static string StripComments(string s) => Regex.Replace(s, @"(?<!\\)%.*$", "", RegexOptions.Multiline);
