@@ -1973,8 +1973,12 @@ public class LatexParser : ILatexParser
         return null;
     }
 
+    // And \[…\], \(…\) and display environments, which stay in a list item's or a cell's text: their \frac, \sqrt and
+    // \mbox were flattened, "x=a^22b, \quadas r" (launch-bot #248, 19 Nov 2026). Not \\[3pt], a line break with a skip.
     private static readonly Regex InlineMathSpan = new(
-        @"(?<!\\)\$\$(?:\\.|[^$\\])+\$\$|(?<!\\)\$(?:\\.|[^$\\])+\$",
+        @"(?<!\\)\$\$(?:\\.|[^$\\])+\$\$|(?<!\\)\$(?:\\.|[^$\\])+\$"
+        + @"|(?<!\\)\\\[[\s\S]*?(?<!\\)\\\]|(?<!\\)\\\([\s\S]*?(?<!\\)\\\)"
+        + @"|\\begin\{(?<menv>equation|align|gather|multline|eqnarray|flalign|alignat)(?<mstar>\*?)\}[\s\S]*?\\end\{\k<menv>\k<mstar>\}",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
     private string NormaliseInlineCommandsOutsideMath(string text)
