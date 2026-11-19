@@ -117,7 +117,8 @@ public sealed class DocumentImageStager(
             .Where(a => a.DocumentId == documentId)
             .ToListAsync(ct);
 
-        if (assets.Count == 0) return StagedImages.None;
+        // No early return when the document has no assets: an image embedded in a block (data:) has none, and it
+        // rendered as a placeholder (task 5, 19 Nov 2026).
 
         // Only the images a figure actually references. A document can carry
         // assets nothing points at any more, and staging those would cost the
@@ -147,6 +148,19 @@ public sealed class DocumentImageStager(
 
         foreach (var src in wanted)
         {
+            // An image embedded in the block: decoded, PNG or JPEG of up to 10 MB (FigureFile.EmbeddedImage), named by
+            // its content (FigureFile.Name); anything else stays a placeholder, as an unmatched src does.
+            if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Lilia.Engines.FigureFile.EmbeddedImage(src) is { } embedded)
+                {
+                    var name = $"figures/{Lilia.Engines.FigureFile.Name(src)}";
+                    paths[src] = name;
+                    files[name] = embedded.Bytes;
+                }
+                continue;
+            }
+
             var asset = Match(assets, src);
             if (asset is null)
             {

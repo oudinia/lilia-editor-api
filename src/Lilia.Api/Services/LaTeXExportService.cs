@@ -1496,6 +1496,18 @@ public class LaTeXExportService : ILaTeXExportService
         {
             var filename = FigureFile.Name(src);
             if (!seen.Add(filename)) continue;
+            // An image embedded in the block is decoded, not looked up: storage has no such key, so the PDF printed a
+            // "Missing figure" frame for it (task 5, 19 Nov 2026). One that isn't a PNG or JPEG of up to 10 MB stays missing.
+            if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (FigureFile.EmbeddedImage(src) is { } embedded) images.Add(($"figures/{filename}", embedded.Bytes));
+                else
+                {
+                    _logger.LogWarning("Embedded image in block {BlockId} is not a PNG or JPEG of up to 10 MB", block.Id);
+                    missing.Add(filename);
+                }
+                continue;
+            }
             try
             {
                 // The src may be a storage key or a URL path — extract the storage key
