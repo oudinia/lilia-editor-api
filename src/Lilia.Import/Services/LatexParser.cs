@@ -987,6 +987,24 @@ public class LatexParser : ILatexParser
             }
         }
 
+        // An abstract and \keywords set in the preamble, as the Overleaf article template (olplainarticle) does, for the class
+        // to print at \maketitle: both were dropped, as only the body was read (launch-bot #232, 19 Nov 2026). The abstract goes
+        // first in the body (the document's abstract block), unless the body has its own; the keywords become the title's,
+        // unless the publisher front matter set them.
+        if (options.OnlyDocumentContent && content.IndexOf(@"\begin{document}", StringComparison.Ordinal) is var bodyAt and > 0)
+        {
+            var preamble = Regex.Replace(content[..bodyAt], @"(?<!\\)%[^\n]*", "");
+            if (!Regex.IsMatch(documentContent, @"\\begin\{abstract\}")
+                && Regex.Match(preamble, @"\\begin\{abstract\}[\s\S]*?\\end\{abstract\}") is { Success: true } preambleAbstract)
+                documentContent = preambleAbstract.Value + "\n" + documentContent;
+            if (string.IsNullOrWhiteSpace(document.Metadata.Keywords)
+                && Regex.Match(preamble, @"\\keywords\s*\{((?:[^{}]|\{[^{}]*\})*)\}") is { Success: true } preambleKeywords
+                && preambleKeywords.Groups[1].Value.Trim() is { Length: > 0 } keywords)
+                document.Metadata.Keywords = Regex.Replace(keywords, @"\s+", " ");
+        }
+        // \flushbottom and \raggedbottom are page layout; the template's \flushbottom printed as a paragraph (launch-bot #232).
+        documentContent = Regex.Replace(documentContent, @"\\(?:flushbottom|raggedbottom)(?![A-Za-z@])\s*", "");
+
         // P0-8: strip preamble/metadata commands from the body so they don't leak into
         // the first paragraph block. Done AFTER the \begin{document} extraction so we
         // also catch papers that put \title/\author inside the document body.
