@@ -51,7 +51,10 @@ public class MathpixClient : IMathpixClient
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
         content.Add(fileContent, "file", Path.GetFileName(filePath));
 
-        var optionsJson = JsonSerializer.Serialize(new MathpixPdfRequest());
+        // tex.zip with the Markdown, and improve_mathpix off (the request's default), PDF import via tex.zip, 19 Nov 2026.
+        var request = new MathpixPdfRequest();
+        if (_options.RequestTexZip) request.ConversionFormats.TexZip = true;
+        var optionsJson = JsonSerializer.Serialize(request);
         content.Add(new StringContent(optionsJson, System.Text.Encoding.UTF8, "application/json"), "options_json");
 
         _logger.LogInformation("[Mathpix] Submitting PDF: {FileName} ({SizeMb:F1}MB)", fileInfo.Name, fileSizeMb);
@@ -207,6 +210,78 @@ public class MathpixClient : IMathpixClient
             _logger.LogWarning(ex, "[Mathpix] API availability check failed — service may be unreachable");
             return false;
         }
+    }
+
+    public async Task<byte[]> GetTexZipAsync(string pdfId, CancellationToken ct = default, TimeSpan? maxWait = null)
+    {
+        // The PDF is read ("completed" on /v3/pdf/{id}) before its conversions are: each requested format has its own
+        // status on /v3/converter/{id}, and its download answers 202 while it is still converting
+        // (docs.mathpix.com/reference/post-v3-pdf; PDF import via tex.zip, 19 Nov 2026).
+        var timeout = TimeSpan.FromSeconds(_options.TexZipTimeoutSeconds);
+        if (maxWait is { } cap && cap < timeout) timeout = cap;
+        var pollInterval = TimeSpan.FromMilliseconds(_options.PollIntervalMs);
+        var startTime = DateTime.UtcNow;
+        var id = Uri.EscapeDataString(pdfId);
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var response = await _httpClient.GetAsync($"/v3/converter/{id}", ct);
+            if (!response.IsSuccessStatusCode)
+                throw new LiliaExternalServiceException(
+                    "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
+                    "PDF conversion to LaTeX failed.",
+                    internalDetails: $"Mathpix converter status HTTP {(int)response.StatusCode} for pdf_id {pdfId}");
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var converter = JsonSerializer.Deserialize<MathpixConverterStatus>(body);
+            var texZip = converter?.ConversionStatus?.GetValueOrDefault("tex.zip");
+
+            _logger.LogDebug("[Mathpix] PDF {PdfId} tex.zip status: {Status}", pdfId, texZip?.Status ?? "(none)");
+
+            if (texZip?.Status == "completed")
+            {
+                var download = await _httpClient.GetAsync($"/v3/pdf/{id}.tex.zip", ct);
+                // 200 only: 202 is "still converting", 404 "not there" (the same docs page).
+                if (download.StatusCode != HttpStatusCode.OK)
+                    throw new LiliaExternalServiceException(
+                        "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
+                        "PDF conversion to LaTeX failed.",
+                        internalDetails: $"Mathpix tex.zip download HTTP {(int)download.StatusCode} for pdf_id {pdfId}");
+                var bytes = await download.Content.ReadAsByteArrayAsync(ct);
+                _logger.LogInformation("[Mathpix] PDF {PdfId} tex.zip downloaded ({Bytes} bytes)", pdfId, bytes.Length);
+                return bytes;
+            }
+
+            if (texZip?.Status == "error")
+                throw new LiliaExternalServiceException(
+                    "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
+                    "PDF conversion to LaTeX failed.",
+                    internalDetails: $"Mathpix tex.zip conversion error for pdf_id {pdfId}: {texZip.ErrorInfo?.Id} {texZip.ErrorInfo?.Error}");
+
+            if (DateTime.UtcNow - startTime >= timeout)
+                throw new LiliaExternalServiceException(
+                    "Mathpix", LiliaErrorCodes.MathpixTimeout,
+                    "PDF conversion to LaTeX is taking longer than expected.",
+                    internalDetails: $"Mathpix tex.zip not ready after {timeout.TotalSeconds:F0}s for pdf_id {pdfId} (last status: {texZip?.Status ?? "none"})");
+
+            await Task.Delay(pollInterval, ct);
+        }
+    }
+
+    public async Task<bool> DeletePdfAsync(string pdfId, CancellationToken ct = default)
+    {
+        // Removes the source document, page images, MMD and line data at once; CDN copies of the page images may
+        // stay up to 10 minutes (docs.mathpix.com/concepts/data-retention; PDF import via tex.zip, 19 Nov 2026).
+        var response = await _httpClient.DeleteAsync($"/v3/pdf/{Uri.EscapeDataString(pdfId)}", ct);
+        if (response.IsSuccessStatusCode)
+        {
+            _logger.LogInformation("[Mathpix] PDF {PdfId} deleted at Mathpix", pdfId);
+            return true;
+        }
+        _logger.LogWarning("[Mathpix] Deleting PDF {PdfId} at Mathpix answered HTTP {Status}", pdfId, (int)response.StatusCode);
+        return false;
     }
 
     public async Task<byte[]> GetImageAsync(string imageUrl, CancellationToken ct = default)

@@ -51,6 +51,19 @@ public class ImportDocument
     public string? RawImportData { get; set; }
 
     /// <summary>
+    /// The LaTeX project the reading service made of the file (Mathpix's tex.zip), or null. When set, the import
+    /// goes through the LaTeX project import an uploaded Overleaf zip takes, figures included as files, instead of
+    /// <see cref="Elements"/> (PDF import via tex.zip, 19 Nov 2026).
+    /// </summary>
+    public byte[]? LatexProjectZip { get; set; }
+
+    /// <summary>
+    /// The project's .tex flattened into one source (<c>LatexProjectExtractor</c>'s InlinedTex), set with
+    /// <see cref="LatexProjectZip"/> (PDF import via tex.zip, 19 Nov 2026).
+    /// </summary>
+    public string? LatexSource { get; set; }
+
+    /// <summary>
     /// Paragraph-level diagnostic trace of the entire document body.
     /// Each entry records what happened to a body element (matched rule, detected type, raw text).
     /// </summary>

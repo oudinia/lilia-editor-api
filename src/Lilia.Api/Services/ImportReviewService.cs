@@ -450,6 +450,15 @@ public class ImportReviewService : IImportReviewService
         return await FinalizeInternalAsync(sessionId, userId, documentTitle, dto.Force, CancellationToken.None);
     }
 
+    /// <summary>
+    /// Whether a session's raw import data is LaTeX: a .tex or Overleaf zip upload, or a PDF that Mathpix turned into a
+    /// LaTeX project, whose session says "pdf" and whose definition says "latex" (PDF import via tex.zip, 19 Nov 2026).
+    /// A PDF read through Markdown has no definition, and its raw data is Markdown.
+    /// </summary>
+    internal static bool IsLatexSource(string? sessionFormat, string? definitionFormat) =>
+        sessionFormat is "latex" or "tex"
+        || (sessionFormat == "pdf" && definitionFormat is "latex" or "tex");
+
     public Task<FinalizeResultDto> FinalizeFromStagingAsync(
         Guid sessionId, string ownerId, string documentTitle, bool force, CancellationToken ct = default)
     {
@@ -500,7 +509,8 @@ public class ImportReviewService : IImportReviewService
             // and re-exports under a generic article preamble.
             var pre = await _context.ImportReviewSessions
                 .Where(s => s.Id == sessionId)
-                .Select(s => new { s.RawImportData, s.SourceFormat, s.HeadingNumbering, s.PageSetup })
+                .Select(s => new { s.RawImportData, s.SourceFormat, s.HeadingNumbering, s.PageSetup,
+                    DefinitionFormat = s.Definition != null ? s.Definition.SourceFormat : null })
                 .FirstOrDefaultAsync(ct);
             // The source's heading numbering (a DOCX's Word numbering): the document starts from it.
             if (pre?.HeadingNumbering is { } sourceNumbering)
@@ -518,7 +528,7 @@ public class ImportReviewService : IImportReviewService
                     WHERE id = {documentId}", ct);
             if (pre != null
                 && !string.IsNullOrWhiteSpace(pre.RawImportData)
-                && (pre.SourceFormat == "latex" || pre.SourceFormat == "tex"))
+                && IsLatexSource(pre.SourceFormat, pre.DefinitionFormat))
                 await ApplyLatexSourceAsync(documentId, ownerId, pre.RawImportData, $"session {sessionId}", ct);
 
             // The centrepiece: copy approved/edited staged rows into real blocks
