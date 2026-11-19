@@ -179,11 +179,15 @@ public static class FigureFile
     }
 
     /// <summary>The image, or a framed placeholder naming the missing file.</summary>
-    public static string Include(string filename, string width, string placeholderWidth = @"0.7\textwidth") =>
+    /// <param name="shownAs">The name the frame prints for a missing image: the file as the source wrote it
+    /// (<see cref="WrittenName"/>). The frame printed the export's file name, "[Missing figure: image-0.png]" for
+    /// \includegraphics{lilia-launch-no-such-image}, a name the author never wrote (launch-bot #244 note, 19 Nov 2026).
+    /// The file included is still figures/<paramref name="filename"/>.</param>
+    public static string Include(string filename, string width, string placeholderWidth = @"0.7\textwidth", string? shownAs = null) =>
         TexLiveImage(filename) is { } texLive
             ? $@"\includegraphics[width={width}]{{{texLive}}}"
             : $@"\IfFileExists{{figures/{filename}}}{{%" + "\n"
         + $@"  \includegraphics[width={width}]{{figures/{filename}}}%" + "\n"
         // No \centering in the frame: the figure's own alignment (left, right) places it.
-        + $@"}}{{\fbox{{\parbox{{{placeholderWidth}}}{{\small\textit{{[Missing figure: {LatexText.Escape(filename)}]}}}}}}}}";
+        + $@"}}{{\fbox{{\parbox{{{placeholderWidth}}}{{\small\textit{{[Missing figure: {LatexText.Escape(shownAs ?? filename)}]}}}}}}}}";
 }
