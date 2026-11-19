@@ -55,6 +55,8 @@ public static class PublisherClasses
     /// acmart's, REVTeX's and amsart's short title, <c>\title[short]{full}</c> (the running head): from the Title block's
     /// titleRunning, which llncs writes as \titlerunning. It was dropped on import (launch-bot #246, 19 Nov 2026).
     /// </summary>
+    private static readonly Regex RevtexFrontLine = new(@"^\\preprint\s*\{(?:[^{}]|\{[^{}]*\})*\}$", RegexOptions.Compiled);
+
     private static string ShortTitle(string? titleRunning, Func<string, string> escape) =>
         string.IsNullOrWhiteSpace(titleRunning) ? "" : "[" + escape(titleRunning.Trim()) + "]";
 
@@ -319,6 +321,11 @@ public static class PublisherClasses
                 // REVTeX reads the front matter inside the body, the abstract before \maketitle, and an
                 // \affiliation after each \author it belongs to.
                 body.AppendLine(@"\begin{document}");
+                // The report number (\preprint{APS/123-QED}) before the title, as REVTeX's template writes it; it printed as body
+                // text after the title (launch-bot #238, 19 Nov 2026). Only that command, as written.
+                foreach (var line in (frontExtra ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                             .Where(l => RevtexFrontLine.IsMatch(l)))
+                    body.AppendLine(line);
                 body.AppendLine($@"\title{ShortTitle(titleRunning, escape)}{{{titleLatex}}}");
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
@@ -328,6 +335,10 @@ public static class PublisherClasses
                     // An author's \thanks notes (an imported paper's \thanks and \altaffiliation): they were dropped
                     // (launch-bot #143, 17 Nov 2026).
                     foreach (var note in a.Notes) body.AppendLine($@"\thanks{{{escape(note)}}}");
+                    // The author's own REVTeX commands as written (launch-bot #238): \altaffiliation[Also at ]{…} and \homepage
+                    // here, \collaboration after the affiliation, where it closes the group of authors before it.
+                    var own = a.ClassCommands ?? [];
+                    foreach (var c in own.Where(c => !c.StartsWith(@"\collaboration", StringComparison.Ordinal))) body.AppendLine(c);
                     foreach (var e in emails) body.AppendLine($@"\email{{{e}}}");
                     // Lines that are each a whole address (an imported paper's affiliations) are one \affiliation each;
                     // they were merged into one (launch-bot #143 retest, 18 Nov 2026). Institution, city and country
@@ -335,6 +346,7 @@ public static class PublisherClasses
                     if (a.Lines.Count > 1 && a.Lines.All(l => l.Contains(',')))
                         foreach (var l in a.Lines) body.AppendLine($@"\affiliation{{{escape(l)}}}");
                     else if (a.Lines.Count > 0) body.AppendLine($@"\affiliation{{{Line(a.Lines, ", ")}}}");
+                    foreach (var c in own.Where(c => c.StartsWith(@"\collaboration", StringComparison.Ordinal))) body.AppendLine(c);
                 }
                 if (abstractEnv is not null) body.AppendLine(abstractEnv.TrimEnd());
                 if (kw.Count > 0) body.AppendLine($@"\keywords{{{string.Join(", ", kw)}}}");

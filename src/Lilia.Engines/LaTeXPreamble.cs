@@ -982,6 +982,11 @@ public static partial class LaTeXPreamble
 % ACM's author marks, which an imported acmart paper keeps in its author text (launch-bot #239).
 \providecommand{\correspondingauthor}{}
 \providecommand{\authornotemark}[1][]{}
+% REVTeX's front matter commands, which an imported revtex paper keeps (launch-bot #238).
+\providecommand{\preprint}[1]{}
+\providecommand{\collaboration}[1]{}
+\providecommand{\altaffiliation}[2][]{}
+\providecommand{\homepage}[1]{}
 \providecommand{\keywords}[1]{\paragraph*{Keywords:} #1}
 \providecommand{\email}[1]{\texttt{#1}}
 \providecommand{\corresp}[1]{#1}
