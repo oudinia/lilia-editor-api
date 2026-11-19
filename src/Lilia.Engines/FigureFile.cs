@@ -13,8 +13,25 @@ namespace Lilia.Engines;
 public static class FigureFile
 {
     /// <summary>The file name under figures/: the URL's last segment, made safe for LaTeX.</summary>
+    /// <summary>
+    /// An image TeX Live itself provides (the mwe package's example-image, example-image-a/b/c, -golden, -16x9…), as a
+    /// source names it: included as written, from TeX Live, the way Overleaf does. It became a missing figures/image-0.png
+    /// and the author was asked to upload a file they never had (launch-bot #244, 19 Nov 2026). Null otherwise.
+    /// </summary>
+    public static string? TexLiveImage(string? src)
+    {
+        if (string.IsNullOrWhiteSpace(src)) return null;
+        var name = src.Trim();
+        return TexLiveImageName.IsMatch(name) ? name : null;
+    }
+
+    private static readonly Regex TexLiveImageName = new(
+        @"^example-(?:image|grid-100x100(?:bp|pt)|movie)(?:-(?:a|b|c|golden|plain|duck|1x1|10x16|16x10|16x9|3x4|4x3|9x16|a4|a5|letter|landscape|portrait|golden-upright|a4-numbered|letter-numbered)){0,2}(?:\.(?:pdf|png|jpg|eps))?$",
+        RegexOptions.Compiled);
+
     public static string Name(string? src, int index = 0)
     {
+        if (TexLiveImage(src) is { } texLive) return texLive;
         if (string.IsNullOrEmpty(src)) return $"image-{index}.png";
         var parts = src.Split('/');
         var filename = parts.Length > 0 ? parts[^1] : $"image-{index}";
@@ -47,10 +64,11 @@ public static class FigureFile
             if (content.TryGetProperty("subfigures", out var subs) && subs.ValueKind == JsonValueKind.Array && subs.GetArrayLength() > 0)
             {
                 foreach (var sub in subs.EnumerateArray())
-                    if (sub.ValueKind == JsonValueKind.Object && sub.TryGetProperty("src", out var ss) && ss.GetString() is { Length: > 0 } subSrc)
+                    if (sub.ValueKind == JsonValueKind.Object && sub.TryGetProperty("src", out var ss) && ss.GetString() is { Length: > 0 } subSrc
+                        && TexLiveImage(subSrc) is null)
                         yield return (block, subSrc);
             }
-            else if (content.TryGetProperty("src", out var s) && s.GetString() is { Length: > 0 } src)
+            else if (content.TryGetProperty("src", out var s) && s.GetString() is { Length: > 0 } src && TexLiveImage(src) is null)
                 yield return (block, src);
         }
     }
@@ -120,7 +138,9 @@ public static class FigureFile
 
     /// <summary>The image, or a framed placeholder naming the missing file.</summary>
     public static string Include(string filename, string width, string placeholderWidth = @"0.7\textwidth") =>
-        $@"\IfFileExists{{figures/{filename}}}{{%" + "\n"
+        TexLiveImage(filename) is { } texLive
+            ? $@"\includegraphics[width={width}]{{{texLive}}}"
+            : $@"\IfFileExists{{figures/{filename}}}{{%" + "\n"
         + $@"  \includegraphics[width={width}]{{figures/{filename}}}%" + "\n"
         // No \centering in the frame: the figure's own alignment (left, right) places it.
         + $@"}}{{\fbox{{\parbox{{{placeholderWidth}}}{{\small\textit{{[Missing figure: {LatexText.Escape(filename)}]}}}}}}}}";

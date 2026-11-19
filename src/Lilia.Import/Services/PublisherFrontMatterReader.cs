@@ -62,7 +62,7 @@ public static partial class PublisherFrontMatterReader
         var authors = new List<Author>();
         var front = FrontPart(src);
         // \orcid after an author for every class (acmart's own command: launch-bot #219, the ORCID was lost).
-        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid" } : new[] { "author", affiliationCommand, "email", "orcid" };
+        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid", "curraddr" } : new[] { "author", affiliationCommand, "email", "orcid" };
         // A \thanks on the title (amsart prints every \thanks as a first-page footnote): the first author's note, as the
         // title block has no place for it (launch-bot #143 retest, 18 Nov 2026).
         var titleNotes = notes
@@ -102,6 +102,13 @@ public static partial class PublisherFrontMatterReader
                 if (cmd == "thanks" && authors[^1].Name.Contains($@"\thanks{{{CleanNote(arg)}}}", StringComparison.Ordinal)) continue;
                 if ((cmd == "thanks" ? CleanNote(arg) : Clean(arg)) is { Length: > 0 } note)
                     authors[^1] = authors[^1] with { Name = authors[^1].Name + $@"\thanks{{{note}}}" };
+                continue;
+            }
+            // amsart's \curraddr, the author's current address: a line marked "Current address:", which amsart's front
+            // matter writes back as \curraddr. It printed as a body paragraph (launch-bot #243 retest, 19 Nov 2026).
+            if (cmd == "curraddr")
+            {
+                if (Clean(arg) is { Length: > 0 } current) authors[^1].Lines.Add(CurrentAddress + current);
                 continue;
             }
             if (cmd == "email") authors[^1].Lines.AddRange(Split(arg, ',').Select(Clean).Where(e => e.Contains('@')));
@@ -517,6 +524,9 @@ public static partial class PublisherFrontMatterReader
             .Select(m => Regex.Replace(m.Value, @"\s+", " ")).Distinct().ToList();
         return lines.Count > 0 ? string.Join("\n", lines) : null;
     }
+
+    /// <summary>The mark on an author's line that came from \curraddr (PublisherClasses writes it back as one).</summary>
+    public const string CurrentAddress = "Current address: ";
 
     private static string StripComments(string s) => Regex.Replace(s, @"(?<!\\)%.*$", "", RegexOptions.Multiline);
 

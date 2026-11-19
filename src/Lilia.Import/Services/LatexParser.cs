@@ -500,7 +500,7 @@ public class LatexParser : ILatexParser
         body = Regex.Replace(body, @"\\ccsdesc(?:\[\d+\])?\{[^{}]*\}", "");
         foreach (var line in ((front.AcmRights ?? "") + "\n" + (front.FrontExtra ?? "")).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             body = body.Replace(line, "");
-        foreach (var cmd in new[] { "keywords", "email", "institute", "address", "affil", "additionalaffiliation", "orcid", "authornote", "authorsaddresses", "shortauthors" })
+        foreach (var cmd in new[] { "keywords", "email", "institute", "address", "curraddr", "affil", "additionalaffiliation", "orcid", "authornote", "authorsaddresses", "shortauthors" })
             body = StripBalancedCommand(body, cmd);
         return body;
     }

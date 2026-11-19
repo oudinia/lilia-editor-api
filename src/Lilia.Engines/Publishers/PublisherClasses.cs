@@ -42,6 +42,9 @@ public static class PublisherClasses
 
     public static bool Is(string? cls) => Canonical(cls) is not null;
 
+    /// <summary>The import's mark on an author line from \curraddr (PublisherFrontMatterReader.CurrentAddress).</summary>
+    private const string CurrentAddressMark = "Current address: ";
+
     private static readonly System.Text.RegularExpressions.Regex AmsFrontLine = new(
         @"^\\(?:subjclass(?:\[[^\]]*\])?|dedicatory)\s*\{(?:[^{}]|\{[^{}]*\})*\}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -167,7 +170,7 @@ public static class PublisherClasses
     public static (string Preamble, string BodyStart) FrontMatter(
         string cls, string title, string? authorText, string? abstractEnv, IReadOnlyList<string> keywords,
         Func<string, string> escape, string titleLatex, string? acmCcs = null, string? acmRights = null,
-        string? titleRunning = null, string? authorRunning = null, string? frontExtra = null)
+        string? titleRunning = null, string? authorRunning = null, string? frontExtra = null, string? date = null)
     {
         // An affiliation line that is an email address is the author's email (the title editor's Email
         // field writes it as one): each class gets it in its own command, not as a line of the address.
@@ -348,9 +351,15 @@ public static class PublisherClasses
                     // An author's \thanks (affiliations, grants in an imported paper): dropped before (launch-bot #143 retest,
                     // 18 Nov 2026). amsart prints each as a first-page footnote.
                     foreach (var note in a.Notes) pre.AppendLine($@"\thanks{{{escape(note)}}}");
-                    if (a.Lines.Count > 0) pre.AppendLine($@"\address{{{Line(a.Lines, @"\\")}}}");
+                    // A line marked "Current address:" (an imported \curraddr) is amsart's \curraddr, which prints its own label.
+                    var address = a.Lines.Where(l => !l.StartsWith(CurrentAddressMark, StringComparison.Ordinal)).ToList();
+                    if (address.Count > 0) pre.AppendLine($@"\address{{{Line(address, @"\\")}}}");
+                    foreach (var current in a.Lines.Where(l => l.StartsWith(CurrentAddressMark, StringComparison.Ordinal)))
+                        pre.AppendLine($@"\curraddr{{{escape(current[CurrentAddressMark.Length..])}}}");
                     foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                 }
+                // amsart prints the date (a footnote on the first page) only when given one: an imported \date was dropped.
+                if (!string.IsNullOrWhiteSpace(date) && date.Trim() != @"\today") pre.AppendLine($@"\date{{{escape(date.Trim())}}}");
                 // The paper's own \subjclass and \dedicatory (launch-bot #243): only those two commands, as written.
                 foreach (var line in (frontExtra ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                              .Where(l => AmsFrontLine.IsMatch(l)))

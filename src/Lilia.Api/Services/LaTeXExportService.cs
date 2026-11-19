@@ -959,12 +959,12 @@ public class LaTeXExportService : ILaTeXExportService
         sb.AppendLine(RenderService.PdfProperties(doc, TitleMeta(doc, blocks).Title));
         if (PublisherClasses.Canonical(LaTeXPreambleBuilder.ResolveClassName(doc, options.DocumentClass)) is { } publisher)
         {
-            var (title, author, _) = TitleMeta(doc, blocks);
+            var (title, author, date) = TitleMeta(doc, blocks);
             var (pre, body) = PublisherClasses.FrontMatter(publisher, title, author, AbstractEnv(),
                 RenderService.TitleKeywords(doc), FormatTitleMetaLatex, FormatTitleMetaLatex(RenderService.TitleWithoutAnd(title)),
                 RenderService.TitleText(doc, "acmCcs"), RenderService.TitleText(doc, "acmRights"),
                 RenderService.TitleText(doc, "titleRunning"), RenderService.TitleText(doc, "authorRunning"),
-                RenderService.TitleText(doc, "frontExtra"));
+                RenderService.TitleText(doc, "frontExtra"), RenderService.TitleText(doc, "dateMode") == "none" ? null : date);
             if (_teaser is not null)
             {
                 if (_teaser.Document is null) _teaser.Document = doc;
