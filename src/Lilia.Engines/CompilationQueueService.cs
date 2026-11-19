@@ -88,20 +88,9 @@ public class CompilationQueueService : ICompilationQueueService, IDisposable
     // paste or an imported fragment) joins the preamble's own and fails every compile
     // with "! LaTeX Error: Two \documentclass or \documentstyle commands." This is the
     // single chokepoint all compiles funnel through, so dedupe here: keep the first,
-    // comment out the rest.
-    private static readonly Regex DuplicateDocClassRe =
-        new(@"\\document(?:class|style)\s*(?:\[[^\]]*\])?\s*\{[^}]*\}", RegexOptions.Compiled);
-
-    private static string DedupeDocumentClass(string latex)
-    {
-        if (string.IsNullOrEmpty(latex)) return latex;
-        var first = true;
-        return DuplicateDocClassRe.Replace(latex, m =>
-        {
-            if (first) { first = false; return m.Value; }
-            return "% [lilia] removed duplicate \\documentclass";
-        });
-    }
+    // comment out the rest. The render's own, which leaves one shown in a verbatim block alone (launch-bot #222
+    // retest, 19 Nov 2026).
+    private static string DedupeDocumentClass(string latex) => RenderService.DedupeDocumentClass(latex);
 
     /// <summary>
     /// Content hash of the document being validated.

@@ -138,6 +138,24 @@ public class McpTransfersTests : IntegrationTestBase
 
     // MCP-123: a .tex that asks to run commands is imported (the author fixes it in the editor), and the
     // reply says what the compile will refuse; a clean file has no warning.
+    // The launch bot's #226 retest (19 Nov 2026): the reply and the documents list named the document with its LaTeX.
+    [Fact]
+    public async Task An_imported_papers_name_is_its_titles_plain_text()
+    {
+        await SeedUserAsync("mcpx_plainname");
+        var app = CreateClientAs("mcpx_plainname");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+
+        var tex = await CallAsync(app, "import_document", new
+        {
+            filename = "conf.tex",
+            content = "\\documentclass{article}\\title{Conference Paper Title*\\\\ {\\footnotesize \\textsuperscript{*}Note: Sub-titles} \\thanks{Funding.}}\\begin{document}\\maketitle\\section{Intro}Hello.\\end{document}",
+        });
+        tex.TryGetProperty("error", out _).Should().BeFalse(tex.ToString());
+        tex.GetProperty("title").GetString().Should().Be("Conference Paper Title* *Note: Sub-titles");
+    }
+
     [Fact]
     public async Task An_import_that_runs_commands_comes_with_a_warning()
     {
