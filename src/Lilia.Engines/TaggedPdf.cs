@@ -26,6 +26,33 @@ namespace Lilia.Engines;
 /// </list>
 /// <para>Not lua-ul's \highLight: it needs luacolor, and luacolor beside coloured links wrote an
 /// invalid PDF ("Unknown operator 'rgb'").</para>
+/// <para>The publisher classes (launch-bot #257, 19 Nov 2026), each tried on a full export (title, authors,
+/// abstract, sections, an equation, a theorem and proof, a table, a figure with alt text, an algorithm, a
+/// citation). Not one compiled tagged:</para>
+/// <list type="bullet">
+/// <item>an algorithm block stopped every class: float.sty's algorithm float is unknown to the tagging code
+/// ("tag \l__tag_name_float/algorithm_tl is not known", then a Lua error), and once named, its own begin
+/// and end left the paragraph hooks unbalanced. It is now a kernel float the tagging code knows;</item>
+/// <item>the tagging code brings its own proof and \qed. elsarticle, llncs and SIAM define theirs again
+/// ("Command \proof already defined", "\qed already defined"), and acmart's proof (a trivlist) left the
+/// paragraph hooks unbalanced. Under a publisher class, LaTeX's tagged proof is set aside before the
+/// class and put back at \begin{document}; the class's \qed stays;</item>
+/// <item>llncs: its footnote text hides \hb@xt@ in \llap, which the footnote tagging cannot patch
+/// (an undefined \ERROR at \begin{document}), and its \section and \subsection set "\rightskip=…" in
+/// the heading style, which the heading tagging reads as a key ("Misplaced '='"). Both are written
+/// again, the same on the page;</item>
+/// <item>elsarticle: its \@author is a command with arguments, which the tagging code read as the PDF's author
+/// on the last page and stopped; the author is left out of the PDF's properties (the title stays);</item>
+/// <item>IEEEtran: its bibliography's \bibitem wrapper left the paragraph hooks unbalanced once the references
+/// printed; the same list, without the wrapper;</item>
+/// <item>then veraPDF (PDF/UA-2) failed two: acmart's sigconf authors are paragraphs in boxes inside a paragraph
+/// ("&lt;P&gt; shall not contain &lt;P&gt;"), and SIAM's ntheorem theorems never closed their list item, so the rest of the
+/// paper was tagged inside it. The author boxes' lines are now part of their line's paragraph, and SIAM's
+/// theorems are LaTeX's own \newtheorem;</item>
+/// <item>revtex4-2 (APS, AIP) is refused (<see cref="WhyUnavailable"/>): with \DocumentMetadata alone,
+/// tagging off, every tabular stops ("You can't use \halign in math mode"), as REVTeX's own array code
+/// no longer recognises the kernel's.</item>
+/// </list>
 /// </summary>
 public static class TaggedPdf
 {
@@ -71,7 +98,98 @@ public static class TaggedPdf
     private static readonly Regex StarredTheorem = new(@"^\\newtheorem\*\{(?<env>[A-Za-z]+\*)\}(?<rest>.*)$", RegexOptions.Compiled);
     private static readonly Regex Listing = new(@"\\begin\{lstlisting\}(?<opt>\[[^\]\n]*\])?[ \t]*\n(?<code>.*?)\\end\{lstlisting\}", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly Regex ListingCaption = new(@"caption=\{(?<c>[^{}]*)\}", RegexOptions.Compiled);
-    private static readonly Regex HereFloat = new(@"\\begin\{(?<env>figure\*?|table\*?)\}\[H\]", RegexOptions.Compiled);
+    // algorithm too (launch-bot #257, 19 Nov 2026): a kernel float now, which has no [H].
+    private static readonly Regex HereFloat = new(@"\\begin\{(?<env>figure\*?|table\*?|algorithm)\}\[H\]", RegexOptions.Compiled);
+    private static readonly Regex DocumentClass = new(@"\\documentclass\s*(?:\[[^\]]*\])?\s*\{(?<cls>[^}]+)\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Why this LaTeX can't be made an accessible PDF yet, for the person; null when it can. Only its class
+    /// decides (launch-bot #257, 19 Nov 2026).
+    /// </summary>
+    public static string? WhyUnavailable(string latex)
+    {
+        var cls = ClassOf(latex);
+        return cls is "revtex4-2" or "revtex4-1" or "revtex4"
+            ? "An accessible PDF isn't available yet for the APS and AIP format (REVTeX): LaTeX's tagging code can't set its tables yet. Download the normal PDF, or choose another format for the accessible copy."
+            : null;
+    }
+
+    private static string? ClassOf(string latex) =>
+        DocumentClass.Match(Comment.Replace(latex, "")) is { Success: true } m ? m.Groups["cls"].Value.Trim() : null;
+
+    // LaTeX's own tagged proof, set aside before a publisher class defines its own proof or \qed, and put back at
+    // \begin{document} (launch-bot #257, 19 Nov 2026). The class's \qed is kept; LaTeX's only when it has none.
+    private const string KeepTaggedProof = """
+        \makeatletter
+        \NewEnvironmentCopy{LiliaTaggedProof}{proof}\let\proof\@undefined\let\endproof\@undefined
+        \let\LiliaTaggedQed\qed\let\qed\@undefined
+        \AtBeginDocument{\let\proof\@undefined\let\endproof\@undefined\NewEnvironmentCopy{proof}{LiliaTaggedProof}\ifdefined\qed\else\let\qed\LiliaTaggedQed\fi}
+        \makeatother
+        """;
+
+    // float.sty's algorithm (algorithm.sty, or SIAM's class) as a kernel float, which the tagging code tags as it
+    // tags a figure (launch-bot #257, 19 Nov 2026). Its captions go through the kernel's \@caption.
+    private const string AlgorithmAsKernelFloat = """
+        \makeatletter
+        \ifdefined\c@algorithm\tagpdfsetup{float/new=algorithm}\renewenvironment{algorithm}{\@float{algorithm}}{\end@float}\expandafter\let\csname @float@c@algorithm\endcsname\@caption\fi
+        \makeatother
+        """;
+
+    // llncs's footnote text and headings, the same on the page, in a shape the tagging code reads (launch-bot #257).
+    private const string LlncsTaggable = """
+        \makeatletter
+        \long\def\@makefntext#1{\parindent\fnindent\leftskip\fnindent\noindent\hb@xt@\z@{\hss\hb@xt@1em{\hss\@makefnmark\ }}\ignorespaces#1}
+        \renewcommand\section{\@startsection{section}{1}{\z@}{-18\p@ \@plus -4\p@ \@minus -4\p@}{12\p@ \@plus 4\p@ \@minus 4\p@}{\normalfont\large\bfseries\boldmath\rightskip\z@ \@plus 8em\pretolerance10000 }}
+        \renewcommand\subsection{\@startsection{subsection}{2}{\z@}{-18\p@ \@plus -4\p@ \@minus -4\p@}{8\p@ \@plus 4\p@ \@minus 4\p@}{\normalfont\normalsize\bfseries\boldmath\rightskip\z@ \@plus 8em\pretolerance10000 }}
+        \makeatother
+        """;
+
+    // elsarticle's \@author is its own command with arguments, not the names: the tagging code read it as the PDF's
+    // author on the last page and stopped ("Use of \__text_expand_space:w doesn't match"). Left out instead: PDF/UA
+    // needs the title, not the author (launch-bot #257, 19 Nov 2026).
+    private const string ElsarticleTaggable = """
+        \ExplSyntaxOn
+        \AddToHook{cmd/maketitle/after}{\tl_gclear:N \g__tag_title_author_tl}
+        \ExplSyntaxOff
+        """;
+
+    // IEEEtran's bibliography wraps \bibitem in a macro of its own (for \IEEEtriggeratref), which left the tagging
+    // code's paragraphs unbalanced on the pass that prints the references. The same look, without the wrapper
+    // (launch-bot #257, 19 Nov 2026).
+    private const string IeeeBibliography = """
+        \makeatletter
+        \renewenvironment{thebibliography}[1]{\section*{\refname}\addcontentsline{toc}{section}{\refname}\footnotesize\vskip 0.3\baselineskip plus 0.1\baselineskip minus 0.1\baselineskip\list{\@biblabel{\@arabic\c@enumiv}}{\settowidth\labelwidth{\@biblabel{#1}}\leftmargin\labelwidth\advance\leftmargin\labelsep\itemsep\IEEEbibitemsep\relax\usecounter{enumiv}\let\p@enumiv\@empty\renewcommand\theenumiv{\@arabic\c@enumiv}}\def\newblock{\hskip .11em plus .33em minus .07em}\sloppy\clubpenalty4000\widowpenalty4000\interlinepenalty500\sfcode`\.\@m}{\def\@noitemerr{\@latex@warning{Empty `thebibliography' environment}}\endlist}
+        \makeatother
+        """;
+
+    // acmart's sigconf (and siggraph, sigplan…) sets its authors side by side, each a \vtop of paragraphs inside the
+    // line's paragraph: a paragraph in a paragraph, which PDF/UA forbids (veraPDF: "<P> shall not contain <P>"). The
+    // same boxes, their lines part of the line's paragraph (launch-bot #257, 19 Nov 2026).
+    private const string AcmAuthorBoxes = """
+        \makeatletter
+        \def\@typeset@author@bx{\bgroup\hsize=\author@bx@wd\def\and{\par}\normalbaselines\global\setbox\author@bx=\vtop{\tagpdfsetup{para/tagging=false}\if@ACM@sigchiamode\else\centering\fi\@authorfont\@currentauthors\par\@affiliationfont\@currentaffiliation\par}\egroup\box\author@bx\hspace{\author@bx@sep}\gdef\@currentauthors{}\gdef\@currentaffiliation{}}
+        \makeatother
+        """;
+
+    // SIAM's theorems are ntheorem's, whose item was never closed: everything after the first theorem was tagged inside
+    // it (veraPDF: "<LI> shall not contain <Sect>"). LaTeX's own \newtheorem is kept before the class and SIAM's five
+    // are declared again with it, right after the class, so the export's own theorems use it too (launch-bot #257).
+    private const string KeepTaggedNewtheorem = """
+        \makeatletter\NewCommandCopy\LiliaTaggedNewtheorem\newtheorem\makeatother
+        """;
+
+    private const string SiamTheorems = """
+        \makeatletter
+        \@for\Lilia@thm:=theorem,lemma,corollary,proposition,definition\do{\expandafter\let\csname\Lilia@thm\endcsname\@undefined\expandafter\let\csname end\Lilia@thm\endcsname\@undefined\expandafter\let\csname\Lilia@thm*\endcsname\@undefined\expandafter\let\csname end\Lilia@thm*\endcsname\@undefined}
+        \let\c@theorem\@undefined\let\thetheorem\@undefined\let\p@theorem\@undefined\let\cl@theorem\@undefined\let\theHtheorem\@undefined
+        \let\newtheorem\LiliaTaggedNewtheorem
+        \newtheorem{theorem}{Theorem}
+        \newtheorem{lemma}[theorem]{Lemma}
+        \newtheorem{corollary}[theorem]{Corollary}
+        \newtheorem{proposition}[theorem]{Proposition}
+        \newtheorem{definition}[theorem]{Definition}
+        \makeatother
+        """;
     private static readonly Regex TheoremDefinition = new(@"\\newtheorem\*?\s*\{(?<env>[A-Za-z]+\*?)\}", RegexOptions.Compiled);
 
     /// <summary>
@@ -82,6 +200,9 @@ public static class TaggedPdf
     {
         var lang = string.IsNullOrWhiteSpace(language) ? "en" : language.Trim();
         latex = Regex.Replace(latex, @"^\\DocumentMetadata\{.*\}[ \t]*\n", "", RegexOptions.Multiline);
+        // A class LaTeX can't tag yet is refused, never handed back untagged (launch-bot #257, 19 Nov 2026).
+        if (WhyUnavailable(latex) is { } why) throw new TaggedPdfUnavailableException(why);
+        var cls = ClassOf(latex);
         var at = latex.IndexOf(@"\begin{document}", StringComparison.Ordinal);
         if (at < 0) throw new InvalidOperationException("The LaTeX has no \\begin{document}.");
         var preamble = latex[..at];
@@ -140,6 +261,16 @@ public static class TaggedPdf
             }
             output.Add(line);
         }
+        // Under a publisher class, LaTeX's tagged proof outlives the class's own (launch-bot #257, 19 Nov 2026).
+        if (Publishers.PublisherClasses.Is(cls) && output.FindIndex(l => DocumentClass.IsMatch(Comment.Replace(l, ""))) is >= 0 and var classLine)
+        {
+            output.Insert(classLine, KeepTaggedProof);
+            if (cls == "siamart251216")
+            {
+                output.Insert(classLine + 1, KeepTaggedNewtheorem); // before the class, which loads ntheorem
+                output.Insert(classLine + 3, SiamTheorems);         // right after it
+            }
+        }
 
         var sb = new StringBuilder();
         sb.Append("\\DocumentMetadata{lang=").Append(lang)
@@ -147,6 +278,15 @@ public static class TaggedPdf
           .Append("\\PassOptionsToPackage{protrusion=false}{microtype}\n");
         sb.Append(string.Join("\n", output).TrimEnd('\n')).Append('\n');
         if (luaUl) sb.Append("% Strike and underline that LuaLaTeX can break across lines (the accessible PDF)\n\\usepackage{lua-ul}\n");
+        if (body.Contains(@"\begin{algorithm}", StringComparison.Ordinal)) sb.Append(AlgorithmAsKernelFloat).Append('\n');
+        sb.Append(cls switch
+        {
+            "llncs" => LlncsTaggable + "\n",
+            "elsarticle" => ElsarticleTaggable + "\n",
+            "IEEEtran" => IeeeBibliography + "\n",
+            "acmart" => AcmAuthorBoxes + "\n",
+            _ => "",
+        });
         // PDF/UA: the title in the file, shown as the window's title.
         sb.Append("\\ifdefined\\hypersetup\\hypersetup{pdftitle={")
           .Append(LatexText.Escape(title ?? "")).Append("}, pdfdisplaydoctitle=true}\\fi\n");
@@ -212,3 +352,6 @@ public static class TaggedPdf
         return string.IsNullOrWhiteSpace(caption) ? null : caption.Trim();
     }
 }
+
+/// <summary>The accessible PDF can't be made for this document (TaggedPdf): the reason is for the person.</summary>
+public sealed class TaggedPdfUnavailableException(string message) : Exception(message);

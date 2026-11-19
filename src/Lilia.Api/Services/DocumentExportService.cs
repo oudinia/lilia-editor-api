@@ -1981,6 +1981,3 @@ public class DocumentExportService : IDocumentExportService
 
     #endregion
 }
-
-/// <summary>The accessible PDF can't be made for this document (TaggedPdf): the reason is for the person.</summary>
-public sealed class TaggedPdfUnavailableException(string message) : Exception(message);

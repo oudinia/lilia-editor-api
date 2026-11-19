@@ -336,6 +336,13 @@ public class ExportController : ControllerBase
             var sanitizedTitle = SanitizeFilename(document.Title);
             return File(pdfBytes, "application/pdf", $"{sanitizedTitle}.pdf");
         }
+        catch (TaggedPdfUnavailableException notTaggable)
+        {
+            // About the document, not a server failure: the reason, as pdf-check gives it. It was a 500 with the same
+            // message, logged as an error (launch-bot #257, 19 Nov 2026).
+            _logger.LogInformation("[Export] Accessible PDF of {DocId} refused: {Reason}", docId, notTaggable.Message);
+            return UnprocessableEntity(new { message = notTaggable.Message, error = "accessible_pdf_unavailable" });
+        }
         catch (Lilia.Engines.TexSafety.UnsafeLatexException unsafeLatex)
         {
             // Refused by the sandbox's guard: about the document, not a server failure (18 Oct).
