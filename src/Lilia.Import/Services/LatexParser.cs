@@ -1733,6 +1733,10 @@ public class LatexParser : ILatexParser
         text = Regex.Replace(text, @"\\label\s*\{[^}]*\}\s*", "");
         var refs = new List<string>();
         text = CrossReference.Replace(text, m => { refs.Add(m.Value); return $"\uE0F4{refs.Count - 1}\uE0F5"; });
+        // A \texttt word is the caption's code span, which the export writes back as \texttt: flattened, REVTeX's
+        // "\textbackslash\texttt{multicolumn}" became the unknown command \textbackslashmulticolumn and the PDF stopped
+        // (launch-bot #252, 19 Nov 2026).
+        text = Regex.Replace(text, @"\\texttt\{([^{}\\`\n]+)\}", "`$1`");
         text = StripInlineCommandsForPlainText(text);
         return Regex.Replace(text, "\uE0F4(\\d+)\uE0F5", m => refs[int.Parse(m.Groups[1].Value)]);
     }
@@ -2057,9 +2061,12 @@ public class LatexParser : ILatexParser
             RegexOptions.Singleline);
 
         // Single-char TeX specials (before the brace-arg processor
-        // swallows them). \textbackslash → \, \ldots/\dots → …
-        text = Regex.Replace(text, @"\\textbackslash\s*\{\s*\}", @"\");
-        text = Regex.Replace(text, @"\\textbackslash\b", @"\");
+        // swallows them). \ldots/\dots → …
+        // \textbackslash stays \textbackslash{} (set aside here, back at the end, so the brace-arg pass can't empty it). A
+        // bare \ in the text is a command to the export: "\textbackslash\texttt{multicolumn}" became \multicolumn, and a
+        // heading's \textbackslash\textbackslash became \\, which the line-break pass below took as a break and dropped
+        // (launch-bot #252, #253, 19 Nov 2026). The spaces after a bare \textbackslash go with it, as in TeX.
+        text = Regex.Replace(text, @"\\textbackslash(?![A-Za-z])(?:\s*\{\s*\}|\s*)", TextBackslashMark.ToString());
         text = Regex.Replace(text, @"\\(?:ldots|dots|cdots|ddots|vdots)\s*\{\s*\}", "…");
         text = Regex.Replace(text, @"\\(?:ldots|dots|cdots|ddots|vdots)\b", "…");
         // Named accents without an argument: \ss → ß, \ae → æ, etc.
@@ -2151,7 +2158,10 @@ public class LatexParser : ILatexParser
         // Line-break \\ and \\[3pt] / \\[-3pt]. Drop the spacing — it's
         // layout-only. Keeps double backslashes inside math environments
         // safe since this runs on paragraph/list text, not math.
-        text = Regex.Replace(text, @"\\\\\s*(?:\[[^\]]*\])?", " ");
+        // The \protect a heading puts before its \\ goes with it: left alone before the space, it swallowed that space in
+        // the PDF, "First heading:The line" (launch-bot #253, 19 Nov 2026). Lilia's heading is one line of text, which the
+        // editor, the outline, the HTML preview and the Word and Typst exports show as typed, so the break is a space.
+        text = Regex.Replace(text, @"(?:\\protect\s*)?\\\\\s*(?:\[[^\]]*\])?", " ");
         // NOTE: we deliberately do NOT unwrap stray `{X}` pairs here.
         // That would break preserved commands like \cite{key} whose
         // braces are part of the reference syntax downstream
@@ -2164,8 +2174,11 @@ public class LatexParser : ILatexParser
         text = Regex.Replace(text, @"\\([&%#_$])", "$1");
         // Collapse double spaces introduced by the stripping.
         text = Regex.Replace(text, @"[ \t]{2,}", " ");
-        return text.Trim();
+        return text.Trim().Replace(TextBackslashMark.ToString(), @"\textbackslash{}");
     }
+
+    /// <summary>Where a \textbackslash stood while the normaliser runs (launch-bot #252, 19 Nov 2026).</summary>
+    private const char TextBackslashMark = '';
 
     private static readonly Regex VerbInlineRx = new(
         @"\\verb\*?([^a-zA-Z\s])(.*?)\1",

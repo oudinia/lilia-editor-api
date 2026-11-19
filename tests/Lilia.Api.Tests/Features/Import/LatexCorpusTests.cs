@@ -50,6 +50,9 @@ public class LatexCorpusTests
         // both back. (They used to become a Markdown [label](url), which
         // neither reads, so it printed literally.)
         "hyperref", "href", "url",
+        // A printed backslash: a bare \ in the text is a command to the export, \textbackslash\texttt{multicolumn}
+        // became \multicolumn (launch-bot #252, 19 Nov 2026).
+        "textbackslash",
     };
 
     // Generates (FixtureRelPath) tuples for the xUnit [Theory]. xUnit
