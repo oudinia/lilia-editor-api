@@ -1427,7 +1427,8 @@ public class ConvertController : ControllerBase
                             caption = img.AltText ?? "",
                             src = img.Filename ?? "",
                             alt = img.AltText ?? "",
-                            span = img.Span,
+                            span = img.Span == "teaser" ? "page" : img.Span,
+                            teaser = img.Span == "teaser",
                         }));
                         break;
                     case ImportListItem li:
