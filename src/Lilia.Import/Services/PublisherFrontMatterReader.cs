@@ -126,17 +126,15 @@ public static partial class PublisherFrontMatterReader
             // REVTeX's own author commands, kept as written with the author they follow: \altaffiliation with its prefix
             // ("Also at"), \homepage with its URL as typed (the ~ was lost), and \collaboration, which closes the group of
             // authors before it. They printed as body text after the title (launch-bot #238, 19 Nov 2026).
-            if (cmd is "altaffiliation" or "homepage" or "collaboration")
+            // A plain \altaffiliation{…} stays the author's \thanks (launch-bot #143: the same footnote, and the title editor shows
+            // it as a note); only one with a prefix is kept as written, as \thanks has no place for "Also at".
+            if ((cmd == "altaffiliation" && opt is { Length: > 0 }) || cmd is "homepage" or "collaboration")
             {
-                var written = cmd switch
-                {
-                    "altaffiliation" when opt is { Length: > 0 } prefix => $@"\altaffiliation[{prefix}]{{{arg.Trim()}}}",
-                    _ => $@"\{cmd}{{{arg.Trim()}}}",
-                };
+                var written = cmd == "altaffiliation" ? $@"\altaffiliation[{opt}]{{{arg.Trim()}}}" : $@"\{cmd}{{{arg.Trim()}}}";
                 if (arg.Trim().Length > 0) authors[^1] = authors[^1] with { Name = authors[^1].Name + written };
                 continue;
             }
-            if (cmd is "thanks")
+            if (cmd is "thanks" or "altaffiliation")
             {
                 // A \thanks inside \author{…} was read with it; Commands also finds it on its own, so only one outside.
                 if (cmd == "thanks" && authors[^1].Name.Contains($@"\thanks{{{CleanNote(arg)}}}", StringComparison.Ordinal)) continue;
