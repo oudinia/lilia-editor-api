@@ -640,6 +640,13 @@ public class JobService : IJobService
                     ? request.Title
                     : Path.GetFileNameWithoutExtension(request.Filename);
 
+                // Read first, then create the document: an import that never finished reading (a table that took the parser
+                // minutes, the client long gone) left an empty document behind (launch-bot #176, 19 Nov 2026).
+                // The same reading as the paste preview (PastedText, 11 Nov 2026): a Lilia JSON export or Lilia text,
+                // Markdown or plain text, LaTeX (a full document or a fragment).
+                var pasted = PastedText.WithLeadingH1AsTitle(await PastedText.ParseAsync(request.Content, request.Format, _latexParser, _lmlTextParser,
+                    request.Options?.AutoDetectEquations ?? true, (ex, why) => _logger.LogWarning(ex, "[Import] {Why}", why)), request.Content);
+
                 createdDocument = new Lilia.Core.Entities.Document
                 {
                     Id = Guid.NewGuid(),
@@ -655,10 +662,6 @@ public class JobService : IJobService
                 job.Progress = 50;
                 job.DocumentId = createdDocument.Id;
 
-                // The same reading as the paste preview (PastedText, 11 Nov 2026): a Lilia JSON export or Lilia text,
-                // Markdown or plain text, LaTeX (a full document or a fragment).
-                var pasted = PastedText.WithLeadingH1AsTitle(await PastedText.ParseAsync(request.Content, request.Format, _latexParser, _lmlTextParser,
-                    request.Options?.AutoDetectEquations ?? true, (ex, why) => _logger.LogWarning(ex, "[Import] {Why}", why)), request.Content);
                 if (pasted.Fallback is not null)
                     _logger.LogWarning("[Import] {Format} import fell back to a single {Block} block", pasted.Format, pasted.Fallback);
 
