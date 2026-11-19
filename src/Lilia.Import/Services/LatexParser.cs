@@ -738,6 +738,10 @@ public class LatexParser : ILatexParser
                 @"\s*\\\\\s*", @"\\");
         }
 
+        // acmart's, REVTeX's and amsart's short title, \title[short]{full}: the same running head (launch-bot #246, 19 Nov 2026).
+        if (Regex.Match(content, @"\\title\s*\[(?<short>[^\]]*)\]\s*\{") is { Success: true } shortTitle
+            && shortTitle.Groups["short"].Value.Trim() is { Length: > 0 } shortText)
+            document.Metadata.TitleRunning = Regex.Replace(shortText, @"\s+", " ");
         // llncs running heads go to the Title block, not the body (launch-bot #203, 18 Nov 2026).
         if (MatchBalanced(content, "titlerunning") is { } titleRunning)
             document.Metadata.TitleRunning = Regex.Replace(titleRunning.Inner, @"\s+", " ").Trim();

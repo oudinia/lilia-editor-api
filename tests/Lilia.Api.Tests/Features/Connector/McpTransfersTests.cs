@@ -156,6 +156,25 @@ public class McpTransfersTests : IntegrationTestBase
         tex.GetProperty("title").GetString().Should().Be("Conference Paper Title* *Note: Sub-titles");
     }
 
+    // The launch bot's #226 retest (19 Nov 2026): a .tex sent as a base64 data URI imported as its literal text.
+    [Fact]
+    public async Task A_tex_file_sent_as_a_data_uri_is_read_as_its_text()
+    {
+        await SeedUserAsync("mcpx_datauri");
+        var app = CreateClientAs("mcpx_datauri");
+        app.DefaultRequestHeaders.Add("X-Test-ClientId", "connected-app-test-claude");
+        app.DefaultRequestHeaders.Add("X-Test-Scope", "openid email documents:read documents:write");
+
+        var source = "\\documentclass{article}\\title{Sent as a data URI}\\begin{document}\\maketitle\\section{Intro}Hello.\\end{document}";
+        var tex = await CallAsync(app, "import_document", new
+        {
+            filename = "paper.tex",
+            content = "data:application/x-tex;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(source)),
+        });
+        tex.TryGetProperty("error", out _).Should().BeFalse(tex.ToString());
+        tex.GetProperty("title").GetString().Should().Be("Sent as a data URI");
+    }
+
     [Fact]
     public async Task An_import_that_runs_commands_comes_with_a_warning()
     {

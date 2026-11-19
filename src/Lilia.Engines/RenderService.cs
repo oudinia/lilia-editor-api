@@ -1719,6 +1719,9 @@ public partial class RenderService : IRenderService
         result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
         result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
         // IEEE's subtitle mark, \textsuperscript{*}: escaped, it printed as typed (launch-bot #226, 19 Nov 2026).
+        // A note in a title, \footnote{…} as REVTeX and article write it: escaped, it printed as typed (launch-bot #246).
+        result = Regex.Replace(result, @"\\footnote\{([^{}]*)\}",
+            m => Ph($@"\footnote{{{EscapeLatexStatic(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\textsuperscript\{([^{}]*)\}",
             m => Ph($@"\textsuperscript{{{EscapeLatexStatic(m.Groups[1].Value)}}}"));
         // Author line breaks: \\ (not a single backslash).

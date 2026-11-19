@@ -42,6 +42,13 @@ public static class PublisherClasses
 
     public static bool Is(string? cls) => Canonical(cls) is not null;
 
+    /// <summary>
+    /// acmart's, REVTeX's and amsart's short title, <c>\title[short]{full}</c> (the running head): from the Title block's
+    /// titleRunning, which llncs writes as \titlerunning. It was dropped on import (launch-bot #246, 19 Nov 2026).
+    /// </summary>
+    private static string ShortTitle(string? titleRunning, Func<string, string> escape) =>
+        string.IsNullOrWhiteSpace(titleRunning) ? "" : "[" + escape(titleRunning.Trim()) + "]";
+
     /// <summary>Every publisher class, as stored on a document.</summary>
     public static IReadOnlyList<string> All => Names;
 
@@ -172,7 +179,7 @@ public static class PublisherClasses
                 // TAPS (ACM, "LaTeX Best Practices"): rights and bibstrip from the eRights email, and the CCS
                 // concepts, as ACM's tools give them (AcmMetadata keeps only those commands).
                 if (AcmMetadata.Rights(acmRights).Accepted is { Length: > 0 } rights) pre.Append(rights);
-                pre.AppendLine($@"\title{{{titleLatex}}}");
+                pre.AppendLine($@"\title{ShortTitle(titleRunning, escape)}{{{titleLatex}}}");
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
@@ -296,7 +303,7 @@ public static class PublisherClasses
                 // REVTeX reads the front matter inside the body, the abstract before \maketitle, and an
                 // \affiliation after each \author it belongs to.
                 body.AppendLine(@"\begin{document}");
-                body.AppendLine($@"\title{{{titleLatex}}}");
+                body.AppendLine($@"\title{ShortTitle(titleRunning, escape)}{{{titleLatex}}}");
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     // An ORCID as \orcidlink (the paper's orcidlink, or the shim that prints nothing): its number printed
@@ -321,7 +328,7 @@ public static class PublisherClasses
             case "amsart":
                 // amsart: \address per author (lines broken with \\), and the abstract and \keywords
                 // before \maketitle, which prints them in the AMS layout.
-                pre.AppendLine($@"\title{{{titleLatex}}}");
+                pre.AppendLine($@"\title{ShortTitle(titleRunning, escape)}{{{titleLatex}}}");
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
