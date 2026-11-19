@@ -413,4 +413,25 @@ public static class LatexText
             return text;
         }
     }
+    private static readonly System.Text.RegularExpressions.Regex NoteCommand = new(
+        @"\\(?:no)?cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{[^{}]*\}|\\(?:ref|eqref|cref|Cref|autoref|pageref|url)\{[^{}]*\}"
+        + @"|\\href\{[^{}]*\}\{[^{}]*\}|\\\\|(?<!\\)\$[^$]+(?<!\\)\$",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// A note's text (a \thanks, a title's \footnote) escaped as text, its citations, references, links, maths and line
+    /// breaks kept: "published in~\cite{key}" printed "\textbackslash{}cite\{key\}" (launch-bot #249, 19 Nov 2026).
+    /// </summary>
+    public static string EscapeNote(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        var sb = new StringBuilder(text.Length + 16);
+        var last = 0;
+        foreach (System.Text.RegularExpressions.Match m in NoteCommand.Matches(text))
+        {
+            sb.Append(Escape(text[last..m.Index])).Append(m.Value);
+            last = m.Index + m.Length;
+        }
+        return sb.Append(Escape(text[last..])).ToString().Replace(@"\textasciitilde{}", "~");
+    }
 }

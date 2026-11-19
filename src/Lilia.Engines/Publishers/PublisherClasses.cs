@@ -42,6 +42,9 @@ public static class PublisherClasses
 
     public static bool Is(string? cls) => Canonical(cls) is not null;
 
+    private static readonly System.Text.RegularExpressions.Regex TitleThanks = new(
+        @"\s*\\thanks\{(?:[^{}]|\{[^{}]*\})*\}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>
     /// acmart's, REVTeX's and amsart's short title, <c>\title[short]{full}</c> (the running head): from the Title block's
     /// titleRunning, which llncs writes as \titlerunning. It was dropped on import (launch-bot #246, 19 Nov 2026).
@@ -328,7 +331,14 @@ public static class PublisherClasses
             case "amsart":
                 // amsart: \address per author (lines broken with \\), and the abstract and \keywords
                 // before \maketitle, which prints them in the AMS layout.
-                pre.AppendLine($@"\title{ShortTitle(titleRunning, escape)}{{{titleLatex}}}");
+                {
+                    // The paper's own note (funding, a preliminary version) goes after \title in amsart, where it prints as
+                    // a first-page footnote; inside \title it would reach the running head (launch-bot #249, 19 Nov 2026).
+                    var notes = new List<string>();
+                    var bare = TitleThanks.Replace(titleLatex, m => { notes.Add(m.Value.Trim()); return ""; }).Trim();
+                    pre.AppendLine($@"\title{ShortTitle(titleRunning, escape)}{{{bare}}}");
+                    foreach (var note in notes) pre.AppendLine(note);
+                }
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");

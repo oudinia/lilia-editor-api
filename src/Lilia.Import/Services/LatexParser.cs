@@ -732,6 +732,15 @@ public class LatexParser : ILatexParser
             {
                 CheckRegexDispatchDrift("title", "metadata-extract");
                 document.Title = StripInlineCommandsForPlainText(WithoutTypeSwitches(titleMatch.Value.Inner));
+                // amsart's document-level note, a \thanks after \title and before the first \author (funding, a preliminary
+                // version with its \cite): the title's own. It was dropped with the body's stray \thanks (launch-bot #249,
+                // 19 Nov 2026).
+                var firstAuthor = content.IndexOf(@"\author", titleMatch.Value.End, StringComparison.Ordinal);
+                var frontEnd = firstAuthor >= 0 ? firstAuthor : content.IndexOf(@"\maketitle", titleMatch.Value.End, StringComparison.Ordinal);
+                for (var from = titleMatch.Value.End;
+                     frontEnd > from && MatchBalanced(content, "thanks", from) is { } note && note.Start < frontEnd;
+                     from = note.End)
+                    document.Title = $"{document.Title} \\thanks{{{Regex.Replace(note.Inner, @"\s+", " ").Trim()}}}";
             }
         }
 
