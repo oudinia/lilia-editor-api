@@ -1722,6 +1722,9 @@ public partial class RenderService : IRenderService
             m => Ph($@"\thanks{{{Lilia.Engines.LatexText.EscapeNote(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
         result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
+        // A citation, reference or link (an author's note: "published in~\cite{key}", launch-bot #249 retest) stays one.
+        result = Regex.Replace(result, @"\\(?:no)?cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{[^{}]*\}|\\(?:ref|eqref|cref|Cref|autoref|url)\{[^{}]*\}|\\href\{[^{}]*\}\{[^{}]*\}",
+            m => Ph(m.Value));
         // IEEE's subtitle mark, \textsuperscript{*}: escaped, it printed as typed (launch-bot #226, 19 Nov 2026).
         // A note in a title, \footnote{…} as REVTeX and article write it: escaped, it printed as typed (launch-bot #246).
         result = Regex.Replace(result, @"\\footnote\{([^{}]*)\}",
