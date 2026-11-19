@@ -1600,7 +1600,7 @@ public partial class RenderService : IRenderService
         // 18 Nov 2026). Not with \DocumentMetadata (the accessible PDF), which writes its own.
         var lang = DocumentLanguage.For(doc).Code;
         return @"\providecommand\LiliaPdfLang[1]{\ifdefined\pdfcatalog\pdfcatalog{/Lang (#1)}\else\ifdefined\pdfextension\pdfextension catalog{/Lang (#1)}\else\special{pdf:put @catalog <</Lang (#1)>>}\fi\fi}" + "\n"
-            + $@"\AtBeginDocument{{\ifdefined\hypersetup\hypersetup{{pdftitle={{{LatexText.Escape(TitleWithoutAnd(titleText ?? "").Trim())}}}}}\fi"
+            + $@"\AtBeginDocument{{\ifdefined\hypersetup\hypersetup{{pdftitle={{{LatexText.Escape(LatexText.Plain(TitleWithoutAnd(titleText ?? "")))}}}}}\fi"
             + $@"\ifdefined\IfDocumentMetadataTF\IfDocumentMetadataTF{{}}{{\LiliaPdfLang{{{lang}}}}}\else\LiliaPdfLang{{{lang}}}\fi}}";
     }
 
@@ -1703,6 +1703,9 @@ public partial class RenderService : IRenderService
             m => Ph($@"\thanks{{{EscapeLatexStatic(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
         result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
+        // IEEE's subtitle mark, \textsuperscript{*}: escaped, it printed as typed (launch-bot #226, 19 Nov 2026).
+        result = Regex.Replace(result, @"\\textsuperscript\{([^{}]*)\}",
+            m => Ph($@"\textsuperscript{{{EscapeLatexStatic(m.Groups[1].Value)}}}"));
         // Author line breaks: \\ (not a single backslash).
         result = Regex.Replace(result, @"\\\\", _ => Ph(@"\\"));
 
@@ -3296,6 +3299,7 @@ public partial class RenderService : IRenderService
 
         var result = text;
 
+        var commandRegions = new List<string>();
         // A footnote's argument is text like the paragraph's: processed the same way, so "check_document" in it prints
         // (launch-bot #132, 17 Nov 2026: the footnote went out as typed and its _ stopped the PDF, "Missing $ inserted").
         var footnotes = new List<string>();
@@ -3303,6 +3307,27 @@ public partial class RenderService : IRenderService
         {
             footnotes.Add($@"\footnote{m.Groups["opt"].Value}{{{ProcessLatexText(m.Groups["body"].Value).Trim()}}}");
             return $"\x00FOOT{footnotes.Count - 1}\x00";
+        });
+
+        // Step 0: inline code first, after footnotes (a footnote's own text is processed on its own), before maths and the protected commands: `\cite{key}` (a \verb the
+        // importer kept as code) became \texttt{\cite{key}} and printed [?] (launch-bot #222, 19 Nov 2026).
+        // Extract inline code `…` BEFORE smart-quote / escape
+        // passes. Code content is verbatim from the user — smart quotes,
+        // markdown markers, and the % / & / # escape pass should NOT
+        // touch it. Convert directly to `\texttt{escaped}` and store as
+        // a command placeholder so later steps see only the placeholder.
+        // (User reported `\texttt{test''}` — smart-quote-in-code bug,
+        // 2026-05-14.)
+        // Two backticks are TeX's opening quote, not a code span: ``a'' and ``b'' became \texttt{`a'' and }`b''
+        // (launch-bot #141, 17 Nov 2026). A mark next to another backtick is not a code mark.
+        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`\n]+?)`(?!`)", m =>
+        {
+            // Escape LaTeX special chars inside the code content — texttt
+            // is not verbatim (unlike \verb), so `_`, `%`, etc. still
+            // need to be escaped to render correctly.
+            var inner = LatexText.Escape(m.Groups[1].Value);
+            commandRegions.Add($"\\texttt{{{inner}}}");
+            return $"\x00CMD{commandRegions.Count - 1}\x00";
         });
 
         // Step 1: Extract and protect math regions and LaTeX commands from escaping.
@@ -3350,7 +3375,6 @@ public partial class RenderService : IRenderService
         // about. Listed explicitly (rather than catch-all) so we don't accidentally
         // protect markdown-converted commands the next step is about to produce.
         // Order in the alternation list — citations, refs, hyperref, chem, siunitx, misc.
-        var commandRegions = new List<string>();
         // Lilia's own shorthands first: Kind~(label), @ref{label}, @cite{key} (CrossRefSyntax).
         result = CrossRefSyntax.Resolve(result, piece =>
         {
@@ -3426,25 +3450,6 @@ public partial class RenderService : IRenderService
         result = Regex.Replace(result, @"\\and\b", m =>
         {
             commandRegions.Add(m.Value);
-            return $"\x00CMD{commandRegions.Count - 1}\x00";
-        });
-
-        // Step 1.4: Extract inline code `…` BEFORE smart-quote / escape
-        // passes. Code content is verbatim from the user — smart quotes,
-        // markdown markers, and the % / & / # escape pass should NOT
-        // touch it. Convert directly to `\texttt{escaped}` and store as
-        // a command placeholder so later steps see only the placeholder.
-        // (User reported `\texttt{test''}` — smart-quote-in-code bug,
-        // 2026-05-14.)
-        // Two backticks are TeX's opening quote, not a code span: ``a'' and ``b'' became \texttt{`a'' and }`b''
-        // (launch-bot #141, 17 Nov 2026). A mark next to another backtick is not a code mark.
-        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`\n]+?)`(?!`)", m =>
-        {
-            // Escape LaTeX special chars inside the code content — texttt
-            // is not verbatim (unlike \verb), so `_`, `%`, etc. still
-            // need to be escaped to render correctly.
-            var inner = LatexText.Escape(m.Groups[1].Value);
-            commandRegions.Add($"\\texttt{{{inner}}}");
             return $"\x00CMD{commandRegions.Count - 1}\x00";
         });
 

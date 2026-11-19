@@ -258,9 +258,11 @@ public static partial class LaTeXPreamble
     /// itself, so seeing it tells you nothing about whether natbib is
     /// needed — and loading natbib for a legacy <c>\cite</c>-only document
     /// would silently change its numeric bibliography to author-year.</para>
+    /// <para>\citenum, \citealp, \citealt and the capitalised forms are natbib's too: an imported paper kept them and lost
+    /// its \usepackage[numbers]{natbib}, so \citenum was undefined (launch-bot #231 retest, 19 Nov 2026).</para>
     /// </summary>
     public static readonly Regex NatbibCommandRe =
-        new(@"\\cite(?:p|t|author|year)\*?\b", RegexOptions.Compiled);
+        new(@"\\(?:[Cc]ite(?:p|t|author|year|alp|alt|yearpar|fullauthor)|citenum|citetext)\*?\b", RegexOptions.Compiled);
 
     /// <summary>
     /// Whether any of these LaTeX sources needs natbib.

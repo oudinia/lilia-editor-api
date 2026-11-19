@@ -368,4 +368,47 @@ public static class LatexText
             default: sb.Append(c); break;
         }
     }
+    /// <summary>
+    /// A title's text without its LaTeX, for a document's name and the PDF's title property: notes (\thanks, \footnote)
+    /// go, a line break (\\) is a space, a command keeps its text, groups lose their braces. "Title*\\ {\footnotesize
+    /// \textsuperscript{*}Note} \thanks{Funding.}" is "Title* *Note" (launch-bot #226 retest, 19 Nov 2026).
+    /// </summary>
+    public static string Plain(string? latex)
+    {
+        if (string.IsNullOrWhiteSpace(latex)) return string.Empty;
+        var s = latex;
+        foreach (var note in new[] { "thanks", "footnote", "footnotetext", "label", "footnotemark", "protect" })
+            s = WithoutCommand(s, note);
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\\\\\*?(?:\[[^\]]*\])?|\\newline\b|\\linebreak\b", " ");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\\(LaTeXe?|TeX)\b(?:\{\})?", m => m.Groups[1].Value == "LaTeXe" ? "LaTeX2e" : m.Groups[1].Value);
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\\([&%$#_{}~^ ,;:!])", m => m.Groups[1].Value is "," or ";" or ":" or "!" or " " or "~" ? " " : m.Groups[1].Value);
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\\[A-Za-z@]+\*?\s*", "");
+        s = s.Replace("{", "").Replace("}", "").Replace("$", "").Replace("~", " ");
+        s = s.Replace("``", "\u201C").Replace("''", "\u201D").Replace("---", "\u2014").Replace("--", "\u2013");
+        return System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
+
+        static string WithoutCommand(string text, string name)
+        {
+            var key = "\\" + name;
+            for (var at = text.IndexOf(key, StringComparison.Ordinal); at >= 0; at = text.IndexOf(key, at, StringComparison.Ordinal))
+            {
+                var k = at + key.Length;
+                if (k < text.Length && char.IsLetter(text[k])) { at = k; continue; }
+                while (k < text.Length && (text[k] == '*' || char.IsWhiteSpace(text[k]))) k++;
+                if (k < text.Length && text[k] == '[') { var close = text.IndexOf(']', k); if (close > 0) k = close + 1; }
+                if (k < text.Length && text[k] == '{')
+                {
+                    var depth = 0;
+                    for (; k < text.Length; k++)
+                    {
+                        if (text[k] == '\\') { k++; continue; }
+                        if (text[k] == '{') depth++;
+                        else if (text[k] == '}' && --depth == 0) { k++; break; }
+                    }
+                }
+                text = text[..at] + text[Math.Min(k, text.Length)..];
+            }
+            return text;
+        }
+    }
 }

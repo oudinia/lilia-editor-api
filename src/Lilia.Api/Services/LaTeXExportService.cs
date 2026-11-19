@@ -1043,6 +1043,9 @@ public class LaTeXExportService : ILaTeXExportService
             m => Ph($@"\thanks{{{EscapeLatex(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
         result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
+        // IEEE's subtitle mark, \textsuperscript{*}, as in RenderService (launch-bot #226, 19 Nov 2026).
+        result = Regex.Replace(result, @"\\textsuperscript\{([^{}]*)\}",
+            m => Ph($@"\textsuperscript{{{EscapeLatex(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\\\", _ => Ph(@"\\"));
 
         result = EscapeLatex(result);
@@ -1208,6 +1211,10 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         var result = text;
+        // 0. Inline code: `text` → \texttt{text}, before anything else reads the text: the commands below took \cite{key}
+        //    inside a code span (a \verb the importer kept as code) and printed [?] (launch-bot #222, 19 Nov 2026).
+        //    Not TeX's opening quote: ``a'' and ``b'' became \texttt{a'' and } (launch-bot #141, 17 Nov 2026).
+        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`]+)`(?!`)", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
         // MCP-16: a price ($5, $10) is not the start of a formula (CurrencyDollar).
         result = Lilia.Engines.CurrencyDollar.Protect(result, Ph);
 
@@ -1332,9 +1339,6 @@ public class LaTeXExportService : ILaTeXExportService
         result = Regex.Replace(result, @"==([^=]+)==",
             m => Ph($@"\hl{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
-        // 2. Inline code: `text` → \texttt{text}
-        //    Not TeX's opening quote: ``a'' and ``b'' became \texttt{a'' and } (launch-bot #141, 17 Nov 2026).
-        result = Regex.Replace(result, @"(?<!`)`(?!`)([^`]+)`(?!`)", m => Ph($@"\texttt{{{EscapeLatex(m.Groups[1].Value)}}}"));
 
         // 2b. Underline: __text__ → \underline{text}. The editor serialises its
         //     underline mark as __text__ (content-converter.ts) and the preview
