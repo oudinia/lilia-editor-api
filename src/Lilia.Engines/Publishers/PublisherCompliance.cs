@@ -86,7 +86,10 @@ public static partial class PublisherCompliance
         {
             var sources = FigureFile.Sources([f]).Select(s => s.Src).ToList();
             // A TikZ figure is drawn, not an image: it was reported as "has no image" (the connector test, 17 Nov 2026).
-            if (sources.Count == 0 && !(f.Content is { } c && Lilia.Core.Blocks.TikzFigure.IsTikz(c.RootElement)))
+            // Nor is one TeX Live provides (example-image-a): Sources leaves it out, as it has no file (launch-bot #244 retest).
+            if (sources.Count == 0 && !(f.Content is { } c && (Lilia.Core.Blocks.TikzFigure.IsTikz(c.RootElement)
+                    || c.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && c.RootElement.TryGetProperty("src", out var src)
+                       && FigureFile.TexLiveImage(src.GetString()) is not null)))
                 findings.Add(new("error", "figure_missing", "A figure has no image: it prints as an empty frame.", f.Id.ToString()));
             foreach (var name in sources.Select(s => FigureFile.Name(s)))
             {
