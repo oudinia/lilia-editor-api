@@ -1084,6 +1084,11 @@ public class LatexParser : ILatexParser
         documentContent = Regex.Replace(documentContent, @"\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\s*(?:\[\s*\])?\s*\{\s*\}", "");
         documentContent = Regex.Replace(documentContent, @"\\newpage\b", "");
         documentContent = Regex.Replace(documentContent, @"\\clearpage\b", "");
+        // Page numbering and page styles in the body go with their argument, as \newpage does. The flattener kept the
+        // argument as text: a thesis's "\pagenumbering{roman}\thispagestyle{empty}" printed "romanempty", and "empty"
+        // stood under an article's title. The document's numbering is read from the source on its own
+        // (LatexPageSetupExtractor), so nothing is lost here (launch-bot #183, 19 Nov 2026).
+        documentContent = Regex.Replace(documentContent, @"\\(?:pagenumbering|thispagestyle|pagestyle)\s*\{[^{}]*\}", "");
 
         // TikZ setup lines (\usetikzlibrary, \tikzset, …) are not text. The
         // preamble extractor carries them onto the document's custom preamble.
@@ -2244,6 +2249,12 @@ public class LatexParser : ILatexParser
             var appendixMatch = Regex.Match(remaining, @"\\appendix(?![A-Za-z@])\s*");
             if (appendixMatch.Success)
                 matches.Add((appendixMatch, "appendix"));
+            // \addcontentsline is kept as raw LaTeX, like \part: it is how an unnumbered heading (a thesis's
+            // \chapter*{Acknowledgements}) gets into the contents, and Lilia's heading has no such entry of its own. The
+            // flattener printed "toc{chapter}{Acknowledgements}" and the contents lost the entry (launch-bot #183, 19 Nov 2026).
+            var contentsLineMatch = Regex.Match(remaining, @"\\addcontentsline\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{(?:[^{}]|\{[^{}]*\})*\}");
+            if (contentsLineMatch.Success)
+                matches.Add((contentsLineMatch, "contentsline"));
 
             // Equation environments
             if (options.ConvertEquationEnvironments)
@@ -2664,6 +2675,15 @@ public class LatexParser : ILatexParser
                         Order = elementOrder++,
                         LatexCode = firstMatch.match.Value.Trim(),
                         Description = "Part (raw LaTeX)",
+                    });
+                    break;
+
+                case "contentsline":
+                    document.Elements.Add(new ImportLatexPassthrough
+                    {
+                        Order = elementOrder++,
+                        LatexCode = firstMatch.match.Value.Trim(),
+                        Description = "Contents entry (raw LaTeX)",
                     });
                     break;
 
