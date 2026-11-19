@@ -16,7 +16,8 @@ public sealed record TitleAuthor(
     IReadOnlyList<string> NoteSymbols,
     string? Orcid = null,
     bool Corresponding = false,
-    IReadOnlyList<string>? NoteMarks = null);
+    IReadOnlyList<string>? NoteMarks = null,
+    IReadOnlyList<string>? ClassCommands = null);
 
 /// <summary>
 /// Reads the Title block's <c>author</c> string, which is one LaTeX string
@@ -55,6 +56,9 @@ public static class TitleAuthors
         // front matter: they were left in the body after \maketitle, "Undefined control sequence" (launch-bot #239, 19 Nov 2026).
         var corresponding = false;
         var marks = new List<string>();
+        // REVTeX's \homepage, \altaffiliation[…]{…} and \collaboration, kept as written for its front matter: they printed as
+        // body text after the title, and \altaffiliation lost its "Also at" (launch-bot #238, 19 Nov 2026).
+        var classCommands = new List<string>();
 
         void EndLine()
         {
@@ -70,7 +74,7 @@ public static class TitleAuthors
             {
                 var name = lines.Count > 0 ? lines[0] : "";
                 result.Add(new TitleAuthor(name, lines.Skip(1).ToList(), notes.ToList(), perAuthorSymbols.ToList(), orcid,
-                    corresponding, marks.Count > 0 ? marks.ToList() : null));
+                    corresponding, marks.Count > 0 ? marks.ToList() : null, classCommands.Count > 0 ? classCommands.ToList() : null));
             }
             lines.Clear();
             notes.Clear();
@@ -78,6 +82,7 @@ public static class TitleAuthors
             orcid = null;
             corresponding = false;
             marks.Clear();
+            classCommands.Clear();
         }
 
         var depth = 0;
@@ -173,6 +178,16 @@ public static class TitleAuthors
             }
 
             if (name == "correspondingauthor") { corresponding = true; i = j; continue; }
+            if (name is "homepage" or "altaffiliation" or "collaboration")
+            {
+                var end = SkipOptional(text, j);
+                while (end < text.Length && text[end] == ' ') end++;
+                if (end < text.Length && text[end] == '{')
+                {
+                    var close = MatchingBrace(text, end);
+                    if (close > end) { classCommands.Add(text[i..(close + 1)].Trim()); i = close + 1; continue; }
+                }
+            }
             if (name == "authornotemark")
             {
                 var k = j;

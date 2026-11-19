@@ -44,7 +44,7 @@ public static partial class PublisherFrontMatterReader
         };
         if (authors is null) return null;
         return new Result(authors, Keywords(src), cls == "acmart" ? Ccs(src) : null, cls == "acmart" ? Rights(src) : null,
-            cls == "amsart" ? AmsExtra(src) : null);
+            cls == "amsart" ? AmsExtra(src) : cls is "revtex4-2" or "revtex4-1" ? RevtexExtra(src) : null);
     }
 
     /// <summary>The classes whose \thanks (title's included) are read as authors' notes: REVTeX and AMS.</summary>
@@ -65,7 +65,7 @@ public static partial class PublisherFrontMatterReader
         // \orcid after an author for every class (acmart's own command: launch-bot #219, the ORCID was lost). ACM's author
         // notes too: \authornote{…}, \authornotemark[n] and \correspondingauthor were dropped or left in the body after
         // \maketitle (launch-bot #239, 19 Nov 2026).
-        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid", "curraddr" }
+        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid", "curraddr", "homepage", "collaboration" }
             : acm ? new[] { "author", affiliationCommand, "email", "orcid", "authornote", "authornotemark", "correspondingauthor" }
             : new[] { "author", affiliationCommand, "email", "orcid" };
         // A \thanks on the title (amsart prints every \thanks as a first-page footnote): the first author's note, as the
@@ -121,6 +121,17 @@ public static partial class PublisherFrontMatterReader
                 var id = OrcidIn($@"\orcid{{{arg}}}", null) ?? (acm && AcmOrcid().IsMatch(arg.Trim()) ? arg.Trim() : null);
                 if (id is not null && !authors[^1].Name.Contains(@"\orcidlink{", StringComparison.Ordinal))
                     authors[^1] = authors[^1] with { Name = InsertBeforeThanks(authors[^1].Name, $@"\orcidlink{{{id}}}") };
+                continue;
+            }
+            // REVTeX's own author commands, kept as written with the author they follow: \altaffiliation with its prefix
+            // ("Also at"), \homepage with its URL as typed (the ~ was lost), and \collaboration, which closes the group of
+            // authors before it. They printed as body text after the title (launch-bot #238, 19 Nov 2026).
+            // A plain \altaffiliation{…} stays the author's \thanks (launch-bot #143: the same footnote, and the title editor shows
+            // it as a note); only one with a prefix is kept as written, as \thanks has no place for "Also at".
+            if ((cmd == "altaffiliation" && opt is { Length: > 0 }) || cmd is "homepage" or "collaboration")
+            {
+                var written = cmd == "altaffiliation" ? $@"\altaffiliation[{opt}]{{{arg.Trim()}}}" : $@"\{cmd}{{{arg.Trim()}}}";
+                if (arg.Trim().Length > 0) authors[^1] = authors[^1] with { Name = authors[^1].Name + written };
                 continue;
             }
             if (cmd is "thanks" or "altaffiliation")
@@ -556,6 +567,14 @@ public static partial class PublisherFrontMatterReader
 
     /// <summary>amsart's \subjclass[…]{…} and \dedicatory{…}, as written, one per line; null when there are none. They
     /// printed as body paragraphs after \maketitle (launch-bot #243, 19 Nov 2026).</summary>
+    /// <summary>REVTeX's \preprint{…} lines (the report number at the top right), as written (launch-bot #238).</summary>
+    private static string? RevtexExtra(string src)
+    {
+        var lines = Regex.Matches(FrontPart(src), @"\\preprint\s*\{(?:[^{}]|\{[^{}]*\})*\}")
+            .Select(m => Regex.Replace(m.Value, @"\s+", " ")).Distinct().ToList();
+        return lines.Count > 0 ? string.Join("\n", lines) : null;
+    }
+
     private static string? AmsExtra(string src)
     {
         var lines = Regex.Matches(src, @"\\(?:subjclass(?:\[[^\]]*\])?|dedicatory)\s*\{(?:[^{}]|\{[^{}]*\})*\}")
