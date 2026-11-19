@@ -169,7 +169,12 @@ public sealed partial class DocumentCheckService(
                 return seen with { Cached = true };
             }
             var result = await latex.ValidateAsync(source, engine);
-            var check = Judge(d, source, engine, result, await PublisherAsync(d, source), await MissingFiguresAsync(d.Id),
+            // A missing image goes into the publisher findings too: they only saw a figure with no src at all, so a submission
+            // checklist said nothing about an image that can't be found (launch-bot #244, 19 Nov 2026).
+            var missingFigures = await MissingFiguresAsync(d.Id);
+            var publisher = Lilia.Engines.Publishers.PublisherCompliance.WithMissingFiles(await PublisherAsync(d, source),
+                missingFigures.Select(m => (m.BlockId.ToString(), m.File)));
+            var check = Judge(d, source, engine, result, publisher, missingFigures,
                 result.Valid && pages ? await ExportedPagesAsync(d.Id) : null);
             if (ByVersion.Count >= MaxCachedVersions) ByVersion.Clear();
             ByVersion[key] = check;
@@ -231,23 +236,38 @@ public sealed partial class DocumentCheckService(
     private async Task<IReadOnlyList<(Guid BlockId, string File)>> MissingFiguresAsync(Guid documentId)
     {
         if (db is null || storage is null) return [];
-        var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId).ToListAsync();
-        var missing = new List<(Guid, string)>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (block, src) in Lilia.Engines.FigureFile.Sources(blocks))
+        var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId).OrderBy(b => b.SortOrder).ToListAsync();
+        return await FindMissingFigures(Lilia.Engines.FigureFile.Sources(blocks), async src =>
         {
-            var file = Lilia.Engines.FigureFile.Name(src);
-            if (!seen.Add(file)) continue;
             try
             {
                 var key = Lilia.Engines.FigureFile.StorageKey(src) ?? throw new FileNotFoundException(src);
                 await using var _ = await storage.DownloadAsync(key);
+                return true;
             }
             catch (Exception ex)
             {
-                logger.LogInformation("[Check] figure {File} of {DocId} is missing: {Why}", file, documentId, ex.GetType().Name);
-                missing.Add((block.Id, file));
+                logger.LogInformation("[Check] figure {Src} of {DocId} is missing: {Why}", src, documentId, ex.GetType().Name);
+                return false;
             }
+        });
+    }
+
+    /// <summary>
+    /// The figures whose image <paramref name="exists"/> can't find, each named as the source wrote it (FigureFile.WrittenName).
+    /// They were named and told apart by the export's file name, and every name without an image extension is image-0.png
+    /// there: the warning asked for "image-0.png", and a second such missing image wasn't reported at all
+    /// (launch-bot #244, 19 Nov 2026). Told apart by their source now.
+    /// </summary>
+    internal static async Task<IReadOnlyList<(Guid BlockId, string File)>> FindMissingFigures(
+        IEnumerable<(Lilia.Core.Entities.Block Block, string Src)> sources, Func<string, Task<bool>> exists)
+    {
+        var missing = new List<(Guid, string)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (block, src) in sources)
+        {
+            if (!seen.Add(src)) continue;
+            if (!await exists(src)) missing.Add((block.Id, Lilia.Engines.FigureFile.WrittenName(src)));
         }
         return missing;
     }
@@ -333,7 +353,7 @@ public sealed partial class DocumentCheckService(
                 $"The table is {Math.Round(o.Points, 1)}pt wider than its column."));
         foreach (var (blockId, file) in missingFigures)
             problems.Add(new BlockProblem(blockId.ToString(), null, "warning",
-                $"The image {file} can't be found: the PDF prints a \"Missing figure\" frame here. Upload it again."));
+                $"{Lilia.Engines.FigureFile.Subject(file)} can't be found: the PDF prints a \"Missing figure\" frame here. {Lilia.Engines.FigureFile.MissingAdvice(file)}"));
         foreach (var o in wideCodeFound)
             problems.Add(new BlockProblem(audit.BlockAtLine(o.FirstLine)?.ToString(), o.FirstLine, "warning",
                 $"A line of this code is {Math.Round(o.Points, 1)}pt wider than its column (listings wraps only at spaces)."));

@@ -29,6 +29,48 @@ public static class FigureFile
         @"^example-(?:image|grid-100x100(?:bp|pt)|movie)(?:-(?:a|b|c|golden|plain|duck|1x1|10x16|16x10|16x9|3x4|4x3|9x16|a4|a5|letter|landscape|portrait|golden-upright|a4-numbered|letter-numbered)){0,2}(?:\.(?:pdf|png|jpg|eps))?$",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// The image's name as the source wrote it (its last path segment), for messages to the author. <see cref="Name"/> is the
+    /// file the export writes, and a name without an image extension becomes image-0.png there; the check then asked the
+    /// author to upload "image-0.png", a file they never had, for \includegraphics{lilia-launch-no-such-image}
+    /// (launch-bot #244, 19 Nov 2026).
+    /// </summary>
+    /// <remarks>
+    /// Two sources have no name worth printing (Zayd's review of API #652): an image embedded in the block
+    /// (<c>data:image/png;base64,…</c>), whose last segment is a run of base64, and one Lilia stored itself, whose file
+    /// name is a GUID (AssetService: <c>{user}/documents/{doc}/images/{asset}.png</c>). They get a label instead,
+    /// <see cref="EmbeddedLabel"/> or <see cref="UploadedLabel"/>; the figure's caption and place tell the author which.
+    /// </remarks>
+    public static string WrittenName(string? src)
+    {
+        if (string.IsNullOrWhiteSpace(src)) return "(no file)";
+        var s = src.Trim();
+        if (s.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return EmbeddedLabel;
+        if (StorageKey(s) is { } key && UploadedKey.IsMatch(key)) return UploadedLabel;
+        var last = s.Split('/')[^1].Split('?')[0].Split('#')[0];
+        return last.Length > 0 ? last : s;
+    }
+
+    public const string EmbeddedLabel = "an embedded image";
+    public const string UploadedLabel = "an uploaded image";
+
+    /// <summary>"The image plot" for a named file, "An embedded image" for a label: the subject of a sentence about it.</summary>
+    public static string Subject(string writtenName) => writtenName is EmbeddedLabel or UploadedLabel
+        ? char.ToUpperInvariant(writtenName[0]) + writtenName[1..]
+        : $"The image {writtenName}";
+
+    /// <summary>
+    /// What to do about a missing image. An embedded one was never uploaded, and the PDF reads images from storage only
+    /// (LaTeXExportService.CollectImagesAsync), so "upload it again" would be wrong advice for it.
+    /// </summary>
+    public static string MissingAdvice(string writtenName) => writtenName == EmbeddedLabel
+        ? "It is embedded in the block, and the PDF only reads uploaded images: upload it as a file."
+        : "Upload it again.";
+
+    private static readonly Regex UploadedKey = new(
+        @"(?:^|/)documents/[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/images/[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(?:\.\w+)?$",
+        RegexOptions.Compiled);
+
     public static string Name(string? src, int index = 0)
     {
         if (TexLiveImage(src) is { } texLive) return texLive;
