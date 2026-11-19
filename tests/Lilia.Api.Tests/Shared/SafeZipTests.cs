@@ -32,9 +32,19 @@ public class SafeZipTests
         // size, so the lie gets the author a 1 KB (broken) chapter, not 60 MB in
         // memory: the declared sizes CheckHeaders checks are what bound a read.
         var liar = LieAboutSize(Epub(60 * MB), "OEBPS/chapter.xhtml", 1024);
-        var before = GC.GetTotalAllocatedBytes(precise: true);
-        await Service().ImportAsync(new MemoryStream(liar));
-        (GC.GetTotalAllocatedBytes(precise: true) - before).Should().BeLessThan(20 * MB);
+        // The reading thread's allocations, not the process's: the whole process's count took in the tests running beside it,
+        // and CI's full run once measured 21.3 MB here while the import itself stayed small (19 Nov 2026). A MemoryStream
+        // never suspends, so the import finishes on this thread; that is asserted, or allocations elsewhere would go uncounted.
+        var (finishedHere, allocated) = await Task.Run(() =>
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var import = Service().ImportAsync(new MemoryStream(liar));
+            var done = import.IsCompleted;
+            import.GetAwaiter().GetResult();
+            return (done, GC.GetAllocatedBytesForCurrentThread() - before);
+        });
+        finishedHere.Should().BeTrue("the import ran on this thread, so its allocations are all counted");
+        allocated.Should().BeLessThan(20 * MB);
     }
 
     [Fact]
