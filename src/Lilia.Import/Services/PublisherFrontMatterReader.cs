@@ -64,7 +64,7 @@ public static partial class PublisherFrontMatterReader
         // A \thanks on the title (amsart prints every \thanks as a first-page footnote): the first author's note, as the
         // title block has no place for it (launch-bot #143 retest, 18 Nov 2026).
         var titleNotes = notes
-            ? Commands(front, "title").Take(1).SelectMany(t => Commands(t.Arg, "thanks")).Select(t => Clean(t.Arg)).Where(n => n.Length > 0).ToList()
+            ? Commands(front, "title").Take(1).SelectMany(t => Commands(t.Arg, "thanks")).Select(t => CleanNote(t.Arg)).Where(n => n.Length > 0).ToList()
             : [];
         foreach (var (cmd, opt, arg) in CommandsWithOption(notes ? RemoveCommand(front, "title") : front, names))
         {
@@ -77,11 +77,17 @@ public static partial class PublisherFrontMatterReader
                 var name = Clean(bare);
                 if (orcid is not null) name += $@"\orcidlink{{{orcid}}}";
                 if (notes && authors.Count == 0) name += string.Concat(titleNotes.Select(n => $@"\thanks{{{n}}}"));
-                if (notes) name += string.Concat(Commands(arg, "thanks").Select(t => $@"\thanks{{{Clean(t.Arg)}}}"));
+                if (notes) name += string.Concat(Commands(arg, "thanks").Select(t => $@"\thanks{{{CleanNote(t.Arg)}}}"));
                 authors.Add(new Author(name, []));
                 continue;
             }
-            if (authors.Count == 0) continue;
+            // The paper's own note, a \thanks after \title and before the first \author (amsart: funding, a preliminary
+            // version with its \cite): the first author's, as a note on the title is. It was skipped (launch-bot #249).
+            if (authors.Count == 0)
+            {
+                if (notes && cmd == "thanks" && CleanNote(arg) is { Length: > 0 } early) titleNotes.Add(early);
+                continue;
+            }
             if (cmd == "orcid")
             {
                 if (OrcidIn($@"\orcid{{{arg}}}", null) is { } id && !authors[^1].Name.Contains(@"\orcidlink{", StringComparison.Ordinal))
@@ -91,8 +97,9 @@ public static partial class PublisherFrontMatterReader
             if (cmd is "thanks" or "altaffiliation")
             {
                 // A \thanks inside \author{…} was read with it; Commands also finds it on its own, so only one outside.
-                if (cmd == "thanks" && authors[^1].Name.Contains($@"\thanks{{{Clean(arg)}}}", StringComparison.Ordinal)) continue;
-                if (Clean(arg) is { Length: > 0 } note) authors[^1] = authors[^1] with { Name = authors[^1].Name + $@"\thanks{{{note}}}" };
+                if (cmd == "thanks" && authors[^1].Name.Contains($@"\thanks{{{CleanNote(arg)}}}", StringComparison.Ordinal)) continue;
+                if ((cmd == "thanks" ? CleanNote(arg) : Clean(arg)) is { Length: > 0 } note)
+                    authors[^1] = authors[^1] with { Name = authors[^1].Name + $@"\thanks{{{note}}}" };
                 continue;
             }
             if (cmd == "email") authors[^1].Lines.AddRange(Split(arg, ',').Select(Clean).Where(e => e.Contains('@')));
@@ -485,6 +492,19 @@ public static partial class PublisherFrontMatterReader
         s = Regex.Replace(s, @"\\[,;:! ]", " ");
         s = Regex.Replace(s, @"(?<!\\)[{}]", "");
         return Regex.Replace(s, @"\s+", " ").Trim().Trim(',', ';');
+    }
+
+    private static readonly Regex NoteKept = new(
+        @"\\(?:no)?cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{[^{}]*\}|\\(?:ref|eqref|cref|Cref|autoref)\{[^{}]*\}|(?<!\\)\$[^$]+(?<!\\)\$",
+        RegexOptions.Compiled);
+
+    /// <summary>A note's text, cleaned as a name is, with its citations, references and maths kept: Clean took their braces
+    /// and "\cite{key}" became "\citekey" (launch-bot #249, 19 Nov 2026).</summary>
+    private static string CleanNote(string s)
+    {
+        var kept = new List<string>();
+        var marked = NoteKept.Replace(s, m => { kept.Add(m.Value); return $"\uE0F8{kept.Count - 1}\uE0F9"; });
+        return Regex.Replace(Clean(marked), "\uE0F8(\\d+)\uE0F9", m => kept[int.Parse(m.Groups[1].Value)]);
     }
 
     private static string StripComments(string s) => Regex.Replace(s, @"(?<!\\)%.*$", "", RegexOptions.Multiline);

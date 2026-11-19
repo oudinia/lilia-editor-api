@@ -1049,8 +1049,10 @@ public class LaTeXExportService : ILaTeXExportService
         }
 
         var result = text;
-        result = Regex.Replace(result, @"\\thanks\{([^{}]*)\}",
-            m => Ph($@"\thanks{{{EscapeLatex(m.Groups[1].Value)}}}"));
+        // A note may hold a citation (\thanks{… published in~\cite{key}.}, launch-bot #249): one level of braces, and its
+        // citations, references, maths and line breaks kept.
+        result = Regex.Replace(result, @"\\thanks\{((?:[^{}]|\{[^{}]*\})*)\}",
+            m => Ph($@"\thanks{{{Lilia.Engines.LatexText.EscapeNote(m.Groups[1].Value)}}}"));
         result = Regex.Replace(result, @"\\and\b", _ => Ph(@"\and"));
         result = Regex.Replace(result, @"\\today\b", _ => Ph(@"\today"));
         // IEEE's subtitle mark, \textsuperscript{*}, as in RenderService (launch-bot #226, 19 Nov 2026).
