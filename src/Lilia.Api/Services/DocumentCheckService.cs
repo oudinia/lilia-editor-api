@@ -267,7 +267,12 @@ public sealed partial class DocumentCheckService(
         foreach (var (block, src) in sources)
         {
             if (!seen.Add(src)) continue;
-            if (!await exists(src)) missing.Add((block.Id, Lilia.Engines.FigureFile.WrittenName(src)));
+            // An embedded image prints when it decodes (the PDF paths embed it since task 5, 19 Nov 2026): it is present
+            // then, and storage is never asked about it. One that doesn't decode still prints the frame.
+            var present = src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+                ? Lilia.Engines.FigureFile.EmbeddedImage(src) is not null
+                : await exists(src);
+            if (!present) missing.Add((block.Id, Lilia.Engines.FigureFile.WrittenName(src)));
         }
         return missing;
     }

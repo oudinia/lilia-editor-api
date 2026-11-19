@@ -2070,7 +2070,7 @@ public partial class RenderService : IRenderService
                 sb.AppendLine($@"\begin{{subfigure}}{{{subfigWidthStr}\textwidth}}");
                 sb.AppendLine(@"\centering");
                 if (!string.IsNullOrEmpty(subSrc))
-                    sb.AppendLine(FigureFile.Include(FigureFile.Name(subSrc), @"\textwidth", @"\textwidth"));
+                    sb.AppendLine(FigureFile.Include(FigureFile.Name(subSrc), @"\textwidth", @"\textwidth", FigureFile.WrittenName(subSrc)));
                 else
                     sb.AppendLine(@"% [subfigure placeholder — no image uploaded]");
                 if (!string.IsNullOrEmpty(subCaption))
@@ -2095,7 +2095,7 @@ public partial class RenderService : IRenderService
             // The export's file and placeholder (FigureFile): a missing image is a frame, not a fatal
             // error, and the label is the key references use (MCP-111).
             if (!string.IsNullOrEmpty(src))
-                sb.AppendLine(FigureFile.Include(FigureFile.Name(src), FigureWidth.Latex(content)));
+                sb.AppendLine(FigureFile.Include(FigureFile.Name(src), FigureWidth.Latex(content), shownAs: FigureFile.WrittenName(src)));
             else
                 sb.AppendLine(@"% [figure placeholder — no image uploaded]");
             if (!string.IsNullOrEmpty(caption))

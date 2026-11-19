@@ -60,21 +60,60 @@ public static class FigureFile
         : $"The image {writtenName}";
 
     /// <summary>
-    /// What to do about a missing image. An embedded one was never uploaded, and the PDF reads images from storage only
-    /// (LaTeXExportService.CollectImagesAsync), so "upload it again" would be wrong advice for it.
+    /// What to do about a missing image. An embedded one was never uploaded, so "upload it again" is wrong advice for it;
+    /// the PDF uses an embedded image only when it is a PNG or JPEG of up to 10 MB (<see cref="EmbeddedImage"/>, task 5).
     /// </summary>
     public static string MissingAdvice(string writtenName) => writtenName == EmbeddedLabel
-        ? "It is embedded in the block, and the PDF only reads uploaded images: upload it as a file."
+        ? "It is embedded in the block, and the PDF can only use a PNG or JPEG of up to 10 MB: upload it as a file."
         : "Upload it again.";
 
     private static readonly Regex UploadedKey = new(
         @"(?:^|/)documents/[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/images/[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(?:\.\w+)?$",
         RegexOptions.Compiled);
 
+    /// <summary>The largest embedded image used, decoded: the upload limit (AssetsController, LiliaMcpWriteTools.FigureImageMaxBytes).</summary>
+    public const int MaxEmbeddedBytes = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// An image embedded in the block (<c>data:image/png;base64,…</c> or JPEG), decoded, with its extension; null for
+    /// anything else, another MIME type, bytes that aren't what the type says, or over <see cref="MaxEmbeddedBytes"/>.
+    /// Both PDF paths read images from storage only, so an embedded figure printed a "Missing figure" frame while the Word
+    /// export embedded it (Zayd's task 5, 19 Nov 2026). The packers (LaTeXExportService.CollectImagesAsync and
+    /// DocumentImageStager) and the check use this; only PNG and JPEG, which both pdflatex and Typst read.
+    /// </summary>
+    public static (byte[] Bytes, string Extension)? EmbeddedImage(string? src)
+    {
+        if (EmbeddedExtension(src) is not { } ext) return null;
+        var payload = src!.AsSpan(src.IndexOf(',') + 1).Trim();
+        if (payload.Length == 0 || (long)payload.Length * 3 / 4 > MaxEmbeddedBytes + 3) return null;
+        var buffer = new byte[payload.Length * 3 / 4 + 3];
+        if (!Convert.TryFromBase64Chars(payload, buffer, out var written) || written == 0 || written > MaxEmbeddedBytes) return null;
+        var bytes = buffer[..written];
+        var looksRight = ext == ".png"
+            ? bytes.Length > 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })
+            : bytes.Length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+        return looksRight ? (bytes, ext) : null;
+    }
+
+    /// <summary>".png" or ".jpg" for a base64 PNG or JPEG data: source, from its header alone; null otherwise.</summary>
+    private static string? EmbeddedExtension(string? src)
+    {
+        if (src is null || !src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
+        var comma = src.IndexOf(',');
+        if (comma < 0) return null;
+        var header = src[5..comma].ToLowerInvariant();   // "image/png;base64"
+        if (!header.EndsWith(";base64", StringComparison.Ordinal)) return null;
+        return header[..^";base64".Length] switch { "image/png" => ".png", "image/jpeg" or "image/jpg" => ".jpg", _ => null };
+    }
+
     public static string Name(string? src, int index = 0)
     {
         if (TexLiveImage(src) is { } texLive) return texLive;
         if (string.IsNullOrEmpty(src)) return $"image-{index}.png";
+        // An embedded image is named by its content: its last segment is base64 with no extension, so every one was
+        // image-0.png and the export packed only the first (task 5, 19 Nov 2026). The same image gets the same name.
+        if (EmbeddedExtension(src) is { } embedded)
+            return "embedded-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(src)))[..16].ToLowerInvariant() + embedded;
         var parts = src.Split('/');
         var filename = parts.Length > 0 ? parts[^1] : $"image-{index}";
         filename = filename.Split('?')[0].Split('#')[0];
@@ -179,11 +218,15 @@ public static class FigureFile
     }
 
     /// <summary>The image, or a framed placeholder naming the missing file.</summary>
-    public static string Include(string filename, string width, string placeholderWidth = @"0.7\textwidth") =>
+    /// <param name="shownAs">The name the frame prints for a missing image: the file as the source wrote it
+    /// (<see cref="WrittenName"/>). The frame printed the export's file name, "[Missing figure: image-0.png]" for
+    /// \includegraphics{lilia-launch-no-such-image}, a name the author never wrote (launch-bot #244 note, 19 Nov 2026).
+    /// The file included is still figures/<paramref name="filename"/>.</param>
+    public static string Include(string filename, string width, string placeholderWidth = @"0.7\textwidth", string? shownAs = null) =>
         TexLiveImage(filename) is { } texLive
             ? $@"\includegraphics[width={width}]{{{texLive}}}"
             : $@"\IfFileExists{{figures/{filename}}}{{%" + "\n"
         + $@"  \includegraphics[width={width}]{{figures/{filename}}}%" + "\n"
         // No \centering in the frame: the figure's own alignment (left, right) places it.
-        + $@"}}{{\fbox{{\parbox{{{placeholderWidth}}}{{\small\textit{{[Missing figure: {LatexText.Escape(filename)}]}}}}}}}}";
+        + $@"}}{{\fbox{{\parbox{{{placeholderWidth}}}{{\small\textit{{[Missing figure: {LatexText.Escape(shownAs ?? filename)}]}}}}}}}}";
 }

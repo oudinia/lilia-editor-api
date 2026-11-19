@@ -129,11 +129,11 @@ public class Batch244FigureNameTests
     }
 
     [Fact]
-    public async Task An_embedded_image_is_reported_missing_because_the_PDF_reads_only_uploaded_images()
+    public async Task An_embedded_image_the_PDF_cannot_use_is_reported_under_its_label()
     {
-        // The Word export embeds a data: image (DocumentExportService.ImageFromDataUri), but the LaTeX export reads figures
-        // from storage only (CollectImagesAsync), so the PDF prints a "Missing figure" frame: the warning is true there.
-        var figure = B("figure", new { src = Png, caption = "Pasted" });
+        // Since task 5 the PDF embeds a PNG or JPEG data: image (BatchEmbeddedImagesTests); one it can't use, like a GIF,
+        // still prints the "Missing figure" frame, so the warning names it by its label, with the advice that fits.
+        var figure = B("figure", new { src = "data:image/gif;base64,R0lGODlhAQABAAAAACw=", caption = "A GIF" });
 
         var missing = await DocumentCheckService.FindMissingFigures(FigureFile.Sources([figure]), Missing);
 
