@@ -23,7 +23,7 @@ public class StripeOptions
     public string PortalReturnUrl { get; set; } = "https://editor.liliaeditor.com/settings/billing";
 
     /// <summary>
-    /// The "Lilia operations pack" one-time price (the owner, 14 Nov 2026: $5 for 300 operations; Lilia adds the bonus),
+    /// The "Lilia operations pack" one-time price (the owner, 14 Nov 2026: €5 for 300 operations; Lilia adds the bonus),
     /// set by ops/stripe-prices.sh or <c>Stripe__OperationsPackPriceId</c>. Empty: packs aren't on sale yet.
     /// </summary>
     public string OperationsPackPriceId { get; set; } = "";

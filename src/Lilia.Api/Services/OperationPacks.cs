@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Lilia.Api.Services;
 
 /// <summary>
-/// Connector operations bought in packs (the owner, 14 Nov 2026): $5 for 300 operations, never expiring, the quantity
+/// Connector operations bought in packs (the owner, 14 Nov 2026): €5 for 300 operations, never expiring, the quantity
 /// chosen at checkout, and a bonus for bigger buys: 375 each from 4 packs, 450 each from 10. A pack pays for the
 /// heavy work through the connector (a check, an export, an import) once a Free account's daily allowance is used;
 /// reads and edits stay free. The balance is the sum of <see cref="OperationCredit"/> rows.

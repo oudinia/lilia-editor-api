@@ -210,6 +210,7 @@ public class OperationPacksTests : IntegrationTestBase, IDisposable
         await UseTheAllowanceAsync(id);
         var offered = await CallAsync(onSale, "list_documents");
         offered.IsError.Should().BeTrue();
-        offered.Text.Should().Contain("$5 for 300").And.Contain("/settings/billing").And.Contain("?plans=1");
+        // In euros, as the website sells the pack (launch-bot #215, 19 Nov 2026).
+        offered.Text.Should().Contain("€5 for 300").And.NotContain("$5").And.Contain("/settings/billing").And.Contain("?plans=1");
     }
 }

@@ -108,8 +108,9 @@ public sealed class ConnectorAllowance(
                    "If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works.";
         var origin = McpOAuth.PublicOrigin(config);
         // Packs, once they're on sale (the owner, 14 Nov 2026: "shown … in the connector limit message").
+        // In euros, as Stripe charges them and the website sells them (launch-bot #215, 19 Nov 2026: it said "$5").
         var packOffer = stripe.Value.IsConfigured && !string.IsNullOrEmpty(stripe.Value.OperationsPackPriceId)
-            ? $" Or the author can buy operations for checks, exports and imports: ${stripe.Value.OperationsPackUnitCents / 100m:0.##} for {OperationPacks.PerPack}, never expiring, in {origin}/settings/billing."
+            ? $" Or the author can buy operations for checks, exports and imports: €{(stripe.Value.OperationsPackUnitCents / 100m).ToString("0.##", CultureInfo.InvariantCulture)} for {OperationPacks.PerPack}, never expiring, in {origin}/settings/billing."
             : "";
         return $"Lilia's free plan includes {cap} connector actions a day, and today's are used. {back} " +
                $"Pro allows far more: {origin}/?plans=1.{packOffer} Tell the author this; everything in the Lilia editor itself still works.";
