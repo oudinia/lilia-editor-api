@@ -3398,10 +3398,12 @@ public partial class RenderService : IRenderService
         });
         // An escaped \$ in a formula is a dollar sign, not a delimiter: $\$$1000 … $x=1$ paired the wrong signs and the
         // PDF stopped, "Missing $ inserted" (launch-bot #144, 17 Nov 2026). Neither $$ may be one, and $…$ reads \$ inside.
+        // Across lines too: a theorem's or proof's display written over several lines ("$$\n a=b,\n $$") was escaped to
+        // \$\$ … \$\$ text and the PDF stopped, "Missing $ inserted" (launch-bot #180, 19 Nov 2026).
         result = Regex.Replace(result, @"(?<!(?<!\\)(?:\\\\)*\\)\$\$(.+?)(?<!(?<!\\)(?:\\\\)*\\)\$\$", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";
-        });
+        }, RegexOptions.Singleline);
         result = Regex.Replace(result, @"(?<![\\$])\$(?!\$)((?:\\.|[^\\$\n])+?)\$(?!\$)", m => {
             mathRegions.Add(m.Value);
             return $"\x00MATH{mathRegions.Count - 1}\x00";

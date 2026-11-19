@@ -289,9 +289,14 @@ public static class LaTeXPreambleBuilder
             classOpts.RemoveAll(o => string.Equals(o, "twocolumn", StringComparison.OrdinalIgnoreCase));
         }
 
-        return classOpts.Count > 0
+        // beamer loads xcolor itself, before Lilia's \usepackage[dvipsnames,svgnames,table]{xcolor}: xcolor 3 takes the
+        // options late, an older one (Tectonic's bundle) stops on "Option clash". Given first, every TeX agrees (the launch
+        // bot's #247 note, 19 Nov 2026).
+        var xcolorFirst = string.Equals(className, "beamer", StringComparison.OrdinalIgnoreCase)
+            ? "\\PassOptionsToPackage{dvipsnames,svgnames,table}{xcolor}\n" : "";
+        return xcolorFirst + (classOpts.Count > 0
             ? $"\\documentclass[{string.Join(",", classOpts)}]{{{className}}}"
-            : $"\\documentclass{{{className}}}";
+            : $"\\documentclass{{{className}}}");
     }
 
     /// <summary>
