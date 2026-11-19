@@ -123,12 +123,25 @@ public class LaTeXExportService : ILaTeXExportService
             var name = path["figures/".Length..];
             foreach (var file in figureNames.TryGetValue(name, out var to) ? new[] { name, to } : [name])
             {
-                var full = Path.Combine(dir, "figures", file);
+                // Inside figures/ or not at all: a name from the author's text could climb out (Zayd's review of #665).
+                if (FigureFile.ContainedPath(Path.Combine(dir, "figures"), file) is not { } full)
+                {
+                    _logger.LogWarning("Figure path {File} would leave the figures folder: not written", file);
+                    continue;
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                 await File.WriteAllBytesAsync(full, bytes);
             }
         }
     }
+
+    /// <summary>
+    /// A zip entry name that unpacks inside the project folder: relative, no drive, no backslash, no empty, "." or ".."
+    /// segment (zip slip; Zayd's review of #665). Any other character is allowed: a project's own files may have spaces.
+    /// </summary>
+    internal static bool SafeZipEntry(string path) =>
+        !string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path) && !path.Contains(':') && !path.Contains('\\')
+        && path.Split('/').All(s => s.Length > 0 && s != "." && s != "..");
 
     /// <summary>The folder of a TAPS ZIP that holds the source (ACM).</summary>
     public const string TapsSourceFolder = "source";
@@ -258,6 +271,13 @@ public class LaTeXExportService : ILaTeXExportService
         {
             foreach (var (path, bytes) in entries)
             {
+                // No entry that would unpack outside the project folder (zip slip): figure paths come from the author's
+                // text (Zayd's review of #665).
+                if (!SafeZipEntry(path))
+                {
+                    _logger.LogWarning("Zip entry {Path} would unpack outside the project: left out", path);
+                    continue;
+                }
                 var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
                 using var entryStream = entry.Open();
                 await entryStream.WriteAsync(bytes);

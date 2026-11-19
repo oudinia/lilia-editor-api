@@ -56,6 +56,46 @@ public class Batch236RawImagesTests
         FigureFile.MatchRawInclude("fig_2", files).Should().BeNull();
     }
 
+    // Zayd's review of #665: the folder part of a raw \includegraphics path is the author's text and becomes a path the API
+    // writes, outside the TeX sandbox. {../../x/fig} escaped the figures folder and {/abs/fig} replaced it.
+
+    [Theory]
+    [InlineData("../../escape/fig")]
+    [InlineData("img/../../fig")]
+    [InlineData("/etc/fig")]
+    [InlineData("C:/work/fig")]
+    [InlineData(@"img\fig")]
+    [InlineData("fig;rm -rf")]
+    [InlineData("img//fig")]
+    public void A_raw_image_path_that_could_leave_the_folder_is_refused(string name)
+    {
+        FigureFile.MatchRawInclude(name, ["fig.pdf", "fig"]).Should().BeNull();
+        var block = Raw($@"\includegraphics{{{name}}}");
+        DocumentCheckService.FindMissingRawIncludes(FigureFile.RawIncludes([block]), ["fig.pdf"]).Should().ContainSingle("it is reported missing");
+    }
+
+    [Fact]
+    public void A_path_is_contained_in_its_folder_or_refused()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lilia-contained");
+        FigureFile.ContainedPath(root, "img/plot.png").Should().Be(Path.Combine(root, "img", "plot.png"));
+        FigureFile.ContainedPath(root, "../x.png").Should().BeNull();
+        FigureFile.ContainedPath(root, "img/../../x.png").Should().BeNull();
+        FigureFile.ContainedPath(root, "/etc/passwd").Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("figures/plot.png", true)]
+    [InlineData("source/figures/My Figure 1.png", true)]
+    [InlineData("../plot.png", false)]
+    [InlineData("figures/../../plot.png", false)]
+    [InlineData("/plot.png", false)]
+    [InlineData("C:/plot.png", false)]
+    [InlineData(@"figures\plot.png", false)]
+    [InlineData("figures//plot.png", false)]
+    public void A_zip_entry_must_unpack_inside_the_project(string path, bool safe) =>
+        LaTeXExportService.SafeZipEntry(path).Should().Be(safe);
+
     [Fact]
     public void The_check_reports_raw_images_no_file_matches_by_their_written_name()
     {
@@ -102,5 +142,44 @@ public class Batch236RawImagesExportTests : IntegrationTestBase
             Directory.GetFiles(Path.Combine(dir, "figures")).Should().HaveCount(2, "vid_1a and vid_1b have no file: missing, not packed");
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task The_writer_never_writes_outside_its_folder_for_a_path_from_the_authors_text()
+    {
+        // Zayd's review of #665, through the writer itself: matching files exist, so only the path checks stand in the way.
+        await SeedUserAsync("raw_escape");
+        var doc = await SeedDocumentAsync("raw_escape", "Escaping figures");
+        var root = Directory.CreateTempSubdirectory("lilia-escape-").FullName;
+        var target = Path.Combine(root, "victim");
+        var code = $@"\includegraphics{{../../escape/fig_x}}" + "\n" + $@"\includegraphics{{{target}/fig_y}}";
+        await SeedBlockAsync(doc.Id, "embed", System.Text.Json.JsonSerializer.Serialize(new { engine = "latex", code }), 0);
+        await using (var db = CreateDbContext())
+        {
+            foreach (var name in new[] { "fig_x.pdf", "fig_y.pdf" })
+                db.Assets.Add(new Asset
+                {
+                    Id = Guid.NewGuid(), DocumentId = doc.Id, UserId = "raw_escape", FileName = name, FileType = "application/pdf",
+                    FileSize = 4, StorageKey = $"raw_escape/documents/{doc.Id}/import-assets/{name}", Url = "https://files.example/" + name,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            await db.SaveChangesAsync();
+        }
+        var storage = new Mock<IStorageService>();
+        storage.Setup(s => s.DownloadAsync(It.IsAny<string>())).ReturnsAsync(() => new MemoryStream("%PDF"u8.ToArray()));
+
+        var dir = Path.Combine(root, "a", "b");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            await using var ctx = CreateDbContext();
+            var blocks = ctx.Blocks.Where(b => b.DocumentId == doc.Id).ToList();
+            await new LaTeXExportService(ctx, storage.Object, NullLogger<LaTeXExportService>.Instance).WriteFiguresAsync(blocks, dir);
+
+            Directory.GetFiles(root, "*", SearchOption.AllDirectories).Should().BeEmpty("nothing is written, inside or outside");
+            Directory.Exists(Path.Combine(root, "a", "escape")).Should().BeFalse();
+            Directory.Exists(target).Should().BeFalse();
+        }
+        finally { Directory.Delete(root, true); }
     }
 }
