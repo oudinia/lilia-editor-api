@@ -75,6 +75,29 @@ public class Batch244FrameNameTests
     }
 
     [Fact]
+    public void An_embedded_image_is_framed_with_a_label_not_its_base64()
+    {
+        // Zayd's review of API #652/#654: a data: source's written name would be a run of base64 in the frame.
+        const string png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        foreach (var latex in PreviewAndExport(WithFigure(new { src = png, caption = "Pasted" })))
+        {
+            latex.Should().Contain("[Missing figure: an embedded image]");
+            latex.Should().NotContain("base64").And.NotContain("iVBORw0KGgo");
+        }
+    }
+
+    [Fact]
+    public void An_image_Lilia_stored_is_framed_with_a_label_not_its_GUID()
+    {
+        const string upload = "https://files.liliaeditor.com/user_2wh3/documents/035db167-2769-40f8-8b56-83ad20d13cb4/images/9b52e5f8-1c2d-4e5f-8a9b-0c1d2e3f4a5b.png";
+        foreach (var latex in PreviewAndExport(WithFigure(new { src = upload, caption = "Uploaded" })))
+        {
+            latex.Should().Contain("[Missing figure: an uploaded image]");
+            latex.Should().Contain(@"\IfFileExists{figures/9b52e5f8-1c2d-4e5f-8a9b-0c1d2e3f4a5b.png}", "the file the export packs is unchanged");
+        }
+    }
+
+    [Fact]
     public void A_TeX_Live_example_image_still_has_no_frame()
     {
         foreach (var latex in PreviewAndExport(WithFigure(new { src = "example-image-a", caption = "From TeX Live" })))
