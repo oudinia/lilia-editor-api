@@ -15,15 +15,18 @@ public partial class MathpixPdfImportService : IPdfParser
     private readonly IMathpixClient _mathpixClient;
     private readonly MathpixOptions _options;
     private readonly ILogger<MathpixPdfImportService> _logger;
+    private readonly ILatexProjectExtractor _projectExtractor;
 
     public MathpixPdfImportService(
         IMathpixClient mathpixClient,
         IOptions<MathpixOptions> options,
-        ILogger<MathpixPdfImportService> logger)
+        ILogger<MathpixPdfImportService> logger,
+        ILatexProjectExtractor? projectExtractor = null)
     {
         _mathpixClient = mathpixClient;
         _options = options.Value;
         _logger = logger;
+        _projectExtractor = projectExtractor ?? new LatexProjectExtractor();
     }
 
     public bool CanParse(string filePath)
@@ -38,6 +41,31 @@ public partial class MathpixPdfImportService : IPdfParser
         // Step 1: Submit PDF to Mathpix
         var pdfId = await _mathpixClient.SubmitPdfAsync(filePath, cancellationToken);
 
+        try
+        {
+            return await ReadResultAsync(pdfId, filePath, cancellationToken);
+        }
+        finally
+        {
+            // Nothing stays at Mathpix once Lilia has the result, or once the import failed: the source, page images
+            // and outputs are deleted (PDF import via tex.zip, 19 Nov 2026). After the Markdown's images are fetched,
+            // since the delete removes them. Not cancellable: a cancelled import still deletes.
+            if (_options.DeleteAfterImport)
+            {
+                try
+                {
+                    await _mathpixClient.DeletePdfAsync(pdfId, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Mathpix] Could not delete PDF {PdfId} at Mathpix", pdfId);
+                }
+            }
+        }
+    }
+
+    private async Task<ImportDocument> ReadResultAsync(string pdfId, string filePath, CancellationToken cancellationToken)
+    {
         // Step 2: Poll until complete, get Markdown
         var markdown = await _mathpixClient.WaitForCompletionAsync(pdfId, cancellationToken);
 
@@ -53,6 +81,22 @@ public partial class MathpixPdfImportService : IPdfParser
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "[Mathpix] Could not read the page count of {PdfId}", pdfId);
+        }
+
+        // Step 2b: the LaTeX project (tex.zip), imported as an Overleaf zip is; the Markdown below when it fails or
+        // takes too long (PDF import via tex.zip, 19 Nov 2026).
+        if (_options.RequestTexZip && await TryReadTexZipAsync(pdfId, cancellationToken) is { } project)
+        {
+            _logger.LogInformation("[Mathpix] PDF {PdfId} imported from its tex.zip ({Bytes} bytes)", pdfId, project.Zip.Length);
+            return new ImportDocument
+            {
+                SourcePath = filePath,
+                Metadata = new ImportMetadata(),
+                RawImportData = markdown,
+                PageCount = pages,
+                LatexProjectZip = project.Zip,
+                LatexSource = project.Tex,
+            };
         }
 
         // Step 3: Parse Markdown into ImportElements
@@ -79,6 +123,35 @@ public partial class MathpixPdfImportService : IPdfParser
 
         _logger.LogInformation("[Mathpix] Parsed {ElementCount} elements, title: \"{Title}\"", elements.Count, title);
         return doc;
+    }
+
+    /// <summary>
+    /// The PDF's tex.zip and its flattened .tex, or null (logged) when the conversion failed, timed out, or the zip
+    /// isn't a LaTeX project the extractor reads (PDF import via tex.zip, 19 Nov 2026).
+    /// </summary>
+    private async Task<(byte[] Zip, string Tex)?> TryReadTexZipAsync(string pdfId, CancellationToken ct)
+    {
+        try
+        {
+            var zip = await _mathpixClient.GetTexZipAsync(pdfId, ct);
+            if (zip is not { Length: > 0 })
+            {
+                _logger.LogWarning("[Mathpix] PDF {PdfId}: the tex.zip is empty; using the Markdown", pdfId);
+                return null;
+            }
+            var extracted = _projectExtractor.Extract(zip);
+            if (string.IsNullOrWhiteSpace(extracted.InlinedTex))
+            {
+                _logger.LogWarning("[Mathpix] PDF {PdfId}: the tex.zip has no .tex to read; using the Markdown", pdfId);
+                return null;
+            }
+            return (zip, extracted.InlinedTex);
+        }
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            _logger.LogWarning(ex, "[Mathpix] PDF {PdfId}: no usable tex.zip; using the Markdown", pdfId);
+            return null;
+        }
     }
 
     internal async Task<List<ImportElement>> ParseMarkdownAsync(string markdown, CancellationToken ct = default)

@@ -28,6 +28,7 @@ public class JobService : IJobService
     private readonly Wolverine.IMessageBus _bus;
     private readonly Lilia.Core.Interfaces.IStorageService _storage;
     private readonly ILogger<JobService> _logger;
+    private readonly ILatexImportJobExecutor? _latexImportExecutor;
 
     public JobService(
         LiliaDbContext context,
@@ -44,8 +45,10 @@ public class JobService : IJobService
         ILogger<JobService> logger,
         IPdfParser? pdfParser = null,
         IEntitlementService? entitlements = null,
-        OperationLog? operations = null)
+        OperationLog? operations = null,
+        ILatexImportJobExecutor? latexImportExecutor = null)
     {
+        _latexImportExecutor = latexImportExecutor;
         _entitlements = entitlements;
         _operations = operations;
         _context = context;
@@ -540,55 +543,56 @@ public class JobService : IJobService
                     // Use PDF parser (MinerU-backed)
                     var importDocument = await _pdfParser.ParseAsync(tempPath, importOptions);
 
-                    var elements = importDocument.Elements;
-                    tracker.SetTotalBlocks(elements.Count);
-                    await tracker.ReportExtractingPagesAsync(1, "Extraction complete");
-
-                    job.Progress = 60;
-                    await _context.SaveChangesAsync();
-
-                    var title = !string.IsNullOrWhiteSpace(request.Title)
-                        ? request.Title
-                        : !string.IsNullOrWhiteSpace(importDocument.Title)
-                            ? importDocument.Title
+                    if (importDocument.LatexSource is { Length: > 0 } latexSource
+                        && importDocument.LatexProjectZip is { Length: > 0 } texZip)
+                    {
+                        // Mathpix's LaTeX (tex.zip) goes through the LaTeX project import an uploaded Overleaf zip takes:
+                        // the same parser, review and finalize, its figures stored as files. The Markdown path below is
+                        // the fallback (PDF import via tex.zip, 19 Nov 2026).
+                        var texTitle = !string.IsNullOrWhiteSpace(request.Title)
+                            ? request.Title
                             : Path.GetFileNameWithoutExtension(request.Filename);
-
-                    // Build review blocks from intermediate elements using shared conversion
-                    var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
-
-                    // Report saving phase
-                    await tracker.ReportSavingAsync(1, reviewBlocks.Count);
-
-                    // Move PDF to persistent storage
-                    string? persistentPath = null;
-                    try
-                    {
-                        // Same as the DOCX path above — a key in object storage,
-                        // not a path on a filesystem that does not survive a
-                        // redeploy.
-                        persistentPath = $"imports/{job.Id}.pdf";
-                        await using (var pdf = File.OpenRead(tempPath))
-                        {
-                            await _storage.UploadAsync(persistentPath, pdf, "application/pdf");
-                        }
+                        var keptPdf = await KeepImportedPdfAsync(job.Id, tempPath);
+                        (reviewSessionId, createdDocument) = await ImportPdfAsLatexProjectAsync(
+                            userId, job, request, texTitle, latexSource, texZip, keptPdf);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogWarning(ex, "[Import] Failed to save PDF to persistent storage for job {JobId}", job.Id);
+                        var elements = importDocument.Elements;
+                        tracker.SetTotalBlocks(elements.Count);
+                        await tracker.ReportExtractingPagesAsync(1, "Extraction complete");
+
+                        job.Progress = 60;
+                        await _context.SaveChangesAsync();
+
+                        var title = !string.IsNullOrWhiteSpace(request.Title)
+                            ? request.Title
+                            : !string.IsNullOrWhiteSpace(importDocument.Title)
+                                ? importDocument.Title
+                                : Path.GetFileNameWithoutExtension(request.Filename);
+
+                        // Build review blocks from intermediate elements using shared conversion
+                        var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
+
+                        // Report saving phase
+                        await tracker.ReportSavingAsync(1, reviewBlocks.Count);
+
+                        // Move PDF to persistent storage
+                        var persistentPath = await KeepImportedPdfAsync(job.Id, tempPath);
+
+                        // Create review session
+                        var sessionResult = await _reviewService.CreateSessionFromImportAsync(
+                            userId, job.Id, title, reviewBlocks,
+                            sourceFilePath: persistentPath,
+                            rawImportData: importDocument.RawImportData);
+
+                        reviewSessionId = sessionResult.Session.Id;
+
+                        await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
+
+                        _logger.LogInformation("[Import] Created PDF review session {SessionId} with {BlockCount} blocks for job {JobId}",
+                            reviewSessionId, reviewBlocks.Count, job.Id);
                     }
-
-                    // Create review session
-                    var sessionResult = await _reviewService.CreateSessionFromImportAsync(
-                        userId, job.Id, title, reviewBlocks,
-                        sourceFilePath: persistentPath,
-                        rawImportData: importDocument.RawImportData);
-
-                    reviewSessionId = sessionResult.Session.Id;
-
-                    await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
-
-                    _logger.LogInformation("[Import] Created PDF review session {SessionId} with {BlockCount} blocks for job {JobId}",
-                        reviewSessionId, reviewBlocks.Count, job.Id);
 
                     // The pages read count against the plan's monthly PDF pages and the site's (Operations).
                     if (_operations is not null)
@@ -765,6 +769,113 @@ public class JobService : IJobService
             _logger.LogError(ex, "[Import] Job {JobId} failed", job.Id);
             throw;
         }
+    }
+
+    /// <summary>
+    /// The imported PDF kept in object storage (<c>imports/{jobId}.pdf</c>), as the review's source file; null when
+    /// storing failed (logged). A key in object storage, not a path on a filesystem that does not survive a redeploy.
+    /// </summary>
+    private async Task<string?> KeepImportedPdfAsync(Guid jobId, string tempPath)
+    {
+        try
+        {
+            var key = $"imports/{jobId}.pdf";
+            await using (var pdf = File.OpenRead(tempPath))
+            {
+                await _storage.UploadAsync(key, pdf, "application/pdf");
+            }
+            return key;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Import] Failed to save PDF to persistent storage for job {JobId}", jobId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A PDF that Mathpix turned into a LaTeX project (tex.zip), imported as an uploaded Overleaf zip is
+    /// (<c>ImportsController.UploadLatex</c>): the zip kept as <c>imports/{jobId}.zip</c>, where finalize stores its
+    /// figures and .bib on the document; an import definition and a review session holding the flattened .tex; then
+    /// the LaTeX import job (<see cref="ILatexImportJobExecutor"/>), run here rather than queued, since the PDF import
+    /// answers with a review ready to open. The session says "pdf", so the review is titled as a PDF import
+    /// (PDF import via tex.zip, 19 Nov 2026).
+    /// </summary>
+    private async Task<(Guid SessionId, Lilia.Core.Entities.Document? Document)> ImportPdfAsLatexProjectAsync(
+        string userId, Job job, ImportRequestDto request, string title, string latexSource, byte[] texZip, string? keptPdf)
+    {
+        if (_latexImportExecutor is null)
+            throw new InvalidOperationException("PDF import is not available: the LaTeX import is not configured.");
+
+        // Without the zip the text still imports; finalize then has no figures to store, as for a lost upload zip.
+        try
+        {
+            using var zipStream = new MemoryStream(texZip);
+            await _storage.UploadAsync($"imports/{job.Id}.zip", zipStream, "application/zip");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Import] Failed to keep the PDF's tex.zip for job {JobId}; its figures won't be stored", job.Id);
+        }
+
+        var now = DateTime.UtcNow;
+        var definitionId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        // The definition says "latex": its source is the .tex, and finalize reads it to keep the preamble.
+        var definition = new ImportDefinition
+        {
+            Id = definitionId,
+            OwnerId = userId,
+            SourceFileName = request.Filename,
+            SourceFormat = "latex",
+            RawSource = latexSource,
+            CreatedAt = now,
+        };
+        var session = new ImportReviewSession
+        {
+            Id = sessionId,
+            DefinitionId = definitionId,
+            JobId = job.Id,
+            OwnerId = userId,
+            DocumentTitle = title,
+            Status = "parsing",
+            SourceFormat = "pdf",
+            SourceFilePath = keptPdf,
+            RawImportData = latexSource,
+            AutoFinalizeEnabled = request.SkipReview,
+            CreatedAt = now,
+            UpdatedAt = now,
+            ExpiresAt = now.AddDays(30),
+        };
+        _context.ImportDefinitions.Add(definition);
+        _context.ImportReviewSessions.Add(session);
+        await _context.SaveChangesAsync();
+        // The job writes the session with SQL updates: a tracked copy would keep "parsing" for the finalize below.
+        _context.Entry(session).State = EntityState.Detached;
+        _context.Entry(definition).State = EntityState.Detached;
+
+        await _latexImportExecutor.RunAsync(job.Id, sessionId);
+
+        var staged = await _context.ImportReviewSessions.AsNoTracking()
+            .Where(s => s.Id == sessionId)
+            .Select(s => new { s.DocumentId })
+            .FirstAsync();
+        var documentId = staged.DocumentId;
+
+        // No review asked for and the import wasn't clean enough to finalize itself: finalized anyway, as Word's is.
+        if (documentId is null && request.SkipReview)
+            documentId = (await _reviewService.FinalizeSessionAsync(sessionId, userId, new FinalizeSessionDto(title, Force: true)))?.Document.Id;
+
+        Lilia.Core.Entities.Document? document = null;
+        if (documentId is { } id)
+        {
+            document = await _context.Documents.FindAsync(id);
+            job.DocumentId = id;
+        }
+
+        _logger.LogInformation("[Import] PDF imported from its tex.zip: review session {SessionId}, document {DocumentId}, job {JobId}",
+            sessionId, documentId, job.Id);
+        return (sessionId, document);
     }
 
     public async Task<JobDto?> RetryJobAsync(Guid jobId, string userId)
