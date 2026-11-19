@@ -94,6 +94,17 @@ public class Batch240ClassOptionsTests
     }
 
     [Fact]
+    public async Task An_option_the_fallback_article_class_wont_print_is_named_not_kept()
+    {
+        // extarticle falls back to article, whose line drops 14pt: keeping it would be a promise the PDF doesn't keep.
+        var tex = Source(@"\documentclass[14pt,fleqn]{extarticle}");
+        var meta = (await new LatexParser().ParseTextAsync(tex)).Metadata;
+        var setup = LatexPageSetupExtractor.Extract(tex, meta);
+        setup.ClassOptions.Should().Be("fleqn");
+        setup.NotApplied.Should().Contain(n => n.Contains("14pt") && n.Contains("falls back to article"));
+    }
+
+    [Fact]
     public void The_kept_options_go_first_and_each_appears_once()
     {
         LatexPageSetupExtractor.MergeOptions("reqno,fleqn", "twoside,REQNO").Should().Be("reqno,fleqn,twoside");

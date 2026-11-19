@@ -291,7 +291,11 @@ public static class LatexPageSetupExtractor
         var publisher = Lilia.Engines.Publishers.PublisherClasses.Canonical(cls2) is not null;
         var keptOptions = publisher
             ? (meta.RawClassOptions ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList()
-            : leftover;
+            : leftover.Where(o => Lilia.Engines.LaTeXPreambleBuilder.PrintsClassOption(cls2, o)).ToList();
+        // A class that falls back to article prints only article's own options: the rest is named, not kept (extarticle's 14pt).
+        var unprinted = publisher ? [] : leftover.Except(keptOptions).ToList();
+        if (unprinted.Count > 0)
+            notes.Add($"documentclass options not applied: {string.Join(", ", unprinted)} (the {cls2} class falls back to article, which doesn't take them)");
         var classOptions = keptOptions.Count > 0 ? string.Join(",", keptOptions) : null;
         if (classOptions is not null) applied.Add($"classOptions = {classOptions}");
 
