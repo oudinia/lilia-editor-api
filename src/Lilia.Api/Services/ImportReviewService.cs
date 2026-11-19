@@ -371,6 +371,14 @@ public class ImportReviewService : IImportReviewService
                 await _documents.UpdateDocumentAsync(documentId, ownerId, settings);
             if (setup.NotApplied.Count > 0)
                 _logger.LogInformation("Import {Source}: page setup not applied: {Notes}", source, string.Join("; ", setup.NotApplied));
+            // The source's class options the settings don't hold (reqno, fleqn…), kept for the \documentclass line: they were
+            // dropped (launch-bot #240, 19 Nov 2026). The settings validator carries no class options, so they're stored here.
+            if (setup.ClassOptions is { } kept)
+            {
+                var withOptions = await _context.Documents.FirstAsync(d => d.Id == documentId, ct);
+                withOptions.LatexDocumentClassOptions = LatexPageSetupExtractor.MergeOptions(kept, withOptions.LatexDocumentClassOptions);
+                await _context.SaveChangesAsync(ct);
+            }
 
             // A paper set for a publisher (acmart, IEEEtran… from Overleaf) arrives with its
             // venue: class, options and reference style as "Publish with…" sets them, and

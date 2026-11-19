@@ -1226,6 +1226,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 settings = dto with
                 {
                     LatexDocumentClass = ex.DocumentClass,
+                    // The file's class options as written (reqno, fleqn…), or none: "" clears the old ones (launch-bot #240).
+                    LatexDocumentClassOptions = ex.ClassOptions ?? "",
                     DocumentCategory = CategoryFromClass(ex.DocumentClass),
                     LatexPackages = ex.PackagesJson,
                     Sides = ex.Sides,

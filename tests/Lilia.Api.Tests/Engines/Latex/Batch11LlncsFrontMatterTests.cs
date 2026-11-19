@@ -66,7 +66,10 @@ public class Batch11LlncsFrontMatterTests
     public void Llncs_keeps_runningheads_from_the_source()
     {
         PublisherProfiles.WithSourceOptions("llncs", null, "runningheads").Should().Be("runningheads");
-        PublisherProfiles.WithSourceOptions("llncs", "runningheads", "runningheads,a4paper").Should().Be("runningheads");
-        PublisherProfiles.WithSourceOptions("IEEEtran", "conference", "runningheads").Should().Be("conference");
+        // Since launch-bot #240 (19 Nov 2026) every source option is kept as written, once, for any publisher class: a4paper
+        // too, and the venue's own options after the source's.
+        PublisherProfiles.WithSourceOptions("llncs", "runningheads", "runningheads,a4paper").Should().Be("runningheads,a4paper");
+        PublisherProfiles.WithSourceOptions("IEEEtran", "conference", "conference,10pt").Should().Be("conference,10pt");
+        PublisherProfiles.WithSourceOptions("article", "draft", "runningheads").Should().Be("draft", "not a publisher class: untouched");
     }
 }
