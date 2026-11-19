@@ -31,7 +31,7 @@ public static partial class PublisherFrontMatterReader
         var cls = (documentClass ?? "").Trim();
         var authors = cls switch
         {
-            "acmart" => Sequential(src, "affiliation", AcmAffiliation),
+            "acmart" => Sequential(src, "affiliation", AcmAffiliation, acm: true),
             "revtex4-2" or "revtex4-1" => Sequential(src, "affiliation", RevtexAffiliation, notes: true),
             // amsart's \thanks too (launch-bot #143 retest, 18 Nov 2026: the affiliations, e-mails and grants in them were lost).
             "amsart" or "amsproc" or "amsbook" => Sequential(src, "address", Plain, notes: true),
@@ -57,12 +57,17 @@ public static partial class PublisherFrontMatterReader
     /// <para>With <paramref name="notes"/> (REVTeX), an author's <c>\thanks</c> and <c>\altaffiliation</c> stay with the
     /// name as <c>\thanks{…}</c>, the title editor's form (launch-bot #143, 17 Nov 2026: both were lost, and the
     /// altaffiliation printed as a loose paragraph under the abstract).</para></summary>
-    private static List<Author> Sequential(string src, string affiliationCommand, Func<string, IEnumerable<string>> affiliationLines, bool notes = false)
+    private static List<Author> Sequential(string src, string affiliationCommand, Func<string, IEnumerable<string>> affiliationLines, bool notes = false,
+        bool acm = false)
     {
         var authors = new List<Author>();
         var front = FrontPart(src);
-        // \orcid after an author for every class (acmart's own command: launch-bot #219, the ORCID was lost).
-        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid", "curraddr" } : new[] { "author", affiliationCommand, "email", "orcid" };
+        // \orcid after an author for every class (acmart's own command: launch-bot #219, the ORCID was lost). ACM's author
+        // notes too: \authornote{…}, \authornotemark[n] and \correspondingauthor were dropped or left in the body after
+        // \maketitle (launch-bot #239, 19 Nov 2026).
+        var names = notes ? new[] { "author", affiliationCommand, "email", "thanks", "altaffiliation", "orcid", "curraddr" }
+            : acm ? new[] { "author", affiliationCommand, "email", "orcid", "authornote", "authornotemark", "correspondingauthor" }
+            : new[] { "author", affiliationCommand, "email", "orcid" };
         // A \thanks on the title (amsart prints every \thanks as a first-page footnote): the first author's note, as the
         // title block has no place for it (launch-bot #143 retest, 18 Nov 2026).
         var titleNotes = notes
@@ -90,9 +95,31 @@ public static partial class PublisherFrontMatterReader
                 if (notes && cmd == "thanks" && CleanNote(arg) is { Length: > 0 } early) titleNotes.Add(early);
                 continue;
             }
+            // ACM's author notes, in the title block's form: the note as the author's \thanks (acmart's front matter writes it
+            // back as \authornote), the mark and the corresponding author as the commands themselves (TitleAuthors reads them).
+            if (cmd == "authornote")
+            {
+                if (CleanNote(arg) is { Length: > 0 } note)
+                    authors[^1] = authors[^1] with { Name = authors[^1].Name + $@"\thanks{{{note}}}" };
+                continue;
+            }
+            if (cmd == "authornotemark")
+            {
+                authors[^1] = authors[^1] with { Name = authors[^1].Name + (opt is { Length: > 0 } n ? $@"\authornotemark[{n.Trim()}]" : @"\authornotemark") };
+                continue;
+            }
+            if (cmd == "correspondingauthor")
+            {
+                if (!authors[^1].Name.Contains(@"\correspondingauthor", StringComparison.Ordinal))
+                    authors[^1] = authors[^1] with { Name = authors[^1].Name + @"\correspondingauthor" };
+                continue;
+            }
             if (cmd == "orcid")
             {
-                if (OrcidIn($@"\orcid{{{arg}}}", null) is { } id && !authors[^1].Name.Contains(@"\orcidlink{", StringComparison.Ordinal))
+                // ACM's template writes a placeholder ORCID (\orcid{1234-5678-9012}), shorter than a real iD: kept as written
+                // for acmart, which prints whatever it is given (launch-bot #239).
+                var id = OrcidIn($@"\orcid{{{arg}}}", null) ?? (acm && AcmOrcid().IsMatch(arg.Trim()) ? arg.Trim() : null);
+                if (id is not null && !authors[^1].Name.Contains(@"\orcidlink{", StringComparison.Ordinal))
                     authors[^1] = authors[^1] with { Name = InsertBeforeThanks(authors[^1].Name, $@"\orcidlink{{{id}}}") };
                 continue;
             }
@@ -125,6 +152,10 @@ public static partial class PublisherFrontMatterReader
     }
 
     private static readonly Regex OrcidId = new(@"^\s*(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])\s*$");
+
+    /// <summary>An ORCID as ACM's template writes it: groups of four, possibly fewer than a real iD's four (1234-5678-9012).</summary>
+    [GeneratedRegex(@"^\d{4}(?:-[\dXx]{4}){1,3}$")]
+    private static partial Regex AcmOrcid();
 
     /// <summary>\orcidlink{…}, \orcid{…}, \orcidID{…} inside an author's argument.</summary>
     [GeneratedRegex(@"\\orcid(?:link|ID)?\s*\{\s*(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])\s*\}")]
@@ -383,6 +414,8 @@ public static partial class PublisherFrontMatterReader
         CommandsWithOption(src, names).Select(c => (c.Cmd, c.Arg));
 
     /// <summary>As <see cref="Commands"/>, with the first optional [..] argument (or null).</summary>
+    private static readonly HashSet<string> BareCommands = ["correspondingauthor", "authornotemark"];
+
     private static IEnumerable<(string Cmd, string? Opt, string Arg)> CommandsWithOption(string src, params string[] names)
     {
         foreach (Match m in Regex.Matches(src, @"\\(?<cmd>" + string.Join("|", names.Select(Regex.Escape)) + @")\*?(?![A-Za-z@])"))
@@ -398,7 +431,12 @@ public static partial class PublisherFrontMatterReader
                 i = c + 1;
                 while (i < src.Length && char.IsWhiteSpace(src[i])) i++;
             }
-            if (i >= src.Length || src[i] != '{') continue;
+            if (i >= src.Length || src[i] != '{')
+            {
+                // ACM's commands that take no argument (\correspondingauthor, \authornotemark[1]): yielded with none.
+                if (BareCommands.Contains(m.Groups["cmd"].Value)) yield return (m.Groups["cmd"].Value, opt, "");
+                continue;
+            }
             var close = MatchingBrace(src, i);
             if (close < 0) continue;
             yield return (m.Groups["cmd"].Value, opt, src[(i + 1)..close]);

@@ -14,7 +14,9 @@ public sealed record TitleAuthor(
     IReadOnlyList<string> Lines,
     IReadOnlyList<string> Notes,
     IReadOnlyList<string> NoteSymbols,
-    string? Orcid = null);
+    string? Orcid = null,
+    bool Corresponding = false,
+    IReadOnlyList<string>? NoteMarks = null);
 
 /// <summary>
 /// Reads the Title block's <c>author</c> string, which is one LaTeX string
@@ -49,6 +51,10 @@ public static class TitleAuthors
         var noteCounter = 0;
         var perAuthorSymbols = new List<string>();
         string? orcid = null;
+        // ACM's \correspondingauthor and \authornotemark[n] (a mark pointing at an earlier \authornote), kept for acmart's
+        // front matter: they were left in the body after \maketitle, "Undefined control sequence" (launch-bot #239, 19 Nov 2026).
+        var corresponding = false;
+        var marks = new List<string>();
 
         void EndLine()
         {
@@ -63,12 +69,15 @@ public static class TitleAuthors
             if (lines.Count > 0 || notes.Count > 0)
             {
                 var name = lines.Count > 0 ? lines[0] : "";
-                result.Add(new TitleAuthor(name, lines.Skip(1).ToList(), notes.ToList(), perAuthorSymbols.ToList(), orcid));
+                result.Add(new TitleAuthor(name, lines.Skip(1).ToList(), notes.ToList(), perAuthorSymbols.ToList(), orcid,
+                    corresponding, marks.Count > 0 ? marks.ToList() : null));
             }
             lines.Clear();
             notes.Clear();
             perAuthorSymbols.Clear();
             orcid = null;
+            corresponding = false;
+            marks.Clear();
         }
 
         var depth = 0;
@@ -160,6 +169,18 @@ public static class TitleAuthors
                 // \textbf{Jane Doe}: skip the command and read its group as ordinary text, so a \\ or a
                 // \thanks inside it still counts.
                 i = SkipOptional(text, j);
+                continue;
+            }
+
+            if (name == "correspondingauthor") { corresponding = true; i = j; continue; }
+            if (name == "authornotemark")
+            {
+                var k = j;
+                while (k < text.Length && text[k] == ' ') k++;
+                var mark = "";
+                if (k < text.Length && text[k] == '[' && text.IndexOf(']', k) is var closeMark and > 0) { mark = text[(k + 1)..closeMark].Trim(); k = closeMark + 1; }
+                marks.Add(mark);
+                i = k;
                 continue;
             }
 

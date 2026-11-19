@@ -192,9 +192,16 @@ public static class PublisherClasses
                 foreach (var (a, emails) in authors.Zip(emailsOf))
                 {
                     pre.AppendLine($@"\author{{{escape(a.Name)}}}");
+                    // The author's notes as acmart's \authornote, a mark pointing at an earlier note, and \correspondingauthor,
+                    // after the \author they belong to, as in ACM's template: the notes were dropped and the marks left after
+                    // \maketitle (launch-bot #239, 19 Nov 2026).
+                    foreach (var note in a.Notes) pre.AppendLine($@"\authornote{{{escape(note)}}}");
+                    foreach (var mark in a.NoteMarks ?? []) pre.AppendLine(mark.Length > 0 ? $@"\authornotemark[{mark}]" : @"\authornotemark");
+                    if (a.Corresponding) pre.AppendLine(@"\correspondingauthor");
                     // The email under the name and the ORCID as acmart's own \orcid, as in ACM's template (launch-bot #219:
-                    // the ORCID was lost and the email came after the country).
-                    if (a.Orcid is { Length: > 0 } orcid && Regex.IsMatch(orcid, @"^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$"))
+                    // the ORCID was lost and the email came after the country). Groups of four, as ACM's template's placeholder
+                    // (1234-5678-9012) is (launch-bot #239).
+                    if (a.Orcid is { Length: > 0 } orcid && Regex.IsMatch(orcid, @"^\d{4}(?:-[\dXx]{4}){1,3}$"))
                         pre.AppendLine($@"\orcid{{{orcid}}}");
                     foreach (var e in emails) pre.AppendLine($@"\email{{{e}}}");
                     // ACM wants an affiliation per author: the lines under the name, the last one as the
