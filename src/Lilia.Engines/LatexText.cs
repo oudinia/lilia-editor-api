@@ -35,7 +35,9 @@ public static class LatexText
     /// Written beside <see cref="HeadRowFallback"/>: a pass-through \liliaTableHead unless a theme
     /// defined one, so a copied table compiles and prints exactly as before.
     /// </summary>
-    public const string TableHeadFallback = @"\providecommand{\liliaTableHead}[1]{#1}";
+    /// Without a parameter (\liliaTableHead{X} is then the group {X}): a #1 written in a beamer frame's body stopped
+    /// the deck, "Illegal parameter number" (launch-bot #247, 19 Nov 2026). A theme's \renewcommand still takes one.
+    public const string TableHeadFallback = @"\providecommand{\liliaTableHead}{}";
 
     /// <summary>
     /// Written before a table with fewer than <see cref="BandMinBodyRows"/> body rows: a Banded

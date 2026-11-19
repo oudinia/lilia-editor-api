@@ -264,12 +264,12 @@ public class DocumentThemePhase2Tests : IDisposable
         // Acc holds nothing but numbers, so it is an siunitx S column (2g), whose text — the
         // header — is braced; the wrapper is the same inside the braces.
         tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & {\liliaTableHead{\textbf{Acc}}} \\");
-        tex.Should().Contain(@"\providecommand{\liliaTableHead}[1]{#1}");
+        tex.Should().Contain(@"\providecommand{\liliaTableHead}{}");
         tex.Should().NotContain(@"\liliaFewRows", "five body rows can be banded");
 
         var preview = new RenderService(null!, NullLogger<RenderService>.Instance).RenderBlockToLatex(Table(5));
         preview.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & {\liliaTableHead{\textbf{Acc}}} \\");
-        preview.Should().Contain(@"\providecommand{\liliaTableHead}[1]{#1}").And.NotContain(@"\liliaFewRows");
+        preview.Should().Contain(@"\providecommand{\liliaTableHead}{}").And.NotContain(@"\liliaFewRows");
     }
 
     [Fact]

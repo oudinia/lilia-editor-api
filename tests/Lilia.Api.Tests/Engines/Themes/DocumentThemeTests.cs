@@ -403,7 +403,7 @@ public class DocumentThemeTests : IDisposable
 
         tex.Should().Contain(@"\liliaHeadRow \liliaTableHead{\textbf{Model}} & \liliaTableHead{\textbf{Acc}} \\");
         tex.Should().Contain(string.Join(Environment.NewLine,
-            @"\providecommand{\liliaHeadRow}{}", @"\providecommand{\liliaTableHead}[1]{#1}",
+            @"\providecommand{\liliaHeadRow}{}", @"\providecommand{\liliaTableHead}{}",
             @"\providecommand{\liliaFewRows}{}\liliaFewRows", @"\begin{tabular}"));
     }
 

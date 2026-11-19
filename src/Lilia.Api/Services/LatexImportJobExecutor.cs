@@ -503,6 +503,8 @@ public class LatexImportJobExecutor : ILatexImportJobExecutor
                 // A description list: {text: term, description} items, kind "description" (launch-bot #227).
                 if (first.IsDescription)
                     blocks.Add(("list", new { items, ordered = false, kind = "description" }));
+                else if (first.IsNumbered && first.StartNumber is { } start)
+                    blocks.Add(("list", new { items, ordered = true, start }));
                 else
                     blocks.Add(("list", new { items, ordered = first.IsNumbered }));
                 continue;
