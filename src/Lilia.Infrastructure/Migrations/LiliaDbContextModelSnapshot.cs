@@ -4238,6 +4238,561 @@ namespace Lilia.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubBlockMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid?>("AriaRoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aria_role_id");
+
+                    b.Property<string>("BlockType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("block_type");
+
+                    b.Property<string>("CoverageLevel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("none")
+                        .HasColumnName("coverage_level");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("CssClass")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("css_class");
+
+                    b.Property<string>("Disposition")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("render")
+                        .HasColumnName("disposition");
+
+                    b.Property<Guid?>("ElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("element_id");
+
+                    b.Property<Guid?>("Epub2ElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("epub2_element_id");
+
+                    b.Property<string>("Epub2TemplateKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("epub2_template_key");
+
+                    b.Property<Guid?>("EpubTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("epub_type_id");
+
+                    b.Property<string>("FileSplit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("none")
+                        .HasColumnName("file_split");
+
+                    b.Property<int>("ImportPriority")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("import_priority");
+
+                    b.Property<Guid?>("InnerElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inner_element_id");
+
+                    b.PrimitiveCollection<List<string>>("ManifestProperties")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("manifest_properties");
+
+                    b.Property<string>("MinVersionSlug")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("min_version_slug");
+
+                    b.Property<string>("Nav")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("none")
+                        .HasColumnName("nav");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Slots")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("slots");
+
+                    b.Property<string>("TemplateKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("template_key");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Variant")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("")
+                        .HasColumnName("variant");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AriaRoleId");
+
+                    b.HasIndex("ElementId");
+
+                    b.HasIndex("Epub2ElementId");
+
+                    b.HasIndex("EpubTypeId");
+
+                    b.HasIndex("InnerElementId");
+
+                    b.HasIndex("MinVersionSlug");
+
+                    b.HasIndex("BlockType", "Variant")
+                        .IsUnique()
+                        .HasDatabaseName("ux_epub_block_mapping_type_variant");
+
+                    b.ToTable("epub_block_mappings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_epub_block_mapping_coverage", "coverage_level IN ('full','partial','none','unsupported')");
+
+                            t.HasCheckConstraint("ck_epub_block_mapping_disposition", "disposition IN ('render','drop','unsupported')");
+
+                            t.HasCheckConstraint("ck_epub_block_mapping_file_split", "file_split IN ('none','starts-file')");
+
+                            t.HasCheckConstraint("ck_epub_block_mapping_nav", "nav IN ('none','toc-entry','landmark','page-list')");
+
+                            t.HasCheckConstraint("ck_epub_block_mapping_reason", "disposition = 'render' OR reason IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_epub_block_mapping_template", "disposition <> 'render' OR template_key IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubConstruct", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("CoverageLevel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("none")
+                        .HasColumnName("coverage_level");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Epub2Form")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("epub2_form");
+
+                    b.Property<string>("Fallback")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("none")
+                        .HasColumnName("fallback");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("PairedAriaRole")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("paired_aria_role");
+
+                    b.Property<string>("ReaderSupport")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("wide")
+                        .HasColumnName("reader_support");
+
+                    b.Property<string>("SpecUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("spec_url");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .HasDatabaseName("ix_epub_construct_name");
+
+                    b.HasIndex("Kind", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_epub_construct_kind_name");
+
+                    b.ToTable("epub_constructs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_epub_construct_coverage", "coverage_level IN ('full','partial','none','unsupported')");
+
+                            t.HasCheckConstraint("ck_epub_construct_fallback", "fallback IN ('none','alttext','altimg','text','div','span','drop','convert')");
+
+                            t.HasCheckConstraint("ck_epub_construct_kind", "kind IN ('package-metadata','manifest-property','spine-property','nav-type','structural-semantic','aria-role','xhtml-element','xhtml-attribute','a11y-property','media-type','rendition-property')");
+
+                            t.HasCheckConstraint("ck_epub_construct_reader_support", "reader_support IN ('core','wide','partial','rare')");
+                        });
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubConstructSupport", b =>
+                {
+                    b.Property<Guid>("ConstructId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("construct_id");
+
+                    b.Property<string>("VersionSlug")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("version_slug");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("ConstructId", "VersionSlug");
+
+                    b.HasIndex("VersionSlug", "Status")
+                        .HasDatabaseName("ix_epub_construct_support_version_status");
+
+                    b.ToTable("epub_construct_support", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_epub_construct_support_status", "status IN ('supported','legacy','outdated','deprecated','removed')");
+                        });
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubInlineMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid?>("AriaRoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aria_role_id");
+
+                    b.Property<string>("Attributes")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("attributes");
+
+                    b.Property<string>("CoverageLevel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("none")
+                        .HasColumnName("coverage_level");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("both")
+                        .HasColumnName("direction");
+
+                    b.Property<Guid>("ElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("element_id");
+
+                    b.Property<Guid?>("Epub2ElementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("epub2_element_id");
+
+                    b.Property<string>("Epub2Form")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("epub2_form");
+
+                    b.Property<Guid?>("EpubTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("epub_type_id");
+
+                    b.PrimitiveCollection<List<string>>("ImportSynonyms")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("import_synonyms");
+
+                    b.Property<string>("LmlSyntax")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("lml_syntax");
+
+                    b.PrimitiveCollection<List<string>>("ManifestProperties")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("manifest_properties");
+
+                    b.Property<string>("MarkKey")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("mark_key");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("TemplateKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("template_key");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AriaRoleId");
+
+                    b.HasIndex("ElementId");
+
+                    b.HasIndex("Epub2ElementId");
+
+                    b.HasIndex("EpubTypeId");
+
+                    b.HasIndex("MarkKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_epub_inline_mapping_mark_key");
+
+                    b.ToTable("epub_inline_mappings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_epub_inline_mapping_coverage", "coverage_level IN ('full','partial','none','unsupported')");
+
+                            t.HasCheckConstraint("ck_epub_inline_mapping_direction", "direction IN ('both','export','import')");
+                        });
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubMetadataRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid>("ConstructId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("construct_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Expression")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("expression");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Requirement")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("requirement");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("source");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("VersionSlug")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("version_slug");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VersionSlug");
+
+                    b.HasIndex("ConstructId", "VersionSlug")
+                        .IsUnique()
+                        .HasDatabaseName("ux_epub_metadata_rule_construct_version");
+
+                    b.ToTable("epub_metadata_rules", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_epub_metadata_rule_requirement", "requirement IN ('required','recommended','optional')");
+                        });
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubSpecVersion", b =>
+                {
+                    b.Property<string>("Slug")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("slug");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("EpubCheckVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("epubcheck_version");
+
+                    b.Property<string>("Family")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("family");
+
+                    b.Property<bool>("IsExportTarget")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_export_target");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("PackageVersion")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("package_version");
+
+                    b.Property<DateOnly>("PublishedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("published_on");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("SpecUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("spec_url");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("Slug");
+
+                    b.ToTable("epub_spec_versions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_epub_spec_version_family", "family IN ('epub','epub-a11y')");
+
+                            t.HasCheckConstraint("ck_epub_spec_version_status", "status IN ('recommendation','candidate-recommendation-draft','superseded')");
+                        });
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.Feedback", b =>
                 {
                     b.Property<Guid>("Id")
@@ -9440,6 +9995,121 @@ namespace Lilia.Infrastructure.Migrations
                     b.Navigation("UIElement");
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubBlockMapping", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "AriaRole")
+                        .WithMany()
+                        .HasForeignKey("AriaRoleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "Element")
+                        .WithMany()
+                        .HasForeignKey("ElementId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "Epub2Element")
+                        .WithMany()
+                        .HasForeignKey("Epub2ElementId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "EpubType")
+                        .WithMany()
+                        .HasForeignKey("EpubTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "InnerElement")
+                        .WithMany()
+                        .HasForeignKey("InnerElementId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubSpecVersion", "MinVersion")
+                        .WithMany()
+                        .HasForeignKey("MinVersionSlug")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AriaRole");
+
+                    b.Navigation("Element");
+
+                    b.Navigation("Epub2Element");
+
+                    b.Navigation("EpubType");
+
+                    b.Navigation("InnerElement");
+
+                    b.Navigation("MinVersion");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubConstructSupport", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "Construct")
+                        .WithMany("Support")
+                        .HasForeignKey("ConstructId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubSpecVersion", "Version")
+                        .WithMany()
+                        .HasForeignKey("VersionSlug")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Construct");
+
+                    b.Navigation("Version");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubInlineMapping", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "AriaRole")
+                        .WithMany()
+                        .HasForeignKey("AriaRoleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "Element")
+                        .WithMany()
+                        .HasForeignKey("ElementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "Epub2Element")
+                        .WithMany()
+                        .HasForeignKey("Epub2ElementId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "EpubType")
+                        .WithMany()
+                        .HasForeignKey("EpubTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AriaRole");
+
+                    b.Navigation("Element");
+
+                    b.Navigation("Epub2Element");
+
+                    b.Navigation("EpubType");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubMetadataRule", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubConstruct", "Construct")
+                        .WithMany()
+                        .HasForeignKey("ConstructId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Lilia.Core.Entities.Epub.EpubSpecVersion", "Version")
+                        .WithMany()
+                        .HasForeignKey("VersionSlug")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Construct");
+
+                    b.Navigation("Version");
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.Feedback", b =>
                 {
                     b.HasOne("Lilia.Core.Entities.User", "User")
@@ -10150,6 +10820,11 @@ namespace Lilia.Infrastructure.Migrations
             modelBuilder.Entity("Lilia.Core.Entities.E2E.E2EUIElement", b =>
                 {
                     b.Navigation("SelectorCandidates");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.Epub.EpubConstruct", b =>
+                {
+                    b.Navigation("Support");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.Group", b =>
