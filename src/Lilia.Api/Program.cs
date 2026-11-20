@@ -863,6 +863,8 @@ builder.Services.AddMcpServer(o =>
 builder.Services.AddScoped<Lilia.Api.Mcp.ConnectorAllowance>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Lilia.Api.Mcp.ConnectorTransfers>();
+// A PDF or scan sent to import_document, imported in the background for import_status (PDF and scan import, 20 Nov 2026).
+builder.Services.AddSingleton<Lilia.Api.Mcp.ConnectorScanImports>();
 builder.Services.AddSingleton<Lilia.Api.Mcp.CheckMemoStore>();
 // The compile check behind check_document, in the connector and in Ask Lilia (15 Oct).
 builder.Services.AddScoped<IDocumentCheckService, DocumentCheckService>();
@@ -950,6 +952,8 @@ if (pdfProvider == "mathpix")
     builder.Services.Configure<Lilia.Import.Models.MathpixOptions>(builder.Configuration.GetSection("Mathpix"));
     builder.Services.AddHttpClient<Lilia.Import.Interfaces.IMathpixClient, Lilia.Import.Services.MathpixClient>();
     builder.Services.AddScoped<Lilia.Import.Interfaces.IPdfParser, Lilia.Import.Services.MathpixPdfImportService>();
+    // A scanned page (JPEG, PNG) through Mathpix's /v3/text; without Mathpix there is no scan import (PDF and scan import, 20 Nov 2026).
+    builder.Services.AddScoped<Lilia.Import.Interfaces.IScanImageParser, Lilia.Import.Services.MathpixPdfImportService>();
 }
 else
 {

@@ -54,8 +54,13 @@ public class EntitlementService : IEntitlementService
 
     private readonly int _pdfSitePages;
 
-    internal const string PdfNotInPlanMessage =
-        "PDF import is part of Pro: each page is read by a paid service. Upgrade to import PDFs, or import the LaTeX, Word or Markdown version.";
+    /// <summary>
+    /// A plan whose <c>pdfPagesPerMonth</c> is 0 (none since Free got 10 on 20 Nov 2026), in words naming that limit: PDFs and scanned images (one
+    /// page each) share it, and the connector and the editor show this message as it is (PDF and scan import, 20 Nov 2026).
+    /// </summary>
+    internal static string PdfNotInPlanMessage(string? planName) =>
+        $"PDF and scan import is part of Pro: your {(string.IsNullOrWhiteSpace(planName) ? "current" : planName)} plan includes 0 PDF pages a month, "
+        + "and each PDF page or scanned image is read by a paid service. Upgrade to import PDFs and scans, or import the LaTeX, Word or Markdown version.";
 
     public async Task EnsureCanImportPdfAsync(string userId, int pages, CancellationToken ct = default)
     {
@@ -65,13 +70,15 @@ public class EntitlementService : IEntitlementService
         var plan = await GetActivePlanAsync(userId, ct);
         var cap = plan is null ? 0 : ReadCap(plan.Caps, "pdfPagesPerMonth");
         if (cap == 0)
-            throw new QuotaExceededException("pdfImport", 0, 0, null, PdfNotInPlanMessage);
+            throw new QuotaExceededException("pdfImport", 0, 0, null, PdfNotInPlanMessage(plan?.DisplayName));
         var used = await PdfPagesThisMonthAsync(userId, ct);
+        // The refusal names the file's pages, what is left and the plan's monthly pages (the owner, 20 Nov 2026: "This PDF
+        // has 3 pages; your plan has 2 PDF pages left this month (10 a month on Free)").
         if (cap > 0 && used + pages > cap)
             throw new QuotaExceededException("pdfPagesPerMonth", cap, used, NextMonthStart(),
                 used >= cap
-                    ? $"This month's {cap} PDF pages are used; they renew on {NextMonthStart():d MMMM}."
-                    : $"This PDF has {pages} pages and {cap - used} of this month's {cap} PDF pages are left. They renew on {NextMonthStart():d MMMM}.");
+                    ? $"This month's {cap} PDF pages are used ({cap} a month on {PlanName(plan)}); they renew on {NextMonthStart():d MMMM}."
+                    : $"This file has {Pages(pages)} (an image counts as one); your plan has {Pages(cap - used, "PDF ")} left this month ({cap} a month on {PlanName(plan)}). They renew on {NextMonthStart():d MMMM}.");
         if (_pdfSitePages > 0)
         {
             var start = MonthStart();
@@ -85,6 +92,19 @@ public class EntitlementService : IEntitlementService
             }
         }
     }
+
+    public async Task<int?> PdfPagesLeftThisMonthAsync(string userId, CancellationToken ct = default)
+    {
+        if (IsStaff(userId)) return null;
+        var plan = await GetActivePlanAsync(userId, ct);
+        var cap = plan is null ? 0 : ReadCap(plan.Caps, "pdfPagesPerMonth");
+        if (cap < 0) return null;
+        return Math.Max(0, cap - await PdfPagesThisMonthAsync(userId, ct));
+    }
+
+    private static string Pages(int n, string kind = "") => $"{n} {kind}{(n == 1 ? "page" : "pages")}";
+
+    private static string PlanName(ActivePlanDto? plan) => string.IsNullOrWhiteSpace(plan?.DisplayName) ? "your plan" : plan!.DisplayName;
 
     public async Task<int> PdfPagesThisMonthAsync(string userId, CancellationToken ct = default)
     {

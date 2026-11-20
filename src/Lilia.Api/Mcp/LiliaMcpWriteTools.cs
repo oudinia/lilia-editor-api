@@ -43,7 +43,10 @@ public sealed class LiliaMcpWriteTools(
     Lilia.Engines.IBibliographyService bibliography,
     IAssetService assets,
     ILogger<LiliaMcpWriteTools> logger,
-    Lilia.Infrastructure.Data.LiliaDbContext? db = null)
+    Lilia.Infrastructure.Data.LiliaDbContext? db = null,
+    IEntitlementService? entitlements = null,
+    ConnectorScanImports? scanImports = null,
+    ConnectorAllowance? allowance = null)
 {
     public const string WriteScope = "documents:write";
     public static readonly TimeSpan UndoWindow = TimeSpan.FromMinutes(10);
@@ -485,16 +488,16 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file you have as a new Lilia document, in one call: .tex, .md or .lml as text, .docx or an Overleaf project .zip as base64 (up to 10 MB; a zip's \\input files are read as one document, its images and .bib kept with it). Lilia's importer runs as for a dropped file (no review step), and the reply gives the new document's id and address; then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
+    [Description("Import a file you have as a new Lilia document: .tex, .md or .lml as text; .docx, an Overleaf project .zip, a .pdf, or a scanned page as .jpg or .png (a photo of handwritten maths notes) as base64. Up to 10 MB. A zip's \\input files are read as one document, its images and .bib kept with it. Lilia's importer runs as for a dropped file (no review step). Text, Word and zip files answer at once with the new document's id and address. A PDF or an image is read into LaTeX by Lilia's maths OCR, which takes up to about two minutes: the reply is an importId at once; call import_status with it every 10 to 20 seconds until it says done (the document) or failed (the reason). PDFs and images use the author's plan's monthly PDF pages and cost credits per page (an image counts as one page); a refusal says which limit and what is left. Then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
-        [Description("The file name, e.g. paper.tex, thesis.docx, notes.md, notes.lml. Its extension gives the format unless format is set.")] string filename,
-        [Description("The file: its text for .tex, .md and .lml, base64 for .docx (a data: prefix is fine).")] string content,
-        [Description("Optional: tex, docx, md or lml.")] string? format = null)
+        [Description("The file name, e.g. paper.tex, thesis.docx, notes.md, notes.lml, paper.pdf, notes-scan.jpg. Its extension gives the format unless format is set.")] string filename,
+        [Description("The file: its text for .tex, .md and .lml; base64 for .docx, .zip, .pdf, .jpg and .png (a data: prefix is fine).")] string content,
+        [Description("Optional: tex, docx, md, lml, pdf or image.")] string? format = null)
     {
         // MCP-114 (run 3b): an app holding the file could only hand the author a drop page, and an
         // unattended agent couldn't import at all.
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
-        if (string.IsNullOrWhiteSpace(content)) return new { error = "content is empty: give the file's text (.tex, .md, .lml) or base64 (.docx).", category = "invalid" };
+        if (string.IsNullOrWhiteSpace(content)) return new { error = "content is empty: give the file's text (.tex, .md, .lml) or base64 (.docx, .zip, .pdf, .jpg, .png).", category = "invalid" };
         if (content.Length > ImportMaxChars) return new { error = "The file is over 10 MB. Use start_import: the author drops it on Lilia's page.", category = "invalid" };
         var name = string.IsNullOrWhiteSpace(filename) ? "import" : Path.GetFileName(filename.Trim());
         var kind = ((format ?? Path.GetExtension(name)).Trim().TrimStart('.').ToLowerInvariant()) switch
@@ -506,9 +509,14 @@ public sealed class LiliaMcpWriteTools(
             "docx" or "word" => "DOCX",
             "lml" => "LML",
             "md" or "markdown" or "txt" => "MARKDOWN",
+            // Read by Mathpix, in the background (PDF and scan import, 20 Nov 2026): the launch bot's handwritten notes were
+            // refused here as "not a format" though the editor imported PDFs.
+            "pdf" => "PDF",
+            "jpg" or "jpeg" or "png" or "image" => ScanImages.Format,
             _ => null,
         };
-        if (kind is null) return new { error = "Lilia imports .tex, .zip (an Overleaf project, base64), .docx, .md and .lml files: give one of these extensions, or format.", category = "invalid" };
+        if (kind is null) return new { error = "Lilia imports .tex, .zip (an Overleaf project, base64), .docx, .md, .lml, .pdf, .jpg and .png files: give one of these extensions, or format.", category = "invalid" };
+        if (kind is "PDF" || kind == ScanImages.Format) return await ImportScanAsync(name, content, kind);
         // A text file (.tex, .md, .lml) sent as a base64 data URI, as some apps send every file: imported as its literal
         // "data:…;base64,…" text (the launch bot's #226 retest, 19 Nov 2026). Its text, decoded.
         if (kind is "LATEX" or "MARKDOWN" or "LML" && !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
@@ -570,8 +578,77 @@ public sealed class LiliaMcpWriteTools(
         }
     }
 
+    /// <summary>
+    /// A PDF or a scanned image (PDF and scan import, 20 Nov 2026), checked here before anything leaves the machine: its
+    /// bytes say it is a PDF, a JPEG or a PNG (a renamed file is refused), it fits, and the author's plan has the PDF pages
+    /// for it (a PDF's counted pages, or one for an image), with the same <c>EnsureCanImportPdfAsync</c> as the editor's
+    /// upload. A refusal names the plan's limit, so the app tells the author rather than retrying. Then the import runs in
+    /// the background (<see cref="ConnectorScanImports"/>) and the reply is its importId, for import_status.
+    /// </summary>
+    private async Task<object> ImportScanAsync(string name, string content, string kind)
+    {
+        var comma = content.IndexOf(',');
+        if (content.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0) content = content[(comma + 1)..];
+        content = content.Trim();
+        var what = kind == "PDF" ? "A .pdf" : "An image";
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(content); }
+        catch (FormatException) { return new { error = $"{what} goes as base64: this isn't valid base64.", category = "invalid" }; }
+
+        int pages;
+        var counted = true;
+        if (kind == "PDF")
+        {
+            if (!PdfPages.LooksLikePdf(bytes))
+                return new { error = "This file isn't a PDF, whatever its name says: a PDF starts with %PDF-. Send the PDF itself.", category = "invalid" };
+            // Exact, or unknown and checked as one page: never the rough estimate (the review of API #670, 20 Nov 2026).
+            var exact = PdfPages.Exact(bytes);
+            counted = exact is not null;
+            pages = exact ?? 1;
+        }
+        else
+        {
+            if (bytes.Length > ScanImages.MaxBytes) return new { error = ScanImages.TooLargeMessage, category = "invalid" };
+            if (ScanImages.ContentType(bytes) is null) return new { error = ScanImages.NotAnImageMessage, category = "invalid" };
+            pages = ScanImages.PagesPerImage;
+        }
+
+        if (scanImports is null || entitlements is null)
+            return new { error = "PDF and scan import is not available on this Lilia.", category = "unavailable" };
+        try
+        {
+            await entitlements.EnsureCanImportAsync(UserId);
+            await entitlements.EnsureCanImportPdfAsync(UserId, pages);
+            // The credits its pages cost (10 a page; the owner, 20 Nov 2026), as the import itself charges them.
+            if (allowance is not null) await allowance.EnsureCreditsForPagesAsync(UserId, pages, image: kind != "PDF");
+        }
+        catch (QuotaExceededException limit)
+        {
+            return new
+            {
+                error = limit.Message,
+                category = "plan-limit",
+                limit = new { resource = limit.Resource, cap = limit.Cap, used = limit.Used, resetsAt = limit.ResetsAt },
+            };
+        }
+
+        var (importId, ticket, _) = scanImports.Start(UserId, await AppNameAsync(),
+            new Lilia.Core.DTOs.ImportRequestDto(content, kind, name, SkipReview: true));
+        logger.LogInformation("[Mcp] import_document {File} ({Kind}, {Pages} page(s)) started in the background", name, kind, pages);
+        return new
+        {
+            importId,
+            status = ticket.Status,
+            pages = counted ? pages : (int?)null,
+            credits = allowance is null || !counted ? (int?)null : pages * allowance.CreditsPerPage,
+            pagesNote = counted ? null : "Lilia couldn't count this PDF's pages from the file: it is charged the pages its reader reports, up to what the plan has left.",
+            expiresAt = ticket.ExpiresAt,
+            next = "Lilia is reading the file into LaTeX (up to about two minutes). Call import_status with this importId every 10 to 20 seconds until it says done or failed.",
+        };
+    }
+
     [McpServerTool(Name = "start_import", Title = "Start a file import", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file (.tex, an Overleaf project .zip, .docx, .md or .lml) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. When you have the file yourself, import_document does it in one call.")]
+    [Description("Import a file (.tex, an Overleaf project .zip, .docx, .md, .lml, a .pdf, or a scanned page as .jpg or .png) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. A PDF or an image uses the author's plan's monthly PDF pages (an image counts as one). When you have the file yourself, import_document does it.")]
     public async Task<object> StartImport()
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
@@ -580,15 +657,15 @@ public sealed class LiliaMcpWriteTools(
         {
             importId = token,
             url = $"{McpOAuth.PublicOrigin(config)}/connect/import/{token}",
-            accepts = new[] { ".tex", ".zip", ".docx", ".md", ".lml" },
+            accepts = new[] { ".tex", ".zip", ".docx", ".md", ".lml", ".pdf", ".jpg", ".jpeg", ".png" },
             expiresAt = ticket.ExpiresAt,
             note = "Give the author this link to drop the file. When they say it's done, call import_status with the importId.",
         };
     }
 
     [McpServerTool(Name = "import_status", Title = "Check an import", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Where an import started with start_import is: waiting (no file dropped yet), done (with the new document's id) or failed (with the reason).")]
-    public object ImportStatus([Description("The importId from start_import.")] string importId)
+    [Description("Where an import started with start_import, or a PDF or image sent to import_document, is: waiting (no file dropped yet), working (Lilia is reading a PDF or scan: ask again in 10 to 20 seconds), done (with the new document's id) or failed (with the reason).")]
+    public object ImportStatus([Description("The importId from start_import or import_document.")] string importId)
     {
         if (transfers.Import(importId?.Trim() ?? "", UserId) is not { } t)
             return new { error = "No such import: it may have expired (30 minutes). Call start_import again." };
@@ -603,6 +680,7 @@ public sealed class LiliaMcpWriteTools(
             {
                 "done" => "Read it with get_outline, or check it compiles with check_document.",
                 "failed" => "Tell the author why; they can try another file with a new start_import.",
+                "working" => "Lilia is still reading the file into LaTeX. Call import_status again in 10 to 20 seconds.",
                 _ => "The author hasn't dropped the file yet.",
             },
         };

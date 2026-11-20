@@ -136,9 +136,13 @@ public class ConnectorFilesController(
         if (UserId is not { } userId || transfers.Import(token, userId) is not { } t)
             return NotFound(new { error = "This import link has expired or belongs to someone else." });
         if (t.Status == "done") return Conflict(new { error = "This link was already used.", documentId = t.DocumentId });
+        // A PDF or scan the app sent itself is being read: its ticket takes no second file (PDF and scan import, 20 Nov 2026).
+        if (t.Status == "working") return Conflict(new { error = "This import is already running." });
         var format = (file.Format ?? "").Trim().ToUpperInvariant();
-        if (format is not ("LATEX" or "DOCX" or "LML" or "MARKDOWN"))
-            return BadRequest(new { error = "Lilia imports .tex, .zip (an Overleaf project), .docx, .md and .lml files here." });
+        // A PDF and a scanned page (JPEG, PNG) too, read by Mathpix within the import's caps and metered by the same plan
+        // pages as the editor's upload (PDF and scan import, 20 Nov 2026).
+        if (format is not ("LATEX" or "DOCX" or "LML" or "MARKDOWN" or "PDF" or "IMAGE"))
+            return BadRequest(new { error = "Lilia imports .tex, .zip (an Overleaf project), .docx, .md, .lml, .pdf, .jpg and .png files here." });
         try
         {
             var result = await jobs.CreateImportJobFromBase64Async(userId,
@@ -155,6 +159,13 @@ public class ConnectorFilesController(
             t.Status = "failed";
             t.Error = limit.Message;
             return StatusCode(StatusCodes.Status402PaymentRequired, new { error = limit.Message, category = "plan-limit" });
+        }
+        catch (ArgumentException bad)
+        {
+            // A file that isn't what its name says (an image's or a PDF's bytes are checked): nothing was read or charged.
+            t.Status = "failed";
+            t.Error = bad.Message;
+            return BadRequest(new { error = bad.Message });
         }
         catch (Exception ex)
         {

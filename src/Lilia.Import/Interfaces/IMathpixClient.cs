@@ -23,4 +23,11 @@ public interface IMathpixClient
     /// (PDF import via tex.zip, 19 Nov 2026).
     /// </summary>
     Task<bool> DeletePdfAsync(string pdfId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads one scanned page (a JPEG or PNG, e.g. a photo of handwritten notes) with <c>POST /v3/text</c>, sent as a
+    /// multipart upload with <c>options_json</c>, and returns its Mathpix Markdown. One synchronous call: no polling, and no
+    /// pdf_id to delete afterwards (PDF and scan import, 20 Nov 2026).
+    /// </summary>
+    Task<MathpixTextResponse> ReadImageAsync(string filePath, string contentType, CancellationToken ct = default);
 }

@@ -75,12 +75,13 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task The_plans_say_it_Pro_100_pages_a_month_Free_none()
+    // Free got 10 pages a month on 20 Nov 2026 (the owner's pricing decision, migration FreePdfPages10).
+    public async Task The_plans_say_it_Pro_100_pages_a_month_Free_10()
     {
         await using var db = CreateDbContext();
         var caps = await db.Plans.Where(p => p.Slug == "pro" || p.Slug == "free").ToDictionaryAsync(p => p.Slug, p => p.Caps);
         caps["pro"].RootElement.GetProperty("pdfPagesPerMonth").GetInt32().Should().Be(100);
-        caps["free"].RootElement.GetProperty("pdfPagesPerMonth").GetInt32().Should().Be(0);
+        caps["free"].RootElement.GetProperty("pdfPagesPerMonth").GetInt32().Should().Be(10);
         (await db.OperationKinds.SingleAsync(k => k.Code == "import.pdf")).PointsFor(12).Should().Be(17, "5, plus 1 a page");
     }
 
@@ -96,16 +97,17 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task Free_is_refused_even_with_the_plan_limits_off()
+    public async Task Free_has_10_pages_a_month_whatever_the_plan_switch_and_the_refusal_names_what_is_left()
     {
         var free = NewId("free");
         await SeedUserAsync(free);
+        await PagesReadAsync(free, 8);
+        var factory = Factory();
 
-        var refused = await Refusal(Factory(), free, 3);
-
-        refused.Should().NotBeNull();
-        refused!.Resource.Should().Be("pdfImport");
-        refused.Message.Should().Contain("part of Pro");
+        (await Refusal(factory, free, 2)).Should().BeNull("8 + 2 is the 10 allowed");
+        var over = await Refusal(factory, free, 3);
+        over!.Resource.Should().Be("pdfPagesPerMonth");
+        over.Message.Should().Contain("This file has 3 pages").And.Contain("your plan has 2 PDF pages left this month (10 a month on");
     }
 
     [Fact]
@@ -120,7 +122,7 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
         (await Refusal(factory, pro, 5)).Should().BeNull("95 + 5 is the 100 allowed");
         var over = await Refusal(factory, pro, 6);
         over!.Resource.Should().Be("pdfPagesPerMonth");
-        over.Message.Should().Contain("6 pages").And.Contain("5 of this month's 100");
+        over.Message.Should().Contain("6 pages").And.Contain("5 PDF pages left this month (100 a month on Pro)");
     }
 
     // PROD-49 (12 Nov 2026): the plan says how many PDF pages are used this month and how many the plan holds.
@@ -159,10 +161,11 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task A_free_PDF_import_is_answered_402_before_the_PDF_goes_anywhere()
+    public async Task A_free_PDF_import_past_the_month_s_pages_is_answered_402_before_the_PDF_goes_anywhere()
     {
         var free = NewId("http");
         await SeedUserAsync(free);
+        await PagesReadAsync(free, 9);
         var client = Factory().CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", free);
         client.DefaultRequestHeaders.Add("X-Test-Email", $"{free}@lilia.test");

@@ -43,6 +43,25 @@ public sealed class OperationPacks(LiliaDbContext db, ILogger<OperationPacks> lo
         return spend.Id;
     }
 
+    /// <summary>
+    /// Spends up to <paramref name="count"/> operations at once, for pages a PDF or scan import read (10 credits a page,
+    /// the owner, 20 Nov 2026), as one row; the number spent, at most the balance (PDF and scan import, 20 Nov 2026).
+    /// </summary>
+    public async Task<int> SpendAsync(string userId, string tool, int count, CancellationToken ct = default)
+    {
+        if (count <= 0) return 0;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (db.Database.IsNpgsql())
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({"ops:" + userId}))", ct);
+        var balance = await db.OperationCredits.Where(c => c.UserId == userId).SumAsync(c => (int?)c.Delta, ct) ?? 0;
+        var spent = Math.Min(count, Math.Max(0, balance));
+        if (spent == 0) return 0;
+        db.OperationCredits.Add(new OperationCredit { Id = Guid.NewGuid(), UserId = userId, Delta = -spent, Reason = "spend", Tool = tool, CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return spent;
+    }
+
     /// <summary>Gives back a spend whose call failed (once: a spend has at most one refund).</summary>
     public async Task RefundAsync(Guid spendId)
     {

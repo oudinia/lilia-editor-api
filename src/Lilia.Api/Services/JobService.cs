@@ -29,6 +29,13 @@ public class JobService : IJobService
     private readonly Lilia.Core.Interfaces.IStorageService _storage;
     private readonly ILogger<JobService> _logger;
     private readonly ILatexImportJobExecutor? _latexImportExecutor;
+    /// <summary>Mathpix's /v3/text for a scanned page; null unless the PDF parser is Mathpix (PDF and scan import, 20 Nov 2026).</summary>
+    private readonly IScanImageParser? _scanImageParser;
+    /// <summary>
+    /// The connector's credits, which every page read by Mathpix also costs (10 a page; the owner, 20 Nov 2026), on every
+    /// route: the editor's upload, the drop page and the connector alike.
+    /// </summary>
+    private readonly Lilia.Api.Mcp.ConnectorAllowance? _credits;
 
     public JobService(
         LiliaDbContext context,
@@ -46,9 +53,13 @@ public class JobService : IJobService
         IPdfParser? pdfParser = null,
         IEntitlementService? entitlements = null,
         OperationLog? operations = null,
-        ILatexImportJobExecutor? latexImportExecutor = null)
+        ILatexImportJobExecutor? latexImportExecutor = null,
+        IScanImageParser? scanImageParser = null,
+        Lilia.Api.Mcp.ConnectorAllowance? credits = null)
     {
         _latexImportExecutor = latexImportExecutor;
+        _scanImageParser = scanImageParser;
+        _credits = credits;
         _entitlements = entitlements;
         _operations = operations;
         _context = context;
@@ -511,10 +522,20 @@ public class JobService : IJobService
 
                 // PDF import is paid (the owner, 11 Nov 2026): each page is read by Mathpix, at a price. The plan is
                 // checked before the PDF goes anywhere, by its pages, and fails closed without the plan service.
-                var pdfPages = PdfPages.Estimate(bytes);
+                // The exact count (pdfinfo, else the page tree), never the rough estimate, which read a 2-page PDF as 21: a
+                // short PDF must not be refused (the review of API #670, 20 Nov 2026). Unreadable: checked as one page, sent to
+                // Mathpix, and charged the pages Mathpix reports, up to what is left.
+                var exactPages = PdfPages.Exact(bytes);
+                var countKnown = exactPages is not null;
+                var pdfPages = exactPages ?? 1;
+                if (!countKnown)
+                    _logger.LogWarning("[Import] The pages of {Filename} (job {JobId}) couldn't be counted before Mathpix: checked as 1 page, charged Mathpix's count up to what is left",
+                        request.Filename, job.Id);
                 if (_entitlements is null)
                     throw new InvalidOperationException("PDF import is not available: plans can't be checked.");
                 await _entitlements.EnsureCanImportPdfAsync(userId, pdfPages);
+                // And the credits its pages cost, before anything reaches Mathpix (20 Nov 2026).
+                if (_credits is not null) await _credits.EnsureCreditsForPagesAsync(userId, pdfPages, image: false);
 
                 var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.pdf");
 
@@ -541,7 +562,21 @@ public class JobService : IJobService
                     }
 
                     // Use PDF parser (MinerU-backed)
-                    var importDocument = await _pdfParser.ParseAsync(tempPath, importOptions);
+                    ImportDocument importDocument;
+                    try
+                    {
+                        importDocument = await _pdfParser.ParseAsync(tempPath, importOptions);
+                    }
+                    catch (Exception) when (MathpixCharged(_pdfParser) is { } charge)
+                    {
+                        // Mathpix took the PDF and bills its pages even though the import failed: they count against the
+                        // plan, as Mathpix reported them or else as counted above (PDF and scan import, 20 Nov 2026).
+                        await RecordPdfPagesAsync(userId, "pdf", charge.Pages ?? pdfPages, capToLeft: !countKnown);
+                        throw;
+                    }
+                    // The pages read count against the plan's monthly PDF pages and the site's (Operations), as soon as
+                    // they are read: an import that fails after this point has still cost them (20 Nov 2026).
+                    await RecordPdfPagesAsync(userId, "pdf", importDocument.PageCount ?? pdfPages, capToLeft: !countKnown);
 
                     if (importDocument.LatexSource is { Length: > 0 } latexSource
                         && importDocument.LatexProjectZip is { Length: > 0 } texZip)
@@ -558,45 +593,12 @@ public class JobService : IJobService
                     }
                     else
                     {
-                        var elements = importDocument.Elements;
-                        tracker.SetTotalBlocks(elements.Count);
-                        await tracker.ReportExtractingPagesAsync(1, "Extraction complete");
-
-                        job.Progress = 60;
-                        await _context.SaveChangesAsync();
-
-                        var title = !string.IsNullOrWhiteSpace(request.Title)
-                            ? request.Title
-                            : !string.IsNullOrWhiteSpace(importDocument.Title)
-                                ? importDocument.Title
-                                : Path.GetFileNameWithoutExtension(request.Filename);
-
-                        // Build review blocks from intermediate elements using shared conversion
-                        var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
-
-                        // Report saving phase
-                        await tracker.ReportSavingAsync(1, reviewBlocks.Count);
-
                         // Move PDF to persistent storage
                         var persistentPath = await KeepImportedPdfAsync(job.Id, tempPath);
-
-                        // Create review session
-                        var sessionResult = await _reviewService.CreateSessionFromImportAsync(
-                            userId, job.Id, title, reviewBlocks,
-                            sourceFilePath: persistentPath,
-                            rawImportData: importDocument.RawImportData);
-
-                        reviewSessionId = sessionResult.Session.Id;
-
-                        await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
-
-                        _logger.LogInformation("[Import] Created PDF review session {SessionId} with {BlockCount} blocks for job {JobId}",
-                            reviewSessionId, reviewBlocks.Count, job.Id);
+                        (reviewSessionId, createdDocument) = await ImportReadPagesAsync(
+                            userId, job, request, importDocument, persistentPath, tracker);
                     }
 
-                    // The pages read count against the plan's monthly PDF pages and the site's (Operations).
-                    if (_operations is not null)
-                        await _operations.RecordAsync(userId, null, "import.pdf", "screens", "pdf", importDocument.PageCount ?? pdfPages);
                 }
                 finally
                 {
@@ -604,6 +606,59 @@ public class JobService : IJobService
                     {
                         File.Delete(tempPath);
                     }
+                }
+            }
+            else if (request.Format.ToUpperInvariant() == ScanImages.Format)
+            {
+                // A scanned page, JPEG or PNG: a photo of handwritten maths notes (PDF and scan import, 20 Nov 2026). Read by
+                // Mathpix's /v3/text, then imported as a PDF's Markdown is. Told by its bytes, never its name; refused
+                // before the plan is charged or anything leaves the machine.
+                if (_scanImageParser == null)
+                    throw new InvalidOperationException("Scan import is not available: the scan reader is not configured.");
+
+                await tracker.ReportReceivingAsync($"Receiving {request.Filename}...");
+                byte[] bytes;
+                try { bytes = Convert.FromBase64String(request.Content); }
+                catch (FormatException) { throw new ArgumentException("An image goes as base64: this isn't valid base64."); }
+                if (bytes.Length > ScanImages.MaxBytes) throw new ArgumentException(ScanImages.TooLargeMessage);
+                if (ScanImages.ContentType(bytes) is not { } contentType) throw new ArgumentException(ScanImages.NotAnImageMessage);
+
+                // One image is one page against the plan's PDF pages, checked as a PDF's are: fails closed.
+                if (_entitlements is null)
+                    throw new InvalidOperationException("Scan import is not available: plans can't be checked.");
+                await _entitlements.EnsureCanImportPdfAsync(userId, ScanImages.PagesPerImage);
+                if (_credits is not null) await _credits.EnsureCreditsForPagesAsync(userId, ScanImages.PagesPerImage, image: true);
+
+                var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}{ScanImages.Extension(contentType)}");
+                try
+                {
+                    await File.WriteAllBytesAsync(tempPath, bytes);
+                    await tracker.ReportParsingAsync("Reading the scan...");
+                    job.Progress = 30;
+                    await _context.SaveChangesAsync();
+
+                    ImportDocument importDocument;
+                    try
+                    {
+                        importDocument = await _scanImageParser.ParseImageAsync(tempPath, contentType);
+                    }
+                    catch (Exception) when (MathpixCharged(_scanImageParser) is not null)
+                    {
+                        // Mathpix answered (an error, or no text): it bills the image all the same, so the page counts.
+                        await RecordPdfPagesAsync(userId, "image", ScanImages.PagesPerImage);
+                        throw;
+                    }
+                    // The page read counts against the plan's monthly PDF pages and the site's, as a PDF's pages do, as soon
+                    // as it is read.
+                    await RecordPdfPagesAsync(userId, "image", ScanImages.PagesPerImage);
+
+                    // The image isn't kept as the review's source file: the review's source viewer shows PDFs.
+                    (reviewSessionId, createdDocument) = await ImportReadPagesAsync(
+                        userId, job, request, importDocument, sourceFilePath: null, tracker);
+                }
+                finally
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
                 }
             }
             else if (request.Format.ToUpperInvariant() is "LATEX" or "LML" or "MARKDOWN")
@@ -791,6 +846,83 @@ public class JobService : IJobService
             _logger.LogWarning(ex, "[Import] Failed to save PDF to persistent storage for job {JobId}", jobId);
             return null;
         }
+    }
+
+    /// <summary>What Mathpix billed for the parser's last read, or null when nothing reached it (PDF and scan import, 20 Nov 2026).</summary>
+    private static MathpixCharge? MathpixCharged(object parser) => (parser as IMathpixCharge)?.LastCharge;
+
+    /// <summary>
+    /// Pages Mathpix read, against the plan's monthly PDF pages and the site's: an <c>import.pdf</c> operation, whose units
+    /// <c>EntitlementService.PdfPagesThisMonthAsync</c> sums. <paramref name="format"/> says pdf or image. And their
+    /// credits, 10 a page by default, from the day's allowance then packs (20 Nov 2026). Mathpix's own count when it gave
+    /// one, even above the count from the file: that is what it billed. With <paramref name="capToLeft"/> (a PDF whose pages
+    /// couldn't be counted before Mathpix, so the pre-check asked for one page), the pages stop at what the month has left
+    /// and the credits at what the author has, never below zero (the review of API #670, 20 Nov 2026).
+    /// </summary>
+    private async Task RecordPdfPagesAsync(string userId, string format, int pages, bool capToLeft = false)
+    {
+        if (capToLeft && _entitlements is not null && await _entitlements.PdfPagesLeftThisMonthAsync(userId) is { } left)
+            pages = Math.Min(pages, Math.Max(1, left));
+        if (_operations is not null)
+            await _operations.RecordAsync(userId, null, "import.pdf", "screens", format, pages);
+        if (_credits is not null)
+        {
+            try { await _credits.ChargePagesAsync(userId, pages, capToAvailable: capToLeft); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "[Import] Could not charge {Pages} page(s) of credits to {UserId}", pages, userId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pages Mathpix read as Markdown (a PDF without a usable tex.zip, or a scanned image) into a review session; with
+    /// <c>SkipReview</c> (the connector, its drop page) finalized at once into the document, as Word's and the tex.zip's
+    /// are. Before, a PDF that fell back to the Markdown made only a review, so the connector answered "no document"
+    /// (PDF and scan import, 20 Nov 2026).
+    /// </summary>
+    private async Task<(Guid SessionId, Lilia.Core.Entities.Document? Document)> ImportReadPagesAsync(
+        string userId, Job job, ImportRequestDto request, ImportDocument importDocument, string? sourceFilePath, ImportProgressTracker tracker)
+    {
+        var elements = importDocument.Elements;
+        tracker.SetTotalBlocks(elements.Count);
+        await tracker.ReportExtractingPagesAsync(1, "Extraction complete");
+
+        job.Progress = 60;
+        await _context.SaveChangesAsync();
+
+        var title = !string.IsNullOrWhiteSpace(request.Title)
+            ? request.Title
+            : !string.IsNullOrWhiteSpace(importDocument.Title)
+                ? importDocument.Title
+                : Path.GetFileNameWithoutExtension(request.Filename);
+
+        // Build review blocks from intermediate elements using shared conversion
+        var reviewBlocks = await ConvertElementsToReviewBlocksAsync(elements, tracker);
+
+        // Report saving phase
+        await tracker.ReportSavingAsync(1, reviewBlocks.Count);
+
+        var sessionResult = await _reviewService.CreateSessionFromImportAsync(
+            userId, job.Id, title, reviewBlocks,
+            sourceFilePath: sourceFilePath,
+            rawImportData: importDocument.RawImportData);
+        var sessionId = sessionResult.Session.Id;
+
+        await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
+
+        _logger.LogInformation("[Import] Created {Format} review session {SessionId} with {BlockCount} blocks for job {JobId}",
+            request.Format, sessionId, reviewBlocks.Count, job.Id);
+
+        Lilia.Core.Entities.Document? document = null;
+        if (request.SkipReview
+            && await _reviewService.FinalizeSessionAsync(sessionId, userId, new FinalizeSessionDto(title, Force: true)) is { } finalized)
+        {
+            document = await _context.Documents.FindAsync(finalized.Document.Id);
+            job.DocumentId = finalized.Document.Id;
+            _logger.LogInformation("[Import] SkipReview: auto-finalized {Format} import into document {DocId}", request.Format, finalized.Document.Id);
+        }
+        return (sessionId, document);
     }
 
     /// <summary>

@@ -132,7 +132,8 @@ public class McpTransfersTests : IntegrationTestBase
         imported.OwnerId.Should().Be("mcpx_appimport");
         imported.HeadingNumbering.Should().Be(2, "the Word file numbered its headings to level 2");
 
-        (await CallAsync(app, "import_document", new { filename = "x.pdf", content = "abc" })).GetProperty("error").GetString().Should().Contain(".tex, .zip (an Overleaf project, base64), .docx, .md and .lml");
+        // A PDF and a scan are taken since 20 Nov 2026 (McpScanImportTests); a format Lilia doesn't read is still named.
+        (await CallAsync(app, "import_document", new { filename = "x.gif", content = "abc" })).GetProperty("error").GetString().Should().Contain(".tex, .zip (an Overleaf project, base64), .docx, .md, .lml, .pdf, .jpg and .png");
         (await CallAsync(app, "import_document", new { filename = "x.docx", content = "not base64!" })).GetProperty("error").GetString().Should().Contain("base64");
     }
 

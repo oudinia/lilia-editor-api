@@ -48,6 +48,13 @@ public interface IEntitlementService
     /// <summary>The PDF pages this account imported this month (the operations record).</summary>
     Task<int> PdfPagesThisMonthAsync(string userId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The PDF pages this account has left this month (never negative), or null when nothing limits them (staff, a plan
+    /// without a monthly cap). For a PDF whose pages couldn't be counted before Mathpix: its charge stops at what is left
+    /// (PDF and scan import, 20 Nov 2026).
+    /// </summary>
+    Task<int?> PdfPagesLeftThisMonthAsync(string userId, CancellationToken ct = default);
+
     /// <summary>True when the user's plan caps documents (Free); false for unlimited plans.</summary>
     Task<bool> HasFiniteDocumentLimitAsync(string userId, CancellationToken ct = default);
 
