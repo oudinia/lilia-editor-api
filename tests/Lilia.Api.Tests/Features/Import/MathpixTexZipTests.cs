@@ -184,6 +184,8 @@ public class MathpixTexZipTests
     {
         var opts = Options.Create(options);
         var client = new MathpixClient(new HttpClient(api), opts, NullLogger<MathpixClient>.Instance);
+        // Figures go through their own client since the security hotfix (20 Nov 2026): the same fake serves them here.
+        client.ImageHttp = new HttpClient(api);
         return new MathpixPdfImportService(client, opts, NullLogger<MathpixPdfImportService>.Instance, new LatexProjectExtractor());
     }
 
