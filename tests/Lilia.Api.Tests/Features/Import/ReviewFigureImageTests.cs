@@ -6,6 +6,7 @@ using Lilia.Api.Tests.Integration.Infrastructure;
 using Lilia.Import.Interfaces;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Lilia.Api.Tests.Features.Import;
@@ -38,10 +39,35 @@ public class ReviewFigureImageTests : IntegrationTestBase, IDisposable
         await db.SaveChangesAsync();
     }
 
+    /// <summary>The app's local storage, counting the reads of kept import zips.</summary>
+    private sealed class CountingStorage(Lilia.Core.Interfaces.IStorageService inner) : Lilia.Core.Interfaces.IStorageService
+    {
+        private int _zipReads;
+        public int ZipReads => Volatile.Read(ref _zipReads);
+        public Task<string> UploadAsync(string key, Stream content, string contentType) => inner.UploadAsync(key, content, contentType);
+        public async Task<Stream> DownloadAsync(string key)
+        {
+            if (key.StartsWith("imports/", StringComparison.Ordinal) && key.EndsWith(".zip", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _zipReads);
+                await Task.Delay(200); // a slow download, so parallel requests overlap
+            }
+            return await inner.DownloadAsync(key);
+        }
+        public Task DeleteAsync(string key) => inner.DeleteAsync(key);
+        public string GetPublicUrl(string key) => inner.GetPublicUrl(key);
+        public Task<string> GeneratePresignedUploadUrl(string key, string contentType, TimeSpan? expiry = null) =>
+            inner.GeneratePresignedUploadUrl(key, contentType, expiry);
+    }
+
+    private CountingStorage? _storage;
+
     private WebApplicationFactory<Program> Host(MathpixTexZipTests.FakeMathpix api)
     {
         var factory = Fixture.Factory.WithWebHostBuilder(b => b.ConfigureServices(services =>
         {
+            services.AddSingleton<Lilia.Core.Interfaces.IStorageService>(sp =>
+                _storage ??= new CountingStorage(new Lilia.Api.Services.LocalStorageService(sp.GetRequiredService<IConfiguration>())));
             foreach (var d in services.Where(d => d.ServiceType == typeof(IPdfParser) || d.ServiceType == typeof(IScanImageParser)).ToList())
                 services.Remove(d);
             services.AddScoped<IPdfParser>(_ => MathpixTexZipTests.Service(api, MathpixTexZipTests.Settings()));
@@ -124,5 +150,48 @@ public class ReviewFigureImageTests : IntegrationTestBase, IDisposable
 
         sources.Should().Contain(s => s.StartsWith("data:image/jpeg;base64,"));
         (await client.GetAsync(Url(sessionId, "2026_11_19_0a1b2c3d4e5f-1"))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private WebApplicationFactory<Program> TexZipHost() => Host(new MathpixTexZipTests.FakeMathpix
+    {
+        TexZipDownload = () => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(ScanFiguresAndSymbolsTests.HandwrittenTexZip()) },
+    });
+
+    /// <summary>
+    /// The review asks for every figure at once (the review of API #674, 20 Nov 2026): one download and one extraction
+    /// of the kept zip for all of them, and none for the next requests while its images are kept.
+    /// </summary>
+    [Fact]
+    public async Task Parallel_requests_for_a_reviews_figures_read_the_kept_zip_once()
+    {
+        var client = As(TexZipHost(), _userId);
+        var (sessionId, sources) = await ImportForReviewAsync(client);
+        var before = _storage!.ZipReads;
+
+        var answers = await Task.WhenAll(Enumerable.Range(0, 12).Select(i => client.GetAsync(Url(sessionId, sources[i % sources.Count]))));
+        answers.Should().OnlyContain(a => a.StatusCode == HttpStatusCode.OK);
+        foreach (var a in answers)
+            (await a.Content.ReadAsByteArrayAsync()).Should().Equal(ScanFiguresAndSymbolsTests.Sketch);
+        (_storage.ZipReads - before).Should().Be(1, "twelve parallel requests share one read of the zip");
+
+        (await client.GetAsync(Url(sessionId, sources[0]))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (_storage.ZipReads - before).Should().Be(1, "the images are kept for the next requests");
+    }
+
+    [Fact]
+    public async Task A_kept_zip_over_the_imports_limit_is_not_read()
+    {
+        var factory = TexZipHost();
+        var client = As(factory, _userId);
+        var (sessionId, sources) = await ImportForReviewAsync(client);
+        await using (var db = CreateDbContext())
+        {
+            var jobId = await db.ImportReviewSessions.AsNoTracking().Where(s => s.Id == sessionId).Select(s => s.JobId).SingleAsync();
+            // Bigger than any import route takes: the review keeps its placeholder rather than reading it.
+            using var big = new MemoryStream(new byte[Lilia.Api.Services.ImportReviewService.MaxReviewZipBytes + 1]);
+            await _storage!.UploadAsync($"imports/{jobId}.zip", big, "application/zip");
+        }
+
+        (await client.GetAsync(Url(sessionId, sources[0]))).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

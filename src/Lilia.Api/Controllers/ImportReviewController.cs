@@ -430,13 +430,6 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
-    /// Raw LaTeX source slice for a single block — drives the "Source"
-    /// sub-tab on the .tex redesign. Prefers the parser-populated
-    /// SourceRange; falls back to rendering the block's current content
-    /// back to LaTeX when the range isn't available (legacy sessions
-    /// before the redesign migration).
-    /// </summary>
-    /// <summary>
     /// A figure's image from the import's kept zip, before finalize makes it an asset: the review's thumbnail and preview
     /// (the launch bot's retest of API #672, 20 Nov 2026). 404 when there is none to show.
     /// </summary>
@@ -451,6 +444,13 @@ public class ImportReviewController : ControllerBase
         return File(image.Bytes, image.ContentType);
     }
 
+    /// <summary>
+    /// Raw LaTeX source slice for a single block — drives the "Source"
+    /// sub-tab on the .tex redesign. Prefers the parser-populated
+    /// SourceRange; falls back to rendering the block's current content
+    /// back to LaTeX when the range isn't available (legacy sessions
+    /// before the redesign migration).
+    /// </summary>
     [HttpGet("{id:guid}/blocks/{blockId}/source")]
     public async Task<ActionResult<object>> GetBlockSource(Guid id, string blockId, CancellationToken ct)
     {
