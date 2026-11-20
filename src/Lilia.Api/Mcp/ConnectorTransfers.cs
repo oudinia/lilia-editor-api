@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Lilia.Api.Mcp;
@@ -45,6 +46,42 @@ public sealed class ConnectorTransfers
         public Guid? DocumentId { get; set; }
         public string? Title { get; set; }
         public string? Error { get; set; }
+        /// <summary>
+        /// The import's open warnings (its review session's error and warning diagnostics), set before done; at most
+        /// <see cref="ImportWarning.MaxShown"/>, with the count in <see cref="WarningsTotal"/>. The connector's import has
+        /// no review step, so an unreadable symbol boxed in a formula reached the document without a word (the launch
+        /// bot's retest of API #672, 20 Nov 2026): import_status now says what to check.
+        /// </summary>
+        public IReadOnlyList<ImportWarning> Warnings { get; set; } = [];
+        public int WarningsTotal { get; set; }
+    }
+
+    /// <summary>One warning an import left, as import_status gives it.</summary>
+    public sealed record ImportWarning(string Code, string Message)
+    {
+        public const int MaxShown = 10;
+
+        /// <summary>
+        /// A finished import's open error and warning diagnostics, errors first, then in the order they were made; at
+        /// most <see cref="MaxShown"/>, and how many there are in all. None without a review session. Rows without a code
+        /// are left out: they are a project zip's file summary ("Found 1 image file(s): …", ImportReviewService's
+        /// extractor notices, stored as warnings though informational), which every scan read from Mathpix's tex.zip has.
+        /// </summary>
+        public static async Task<(IReadOnlyList<ImportWarning> Shown, int Total)> ForSessionAsync(
+            Lilia.Infrastructure.Data.LiliaDbContext db, Guid? sessionId, CancellationToken ct = default)
+        {
+            if (sessionId is not { } id) return ([], 0);
+            var open = db.ImportDiagnostics.AsNoTracking()
+                .Where(d => d.SessionId == id && !d.Dismissed && d.Code != "" && (d.Severity == "error" || d.Severity == "warning"));
+            var total = await open.CountAsync(ct);
+            if (total == 0) return ([], 0);
+            var shown = await open
+                .OrderBy(d => d.Severity == "error" ? 0 : 1).ThenBy(d => d.CreatedAt).ThenBy(d => d.Id)
+                .Take(MaxShown)
+                .Select(d => new ImportWarning(d.Code, d.Message))
+                .ToListAsync(ct);
+            return (shown, total);
+        }
     }
 
     private readonly IMemoryCache _cache;
