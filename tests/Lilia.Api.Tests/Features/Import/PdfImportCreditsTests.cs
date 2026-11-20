@@ -38,8 +38,14 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
 
     private static string NewId(string what) => $"cred_{what}_{Guid.NewGuid():N}"[..30];
 
-    /// <summary>"%PDF-1.4 fake" reads as 1 page from the file; the fake Mathpix then reports 2.</summary>
-    private static readonly string OnePagePdf = Convert.ToBase64String(Encoding.ASCII.GetBytes("%PDF-1.4 fake"));
+    /// <summary>
+    /// "%PDF-1.4 fake": nothing can count its pages from the file (the review of API #670), so it is checked as one page
+    /// and charged what Mathpix reports, here 2, up to what is left.
+    /// </summary>
+    private static readonly string UncountablePdf = Convert.ToBase64String(Encoding.ASCII.GetBytes("%PDF-1.4 fake"));
+
+    /// <summary>A real 2-page pdflatex PDF, its page tree compressed: counted 2 exactly.</summary>
+    private static readonly string TwoPagePdf = Convert.ToBase64String(PdfPagesExactTests.TwoPagePdflatex);
 
     private static readonly string ThreePagePdf = Convert.ToBase64String(Encoding.Latin1.GetBytes(
         "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >> endobj\n%%EOF"));
@@ -148,19 +154,41 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task Free_imports_a_PDF_Mathpix_read_as_2_pages_for_20_credits_and_has_8_pages_left_this_month()
+    public async Task Free_imports_a_2_page_pdflatex_PDF_counted_2_for_20_credits_and_has_8_pages_left_this_month()
     {
         var user = NewId("two");
         await SeedUserAsync(user);
         var api = new MathpixTexZipTests.FakeMathpix();
         var host = Host(api);
 
-        var res = await UploadAsync(ClientOf(host, user, asApp: false), OnePagePdf, "PDF", "notes.pdf");
+        var res = await UploadAsync(ClientOf(host, user, asApp: false), TwoPagePdf, "PDF", "notes.pdf");
         res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
 
-        // The file showed 1 page; Mathpix read 2 and billed 2: Mathpix's count is charged.
         (await CreditsUsedTodayAsync(host, user)).Should().Be(20);
         (await PagesThisMonthAsync(user)).Should().Be(2, "8 of Free's 10 are left");
+    }
+
+    [Fact]
+    public async Task A_PDF_whose_pages_cannot_be_counted_goes_to_Mathpix_and_is_charged_its_pages_up_to_what_is_left()
+    {
+        var plenty = NewId("unk");
+        var nearly = NewId("unk9");
+        await SeedUserAsync(plenty);
+        await SeedUserAsync(nearly);
+        await PagesReadAsync(nearly, 9);
+        var api = new MathpixTexZipTests.FakeMathpix();
+        var host = Host(api);
+
+        // Checked as one page; Mathpix reads 2 and they are charged.
+        (await UploadAsync(ClientOf(host, plenty, asApp: false), UncountablePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PagesThisMonthAsync(plenty)).Should().Be(2);
+        (await CreditsUsedTodayAsync(host, plenty)).Should().Be(20);
+        api.Requests.Should().Contain("POST api.mathpix.com/v3/pdf");
+
+        // With 1 page left this month it isn't refused, and the charge stops at that page.
+        (await UploadAsync(ClientOf(host, nearly, asApp: false), UncountablePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PagesThisMonthAsync(nearly)).Should().Be(10);
+        (await CreditsUsedTodayAsync(host, nearly)).Should().Be(10);
     }
 
     [Fact]
@@ -215,8 +243,8 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
         var host = Host(api);
         var author = ClientOf(host, user, asApp: false);
 
-        (await UploadAsync(author, OnePagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await CreditsUsedTodayAsync(host, user)).Should().Be(20, "Mathpix read 2 pages, 10 credits each");
+        (await UploadAsync(author, TwoPagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await CreditsUsedTodayAsync(host, user)).Should().Be(20, "2 pages, 10 credits each");
         (await PagesThisMonthAsync(user)).Should().Be(99);
 
         (await UploadAsync(author, Png, "IMAGE", "notes.png")).StatusCode.Should().Be(HttpStatusCode.OK, "the 100th page");
@@ -237,7 +265,7 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
         var host = Host(api);
         var author = ClientOf(host, user, asApp: false);
 
-        (await UploadAsync(author, OnePagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await UploadAsync(author, TwoPagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await CreditsUsedTodayAsync(host, user)).Should().Be(20);
         (await PackBalanceAsync(user)).Should().Be(OperationPacks.PerPack, "the day's allowance went first");
 
@@ -257,11 +285,12 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
         await SeedUserAsync(onApp);
         var host = Host(new MathpixTexZipTests.FakeMathpix());
 
-        (await UploadAsync(ClientOf(host, onWeb, asApp: false), OnePagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await UploadAsync(ClientOf(host, onWeb, asApp: false), TwoPagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var started = await CallAsync(ClientOf(host, onApp, asApp: true), "import_document", new { filename = "notes.pdf", content = OnePagePdf });
+        var started = await CallAsync(ClientOf(host, onApp, asApp: true), "import_document", new { filename = "notes.pdf", content = TwoPagePdf });
         started.TryGetProperty("error", out _).Should().BeFalse(started.ToString());
-        started.GetProperty("credits").GetInt32().Should().Be(10, "the file shows 1 page");
+        started.GetProperty("pages").GetInt32().Should().Be(2);
+        started.GetProperty("credits").GetInt32().Should().Be(20);
         (await SettledAsync(host, onApp, started.GetProperty("importId").GetString()!)).Status.Should().Be("done");
 
         (await CreditsUsedTodayAsync(host, onWeb)).Should().Be(20);

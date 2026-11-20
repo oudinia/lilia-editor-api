@@ -156,10 +156,17 @@ public sealed class ConnectorAllowance(
     /// packs, as tool calls are counted. Never refuses: Mathpix has already billed them, so a page read beyond what was
     /// left (Mathpix counted more pages than the file showed) still goes on the day's count.
     /// </summary>
-    public async Task ChargePagesAsync(string userId, int pages, CancellationToken ct = default)
+    /// <param name="capToAvailable">
+    /// For a PDF whose pages couldn't be counted before Mathpix (the review of API #670, 20 Nov 2026): the charge stops at
+    /// the credits the author has (today's left, plus packs on Free), never below zero, since the pre-check could only
+    /// ask for one page's worth.
+    /// </param>
+    public async Task ChargePagesAsync(string userId, int pages, CancellationToken ct = default, bool capToAvailable = false)
     {
         var credits = Math.Max(0, pages) * CreditsPerPage;
         if (credits == 0 || await StandingAsync(userId, ct) is not { } s) return;
+        if (capToAvailable) credits = Math.Min(credits, s.LeftToday + s.Packs);
+        if (credits == 0) return;
         var now = DateTime.UtcNow;
         var fromPacks = Math.Min(s.Packs, Math.Max(0, credits - s.LeftToday));
         if (fromPacks > 0)

@@ -93,6 +93,15 @@ public class EntitlementService : IEntitlementService
         }
     }
 
+    public async Task<int?> PdfPagesLeftThisMonthAsync(string userId, CancellationToken ct = default)
+    {
+        if (IsStaff(userId)) return null;
+        var plan = await GetActivePlanAsync(userId, ct);
+        var cap = plan is null ? 0 : ReadCap(plan.Caps, "pdfPagesPerMonth");
+        if (cap < 0) return null;
+        return Math.Max(0, cap - await PdfPagesThisMonthAsync(userId, ct));
+    }
+
     private static string Pages(int n, string kind = "") => $"{n} {kind}{(n == 1 ? "page" : "pages")}";
 
     private static string PlanName(ActivePlanDto? plan) => string.IsNullOrWhiteSpace(plan?.DisplayName) ? "your plan" : plan!.DisplayName;

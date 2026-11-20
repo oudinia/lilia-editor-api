@@ -522,7 +522,15 @@ public class JobService : IJobService
 
                 // PDF import is paid (the owner, 11 Nov 2026): each page is read by Mathpix, at a price. The plan is
                 // checked before the PDF goes anywhere, by its pages, and fails closed without the plan service.
-                var pdfPages = PdfPages.Estimate(bytes);
+                // The exact count (pdfinfo, else the page tree), never the rough estimate, which read a 2-page PDF as 21: a
+                // short PDF must not be refused (the review of API #670, 20 Nov 2026). Unreadable: checked as one page, sent to
+                // Mathpix, and charged the pages Mathpix reports, up to what is left.
+                var exactPages = PdfPages.Exact(bytes);
+                var countKnown = exactPages is not null;
+                var pdfPages = exactPages ?? 1;
+                if (!countKnown)
+                    _logger.LogWarning("[Import] The pages of {Filename} (job {JobId}) couldn't be counted before Mathpix: checked as 1 page, charged Mathpix's count up to what is left",
+                        request.Filename, job.Id);
                 if (_entitlements is null)
                     throw new InvalidOperationException("PDF import is not available: plans can't be checked.");
                 await _entitlements.EnsureCanImportPdfAsync(userId, pdfPages);
@@ -563,12 +571,12 @@ public class JobService : IJobService
                     {
                         // Mathpix took the PDF and bills its pages even though the import failed: they count against the
                         // plan, as Mathpix reported them or else as counted above (PDF and scan import, 20 Nov 2026).
-                        await RecordPdfPagesAsync(userId, "pdf", charge.Pages ?? pdfPages);
+                        await RecordPdfPagesAsync(userId, "pdf", charge.Pages ?? pdfPages, capToLeft: !countKnown);
                         throw;
                     }
                     // The pages read count against the plan's monthly PDF pages and the site's (Operations), as soon as
                     // they are read: an import that fails after this point has still cost them (20 Nov 2026).
-                    await RecordPdfPagesAsync(userId, "pdf", importDocument.PageCount ?? pdfPages);
+                    await RecordPdfPagesAsync(userId, "pdf", importDocument.PageCount ?? pdfPages, capToLeft: !countKnown);
 
                     if (importDocument.LatexSource is { Length: > 0 } latexSource
                         && importDocument.LatexProjectZip is { Length: > 0 } texZip)
@@ -847,15 +855,19 @@ public class JobService : IJobService
     /// Pages Mathpix read, against the plan's monthly PDF pages and the site's: an <c>import.pdf</c> operation, whose units
     /// <c>EntitlementService.PdfPagesThisMonthAsync</c> sums. <paramref name="format"/> says pdf or image. And their
     /// credits, 10 a page by default, from the day's allowance then packs (20 Nov 2026). Mathpix's own count when it gave
-    /// one, even above the count from the file: that is what it billed.
+    /// one, even above the count from the file: that is what it billed. With <paramref name="capToLeft"/> (a PDF whose pages
+    /// couldn't be counted before Mathpix, so the pre-check asked for one page), the pages stop at what the month has left
+    /// and the credits at what the author has, never below zero (the review of API #670, 20 Nov 2026).
     /// </summary>
-    private async Task RecordPdfPagesAsync(string userId, string format, int pages)
+    private async Task RecordPdfPagesAsync(string userId, string format, int pages, bool capToLeft = false)
     {
+        if (capToLeft && _entitlements is not null && await _entitlements.PdfPagesLeftThisMonthAsync(userId) is { } left)
+            pages = Math.Min(pages, Math.Max(1, left));
         if (_operations is not null)
             await _operations.RecordAsync(userId, null, "import.pdf", "screens", format, pages);
         if (_credits is not null)
         {
-            try { await _credits.ChargePagesAsync(userId, pages); }
+            try { await _credits.ChargePagesAsync(userId, pages, capToAvailable: capToLeft); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogError(ex, "[Import] Could not charge {Pages} page(s) of credits to {UserId}", pages, userId);

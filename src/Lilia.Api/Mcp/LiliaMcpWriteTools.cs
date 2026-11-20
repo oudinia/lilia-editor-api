@@ -596,11 +596,15 @@ public sealed class LiliaMcpWriteTools(
         catch (FormatException) { return new { error = $"{what} goes as base64: this isn't valid base64.", category = "invalid" }; }
 
         int pages;
+        var counted = true;
         if (kind == "PDF")
         {
             if (!PdfPages.LooksLikePdf(bytes))
                 return new { error = "This file isn't a PDF, whatever its name says: a PDF starts with %PDF-. Send the PDF itself.", category = "invalid" };
-            pages = PdfPages.Estimate(bytes);
+            // Exact, or unknown and checked as one page: never the rough estimate (the review of API #670, 20 Nov 2026).
+            var exact = PdfPages.Exact(bytes);
+            counted = exact is not null;
+            pages = exact ?? 1;
         }
         else
         {
@@ -635,8 +639,9 @@ public sealed class LiliaMcpWriteTools(
         {
             importId,
             status = ticket.Status,
-            pages,
-            credits = allowance is null ? (int?)null : pages * allowance.CreditsPerPage,
+            pages = counted ? pages : (int?)null,
+            credits = allowance is null || !counted ? (int?)null : pages * allowance.CreditsPerPage,
+            pagesNote = counted ? null : "Lilia couldn't count this PDF's pages from the file: it is charged the pages its reader reports, up to what the plan has left.",
             expiresAt = ticket.ExpiresAt,
             next = "Lilia is reading the file into LaTeX (up to about two minutes). Call import_status with this importId every 10 to 20 seconds until it says done or failed.",
         };

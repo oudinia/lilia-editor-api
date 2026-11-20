@@ -57,6 +57,61 @@ public static partial class PdfPages
     [GeneratedRegex(@"<<(?<dict>(?:[^<>]|<<[^<>]*>>)*?/Type\s*/ObjStm(?:[^<>]|<<[^<>]*>>)*?)>>\s*stream\r?\n")]
     private static partial Regex ObjectStream();
 
+    /// <summary>
+    /// The exact number of pages of an uploaded PDF, or null when it can't be read, for the plan's pre-check before
+    /// Mathpix (the review of API #670, 20 Nov 2026: <see cref="Estimate"/> read a 2-page PDF as 21, and a Free account
+    /// would have been refused a short PDF). In this order: poppler's <c>pdfinfo</c>, which reads the PDF as a viewer does
+    /// (the latest revision, compressed page trees); else <see cref="Count"/>; else null. A null count is never a reason to
+    /// refuse: the import then goes to Mathpix and is charged the pages Mathpix reports.
+    /// </summary>
+    /// <param name="pdfinfo">The pdfinfo step (tests replace it); <see cref="PdfInfoPages"/> by default.</param>
+    public static int? Exact(byte[] pdf, Func<byte[], int?>? pdfinfo = null) =>
+        (pdfinfo ?? (b => PdfInfoPages(b)))(pdf) ?? Count(pdf);
+
+    /// <summary>
+    /// <c>pdfinfo</c>'s <c>Pages:</c> for the bytes, or null (pdfinfo missing, failed, or slower than
+    /// <paramref name="timeout"/>, 5 s by default). The bytes go to a temp file named by a GUID, deleted after; pdfinfo
+    /// runs as a plain process (no shell) whose only argument is that path, never anything the author wrote.
+    /// </summary>
+    public static int? PdfInfoPages(byte[] pdf, string executable = "pdfinfo", TimeSpan? timeout = null)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"lilia-pages-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            File.WriteAllBytes(path, pdf);
+            var start = new System.Diagnostics.ProcessStartInfo(executable)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            start.ArgumentList.Add(path);
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process is null) return null;
+            var output = process.StandardOutput.ReadToEndAsync();
+            _ = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit((int)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                return null;
+            }
+            if (process.ExitCode != 0 || !output.Wait(TimeSpan.FromSeconds(1))) return null;
+            var m = PdfInfoPagesLine().Match(output.Result);
+            return m.Success && int.TryParse(m.Groups["n"].Value, out var n) && n > 0 ? n : null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return null; // pdfinfo isn't installed, or the temp file couldn't be written
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [GeneratedRegex(@"^Pages:\s+(?<n>\d+)\s*$", RegexOptions.Multiline)]
+    private static partial Regex PdfInfoPagesLine();
+
     public static bool LooksLikePdf(byte[] bytes) =>
         bytes.Length >= 5 && bytes[0] == '%' && bytes[1] == 'P' && bytes[2] == 'D' && bytes[3] == 'F' && bytes[4] == '-';
 
