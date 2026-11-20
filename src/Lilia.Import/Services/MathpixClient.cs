@@ -338,12 +338,54 @@ public class MathpixClient : IMathpixClient
         return result;
     }
 
+    /// <summary>The only place a figure in Mathpix's Markdown may come from: its own CDN (security hotfix, 20 Nov 2026).</summary>
+    internal const string ImageHost = "cdn.mathpix.com";
+
+    /// <summary>The largest figure fetched.</summary>
+    internal const int MaxImageBytes = 10 * 1024 * 1024;
+
+    // A client with no default headers and no redirects: the Mathpix app_key must never travel with a figure request.
+    private static readonly HttpClient ImageClient = new(new SocketsHttpHandler { AllowAutoRedirect = false })
+    {
+        Timeout = TimeSpan.FromSeconds(10),
+    };
+
+    /// <summary>The client figures are fetched with: <see cref="ImageClient"/>; tests give their own, so they never reach the network.</summary>
+    internal HttpClient ImageHttp { get; set; } = ImageClient;
+
+    /// <summary>
+    /// Whether <paramref name="imageUrl"/> is a figure on Mathpix's CDN: https, that exact host, the default port, no
+    /// user info. Anything else in the Markdown (text the scanned page itself wrote as an image link) is never fetched.
+    /// </summary>
+    internal static bool IsMathpixImage(string? imageUrl) =>
+        Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && string.Equals(uri.Host, ImageHost, StringComparison.OrdinalIgnoreCase)
+        && uri.IsDefaultPort
+        && string.IsNullOrEmpty(uri.UserInfo);
+
     public async Task<byte[]> GetImageAsync(string imageUrl, CancellationToken ct = default)
     {
-        // Mathpix returns full URLs for images in markdown output
-        using var request = new HttpRequestMessage(HttpMethod.Get, imageUrl);
-        var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        // Security hotfix (20 Nov 2026): this fetched any address found in Mathpix's Markdown, through the client that
+        // carries the app_key header on every request. A scanned page whose text came out as ![](https://elsewhere/x)
+        // sent the key to that host, or reached an internal address from the server. Now: Mathpix's CDN only, through
+        // a client with no key and no redirects, 10 s, 10 MB at most.
+        if (!IsMathpixImage(imageUrl))
+            throw new InvalidOperationException($"Not a Mathpix image address; not fetched: {imageUrl}");
+        using var response = await ImageHttp.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode != HttpStatusCode.OK)
+            throw new HttpRequestException($"Mathpix image answered {(int)response.StatusCode}.");
+        if (response.Content.Headers.ContentLength is > MaxImageBytes)
+            throw new InvalidOperationException("Mathpix image is over 10 MB.");
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var copy = new MemoryStream();
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+        {
+            if (copy.Length + read > MaxImageBytes) throw new InvalidOperationException("Mathpix image is over 10 MB.");
+            copy.Write(buffer, 0, read);
+        }
+        return copy.ToArray();
     }
 }
