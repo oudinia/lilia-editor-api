@@ -48,6 +48,13 @@ public interface IImportReviewService
     Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default);
 
     /// <summary>
+    /// The image a figure block names (its <c>src</c>, a project file such as <c>2026_11_20_…-1</c>) from the zip the
+    /// import kept, for the review's thumbnail and preview before finalize stores it as an asset. Null when the session
+    /// isn't the user's, it kept no zip, or the zip has no such PNG, JPEG, GIF or WebP image.
+    /// </summary>
+    Task<(byte[] Bytes, string ContentType)?> GetFigureImageAsync(Guid sessionId, string src, string userId, CancellationToken ct = default);
+
+    /// <summary>
     /// Set a single tab's progress state and bump last_focused_tab so the
     /// Reviews list can link returning users back to where they stopped.
     /// Non-sequential — any tab, any state, in any order.

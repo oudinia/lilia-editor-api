@@ -2196,6 +2196,49 @@ public class ImportReviewService : IImportReviewService
         }).ToList();
     }
 
+    /// <summary>What a browser shows in an img: never SVG (it can carry script) or a PDF figure.</summary>
+    private static readonly HashSet<string> ReviewImageTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "image/png", "image/jpeg", "image/gif", "image/webp" };
+
+    /// <summary>
+    /// The review showed a grey "image" box for every figure of a scan or project zip (the launch bot's retest of API
+    /// #672, 20 Nov 2026): until finalize stores the zip's images as assets (<see cref="StageZipProjectAsync"/>), a
+    /// figure's src is only the file name its <c>\includegraphics</c> gave, which no browser can load. This reads that
+    /// image from the zip the import kept (<c>imports/{jobId}.zip</c>), matched as finalize matches it: by path, file
+    /// name, or name without extension.
+    /// </summary>
+    public async Task<(byte[] Bytes, string ContentType)?> GetFigureImageAsync(Guid sessionId, string src, string userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(src) || src.Length > 500 || _storageService is null || _projectExtractor is null) return null;
+        var session = await _context.ImportReviewSessions.AsNoTracking()
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session is null || GetUserRole(session, userId) is null || session.JobId is not { } jobId || jobId == Guid.Empty) return null;
+
+        Lilia.Import.Services.LatexProjectResult extracted;
+        try
+        {
+            await using var stored = await _storageService.DownloadAsync($"imports/{jobId}.zip");
+            using var buffer = new MemoryStream();
+            await stored.CopyToAsync(buffer, ct);
+            extracted = _projectExtractor.Extract(buffer.ToArray());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // No zip (a Word or Markdown import) or one that can't be read: the review keeps its placeholder.
+            _logger.LogDebug(ex, "[ImportReview] No figure image for session {SessionId}", sessionId);
+            return null;
+        }
+
+        var name = src.Trim();
+        var images = extracted.Files.Where(f => f.Kind == Lilia.Import.Services.LatexProjectFileKinds.Image).ToList();
+        var hit = images.FirstOrDefault(f => string.Equals(f.Path, name, StringComparison.OrdinalIgnoreCase))
+            ?? images.FirstOrDefault(f => string.Equals(Path.GetFileName(f.Path), Path.GetFileName(name), StringComparison.OrdinalIgnoreCase))
+            ?? images.FirstOrDefault(f => string.Equals(Path.GetFileNameWithoutExtension(f.Path), Path.GetFileNameWithoutExtension(name), StringComparison.OrdinalIgnoreCase)
+                && ReviewImageTypes.Contains(f.ContentType));
+        return hit is not null && ReviewImageTypes.Contains(hit.ContentType) ? (hit.Bytes, hit.ContentType) : null;
+    }
+
     public async Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default)
     {
         var session = await _context.ImportReviewSessions
