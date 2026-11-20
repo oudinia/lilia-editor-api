@@ -21,7 +21,7 @@ keywords: importar subir abrir tex latex zip overleaf word docx epub pdf escaneo
 
 ## PDF y apuntes escaneados {#pdf}
 - Un `.pdf`, o la foto o el escaneo de una página (`.jpg`, `.png`, hasta 10 MB), apuntes de matemáticas a mano incluidos, se lee en LaTeX con un servicio de OCR matemático y luego se revisa como cualquier importación. Compara el resultado con tu página: la escritura a mano se lee bien, pero no a la perfección.
-- Los PDF y los escaneos usan las **páginas PDF** mensuales de tu plan: cada página de PDF cuenta como una, y cada imagen también. Tu plan muestra cuántas quedan. Un plan sin páginas PDF lo indica al importar.
+- Los PDF y los escaneos usan las **páginas PDF** mensuales de tu plan (10 al mes en Free, 100 en Pro): cada página de PDF cuenta como una, y cada imagen también. Cada página cuesta además 10 créditos, primero de los créditos del día (25 al día en Free) y después de los paquetes de operaciones. Lilia comprueba ambos antes de leer el archivo e indica qué límite lo impide: una importación rechazada no cuesta nada.
 - Desde Claude u otro asistente conectado a Lilia, `import_document` recibe el PDF o la imagen, e `import_status` indica cuándo está listo el documento.
 
 ## Qué significa {#beginner}

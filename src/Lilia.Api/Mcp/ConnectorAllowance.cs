@@ -66,7 +66,7 @@ public sealed class ConnectorAllowance(
         var cap = v.GetInt32();
 
         var now = DateTime.UtcNow;
-        var key = $"mcp-actions:{userId}:{now:yyyy-MM-dd}";
+        var key = DayKey(userId, now);
         var used = int.TryParse(await cache.GetStringAsync(key, ct), out var n) ? n : 0;
         if (used < cap)
         {
@@ -91,9 +91,81 @@ public sealed class ConnectorAllowance(
         return new Decision(used >= PackSafetyCap ? Message("packs", PackSafetyCap, now) : Message(plan.Slug, cap, now), null);
     }
 
-    private Task CountAsync(string key, int used, DateTime now) =>
-        cache.SetStringAsync(key, (used + 1).ToString(CultureInfo.InvariantCulture),
+    private Task CountAsync(string key, int used, DateTime now, int by = 1) =>
+        cache.SetStringAsync(key, (used + by).ToString(CultureInfo.InvariantCulture),
             new DistributedCacheEntryOptions { AbsoluteExpiration = now.Date.AddDays(1).AddHours(1) }, CancellationToken.None);
+
+    private static string DayKey(string userId, DateTime now) => $"mcp-actions:{userId}:{now:yyyy-MM-dd}";
+
+    // ── PDF and scan import: credits per page (the owner, 20 Nov 2026) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// What one page read by Mathpix costs, in the connector's credits (operations): <c>Mathpix:CreditsPerPage</c>, 10 by
+    /// default. A scanned image is one page.
+    /// </summary>
+    public int CreditsPerPage => Math.Max(0, config.GetValue("Mathpix:CreditsPerPage", 10));
+
+    /// <summary>The credits used today from the daily allowance (every connector action, and the pages imported).</summary>
+    public async Task<int> UsedTodayAsync(string userId, CancellationToken ct = default) =>
+        int.TryParse(await cache.GetStringAsync(DayKey(userId, DateTime.UtcNow), ct), out var n) ? n : 0;
+
+    /// <summary>
+    /// Where the author's credits stand for a PDF or scan import: null when nothing limits them (the plan limits off,
+    /// staff, a plan with no daily allowance); else the plan, the credits left today and, on Free, the packs' balance.
+    /// The same rules as <see cref="DecideAsync"/>: the daily allowance first, then packs on Free; Pro's 500 a day is a
+    /// safety cap that packs don't lift.
+    /// </summary>
+    private async Task<(string Slug, int Cap, int Used, int LeftToday, int Packs)?> StandingAsync(string userId, CancellationToken ct)
+    {
+        if (!options.Value.Enforce || options.Value.StaffUserIds.Contains(userId, StringComparer.Ordinal)) return null;
+        var plan = await entitlements.GetActivePlanAsync(userId, ct);
+        if (plan is null || plan.Caps.ValueKind != JsonValueKind.Object || !plan.Caps.TryGetProperty(CapKey, out var v)
+            || v.ValueKind != JsonValueKind.Number || v.GetInt32() < 0)
+            return null;
+        var cap = v.GetInt32();
+        var used = await UsedTodayAsync(userId, ct);
+        var packBalance = plan.Slug == "free" ? Math.Max(0, await packs.BalanceAsync(userId, ct)) : 0;
+        return (plan.Slug, cap, used, Math.Max(0, cap - used), packBalance);
+    }
+
+    /// <summary>
+    /// Refuses, before anything reaches Mathpix, a PDF or scan whose pages cost more credits than the author has: what is
+    /// left of today's allowance, plus their packs on Free. Throws a <see cref="QuotaExceededException"/> ("pdfCredits")
+    /// that says the pages, the credits and what is left. A refused import costs nothing.
+    /// </summary>
+    public async Task EnsureCreditsForPagesAsync(string userId, int pages, bool image, CancellationToken ct = default)
+    {
+        var credits = Math.Max(1, pages) * CreditsPerPage;
+        if (credits == 0 || await StandingAsync(userId, ct) is not { } s) return;
+        var available = s.LeftToday + s.Packs;
+        if (credits <= available) return;
+        var now = DateTime.UtcNow;
+        var what = image ? "This scanned page" : $"This {pages}-page PDF";
+        var have = s.Packs > 0
+            ? $"you have {available} ({s.LeftToday} left today and {s.Packs} from your packs)"
+            : $"you have {available} left today";
+        var next = s.Slug == "free"
+            ? $"Try a shorter PDF, buy a pack ({McpOAuth.PublicOrigin(config)}/settings/billing), or upgrade ({McpOAuth.PublicOrigin(config)}/?plans=1)."
+            : "Try a shorter PDF, or import it after midnight UTC, when the day's credits renew.";
+        throw new QuotaExceededException("pdfCredits", s.Cap, s.Used, now.Date.AddDays(1),
+            $"{what} uses {credits} credits ({CreditsPerPage} a page); {have}. {next}");
+    }
+
+    /// <summary>
+    /// Charges the pages Mathpix read: <see cref="CreditsPerPage"/> each, from today's allowance first, then (on Free) from
+    /// packs, as tool calls are counted. Never refuses: Mathpix has already billed them, so a page read beyond what was
+    /// left (Mathpix counted more pages than the file showed) still goes on the day's count.
+    /// </summary>
+    public async Task ChargePagesAsync(string userId, int pages, CancellationToken ct = default)
+    {
+        var credits = Math.Max(0, pages) * CreditsPerPage;
+        if (credits == 0 || await StandingAsync(userId, ct) is not { } s) return;
+        var now = DateTime.UtcNow;
+        var fromPacks = Math.Min(s.Packs, Math.Max(0, credits - s.LeftToday));
+        if (fromPacks > 0)
+            fromPacks = await packs.SpendAsync(userId, "import.pdf", fromPacks, ct);
+        await CountAsync(DayKey(userId, now), s.Used, now, credits - fromPacks);
+    }
 
     private string Message(string planSlug, int cap, DateTime now)
     {

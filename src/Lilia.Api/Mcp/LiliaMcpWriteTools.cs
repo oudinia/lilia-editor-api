@@ -45,7 +45,8 @@ public sealed class LiliaMcpWriteTools(
     ILogger<LiliaMcpWriteTools> logger,
     Lilia.Infrastructure.Data.LiliaDbContext? db = null,
     IEntitlementService? entitlements = null,
-    ConnectorScanImports? scanImports = null)
+    ConnectorScanImports? scanImports = null,
+    ConnectorAllowance? allowance = null)
 {
     public const string WriteScope = "documents:write";
     public static readonly TimeSpan UndoWindow = TimeSpan.FromMinutes(10);
@@ -487,7 +488,7 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Import a file you have as a new Lilia document: .tex, .md or .lml as text; .docx, an Overleaf project .zip, a .pdf, or a scanned page as .jpg or .png (a photo of handwritten maths notes) as base64. Up to 10 MB. A zip's \\input files are read as one document, its images and .bib kept with it. Lilia's importer runs as for a dropped file (no review step). Text, Word and zip files answer at once with the new document's id and address. A PDF or an image is read into LaTeX by Lilia's maths OCR, which takes up to about two minutes: the reply is an importId at once; call import_status with it every 10 to 20 seconds until it says done (the document) or failed (the reason). PDFs and images use the author's plan's monthly PDF pages (each image counts as one page); a plan without them is refused, and the reply says why. Then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
+    [Description("Import a file you have as a new Lilia document: .tex, .md or .lml as text; .docx, an Overleaf project .zip, a .pdf, or a scanned page as .jpg or .png (a photo of handwritten maths notes) as base64. Up to 10 MB. A zip's \\input files are read as one document, its images and .bib kept with it. Lilia's importer runs as for a dropped file (no review step). Text, Word and zip files answer at once with the new document's id and address. A PDF or an image is read into LaTeX by Lilia's maths OCR, which takes up to about two minutes: the reply is an importId at once; call import_status with it every 10 to 20 seconds until it says done (the document) or failed (the reason). PDFs and images use the author's plan's monthly PDF pages and cost credits per page (an image counts as one page); a refusal says which limit and what is left. Then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
         [Description("The file name, e.g. paper.tex, thesis.docx, notes.md, notes.lml, paper.pdf, notes-scan.jpg. Its extension gives the format unless format is set.")] string filename,
         [Description("The file: its text for .tex, .md and .lml; base64 for .docx, .zip, .pdf, .jpg and .png (a data: prefix is fine).")] string content,
@@ -614,6 +615,8 @@ public sealed class LiliaMcpWriteTools(
         {
             await entitlements.EnsureCanImportAsync(UserId);
             await entitlements.EnsureCanImportPdfAsync(UserId, pages);
+            // The credits its pages cost (10 a page; the owner, 20 Nov 2026), as the import itself charges them.
+            if (allowance is not null) await allowance.EnsureCreditsForPagesAsync(UserId, pages, image: kind != "PDF");
         }
         catch (QuotaExceededException limit)
         {
@@ -633,6 +636,7 @@ public sealed class LiliaMcpWriteTools(
             importId,
             status = ticket.Status,
             pages,
+            credits = allowance is null ? (int?)null : pages * allowance.CreditsPerPage,
             expiresAt = ticket.ExpiresAt,
             next = "Lilia is reading the file into LaTeX (up to about two minutes). Call import_status with this importId every 10 to 20 seconds until it says done or failed.",
         };

@@ -19,7 +19,7 @@ namespace Lilia.Api.Tests.Features.Connector;
 /// .jpg or .png goes in as base64, is checked here (its bytes, its size, the plan's PDF pages) before anything reaches
 /// Mathpix, then imports in the background: the reply is an importId, and <c>import_status</c> says working, then done
 /// or failed. It is metered as the editor's upload is, through <c>EnsureCanImportPdfAsync</c>: a PDF by its pages, an
-/// image as one page; Free (0 PDF pages) is refused with a message naming that limit, never a 500.
+/// image as one page; past the plan's monthly pages it is refused with a message naming that limit, never a 500.
 ///
 /// <para>Mathpix is <see cref="MathpixTexZipTests.FakeMathpix"/> behind the real client and import service: no file
 /// leaves the machine.</para>
@@ -158,11 +158,17 @@ public class McpScanImportTests : IntegrationTestBase, IDisposable
             .Should().Contain(c => c.RootElement.GetRawText().Contains("read from the Markdown"));
     }
 
+    // Free has 10 PDF pages a month since 20 Nov 2026 (the owner's pricing decision; PdfImportCreditsTests covers credits).
     [Fact]
-    public async Task Free_is_refused_a_PDF_or_an_image_with_the_plan_limit_named_and_Mathpix_is_never_called()
+    public async Task Free_past_its_10_pages_is_refused_a_PDF_or_an_image_with_the_limit_named_and_Mathpix_is_never_called()
     {
         var user = NewId("free");
         await SeedUserAsync(user);
+        await using (var db = CreateDbContext())
+        {
+            db.Operations.Add(new Lilia.Core.Entities.Operation { Id = Guid.NewGuid(), UserId = user, Kind = "import.pdf", Points = 15, Units = 10, Format = "pdf", Source = "screens" });
+            await db.SaveChangesAsync();
+        }
         var api = new MathpixTexZipTests.FakeMathpix();
         var app = AppWith(api, user);
 
@@ -170,13 +176,13 @@ public class McpScanImportTests : IntegrationTestBase, IDisposable
         {
             var refused = await CallAsync(app, "import_document", new { filename = file, content });
             refused.GetProperty("category").GetString().Should().Be("plan-limit");
-            refused.GetProperty("error").GetString().Should().Contain("part of Pro").And.Contain("0 PDF pages a month");
-            refused.GetProperty("limit").GetProperty("resource").GetString().Should().Be("pdfImport");
+            refused.GetProperty("error").GetString().Should().Contain("This month's 10 PDF pages are used (10 a month on");
+            refused.GetProperty("limit").GetProperty("resource").GetString().Should().Be("pdfPagesPerMonth");
             refused.TryGetProperty("importId", out _).Should().BeFalse();
         }
 
         api.Requests.Should().BeEmpty("a refused import costs nothing");
-        (await PagesChargedAsync(user)).Pages.Should().Be(0);
+        (await PagesChargedAsync(user)).Pages.Should().Be(10);
     }
 
     [Fact]

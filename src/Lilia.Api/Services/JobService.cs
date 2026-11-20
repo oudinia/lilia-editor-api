@@ -31,6 +31,11 @@ public class JobService : IJobService
     private readonly ILatexImportJobExecutor? _latexImportExecutor;
     /// <summary>Mathpix's /v3/text for a scanned page; null unless the PDF parser is Mathpix (PDF and scan import, 20 Nov 2026).</summary>
     private readonly IScanImageParser? _scanImageParser;
+    /// <summary>
+    /// The connector's credits, which every page read by Mathpix also costs (10 a page; the owner, 20 Nov 2026), on every
+    /// route: the editor's upload, the drop page and the connector alike.
+    /// </summary>
+    private readonly Lilia.Api.Mcp.ConnectorAllowance? _credits;
 
     public JobService(
         LiliaDbContext context,
@@ -49,10 +54,12 @@ public class JobService : IJobService
         IEntitlementService? entitlements = null,
         OperationLog? operations = null,
         ILatexImportJobExecutor? latexImportExecutor = null,
-        IScanImageParser? scanImageParser = null)
+        IScanImageParser? scanImageParser = null,
+        Lilia.Api.Mcp.ConnectorAllowance? credits = null)
     {
         _latexImportExecutor = latexImportExecutor;
         _scanImageParser = scanImageParser;
+        _credits = credits;
         _entitlements = entitlements;
         _operations = operations;
         _context = context;
@@ -519,6 +526,8 @@ public class JobService : IJobService
                 if (_entitlements is null)
                     throw new InvalidOperationException("PDF import is not available: plans can't be checked.");
                 await _entitlements.EnsureCanImportPdfAsync(userId, pdfPages);
+                // And the credits its pages cost, before anything reaches Mathpix (20 Nov 2026).
+                if (_credits is not null) await _credits.EnsureCreditsForPagesAsync(userId, pdfPages, image: false);
 
                 var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.pdf");
 
@@ -610,6 +619,7 @@ public class JobService : IJobService
                 if (_entitlements is null)
                     throw new InvalidOperationException("Scan import is not available: plans can't be checked.");
                 await _entitlements.EnsureCanImportPdfAsync(userId, ScanImages.PagesPerImage);
+                if (_credits is not null) await _credits.EnsureCreditsForPagesAsync(userId, ScanImages.PagesPerImage, image: true);
 
                 var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}{ScanImages.Extension(contentType)}");
                 try
@@ -835,12 +845,22 @@ public class JobService : IJobService
 
     /// <summary>
     /// Pages Mathpix read, against the plan's monthly PDF pages and the site's: an <c>import.pdf</c> operation, whose units
-    /// <c>EntitlementService.PdfPagesThisMonthAsync</c> sums. <paramref name="format"/> says pdf or image.
+    /// <c>EntitlementService.PdfPagesThisMonthAsync</c> sums. <paramref name="format"/> says pdf or image. And their
+    /// credits, 10 a page by default, from the day's allowance then packs (20 Nov 2026). Mathpix's own count when it gave
+    /// one, even above the count from the file: that is what it billed.
     /// </summary>
     private async Task RecordPdfPagesAsync(string userId, string format, int pages)
     {
         if (_operations is not null)
             await _operations.RecordAsync(userId, null, "import.pdf", "screens", format, pages);
+        if (_credits is not null)
+        {
+            try { await _credits.ChargePagesAsync(userId, pages); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "[Import] Could not charge {Pages} page(s) of credits to {UserId}", pages, userId);
+            }
+        }
     }
 
     /// <summary>

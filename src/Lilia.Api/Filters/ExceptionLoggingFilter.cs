@@ -117,7 +117,7 @@ public class ExceptionLoggingFilter : IExceptionFilter
                        "maxDocs" => LiliaErrorCodes.PlanDocumentLimit,
                        "maxImportsPerMonth" => LiliaErrorCodes.PlanImportLimit,
                        // Not the monthly imports: the screens showed "This month's imports are used" after the PDF refusal (#65).
-                       "pdfImport" or "pdfPagesPerMonth" or "pdfSitePages" => LiliaErrorCodes.PlanPdfImport,
+                       "pdfImport" or "pdfPagesPerMonth" or "pdfSitePages" or "pdfCredits" => LiliaErrorCodes.PlanPdfImport,
                        "aiCreditsPerMonth" or "aiSiteBudget" or "aiFreePool" => LiliaErrorCodes.AiQuotaExceeded,
                        "aiComingSoon" => LiliaErrorCodes.AiComingSoon,
                        _ => LiliaErrorCodes.Forbidden,

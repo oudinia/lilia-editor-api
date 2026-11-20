@@ -21,7 +21,7 @@ Déjà dans un document ? Pour y ajouter un morceau de LaTeX, utilisez **Paste L
 
 ## PDF et notes scannées {#pdf}
 - Un `.pdf`, ou la photo ou le scan d’une page (`.jpg`, `.png`, jusqu’à 10 Mo), notes de maths manuscrites comprises, est lu en LaTeX par un service d’OCR mathématique, puis relu comme tout import. Comparez le résultat à votre page : l’écriture manuscrite est bien lue, mais pas parfaitement.
-- Les PDF et les scans utilisent les **pages PDF** mensuelles de votre offre : chaque page de PDF compte pour une, chaque image aussi. Votre offre indique combien il en reste. Une offre sans pages PDF le dit au moment de l’import.
+- Les PDF et les scans utilisent les **pages PDF** mensuelles de votre offre (10 par mois sur Free, 100 sur Pro) : chaque page de PDF compte pour une, chaque image aussi. Chaque page coûte aussi 10 crédits, pris d’abord sur les crédits du jour (25 par jour sur Free), puis sur les packs d’opérations. Lilia vérifie les deux avant de lire le fichier et dit quelle limite l’arrête : un import refusé ne coûte rien.
 - Depuis Claude ou un autre assistant connecté à Lilia, `import_document` prend le PDF ou l’image, et `import_status` indique quand le document est prêt.
 
 ## Ce que cela veut dire {#beginner}
