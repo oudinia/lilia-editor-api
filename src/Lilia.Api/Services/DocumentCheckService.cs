@@ -237,7 +237,7 @@ public sealed partial class DocumentCheckService(
     {
         if (db is null || storage is null) return [];
         var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId).OrderBy(b => b.SortOrder).ToListAsync();
-        return await FindMissingFigures(Lilia.Engines.FigureFile.Sources(blocks), async src =>
+        var figures = await FindMissingFigures(Lilia.Engines.FigureFile.Sources(blocks), async src =>
         {
             try
             {
@@ -251,6 +251,23 @@ public sealed partial class DocumentCheckService(
                 return false;
             }
         });
+        var raw = Lilia.Engines.FigureFile.RawIncludes(blocks).ToList();
+        if (raw.Count == 0) return figures;
+        var files = await db.Assets.AsNoTracking().Where(a => a.DocumentId == documentId).Select(a => a.FileName).ToListAsync();
+        return [.. figures, .. FindMissingRawIncludes(raw, files)];
+    }
+
+    /// <summary>
+    /// The images raw LaTeX blocks include that no document file matches (FigureFile.MatchRawInclude), named as written. Only
+    /// figure blocks were checked, so a paper whose figures stayed raw LaTeX (an APS template's) had fig_1 and fig_2 missing and
+    /// the check said nothing (launch-bot #236, 19 Nov 2026).
+    /// </summary>
+    internal static IReadOnlyList<(Guid BlockId, string File)> FindMissingRawIncludes(
+        IEnumerable<(Lilia.Core.Entities.Block Block, string Name)> raw, IReadOnlyCollection<string> fileNames)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return raw.Where(r => seen.Add(r.Name) && Lilia.Engines.FigureFile.MatchRawInclude(r.Name, fileNames) is null)
+            .Select(r => (r.Block.Id, Lilia.Engines.FigureFile.WrittenName(r.Name))).ToList();
     }
 
     /// <summary>

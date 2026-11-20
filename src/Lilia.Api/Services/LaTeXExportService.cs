@@ -123,12 +123,25 @@ public class LaTeXExportService : ILaTeXExportService
             var name = path["figures/".Length..];
             foreach (var file in figureNames.TryGetValue(name, out var to) ? new[] { name, to } : [name])
             {
-                var full = Path.Combine(dir, "figures", file);
+                // Inside figures/ or not at all: a name from the author's text could climb out (Zayd's review of #665).
+                if (FigureFile.ContainedPath(Path.Combine(dir, "figures"), file) is not { } full)
+                {
+                    _logger.LogWarning("Figure path {File} would leave the figures folder: not written", file);
+                    continue;
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
                 await File.WriteAllBytesAsync(full, bytes);
             }
         }
     }
+
+    /// <summary>
+    /// A zip entry name that unpacks inside the project folder: relative, no drive, no backslash, no empty, "." or ".."
+    /// segment (zip slip; Zayd's review of #665). Any other character is allowed: a project's own files may have spaces.
+    /// </summary>
+    internal static bool SafeZipEntry(string path) =>
+        !string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path) && !path.Contains(':') && !path.Contains('\\')
+        && path.Split('/').All(s => s.Length > 0 && s != "." && s != "..");
 
     /// <summary>The folder of a TAPS ZIP that holds the source (ACM).</summary>
     public const string TapsSourceFolder = "source";
@@ -258,6 +271,13 @@ public class LaTeXExportService : ILaTeXExportService
         {
             foreach (var (path, bytes) in entries)
             {
+                // No entry that would unpack outside the project folder (zip slip): figure paths come from the author's
+                // text (Zayd's review of #665).
+                if (!SafeZipEntry(path))
+                {
+                    _logger.LogWarning("Zip entry {Path} would unpack outside the project: left out", path);
+                    continue;
+                }
                 var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
                 using var entryStream = entry.Open();
                 await entryStream.WriteAsync(bytes);
@@ -1523,8 +1543,45 @@ public class LaTeXExportService : ILaTeXExportService
                 missing.Add(filename);
             }
         }
+        await CollectRawIncludesAsync(blocks, images, missing, seen);
         if (strict && missing.Count > 0) throw new SubmissionFigureException(missing);
         return images;
+    }
+
+    /// <summary>
+    /// The images raw LaTeX blocks include (<c>\includegraphics{fig_1}</c>), from the document's own files (a zip import stores
+    /// each as an asset under its name), at the path the export's <c>\graphicspath{{./figures/}}</c> finds. They were never
+    /// packed, so the zip had no fig_1 and Overleaf reported it not found, and nothing said it was missing (launch-bot #236,
+    /// 19 Nov 2026). One no file matches is missing, as a figure's is.
+    /// </summary>
+    private async Task CollectRawIncludesAsync(List<Block> blocks, List<(string Path, byte[] Bytes)> images, List<string> missing, HashSet<string> seen)
+    {
+        var raw = FigureFile.RawIncludes(blocks).ToList();
+        if (raw.Count == 0 || _context is null) return;
+        var documentId = blocks[0].DocumentId;
+        var assets = await _context.Assets.AsNoTracking().Where(a => a.DocumentId == documentId).ToListAsync();
+        foreach (var (block, name) in raw)
+        {
+            if (FigureFile.MatchRawInclude(name, assets.Select(a => a.FileName)) is not { } match)
+            {
+                if (seen.Add("raw:" + name)) missing.Add(name);
+                continue;
+            }
+            if (!seen.Add("figures/" + match.Path)) continue;
+            var asset = assets.First(a => string.Equals(a.FileName, match.FileName, StringComparison.OrdinalIgnoreCase));
+            try
+            {
+                await using var stream = await _storageService.DownloadAsync(asset.StorageKey);
+                using var copy = new MemoryStream();
+                await stream.CopyToAsync(copy);
+                images.Add(($"figures/{match.Path}", copy.ToArray()));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read image {Name} of raw block {BlockId}", name, block.Id);
+                missing.Add(name);
+            }
+        }
     }
 
     private static string? ExtractStorageKey(string src) => FigureFile.StorageKey(src);
