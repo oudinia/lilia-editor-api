@@ -75,17 +75,6 @@ public class MathpixTexZipTests
         ![](https://cdn.mathpix.com/cropped/2026_11_19_0a1b2c3d4e5f-1.jpg?height=200&width=300&top_left_y=10&top_left_x=20)
         """;
 
-    /// <summary>A handwritten page as Mathpix's /v3/text reads it, with Lilia's $ and $$ delimiters (PDF and scan import, 20 Nov 2026).</summary>
-    internal const string ScanMarkdown = """
-        # Lecture 7: The Gaussian integral in QM
-
-        Recall that for $\operatorname{Re}(\alpha)>0$, read from the scan,
-
-        $$
-        I=\int_{-\infty}^{\infty} e^{-\alpha x^{2}+\beta x} d x=\sqrt{\frac{\pi}{\alpha}} e^{\beta^{2} / 4 \alpha}
-        $$
-        """;
-
     /// <summary>
     /// Mathpix's v3 PDF API as its docs describe it. Records every request, in order, and the upload's
     /// <c>options_json</c>. <see cref="TexZipStatuses"/> are the tex.zip conversion statuses the converter answers in
@@ -98,18 +87,17 @@ public class MathpixTexZipTests
         public string PdfStatus { get; init; } = "completed";
         public Queue<string> TexZipStatuses { get; init; } = new(["completed"]);
         public Func<HttpResponseMessage> TexZipDownload { get; init; } = () => Zip(TexZip());
-        /// <summary>The <c>options_json</c> of a <c>POST /v3/text</c> (a scanned page; PDF and scan import, 20 Nov 2026).</summary>
-        public JsonDocument? TextOptions { get; private set; }
-        /// <summary>The content type of the image sent to <c>POST /v3/text</c>.</summary>
-        public string? TextImageType { get; private set; }
-        /// <summary>What <c>POST /v3/text</c> answers: by default a handwritten page read as Mathpix Markdown.</summary>
-        public Func<HttpResponseMessage> TextAnswer { get; init; } = () => Json(new
+        /// <summary>The file uploaded to <c>POST /v3/pdf</c>: a scan's one-page PDF since 20 Nov 2026.</summary>
+        public byte[]? UploadedFile { get; private set; }
+        /// <summary>What the Markdown download answers (figures in imported scans, 20 Nov 2026).</summary>
+        public string MarkdownBody { get; init; } = Markdown;
+        /// <summary>Figure requests that carried the Mathpix key: must stay 0 (security hotfix #673).</summary>
+        public int CdnRequestsWithKey { get; private set; }
+        /// <summary>What a cropped figure on cdn.mathpix.com answers: a JPEG by default.</summary>
+        public Func<HttpResponseMessage> CdnFigure { get; init; } = () => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            request_id = "2026_11_20_text",
-            text = ScanMarkdown,
-            is_handwritten = true,
-            confidence = 0.93,
-        });
+            Content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xD9]),
+        };
         /// <summary>How long the Markdown download takes: a slow Mathpix conversion, for the deadline.</summary>
         public TimeSpan MarkdownDelay { get; init; } = TimeSpan.Zero;
 
@@ -132,27 +120,19 @@ public class MathpixTexZipTests
             {
                 var form = (MultipartFormDataContent)request.Content!;
                 foreach (var part in form)
-                    if (part.Headers.ContentDisposition?.Name?.Trim('"') == "options_json")
-                        UploadOptions = JsonDocument.Parse(await part.ReadAsStringAsync(ct));
-                return Json(new { pdf_id = PdfId });
-            }
-            if (request.Method == HttpMethod.Post && path == "/v3/text")
-            {
-                var form = (MultipartFormDataContent)request.Content!;
-                foreach (var part in form)
                 {
                     var name = part.Headers.ContentDisposition?.Name?.Trim('"');
-                    if (name == "options_json") TextOptions = JsonDocument.Parse(await part.ReadAsStringAsync(ct));
-                    if (name == "file") TextImageType = part.Headers.ContentType?.MediaType;
+                    if (name == "options_json") UploadOptions = JsonDocument.Parse(await part.ReadAsStringAsync(ct));
+                    if (name == "file") UploadedFile = await part.ReadAsByteArrayAsync(ct);
                 }
-                return TextAnswer();
+                return Json(new { pdf_id = PdfId });
             }
             if (request.Method == HttpMethod.Get && path == $"/v3/pdf/{PdfId}")
                 return Json(new { status = PdfStatus, num_pages = 2, num_pages_completed = 2, percent_done = 100.0, error = PdfStatus == "error" ? "PDF is encrypted" : null });
             if (request.Method == HttpMethod.Get && path == $"/v3/pdf/{PdfId}.md")
             {
                 if (MarkdownDelay > TimeSpan.Zero) await Task.Delay(MarkdownDelay, ct);
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Markdown) };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(MarkdownBody) };
             }
             if (request.Method == HttpMethod.Get && path == $"/v3/converter/{PdfId}")
             {
@@ -165,7 +145,10 @@ public class MathpixTexZipTests
             if (request.Method == HttpMethod.Get && path == $"/v3/pdf/{PdfId}.tex.zip")
                 return TexZipDownload();
             if (request.Method == HttpMethod.Get && request.RequestUri.Host == "cdn.mathpix.com")
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xD9]) };
+            {
+                if (request.Headers.Contains("app_key")) CdnRequestsWithKey++;
+                return CdnFigure();
+            }
             if (request.Method == HttpMethod.Delete && path == $"/v3/pdf/{PdfId}")
                 return Json(new { status = PdfStatus, num_pages = 2 });
 

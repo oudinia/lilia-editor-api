@@ -203,10 +203,12 @@ public class McpScanImportTests : IntegrationTestBase, IDisposable
         await using var db = CreateDbContext();
         var id = done.GetProperty("documentId").GetGuid();
         var blocks = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == id).ToListAsync();
-        blocks.Should().Contain(b => b.Type == "equation" && b.Content.RootElement.GetRawText().Contains("sqrt"));
-        blocks.Should().Contain(b => b.Content.RootElement.GetRawText().Contains("read from the scan"));
-        api.Requests.Should().Equal("POST api.mathpix.com/v3/text");
-        api.TextOptions!.RootElement.GetProperty("metadata").GetProperty("improve_mathpix").GetBoolean().Should().BeFalse();
+        // Read as a one-page PDF since 20 Nov 2026: its tex.zip, figure included.
+        blocks.Should().Contain(b => b.Type == "equation");
+        blocks.Should().Contain(b => b.Content.RootElement.GetRawText().Contains("read from the tex.zip"));
+        blocks.Should().Contain(b => b.Type == "figure");
+        api.Requests.First().Should().Be("POST api.mathpix.com/v3/pdf");
+        api.UploadOptions!.RootElement.GetProperty("metadata").GetProperty("improve_mathpix").GetBoolean().Should().BeFalse();
         var charged = await PagesChargedAsync(user);
         charged.Pages.Should().Be(1);
         charged.Formats.Should().Equal("image");
@@ -218,17 +220,14 @@ public class McpScanImportTests : IntegrationTestBase, IDisposable
         var user = NewId("noread");
         await SeedUserAsync(user);
         await GiveProAsync(user);
-        var app = AppWith(new MathpixTexZipTests.FakeMathpix
-        {
-            TextAnswer = () => MathpixTexZipTests.FakeMathpix.Json(new { error = "Content not found", error_info = new { id = "image_no_content" } }),
-        }, user);
+        var app = AppWith(new MathpixTexZipTests.FakeMathpix { PdfStatus = "error" }, user);
 
         var started = await CallAsync(app, "import_document", new { filename = "blank.jpg", content = Png });
         var failed = await SettledAsync(app, started.GetProperty("importId").GetString()!);
 
         failed.GetProperty("status").GetString().Should().Be("failed");
-        failed.GetProperty("error").GetString().Should().Contain("couldn't read this image");
-        (await PagesChargedAsync(user)).Pages.Should().Be(1, "Mathpix answered, so it billed the image");
+        failed.GetProperty("error").GetString().Should().Contain("PDF processing failed");
+        (await PagesChargedAsync(user)).Pages.Should().Be(1, "Mathpix had the page, so it billed it");
     }
 
     [Fact]
@@ -315,7 +314,7 @@ public class McpScanImportTests : IntegrationTestBase, IDisposable
         });
         renamed.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await renamed.Content.ReadAsStringAsync()).Should().Contain("isn't a JPEG or PNG image");
-        api.Requests.Should().Equal("POST api.mathpix.com/v3/text");
+        api.Requests.First().Should().Be("POST api.mathpix.com/v3/pdf");
         (await PagesChargedAsync(user)).Pages.Should().Be(1);
     }
 }
