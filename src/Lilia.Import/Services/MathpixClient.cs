@@ -284,60 +284,6 @@ public class MathpixClient : IMathpixClient
         return false;
     }
 
-    public async Task<MathpixTextResponse> ReadImageAsync(string filePath, string contentType, CancellationToken ct = default)
-    {
-        // One scanned page (PDF and scan import, 20 Nov 2026). /v3/pdf takes documents only (PDF, EPUB, Word...); JPEG and
-        // PNG go to /v3/text (docs.mathpix.com/reference/supported-formats). A multipart upload with options_json, not a
-        // base64 src, which Mathpix caps at 2 MB (docs.mathpix.com/reference/post-v3-text).
-        var fileInfo = new FileInfo(filePath);
-        if (!fileInfo.Exists)
-            throw new FileNotFoundException("Image file not found", filePath);
-
-        using var content = new MultipartFormDataContent();
-        var fileContent = new StreamContent(new FileStream(filePath, FileMode.Open, FileAccess.Read));
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        content.Add(fileContent, "file", Path.GetFileName(filePath));
-        var optionsJson = JsonSerializer.Serialize(new MathpixTextRequest());
-        content.Add(new StringContent(optionsJson, System.Text.Encoding.UTF8, "application/json"), "options_json");
-
-        _logger.LogInformation("[Mathpix] Reading image: {FileName} ({SizeKb:F0} KB)", fileInfo.Name, fileInfo.Length / 1024.0);
-
-        var response = await _httpClient.PostAsync("/v3/text", content, ct);
-
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new LiliaExternalServiceException(
-                "Mathpix", LiliaErrorCodes.MathpixAuthFailed,
-                "Scan import is unavailable. Please contact support.",
-                statusCode: 503,
-                internalDetails: "Mathpix API returned 401 on /v3/text — check MATHPIX__APPKEY.");
-
-        if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            throw new LiliaExternalServiceException(
-                "Mathpix", LiliaErrorCodes.MathpixRateLimited,
-                "Scan import is temporarily unavailable due to high demand. Please try again in a few minutes.",
-                statusCode: 503);
-
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-            throw new LiliaExternalServiceException(
-                "Mathpix", LiliaErrorCodes.ExternalServiceError,
-                "The scan reading service returned an unexpected error. Please try again.",
-                statusCode: 502,
-                internalDetails: $"Mathpix /v3/text HTTP {(int)response.StatusCode}: {body}");
-
-        var result = JsonSerializer.Deserialize<MathpixTextResponse>(body)
-            ?? throw new LiliaExternalServiceException(
-                "Mathpix", LiliaErrorCodes.ExternalServiceError,
-                "The scan reading service returned an unreadable response. Please try again.",
-                internalDetails: "Failed to deserialize MathpixTextResponse");
-
-        // An answer with an error (an image with no text, or one Mathpix can't open) is returned as it is: Mathpix
-        // answered, so the caller counts it, then refuses it in words.
-        _logger.LogInformation("[Mathpix] Image read: {Chars} characters, handwritten {Handwritten}, confidence {Confidence}, error {Error}",
-            result.Text?.Length ?? 0, result.IsHandwritten, result.Confidence, result.ErrorInfo?.Id ?? result.Error);
-        return result;
-    }
-
     /// <summary>The only place a figure in Mathpix's Markdown may come from: its own CDN (security hotfix, 20 Nov 2026).</summary>
     internal const string ImageHost = "cdn.mathpix.com";
 
@@ -369,23 +315,35 @@ public class MathpixClient : IMathpixClient
         // Security hotfix (20 Nov 2026): this fetched any address found in Mathpix's Markdown, through the client that
         // carries the app_key header on every request. A scanned page whose text came out as ![](https://elsewhere/x)
         // sent the key to that host, or reached an internal address from the server. Now: Mathpix's CDN only, through
-        // a client with no key and no redirects, 10 s, 10 MB at most.
+        // a client with no key and no redirects, 10 s, 10 MB at most; and (figures in imported scans, 20 Nov 2026) a PNG
+        // or JPEG by its first bytes, or it isn't a figure.
         if (!IsMathpixImage(imageUrl))
             throw new InvalidOperationException($"Not a Mathpix image address; not fetched: {imageUrl}");
-        using var response = await ImageHttp.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        using var response = await ImageHttp.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         if (response.StatusCode != HttpStatusCode.OK)
             throw new HttpRequestException($"Mathpix image answered {(int)response.StatusCode}.");
         if (response.Content.Headers.ContentLength is > MaxImageBytes)
             throw new InvalidOperationException("Mathpix image is over 10 MB.");
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
         using var copy = new MemoryStream();
         var buffer = new byte[81920];
         int read;
-        while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+        while ((read = await stream.ReadAsync(buffer, timeout.Token)) > 0)
         {
             if (copy.Length + read > MaxImageBytes) throw new InvalidOperationException("Mathpix image is over 10 MB.");
             copy.Write(buffer, 0, read);
         }
-        return copy.ToArray();
+        var bytes = copy.ToArray();
+        if (ImageType(bytes) is null) throw new InvalidOperationException("Mathpix image is not a PNG or JPEG.");
+        return bytes;
     }
+
+    /// <summary><c>image/png</c> or <c>image/jpeg</c> from the first bytes, or null.</summary>
+    public static string? ImageType(byte[] bytes) =>
+        bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+            && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A ? "image/png"
+        : bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF ? "image/jpeg"
+        : null;
 }

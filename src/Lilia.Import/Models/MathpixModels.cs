@@ -31,52 +31,6 @@ public class MathpixPdfRequest
     public MathpixRequestMetadata Metadata { get; set; } = new();
 }
 
-/// <summary>
-/// <c>POST /v3/text</c>'s options, for one scanned page (a photo of handwritten notes): Mathpix Markdown out, with the
-/// same math delimiters and spacing as the PDF route, so the same Markdown reader takes it; <c>metadata.improve_mathpix</c>
-/// false, as on every Mathpix call (docs.mathpix.com/reference/post-v3-text and /concepts/privacy; PDF and scan import,
-/// 20 Nov 2026).
-/// </summary>
-public class MathpixTextRequest
-{
-    [JsonPropertyName("formats")]
-    public string[] Formats { get; set; } = ["text"];
-
-    [JsonPropertyName("math_inline_delimiters")]
-    public string[] MathInlineDelimiters { get; set; } = ["$", "$"];
-
-    [JsonPropertyName("math_display_delimiters")]
-    public string[] MathDisplayDelimiters { get; set; } = ["$$", "$$"];
-
-    [JsonPropertyName("rm_spaces")]
-    public bool RmSpaces { get; set; } = true;
-
-    [JsonPropertyName("metadata")]
-    public MathpixRequestMetadata Metadata { get; set; } = new();
-}
-
-/// <summary><c>POST /v3/text</c>'s answer: the page as Mathpix Markdown, or an error (PDF and scan import, 20 Nov 2026).</summary>
-public class MathpixTextResponse
-{
-    [JsonPropertyName("request_id")]
-    public string? RequestId { get; set; }
-
-    [JsonPropertyName("text")]
-    public string? Text { get; set; }
-
-    [JsonPropertyName("confidence")]
-    public double? Confidence { get; set; }
-
-    [JsonPropertyName("is_handwritten")]
-    public bool? IsHandwritten { get; set; }
-
-    [JsonPropertyName("error")]
-    public string? Error { get; set; }
-
-    [JsonPropertyName("error_info")]
-    public MathpixErrorInfo? ErrorInfo { get; set; }
-}
-
 public class MathpixRequestMetadata
 {
     [JsonPropertyName("improve_mathpix")]

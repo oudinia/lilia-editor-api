@@ -652,9 +652,19 @@ public class JobService : IJobService
                     // as it is read.
                     await RecordPdfPagesAsync(userId, "image", ScanImages.PagesPerImage);
 
-                    // The image isn't kept as the review's source file: the review's source viewer shows PDFs.
-                    (reviewSessionId, createdDocument) = await ImportReadPagesAsync(
-                        userId, job, request, importDocument, sourceFilePath: null, tracker);
+                    // Read as a one-page PDF since 20 Nov 2026 (its figures cropped): its tex.zip as a LaTeX project, else its
+                    // Markdown. The image isn't kept as the review's source file: the review's source viewer shows PDFs.
+                    if (importDocument.LatexSource is { Length: > 0 } scanLatex && importDocument.LatexProjectZip is { Length: > 0 } scanZip)
+                    {
+                        var scanTitle = !string.IsNullOrWhiteSpace(request.Title) ? request.Title : Path.GetFileNameWithoutExtension(request.Filename);
+                        (reviewSessionId, createdDocument) = await ImportPdfAsLatexProjectAsync(
+                            userId, job, request, scanTitle, scanLatex, scanZip, keptPdf: null);
+                    }
+                    else
+                    {
+                        (reviewSessionId, createdDocument) = await ImportReadPagesAsync(
+                            userId, job, request, importDocument, sourceFilePath: null, tracker);
+                    }
                 }
                 finally
                 {
@@ -908,6 +918,9 @@ public class JobService : IJobService
             sourceFilePath: sourceFilePath,
             rawImportData: importDocument.RawImportData);
         var sessionId = sessionResult.Session.Id;
+        // Mathpix's reading made safe before anyone sees or finalizes it: no unsettable symbol in a formula, no figure id
+        // in the text (figures in imported scans, 20 Nov 2026).
+        await ScanImportCleanup.ApplyAsync(_context, sessionId, _logger);
 
         await tracker.ReportSavingAsync(reviewBlocks.Count, reviewBlocks.Count);
 
@@ -971,10 +984,13 @@ public class JobService : IJobService
             OwnerId = userId,
             DocumentTitle = title,
             Status = "parsing",
-            SourceFormat = "pdf",
+            // A scan's review says so (the web's review page knows "image" since web #716).
+            SourceFormat = request.Format.Equals(ScanImages.Format, StringComparison.OrdinalIgnoreCase) ? "image" : "pdf",
             SourceFilePath = keptPdf,
             RawImportData = latexSource,
-            AutoFinalizeEnabled = request.SkipReview,
+            // Never finalized by the LaTeX import itself: the cleanup below runs first, then this method finalizes when no
+            // review was asked (20 Nov 2026).
+            AutoFinalizeEnabled = false,
             CreatedAt = now,
             UpdatedAt = now,
             ExpiresAt = now.AddDays(30),
@@ -987,6 +1003,7 @@ public class JobService : IJobService
         _context.Entry(definition).State = EntityState.Detached;
 
         await _latexImportExecutor.RunAsync(job.Id, sessionId);
+        await ScanImportCleanup.ApplyAsync(_context, sessionId, _logger);
 
         var staged = await _context.ImportReviewSessions.AsNoTracking()
             .Where(s => s.Id == sessionId)

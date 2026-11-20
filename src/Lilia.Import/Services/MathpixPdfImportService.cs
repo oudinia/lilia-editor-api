@@ -156,45 +156,31 @@ public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMa
     }
 
     /// <summary>
-    /// One scanned page through <c>POST /v3/text</c>: its Mathpix Markdown read by the same reader as a PDF's Markdown
-    /// (headings, $$ equations, tables), one page for the plan. A scan has no tex.zip: /v3/text answers Markdown only
-    /// (PDF and scan import, 20 Nov 2026).
+    /// One scanned page (PDF and scan import, 20 Nov 2026), wrapped in a one-page PDF (<see cref="ImagePdf"/>) and read as a
+    /// PDF is: its tex.zip, or its Markdown, with the figures Mathpix cropped. One page for the plan.
     /// </summary>
     public async Task<ImportDocument> ParseImageAsync(string filePath, string contentType, CancellationToken cancellationToken = default)
     {
+        // Through /v3/pdf as a one-page PDF (figures in imported scans, 20 Nov 2026): /v3/text, the route until then, doesn't
+        // crop figures ("does not crop sub-regions or upload them to our CDN", docs.mathpix.com/reference/post-v3-text), and
+        // the launch bot's handwritten page lost its two sketches. /v3/pdf crops them into its tex.zip and its Markdown.
         LastCharge = null;
-        var read = await _mathpixClient.ReadImageAsync(filePath, contentType, cancellationToken);
-        // Mathpix answered: the image is billed, even when its answer is an error or holds no text. One page, the worst
-        // case: an image of more than 12 rows of text, as a page of handwritten notes usually is, is billed at the page rate.
-        LastCharge = new MathpixCharge(1);
-        if (!string.IsNullOrWhiteSpace(read.Error) || read.ErrorInfo is not null)
-            throw new LiliaExternalServiceException(
-                "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
-                "Lilia couldn't read this image: is it a clear photo or scan of a page, right way up?",
-                internalDetails: $"Mathpix /v3/text error {read.ErrorInfo?.Id}: {read.Error ?? read.ErrorInfo?.Error}");
-        var markdown = read.Text ?? "";
-        if (string.IsNullOrWhiteSpace(markdown))
-            throw new LiliaExternalServiceException(
-                "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
-                "Lilia found no text or maths in this image: is it a clear photo or scan of a page?",
-                internalDetails: $"Mathpix /v3/text returned no text (request {read.RequestId})");
-
-        var elements = await ParseMarkdownAsync(markdown, cancellationToken);
-        var warnings = new List<ImportWarning>();
-        elements = HeadingLevels.Promote(PdfImportService.PostProcess(elements, warnings));
-        var title = PdfImportService.ExtractTitle(elements);
-
-        _logger.LogInformation("[Mathpix] Image parsed: {ElementCount} elements, title: \"{Title}\"", elements.Count, title);
-        return new ImportDocument
+        var pdf = ImagePdf.Wrap(await File.ReadAllBytesAsync(filePath, cancellationToken), contentType)
+            ?? throw new LiliaValidationException(
+                "Lilia couldn't read this image: is it a complete JPEG or PNG file?", LiliaErrorCodes.ValidationFailed);
+        var pdfPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.pdf");
+        try
         {
-            SourcePath = filePath,
-            Title = title,
-            Elements = elements,
-            Warnings = warnings,
-            Metadata = new ImportMetadata(),
-            RawImportData = markdown,
-            PageCount = 1,
-        };
+            await File.WriteAllBytesAsync(pdfPath, pdf, cancellationToken);
+            var document = await ParseAsync(pdfPath, null, cancellationToken);
+            document.SourcePath = filePath;
+            document.PageCount = 1;
+            return document;
+        }
+        finally
+        {
+            try { File.Delete(pdfPath); } catch (IOException) { }
+        }
     }
 
     /// <summary>
@@ -217,7 +203,9 @@ public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMa
                 _logger.LogWarning("[Mathpix] PDF {PdfId}: the tex.zip has no .tex to read; using the Markdown", pdfId);
                 return null;
             }
-            return (zip, extracted.InlinedTex);
+            // A figure without a caption is a bare \includegraphics in Mathpix's LaTeX: set it in a figure environment, so it
+            // is read as a figure block and its image stored, not its id printed as text (20 Nov 2026).
+            return (zip, MathpixFigures.AsFigureEnvironments(extracted.InlinedTex));
         }
         catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
@@ -229,7 +217,8 @@ public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMa
     internal async Task<List<ImportElement>> ParseMarkdownAsync(string markdown, CancellationToken ct = default)
     {
         var elements = new List<ImportElement>();
-        var lines = markdown.Split('\n');
+        // An image link in the middle of a line is a figure of its own, never a paragraph's text (20 Nov 2026).
+        var lines = MathpixFigures.ImagesOnTheirOwnLines(markdown).Split('\n');
         var order = 0;
         var i = 0;
 
@@ -288,24 +277,33 @@ public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMa
                 byte[] imageData = [];
                 var mimeType = PdfImportService.GuessMimeType(imageUrl);
 
-                if (!string.IsNullOrWhiteSpace(imageUrl))
+                // A figure Mathpix cropped, from its CDN only (figures in imported scans, 20 Nov 2026). Anything else is never
+                // fetched; a figure that couldn't be fetched stays a figure, empty and flagged in the review, never text.
+                if (MathpixClient.IsMathpixImage(imageUrl))
                 {
                     try
                     {
                         imageData = await _mathpixClient.GetImageAsync(imageUrl, ct);
+                        mimeType = MathpixClient.ImageType(imageData) ?? mimeType;
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                     {
-                        _logger.LogWarning(ex, "[Mathpix] Failed to fetch image: {Url}", imageUrl);
+                        _logger.LogWarning(ex, "[Mathpix] Failed to fetch a cropped figure");
+                        imageData = [];
                     }
+                }
+                else
+                {
+                    _logger.LogWarning("[Mathpix] An image link not on cdn.mathpix.com was not fetched");
                 }
 
                 elements.Add(new ImportImage
                 {
                     Data = imageData,
                     MimeType = mimeType,
-                    Filename = !string.IsNullOrWhiteSpace(imageUrl) ? Path.GetFileName(new Uri(imageUrl, UriKind.RelativeOrAbsolute).LocalPath) : null,
-                    AltText = !string.IsNullOrWhiteSpace(altText) ? altText : null,
+                    Filename = MathpixClient.IsMathpixImage(imageUrl) ? Path.GetFileName(new Uri(imageUrl).LocalPath) : null,
+                    // The alt text is Mathpix's (a chemical diagram's SMILES); never the address or the figure's id.
+                    AltText = !string.IsNullOrWhiteSpace(altText) && !MathpixFigures.HasRawReference(altText) ? altText : null,
                     Order = order++
                 });
                 i++;

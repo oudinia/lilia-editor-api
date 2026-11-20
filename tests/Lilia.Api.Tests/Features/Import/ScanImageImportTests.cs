@@ -11,14 +11,14 @@ using Microsoft.Extensions.Options;
 namespace Lilia.Api.Tests.Features.Import;
 
 /// <summary>
-/// PDF and scan import, 20 Nov 2026: a scanned page (a JPEG or PNG photo of handwritten maths notes) is read by Mathpix's
-/// <c>POST /v3/text</c>, the documented route for an image (<c>/v3/pdf</c> takes documents only:
-/// docs.mathpix.com/reference/supported-formats), as a multipart upload with <c>options_json</c> asking for Mathpix
-/// Markdown with Lilia's delimiters and <c>metadata.improve_mathpix: false</c>. Its Markdown goes through the reader a
-/// PDF's Markdown uses.
+/// PDF and scan import, 20 Nov 2026: a scanned page (a JPEG or PNG photo of handwritten maths notes) is read by Mathpix.
+/// Since the launch bot's handwritten page lost its two sketches (20 Nov 2026), the image goes as a one-page PDF to
+/// <c>POST /v3/pdf</c>, which crops figures, rather than to <c>/v3/text</c>, which doesn't ("does not crop sub-regions or
+/// upload them to our CDN", docs.mathpix.com/reference/post-v3-text). <see cref="ImagePdf"/> makes that PDF: a JPEG
+/// embedded as it is, a PNG losslessly.
 ///
-/// <para>What Mathpix bills is what the plan counts (the owner, 20 Nov 2026): once Mathpix has taken the file, a pdf_id
-/// or an answer from /v3/text, the read is charged even when the import then fails; before that, nothing is.</para>
+/// <para>What Mathpix bills is what the plan counts (the owner, 20 Nov 2026): once Mathpix has taken the file (a pdf_id),
+/// the read is charged even when the import then fails; before that, nothing is.</para>
 ///
 /// <para>No real Mathpix call: <see cref="MathpixTexZipTests.FakeMathpix"/> answers with the shapes the docs give.</para>
 /// </summary>
@@ -26,6 +26,21 @@ public class ScanImageImportTests
 {
     internal static readonly byte[] Png = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+
+    /// <summary>A real image of the given size and format, drawn here.</summary>
+    internal static byte[] Image(SkiaSharp.SKEncodedImageFormat format, int width = 40, int height = 30, bool transparent = false)
+    {
+        using var bitmap = new SkiaSharp.SKBitmap(width, height);
+        using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+        {
+            canvas.Clear(transparent ? SkiaSharp.SKColors.Transparent : SkiaSharp.SKColors.White);
+            using var pen = new SkiaSharp.SKPaint { Color = SkiaSharp.SKColors.Black, StrokeWidth = 2 };
+            canvas.DrawLine(2, 2, width - 2, height - 2, pen);
+        }
+        using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(format, 90);
+        return data.ToArray();
+    }
 
     private static async Task<(MathpixPdfImportService Service, string Path)> ScanAsync(MathpixTexZipTests.FakeMathpix api, byte[]? image = null)
     {
@@ -35,28 +50,7 @@ public class ScanImageImportTests
     }
 
     [Fact]
-    public async Task A_scanned_page_goes_to_v3_text_as_a_file_with_Lilias_delimiters_and_improve_mathpix_off()
-    {
-        var api = new MathpixTexZipTests.FakeMathpix();
-        var (service, path) = await ScanAsync(api);
-        try
-        {
-            await service.ParseImageAsync(path, "image/png");
-        }
-        finally { File.Delete(path); }
-
-        api.Requests.Should().Equal("POST api.mathpix.com/v3/text");
-        api.TextImageType.Should().Be("image/png");
-        var options = api.TextOptions!.RootElement;
-        options.GetProperty("metadata").GetProperty("improve_mathpix").GetBoolean().Should().BeFalse();
-        options.GetProperty("formats").EnumerateArray().Select(f => f.GetString()).Should().Equal("text");
-        options.GetProperty("math_inline_delimiters").EnumerateArray().Select(f => f.GetString()).Should().Equal("$", "$");
-        options.GetProperty("math_display_delimiters").EnumerateArray().Select(f => f.GetString()).Should().Equal("$$", "$$");
-        options.TryGetProperty("src", out _).Should().BeFalse("the image is uploaded, not sent as base64, which Mathpix caps at 2 MB");
-    }
-
-    [Fact]
-    public async Task A_scanned_pages_Markdown_becomes_a_heading_text_and_a_display_equation_counted_as_one_page()
+    public async Task A_scanned_page_goes_to_v3_pdf_as_a_one_page_PDF_with_improve_mathpix_off_and_is_deleted_after()
     {
         var api = new MathpixTexZipTests.FakeMathpix();
         var (service, path) = await ScanAsync(api);
@@ -64,40 +58,50 @@ public class ScanImageImportTests
         try { doc = await service.ParseImageAsync(path, "image/png"); }
         finally { File.Delete(path); }
 
-        doc.PageCount.Should().Be(1);
-        doc.LatexProjectZip.Should().BeNull("/v3/text answers Markdown only");
-        doc.Elements.OfType<ImportHeading>().Should().ContainSingle(h => h.Text.Contains("Gaussian integral"));
-        doc.Elements.OfType<ImportEquation>().Should().ContainSingle(e => (e.LatexContent ?? "").Contains("\\sqrt{\\frac{\\pi}{\\alpha}}"));
-        service.LastCharge.Should().Be(new Lilia.Import.Interfaces.MathpixCharge(1));
+        api.Requests.First().Should().Be("POST api.mathpix.com/v3/pdf");
+        api.Requests.Should().NotContain(r => r.Contains("/v3/text"));
+        api.Requests.Last().Should().Be($"DELETE api.mathpix.com/v3/pdf/{MathpixTexZipTests.PdfId}");
+        PdfPages.LooksLikePdf(api.UploadedFile!).Should().BeTrue();
+        PdfPages.Exact(api.UploadedFile!).Should().Be(1);
+        api.UploadOptions!.RootElement.GetProperty("metadata").GetProperty("improve_mathpix").GetBoolean().Should().BeFalse();
+        doc.PageCount.Should().Be(1, "an image is one page for the plan");
+        doc.LatexProjectZip.Should().NotBeNull("a scan now has the tex.zip a PDF has, its figures in it");
     }
 
     [Fact]
-    public async Task An_image_Mathpix_answered_with_an_error_is_refused_in_words_and_still_charged_as_one_page()
+    public void A_JPEG_is_embedded_as_it_is_and_a_PNG_losslessly_each_on_one_page()
     {
-        var api = new MathpixTexZipTests.FakeMathpix
-        {
-            TextAnswer = () => MathpixTexZipTests.FakeMathpix.Json(new
-            {
-                request_id = "x",
-                error = "Content not found",
-                error_info = new { id = "image_no_content", message = "Content not found" },
-            }),
-        };
-        var (service, path) = await ScanAsync(api);
+        var jpeg = Image(SkiaSharp.SKEncodedImageFormat.Jpeg);
+        var fromJpeg = ImagePdf.Wrap(jpeg, "image/jpeg")!;
+        fromJpeg.AsSpan().IndexOf(jpeg).Should().BeGreaterThan(0, "the JPEG's own bytes, not re-encoded");
+        Encoding.Latin1.GetString(fromJpeg).Should().Contain("/DCTDecode").And.Contain("/Width 40 /Height 30");
+        PdfPages.Exact(fromJpeg).Should().Be(1);
+
+        var fromPng = ImagePdf.Wrap(Image(SkiaSharp.SKEncodedImageFormat.Png, transparent: true), "image/png")!;
+        Encoding.Latin1.GetString(fromPng).Should().Contain("/FlateDecode").And.Contain("/DeviceRGB");
+        PdfPages.Exact(fromPng).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_damaged_image_is_refused_in_words_before_Mathpix()
+    {
+        var api = new MathpixTexZipTests.FakeMathpix();
+        var (service, path) = await ScanAsync(api, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3]);
         try
         {
             var act = () => service.ParseImageAsync(path, "image/png");
-            (await act.Should().ThrowAsync<LiliaExternalServiceException>()).Which.UserMessage.Should().Contain("couldn't read this image");
+            (await act.Should().ThrowAsync<LiliaValidationException>()).Which.UserMessage.Should().Contain("couldn't read this image");
         }
         finally { File.Delete(path); }
 
-        service.LastCharge.Should().Be(new Lilia.Import.Interfaces.MathpixCharge(1), "Mathpix answered, so it bills the image");
+        api.Requests.Should().BeEmpty();
+        service.LastCharge.Should().BeNull();
     }
 
     [Fact]
-    public async Task An_image_Mathpix_refused_at_the_door_costs_nothing()
+    public async Task An_image_Mathpix_took_and_then_failed_on_is_still_charged()
     {
-        var api = new MathpixTexZipTests.FakeMathpix { TextAnswer = () => new HttpResponseMessage(HttpStatusCode.Unauthorized) };
+        var api = new MathpixTexZipTests.FakeMathpix { PdfStatus = "error" };
         var (service, path) = await ScanAsync(api);
         try
         {
@@ -106,7 +110,7 @@ public class ScanImageImportTests
         }
         finally { File.Delete(path); }
 
-        service.LastCharge.Should().BeNull();
+        service.LastCharge.Should().NotBeNull("Mathpix had the page");
     }
 
     [Fact]
