@@ -54,8 +54,14 @@ public class EntitlementService : IEntitlementService
 
     private readonly int _pdfSitePages;
 
-    internal const string PdfNotInPlanMessage =
-        "PDF import is part of Pro: each page is read by a paid service. Upgrade to import PDFs, or import the LaTeX, Word or Markdown version.";
+    /// <summary>
+    /// A plan whose <c>pdfPagesPerMonth</c> is 0 (Free today), in words naming that limit: PDFs and scanned images (one
+    /// page each) share it, and the connector and the editor show this message as it is (PDF and scan import, 20 Nov 2026).
+    /// Giving Free some pages is the plan's value alone: this message is then never reached.
+    /// </summary>
+    internal static string PdfNotInPlanMessage(string? planName) =>
+        $"PDF and scan import is part of Pro: your {(string.IsNullOrWhiteSpace(planName) ? "current" : planName)} plan includes 0 PDF pages a month, "
+        + "and each PDF page or scanned image is read by a paid service. Upgrade to import PDFs and scans, or import the LaTeX, Word or Markdown version.";
 
     public async Task EnsureCanImportPdfAsync(string userId, int pages, CancellationToken ct = default)
     {
@@ -65,13 +71,13 @@ public class EntitlementService : IEntitlementService
         var plan = await GetActivePlanAsync(userId, ct);
         var cap = plan is null ? 0 : ReadCap(plan.Caps, "pdfPagesPerMonth");
         if (cap == 0)
-            throw new QuotaExceededException("pdfImport", 0, 0, null, PdfNotInPlanMessage);
+            throw new QuotaExceededException("pdfImport", 0, 0, null, PdfNotInPlanMessage(plan?.DisplayName));
         var used = await PdfPagesThisMonthAsync(userId, ct);
         if (cap > 0 && used + pages > cap)
             throw new QuotaExceededException("pdfPagesPerMonth", cap, used, NextMonthStart(),
                 used >= cap
                     ? $"This month's {cap} PDF pages are used; they renew on {NextMonthStart():d MMMM}."
-                    : $"This PDF has {pages} pages and {cap - used} of this month's {cap} PDF pages are left. They renew on {NextMonthStart():d MMMM}.");
+                    : $"This file has {pages} {(pages == 1 ? "page" : "pages")} to read (an image counts as one) and {cap - used} of this month's {cap} PDF pages are left. They renew on {NextMonthStart():d MMMM}.");
         if (_pdfSitePages > 0)
         {
             var start = MonthStart();

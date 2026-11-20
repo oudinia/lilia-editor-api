@@ -127,12 +127,13 @@ public sealed class LiliaMcpPrompts
     }
 
     [McpServerPrompt(Name = "import_and_tidy", Title = "Import a file")]
-    [Description("Bring a .tex, .lml or Word file into Lilia, check it and say what to fix. 2 to 3 actions.")]
+    [Description("Bring a .tex, .lml, Word or PDF file, or a scan of handwritten notes, into Lilia, check it and say what to fix. 2 to 3 actions.")]
     public static string ImportAndTidy(
         [Description("Optional: what the file is, e.g. my thesis chapter in LaTeX.")] string? file = null) => $"""
         Import {(string.IsNullOrWhiteSpace(file) ? "the author's file" : file)} into Lilia.
 
-        1. If you have the file's content in this conversation (.tex or .lml text, or a .docx as base64), call import_document with it.
+        1. If you have the file's content in this conversation (.tex or .lml text, or a .docx, .pdf, .jpg or .png as base64), call import_document with it.
+           A PDF or an image answers with an importId: call import_status every 10 to 20 seconds until it is done.
            Otherwise call start_import and give the author the link to drop the file, then import_status until it is done.
            To add a section or a paste to a document the author already has, call paste_content on it instead: it checks too, so skip step 2.
         2. check_document on the new document.

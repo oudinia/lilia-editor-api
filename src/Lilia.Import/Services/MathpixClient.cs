@@ -284,6 +284,60 @@ public class MathpixClient : IMathpixClient
         return false;
     }
 
+    public async Task<MathpixTextResponse> ReadImageAsync(string filePath, string contentType, CancellationToken ct = default)
+    {
+        // One scanned page (PDF and scan import, 20 Nov 2026). /v3/pdf takes documents only (PDF, EPUB, Word...); JPEG and
+        // PNG go to /v3/text (docs.mathpix.com/reference/supported-formats). A multipart upload with options_json, not a
+        // base64 src, which Mathpix caps at 2 MB (docs.mathpix.com/reference/post-v3-text).
+        var fileInfo = new FileInfo(filePath);
+        if (!fileInfo.Exists)
+            throw new FileNotFoundException("Image file not found", filePath);
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new StreamContent(new FileStream(filePath, FileMode.Open, FileAccess.Read));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        content.Add(fileContent, "file", Path.GetFileName(filePath));
+        var optionsJson = JsonSerializer.Serialize(new MathpixTextRequest());
+        content.Add(new StringContent(optionsJson, System.Text.Encoding.UTF8, "application/json"), "options_json");
+
+        _logger.LogInformation("[Mathpix] Reading image: {FileName} ({SizeKb:F0} KB)", fileInfo.Name, fileInfo.Length / 1024.0);
+
+        var response = await _httpClient.PostAsync("/v3/text", content, ct);
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new LiliaExternalServiceException(
+                "Mathpix", LiliaErrorCodes.MathpixAuthFailed,
+                "Scan import is unavailable. Please contact support.",
+                statusCode: 503,
+                internalDetails: "Mathpix API returned 401 on /v3/text — check MATHPIX__APPKEY.");
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            throw new LiliaExternalServiceException(
+                "Mathpix", LiliaErrorCodes.MathpixRateLimited,
+                "Scan import is temporarily unavailable due to high demand. Please try again in a few minutes.",
+                statusCode: 503);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new LiliaExternalServiceException(
+                "Mathpix", LiliaErrorCodes.ExternalServiceError,
+                "The scan reading service returned an unexpected error. Please try again.",
+                statusCode: 502,
+                internalDetails: $"Mathpix /v3/text HTTP {(int)response.StatusCode}: {body}");
+
+        var result = JsonSerializer.Deserialize<MathpixTextResponse>(body)
+            ?? throw new LiliaExternalServiceException(
+                "Mathpix", LiliaErrorCodes.ExternalServiceError,
+                "The scan reading service returned an unreadable response. Please try again.",
+                internalDetails: "Failed to deserialize MathpixTextResponse");
+
+        // An answer with an error (an image with no text, or one Mathpix can't open) is returned as it is: Mathpix
+        // answered, so the caller counts it, then refuses it in words.
+        _logger.LogInformation("[Mathpix] Image read: {Chars} characters, handwritten {Handwritten}, confidence {Confidence}, error {Error}",
+            result.Text?.Length ?? 0, result.IsHandwritten, result.Confidence, result.ErrorInfo?.Id ?? result.Error);
+        return result;
+    }
+
     public async Task<byte[]> GetImageAsync(string imageUrl, CancellationToken ct = default)
     {
         // Mathpix returns full URLs for images in markdown output

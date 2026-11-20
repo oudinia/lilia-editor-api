@@ -75,6 +75,17 @@ public class MathpixTexZipTests
         ![](https://cdn.mathpix.com/cropped/2026_11_19_0a1b2c3d4e5f-1.jpg?height=200&width=300&top_left_y=10&top_left_x=20)
         """;
 
+    /// <summary>A handwritten page as Mathpix's /v3/text reads it, with Lilia's $ and $$ delimiters (PDF and scan import, 20 Nov 2026).</summary>
+    internal const string ScanMarkdown = """
+        # Lecture 7: The Gaussian integral in QM
+
+        Recall that for $\operatorname{Re}(\alpha)>0$, read from the scan,
+
+        $$
+        I=\int_{-\infty}^{\infty} e^{-\alpha x^{2}+\beta x} d x=\sqrt{\frac{\pi}{\alpha}} e^{\beta^{2} / 4 \alpha}
+        $$
+        """;
+
     /// <summary>
     /// Mathpix's v3 PDF API as its docs describe it. Records every request, in order, and the upload's
     /// <c>options_json</c>. <see cref="TexZipStatuses"/> are the tex.zip conversion statuses the converter answers in
@@ -87,6 +98,18 @@ public class MathpixTexZipTests
         public string PdfStatus { get; init; } = "completed";
         public Queue<string> TexZipStatuses { get; init; } = new(["completed"]);
         public Func<HttpResponseMessage> TexZipDownload { get; init; } = () => Zip(TexZip());
+        /// <summary>The <c>options_json</c> of a <c>POST /v3/text</c> (a scanned page; PDF and scan import, 20 Nov 2026).</summary>
+        public JsonDocument? TextOptions { get; private set; }
+        /// <summary>The content type of the image sent to <c>POST /v3/text</c>.</summary>
+        public string? TextImageType { get; private set; }
+        /// <summary>What <c>POST /v3/text</c> answers: by default a handwritten page read as Mathpix Markdown.</summary>
+        public Func<HttpResponseMessage> TextAnswer { get; init; } = () => Json(new
+        {
+            request_id = "2026_11_20_text",
+            text = ScanMarkdown,
+            is_handwritten = true,
+            confidence = 0.93,
+        });
         /// <summary>How long the Markdown download takes: a slow Mathpix conversion, for the deadline.</summary>
         public TimeSpan MarkdownDelay { get; init; } = TimeSpan.Zero;
 
@@ -95,7 +118,7 @@ public class MathpixTexZipTests
             Content = new ByteArrayContent(bytes) { Headers = { ContentType = new("application/zip") } },
         };
 
-        private static HttpResponseMessage Json(object body) => new(HttpStatusCode.OK)
+        internal static HttpResponseMessage Json(object body) => new(HttpStatusCode.OK)
         {
             Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
         };
@@ -112,6 +135,17 @@ public class MathpixTexZipTests
                     if (part.Headers.ContentDisposition?.Name?.Trim('"') == "options_json")
                         UploadOptions = JsonDocument.Parse(await part.ReadAsStringAsync(ct));
                 return Json(new { pdf_id = PdfId });
+            }
+            if (request.Method == HttpMethod.Post && path == "/v3/text")
+            {
+                var form = (MultipartFormDataContent)request.Content!;
+                foreach (var part in form)
+                {
+                    var name = part.Headers.ContentDisposition?.Name?.Trim('"');
+                    if (name == "options_json") TextOptions = JsonDocument.Parse(await part.ReadAsStringAsync(ct));
+                    if (name == "file") TextImageType = part.Headers.ContentType?.MediaType;
+                }
+                return TextAnswer();
             }
             if (request.Method == HttpMethod.Get && path == $"/v3/pdf/{PdfId}")
                 return Json(new { status = PdfStatus, num_pages = 2, num_pages_completed = 2, percent_done = 100.0, error = PdfStatus == "error" ? "PDF is encrypted" : null });

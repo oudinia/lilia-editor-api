@@ -10,7 +10,7 @@ namespace Lilia.Import.Services;
 /// Parses PDF files via the Mathpix Convert API and maps Markdown output to ImportElement types,
 /// producing an ImportDocument compatible with the existing review pipeline.
 /// </summary>
-public partial class MathpixPdfImportService : IPdfParser
+public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMathpixCharge
 {
     private readonly IMathpixClient _mathpixClient;
     private readonly MathpixOptions _options;
@@ -29,6 +29,9 @@ public partial class MathpixPdfImportService : IPdfParser
         _projectExtractor = projectExtractor ?? new LatexProjectExtractor();
     }
 
+    /// <inheritdoc />
+    public MathpixCharge? LastCharge { get; private set; }
+
     public bool CanParse(string filePath)
     {
         return Path.GetExtension(filePath).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
@@ -42,11 +45,28 @@ public partial class MathpixPdfImportService : IPdfParser
         var started = System.Diagnostics.Stopwatch.StartNew();
 
         // Step 1: Submit PDF to Mathpix
+        LastCharge = null;
         var pdfId = await _mathpixClient.SubmitPdfAsync(filePath, cancellationToken);
+        // Mathpix has the PDF and reads it whatever happens here next: from now on the import costs its pages, even if
+        // it fails (PDF and scan import, 20 Nov 2026).
+        LastCharge = new MathpixCharge(null);
 
         try
         {
             return await ReadResultAsync(pdfId, filePath, started, cancellationToken);
+        }
+        catch when (LastCharge is { Pages: null })
+        {
+            // A failed import still says how many pages Mathpix read, when Mathpix knows, before the PDF is deleted.
+            try
+            {
+                LastCharge = new MathpixCharge((await _mathpixClient.GetStatusAsync(pdfId, CancellationToken.None)).NumPages);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Mathpix] Could not read the page count of failed PDF {PdfId}", pdfId);
+            }
+            throw;
         }
         finally
         {
@@ -85,6 +105,7 @@ public partial class MathpixPdfImportService : IPdfParser
         {
             _logger.LogWarning(ex, "[Mathpix] Could not read the page count of {PdfId}", pdfId);
         }
+        LastCharge = new MathpixCharge(pages);
 
         // Step 2b: the LaTeX project (tex.zip), imported as an Overleaf zip is; the Markdown below when it fails or
         // takes too long (PDF import via tex.zip, 19 Nov 2026).
@@ -132,6 +153,48 @@ public partial class MathpixPdfImportService : IPdfParser
 
         _logger.LogInformation("[Mathpix] Parsed {ElementCount} elements, title: \"{Title}\"", elements.Count, title);
         return doc;
+    }
+
+    /// <summary>
+    /// One scanned page through <c>POST /v3/text</c>: its Mathpix Markdown read by the same reader as a PDF's Markdown
+    /// (headings, $$ equations, tables), one page for the plan. A scan has no tex.zip: /v3/text answers Markdown only
+    /// (PDF and scan import, 20 Nov 2026).
+    /// </summary>
+    public async Task<ImportDocument> ParseImageAsync(string filePath, string contentType, CancellationToken cancellationToken = default)
+    {
+        LastCharge = null;
+        var read = await _mathpixClient.ReadImageAsync(filePath, contentType, cancellationToken);
+        // Mathpix answered: the image is billed, even when its answer is an error or holds no text. One page, the worst
+        // case: an image of more than 12 rows of text, as a page of handwritten notes usually is, is billed at the page rate.
+        LastCharge = new MathpixCharge(1);
+        if (!string.IsNullOrWhiteSpace(read.Error) || read.ErrorInfo is not null)
+            throw new LiliaExternalServiceException(
+                "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
+                "Lilia couldn't read this image: is it a clear photo or scan of a page, right way up?",
+                internalDetails: $"Mathpix /v3/text error {read.ErrorInfo?.Id}: {read.Error ?? read.ErrorInfo?.Error}");
+        var markdown = read.Text ?? "";
+        if (string.IsNullOrWhiteSpace(markdown))
+            throw new LiliaExternalServiceException(
+                "Mathpix", LiliaErrorCodes.MathpixProcessingFailed,
+                "Lilia found no text or maths in this image: is it a clear photo or scan of a page?",
+                internalDetails: $"Mathpix /v3/text returned no text (request {read.RequestId})");
+
+        var elements = await ParseMarkdownAsync(markdown, cancellationToken);
+        var warnings = new List<ImportWarning>();
+        elements = HeadingLevels.Promote(PdfImportService.PostProcess(elements, warnings));
+        var title = PdfImportService.ExtractTitle(elements);
+
+        _logger.LogInformation("[Mathpix] Image parsed: {ElementCount} elements, title: \"{Title}\"", elements.Count, title);
+        return new ImportDocument
+        {
+            SourcePath = filePath,
+            Title = title,
+            Elements = elements,
+            Warnings = warnings,
+            Metadata = new ImportMetadata(),
+            RawImportData = markdown,
+            PageCount = 1,
+        };
     }
 
     /// <summary>

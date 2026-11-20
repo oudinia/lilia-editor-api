@@ -37,7 +37,10 @@ public sealed class ConnectorTransfers
         public required string UserId { get; init; }
         public required string App { get; init; }
         public required DateTime ExpiresAt { get; init; }
-        /// <summary>waiting → done (DocumentId set) or failed (Error set).</summary>
+        /// <summary>
+        /// waiting → done (DocumentId set) or failed (Error set). A PDF or scan sent to import_document starts at working
+        /// (<see cref="ConnectorScanImports"/>; PDF and scan import, 20 Nov 2026).
+        /// </summary>
         public string Status { get; set; } = "waiting";
         public Guid? DocumentId { get; set; }
         public string? Title { get; set; }
