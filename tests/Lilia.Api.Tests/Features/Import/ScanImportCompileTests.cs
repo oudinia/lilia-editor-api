@@ -128,11 +128,11 @@ public class ScanImportCompileTests : IntegrationTestBase
     // ── 3. Maths commands in text ────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(@"Then \mathrm{d}x is small.", @"Then $\mathrm{d}$x is small.")]
-    [InlineData(@"Then \textbackslash mathrm\{d\} x is small.", @"Then $\mathrm{d}$ x is small.")]
-    [InlineData(@"Then \textbackslash{}mathrm\{d\}x and \textbackslash frac\{1\}\{2\}.", @"Then $\mathrm{d}$x and $\frac{1}{2}$.")]
-    [InlineData(@"Half is \frac{1}{2}, the angle \alpha, the sum \sum_{i=1}^{n} x_i.", @"Half is $\frac{1}{2}$, the angle $\alpha$, the sum $\sum_{i=1}^{n}$ x_i.")]
-    [InlineData(@"Spaced \mathrm {d} x and \sqrt[3]{8}.", @"Spaced $\mathrm {d}$ x and $\sqrt[3]{8}$.")]
+    [InlineData(@"Then \mathrm{d}x is small.", @"Then $\mathrm{d}x$ is small.")]
+    [InlineData(@"Then \textbackslash mathrm\{d\} x is small.", @"Then $\mathrm{d} x$ is small.")]
+    [InlineData(@"Then \textbackslash{}mathrm\{d\}x and \textbackslash frac\{1\}\{2\}.", @"Then $\mathrm{d}x$ and $\frac{1}{2}$.")]
+    [InlineData(@"Half is \frac{1}{2}, the angle \alpha, the sum \sum_{i=1}^{n} x_i.", @"Half is $\frac{1}{2}$, the angle $\alpha$, the sum $\sum_{i=1}^{n} x_i$.")]
+    [InlineData(@"Spaced \mathrm {d} x and \sqrt[3]{8}.", @"Spaced $\mathrm {d} x$ and $\sqrt[3]{8}$.")]
     [InlineData(@"Maths stays: \( \mathrm{d}x \), $\alpha$, $$\frac{1}{2}$$ and \[ \sum x \].", @"Maths stays: \( \mathrm{d}x \), $\alpha$, $$\frac{1}{2}$$ and \[ \sum x \].")]
     [InlineData(@"Text commands stay: \textbf{bold}, \ldots, \textbackslash section and 50\% of \emph{it}.", @"Text commands stay: \textbf{bold}, \ldots, \textbackslash section and 50\% of \emph{it}.")]
     public void A_maths_command_in_text_becomes_inline_maths(string text, string expected) =>
@@ -153,7 +153,7 @@ public class ScanImportCompileTests : IntegrationTestBase
         var doc = await new LatexParser().ParseTextAsync(tex);
         var paragraphs = doc.Elements.OfType<ImportParagraph>().Select(p => p.Text).ToList();
         var line = paragraphs.Single(p => p.Contains("outside maths"));
-        line.Should().Contain(@"$\mathrm{d}$x").And.Contain(@"$\mathrm{d}$ y").And.Contain(@"$\frac{1}{2}$").And.Contain(@"$\alpha$");
+        line.Should().Contain(@"$\mathrm{d}x$").And.Contain(@"$\mathrm{d} y$").And.Contain(@"$\frac{1}{2}$").And.Contain(@"$\alpha$");
         var rendered = Render.RenderBlockToLatex(B("paragraph", new { text = line }));
         rendered.Should().NotContain(@"\textbackslash").And.NotContain("1{2}");
     }
@@ -229,7 +229,7 @@ public class ScanImportCompileTests : IntegrationTestBase
         texts.Should().NotContain(t => t.Contains(@"\\'e") || t.Contains(@"\\^x"), "no text accent is left in maths");
         texts.Should().Contain(t => t.Contains(@"\\acute{e}")).And.Contain(t => t.Contains(@"\\hat{x}"));
         texts.Should().NotContain(t => t.Contains("textbackslash"));
-        texts.Should().Contain(t => t.Contains(@"$\\mathrm{d}$x"));
+        texts.Should().Contain(t => t.Contains(@"$\\mathrm{d}x$"));
         texts.Should().Contain(t => t.Contains(@"F_{\\text{трения}}"));
         // An accent maths prints the same way needs no warning.
         (await db.ImportDiagnostics.AsNoTracking().CountAsync(d => d.SessionId == sessionId && d.Code == "MathAccentWithoutLetter")).Should().Be(0);
