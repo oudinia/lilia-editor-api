@@ -311,7 +311,11 @@ public class RecentActivityService : IRecentActivityService
         var rows = await _db.Jobs.AsNoTracking()
             .Where(j => j.UserId == userId
                 && (j.JobType == JobTypes.Import || j.JobType == JobTypes.Export)
-                && j.Status != JobStatus.Failed && j.Status != JobStatus.Cancelled)
+                && j.Status != JobStatus.Failed && j.Status != JobStatus.Cancelled
+                // A bulk import file's job (its id is the file's) waits for its document: until the file is promoted
+                // there is nothing to open, so Home's Import card and "Pick up where you left off" left it out (the
+                // launch bot's retest of API #679, 21 Nov 2026). Once promoted it shows once, with its document.
+                && !_db.BulkImportFiles.Any(f => f.Id == j.Id && f.DocumentId == null))
             .OrderByDescending(j => j.CompletedAt ?? j.CreatedAt)
             .Take(perTool)
             .Select(j => new

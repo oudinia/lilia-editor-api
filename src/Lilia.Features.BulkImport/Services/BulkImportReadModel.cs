@@ -60,7 +60,10 @@ public static class BulkImportReadModel
         return new BulkImportFileDto(f.Id, f.OriginalName, f.Pages, pagesDone, pagesFailed, f.Status,
             new BulkImportChunkCountsDto(chunks.Count, done, failed), f.DocumentId, f.Error, f.Warnings,
             TimingsOf(f, chunks, placedPages), PrecisionOf(f, chunks),
-            PreviewAvailable: done + failed > 0,
+            // From the split (21 Nov 2026, the launch bot's retest of #679): the preview has its placeholders at once, so
+            // "Open" needn't wait for the first chunk to be staged. A finished file keeps it only if something was read.
+            PreviewAvailable: chunks.Count > 0
+                && (Array.IndexOf(BulkImportStatuses.FileFinished, f.Status) < 0 || done + failed > 0),
             PromotedAt: f.PromotedAt);
     }
 

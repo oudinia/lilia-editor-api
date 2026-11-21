@@ -40,7 +40,7 @@ public sealed record BulkImportPrecisionDto(double Score, IReadOnlyList<int> Low
 /// One PDF of a batch and where it stands. <c>PagesDone</c> counts per page: the pages of staged (or placed) chunks plus
 /// the pages Mathpix has read so far of chunks in flight. <c>DocumentId</c> is null until promotion (21 Nov 2026): the
 /// import is staged, and the document is made in one go when every chunk is finished; until then
-/// <c>PreviewAvailable</c> (true once a chunk is staged or failed) says the read-only preview
+/// <c>PreviewAvailable</c> (true from the split, its placeholders shown at once) says the read-only preview
 /// (<c>GET …/files/{fileId}/preview</c>) has something to show. <c>PromotedAt</c>: when the document was made. A file
 /// split before staging had its document from the split. <c>Warnings</c> is the count of the import's warnings (a page
 /// the reader was unsure of is one). <c>Timings</c> and <c>Precision</c>: how long it took, and how sure the reader was

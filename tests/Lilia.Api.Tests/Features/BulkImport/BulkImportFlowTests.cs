@@ -186,6 +186,7 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
         var after = (await BatchAsync(author, batchId)).Files.Single();
         after.DocumentId.Should().BeNull("the document is made when every chunk is finished");
         after.PromotedAt.Should().BeNull();
+        after.PreviewAvailable.Should().BeTrue("the preview has its placeholders from the split on");
         after.Status.Should().Be("reading");
         after.Chunks.Total.Should().Be(3);
         (await DocumentsOfAsync(userId)).Should().BeEmpty();

@@ -262,6 +262,59 @@ public partial class BulkImportFlowTests
         (await author.GetAsync(src)).StatusCode.Should().Be(HttpStatusCode.NotFound, "promoted: the document's asset has it");
     }
 
+    // ── Home and the import history: nothing until the document exists ─────────────────────────────────────────
+
+    /// <summary>The ids Home's Import card lists (<c>GET /api/recent</c>), with each item's document.</summary>
+    private static async Task<List<(Guid Id, Guid? DocumentId)>> RecentImportsAsync(HttpClient author)
+    {
+        var recent = await author.GetFromJsonAsync<JsonElement>("/api/recent?perTool=10");
+        var import = recent.GetProperty("tools").EnumerateArray().FirstOrDefault(t => t.GetProperty("tool").GetString() == "import");
+        if (import.ValueKind != JsonValueKind.Object) return [];
+        return import.GetProperty("items").EnumerateArray()
+            .Select(i => (i.GetProperty("id").GetGuid(),
+                i.TryGetProperty("documentId", out var d) && d.ValueKind == JsonValueKind.String ? d.GetGuid() : (Guid?)null))
+            .ToList();
+    }
+
+    /// <summary>The session ids the import history lists (<c>GET /api/lilia/import-review/sessions?scope=…</c>).</summary>
+    private static async Task<List<Guid>> SessionsListedAsync(HttpClient author, string scope)
+    {
+        var listed = await author.GetFromJsonAsync<JsonElement>($"/api/lilia/import-review/sessions?scope={scope}");
+        return listed.EnumerateArray().Select(s => s.GetProperty("id").GetGuid()).ToList();
+    }
+
+    [Fact]
+    public async Task An_import_still_running_is_not_on_home_or_in_the_import_history_until_its_document_exists()
+    {
+        var host = Host(maxChunksPerAuthor: 1);
+        var userId = await AuthorAsync();
+        var author = ClientOf(host, userId);
+        var batchId = await NewBatchAsync(author);
+        var uploaded = await UploadOkAsync(author, batchId, BulkImportTestKit.Pdf(16, salt: Guid.NewGuid().ToString()));
+        await SplitAsync(host);
+        var ids = await ChunkIdsAsync(uploaded.FileId);
+        _queue.Sent.Clear();
+
+        // Half read and staged: its job and its first chunk's session exist, but no document.
+        await RunAsync(host, new ReadBulkImportChunk(ids[0]));
+        await RunAsync(host, new PlaceBulkImportChunk(ids[0]));
+        Guid session;
+        await using (var db = CreateDbContext())
+            session = (await db.BulkImportChunks.AsNoTracking().SingleAsync(c => c.Id == ids[0])).SessionId!.Value;
+        (await RecentImportsAsync(author)).Select(i => i.Id).Should().NotContain(uploaded.FileId,
+            "Home's Import card and \"Pick up where you left off\" wait for the document");
+        foreach (var scope in new[] { "active", "history", "all" })
+            (await SessionsListedAsync(author, scope)).Should().NotContain(session, $"the import history ({scope}) waits for the document");
+
+        // The rest, then the promotion: listed once, with its document.
+        await PumpAsync(host);
+        var file = (await BatchAsync(author, batchId)).Files.Single();
+        file.Status.Should().Be("done");
+        (await RecentImportsAsync(author)).Where(i => i.Id == uploaded.FileId).Should().ContainSingle()
+            .Which.DocumentId.Should().Be(file.DocumentId);
+        (await SessionsListedAsync(author, "history")).Should().Contain(session);
+    }
+
     // ── one file cancelled ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
