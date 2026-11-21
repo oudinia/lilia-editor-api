@@ -543,6 +543,8 @@ public sealed class BulkImportProcessor(
             chunk.UpdatedAt = DateTime.UtcNow;
             file.PreambleApplied = true;
             file.Warnings += placed.Warnings;
+            // Its import record, as a staged chunk's: the file's warnings are listed from it (21 Nov 2026).
+            chunk.SessionId = placed.SessionId;
             var chunkKey = chunk.ChunkKey;
             chunk.ChunkKey = null;
             chunk.PlaceParseMs = placed.ParseMs;

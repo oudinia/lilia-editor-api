@@ -149,6 +149,117 @@ public static class BulkImportReadModel
         return new BulkImportPreviewDto(file.FileId, file.Name, file.Pages, file.PagesDone, file.Status, file.DocumentId, blocks);
     }
 
+    /// <summary>
+    /// The file's warnings, each with its kind, a plain sentence and where it is (21 Nov 2026, the launch bot's retest: "It
+    /// never names the warning or the block"). Read from each chunk's import record (<see cref="BulkImportChunk.SessionId"/>:
+    /// its review session's diagnostics, the ones the file's count sums): the chunk gives the pages, the diagnostic's block
+    /// (<see cref="ImportDiagnostic.BlockId"/>, the review row's) gives the block, whose row id is the block's id in the
+    /// staging and, at promotion, in the document. Null when the file isn't this author's (in this batch).
+    /// </summary>
+    public static async Task<BulkImportWarningListDto?> WarningsAsync(LiliaDbContext db, string userId, Guid batchId, Guid fileId, CancellationToken ct = default)
+    {
+        var file = await db.BulkImportFiles.AsNoTracking()
+            .Where(f => f.Id == fileId && f.BatchId == batchId && f.UserId == userId)
+            .Select(f => new { f.DocumentId, f.Warnings })
+            .FirstOrDefaultAsync(ct);
+        if (file is null) return null;
+
+        var chunks = (await db.BulkImportChunks.AsNoTracking()
+                .Where(c => c.FileId == fileId && c.SessionId != null)
+                .Select(c => new { c.Index, c.FirstPage, c.LastPage, SessionId = c.SessionId!.Value })
+                .ToListAsync(ct))
+            .GroupBy(c => c.SessionId).ToDictionary(g => g.Key, g => g.First());
+        var sessionIds = chunks.Keys.ToList();
+        if (sessionIds.Count == 0) return new BulkImportWarningListDto(fileId, file.DocumentId, file.Warnings, false, []);
+
+        // The same diagnostics the file's count sums (PdfImportPipeline): not dismissed, a warning or an error.
+        var diagnostics = await db.ImportDiagnostics.AsNoTracking()
+            .Where(d => sessionIds.Contains(d.SessionId) && !d.Dismissed && (d.Severity == "warning" || d.Severity == "error"))
+            .Select(d => new { d.SessionId, d.BlockId, d.Code, d.Category, d.Severity, d.Message, d.CreatedAt })
+            .ToListAsync(ct);
+
+        var keys = diagnostics.Where(d => d.BlockId != null).Select(d => d.BlockId!).Distinct().ToList();
+        var rows = (await db.ImportBlockReviews.AsNoTracking()
+                .Where(b => keys.Count > 0 && sessionIds.Contains(b.SessionId) && keys.Contains(b.BlockId))
+                .Select(b => new { b.SessionId, b.BlockId, b.Id, Type = b.CurrentType ?? b.OriginalType, b.SortOrder })
+                .ToListAsync(ct))
+            .GroupBy(b => (b.SessionId, b.BlockId)).Select(g => g.First()).ToList();
+        var rowOf = rows.ToDictionary(b => (b.SessionId, b.BlockId));
+
+        // Where each block is in the document now: present (not deleted since), and its place, from 1.
+        var numberOf = new Dictionary<Guid, int>();
+        if (file.DocumentId is { } documentId && rows.Count > 0)
+        {
+            var ids = rows.Select(b => b.Id).ToList();
+            var present = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId && ids.Contains(b.Id))
+                .Select(b => new { b.Id, b.SortOrder }).ToListAsync(ct);
+            if (present.Count > 0)
+            {
+                var orders = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == documentId)
+                    .OrderBy(b => b.SortOrder).Select(b => b.SortOrder).ToListAsync(ct);
+                foreach (var p in present) numberOf[p.Id] = LowerBound(orders, p.SortOrder) + 1;
+            }
+        }
+
+        var all = diagnostics.Select(d =>
+            {
+                var chunk = chunks[d.SessionId];
+                var row = d.BlockId is { } key && rowOf.TryGetValue((d.SessionId, key), out var r) ? r : null;
+                var (message, page) = PlainWarning(d.Message);
+                var inDocument = row is not null && numberOf.ContainsKey(row.Id);
+                return (Chunk: chunk.Index, Order: row?.SortOrder ?? -1, d.CreatedAt, Dto: new BulkImportWarningDto(
+                    string.IsNullOrWhiteSpace(d.Code) ? d.Category : d.Code,
+                    d.Severity,
+                    message,
+                    chunk.Index,
+                    chunk.FirstPage,
+                    chunk.LastPage,
+                    page,
+                    row?.Id,
+                    row?.Type,
+                    inDocument,
+                    inDocument ? numberOf[row!.Id] : null));
+            })
+            .OrderBy(w => w.Chunk).ThenBy(w => w.Order).ThenBy(w => w.CreatedAt)
+            .Select(w => w.Dto)
+            .ToList();
+        var listed = all.Take(BulkImportWarningListDto.Limit).ToList();
+        return new BulkImportWarningListDto(fileId, file.DocumentId, file.Warnings, all.Count > listed.Count, listed);
+    }
+
+    /// <summary>The first index whose value is at least <paramref name="value"/> in a sorted list.</summary>
+    private static int LowerBound(List<int> sorted, int value)
+    {
+        int lo = 0, hi = sorted.Count;
+        while (lo < hi)
+        {
+            var mid = (lo + hi) / 2;
+            if (sorted[mid] < value) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    /// <summary>
+    /// A diagnostic's message without the import's own "Block N (type): " (N counts within the chunk, which misled the
+    /// tester) or "Page N: " (returned as the page), starting with a capital and ending with a full stop.
+    /// </summary>
+    internal static (string Message, int? Page) PlainWarning(string message)
+    {
+        var text = (message ?? "").Trim();
+        int? page = null;
+        if (System.Text.RegularExpressions.Regex.Match(text, @"^Block \d+ \([^)]*\):\s*") is { Success: true } block)
+            text = text[block.Length..];
+        else if (System.Text.RegularExpressions.Regex.Match(text, @"^Page (\d+):\s*") is { Success: true } p)
+        {
+            page = int.Parse(p.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            text = text[p.Length..];
+        }
+        if (text.Length == 0) return (message ?? "", page);
+        text = char.ToUpperInvariant(text[0]) + text[1..];
+        if (!".!?".Contains(text[^1])) text += ".";
+        return (text, page);
+    }
+
     public static async Task<BulkImportBatchDto?> BatchAsync(LiliaDbContext db, string userId, Guid batchId, CancellationToken ct = default)
     {
         var batch = await db.BulkImportBatches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == batchId && b.UserId == userId, ct);

@@ -121,6 +121,19 @@ public sealed class BulkImportsController(BulkImportService service, IServicePro
     }
 
     /// <summary>
+    /// The file's warnings (21 Nov 2026, the launch bot's retest: "Could the warning name the block or page?"): each one's
+    /// kind, a plain sentence, the chunk's pages, and the block (its place in the document once the file is promoted), in
+    /// page order (<see cref="BulkImportWarningListDto"/>). Only the batch's author: 404 for anyone else.
+    /// </summary>
+    [HttpGet("{batchId:guid}/files/{fileId:guid}/warnings")]
+    public async Task<ActionResult<BulkImportWarningListDto>> Warnings(Guid batchId, Guid fileId, CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        Response.Headers.CacheControl = "private, no-store";
+        return await service.WarningsAsync(userId, batchId, fileId, ct) is { } warnings ? Ok(warnings) : NotFound();
+    }
+
+    /// <summary>
     /// A staged figure's image for the preview (21 Nov 2026): raster types only (PNG, JPEG, GIF, WebP), served with
     /// <c>nosniff</c>. Only the batch's author: 404 for anyone else, and for a figure no longer staged (promoted: the
     /// document's asset has it).
