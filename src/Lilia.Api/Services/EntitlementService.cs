@@ -318,7 +318,9 @@ public class EntitlementService : IEntitlementService
                 Enforced: _aiEnforced,
                 ComingSoon: _aiComingSoon && !IsStaff(userId)),
             ReadOnly: await ReadOnlyAsync(userId, plan, ct),
-            PdfPages: new PlanMeterDto(await PdfPagesThisMonthAsync(userId, ct), ReadCap(plan.Caps, "pdfPagesPerMonth"), NextMonthStart()));
+            // Staff aren't limited (PdfPagesLeftThisMonthAsync), so their meter says unlimited too: on 21 Nov 2026 the owner's
+            // account showed "0 of 100 PDF pages left" and "See plans" after the launch bot's bulk-import tests.
+            PdfPages: new PlanMeterDto(await PdfPagesThisMonthAsync(userId, ct), IsStaff(userId) ? -1 : ReadCap(plan.Caps, "pdfPagesPerMonth"), NextMonthStart()));
     }
 
     private async Task<PlanReadOnlyDto?> ReadOnlyAsync(string userId, ActivePlanDto plan, CancellationToken ct)

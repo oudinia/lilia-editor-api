@@ -141,6 +141,22 @@ public class PdfImportPaidTests : IntegrationTestBase, IDisposable
         usage.PdfPages.Limit.Should().Be(100);
     }
 
+    // 21 Nov 2026: staff aren't limited, so their meter says unlimited (-1), not "0 of 100 left" with "See plans".
+    [Fact]
+    public async Task Staff_see_their_PDF_pages_as_unlimited()
+    {
+        var staff = NewId("staffmeter");
+        await SeedUserAsync(staff);
+        await PagesReadAsync(staff, 120);
+        var factory = Fixture.Factory.WithWebHostBuilder(b => b.UseSetting("Entitlements:StaffUserIds:0", staff));
+        _factories.Add(factory);
+        using var scope = factory.Services.CreateScope();
+        var usage = await scope.ServiceProvider.GetRequiredService<IEntitlementService>().GetUsageAsync(staff);
+
+        usage!.PdfPages!.Used.Should().Be(120);
+        usage.PdfPages.Limit.Should().Be(-1);
+    }
+
     [Fact]
     public async Task The_site_s_monthly_pages_bound_everyone_but_staff()
     {

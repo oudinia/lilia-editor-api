@@ -276,7 +276,7 @@ public class LatexParser : ILatexParser
         "lstlisting", "verbatim", "minted",
         "figure", "subfigure", "table", "tabular",
         "itemize", "enumerate", "description",
-        "quote", "quotation", "verse",
+        "quote", "quotation", "verse", "displayquote",
         "center", "flushleft", "flushright",
         "algorithm", "algorithm2e", "algorithmic",
     };
@@ -2515,8 +2515,10 @@ public class LatexParser : ILatexParser
             if (bibMatch.Success)
                 matches.Add((bibMatch, "bibliography"));
 
-            // Blockquote environments
-            var quoteMatch = Regex.Match(remaining, @"\\begin\{(quote|quotation|verse)\}([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
+            // Blockquote environments. csquotes' displayquote too, with its optional [citation][punctuation]: Mathpix
+            // writes it for a quoted passage, and without csquotes loaded it stopped the compile ("Environment
+            // displayquote undefined", the launch bot's notebook G, 21 Nov 2026).
+            var quoteMatch = Regex.Match(remaining, @"\\begin\{(quote|quotation|verse|displayquote)\}(?:\[[^\]]*\]){0,2}([\s\S]*?)\\end\{\1\}", RegexOptions.Singleline);
             if (quoteMatch.Success)
                 matches.Add((quoteMatch, "blockquote"));
 
