@@ -142,7 +142,7 @@ public sealed class PdfImportPipeline(
                 {
                     Id = Guid.NewGuid(),
                     SessionId = sessionId,
-                    Severity = "warning",
+                    Severity = extracted.SeverityOf(notice),
                     Category = "auto_shimmed",
                     Message = notice,
                     CreatedAt = now,

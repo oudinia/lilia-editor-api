@@ -172,11 +172,14 @@ public static class BulkImportReadModel
         var sessionIds = chunks.Keys.ToList();
         if (sessionIds.Count == 0) return new BulkImportWarningListDto(fileId, file.DocumentId, file.Warnings, false, []);
 
-        // The same diagnostics the file's count sums (PdfImportPipeline): not dismissed, a warning or an error.
+        // The same diagnostics the file's count sums (PdfImportPipeline): not dismissed, a warning or an error. Less a
+        // tex.zip's inventory ("Found 6 image file(s): …") stored as a warning before 21 Nov 2026 (the launch bot's retest:
+        // 6 of a file's 8 listed): new rows are info (LatexProjectResult.InformationNotices), these older ones left out.
         var diagnostics = await db.ImportDiagnostics.AsNoTracking()
             .Where(d => sessionIds.Contains(d.SessionId) && !d.Dismissed && (d.Severity == "warning" || d.Severity == "error"))
             .Select(d => new { d.SessionId, d.BlockId, d.Code, d.Category, d.Severity, d.Message, d.CreatedAt })
             .ToListAsync(ct);
+        var inventories = diagnostics.RemoveAll(d => IsStoredInventory(d.Category, d.Code, d.Message));
 
         var keys = diagnostics.Where(d => d.BlockId != null).Select(d => d.BlockId!).Distinct().ToList();
         var rows = (await db.ImportBlockReviews.AsNoTracking()
@@ -224,8 +227,19 @@ public static class BulkImportReadModel
             .Select(w => w.Dto)
             .ToList();
         var listed = all.Take(BulkImportWarningListDto.Limit).ToList();
-        return new BulkImportWarningListDto(fileId, file.DocumentId, file.Warnings, all.Count > listed.Count, listed);
+        // A file counted before 21 Nov 2026 has its inventories in its stored count; the list's total leaves them out.
+        var total = Math.Max(all.Count, file.Warnings - inventories);
+        return new BulkImportWarningListDto(fileId, file.DocumentId, total, all.Count > listed.Count, listed);
     }
+
+    /// <summary>
+    /// An extractor inventory stored as a warning before 21 Nov 2026: category <c>auto_shimmed</c>, no code, and the message
+    /// of an inventory ("Found N image/bibliography/code listing file(s)…", "N other file(s) preserved as assets…").
+    /// </summary>
+    internal static bool IsStoredInventory(string category, string? code, string message) =>
+        category == "auto_shimmed" && string.IsNullOrEmpty(code)
+        && (message.StartsWith(LatexProjectResult.InventoryPrefix, StringComparison.Ordinal)
+            || message.Contains(LatexProjectResult.OtherFilesKept, StringComparison.Ordinal));
 
     /// <summary>The first index whose value is at least <paramref name="value"/> in a sorted list.</summary>
     private static int LowerBound(List<int> sorted, int value)

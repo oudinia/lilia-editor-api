@@ -148,6 +148,55 @@ public partial class BulkImportFlowTests
         (await author.GetAsync($"/api/bulk-imports/{batchId}/files/{Guid.NewGuid()}/warnings")).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    /// <summary>
+    /// The launch bot's retest (21 Nov 2026): 6 of a file's 8 "warnings" were "Found 6 image file(s): …/images/….jpg", the
+    /// tex.zip's inventory, with no sentence and no block. It is stored as info now, so neither counted nor listed; an
+    /// older file's inventory, stored as a warning and counted, is left out of the list and of its total.
+    /// </summary>
+    [Fact]
+    public async Task A_tex_zips_image_list_is_information_neither_counted_nor_listed()
+    {
+        var host = Host(maxChunksPerAuthor: 10);
+        var userId = await AuthorAsync();
+        var author = ClientOf(host, userId);
+        var batchId = await NewBatchAsync(author);
+        _mathpix.FigureFirstPages.Add(1);
+        await UploadOkAsync(author, batchId, BulkImportTestKit.Pdf(5, salt: Guid.NewGuid().ToString()));
+        await PumpAsync(host);
+
+        var file = (await BatchAsync(author, batchId)).Files.Single();
+        file.Status.Should().Be("done");
+        Guid sessionId;
+        await using (var db = CreateDbContext())
+        {
+            sessionId = await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == file.FileId && c.SessionId != null)
+                .Select(c => c.SessionId!.Value).FirstAsync();
+            var inventory = await db.ImportDiagnostics.AsNoTracking()
+                .SingleAsync(d => d.SessionId == sessionId && d.Message.StartsWith("Found 1 image file(s)"));
+            inventory.Severity.Should().Be("info");
+        }
+        var list = await WarningsAsync(author, batchId, file.FileId);
+        list.Warnings.Should().NotContain(w => w.Message.Contains("image file(s)"));
+        list.Total.Should().Be(file.Warnings);
+        list.Warnings.Should().HaveCount(file.Warnings, "every warning counted is listed, and the inventory is not one");
+
+        // A file imported before the change: the inventory stored as a warning, and counted.
+        await using (var db = CreateDbContext())
+        {
+            db.ImportDiagnostics.Add(new Lilia.Core.Entities.ImportDiagnostic
+            {
+                Id = Guid.NewGuid(), SessionId = sessionId, Severity = "warning", Category = "auto_shimmed",
+                Message = "Found 6 image file(s): x/images/a.jpg, x/images/b.jpg", CreatedAt = DateTime.UtcNow,
+            });
+            await db.BulkImportFiles.Where(f => f.Id == file.FileId).ExecuteUpdateAsync(f => f.SetProperty(x => x.Warnings, x => x.Warnings + 1));
+            await db.SaveChangesAsync();
+        }
+        (await BatchAsync(author, batchId)).Files.Single().Warnings.Should().Be(file.Warnings + 1, "the stored count is kept");
+        var older = await WarningsAsync(author, batchId, file.FileId);
+        older.Warnings.Should().NotContain(w => w.Message.Contains("image file(s)"));
+        older.Total.Should().Be(file.Warnings, "the list's total leaves the older inventory out");
+    }
+
     [Theory]
     [InlineData("Block 3 (paragraph): maths from the scan reader that LaTeX can't read ($x$) is printed as written. Check it against the scan.",
         "Maths from the scan reader that LaTeX can't read ($x$) is printed as written. Check it against the scan.", null)]
