@@ -1,5 +1,6 @@
 using Lilia.Core.Entities;
 using Lilia.Core.Entities.E2E;
+using Lilia.Core.Entities.Epub;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Infrastructure.Data;
@@ -165,6 +166,16 @@ public class LiliaDbContext : DbContext
     // Joined to import_telemetry_events at report time for coverage.
     public DbSet<TypstTranslationHandler> TypstTranslationHandlers => Set<TypstTranslationHandler>();
     public DbSet<TypstTranslationGap> TypstTranslationGaps => Set<TypstTranslationGap>();
+
+    // EPUB catalog (EPUB phase 1, 20 Nov 2026): EPUB modelled in the database before the code, so import and
+    // export can both read it (lilia-docs/reports/2026-11-20-epub-export-audit.md). Read only by the
+    // integrity tests until phases 2 and 3. Configured in Configurations/Epub, seeded by its migration.
+    public DbSet<EpubSpecVersion> EpubSpecVersions => Set<EpubSpecVersion>();
+    public DbSet<EpubConstruct> EpubConstructs => Set<EpubConstruct>();
+    public DbSet<EpubConstructSupport> EpubConstructSupport => Set<EpubConstructSupport>();
+    public DbSet<EpubBlockMapping> EpubBlockMappings => Set<EpubBlockMapping>();
+    public DbSet<EpubInlineMapping> EpubInlineMappings => Set<EpubInlineMapping>();
+    public DbSet<EpubMetadataRule> EpubMetadataRules => Set<EpubMetadataRule>();
 
     // E2E scenario database — see lilia-docs/launch-readiness/
     // 2026-05-18-e2e-scenario-db.md for the design.
