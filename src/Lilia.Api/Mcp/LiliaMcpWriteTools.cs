@@ -664,7 +664,7 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "import_status", Title = "Check an import", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Where an import started with start_import, or a PDF or image sent to import_document, is: waiting (no file dropped yet), working (Lilia is reading a PDF or scan: ask again in 10 to 20 seconds), done (with the new document's id) or failed (with the reason).")]
+    [Description("Where an import started with start_import, or a PDF or image sent to import_document, is: waiting (no file dropped yet), working (Lilia is reading a PDF or scan: ask again in 10 to 20 seconds), done (with the new document's id, and the warnings the import left for the author to check against the original, such as a symbol it couldn't read) or failed (with the reason).")]
     public object ImportStatus([Description("The importId from start_import or import_document.")] string importId)
     {
         if (transfers.Import(importId?.Trim() ?? "", UserId) is not { } t)
@@ -676,8 +676,18 @@ public sealed class LiliaMcpWriteTools(
             title = t.Title,
             error = t.Error,
             url = t.DocumentId is { } id ? $"{McpOAuth.PublicOrigin(config)}/d/{id}" : null,
+            // What the editor's review would have shown (a symbol the reader couldn't read, boxed as □ in a formula; a
+            // figure without its image): the connector's import has no review step, so it was silent (the launch bot's
+            // retest of API #672, 20 Nov 2026).
+            warnings = t.Status == "done" ? t.Warnings.Select(w => new { code = w.Code, message = w.Message }).ToList() : null,
+            warningsTotal = t.Status == "done" ? t.WarningsTotal : (int?)null,
             next = t.Status switch
             {
+                "done" when t.WarningsTotal > 0 =>
+                    $"The import left {t.WarningsTotal} warning{(t.WarningsTotal == 1 ? "" : "s")} (in warnings"
+                    + (t.WarningsTotal > t.Warnings.Count ? $"; the first {t.Warnings.Count} shown" : "")
+                    + "). Tell the author what each says and ask them to check those places against the original scan or file "
+                    + "(a □ marks a symbol Lilia couldn't read). Then read it with get_outline, or check it compiles with check_document.",
                 "done" => "Read it with get_outline, or check it compiles with check_document.",
                 "failed" => "Tell the author why; they can try another file with a new start_import.",
                 "working" => "Lilia is still reading the file into LaTeX. Call import_status again in 10 to 20 seconds.",

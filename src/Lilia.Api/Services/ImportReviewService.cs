@@ -6,6 +6,7 @@ using Lilia.Core.Interfaces;
 using Lilia.Import.Services;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Localization;
 using Lilia.Engines;
 
@@ -28,6 +29,7 @@ public class ImportReviewService : IImportReviewService
     private readonly IRenderService? _renderService;
     private readonly IStorageService? _storageService;
     private readonly ILatexProjectExtractor? _projectExtractor;
+    private readonly IMemoryCache? _cache;
 
     public ImportReviewService(
         LiliaDbContext context,
@@ -38,8 +40,10 @@ public class ImportReviewService : IImportReviewService
         ILatexProjectExtractor? projectExtractor = null,
         IEntitlementService? entitlements = null,
         Lilia.Import.Interfaces.ILatexParser? latexParser = null,
-        IDocumentService? documents = null)
+        IDocumentService? documents = null,
+        IMemoryCache? cache = null)
     {
+        _cache = cache;
         _latexParser = latexParser;
         _documents = documents;
         _entitlements = entitlements;
@@ -2194,6 +2198,122 @@ public class ImportReviewService : IImportReviewService
             commentCounts.TryGetValue(br.BlockId, out var counts);
             return MapBlockReviewToDto(br, counts.Total, counts.Unresolved);
         }).ToList();
+    }
+
+    /// <summary>What a browser shows in an img: never SVG (it can carry script) or a PDF figure.</summary>
+    private static readonly HashSet<string> ReviewImageTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "image/png", "image/jpeg", "image/gif", "image/webp" };
+
+    /// <summary>
+    /// The largest kept zip the review reads figures from: the drop page's 40 MB of base64, the biggest file any import
+    /// route takes (about 30 MB). A larger one is never read, so it keeps its placeholder.
+    /// </summary>
+    internal const long MaxReviewZipBytes = 30L * 1024 * 1024;
+
+    /// <summary>A zip's images above this are not kept in memory: the next request reads the zip again.</summary>
+    internal const long MaxCachedReviewImageBytes = 30L * 1024 * 1024;
+
+    private static readonly TimeSpan ReviewImagesLife = TimeSpan.FromMinutes(5);
+
+    /// <summary>One read of a job's zip at a time, whatever the number of figures asked for at once.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, Lazy<Task<IReadOnlyList<LatexProjectFile>>>> ReviewImagesInFlight = new();
+
+    /// <summary>
+    /// The review showed a grey "image" box for every figure of a scan or project zip (the launch bot's retest of API
+    /// #672, 20 Nov 2026): until finalize stores the zip's images as assets (<see cref="StageZipProjectAsync"/>), a
+    /// figure's src is only the file name its <c>\includegraphics</c> gave, which no browser can load. This reads that
+    /// image from the zip the import kept (<c>imports/{jobId}.zip</c>), matched as finalize matches it: by path, file
+    /// name, or name without extension.
+    ///
+    /// <para>The review asks for every figure at once. The zip is read once per job (<see cref="ReviewImagesAsync"/>),
+    /// and its images are kept for a few minutes, so 30 figures of a 50 MB project are one download and one extraction,
+    /// not 30 on a server without swap (the review of API #674, 20 Nov 2026).</para>
+    /// </summary>
+    public async Task<(byte[] Bytes, string ContentType)?> GetFigureImageAsync(Guid sessionId, string src, string userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(src) || src.Length > 500 || _storageService is null || _projectExtractor is null) return null;
+        var session = await _context.ImportReviewSessions.AsNoTracking()
+            .Include(s => s.Collaborators)
+            .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session is null || GetUserRole(session, userId) is null || session.JobId is not { } jobId || jobId == Guid.Empty) return null;
+
+        var images = await ReviewImagesAsync(jobId);
+        var name = src.Trim();
+        var hit = images.FirstOrDefault(f => string.Equals(f.Path, name, StringComparison.OrdinalIgnoreCase))
+            ?? images.FirstOrDefault(f => string.Equals(Path.GetFileName(f.Path), Path.GetFileName(name), StringComparison.OrdinalIgnoreCase))
+            ?? images.FirstOrDefault(f => string.Equals(Path.GetFileNameWithoutExtension(f.Path), Path.GetFileNameWithoutExtension(name), StringComparison.OrdinalIgnoreCase));
+        return hit is null ? null : (hit.Bytes, hit.ContentType);
+    }
+
+    /// <summary>
+    /// The images a browser can show (<see cref="ReviewImageTypes"/>) from a job's kept zip: from the cache, else from
+    /// the one read already running for that job, else a new read. Never cancelled by one request: others wait on it.
+    /// </summary>
+    private async Task<IReadOnlyList<LatexProjectFile>> ReviewImagesAsync(Guid jobId)
+    {
+        var key = $"review-figure-images:{jobId:N}";
+        if (_cache?.TryGetValue(key, out IReadOnlyList<LatexProjectFile>? cached) == true && cached is not null) return cached;
+        var read = ReviewImagesInFlight.GetOrAdd(jobId, id => new Lazy<Task<IReadOnlyList<LatexProjectFile>>>(() => ReadReviewImagesAsync(id, key)));
+        try
+        {
+            return await read.Value;
+        }
+        finally
+        {
+            // Done: later requests find the cache (set before the read ends), or read again when it wasn't kept.
+            ReviewImagesInFlight.TryRemove(new KeyValuePair<Guid, Lazy<Task<IReadOnlyList<LatexProjectFile>>>>(jobId, read));
+        }
+    }
+
+    private async Task<IReadOnlyList<LatexProjectFile>> ReadReviewImagesAsync(Guid jobId, string key)
+    {
+        IReadOnlyList<LatexProjectFile> images = [];
+        try
+        {
+            await using var stored = await _storageService!.DownloadAsync($"imports/{jobId}.zip");
+            if (stored.CanSeek && stored.Length > MaxReviewZipBytes)
+            {
+                _logger.LogWarning("[ImportReview] Kept zip of job {JobId} is over {Max} bytes: its figures aren't read for the review", jobId, MaxReviewZipBytes);
+            }
+            else if (await ReadAtMostAsync(stored, MaxReviewZipBytes) is { } zip)
+            {
+                images = _projectExtractor!.Extract(zip).Files
+                    .Where(f => f.Kind == LatexProjectFileKinds.Image && ReviewImageTypes.Contains(f.ContentType))
+                    .ToList();
+            }
+            else
+            {
+                _logger.LogWarning("[ImportReview] Kept zip of job {JobId} is over {Max} bytes: its figures aren't read for the review", jobId, MaxReviewZipBytes);
+            }
+        }
+        catch (Exception ex)
+        {
+            // No zip (a Word or Markdown import) or one that can't be read: the review keeps its placeholders.
+            _logger.LogDebug(ex, "[ImportReview] No figure images for job {JobId}", jobId);
+        }
+
+        var bytes = images.Sum(f => (long)f.Bytes.Length);
+        if (_cache is not null && bytes <= MaxCachedReviewImageBytes)
+            _cache.Set(key, images, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = ReviewImagesLife,
+                Size = Math.Max(1, bytes),
+            });
+        return images;
+    }
+
+    /// <summary>The stream's bytes, or null when it holds more than <paramref name="max"/>: never read past it.</summary>
+    private static async Task<byte[]?> ReadAtMostAsync(Stream stream, long max)
+    {
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk)) > 0)
+        {
+            if (buffer.Length + read > max) return null;
+            buffer.Write(chunk, 0, read);
+        }
+        return buffer.ToArray();
     }
 
     public async Task<BlockSourceDto?> GetBlockSourceAsync(Guid sessionId, string blockId, string userId, CancellationToken ct = default)

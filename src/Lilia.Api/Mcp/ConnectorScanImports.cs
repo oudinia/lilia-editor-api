@@ -35,6 +35,17 @@ public sealed class ConnectorScanImports(IServiceScopeFactory scopes, ConnectorT
             var result = await jobs.CreateImportJobFromBase64Async(userId, request);
             if (result.Document is null)
                 throw new InvalidOperationException(result.Job?.ErrorMessage ?? "the importer produced no document");
+            // What the review would have shown (a boxed symbol, a figure without its image), since there is no review here:
+            // import_status passes it on (the launch bot's retest of API #672, 20 Nov 2026). Never fails the import.
+            try
+            {
+                var db = scope.ServiceProvider.GetRequiredService<Lilia.Infrastructure.Data.LiliaDbContext>();
+                (ticket.Warnings, ticket.WarningsTotal) = await ConnectorTransfers.ImportWarning.ForSessionAsync(db, result.ReviewSessionId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[Mcp] the warnings of import_document {File} couldn't be read", request.Filename);
+            }
             ticket.DocumentId = result.Document.Id;
             ticket.Title = result.Document.Title;
             ticket.Status = "done";

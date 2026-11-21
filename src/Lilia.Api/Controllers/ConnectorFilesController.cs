@@ -149,6 +149,9 @@ public class ConnectorFilesController(
                 new ImportRequestDto(file.Content, format, file.Filename, SkipReview: true));
             if (result.Document is null)
                 throw new InvalidOperationException(result.Job?.ErrorMessage ?? "the importer produced no document");
+            // The review's warnings, for import_status: the drop page has no review step either (20 Nov 2026).
+            try { (t.Warnings, t.WarningsTotal) = await ConnectorTransfers.ImportWarning.ForSessionAsync(db, result.ReviewSessionId); }
+            catch (Exception ex) { logger.LogWarning(ex, "[Connector] the warnings of import {File} couldn't be read", file.Filename); }
             t.Status = "done";
             t.DocumentId = result.Document.Id;
             t.Title = result.Document.Title;

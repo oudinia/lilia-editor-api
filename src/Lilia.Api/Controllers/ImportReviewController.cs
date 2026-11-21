@@ -430,6 +430,21 @@ public class ImportReviewController : ControllerBase
     }
 
     /// <summary>
+    /// A figure's image from the import's kept zip, before finalize makes it an asset: the review's thumbnail and preview
+    /// (the launch bot's retest of API #672, 20 Nov 2026). 404 when there is none to show.
+    /// </summary>
+    [HttpGet("{id:guid}/figure-image")]
+    public async Task<IActionResult> GetFigureImage(Guid id, [FromQuery] string src, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (await _reviewService.GetFigureImageAsync(id, src, userId, ct) is not { } image) return NotFound();
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers.CacheControl = "private, max-age=3600";
+        return File(image.Bytes, image.ContentType);
+    }
+
+    /// <summary>
     /// Raw LaTeX source slice for a single block — drives the "Source"
     /// sub-tab on the .tex redesign. Prefers the parser-populated
     /// SourceRange; falls back to rendering the block's current content

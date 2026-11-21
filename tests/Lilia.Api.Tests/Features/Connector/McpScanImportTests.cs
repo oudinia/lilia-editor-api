@@ -137,6 +137,78 @@ public class McpScanImportTests : IntegrationTestBase, IDisposable
         // The 2 pages Mathpix reported, against the plan's PDF pages, as the editor's upload counts them.
         (await PagesChargedAsync(user)).Pages.Should().Be(2);
         api.UploadOptions!.RootElement.GetProperty("metadata").GetProperty("improve_mathpix").GetBoolean().Should().BeFalse();
+        // A clean reading: nothing to check against the scan, and the tex.zip's file summary ("Found 1 image file(s)")
+        // is not a warning for the author.
+        done.GetProperty("warnings").GetArrayLength().Should().Be(0, done.ToString());
+        done.GetProperty("warningsTotal").GetInt32().Should().Be(0);
+        done.GetProperty("next").GetString().Should().NotContain("warning");
+    }
+
+    /// <summary>
+    /// The launch bot's retest of API #672 (20 Nov 2026): a scan whose formula held a symbol Mathpix couldn't read came
+    /// through the connector with a □ in the document and no word about it, since the connector's import has no review.
+    /// import_status now gives the review's warnings and tells the assistant to have the author check them.
+    /// </summary>
+    [Theory]
+    [InlineData("texzip")]
+    [InlineData("markdown")]
+    public async Task A_scan_with_an_unreadable_symbol_reports_the_boxed_symbol_in_import_status(string route)
+    {
+        var user = NewId("box" + route[..2]);
+        await SeedUserAsync(user);
+        await GiveProAsync(user);
+        var api = route == "texzip"
+            ? new MathpixTexZipTests.FakeMathpix
+            {
+                TexZipDownload = () => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(ScanFiguresAndSymbolsTests.HandwrittenTexZip()) },
+            }
+            : new MathpixTexZipTests.FakeMathpix { TexZipStatuses = new(["error"]), MarkdownBody = ScanFiguresAndSymbolsTests.HandwrittenMarkdown };
+        var app = AppWith(api, user);
+
+        var started = await CallAsync(app, "import_document", new { filename = "handwritten.png", content = Png });
+        started.TryGetProperty("warnings", out _).Should().BeFalse("nothing is known before the import is done");
+        var done = await SettledAsync(app, started.GetProperty("importId").GetString()!);
+
+        done.GetProperty("status").GetString().Should().Be("done", done.ToString());
+        var warnings = done.GetProperty("warnings").EnumerateArray().ToList();
+        var boxed = warnings.Where(w => w.GetProperty("code").GetString() == "UnreadableSymbolReplaced").ToList();
+        boxed.Should().NotBeEmpty(done.ToString());
+        boxed.Should().OnlyContain(w => w.GetProperty("message").GetString()!.Contains("replaced with a box (□)")
+            && w.GetProperty("message").GetString()!.Contains("Check it against the scan"));
+        var total = done.GetProperty("warningsTotal").GetInt32();
+        total.Should().BeGreaterThanOrEqualTo(warnings.Count);
+        warnings.Count.Should().Be(Math.Min(total, Lilia.Api.Mcp.ConnectorTransfers.ImportWarning.MaxShown));
+        var next = done.GetProperty("next").GetString()!;
+        next.Should().Contain($"{total} warning").And.Contain("Tell the author").And.Contain("against the original scan");
+
+        // The same warnings as the review session's diagnostics.
+        await using var db = CreateDbContext();
+        var id = done.GetProperty("documentId").GetGuid();
+        var sessionId = await db.ImportReviewSessions.AsNoTracking().Where(s => s.DocumentId == id).Select(s => s.Id).SingleAsync();
+        (await db.ImportDiagnostics.AsNoTracking().CountAsync(d => d.SessionId == sessionId && !d.Dismissed && d.Code != "" && (d.Severity == "error" || d.Severity == "warning")))
+            .Should().Be(total);
+    }
+
+    [Fact]
+    public async Task A_scan_dropped_on_the_drop_page_reports_its_warnings_in_import_status()
+    {
+        var user = NewId("dropbox");
+        await SeedUserAsync(user);
+        await GiveProAsync(user);
+        var host = HostWith(new MathpixTexZipTests.FakeMathpix { TexZipStatuses = new(["error"]), MarkdownBody = ScanFiguresAndSymbolsTests.HandwrittenMarkdown });
+        var app = ClientOf(host, user);
+        var author = ClientOf(host, user, asApp: false);
+
+        var importId = (await CallAsync(app, "start_import", new { })).GetProperty("importId").GetString()!;
+        var waiting = await CallAsync(app, "import_status", new { importId });
+        (!waiting.TryGetProperty("warnings", out var none) || none.ValueKind == JsonValueKind.Null).Should().BeTrue(waiting.ToString());
+
+        var post = await author.PostAsJsonAsync($"/api/connector/imports/{importId}", new { content = Png, format = "IMAGE", filename = "notes.png" });
+        post.StatusCode.Should().Be(HttpStatusCode.OK, await post.Content.ReadAsStringAsync());
+        var done = await CallAsync(app, "import_status", new { importId });
+        done.GetProperty("status").GetString().Should().Be("done");
+        done.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).Should().Contain("UnreadableSymbolReplaced");
+        done.GetProperty("next").GetString().Should().Contain("Tell the author");
     }
 
     [Fact]

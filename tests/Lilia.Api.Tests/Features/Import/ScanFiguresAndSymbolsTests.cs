@@ -50,7 +50,7 @@ public class ScanFiguresAndSymbolsTests : IntegrationTestBase, IDisposable
         await db.SaveChangesAsync();
     }
 
-    private static readonly byte[] Sketch = ScanImageImportTests.Image(SkiaSharp.SKEncodedImageFormat.Jpeg, 120, 80);
+    internal static readonly byte[] Sketch = ScanImageImportTests.Image(SkiaSharp.SKEncodedImageFormat.Jpeg, 120, 80);
 
     /// <summary>A tex.zip as Mathpix makes it for a handwritten page with two uncaptioned sketches.</summary>
     internal static byte[] HandwrittenTexZip()
