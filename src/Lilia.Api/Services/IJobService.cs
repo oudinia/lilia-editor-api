@@ -29,6 +29,14 @@ public interface IJobService
         string userId, string fileName, Guid documentId, Guid? placeholderBlockId, bool applyPreamble,
         string latexSource, byte[] projectZip, string? sourcePdfKey, CancellationToken ct = default);
 
+    /// <summary>
+    /// A chunk of a PDF read as a LaTeX project, imported as <see cref="ImportPdfChunkIntoDocumentAsync"/> imports it (its
+    /// own IMPORT_CHUNK job, the LaTeX project import, the cleanup), without a document: its review session's id, whose
+    /// blocks the bulk import stages until the file is finished (21 Nov 2026).
+    /// </summary>
+    Task<Guid> StagePdfChunkAsync(string userId, string fileName, string latexSource, byte[] projectZip, string? sourcePdfKey,
+        CancellationToken ct = default);
+
     /// <summary>Pages Mathpix read, charged as a PDF import's are: the plan's monthly PDF pages, the site's, and credits.</summary>
     Task ChargePdfPagesAsync(string userId, int pages);
 }

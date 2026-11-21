@@ -5,7 +5,8 @@ namespace Lilia.Api.Features.BulkImport.Services;
 /// process"). Every line starts <c>[BulkImportTiming]</c> then the stage, and carries its numbers as Serilog properties
 /// (<c>Stage</c>, <c>Ms</c>, <c>FileId</c>, <c>ChunkId</c>, …), so <c>grep "\[BulkImportTiming\] mathpix"</c> on the API log
 /// gives every Mathpix reading. The same numbers are kept on the rows (<c>bulk_import_files</c>, <c>bulk_import_chunks</c>).
-/// Stages: upload, split, queue-wait, cache-hit, mathpix, tex-zip, lines, place, first-page, total, compile.
+/// Stages: upload, split, queue-wait, cache-hit, mathpix, tex-zip, lines, place (a chunk staged, or placed), first-page
+/// (the first chunk staged), promote (the staging made into the document), total, compile.
 /// </summary>
 public static class BulkImportTiming
 {
@@ -38,6 +39,10 @@ public static class BulkImportTiming
     public static void Place(ILogger logger, int ms, Guid fileId, Guid chunkId, int chunkIndex, int? parseMs, int? figuresMs, int? writeMs, int blocks) =>
         logger.LogInformation(Prefix + " · file {FileId} · chunk {ChunkIndex} {ChunkId} · parse {ParseMs} ms · figures {FiguresMs} ms · write {WriteMs} ms · {Blocks} blocks",
             "place", ms, fileId, chunkIndex, chunkId, parseMs, figuresMs, writeMs, blocks);
+
+    public static void Promote(ILogger logger, int ms, Guid fileId, Guid documentId, int blocks, int assets) =>
+        logger.LogInformation(Prefix + " · file {FileId} · document {DocumentId} · {Blocks} blocks · {Assets} assets",
+            "promote", ms, fileId, documentId, blocks, assets);
 
     public static void FirstPage(ILogger logger, int ms, Guid fileId) =>
         logger.LogInformation(Prefix + " · file {FileId}", "first-page", ms, fileId);

@@ -17,9 +17,16 @@ using PagePrecision = Lilia.Import.Services.PagePrecision;
 namespace Lilia.Api.Features.BulkImport.Services;
 
 /// <summary>
-/// The steps of a bulk import (21 Nov 2026), each run by one message: split a file and make its document, read a chunk
-/// through Mathpix, place a read chunk into the document. Each step reads its row first and does nothing if the row says
-/// it's done, so a message delivered twice is harmless.
+/// The steps of a bulk import (21 Nov 2026), each run by one message: split a file, read a chunk through Mathpix, stage a
+/// read chunk's blocks, and promote a finished file's staged blocks into its new document in one transaction. Each step
+/// reads its row first and does nothing if the row says it's done, so a message delivered twice is harmless.
+///
+/// <para><b>Staging</b> (21 Nov 2026, the owner: "a staging table for the whole import until it ends… so we don't clash
+/// with the final tables"): a chunk's blocks go to <c>bulk_import_staged_blocks</c> and its figures under
+/// <c>bulk-staging/{fileId}/</c>; the author watches them in a read-only preview. The document exists only once every
+/// chunk is finished (<see cref="PromoteAsync"/>). A chunk retried after that is placed into the document (its
+/// placeholder's stead, the version moved, the open editor told), as is every chunk of a file split before staging
+/// (<see cref="BulkImportFile.UsesStaging"/> false), so imports in flight at the deploy finish as they began.</para>
 ///
 /// <para><b>Fairness and cost.</b> An author has at most <c>MaxChunksPerAuthor</c> chunks sent to the ocr queue or
 /// being read; the rest wait in the database (queued) and are sent as those finish (<see cref="DispatchAsync"/>), so
@@ -62,6 +69,28 @@ public sealed class BulkImportProcessor(
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"bulk-chunk/v1\n{sourceHash}\n{first}-{last}")));
 
     internal static string ResultKeyOf(string hash) => $"bulk-imports/results/{hash}.tex.zip";
+
+    /// <summary>Where a file's staged figures are stored until promotion.</summary>
+    internal static string StagingPrefixOf(Guid fileId) => $"bulk-staging/{fileId:N}/";
+
+    /// <summary>The URL a staged figure's <c>src</c> points at: the author-only assets endpoint, plus the file's name.</summary>
+    internal static string StagedAssetUrlPrefixOf(BulkImportFile file) => $"/api/bulk-imports/{file.BatchId}/files/{file.Id}/assets/";
+
+    /// <summary>
+    /// Whether a file's chunks go into its document (placed): a file split before staging, or one already promoted (a
+    /// retried chunk). Otherwise they are staged.
+    /// </summary>
+    internal static bool InDocument(BulkImportFile file) => !file.UsesStaging || file.PromotedAt is not null;
+
+    /// <summary>A staged file not promoted yet: its document doesn't exist.</summary>
+    private static bool Staging(BulkImportFile file) => !InDocument(file);
+
+    /// <summary>One lock per file across processes: staging a chunk, promoting and cancelling never interleave.</summary>
+    private async Task LockFileAsync(Guid fileId, CancellationToken ct)
+    {
+        if (db.Database.IsNpgsql())
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({"lilia-bulk-file:" + fileId}))", ct);
+    }
 
     // ── split ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -109,18 +138,13 @@ public sealed class BulkImportProcessor(
             // Cancelled while it was being split: the chunks are recorded, none is sent.
             var cancelled = await db.BulkImportFiles.AsNoTracking().Where(f => f.Id == fileId).Select(f => f.Status).FirstAsync(ct) == Cancelled;
 
-            // The document, at once: the author can open it, and it grows as the chunks are placed. Made as the review's
-            // finalize makes one (the database's defaults); the plan was checked at the upload.
-            var documentId = Guid.NewGuid();
+            // No document yet (staging, 21 Nov 2026): each chunk's blocks are staged as it is read, and the document is
+            // made from them in one go when every chunk is finished (PromoteAsync), so the import never writes into a
+            // document the author may be editing.
             var now = DateTime.UtcNow;
-            var title = TitleOf(file.OriginalName);
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            await db.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO documents (id, owner_id, title, created_at, updated_at)
-                VALUES ({documentId}, {file.UserId}, {title}, {now}, {now})", ct);
             foreach (var range in ranges)
             {
-                var chunk = new BulkImportChunk
+                db.BulkImportChunks.Add(new BulkImportChunk
                 {
                     Id = Guid.NewGuid(),
                     FileId = file.Id,
@@ -131,31 +155,17 @@ public sealed class BulkImportProcessor(
                     Status = cancelled ? Cancelled : Queued,
                     ChunkKey = keys[range.Index],
                     ContentHash = file.SourceHash is { } h ? ChunkHash(h, range.First, range.Last) : null,
-                    PlaceholderBlockId = Guid.NewGuid(),
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                };
-                db.BulkImportChunks.Add(chunk);
-                db.Blocks.Add(new Block
-                {
-                    Id = chunk.PlaceholderBlockId!.Value,
-                    DocumentId = documentId,
-                    Type = "paragraph",
-                    Content = Paragraph(cancelled ? CancelledText(chunk) : ReadingText(chunk)),
-                    SortOrder = range.Index,
                     CreatedAt = now,
                     UpdatedAt = now,
                 });
             }
-            file.DocumentId = documentId;
-            if (!cancelled) file.Status = Reading;
-            else file.Status = Cancelled;
+            file.UsesStaging = true;
+            file.Status = cancelled ? Cancelled : Reading;
             file.UpdatedAt = now;
             file.SplitMs = BulkImportTiming.Since(splitStarted);
             await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            logger.LogInformation("[BulkImport] File {FileId} split into {Chunks} chunk(s) of up to {PerChunk} pages; document {DocumentId}",
-                file.Id, ranges.Count, options.PagesPerChunk, documentId);
+            logger.LogInformation("[BulkImport] File {FileId} split into {Chunks} chunk(s) of up to {PerChunk} pages, staged until finished",
+                file.Id, ranges.Count, options.PagesPerChunk);
             BulkImportTiming.Split(logger, file.SplitMs.Value, file.Id, file.Pages, ranges.Count);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -493,6 +503,13 @@ public sealed class BulkImportProcessor(
         var chunk = await db.BulkImportChunks.Include(c => c.File).FirstOrDefaultAsync(c => c.Id == chunkId, ct);
         if (chunk?.File is not { } file || chunk.Status != Read) return;
 
+        // Staged (21 Nov 2026): no document is touched until the file is finished.
+        if (Staging(file))
+        {
+            await StageAsync(chunk, file, ct);
+            return;
+        }
+
         if (!await DocumentAliveAsync(file, ct))
         {
             chunk.Status = Cancelled;
@@ -575,6 +592,371 @@ public sealed class BulkImportProcessor(
         await NotifyAsync(file, force: true, CancellationToken.None);
     }
 
+    // ── stage: a read chunk's blocks into the staging tables ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A read chunk through the same LaTeX import as a placement (<see cref="IPdfImportPipeline.StageLatexProjectAsync"/>),
+    /// its blocks and figures written to the staging tables rather than a document. Under the file's lock: a chunk staged
+    /// again (a message delivered twice) replaces its own rows; a file cancelled meanwhile keeps nothing. The first chunk
+    /// staged gives the file its preamble, later ones add the macros it lacks.
+    /// </summary>
+    private async Task StageAsync(BulkImportChunk chunk, BulkImportFile file, CancellationToken ct)
+    {
+        var chunkId = chunk.Id;
+        if (file.Status == Cancelled)
+        {
+            // Cancelled while it was being read: nothing is staged (it was read, so it stays charged, as today).
+            chunk.Status = Cancelled;
+            chunk.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await RefreshFileAsync(file, ct);
+            await NotifyAsync(file, force: true, ct);
+            return;
+        }
+
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        PdfChunkStaged? staged = null;
+        var committed = false;
+        var firstPageShown = false;
+        var kept = true;
+        int? writeMs = null;
+        try
+        {
+            byte[] zip;
+            await using (var stored = await storage.DownloadAsync(chunk.ResultKey!))
+            using (var buffer = new MemoryStream())
+            {
+                await stored.CopyToAsync(buffer, ct);
+                zip = buffer.ToArray();
+            }
+            staged = await pipeline.StageLatexProjectAsync(file.UserId, file.OriginalName, zip, file.StorageKey,
+                StagingPrefixOf(file.Id), StagedAssetUrlPrefixOf(file), ct);
+
+            var writeStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            db.ChangeTracker.Clear();
+            List<string> replaced;
+            string? chunkKey;
+            await using (var tx = await db.Database.BeginTransactionAsync(ct))
+            {
+                await LockFileAsync(file.Id, ct);
+                chunk = await db.BulkImportChunks.Include(c => c.File).FirstAsync(c => c.Id == chunkId, ct);
+                file = chunk.File!;
+                if (chunk.Status != Read || file.Status == Cancelled || file.PromotedAt is not null)
+                {
+                    // Staged by another delivery, or the file was cancelled meanwhile: this reading is not kept.
+                    kept = false;
+                    if (chunk.Status == Read && file.Status == Cancelled)
+                    {
+                        chunk.Status = Cancelled;
+                        chunk.UpdatedAt = DateTime.UtcNow;
+                        await db.SaveChangesAsync(ct);
+                    }
+                    await tx.CommitAsync(ct);
+                    replaced = [];
+                    chunkKey = null;
+                }
+                else
+                {
+                    replaced = await db.BulkImportStagedAssets.Where(a => a.FileId == file.Id && a.ChunkIndex == chunk.Index)
+                        .Select(a => a.StorageKey).ToListAsync(ct);
+                    await db.BulkImportStagedBlocks.Where(b => b.FileId == file.Id && b.ChunkIndex == chunk.Index).ExecuteDeleteAsync(ct);
+                    await db.BulkImportStagedAssets.Where(a => a.FileId == file.Id && a.ChunkIndex == chunk.Index).ExecuteDeleteAsync(ct);
+                    var now = DateTime.UtcNow;
+                    var order = 0;
+                    foreach (var b in staged.Blocks)
+                        db.BulkImportStagedBlocks.Add(new BulkImportStagedBlock
+                        {
+                            Id = b.Id,
+                            FileId = file.Id,
+                            ChunkIndex = chunk.Index,
+                            Order = order++,
+                            Type = b.Type,
+                            Content = JsonDocument.Parse(b.ContentJson),
+                            Depth = b.Depth,
+                            CreatedAt = now,
+                        });
+                    foreach (var a in staged.Assets)
+                        db.BulkImportStagedAssets.Add(new BulkImportStagedAsset
+                        {
+                            Id = a.Id,
+                            FileId = file.Id,
+                            ChunkIndex = chunk.Index,
+                            Name = a.Name,
+                            OriginalPath = a.OriginalPath.Length > 500 ? a.OriginalPath[..500] : a.OriginalPath,
+                            StorageKey = a.StorageKey,
+                            ContentType = a.ContentType.Length > 100 ? a.ContentType[..100] : a.ContentType,
+                            Size = a.Size,
+                            CreatedAt = now,
+                        });
+
+                    // The preamble, kept on the file until promotion: the first chunk staged sets it, later ones add the
+                    // macros it lacks (as the first chunk placed did, and later ones added theirs).
+                    if (staged.Preamble is { } preamble)
+                    {
+                        if (string.IsNullOrWhiteSpace(file.StagedPreamble)) file.StagedPreamble = preamble;
+                        else if (pipeline.MissingDefinitions(file.StagedPreamble + "\n" + file.StagedMacros, preamble) is { } missing)
+                            file.StagedMacros = string.IsNullOrEmpty(file.StagedMacros) ? missing : file.StagedMacros + "\n" + missing;
+                    }
+
+                    chunk.Status = Done;
+                    chunk.Error = null;
+                    chunk.SessionId = staged.SessionId;
+                    chunk.UpdatedAt = now;
+                    chunkKey = chunk.ChunkKey;
+                    chunk.ChunkKey = null;
+                    chunk.PlaceParseMs = staged.ParseMs;
+                    chunk.PlaceFiguresMs = staged.FiguresMs;
+                    file.Warnings += staged.Warnings;
+                    file.UpdatedAt = now;
+                    // The author sees a first page (in the preview): from the upload's start.
+                    firstPageShown = file.FirstPageMs is null;
+                    if (firstPageShown) file.FirstPageMs = SinceUpload(file);
+                    writeMs = BulkImportTiming.Since(writeStarted);
+                    chunk.PlaceWriteMs = writeMs;
+                    await db.SaveChangesAsync(ct);
+                    await tx.CommitAsync(ct);
+                }
+            }
+            committed = true;
+            if (!kept)
+            {
+                await DeleteKeysAsync(staged.Assets.Select(a => a.StorageKey));
+                if (file.Status == Cancelled)
+                {
+                    await RefreshFileAsync(file, CancellationToken.None);
+                    await NotifyAsync(file, force: true, CancellationToken.None);
+                }
+                return;
+            }
+            await DeleteKeysAsync(replaced.Where(k => !staged.Assets.Any(a => a.StorageKey == k)));
+            if (chunkKey is not null) await DeleteKeysAsync([chunkKey]);
+            await AddLowPrecisionWarningsAsync(file, chunk, staged.SessionId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "[BulkImport] Chunk {ChunkId} ({Pages}) was read but couldn't be staged", chunkId, PagesOf(chunk));
+            if (!committed && staged is not null) await DeleteKeysAsync(staged.Assets.Select(a => a.StorageKey));
+            db.ChangeTracker.Clear();
+            chunk = await db.BulkImportChunks.Include(c => c.File).FirstAsync(c => c.Id == chunkId, CancellationToken.None);
+            file = chunk.File!;
+            if (chunk.Status != Read) return;
+            await FailChunkAsync(chunk, Short($"Read, but couldn't be imported: {ex.Message}"), CancellationToken.None);
+            return;
+        }
+
+        // The whole stage (its download, the import, cleanup, figures and the rows), recorded once it is in.
+        var placeMs = BulkImportTiming.Since(started);
+        try
+        {
+            chunk.PlaceMs = placeMs;
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[BulkImport] Chunk {ChunkId}: its stage time couldn't be recorded", chunk.Id);
+        }
+        BulkImportTiming.Place(logger, placeMs, file.Id, chunk.Id, chunk.Index, staged.ParseMs, staged.FiguresMs, writeMs, staged.Blocks.Count);
+        if (firstPageShown && file.FirstPageMs is { } shown) BulkImportTiming.FirstPage(logger, shown, file.Id);
+
+        await notifier.PreviewChangedAsync(file.UserId, file.BatchId, file.Id, chunk.Index);
+        await RefreshFileAsync(file, CancellationToken.None);
+        await NotifyAsync(file, force: true, CancellationToken.None);
+    }
+
+    private async Task DeleteKeysAsync(IEnumerable<string> keys)
+    {
+        foreach (var key in keys.ToList())
+        {
+            try { await storage.DeleteAsync(key); }
+            catch (Exception ex) { logger.LogWarning(ex, "[BulkImport] Could not delete {Key} from storage", key); }
+        }
+    }
+
+    // ── promote: a finished file's staged blocks become its document, in one go ─────────────────────────────────
+
+    /// <summary>
+    /// Makes a finished file's document from its staging, in one database transaction: the document (titled from the
+    /// file's name), every staged block in page order with a placeholder for each failed chunk, the preamble and page
+    /// setup, the staged figures as the document's assets, the chunks' import records linked to it, the file's
+    /// <c>documentId</c>, and the staging rows deleted. The figures are copied to the document's storage before the
+    /// commit (and deleted again if it fails); the staged copies are deleted after it. Idempotent: under the file's lock,
+    /// a file already promoted (a message delivered twice) is left alone, and the file's row is only set where it wasn't.
+    /// A file with nothing staged (every chunk failed) gets no document.
+    /// </summary>
+    public async Task PromoteAsync(Guid fileId, CancellationToken ct = default)
+    {
+        var file = await db.BulkImportFiles.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fileId, ct);
+        if (file is null || !Staging(file) || file.DocumentId is not null || file.Status == Cancelled) return;
+        var chunks = await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == fileId).OrderBy(c => c.Index).ToListAsync(ct);
+        if (chunks.Count == 0 || chunks.Any(c => Array.IndexOf(ChunkFinished, c.Status) < 0)) return;
+        if (!chunks.Any(c => c.Status == Done))
+        {
+            var tracked = await db.BulkImportFiles.FirstAsync(f => f.Id == fileId, ct);
+            await RefreshFileAsync(tracked, ct);
+            await NotifyAsync(tracked, force: true, ct);
+            return;
+        }
+
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var documentId = Guid.NewGuid();
+        var copied = new List<string>();
+        List<string> stagedKeys = [];
+        int blockCount = 0, assetCount = 0;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await LockFileAsync(fileId, ct);
+            file = await db.BulkImportFiles.AsNoTracking().FirstAsync(f => f.Id == fileId, ct);
+            if (!Staging(file) || file.DocumentId is not null || file.Status == Cancelled) return; // promoted by another delivery, or cancelled
+            chunks = await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == fileId).OrderBy(c => c.Index).ToListAsync(ct);
+            if (chunks.Any(c => Array.IndexOf(ChunkFinished, c.Status) < 0)) return;
+
+            var blocks = await db.BulkImportStagedBlocks.AsNoTracking().Where(b => b.FileId == fileId)
+                .OrderBy(b => b.ChunkIndex).ThenBy(b => b.Order).ToListAsync(ct);
+            var assets = await db.BulkImportStagedAssets.AsNoTracking().Where(a => a.FileId == fileId).ToListAsync(ct);
+            stagedKeys = assets.Select(a => a.StorageKey).ToList();
+            var now = DateTime.UtcNow;
+
+            // The figures to the document's storage first (as a single import stores them), so the rows below can point
+            // at them. A failure from here on deletes these copies (catch below).
+            var moved = new Dictionary<Guid, string>();
+            foreach (var a in assets)
+            {
+                var key = $"{file.UserId}/documents/{documentId}/import-assets/{a.Id}{Path.GetExtension(a.Name)}";
+                await using (var stream = await storage.DownloadAsync(a.StorageKey))
+                using (var buffer = new MemoryStream())
+                {
+                    await stream.CopyToAsync(buffer, ct);
+                    buffer.Position = 0;
+                    await storage.UploadAsync(key, buffer, a.ContentType);
+                }
+                copied.Add(key);
+                var url = storage.GetPublicUrl(key);
+                moved[a.Id] = url;
+                db.Assets.Add(new Asset
+                {
+                    Id = a.Id,
+                    DocumentId = documentId,
+                    FileName = Path.GetFileName(a.OriginalPath) is { Length: > 0 } n ? n : a.Name,
+                    FileType = a.ContentType,
+                    FileSize = a.Size,
+                    StorageKey = key,
+                    Url = url,
+                    UserId = file.UserId,
+                    CreatedAt = now,
+                });
+            }
+
+            await db.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO documents (id, owner_id, title, created_at, updated_at)
+                VALUES ({documentId}, {file.UserId}, {TitleOf(file.OriginalName)}, {now}, {now})", ct);
+
+            // Every block in page order: a chunk's staged blocks, or a failed chunk's placeholder (a retry replaces it).
+            var byChunk = blocks.ToLookup(b => b.ChunkIndex);
+            var sort = 0;
+            var placeholders = new Dictionary<Guid, Guid>();
+            foreach (var c in chunks)
+            {
+                if (c.Status != Done)
+                {
+                    var placeholderId = Guid.NewGuid();
+                    placeholders[c.Id] = placeholderId;
+                    db.Blocks.Add(new Block
+                    {
+                        Id = placeholderId, DocumentId = documentId, Type = "paragraph",
+                        Content = Paragraph(c.Status == Failed ? FailedText(c) : CancelledText(c)),
+                        SortOrder = sort++, CreatedAt = now, UpdatedAt = now,
+                    });
+                    continue;
+                }
+                foreach (var b in byChunk[c.Index])
+                    db.Blocks.Add(new Block
+                    {
+                        Id = b.Id, DocumentId = documentId, Type = b.Type, Content = WithMovedAsset(b, moved),
+                        SortOrder = sort++, Depth = b.Depth, CreatedAt = now, UpdatedAt = now,
+                    });
+            }
+            blockCount = sort;
+            assetCount = assets.Count;
+            await db.SaveChangesAsync(ct);
+
+            // The preamble and page setup, as a single import's; then the macros later chunks added.
+            await pipeline.ApplyStagedPreambleAsync(documentId, file.UserId, file.StagedPreamble, file.StagedMacros, ct);
+
+            // The chunks' import records (review sessions, their jobs) point at the document, as a finalize's do.
+            var sessions = chunks.Where(c => c.SessionId is not null).Select(c => c.SessionId!.Value).ToList();
+            if (sessions.Count > 0)
+            {
+                await db.ImportReviewSessions.Where(x => sessions.Contains(x.Id))
+                    .ExecuteUpdateAsync(x => x.SetProperty(v => v.DocumentId, documentId).SetProperty(v => v.UpdatedAt, now), ct);
+                await db.Jobs.Where(j => db.ImportReviewSessions.Where(x => sessions.Contains(x.Id)).Select(x => x.JobId).Contains(j.Id))
+                    .ExecuteUpdateAsync(j => j.SetProperty(x => x.DocumentId, documentId).SetProperty(x => x.UpdatedAt, now), ct);
+            }
+            foreach (var (chunkId, placeholderId) in placeholders)
+                await db.BulkImportChunks.Where(c => c.Id == chunkId)
+                    .ExecuteUpdateAsync(c => c.SetProperty(x => x.PlaceholderBlockId, placeholderId).SetProperty(x => x.UpdatedAt, now), ct);
+
+            // The file's row, only where it isn't promoted: a second promotion can never make a second document.
+            var set = await db.BulkImportFiles.Where(f => f.Id == fileId && f.PromotedAt == null && f.DocumentId == null)
+                .ExecuteUpdateAsync(f => f
+                    .SetProperty(x => x.DocumentId, documentId)
+                    .SetProperty(x => x.PromotedAt, now)
+                    .SetProperty(x => x.PreambleApplied, true)
+                    .SetProperty(x => x.UpdatedAt, now), ct);
+            if (set != 1) throw new InvalidOperationException("This file was promoted already.");
+
+            await db.BulkImportStagedBlocks.Where(b => b.FileId == fileId).ExecuteDeleteAsync(ct);
+            await db.BulkImportStagedAssets.Where(a => a.FileId == fileId).ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
+            copied.Clear();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // Nothing was made: the copies go, the staging stays, and the sweep sends the promotion again.
+            logger.LogError(ex, "[BulkImport] File {FileId} couldn't be promoted into its document; its staging is kept", fileId);
+            await DeleteKeysAsync(copied);
+            copied.Clear();
+            db.ChangeTracker.Clear();
+            return;
+        }
+        finally
+        {
+            if (copied.Count > 0) await DeleteKeysAsync(copied); // left early (promoted by another delivery) after copying
+        }
+        db.ChangeTracker.Clear();
+
+        // Committed: the document exists whole. The staged copies of the figures go.
+        await DeleteKeysAsync(stagedKeys);
+        var promoteMs = BulkImportTiming.Since(started);
+        var promoted = await db.BulkImportFiles.FirstAsync(f => f.Id == fileId, CancellationToken.None);
+        promoted.PromoteMs = promoteMs;
+        await db.SaveChangesAsync(CancellationToken.None);
+        logger.LogInformation("[BulkImport] File {FileId} promoted: document {DocumentId} with {Blocks} block(s) and {Assets} figure file(s)",
+            fileId, documentId, blockCount, assetCount);
+        BulkImportTiming.Promote(logger, promoteMs, fileId, documentId, blockCount, assetCount);
+
+        // Now done (or partial): the progress carries the document, and the compile runs after.
+        await RefreshFileAsync(promoted, CancellationToken.None);
+        await NotifyAsync(promoted, force: true, CancellationToken.None);
+    }
+
+    /// <summary>A staged block's content with its figure pointing at the document's asset instead of the staged file.</summary>
+    private static JsonDocument WithMovedAsset(BulkImportStagedBlock block, IReadOnlyDictionary<Guid, string> moved)
+    {
+        if (block.Type != "figure"
+            || System.Text.Json.Nodes.JsonNode.Parse(block.Content.RootElement.GetRawText()) is not System.Text.Json.Nodes.JsonObject node
+            || node["stagedAssetId"]?.GetValueKind() != JsonValueKind.String
+            || !Guid.TryParse(node["stagedAssetId"]!.GetValue<string>(), out var assetId))
+            return JsonDocument.Parse(block.Content.RootElement.GetRawText());
+        node.Remove("stagedAssetId");
+        if (moved.TryGetValue(assetId, out var url))
+        {
+            node["src"] = url;
+            node["assetId"] = assetId.ToString();
+        }
+        return JsonDocument.Parse(node.ToJsonString());
+    }
+
     /// <summary>Milliseconds from the upload's start: its own time, plus since the file's row was written (the upload's end).</summary>
     private static int SinceUpload(BulkImportFile file) =>
         (int)Math.Min(int.MaxValue, (long)(file.UploadMs ?? 0) + BulkImportTiming.Since(file.CreatedAt));
@@ -624,6 +1006,7 @@ public sealed class BulkImportProcessor(
         await db.SaveChangesAsync(ct);
         var file = chunk.File ?? await db.BulkImportFiles.FirstAsync(f => f.Id == chunk.FileId, ct);
         await SetPlaceholderAsync(file, chunk, FailedText(chunk), ct);
+        if (Staging(file)) await notifier.PreviewChangedAsync(file.UserId, file.BatchId, file.Id, chunk.Index);
         await RefreshFileAsync(file, ct);
         await NotifyAsync(file, force: true, ct);
     }
@@ -693,6 +1076,8 @@ public sealed class BulkImportProcessor(
             return true;
         }
 
+        // Staged and not promoted, a retry reads (or stages) again before the document exists; promoted, the retried
+        // chunk goes into the document in its placeholder's stead (the version moved, the open editor told).
         var again = chunks.Where(c => c.Status is Failed or Cancelled).ToList();
         if (again.Count == 0) return false;
         if (!await DocumentAliveAsync(file, ct))
@@ -747,16 +1132,90 @@ public sealed class BulkImportProcessor(
                 await NotifyAsync(file, force: true, ct);
                 continue;
             }
-            await CancelUnsentAsync(file, "Cancelled.", placeholders: true, ct);
+            if (Staging(file)) await CancelStagedAsync(file, "Cancelled.", ct);
+            else await CancelUnsentAsync(file, "Cancelled.", placeholders: true, ct);
         }
         await RefreshBatchAsync(batchId, ct);
     }
 
+    /// <summary>
+    /// Stops one file (21 Nov 2026). Before promotion its staging goes (rows and staged figures) and no document is made;
+    /// after it (a retry running), as a batch's cancel. False when the file has nothing left to stop.
+    /// </summary>
+    public async Task<bool> CancelFileAsync(BulkImportFile file, CancellationToken ct = default)
+    {
+        if (Array.IndexOf(FileFinished, file.Status) >= 0) return false;
+        if (file.Status is Queued or Splitting)
+        {
+            file.Status = Cancelled;
+            file.Error = "Cancelled.";
+            file.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await NotifyAsync(file, force: true, ct);
+        }
+        else if (Staging(file)) await CancelStagedAsync(file, "Cancelled.", ct);
+        else await CancelUnsentAsync(file, "Cancelled.", placeholders: true, ct);
+        await RefreshBatchAsync(file.BatchId, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// A staged file cancelled before promotion: its staging rows and staged figures are deleted, its chunks not being
+    /// read are cancelled (those already staged too: a retry stages them again from the stored reading, without
+    /// Mathpix), and it stays cancelled; a chunk at Mathpix finishes its reading and is then dropped. Nothing is charged
+    /// for pages not read. Under the file's lock, so it never interleaves with a stage or the promotion.
+    /// </summary>
+    private async Task CancelStagedAsync(BulkImportFile file, string reason, CancellationToken ct)
+    {
+        List<string> keys;
+        int cancelledChunks;
+        var now = DateTime.UtcNow;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await LockFileAsync(file.Id, ct);
+            var current = await db.BulkImportFiles.AsNoTracking().FirstAsync(f => f.Id == file.Id, ct);
+            if (!Staging(current))
+            {
+                // Promoted just before: as a document's file.
+                await tx.RollbackAsync(ct);
+                await db.Entry(file).ReloadAsync(ct);
+                await CancelUnsentAsync(file, reason, placeholders: true, ct);
+                return;
+            }
+            cancelledChunks = await db.BulkImportChunks
+                .Where(c => c.FileId == file.Id && (c.Status == Queued || c.Status == Sent || c.Status == Read || c.Status == Done))
+                .ExecuteUpdateAsync(c => c.SetProperty(x => x.Status, Cancelled).SetProperty(x => x.UpdatedAt, now), ct);
+            keys = await db.BulkImportStagedAssets.Where(a => a.FileId == file.Id).Select(a => a.StorageKey).ToListAsync(ct);
+            await db.BulkImportStagedBlocks.Where(b => b.FileId == file.Id).ExecuteDeleteAsync(ct);
+            await db.BulkImportStagedAssets.Where(a => a.FileId == file.Id).ExecuteDeleteAsync(ct);
+            await db.BulkImportFiles.Where(f => f.Id == file.Id)
+                .ExecuteUpdateAsync(f => f
+                    .SetProperty(x => x.Status, Cancelled)
+                    .SetProperty(x => x.Error, reason)
+                    .SetProperty(x => x.StagedPreamble, (string?)null)
+                    .SetProperty(x => x.StagedMacros, (string?)null)
+                    .SetProperty(x => x.UpdatedAt, now), ct);
+            await tx.CommitAsync(ct);
+        }
+        await db.Entry(file).ReloadAsync(ct);
+        await DeleteKeysAsync(keys);
+        logger.LogInformation("[BulkImport] File {FileId} cancelled before promotion: {Chunks} chunk(s) stopped, its staging and {Assets} staged file(s) deleted ({Reason})",
+            file.Id, cancelledChunks, keys.Count, reason);
+        await RefreshBatchAsync(file.BatchId, ct);
+        await NotifyAsync(file, force: true, ct);
+        await DispatchAsync(file.UserId, ct);
+    }
+
     // ── status ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Whether the file's document is still there: a staged file not promoted has none yet, and is alive; otherwise its
+    /// document must exist and not be in the Trash.
+    /// </summary>
     private async Task<bool> DocumentAliveAsync(BulkImportFile file, CancellationToken ct) =>
-        file.DocumentId is { } id && await db.Documents.AsNoTracking().IgnoreQueryFilters()
-            .AnyAsync(d => d.Id == id && d.DeletedAt == null, ct);
+        file.DocumentId is { } id
+            ? await db.Documents.AsNoTracking().IgnoreQueryFilters().AnyAsync(d => d.Id == id && d.DeletedAt == null, ct)
+            : Staging(file);
 
     /// <summary>
     /// A split file's status from its chunks: reading while any is unfinished; then done (all placed), failed (none
@@ -768,6 +1227,29 @@ public sealed class BulkImportProcessor(
         var statuses = await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == file.Id).Select(c => c.Status).ToListAsync(ct);
         if (statuses.Count == 0) return;
         var status = FileStatusOf(statuses);
+        if (Staging(file))
+        {
+            // Staged, not promoted: a cancelled file stays so (its staging is gone); a finished file with something staged
+            // is promoted first and is done or partial after (PromoteAsync); with nothing staged (every chunk failed) it
+            // fails with no document.
+            if (file.Status == Cancelled)
+            {
+                await RefreshBatchAsync(file.BatchId, ct);
+                return;
+            }
+            if (status is Done or Partial)
+            {
+                if (file.Status != Reading)
+                {
+                    file.Status = Reading;
+                    file.UpdatedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                }
+                await queue.SendAsync(new PromoteBulkImportFile(file.Id));
+                await RefreshBatchAsync(file.BatchId, ct);
+                return;
+            }
+        }
         if (status != file.Status)
         {
             file.Status = status;
@@ -784,7 +1266,7 @@ public sealed class BulkImportProcessor(
             await db.SaveChangesAsync(ct);
             if (finished) await LogTotalAsync(file, ct);
             // Pages in the document: compiled once in the background, to time it. Never waited for.
-            if (status is Done or Partial && file.DocumentId is not null && file.CompileOk is null && compiler is not null && options.CompileWhenDone)
+            if (status is Done or Partial && file.DocumentId is not null && InDocument(file) && file.CompileOk is null && compiler is not null && options.CompileWhenDone)
                 await queue.SendAsync(new CompileBulkImportFile(file.Id));
         }
         await RefreshBatchAsync(file.BatchId, ct);
@@ -885,7 +1367,7 @@ public sealed class BulkImportProcessor(
             _ => JobStatus.Processing,
         };
         var finished = status != JobStatus.Processing;
-        var progress = finished ? 100 : file.DocumentId is null ? 10 : 50;
+        var progress = finished ? 100 : file.Status == Reading ? 50 : 10;
         var error = file.Status is Failed or Partial && file.Error is { } e ? Short(e) : null;
         var completedAt = finished ? DateTime.UtcNow : (DateTime?)null;
         var documentId = file.DocumentId;

@@ -85,6 +85,13 @@ internal sealed class FakeMathpixClient : IMathpixClient
     public int Deletes => _deletes;
     public ConcurrentBag<int> FailFirstPages { get; } = new();
 
+    /// <summary>Chunks (by first page) whose reading has a figure: <c>\includegraphics{fig-N}</c> and its image in the zip.</summary>
+    public ConcurrentBag<int> FigureFirstPages { get; } = new();
+
+    /// <summary>A 1×1 PNG, the figures' image.</summary>
+    public static readonly byte[] Png = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
+
     /// <summary>Called on each status poll with the chunk's first page and the pages it then reports read.</summary>
     public Func<int, int, Task>? OnPoll { get; set; }
 
@@ -117,20 +124,30 @@ internal sealed class FakeMathpixClient : IMathpixClient
     public Task<byte[]> GetTexZipAsync(string pdfId, CancellationToken ct = default, TimeSpan? maxWait = null)
     {
         var pdf = _pdfs[pdfId];
+        var figure = FigureFirstPages.Contains(pdf.First);
         var tex = string.Join("\n",
             @"\documentclass[11pt]{article}",
             @"\usepackage{amsmath}",
+            @"\usepackage{graphicx}",
+            @"\graphicspath{ {./images/} }",
             @"\newcommand{\RR}{\mathbb{R}}",
             @"\newcommand{\From" + Word(pdf.First) + "}{p" + pdf.First + "}",
             "",
             @"\begin{document}",
             $"Text of pages {pdf.First} to {pdf.Last}.",
             "",
+            figure ? @"\begin{center}" + "\n" + @"\includegraphics[max width=\textwidth]{fig-" + pdf.First + "}\n" + @"\end{center}" : "",
+            "",
             @"\end{document}");
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
-        using (var w = new StreamWriter(zip.CreateEntry($"{pdfId}/{pdfId}.tex").Open(), Encoding.UTF8))
-            w.Write(tex);
+        {
+            using (var w = new StreamWriter(zip.CreateEntry($"{pdfId}/{pdfId}.tex").Open(), Encoding.UTF8))
+                w.Write(tex);
+            if (figure)
+                using (var image = zip.CreateEntry($"{pdfId}/images/fig-{pdf.First}.png").Open())
+                    image.Write(Png);
+        }
         return Task.FromResult(ms.ToArray());
     }
 
@@ -181,6 +198,25 @@ internal sealed class FakeMathpixClient : IMathpixClient
     public Task<string> WaitForCompletionAsync(string pdfId, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<bool> IsAvailableAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task<byte[]> GetImageAsync(string imageUrl, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>Records what the slice tells the author's pages: each file's progress, and each preview change.</summary>
+internal sealed class RecordingNotifier : IBulkImportNotifier
+{
+    public ConcurrentQueue<Lilia.Api.Features.BulkImport.Contracts.BulkImportFileDto> Progress { get; } = new();
+    public ConcurrentQueue<(Guid BatchId, Guid FileId, int ChunkIndex)> PreviewChanges { get; } = new();
+
+    public Task FileChangedAsync(string userId, Guid batchId, Lilia.Api.Features.BulkImport.Contracts.BulkImportFileDto file, bool force)
+    {
+        Progress.Enqueue(file);
+        return Task.CompletedTask;
+    }
+
+    public Task PreviewChangedAsync(string userId, Guid batchId, Guid fileId, int chunkIndex)
+    {
+        PreviewChanges.Enqueue((batchId, fileId, chunkIndex));
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>The compile after a file is done, faked (no TeX): records each document, answers <see cref="Result"/>.</summary>

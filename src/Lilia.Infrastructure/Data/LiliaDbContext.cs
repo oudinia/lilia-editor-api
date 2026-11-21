@@ -143,6 +143,8 @@ public class LiliaDbContext : DbContext
     public DbSet<BulkImportBatch> BulkImportBatches => Set<BulkImportBatch>();
     public DbSet<BulkImportFile> BulkImportFiles => Set<BulkImportFile>();
     public DbSet<BulkImportChunk> BulkImportChunks => Set<BulkImportChunk>();
+    public DbSet<BulkImportStagedBlock> BulkImportStagedBlocks => Set<BulkImportStagedBlock>();
+    public DbSet<BulkImportStagedAsset> BulkImportStagedAssets => Set<BulkImportStagedAsset>();
     public DbSet<MathpixChunkCache> MathpixChunkCache => Set<MathpixChunkCache>();
 
     // LaTeX catalog (v1, Phase 1). The parser consults these tables at

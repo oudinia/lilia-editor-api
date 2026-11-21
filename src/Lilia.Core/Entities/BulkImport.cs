@@ -3,9 +3,10 @@ namespace Lilia.Core.Entities;
 /// <summary>
 /// Bulk import (21 Nov 2026, the owner: mass conversion of scanned maths notebooks, the Forkosh case of ~41 PDFs of
 /// ~150 pages). An author drops many PDFs at once; each is a <see cref="BulkImportFile"/>, split into
-/// <see cref="BulkImportChunk"/>s of a few pages that Mathpix reads in parallel. The file's document exists from the
-/// split on, one placeholder block per chunk, and grows as each chunk's reading replaces its placeholder. The batch is
-/// what one drop made.
+/// <see cref="BulkImportChunk"/>s of a few pages that Mathpix reads in parallel. Since 21 Nov 2026 (the owner: "a staging
+/// table for the whole import until it ends… so we don't clash with the final tables") each chunk's blocks are staged
+/// (<see cref="BulkImportStagedBlock"/>, <see cref="BulkImportStagedAsset"/>) and the file's document is made in one go
+/// when every chunk is finished (promotion). The batch is what one drop made.
 /// </summary>
 public class BulkImportBatch
 {
@@ -34,10 +35,29 @@ public class BulkImportFile
     public int Pages { get; set; }
     /// <summary>queued, splitting, reading, done, partial, failed, cancelled (<see cref="BulkImportStatuses"/>).</summary>
     public string Status { get; set; } = BulkImportStatuses.Queued;
-    /// <summary>The document, set as soon as the file is split; null again if the document is erased.</summary>
+    /// <summary>
+    /// The document: set when the file is promoted (every chunk finished, its staged blocks made into the document in one
+    /// go); null before, and null again if the document is erased. A file split before staging (<see cref="UsesStaging"/>
+    /// false) got its document at the split.
+    /// </summary>
     public Guid? DocumentId { get; set; }
     /// <summary>Whether a chunk's preamble is on the document yet: the first chunk placed sets it whole, later ones add missing macros.</summary>
     public bool PreambleApplied { get; set; }
+    /// <summary>
+    /// True for a file split since staging (21 Nov 2026): its chunks are staged, and its document is made at promotion.
+    /// False for a file split before (its document made at the split, its chunks placed into it as they were read): it
+    /// finishes the old way, so nothing in flight breaks at the deploy.
+    /// </summary>
+    public bool UsesStaging { get; set; }
+    /// <summary>When the staged blocks became the document (promotion); null until then. After it, a retried chunk goes into the document.</summary>
+    public DateTime? PromotedAt { get; set; }
+    /// <summary>
+    /// The staged preamble: the LaTeX before <c>\begin{document}</c> of the first chunk staged (class, packages, macros,
+    /// page setup), applied to the document at promotion as a single import's.
+    /// </summary>
+    public string? StagedPreamble { get; set; }
+    /// <summary>The macros later chunks define that the staged preamble lacks, added to the document's preamble at promotion.</summary>
+    public string? StagedMacros { get; set; }
     public string? Error { get; set; }
     /// <summary>The import's warnings (each chunk's LaTeX import diagnostics, and its pages the reader was unsure of), summed.</summary>
     public int Warnings { get; set; }
@@ -50,12 +70,14 @@ public class BulkImportFile
     public int? UploadMs { get; set; }
     /// <summary>The PDF's size in bytes.</summary>
     public long? SizeBytes { get; set; }
-    /// <summary>Split into chunks and the document made.</summary>
+    /// <summary>Split into chunks (and, for a file split before staging, its document made).</summary>
     public int? SplitMs { get; set; }
-    /// <summary>From the upload to the first chunk placed in the document (the author sees a first page).</summary>
+    /// <summary>From the upload to the first chunk staged (the author sees a first page in the preview); placed, for a file split before staging.</summary>
     public int? FirstPageMs { get; set; }
     /// <summary>From the upload to the file finished (done, partial or failed), the first time it finished.</summary>
     public int? TotalMs { get; set; }
+    /// <summary>The staged blocks and assets made into the document, in one transaction (promotion, 21 Nov 2026).</summary>
+    public int? PromoteMs { get; set; }
     /// <summary>The document compiled once in the background when the file finished (the normal compile path).</summary>
     public int? CompileMs { get; set; }
     /// <summary>Whether that compile made a PDF; null until it ran.</summary>
@@ -92,8 +114,8 @@ public class BulkImportChunk
     public int FirstPage { get; set; }
     public int LastPage { get; set; }
     /// <summary>
-    /// queued (waiting its turn), sent (on the ocr queue), reading (at Mathpix), read (waiting to be placed), done (placed),
-    /// failed, cancelled (<see cref="BulkImportStatuses"/>).
+    /// queued (waiting its turn), sent (on the ocr queue), reading (at Mathpix), read (waiting to be placed), done (staged,
+    /// or placed in the document), failed, cancelled (<see cref="BulkImportStatuses"/>).
     /// </summary>
     public string Status { get; set; } = BulkImportStatuses.Queued;
     public int Attempts { get; set; }
@@ -112,8 +134,13 @@ public class BulkImportChunk
     /// <summary>The pages charged to the author for this chunk: 0 until Mathpix's reading is stored, never for a failure.</summary>
     public int ChargedPages { get; set; }
     public string? Error { get; set; }
-    /// <summary>The placeholder block on the document that the chunk's blocks replace.</summary>
+    /// <summary>
+    /// The placeholder block on the document that the chunk's blocks replace: each chunk's from the split for a file split
+    /// before staging; a failed chunk's from the promotion for a staged file (a retry replaces it in the document).
+    /// </summary>
     public Guid? PlaceholderBlockId { get; set; }
+    /// <summary>The chunk's import review session (its LaTeX import's record and diagnostics); linked to the document at promotion.</summary>
+    public Guid? SessionId { get; set; }
     /// <summary>When the chunk was last claimed for reading: a read stuck past the stale limit is sent again.</summary>
     public DateTime? StartedAt { get; set; }
 
@@ -146,6 +173,50 @@ public class BulkImportChunk
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public int PageCount => LastPage - FirstPage + 1;
+
+    public virtual BulkImportFile? File { get; set; }
+}
+
+/// <summary>
+/// One block of a chunk's reading, staged until its file is promoted (21 Nov 2026): the import writes here, never into
+/// the author's document while it runs. Its id becomes the block's id at promotion; its content is a block's, a figure's
+/// <c>src</c> pointing at its <see cref="BulkImportStagedAsset"/> until then.
+/// </summary>
+public class BulkImportStagedBlock
+{
+    public Guid Id { get; set; }
+    public Guid FileId { get; set; }
+    /// <summary>The chunk it came from (<see cref="BulkImportChunk.Index"/>): blocks are promoted in page order.</summary>
+    public int ChunkIndex { get; set; }
+    /// <summary>Its order within the chunk, from 0.</summary>
+    public int Order { get; set; }
+    public string Type { get; set; } = string.Empty;
+    /// <summary>The block's content, as a block's (jsonb).</summary>
+    public System.Text.Json.JsonDocument Content { get; set; } = System.Text.Json.JsonDocument.Parse("{}");
+    public int Depth { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public virtual BulkImportFile? File { get; set; }
+}
+
+/// <summary>
+/// A file of a chunk's reading (a figure's image), stored under <c>bulk-staging/{fileId}/</c> until promotion, when it
+/// is moved to the document's assets (its id becomes the asset's). Served to the author for the preview by
+/// <c>GET /api/bulk-imports/{batchId}/files/{fileId}/assets/{name}</c>.
+/// </summary>
+public class BulkImportStagedAsset
+{
+    public Guid Id { get; set; }
+    public Guid FileId { get; set; }
+    public int ChunkIndex { get; set; }
+    /// <summary>Its name in the staging URLs: the id and the extension (<c>{id:N}.png</c>).</summary>
+    public string Name { get; set; } = string.Empty;
+    /// <summary>Its path in the reading's zip (<c>images/fig1.png</c>).</summary>
+    public string OriginalPath { get; set; } = string.Empty;
+    public string StorageKey { get; set; } = string.Empty;
+    public string ContentType { get; set; } = "application/octet-stream";
+    public long Size { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public virtual BulkImportFile? File { get; set; }
 }

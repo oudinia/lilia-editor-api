@@ -1340,6 +1340,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("result_key");
 
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -1450,6 +1454,14 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("precision_score");
 
+                    b.Property<int?>("PromoteMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("promote_ms");
+
+                    b.Property<DateTime?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("promoted_at");
+
                     b.Property<long?>("SizeBytes")
                         .HasColumnType("bigint")
                         .HasColumnName("size_bytes");
@@ -1462,6 +1474,14 @@ namespace Lilia.Infrastructure.Migrations
                     b.Property<int?>("SplitMs")
                         .HasColumnType("integer")
                         .HasColumnName("split_ms");
+
+                    b.Property<string>("StagedMacros")
+                        .HasColumnType("text")
+                        .HasColumnName("staged_macros");
+
+                    b.Property<string>("StagedPreamble")
+                        .HasColumnType("text")
+                        .HasColumnName("staged_preamble");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1493,6 +1513,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("user_id");
 
+                    b.Property<bool>("UsesStaging")
+                        .HasColumnType("boolean")
+                        .HasColumnName("uses_staging");
+
                     b.Property<int>("Warnings")
                         .HasColumnType("integer")
                         .HasColumnName("warnings");
@@ -1515,6 +1539,111 @@ namespace Lilia.Infrastructure.Migrations
                         .HasDatabaseName("ix_bulk_import_files_user_status");
 
                     b.ToTable("bulk_import_files", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportStagedAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ChunkIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("chunk_index");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("OriginalPath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("original_path");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("storage_key");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId", "ChunkIndex")
+                        .HasDatabaseName("ix_bulk_import_staged_assets_file_chunk");
+
+                    b.HasIndex("FileId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_bulk_import_staged_assets_file_name");
+
+                    b.ToTable("bulk_import_staged_assets", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportStagedBlock", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ChunkIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("chunk_index");
+
+                    b.Property<JsonDocument>("Content")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("integer")
+                        .HasColumnName("depth");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_id");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order_in_chunk");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("block_type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId", "ChunkIndex", "Order")
+                        .HasDatabaseName("ix_bulk_import_staged_blocks_file_order");
+
+                    b.ToTable("bulk_import_staged_blocks", (string)null);
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.ChangelogEntry", b =>
@@ -8766,6 +8895,28 @@ namespace Lilia.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Batch");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportStagedAsset", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.BulkImportFile", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportStagedBlock", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.BulkImportFile", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.Comment", b =>
