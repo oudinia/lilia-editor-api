@@ -29,6 +29,7 @@ public class LatexImportQuoteAndAlgorithmTests
     [Theory]
     [InlineData("quote", "To be or not to be.")]
     [InlineData("quotation", "A longer quoted passage.")]
+    [InlineData("displayquote", "A passage Mathpix quoted.")]
     public async Task A_quote_is_a_blockquote_with_its_text(string env, string text)
     {
         var blocks = await Import($"\\begin{{{env}}}\n{text}\n\\end{{{env}}}");
@@ -36,6 +37,19 @@ public class LatexImportQuoteAndAlgorithmTests
         blocks.Should().ContainSingle();
         blocks[0].Type.Should().Be("blockquote");
         blocks[0].Content.GetProperty("text").GetString().Should().Be(text);
+    }
+
+    // 21 Nov 2026: Mathpix writes csquotes' displayquote, kept as raw LaTeX it stopped the compile ("Environment
+    // displayquote undefined", the launch bot's notebook G). Its optional [citation][punctuation] are dropped.
+    [Fact]
+    public async Task A_displayquote_with_its_citation_is_a_plain_blockquote()
+    {
+        var blocks = await Import("\\begin{displayquote}[Euler][.]\nEvery number is interesting.\n\\end{displayquote}");
+
+        blocks.Should().ContainSingle();
+        blocks[0].Type.Should().Be("blockquote");
+        blocks[0].Content.GetProperty("text").GetString().Should().Be("Every number is interesting.");
+        blocks[0].Content.ToString().Should().NotContain("displayquote");
     }
 
     [Fact]
