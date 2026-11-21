@@ -26,6 +26,7 @@ public class BulkImportSplitTests : IDisposable
     [InlineData(1, new[] { 1 })]
     [InlineData(10, new[] { 10 })]
     [InlineData(11, new[] { 10, 1 })]
+    [InlineData(12, new[] { 10, 2 })]   // the launch bot's 12-page notebook C (21 Nov 2026): both chunks, every page
     [InlineData(150, new[] { 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10 })]
     [InlineData(25, new[] { 10, 10, 5 })]
     public void Ranges_cut_every_ten_pages_the_last_shorter(int pages, int[] sizes)

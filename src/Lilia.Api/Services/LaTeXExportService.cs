@@ -836,7 +836,7 @@ public class LaTeXExportService : ILaTeXExportService
         {
             sb.AppendLine(language.Cjk
                 ? "% Chinese / Japanese / Korean text: compile with xelatex."
-                : $"% This document's language needs {language.Engine.ToCli()}: compile with it.");
+                : $"% This document's language or letters need {language.Engine.ToCli()}: compile with it.");
             sb.Append(LaTeXPreamble.EngineAddendum(language.Engine, cjk: language.Cjk));
             sb.Append(language.Fonts);
             sb.AppendLine();

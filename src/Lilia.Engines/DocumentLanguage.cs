@@ -339,6 +339,10 @@ public static class DocumentLanguage
     /// </summary>
     public static Plan PlanFor(Document doc, string? importedPackages, LatexEngine engine, bool hasCjk)
     {
+        // Cyrillic (or unmapped Greek) anywhere in a document read as a Latin-script language: LuaLaTeX and its Unicode
+        // faces, or pdflatex stops at the first letter (the launch bot's Rostov notes, 21 Nov 2026; UnicodeFacesText).
+        // Here as well as in EngineDetector, so the exported .tex (LaTeXExportService) gets the faces too.
+        if (engine == LatexEngine.Pdflatex && !hasCjk && UnicodeFacesText.Contains(doc)) engine = LatexEngine.Lualatex;
         if (OwnChoice(doc, importedPackages)) return new Plan(null, engine, hasCjk, "", "");
         var spec = For(doc);
         var others = SecondScripts(doc, spec);

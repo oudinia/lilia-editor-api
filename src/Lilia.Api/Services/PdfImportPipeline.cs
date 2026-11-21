@@ -52,8 +52,12 @@ public sealed class PdfImportPipeline(
         var extracted = extractor.Extract(projectZip);
         if (string.IsNullOrWhiteSpace(extracted.InlinedTex))
             throw new InvalidOperationException("Mathpix's reading of these pages has no LaTeX to import.");
-        var latex = Lilia.Import.Services.MathpixFigures.AsFigureEnvironments(extracted.InlinedTex);
+        // A maths command Mathpix left in the text is set back in maths (OcrMathText, 21 Nov 2026).
+        var latex = Lilia.Import.Services.OcrMathText.MathCommandsAsMaths(
+            Lilia.Import.Services.MathpixFigures.AsFigureEnvironments(extracted.InlinedTex), out var wrapped);
         var extractMs = ImportPlaceTimer.Since(started);
+        if (wrapped > 0)
+            logger.LogInformation("[BulkImport] {File}: {Count} maths command(s) in Mathpix's text set back in maths", fileName, wrapped);
         var (sessionId, blockIds) = await jobs.ImportPdfChunkIntoDocumentAsync(
             userId, fileName, documentId, placeholderBlockId, applyPreamble, latex, projectZip, sourcePdfKey, ct);
         var warnings = await db.ImportDiagnostics.AsNoTracking()

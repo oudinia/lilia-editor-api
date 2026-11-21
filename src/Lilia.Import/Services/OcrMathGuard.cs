@@ -17,7 +17,7 @@ public static partial class OcrMathGuard
     public const string Placeholder = @"\ensuremath{\square}";
 
     /// <summary>A formula's LaTeX (an equation block): every unsettable character replaced, a run of them by one box.</summary>
-    public static string InMath(string latex, ICollection<string> replaced) => Replace(latex, replaced);
+    public static string InMath(string latex, ICollection<string> replaced) => Replace(CyrillicAsText(latex), replaced);
 
     /// <summary>
     /// Text that may hold maths (<c>$…$</c>, <c>$$…$$</c>, <c>\(…\)</c>, <c>\[…\]</c>, a maths environment): only what
@@ -25,13 +25,29 @@ public static partial class OcrMathGuard
     /// </summary>
     public static string InText(string text, ICollection<string> replaced)
     {
-        if (string.IsNullOrEmpty(text) || !HasUnsettable(text)) return text;
+        if (string.IsNullOrEmpty(text) || !HasUnsettable(text) && !Cyrillic().IsMatch(text)) return text;
         return MathRegion().Replace(text, m =>
         {
             var body = m.Groups["body"];
-            return m.Value[..(body.Index - m.Index)] + Replace(body.Value, replaced) + m.Value[(body.Index - m.Index + body.Length)..];
+            return m.Value[..(body.Index - m.Index)] + Replace(CyrillicAsText(body.Value), replaced) + m.Value[(body.Index - m.Index + body.Length)..];
         });
     }
+
+    /// <summary>
+    /// Cyrillic words in a formula as text: <c>v_{нач}</c> is <c>v_{\text{нач}}</c>. A Russian lecture's subscripts are real
+    /// words (the launch bot's Rostov notes, 21 Nov 2026), and the maths fonts have no Cyrillic: pdflatex stopped, and
+    /// LuaLaTeX dropped them ("Missing character: There is no н in font cmmi7"). As text they print in the document's
+    /// Unicode face (LuaLaTeX, <c>UnicodeFacesText</c>). A word already in the formula's text (<c>\text{сила}</c>) is left.
+    /// </summary>
+    internal static string CyrillicAsText(string math)
+    {
+        if (string.IsNullOrEmpty(math) || !Cyrillic().IsMatch(math)) return math;
+        var text = OcrMathAccents.TextGroups(math);
+        return Cyrillic().Replace(math, m => text.Any(r => m.Index > r.Start && m.Index < r.End) ? m.Value : @"\text{" + m.Value + "}");
+    }
+
+    [GeneratedRegex(@"[\u0400-\u052F]+(?:[ \t]+[\u0400-\u052F]+)*")]
+    private static partial Regex Cyrillic();
 
     /// <summary>Whether the text has any character that would be replaced if it were in maths.</summary>
     public static bool HasUnsettable(string text)
@@ -78,5 +94,5 @@ public static partial class OcrMathGuard
     }
 
     [GeneratedRegex(@"(?<!\\)\$\$(?<body>.+?)(?<!\\)\$\$|\\\[(?<body>.+?)\\\]|\\\((?<body>.+?)\\\)|\\begin\{(?<env>equation|align|gather|multline|eqnarray|displaymath|math|flalign|alignat)(?<star>\*?)\}(?<body>.+?)\\end\{\k<env>\k<star>\}|(?<![\\$])\$(?!\$)(?<body>.+?)(?<![\\])\$", RegexOptions.Singleline)]
-    private static partial Regex MathRegion();
+    internal static partial Regex MathRegion();
 }
