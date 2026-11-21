@@ -21,6 +21,10 @@ builder.Services.AddDbContextFactory<LiliaDbContext>(o => o
     .UseNpgsql(connection.ConnectionString)
     .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
     .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+// Data protection (Blazor's antiforgery tokens and circuit state) with its key ring in the database, shared with the
+// API and with a standby machine (21 Nov 2026; LiliaDataProtection). AddDbContextFactory also registers the scoped
+// context the key store reads through.
+builder.Services.AddLiliaDataProtection();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<AdminQueries>();
 builder.Services.AddScoped<AdminStats>();

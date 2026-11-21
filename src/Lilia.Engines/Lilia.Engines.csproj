@@ -26,6 +26,14 @@
     <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- As Lilia.Infrastructure (21 Nov 2026): its data-protection key store must take data protection from the
+       patched ASP.NET runtime, not the NuGet 10.0.2 copy (CVE-2026-40372) restore pulled here without it. The
+       framework also brings Microsoft.Extensions.Logging.Abstractions, Configuration.Abstractions and Http, which
+       were package references here. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Helpers the suite asserts on directly (FormatTitleMetaLatex and friends)
          stay internal rather than becoming public API for a test's sake. -->
@@ -34,9 +42,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
   </ItemGroup>
 
   <PropertyGroup>

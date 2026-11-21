@@ -1,10 +1,11 @@
 using Lilia.Core.Entities;
 using Lilia.Core.Entities.E2E;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Lilia.Infrastructure.Data;
 
-public class LiliaDbContext : DbContext
+public class LiliaDbContext : DbContext, IDataProtectionKeyContext
 {
     public LiliaDbContext(DbContextOptions<LiliaDbContext> options) : base(options)
     {
@@ -195,6 +196,12 @@ public class LiliaDbContext : DbContext
     // Companion-app waitlist — collects emails from the mobile
     // read-mode banner so we can email when the native app ships.
     public DbSet<CompanionAppWaitlist> CompanionAppWaitlist => Set<CompanionAppWaitlist>();
+
+    /// <summary>
+    /// ASP.NET's data-protection key ring (21 Nov 2026), shared by every machine on this database: see
+    /// <see cref="LiliaDataProtection"/>.
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

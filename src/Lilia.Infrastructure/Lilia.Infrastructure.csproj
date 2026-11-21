@@ -4,7 +4,16 @@
     <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
   </ItemGroup>
 
+  <!-- The data-protection key ring lives in this database (21 Nov 2026): LiliaDbContext is the key store. Data
+       protection itself comes from the ASP.NET runtime, like the feature slices: without this reference the key
+       store's package pulled Microsoft.AspNetCore.DataProtection 10.0.2 from NuGet, a version with a forged-payload
+       advisory (CVE-2026-40372, fixed in 10.0.7), instead of the patched runtime's own. -->
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
   </ItemGroup>
