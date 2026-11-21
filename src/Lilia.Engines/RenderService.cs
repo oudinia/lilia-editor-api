@@ -964,6 +964,9 @@ public partial class RenderService : IRenderService
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
         "charter", "cmbright", "kpfonts", "eulervm",
         "wasysym", "mathabx", "stix", "stix2", "times",
+        // MnSymbol (Mathpix's LaTeX preamble loads it) redefines amssymb's symbols: "Command \centerdot already
+        // defined" stopped a bulk-imported PDF's compile (21 Nov 2026).
+        "MnSymbol",
         "fontspec", "unicode-math", "polyglossia",
         // newspaper (Overleaf template) depends on yfonts.sty which isn't on
         // default texlive. Shimmed via LaTeXPreamble.NewspaperShims.
