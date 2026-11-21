@@ -701,6 +701,9 @@ public class LaTeXExportService : ILaTeXExportService
         "mathpazo", "fourier", "libertine", "palatino", "utopia",
         "charter", "cmbright", "kpfonts", "eulervm",
         "wasysym", "mathabx", "stix", "stix2", "times",
+        // MnSymbol (Mathpix's LaTeX preamble loads it) redefines amssymb's symbols: "Command \centerdot already
+        // defined" stopped a bulk-imported PDF's compile (21 Nov 2026).
+        "MnSymbol",
         // XeTeX / LuaTeX-only font loaders — our pdflatex container can't
         // use them. Load lmodern-based defaults instead.
         "fontspec", "unicode-math", "polyglossia",
