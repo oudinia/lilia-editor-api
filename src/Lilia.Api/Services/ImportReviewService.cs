@@ -2957,15 +2957,16 @@ WHERE br.session_id = @session AND br.block_id = ANY(@ids)
         // can view them via the asset URL.
 
         // Surface extractor notices as ImportDiagnostic rows so the
-        // review panel shows the summary. Info severity because these
-        // are informational, not blocking.
+        // review panel shows the summary. An inventory ("Found N image
+        // file(s)") is info; a file skipped or an include not resolved is a
+        // warning (21 Nov 2026: they were all stored as warnings).
         foreach (var notice in sessionId is null ? [] : extracted.Notices)
         {
             _context.ImportDiagnostics.Add(new ImportDiagnostic
             {
                 Id = Guid.NewGuid(),
                 SessionId = sessionId!.Value,
-                Severity = "warning",
+                Severity = extracted.SeverityOf(notice),
                 Category = "auto_shimmed",
                 Message = notice,
                 CreatedAt = now,

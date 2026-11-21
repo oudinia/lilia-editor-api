@@ -161,7 +161,9 @@ public sealed record BulkImportWarningDto(
 /// <summary>
 /// <c>GET /api/bulk-imports/{batchId}/files/{fileId}/warnings</c> (21 Nov 2026, author only): the file's warnings in page
 /// order, read from its chunks' import diagnostics. <c>Total</c> is the file's count (its <c>warnings</c>); a file read
-/// before a chunk kept its import record (a file split before staging) may list fewer. At most
+/// before a chunk kept its import record (a file split before staging) may list fewer. A file imported before 21 Nov 2026
+/// counted its tex.zip's inventory ("Found N image file(s)") as warnings: the list leaves those out, and <c>Total</c>
+/// with them, so it can be lower than the file's stored count. At most
 /// <c>Limit</c> are listed; <c>Truncated</c> says there were more.
 /// </summary>
 public sealed record BulkImportWarningListDto(

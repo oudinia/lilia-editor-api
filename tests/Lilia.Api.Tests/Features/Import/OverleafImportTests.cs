@@ -47,6 +47,23 @@ public class OverleafImportTests : IntegrationTestBase
 
         result.Notices.Should().Contain(n => n.Contains("image"));
         result.Notices.Should().Contain(n => n.Contains("bibliography"));
+
+        // 21 Nov 2026: an inventory is information, not a warning; a local style not applied stays a warning.
+        result.SeverityOf(result.Notices.Single(n => n.Contains("image file(s)"))).Should().Be("info");
+        result.SeverityOf(result.Notices.Single(n => n.Contains("bibliography"))).Should().Be("info");
+        result.SeverityOf(result.Notices.Single(n => n.Contains("other file(s)"))).Should().Be("info");
+        result.SeverityOf(result.Notices.Single(n => n.Contains("style file(s)"))).Should().Be("warning");
+        result.SeverityOf("anything else").Should().Be("warning");
+    }
+
+    [Fact]
+    public void Extractor_An_unresolved_include_is_a_warning()
+    {
+        var result = new LatexProjectExtractor().Extract(BuildZipWith(new[]
+        {
+            ("main.tex", "\\documentclass{article}\\begin{document}\\input{missing}\\end{document}"),
+        }));
+        result.SeverityOf(result.Notices.Single(n => n.Contains("missing"))).Should().Be("warning");
     }
 
     [Fact]

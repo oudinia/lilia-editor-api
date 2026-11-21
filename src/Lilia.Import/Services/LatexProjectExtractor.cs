@@ -35,6 +35,25 @@ public record LatexProjectResult(
 {
     /// <summary>Every file that could be the main one (\documentclass and \begin{document}), the chosen one first.</summary>
     public IReadOnlyList<string> MainCandidates { get; init; } = [];
+
+    /// <summary>
+    /// The <see cref="Notices"/> that only say what the zip holds ("Found 6 image file(s): …", the .bib, the listings, the
+    /// other files kept): information, not a warning (21 Nov 2026, the launch bot's production retest of the bulk
+    /// import's warning list: 6 of a file's 8 "warnings" were a Mathpix tex.zip's image list, with no sentence and no
+    /// block). A file skipped, a local style not applied and an include not resolved stay warnings.
+    /// </summary>
+    public IReadOnlySet<string> InformationNotices { get; init; } = new HashSet<string>();
+
+    /// <summary>The import diagnostic severity a notice is stored with: <c>info</c> for an inventory, else <c>warning</c>.</summary>
+    public string SeverityOf(string notice) => InformationNotices.Contains(notice) ? "info" : "warning";
+
+    /// <summary>
+    /// A notice stored before 21 Nov 2026 as a warning though it is an inventory (category <c>auto_shimmed</c>, no code):
+    /// its message starts "Found " (images, bibliography, listings) or says other files were kept. Readers that list
+    /// warnings leave these rows out; new rows have severity <c>info</c>.
+    /// </summary>
+    public const string InventoryPrefix = "Found ";
+    public const string OtherFilesKept = " other file(s) preserved as assets";
 }
 
 /// <summary>
@@ -179,16 +198,20 @@ public class LatexProjectExtractor : ILatexProjectExtractor
         var other = files.Where(f => f.Kind == LatexProjectFileKinds.Data
                                     || f.Kind == LatexProjectFileKinds.Other).ToList();
 
+        // An inventory is information (InformationNotices); the rest are warnings.
+        var information = new HashSet<string>();
+        void Inform(string notice) { notices.Add(notice); information.Add(notice); }
+
         if (images.Count > 0)
-            notices.Add($"Found {images.Count} image file(s): {string.Join(", ", images.Take(6).Select(i => i.Path))}{(images.Count > 6 ? ", …" : "")}");
+            Inform($"Found {images.Count} image file(s): {string.Join(", ", images.Take(6).Select(i => i.Path))}{(images.Count > 6 ? ", …" : "")}");
         if (styles.Count > 0)
             notices.Add($"Project contains {styles.Count} local style file(s) ({string.Join(", ", styles.Select(s => s.Path))}). Preserved as assets — not applied on render (we compile with pdflatex + a fixed preamble).");
         if (bibs.Count > 0)
-            notices.Add($"Found {bibs.Count} bibliography file(s): {string.Join(", ", bibs.Select(b => b.Path))}.");
+            Inform($"Found {bibs.Count} bibliography file(s): {string.Join(", ", bibs.Select(b => b.Path))}.");
         if (listings.Count > 0)
-            notices.Add($"Found {listings.Count} code listing file(s). Inlined into \\lstinputlisting code blocks when referenced.");
+            Inform($"Found {listings.Count} code listing file(s). Inlined into \\lstinputlisting code blocks when referenced.");
         if (other.Count > 0)
-            notices.Add($"{other.Count} other file(s) preserved as assets: {string.Join(", ", other.Take(6).Select(f => f.Path))}{(other.Count > 6 ? ", …" : "")}");
+            Inform($"{other.Count}{LatexProjectResult.OtherFilesKept}: {string.Join(", ", other.Take(6).Select(f => f.Path))}{(other.Count > 6 ? ", …" : "")}");
         if (unresolved.Count > 0)
             notices.Add($"Could not resolve these \\input/\\include references: {string.Join(", ", unresolved)}.");
 
@@ -199,6 +222,7 @@ public class LatexProjectExtractor : ILatexProjectExtractor
             UnresolvedIncludes: unresolved,
             Notices: notices)
         {
+            InformationNotices = information,
             MainCandidates = texFiles
                 .Where(kv => DocumentClassPattern.IsMatch(kv.Value) && BeginDocumentPattern.IsMatch(kv.Value))
                 .Select(kv => kv.Key).OrderBy(k => k == mainKey ? 0 : 1).ThenBy(k => k, StringComparer.OrdinalIgnoreCase).ToList(),
