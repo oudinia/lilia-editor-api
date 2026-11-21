@@ -484,14 +484,18 @@ builder.Services.AddDbContext<Lilia.Api.Features.Teams.Data.TeamsDbContext>((sp,
         .UseNpgsql(sp.GetRequiredService<LiliaDbContext>().Database.GetDbConnection())
         .AddInterceptors(sp.GetRequiredService<Lilia.Api.Services.QueryTimingInterceptor>(), sp.GetRequiredService<Lilia.Api.Services.ConnectionTimingInterceptor>()));
 
-// Configure Storage Service
+// Configure Storage Service. 21 Nov 2026: production moves to a private R2 bucket when R2__Endpoint is set
+// (~/.config/lilia/r2.env, sourced by ops/restart-api.sh); without it, the local folder (development, tests, test copy).
+builder.Services.AddSingleton<Lilia.Api.Services.StorageOpsMeter>();
 if (!string.IsNullOrEmpty(builder.Configuration["R2:Endpoint"]))
 {
     builder.Services.AddSingleton<IStorageService, R2StorageService>();
+    Console.WriteLine($"[BOOT] storage: R2 bucket {builder.Configuration["R2:BucketName"]} (private; files served at /uploads by the API)");
 }
 else
 {
     builder.Services.AddSingleton<IStorageService, LocalStorageService>();
+    Console.WriteLine("[BOOT] storage: local folder");
 }
 
 // Register Application Services
@@ -719,6 +723,7 @@ else
 // limit), Stripe's webhook or files, nor in the test host.
 var perUserPerMinute = builder.Configuration.GetValue("RateLimit:PerUserPerMinute", 600);
 var anonymousPerMinute = builder.Configuration.GetValue("RateLimit:AnonymousPerMinute", 120);
+var uploadsPerMinute = builder.Configuration.GetValue("RateLimit:UploadsPerMinute", 1200);
 var globalLimit = builder.Configuration.GetValue("RateLimit:Enabled", true) && !builder.Environment.IsEnvironment("Testing");
 builder.Services.AddRateLimiter(options =>
 {
@@ -735,8 +740,19 @@ builder.Services.AddRateLimiter(options =>
         {
             var path = http.Request.Path;
             if (path.StartsWithSegments("/health") || path.StartsWithSegments("/hubs") || path.StartsWithSegments("/api/mcp")
-                || path.StartsWithSegments("/api/billing/webhook") || path.StartsWithSegments("/uploads"))
+                || path.StartsWithSegments("/api/billing/webhook"))
                 return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("exempt");
+            // Uploaded files (21 Nov 2026): no longer unlimited, now that each one is a read from R2, billed per
+            // operation. An image tag sends no sign-in, so per address, and generous: a document's figures all at once.
+            if (path.StartsWithSegments("/uploads"))
+                return System.Threading.RateLimiting.RateLimitPartition.GetSlidingWindowLimiter(
+                    "uploads:" + (http.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                    _ => new System.Threading.RateLimiting.SlidingWindowRateLimiterOptions
+                    {
+                        PermitLimit = uploadsPerMinute,
+                        Window = TimeSpan.FromMinutes(1),
+                        SegmentsPerWindow = 6,
+                    });
             var user = http.User.FindFirst("sub")?.Value
                 ?? http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var key = user is not null ? "u:" + user : "ip:" + (http.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -1160,17 +1176,13 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Serve static files for local storage uploads
+// Uploaded files: /uploads/{key}, from whichever store is configured (21 Nov 2026). This was static files over the
+// local folder; production now keeps its files in a private R2 bucket, and documents store /uploads/... URLs, so the
+// API streams each file from the store (Lilia.Api.Features.Platform.UploadsEndpoint). Same rule as before: no
+// sign-in (an <img> sends none), the key is the permission; kept import originals are no longer served.
 var uploadsPath = builder.Configuration["Storage:LocalPath"]
     ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
 uploadsPath = Path.GetFullPath(uploadsPath);
-Directory.CreateDirectory(uploadsPath);
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
-    RequestPath = "/uploads"
-});
 
 // Local storage upload endpoint: the "presigned" PUT that LocalStorageService hands out in
 // development (production storage presigns its own URLs; the editor uploads through the assets
@@ -1252,6 +1264,8 @@ app.UseMiddleware<AccountClosedMiddleware>();
 app.UseMiddleware<TwoStepMiddleware>();
 
 app.MapControllers();
+// Uploaded files, from the local folder or the private R2 bucket (21 Nov 2026; see UploadsEndpoint).
+Lilia.Api.Features.Platform.UploadsEndpoint.MapUploads(app);
 app.MapMcp("/api/mcp").RequireAuthorization().RequireRateLimiting("mcp");
 app.MapMcpMetadata();
 
