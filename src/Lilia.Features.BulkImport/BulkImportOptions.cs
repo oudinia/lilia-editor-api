@@ -61,6 +61,15 @@ public sealed class BulkImportOptions
     /// <summary>How often lost work is looked for; 0 turns the sweep off.</summary>
     public int SweepEverySeconds { get; set; } = 60;
 
+    /// <summary>
+    /// A page whose precision (how sure Mathpix was of it, 0–1, from its lines.json) is under this is a warning to check
+    /// it against the scan (the precision score, 21 Nov 2026).
+    /// </summary>
+    public double LowConfidence { get; set; } = 0.80;
+
+    /// <summary>Compile each finished file's document once in the background, to time it (21 Nov 2026).</summary>
+    public bool CompileWhenDone { get; set; } = true;
+
     public TimeSpan RetryDelay(int attempt)
     {
         var delays = RetryDelaysSeconds is { Length: > 0 } d ? d : [10, 60];

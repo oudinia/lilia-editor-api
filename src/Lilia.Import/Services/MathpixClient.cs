@@ -284,6 +284,37 @@ public class MathpixClient : IMathpixClient
         return false;
     }
 
+    /// <summary>Where lines.json is asked for: Mathpix's API itself, never an address from configuration or data.</summary>
+    internal static readonly Uri LinesHost = new("https://api.mathpix.com");
+
+    /// <summary>The largest lines.json read (10 pages of dense maths is well under 5 MB).</summary>
+    internal const int MaxLinesBytes = 20 * 1024 * 1024;
+
+    public async Task<string> GetLinesJsonAsync(string pdfId, CancellationToken ct = default)
+    {
+        // The precision score (21 Nov 2026): the keyed client (it carries app_key), its address fixed to api.mathpix.com
+        // (docs.mathpix.com/reference/post-v3-pdf, "lines data"). The id is escaped: it is Mathpix's, but never trusted
+        // as a path. 60 s at most: the score is never worth holding a chunk up.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(60));
+        var url = new Uri(LinesHost, $"/v3/pdf/{Uri.EscapeDataString(pdfId)}.lines.json");
+        using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        if (response.StatusCode != HttpStatusCode.OK)
+            throw new HttpRequestException($"Mathpix lines.json answered {(int)response.StatusCode} for pdf_id {pdfId}.");
+        if (response.Content.Headers.ContentLength is > MaxLinesBytes)
+            throw new InvalidOperationException("Mathpix lines.json is over 20 MB.");
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var copy = new MemoryStream();
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(buffer, timeout.Token)) > 0)
+        {
+            if (copy.Length + read > MaxLinesBytes) throw new InvalidOperationException("Mathpix lines.json is over 20 MB.");
+            copy.Write(buffer, 0, read);
+        }
+        return System.Text.Encoding.UTF8.GetString(copy.GetBuffer(), 0, (int)copy.Length);
+    }
+
     /// <summary>The only place a figure in Mathpix's Markdown may come from: its own CDN (security hotfix, 20 Nov 2026).</summary>
     internal const string ImageHost = "cdn.mathpix.com";
 

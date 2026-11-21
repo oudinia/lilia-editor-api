@@ -143,7 +143,57 @@ internal sealed class FakeMathpixClient : IMathpixClient
         return Task.FromResult(true);
     }
 
+    /// <summary>
+    /// The lines.json answered for a chunk, by its first page: a test's fixture, or (by default) every page read with
+    /// confidence 0.95. <see cref="LinesFail"/> makes it answer an error.
+    /// </summary>
+    public Func<int, int, string>? LinesJson { get; set; }
+    public bool LinesFail { get; set; }
+    public int LinesCalls => _lines;
+    private int _lines;
+
+    public Task<string> GetLinesJsonAsync(string pdfId, CancellationToken ct = default)
+    {
+        Interlocked.Increment(ref _lines);
+        if (LinesFail) throw new HttpRequestException("Mathpix lines.json answered 500.");
+        var pdf = _pdfs[pdfId];
+        return Task.FromResult(LinesJson is { } make ? make(pdf.First, pdf.Pages) : Lines(pdf.Pages, _ => 0.95));
+    }
+
+    /// <summary>A lines.json of <paramref name="pages"/> pages (numbered from 1, as Mathpix numbers a chunk's), two lines each.</summary>
+    public static string Lines(int pages, Func<int, double> rateOfPage) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            pages = Enumerable.Range(1, pages).Select(p => new
+            {
+                image_id = $"fake-{p}",
+                page = p,
+                page_width = 1700,
+                page_height = 2200,
+                lines = new object[]
+                {
+                    new { type = "text", text = $"Line one of page {p}", confidence = rateOfPage(p), confidence_rate = rateOfPage(p) },
+                    new { type = "math", text = "x^2 + y^2 = z^2", confidence = rateOfPage(p), confidence_rate = rateOfPage(p) },
+                },
+            }),
+        });
+
     public Task<string> WaitForCompletionAsync(string pdfId, CancellationToken ct = default) => throw new NotSupportedException();
     public Task<bool> IsAvailableAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task<byte[]> GetImageAsync(string imageUrl, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>The compile after a file is done, faked (no TeX): records each document, answers <see cref="Result"/>.</summary>
+internal sealed class FakeBulkCompiler : Lilia.Api.Services.IBulkImportCompiler
+{
+    public ConcurrentBag<Guid> Compiled { get; } = new();
+    public Lilia.Api.Services.BulkImportCompileResult Result { get; set; } = new(true, "typst", null);
+    public TimeSpan Delay { get; set; } = TimeSpan.FromMilliseconds(15);
+
+    public async Task<Lilia.Api.Services.BulkImportCompileResult> CompileAsync(Guid documentId, CancellationToken ct = default)
+    {
+        Compiled.Add(documentId);
+        await Task.Delay(Delay, ct);
+        return Result;
+    }
 }

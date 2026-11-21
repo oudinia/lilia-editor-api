@@ -11,6 +11,8 @@ using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using static Lilia.Core.Entities.BulkImportStatuses;
+using MathpixPrecision = Lilia.Import.Services.MathpixPrecision;
+using PagePrecision = Lilia.Import.Services.PagePrecision;
 
 namespace Lilia.Api.Features.BulkImport.Services;
 
@@ -26,6 +28,12 @@ namespace Lilia.Api.Features.BulkImport.Services;
 /// chunk whose pages were read before (<see cref="MathpixChunkCache"/>) reuses that reading: no call, no charge. A chunk
 /// is charged its exact pages once its reading is stored, never when it fails or is cancelled; staff are exempt (the
 /// pipeline's charge).</para>
+///
+/// <para><b>Measured</b> (21 Nov 2026, the owner: "how long it takes to actually compile, import and convert… timed
+/// exactly"): every stage's milliseconds on the file and chunk rows, and one <c>[BulkImportTiming]</c> log line per stage
+/// (<see cref="BulkImportTiming"/>); a finished file's document is compiled once in the background
+/// (<see cref="CompileAsync"/>). And how sure Mathpix was of each page (its lines.json, <see cref="MathpixPrecision"/>):
+/// a page under <c>BulkImport:LowConfidence</c> is a warning to check against the scan. Neither ever fails an import.</para>
 /// </summary>
 public sealed class BulkImportProcessor(
     LiliaDbContext db,
@@ -37,7 +45,8 @@ public sealed class BulkImportProcessor(
     BulkImportOptions options,
     IOptions<MathpixOptions> mathpixOptions,
     ILogger<BulkImportProcessor> logger,
-    IMathpixClient? mathpix = null)
+    IMathpixClient? mathpix = null,
+    IBulkImportCompiler? compiler = null)
 {
     // ── texts the author reads in the document ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +71,7 @@ public sealed class BulkImportProcessor(
         var claimed = await db.BulkImportFiles.Where(f => f.Id == fileId && f.Status == Queued)
             .ExecuteUpdateAsync(f => f.SetProperty(x => x.Status, Splitting).SetProperty(x => x.UpdatedAt, DateTime.UtcNow), ct);
         if (claimed == 0) return;
+        var splitStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         var file = await db.BulkImportFiles.FirstAsync(f => f.Id == fileId, ct);
         if (await db.BulkImportChunks.AnyAsync(c => c.FileId == fileId, ct))
         {
@@ -141,10 +151,12 @@ public sealed class BulkImportProcessor(
             if (!cancelled) file.Status = Reading;
             else file.Status = Cancelled;
             file.UpdatedAt = now;
+            file.SplitMs = BulkImportTiming.Since(splitStarted);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             logger.LogInformation("[BulkImport] File {FileId} split into {Chunks} chunk(s) of up to {PerChunk} pages; document {DocumentId}",
                 file.Id, ranges.Count, options.PagesPerChunk, documentId);
+            BulkImportTiming.Split(logger, file.SplitMs.Value, file.Id, file.Pages, ranges.Count);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -213,6 +225,8 @@ public sealed class BulkImportProcessor(
         if (chunk?.File is not { } file) return;
         var staleBefore = DateTime.UtcNow.AddMinutes(-Math.Max(1, options.StaleAfterMinutes));
         if (chunk.Status != Sent && !(chunk.Status == Reading && chunk.StartedAt < staleBefore)) return;
+        // Made at the split → its reading starts now: the queue and the author's fairness hold. The first start only.
+        var queueWait = chunk.QueueWaitMs is null ? BulkImportTiming.Since(chunk.CreatedAt) : (int?)null;
 
         // The document was deleted (Trash or erased) before these pages reached Mathpix: nothing more of this file is sent,
         // and nothing is charged.
@@ -232,8 +246,17 @@ public sealed class BulkImportProcessor(
             chunk.Status = Read;
             chunk.Error = null;
             chunk.UpdatedAt = DateTime.UtcNow;
+            // No Mathpix time: the time saved is not counted as Mathpix's. The reading's precision came with it.
+            chunk.MathpixMs = null;
+            chunk.TexZipMs = null;
+            chunk.QueueWaitMs ??= queueWait;
+            chunk.PrecisionPages = hit.PrecisionPages;
+            chunk.Precision = MathpixPrecision.Mean(MathpixPrecision.Parse(hit.PrecisionPages));
             await db.SaveChangesAsync(ct);
             logger.LogInformation("[BulkImport] Chunk {ChunkId} ({Pages}) from the cache: no Mathpix call", chunk.Id, PagesOf(chunk));
+            if (queueWait is { } w) BulkImportTiming.QueueWait(logger, w, file.Id, chunk.Id, chunk.Index);
+            BulkImportTiming.CacheHit(logger, file.Id, chunk.Id, chunk.Index, chunk.PageCount);
+            await RefreshPrecisionAsync(file, ct);
             await queue.SendAsync(new PlaceBulkImportChunk(chunk.Id));
             await NotifyAsync(file, force: true, ct);
             await DispatchAsync(file.UserId, ct);
@@ -255,12 +278,15 @@ public sealed class BulkImportProcessor(
                 .SetProperty(x => x.Status, Reading)
                 .SetProperty(x => x.StartedAt, now)
                 .SetProperty(x => x.UpdatedAt, now)
+                .SetProperty(x => x.QueueWaitMs, x => x.QueueWaitMs ?? queueWait)
                 .SetProperty(x => x.Attempts, x => x.Attempts + 1), ct);
         if (claimed == 0) return;
         await db.Entry(chunk).ReloadAsync(ct);
+        if (queueWait is { } wait) BulkImportTiming.QueueWait(logger, wait, file.Id, chunk.Id, chunk.Index);
 
         var pdfId = chunk.MathpixPdfId; // a read cut by a restart is picked up where Mathpix has it, not paid twice
         var temp = Path.Combine(Path.GetTempPath(), $"lilia-bulk-{chunk.Id:N}.pdf");
+        long mathpixStarted = 0;
         try
         {
             if (pdfId is null)
@@ -268,11 +294,15 @@ public sealed class BulkImportProcessor(
                 await using (var stored = await storage.DownloadAsync(chunk.ChunkKey ?? throw new InvalidOperationException("The chunk's pages are missing.")))
                 await using (var local = File.Create(temp))
                     await stored.CopyToAsync(local, ct);
+                // Mathpix's time: the submit (the pages sent) to "completed". A reading picked up after a restart counts
+                // from its pick-up.
+                mathpixStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 pdfId = await mathpix.SubmitPdfAsync(temp, ct);
                 chunk.MathpixPdfId = pdfId;
                 await db.SaveChangesAsync(ct);
             }
 
+            if (mathpixStarted == 0) mathpixStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             // Per-page progress: Mathpix's pages read so far (num_pages_completed), every few seconds.
             var deadline = DateTime.UtcNow.AddMinutes(Math.Max(1, options.ReadTimeoutMinutes));
             while (true)
@@ -294,23 +324,46 @@ public sealed class BulkImportProcessor(
                 await Task.Delay(TimeSpan.FromSeconds(Math.Max(0.01, options.PollSeconds)), ct);
             }
 
+            var mathpixMs = BulkImportTiming.Since(mathpixStarted);
+            BulkImportTiming.Mathpix(logger, mathpixMs, file.Id, chunk.Id, chunk.Index, chunk.PageCount);
+
+            var texZipStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             var zip = await mathpix.GetTexZipAsync(pdfId, ct, TimeSpan.FromSeconds(Math.Max(1, options.TexZipWaitSeconds)));
             if (zip is not { Length: > 0 }) throw new InvalidOperationException("Mathpix's LaTeX for these pages is empty.");
+            var texZipMs = BulkImportTiming.Since(texZipStarted);
+            BulkImportTiming.TexZip(logger, texZipMs, file.Id, chunk.Id, chunk.Index, zip.Length);
+
+            // How sure Mathpix was, per page: its lines.json, read once, before the PDF is deleted there. Never a reason
+            // to fail the chunk: no score then.
+            var precisionPages = await ReadPrecisionAsync(chunk, pdfId, ct);
 
             var key = ResultKeyOf(chunk.ContentHash ?? chunk.Id.ToString("N"));
             using (var zipStream = new MemoryStream(zip))
                 await storage.UploadAsync(key, zipStream, "application/zip");
             if (chunk.ContentHash is { } h)
-                await db.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO mathpix_chunk_cache (hash, result_key, pages, created_at)
-                    VALUES ({h}, {key}, {chunk.PageCount}, {DateTime.UtcNow})
-                    ON CONFLICT (hash) DO NOTHING", ct);
+            {
+                if (precisionPages is { } pagesJson)
+                    await db.Database.ExecuteSqlInterpolatedAsync($@"
+                        INSERT INTO mathpix_chunk_cache (hash, result_key, pages, precision_pages, created_at)
+                        VALUES ({h}, {key}, {chunk.PageCount}, CAST({pagesJson} AS jsonb), {DateTime.UtcNow})
+                        ON CONFLICT (hash) DO NOTHING", ct);
+                else
+                    await db.Database.ExecuteSqlInterpolatedAsync($@"
+                        INSERT INTO mathpix_chunk_cache (hash, result_key, pages, created_at)
+                        VALUES ({h}, {key}, {chunk.PageCount}, {DateTime.UtcNow})
+                        ON CONFLICT (hash) DO NOTHING", ct);
+            }
 
             chunk.ResultKey = key;
             chunk.PagesCompleted = chunk.PageCount;
             chunk.Status = Read;
             chunk.Error = null;
             chunk.UpdatedAt = DateTime.UtcNow;
+            chunk.FromCache = false;
+            chunk.MathpixMs = mathpixMs;
+            chunk.TexZipMs = texZipMs;
+            chunk.PrecisionPages = precisionPages;
+            chunk.Precision = MathpixPrecision.Mean(MathpixPrecision.Parse(precisionPages));
             await db.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -362,10 +415,62 @@ public sealed class BulkImportProcessor(
         }
         // Nothing stays at Mathpix once Lilia has the reading (as the single import).
         await DeleteAtMathpixAsync(pdfId);
+        await RefreshPrecisionAsync(file, CancellationToken.None);
 
         await queue.SendAsync(new PlaceBulkImportChunk(chunk.Id));
         await NotifyAsync(file, force: true, CancellationToken.None);
         await DispatchAsync(file.UserId, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The chunk's pages' precision from Mathpix's lines.json, as stored (<see cref="BulkImportChunk.PrecisionPages"/>),
+    /// or null when it couldn't be read: logged, never thrown.
+    /// </summary>
+    private async Task<string?> ReadPrecisionAsync(BulkImportChunk chunk, string pdfId, CancellationToken ct)
+    {
+        if (mathpix is null) return null;
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            var json = await mathpix.GetLinesJsonAsync(pdfId, ct);
+            var pages = MathpixPrecision.FromLinesJson(json, chunk.FirstPage - 1, LowThreshold);
+            // Only this chunk's pages: a page number Mathpix gives outside them is not this chunk's to score.
+            pages = pages.Where(p => p.Page >= chunk.FirstPage && p.Page <= chunk.LastPage).ToList();
+            BulkImportTiming.Lines(logger, BulkImportTiming.Since(started), chunk.FileId, chunk.Id, chunk.Index,
+                MathpixPrecision.Mean(pages), pages.Count(p => p.Low));
+            return pages.Count == 0 ? null : MathpixPrecision.Serialize(pages);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "[BulkImport] Chunk {ChunkId} ({Pages}): Mathpix's lines.json couldn't be read; no precision score for these pages",
+                chunk.Id, PagesOf(chunk));
+            return null;
+        }
+    }
+
+    private double LowThreshold => options.LowConfidence is > 0 and <= 1 ? options.LowConfidence : MathpixPrecision.DefaultLowThreshold;
+
+    /// <summary>The file's precision from its chunks' pages: their mean (each page once), and how many are low.</summary>
+    private async Task RefreshPrecisionAsync(BulkImportFile file, CancellationToken ct)
+    {
+        try
+        {
+            var stored = await db.BulkImportChunks.AsNoTracking()
+                .Where(c => c.FileId == file.Id && c.PrecisionPages != null)
+                .Select(c => c.PrecisionPages!)
+                .ToListAsync(ct);
+            var pages = stored.SelectMany(MathpixPrecision.Parse).GroupBy(p => p.Page).Select(g => g.Last()).ToList();
+            var precision = MathpixPrecision.Mean(pages);
+            var low = pages.Count(p => p.Low);
+            await db.BulkImportFiles.Where(f => f.Id == file.Id)
+                .ExecuteUpdateAsync(f => f.SetProperty(x => x.Precision, precision).SetProperty(x => x.LowPrecisionPages, low), ct);
+            file.Precision = precision;
+            file.LowPrecisionPages = low;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "[BulkImport] File {FileId}: its precision couldn't be summed", file.Id);
+        }
     }
 
     private async Task DeleteAtMathpixAsync(string? pdfId)
@@ -397,6 +502,9 @@ public sealed class BulkImportProcessor(
             return;
         }
 
+        var placeStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+        PdfChunkPlacement? placement = null;
+        var firstPageShown = false;
         try
         {
             byte[] zip;
@@ -420,13 +528,22 @@ public sealed class BulkImportProcessor(
             file.Warnings += placed.Warnings;
             var chunkKey = chunk.ChunkKey;
             chunk.ChunkKey = null;
+            chunk.PlaceParseMs = placed.ParseMs;
+            chunk.PlaceFiguresMs = placed.FiguresMs;
+            chunk.PlaceWriteMs = placed.WriteMs;
+            // The author sees a first page: from the upload's start (its own time plus since the file's row was written).
+            var firstPage = file.FirstPageMs is null;
+            if (firstPage) file.FirstPageMs = SinceUpload(file);
             await db.SaveChangesAsync(CancellationToken.None);
             if (chunkKey is not null)
             {
                 try { await storage.DeleteAsync(chunkKey); }
                 catch (Exception ex) { logger.LogWarning(ex, "[BulkImport] Could not delete chunk file {Key}", chunkKey); }
             }
+            await AddLowPrecisionWarningsAsync(file, chunk, placed.SessionId);
             await pipeline.NotifyDocumentChangedAsync(file.DocumentId!.Value, placed.BlockIds, CancellationToken.None);
+            placement = placed;
+            firstPageShown = firstPage;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -438,8 +555,62 @@ public sealed class BulkImportProcessor(
             return;
         }
 
+        // The whole place (its download, the import, cleanup and the open editor told), recorded once it is in: a
+        // measurement that can't be saved is logged, never a reason to call the place failed.
+        var placeMs = BulkImportTiming.Since(placeStarted);
+        try
+        {
+            chunk.PlaceMs = placeMs;
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[BulkImport] Chunk {ChunkId}: its place time couldn't be recorded", chunk.Id);
+        }
+        BulkImportTiming.Place(logger, placeMs, file.Id, chunk.Id, chunk.Index, placement?.ParseMs, placement?.FiguresMs, placement?.WriteMs,
+            placement?.BlockIds.Count ?? 0);
+        if (firstPageShown && file.FirstPageMs is { } shown) BulkImportTiming.FirstPage(logger, shown, file.Id);
+
         await RefreshFileAsync(file, CancellationToken.None);
         await NotifyAsync(file, force: true, CancellationToken.None);
+    }
+
+    /// <summary>Milliseconds from the upload's start: its own time, plus since the file's row was written (the upload's end).</summary>
+    private static int SinceUpload(BulkImportFile file) =>
+        (int)Math.Min(int.MaxValue, (long)(file.UploadMs ?? 0) + BulkImportTiming.Since(file.CreatedAt));
+
+    /// <summary>
+    /// Each page of the chunk the reader was unsure of is a warning, with the import's others: on the chunk's review
+    /// session (its diagnostics) and in the file's count. Never a reason to fail the place.
+    /// </summary>
+    private async Task AddLowPrecisionWarningsAsync(BulkImportFile file, BulkImportChunk chunk, Guid sessionId)
+    {
+        var low = MathpixPrecision.Parse(chunk.PrecisionPages).Where(p => p.Low).ToList();
+        if (low.Count == 0) return;
+        try
+        {
+            var now = DateTime.UtcNow;
+            foreach (var page in low)
+                db.ImportDiagnostics.Add(new ImportDiagnostic
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Category = "parse_ambiguity",
+                    Severity = "warning",
+                    Code = "PDF.OCR_LOW_PRECISION",
+                    Message = MathpixPrecision.LowPageWarning(page),
+                    SuggestedAction = "Check this page against the scan.",
+                    CreatedAt = now,
+                });
+            file.Warnings += low.Count;
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[BulkImport] Chunk {ChunkId}: its {Count} low-precision warning(s) couldn't be recorded", chunk.Id, low.Count);
+            foreach (var entry in db.ChangeTracker.Entries<ImportDiagnostic>().ToList()) entry.State = EntityState.Detached;
+            file.Warnings -= low.Count;
+        }
     }
 
     // ── failures, cancelling, retrying ───────────────────────────────────────────────────────────────────────────
@@ -607,9 +778,69 @@ public sealed class BulkImportProcessor(
                     ? $"{n} part{(n == 1 ? "" : "s")} couldn't be read. Retry from Bulk import."
                     : reason;
             file.UpdatedAt = DateTime.UtcNow;
+            // Finished: the whole, from the upload, the first time only (a retry later is not the import's time).
+            var finished = status is Done or Partial or Failed && file.TotalMs is null;
+            if (finished) file.TotalMs = SinceUpload(file);
             await db.SaveChangesAsync(ct);
+            if (finished) await LogTotalAsync(file, ct);
+            // Pages in the document: compiled once in the background, to time it. Never waited for.
+            if (status is Done or Partial && file.DocumentId is not null && file.CompileOk is null && compiler is not null && options.CompileWhenDone)
+                await queue.SendAsync(new CompileBulkImportFile(file.Id));
         }
         await RefreshBatchAsync(file.BatchId, ct);
+    }
+
+    private async Task LogTotalAsync(BulkImportFile file, CancellationToken ct)
+    {
+        var placed = await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == file.Id && c.Status == Done)
+            .SumAsync(c => (int?)(c.LastPage - c.FirstPage + 1), ct) ?? 0;
+        double? perMinute = file.TotalMs is > 0 && placed > 0 ? Math.Round(placed / (file.TotalMs.Value / 60000.0), 1) : null;
+        BulkImportTiming.Total(logger, file.TotalMs!.Value, file.Id, file.Status, placed, perMinute);
+    }
+
+    // ── compile: a finished file's document, once, to time it ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Compiles the file's document once with the editor's normal compile path (<see cref="IBulkImportCompiler"/>) and
+    /// records how long it took and whether it made a PDF, or its error's first line. Runs from its own queue, one at a
+    /// time, after the file is finished: it never holds the import up, and its TeX waits for the machine's compile slots.
+    /// </summary>
+    public async Task CompileAsync(Guid fileId, CancellationToken ct = default)
+    {
+        if (compiler is null) return;
+        var file = await db.BulkImportFiles.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fileId, ct);
+        if (file?.DocumentId is not { } documentId || file.CompileOk is not null) return;
+        if (!await DocumentAliveAsync(file, ct)) return;
+
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        BulkImportCompileResult result;
+        try
+        {
+            result = await compiler.CompileAsync(documentId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            result = new BulkImportCompileResult(false, null, ex.Message);
+        }
+        var ms = BulkImportTiming.Since(started);
+        var error = result.Ok ? null : FirstLine(result.Error);
+        var engine = result.Engine is { Length: > 20 } e ? e[..20] : result.Engine;
+        await db.BulkImportFiles.Where(f => f.Id == fileId && f.CompileOk == null)
+            .ExecuteUpdateAsync(f => f
+                .SetProperty(x => x.CompileMs, ms)
+                .SetProperty(x => x.CompileOk, result.Ok)
+                .SetProperty(x => x.CompileEngine, engine)
+                .SetProperty(x => x.CompileError, error), CancellationToken.None);
+        BulkImportTiming.Compile(logger, ms, fileId, documentId, result.Ok, engine, error);
+        if (await BulkImportReadModel.FileAsync(db, fileId, CancellationToken.None) is { } dto)
+            await notifier.FileChangedAsync(file.UserId, file.BatchId, dto, true);
+    }
+
+    /// <summary>An error's first line that says something, at most 500 characters.</summary>
+    internal static string FirstLine(string? message)
+    {
+        var line = (message ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? "The compile failed.";
+        return line.Length > 500 ? line[..500] : line;
     }
 
     internal static string FileStatusOf(IReadOnlyCollection<string> chunkStatuses)

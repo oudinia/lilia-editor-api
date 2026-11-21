@@ -57,6 +57,8 @@ public sealed class BulkImportService(
         if (await db.BulkImportFiles.CountAsync(f => f.BatchId == batchId, ct) >= options.MaxFilesPerBatch)
             return new(AddFileRefusal.TooManyFiles, Message: $"A bulk import takes up to {options.MaxFilesPerBatch} PDFs: start another for the rest.");
 
+        // The upload's time (21 Nov 2026): from here (the request's body received) to the PDF kept in storage.
+        var received = System.Diagnostics.Stopwatch.GetTimestamp();
         var temp = Path.Combine(Path.GetTempPath(), $"lilia-bulk-upload-{Guid.NewGuid():N}.pdf");
         try
         {
@@ -94,6 +96,7 @@ public sealed class BulkImportService(
             await using (var upload = File.OpenRead(temp))
                 await storage.UploadAsync(key, upload, "application/pdf");
 
+            var uploadMs = (int)Math.Min(int.MaxValue, System.Diagnostics.Stopwatch.GetElapsedTime(received).TotalMilliseconds);
             var now = DateTime.UtcNow;
             db.BulkImportFiles.Add(new BulkImportFile
             {
@@ -105,6 +108,8 @@ public sealed class BulkImportService(
                 SourceHash = hash,
                 Pages = pages,
                 Status = Queued,
+                UploadMs = uploadMs,
+                SizeBytes = length,
                 CreatedAt = now,
                 UpdatedAt = now,
             });
@@ -130,6 +135,7 @@ public sealed class BulkImportService(
             await db.SaveChangesAsync(ct);
             await queue.SendAsync(new SplitBulkImportFile(fileId));
             logger.LogInformation("[BulkImport] File {FileId} added to batch {BatchId}: {Pages} pages, {Bytes} bytes", fileId, batchId, pages, length);
+            BulkImportTiming.Upload(logger, uploadMs, fileId, length, pages);
             return new(AddFileRefusal.None, await BulkImportReadModel.FileAsync(db, fileId, ct));
         }
         finally
@@ -180,6 +186,10 @@ public sealed class BulkImportService(
         var retried = await processor.RetryAsync(file, ct);
         return (retried, await BulkImportReadModel.FileAsync(db, fileId, ct));
     }
+
+    /// <summary>The timings and precision over the last <paramref name="days"/> days (staff, 21 Nov 2026).</summary>
+    public Task<BulkImportStatsDto> StatsAsync(int days, CancellationToken ct = default) =>
+        BulkImportStats.ComputeAsync(db, days, DateTime.UtcNow, ct);
 
     public async Task<BulkImportBatchDto?> CancelAsync(string userId, Guid batchId, CancellationToken ct = default)
     {

@@ -541,6 +541,8 @@ builder.Services.AddScoped<IDraftBlockService, DraftBlockService>();
 builder.Services.AddScoped<IJobService, JobService>();
 // Bulk import (21 Nov 2026): the slice, and the single PDF import's steps it uses.
 builder.Services.AddScoped<IPdfImportPipeline, PdfImportPipeline>();
+// A finished bulk import's document compiled once in the background, to time it (21 Nov 2026).
+builder.Services.AddScoped<IBulkImportCompiler, BulkImportDocumentCompiler>();
 Lilia.Api.Features.BulkImport.BulkImportServiceCollectionExtensions.AddBulkImport(builder.Services);
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();

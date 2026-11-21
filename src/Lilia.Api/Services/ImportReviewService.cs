@@ -757,6 +757,8 @@ public class ImportReviewService : IImportReviewService
                 }
             }
 
+            // The figures, timed for the bulk import timings (21 Nov 2026) when a placement is being measured.
+            var figures = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 await StageZipAssetsAsync(sessionId, documentId, ownerId, now, ct);
@@ -773,6 +775,7 @@ public class ImportReviewService : IImportReviewService
             {
                 _logger.LogWarning(ex, "[ImportReview] Failed to store inline figure images for session {SessionId}", sessionId);
             }
+            if (ImportPlaceTimer.Current is { } timer) timer.FiguresMs += ImportPlaceTimer.Since(figures);
 
             await _context.ImportReviewSessions
                 .Where(s => s.Id == sessionId)

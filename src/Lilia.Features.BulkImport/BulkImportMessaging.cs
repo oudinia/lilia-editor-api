@@ -13,7 +13,9 @@ namespace Lilia.Api.Features.BulkImport;
 /// <list type="bullet">
 /// <item>split: 2 at once (CPU and disk: a 95 MB PDF cut into chunk files);</item>
 /// <item>ocr: <c>BulkImport:MaxParallelChunks</c> at once (4): the calls to Mathpix in flight in this process;</item>
-/// <item>place: one at a time, so a document's blocks never interleave (and a lock per document across processes).</item>
+/// <item>place: one at a time, so a document's blocks never interleave (and a lock per document across processes);</item>
+/// <item>compile (21 Nov 2026): a durable local queue in either case, one at a time: a finished file's document compiled
+/// once, to time it, in the process that has TeX, through the machine's compile slots.</item>
 /// </list>
 /// </summary>
 public static class BulkImportMessaging
@@ -21,10 +23,13 @@ public static class BulkImportMessaging
     public const string SplitQueue = "bulk-import.split";
     public const string OcrQueue = "bulk-import.ocr";
     public const string PlaceQueue = "bulk-import.place";
+    public const string CompileQueue = "bulk-import.compile";
 
     public static void Apply(WolverineOptions opts, BulkImportOptions options)
     {
         var parallelChunks = Math.Max(1, options.MaxParallelChunks);
+        // Measurement only: local (durable, the app's policy) whatever the broker, and never more than one at a time.
+        opts.PublishMessage<CompileBulkImportFile>().ToLocalQueue(CompileQueue).Sequential();
         if (!string.IsNullOrWhiteSpace(options.RabbitMq))
         {
             opts.UseRabbitMq(new Uri(options.RabbitMq)).AutoProvision();

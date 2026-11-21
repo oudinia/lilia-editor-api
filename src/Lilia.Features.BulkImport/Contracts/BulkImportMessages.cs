@@ -11,3 +11,9 @@ public sealed record ReadBulkImportChunk(Guid ChunkId);
 
 /// <summary>Put a read chunk's blocks into its document, in place of its placeholder (queue <c>bulk-import.place</c>, one at a time).</summary>
 public sealed record PlaceBulkImportChunk(Guid ChunkId);
+
+/// <summary>
+/// Compile a finished file's document once, to time it (queue <c>bulk-import.compile</c>, a durable local queue, one at a
+/// time; 21 Nov 2026). Never holds the import up: the file is finished before it is sent.
+/// </summary>
+public sealed record CompileBulkImportFile(Guid FileId);
