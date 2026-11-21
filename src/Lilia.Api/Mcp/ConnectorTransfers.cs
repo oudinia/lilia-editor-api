@@ -14,15 +14,17 @@ namespace Lilia.Api.Mcp;
 /// <item><b>Export:</b> a download link for one document in one format, good for
 ///   <see cref="ExportLife"/>. The link is <b>signed, not stored</b> (MCP-71, 12 Oct: links died
 ///   whenever the API restarted, because they lived in memory): it carries who, which document,
-///   which format and until when, under ASP.NET Data Protection (keys on disk). The author's access
-///   is checked again on download.</item>
+///   which format and until when, under ASP.NET Data Protection (keys in the database since 21 Nov 2026,
+///   <see cref="Lilia.Infrastructure.Data.LiliaDataProtection"/>, so a standby machine accepts them too). The
+///   author's access is checked again on download.</item>
 /// <item><b>Import:</b> a link to the editor's drop page, also signed. The page sends the file to
 ///   Lilia's importer; the result waits in memory for <c>import_status</c> (a restart loses only
 ///   that result: the document itself is in Documents).</item>
 /// </list>
 ///
-/// The signing purpose includes this site's public address, so a link made by the test copy
-/// (same machine, same key ring) is never valid on production.
+/// The signing purpose includes this site's public address, so a link made by the test copy is never
+/// valid on production (it has its own database, so its own key ring, but the purpose would hold even
+/// on a shared one).
 /// </summary>
 public sealed class ConnectorTransfers
 {

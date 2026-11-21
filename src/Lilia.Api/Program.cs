@@ -470,6 +470,10 @@ builder.Services.AddDbContext<LiliaDbContext>((sp, options) =>
         // to a warning so prod deploys don't fail on a cosmetic mismatch.
         .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
+// Data protection's key ring in the database, not on this machine's disk (21 Nov 2026): the standby machine must
+// unprotect what this one protected (the connector's signed file links). Same name and store as the admin console.
+builder.Services.AddLiliaDataProtection();
+
 // Sharing's own context over its tables (2 Nov 2026, the bounded contexts, step 4), on the request's
 // connection: one connection per request still, and the erase's transaction can include Sharing.
 builder.Services.AddDbContext<Lilia.Api.Features.Sharing.Data.SharingDbContext>((sp, options) =>

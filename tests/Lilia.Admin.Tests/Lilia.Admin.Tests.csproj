@@ -20,4 +20,10 @@
     <ProjectReference Include="..\..\src\Lilia.Admin\Lilia.Admin.csproj" />
   </ItemGroup>
 
+  <!-- The ASP.NET runtime's data protection, not the NuGet 10.0.2 copy the key store's package would pull at restore
+       (CVE-2026-40372; data-protection keys in the database, 21 Nov 2026). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>
