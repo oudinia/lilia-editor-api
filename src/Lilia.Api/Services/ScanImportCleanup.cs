@@ -112,7 +112,7 @@ public static class ScanImportCleanup
     /// The content as TeX can read it, or null when it already was: every text field's maths made canonical
     /// (<see cref="OcrMathText.CanonicalText"/>) and every formula mended; then the block is rendered and read in TeX's modes
     /// (<see cref="OcrMathText.ModeProblem"/>). If something would still stop TeX, each field holding maths is printed as
-    /// written instead (a code span, an equation as 	exttt text), and <paramref name="printedAsText"/> says why.
+    /// written instead (a code span, an equation as \texttt text (<see cref="EquationAsText"/>)), and <paramref name="printedAsText"/> says why.
     /// </summary>
     internal static JsonDocument? MakeCompilable(JsonDocument content, string type, Lilia.Engines.RenderService render, List<string> printedAsText)
     {
@@ -128,7 +128,7 @@ public static class ScanImportCleanup
         {
             printedAsText.Add(problem);
             Strings(node, null, (key, text) =>
-                type == "equation" && key == "latex" ? @"	ext{	exttt{" + Lilia.Engines.LatexText.Escape(text) + "}}"
+                type == "equation" && key == "latex" ? EquationAsText(text)
                 : type == "figure" && key is not ("caption" or "alt" or "altText") || NotTextField(key) ? text
                 : text.Length > 0 ? "`" + text.Replace('`', '\'').Replace("\r", "").Replace('\n', ' ') + "`"
                 : text);
@@ -136,6 +136,10 @@ public static class ScanImportCleanup
         var after = node.ToJsonString();
         return after == before ? null : JsonDocument.Parse(after);
     }
+
+    /// <summary>An equation's formula printed as written, in typewriter text inside the maths. A test pins it: on 21 Nov 2026
+    /// the backslashes of \text and \texttt were written as tab characters, and nothing noticed.</summary>
+    internal static string EquationAsText(string formula) => @"\text{\texttt{" + Lilia.Engines.LatexText.Escape(formula) + "}}";
 
     private static string? Problem(JsonNode node, string type, Lilia.Engines.RenderService render)
     {

@@ -72,6 +72,20 @@ public class ScanMathValidatorTests : IntegrationTestBase
         latex.Should().Contain("$", "the maths stays maths");
     }
 
+    /// <summary>The fallback for an equation TeX still can't read: its formula in typewriter text. 21 Nov 2026, review: the
+    /// backslashes of \text and \texttt had been written as tab characters, and no test reached this path.</summary>
+    [Fact]
+    public void An_equation_printed_as_written_is_typewriter_text_TeX_reads()
+    {
+        var latex = ScanImportCleanup.EquationAsText(@"\frac{a}{b \left( x^{");
+        latex.Should().StartWith(@"\text{\texttt{").And.EndWith("}}");
+        latex.Should().NotContainAny("\t", "\r", "\n", "\f", "\b", "\a", "\v");
+        var rendered = Render.RenderBlockToLatex(B("equation", JsonSerializer.Deserialize<JsonElement>(
+            JsonSerializer.Serialize(new { latex, equationMode = "display" }))));
+        // Compiled by hand (pdflatex, amsmath): no error. ModeProblem is stricter than TeX inside \text{}, so it isn't asked.
+        rendered.Should().Contain(@"\text{\texttt{\textbackslash{}frac\{a\}\{b \textbackslash{}left( x\textasciicircum{}\{}}");
+    }
+
     [Fact]
     public void The_canonical_text_of_the_retest_s_lines()
     {
