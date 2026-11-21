@@ -2258,6 +2258,11 @@ public class ImportReviewService : IImportReviewService
     {
         // FT-SANDBOX-SCOPE: real session lists never show throwaway playground sessions.
         var q = _context.ImportReviewSessions.Where(s => s.OwnerId == userId && !s.IsPlayground);
+        // A bulk import's chunk sessions (their job is IMPORT_CHUNK) have no document until their file is promoted: left
+        // out until then, so an import still running never shows in the import history (the launch bot's retest of API
+        // #679, 21 Nov 2026).
+        q = q.Where(s => s.DocumentId != null || s.JobId == null
+            || !_context.Jobs.Any(j => j.Id == s.JobId && j.JobType == Lilia.Core.Entities.JobTypes.ImportChunk));
 
         q = scope switch
         {
