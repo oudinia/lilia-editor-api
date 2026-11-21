@@ -31,6 +31,7 @@ public static class ScanImportCleanup
         var blocks = await db.ImportBlockReviews.Where(b => b.SessionId == sessionId).OrderBy(b => b.SortOrder).ToListAsync(ct);
         var now = DateTime.UtcNow;
         var changed = 0;
+        var render = new Lilia.Engines.RenderService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<Lilia.Engines.RenderService>.Instance);
         foreach (var block in blocks)
         {
             var type = block.CurrentType ?? block.OriginalType;
@@ -53,6 +54,14 @@ public static class ScanImportCleanup
             if (removedReference)
                 notes.Add(("FigureReferenceRemoved", "auto_shimmed",
                     $"Block {block.SortOrder + 1} ({type}): a figure reference from the scan reader was taken out of the text."));
+            // Last: the block as TeX will read it. Its maths made canonical, then rendered and checked; what still can't
+            // compile is printed as written (the notebooks A and C, 21 Nov 2026: one bad formula stopped the whole PDF).
+            var printedAsText = new List<string>();
+            if (MakeCompilable(original ?? block.OriginalContent, type, render, printedAsText) is { } safeOriginal) original = safeOriginal;
+            if ((current ?? block.CurrentContent) is { } cur && MakeCompilable(cur, type, render, printedAsText) is { } safeCurrent) current = safeCurrent;
+            if (printedAsText.Count > 0)
+                notes.Add(("MathPrintedAsText", "auto_shimmed",
+                    $"Block {block.SortOrder + 1} ({type}): maths from the scan reader that LaTeX can't read ({printedAsText.Distinct().First()}) is printed as written. Check it against the scan."));
             if (type == "figure" && FigureSource(original ?? block.OriginalContent) is "")
                 notes.Add(("FigureImageMissing", "missing_asset",
                     $"Block {block.SortOrder + 1} (figure): the figure's image couldn't be brought in from the scan. Add it from the scan, or remove the figure."));
@@ -86,6 +95,85 @@ public static class ScanImportCleanup
         if (changed == 0) return;
         await db.SaveChangesAsync(ct);
         logger.LogInformation("[Import] Scan cleanup: {Count} block(s) of session {SessionId} changed or flagged", changed, sessionId);
+    }
+
+    /// <summary>Block types whose text is not LaTeX text: code, raw LaTeX, BibTeX.</summary>
+    private static bool NotText(string type) => type is "code" or "embed" or "bibliography" or "tikz";
+
+    /// <summary>Content fields that hold no text to typeset.</summary>
+    private static bool NotTextField(string? key) =>
+        key is null or "id" or "type" or "language" or "equationMode" or "latex" or "code" or "src" or "url" or "href" or "label"
+            or "citeKey" or "key" or "kind" or "variant" or "level" or "style" or "theme" or "spacing" or "labelFormat" or "placement"
+            or "align" or "columnAlign" or "width" or "height" or "size" or "color" or "format" or "status" or "numbering" or "lml"
+            or "source" or "engine" or "calloutType" or "theoremType" or "subType" or "listType"
+        || key.EndsWith("Id", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The content as TeX can read it, or null when it already was: every text field's maths made canonical
+    /// (<see cref="OcrMathText.CanonicalText"/>) and every formula mended; then the block is rendered and read in TeX's modes
+    /// (<see cref="OcrMathText.ModeProblem"/>). If something would still stop TeX, each field holding maths is printed as
+    /// written instead (a code span, an equation as \texttt text (<see cref="EquationAsText"/>)), and <paramref name="printedAsText"/> says why.
+    /// </summary>
+    internal static JsonDocument? MakeCompilable(JsonDocument content, string type, Lilia.Engines.RenderService render, List<string> printedAsText)
+    {
+        if (NotText(type)) return null;
+        var node = JsonNode.Parse(content.RootElement.GetRawText());
+        if (node is null) return null;
+        var before = node.ToJsonString();
+        Strings(node, null, (key, text) =>
+            type == "equation" && key == "latex" ? OcrMathText.MendFormula(text)
+            : type == "figure" && key is not ("caption" or "alt" or "altText") || NotTextField(key) ? text
+            : OcrMathText.CanonicalText(text));
+        if (Problem(node, type, render) is { } problem)
+        {
+            printedAsText.Add(problem);
+            Strings(node, null, (key, text) =>
+                type == "equation" && key == "latex" ? EquationAsText(text)
+                : type == "figure" && key is not ("caption" or "alt" or "altText") || NotTextField(key) ? text
+                : text.Length > 0 ? "`" + text.Replace('`', '\'').Replace("\r", "").Replace('\n', ' ') + "`"
+                : text);
+        }
+        var after = node.ToJsonString();
+        return after == before ? null : JsonDocument.Parse(after);
+    }
+
+    /// <summary>An equation's formula printed as written, in typewriter text inside the maths. A test pins it: on 21 Nov 2026
+    /// the backslashes of \text and \texttt were written as tab characters, and nothing noticed.</summary>
+    internal static string EquationAsText(string formula) => @"\text{\texttt{" + Lilia.Engines.LatexText.Escape(formula) + "}}";
+
+    private static string? Problem(JsonNode node, string type, Lilia.Engines.RenderService render)
+    {
+        try
+        {
+            var block = new Block { Id = Guid.NewGuid(), Type = type, Content = JsonDocument.Parse(node.ToJsonString()) };
+            return OcrMathText.ModeProblem(render.RenderBlockToLatex(block));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;   // a block the renderer can't read is not this check's to judge
+        }
+    }
+
+    /// <summary>Every string in the content, replaced by <paramref name="change"/> (given its field's name).</summary>
+    private static void Strings(JsonNode node, string? key, Func<string?, string, string> change)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (k, child) in obj.ToList())
+                {
+                    if (child is JsonValue v && v.TryGetValue<string>(out var text)) { var u = change(k, text); if (u != text) obj[k] = u; }
+                    else if (child is not null) Strings(child, k, change);
+                }
+                break;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    if (array[i] is JsonValue v && v.TryGetValue<string>(out var text)) { var u = change(key, text); if (u != text) array[i] = u; }
+                    else if (array[i] is { } child) Strings(child, key, change);
+                }
+                break;
+        }
     }
 
     /// <summary>The content with formulas guarded and raw figure references removed, or null when nothing changed.</summary>
