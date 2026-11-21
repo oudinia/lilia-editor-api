@@ -81,6 +81,22 @@ public static class LatexPreambleExtractor
         }
         string? packagesJson = pkgs.Count > 0 ? JsonSerializer.Serialize(pkgs) : null;
 
+        var hits = DefinitionStatements(rawLatex);
+
+        string? customPreamble = null;
+        if (hits.Count > 0)
+        {
+            var sb = new StringBuilder();
+            foreach (var text in hits) sb.AppendLine(text);
+            customPreamble = sb.ToString().TrimEnd();
+        }
+
+        return new Result(docClass, packagesJson, customPreamble);
+    }
+
+    /// <summary>The definitions a LaTeX source makes (macros, environments, theorem kinds, TikZ setup), in source order.</summary>
+    private static List<string> DefinitionStatements(string rawLatex)
+    {
         // Macros / environments — collect each match with its position so the
         // output preserves source order across the different definition kinds.
         // The body counts too: \newcommand, \def and \newenvironment are legal
@@ -119,15 +135,40 @@ public static class LatexPreambleExtractor
             if (seenDefinitions.Add(text)) hits.Add((start, text));
         }
         hits.Sort((a, b) => a.Pos.CompareTo(b.Pos));
-
-        string? customPreamble = null;
-        if (hits.Count > 0)
-        {
-            var sb = new StringBuilder();
-            foreach (var (_, text) in hits) sb.AppendLine(text);
-            customPreamble = sb.ToString().TrimEnd();
-        }
-
-        return new Result(docClass, packagesJson, customPreamble);
+        return hits.Select(h => h.Text).ToList();
     }
+
+    /// <summary>
+    /// The definitions of <paramref name="rawLatex"/> that <paramref name="existingPreamble"/> doesn't make yet, one per
+    /// line, or null (bulk import, 21 Nov 2026: a PDF read in chunks takes the first chunk's preamble whole, and each later
+    /// chunk adds only the macros still missing). A macro, environment or theorem kind counts as present when the existing
+    /// preamble defines the same name, whatever its body; anything without a name (\usetikzlibrary…) when its text is there.
+    /// </summary>
+    public static string? MissingDefinitions(string? existingPreamble, string? rawLatex)
+    {
+        if (string.IsNullOrWhiteSpace(rawLatex)) return null;
+        var have = existingPreamble ?? "";
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match m in DefinedNameRe.Matches(have)) names.Add(NameOf(m));
+        var add = new List<string>();
+        foreach (var statement in DefinitionStatements(rawLatex))
+        {
+            var m = DefinedNameRe.Match(statement);
+            if (m.Success && m.Index == 0)
+            {
+                if (!names.Add(NameOf(m))) continue;
+            }
+            else if (have.Contains(statement, StringComparison.Ordinal)) continue;
+            add.Add(statement);
+        }
+        return add.Count == 0 ? null : string.Join("\n", add);
+    }
+
+    private static string NameOf(Match m) => m.Groups[1].Success ? m.Groups[1].Value : "env:" + m.Groups[2].Value.Trim();
+
+    // The name a definition makes: a command (\newcommand{\x}, \def\x, \DeclareMathOperator{\x}, \NewDocumentCommand\x)
+    // or an environment or theorem kind (\newenvironment{x}, \newtheorem{x}).
+    private static readonly Regex DefinedNameRe = new(
+        @"(?m)^[ \t]*\\(?:(?:(?:re|provide)?newcommand|DeclareMathOperator|(?:New|Renew|Provide|Declare)DocumentCommand|def|let)\*?\s*\{?\s*(\\[A-Za-z@]+)|(?:(?:re)?newenvironment|newtheorem|(?:New|Renew|Provide)DocumentEnvironment)\*?\s*\{([^}]*)\})",
+        RegexOptions.Compiled);
 }

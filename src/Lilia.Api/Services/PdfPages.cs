@@ -79,6 +79,34 @@ public static partial class PdfPages
         try
         {
             File.WriteAllBytes(path, pdf);
+            return PdfInfoPagesOfFile(path, executable, timeout);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null; // the temp file couldn't be written
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// The exact pages of a PDF already on disk (bulk import, 21 Nov 2026: a 95 MB upload is streamed to a temp file and
+    /// never held in memory to be counted): pdfinfo on the file, else <see cref="Count"/> of its bytes, else null.
+    /// </summary>
+    public static int? ExactFile(string path, Func<string, int?>? pdfinfo = null) =>
+        (pdfinfo ?? (p => PdfInfoPagesOfFile(p)))(path) ?? Count(File.ReadAllBytes(path));
+
+    /// <summary>
+    /// <c>pdfinfo</c>'s <c>Pages:</c> for the PDF at <paramref name="path"/>, or null (pdfinfo missing, failed, or slower
+    /// than <paramref name="timeout"/>, 5 s by default). A plain process (no shell) whose only argument is the path, a
+    /// name Lilia chose, never anything the author wrote.
+    /// </summary>
+    public static int? PdfInfoPagesOfFile(string path, string executable = "pdfinfo", TimeSpan? timeout = null)
+    {
+        try
+        {
             var start = new System.Diagnostics.ProcessStartInfo(executable)
             {
                 RedirectStandardOutput = true,
@@ -101,11 +129,7 @@ public static partial class PdfPages
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or UnauthorizedAccessException)
         {
-            return null; // pdfinfo isn't installed, or the temp file couldn't be written
-        }
-        finally
-        {
-            try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            return null; // pdfinfo isn't installed
         }
     }
 

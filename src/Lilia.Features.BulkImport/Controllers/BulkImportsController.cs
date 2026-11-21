@@ -1,0 +1,105 @@
+using Lilia.Api.Features.BulkImport.Contracts;
+using Lilia.Api.Features.BulkImport.Services;
+using Lilia.Import.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Lilia.Api.Features.BulkImport.Controllers;
+
+/// <summary>
+/// Bulk import of PDFs (21 Nov 2026, the owner: many scanned maths notebooks at once). The web drops each PDF with its
+/// own request (one PDF, field <c>file</c>, up to <c>BulkImport:MaxFileBytes</c>, 95 MB: Cloudflare caps a body at 100 MB)
+/// and leaves; each file is split, read and placed in the background, its document growing. Only the author sees a
+/// batch: anyone else gets 404. A plan refusal is the usual QuotaExceeded answer (402, the global filter).
+/// </summary>
+[ApiController]
+[Route("api/bulk-imports")]
+[Authorize]
+public sealed class BulkImportsController(BulkImportService service, IServiceProvider services) : ControllerBase
+{
+    /// <summary>The transport's cap: a little above the 95 MB file, for the multipart wrapping. The file's own cap is the setting's.</summary>
+    private const long BodyLimit = 100L * 1024 * 1024;
+
+    private string? UserId => User.FindFirst("sub")?.Value
+        ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    [HttpPost]
+    public async Task<ActionResult<BulkImportCreatedDto>> Create(CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        var id = await service.CreateBatchAsync(userId, ct);
+        return StatusCode(StatusCodes.Status201Created, new BulkImportCreatedDto(id));
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<BulkImportBatchSummaryDto>>> List(CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        return Ok(await service.ListAsync(userId, ct));
+    }
+
+    [HttpGet("{batchId:guid}")]
+    public async Task<ActionResult<BulkImportBatchDto>> Get(Guid batchId, CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        return await service.GetAsync(userId, batchId, ct) is { } batch ? Ok(batch) : NotFound();
+    }
+
+    [HttpPost("{batchId:guid}/files")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(BodyLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = BodyLimit)]
+    public async Task<ActionResult<BulkImportFileDto>> AddFile(Guid batchId, IFormFile? file, CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        if (file is null || file.Length == 0) return Problem400("Send one PDF in the field \"file\".");
+        // Without Mathpix there is nothing to read the pages with: refused before anything is kept.
+        if (services.GetService<IMathpixClient>() is null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "PDF import is not available on this server." });
+
+        AddFileResult result;
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            result = await service.AddFileAsync(userId, batchId, stream, file.FileName, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Plans can't be checked: refused, as the single PDF import (fails closed).
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = ex.Message });
+        }
+        return result.Refusal switch
+        {
+            AddFileRefusal.None => Accepted(result.File),
+            AddFileRefusal.BatchNotFound => NotFound(),
+            AddFileRefusal.TooLarge => StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = result.Message }),
+            AddFileRefusal.BatchClosed or AddFileRefusal.TooManyFiles => Conflict(new { error = result.Message }),
+            _ => Problem400(result.Message ?? "This file can't be imported."),
+        };
+    }
+
+    [HttpPost("{batchId:guid}/files/{fileId:guid}/retry")]
+    public async Task<ActionResult<BulkImportFileDto>> Retry(Guid batchId, Guid fileId, CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        try
+        {
+            var (retried, dto) = await service.RetryFileAsync(userId, batchId, fileId, ct);
+            if (retried is null) return NotFound();
+            return retried.Value ? Accepted(dto) : Conflict(new { error = "Nothing to retry in this file.", file = dto });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{batchId:guid}/cancel")]
+    public async Task<ActionResult<BulkImportBatchDto>> Cancel(Guid batchId, CancellationToken ct)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        return await service.CancelAsync(userId, batchId, ct) is { } batch ? Accepted(batch) : NotFound();
+    }
+
+    private BadRequestObjectResult Problem400(string message) => BadRequest(new { error = message });
+}
