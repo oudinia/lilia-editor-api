@@ -9,8 +9,9 @@ namespace Lilia.Api.Features.BulkImport;
 /// <summary>
 /// Picks up bulk import work a restart cut short (21 Nov 2026). The queues are durable, but a step stopped halfway leaves
 /// its row saying so: a chunk "reading" past <c>StaleAfterMinutes</c> is sent again (and resumes Mathpix's pdf_id rather
-/// than paying for a new reading), a chunk read and not placed is placed, a file stuck splitting is split again, and an
-/// author with chunks waiting and none in flight gets their next ones sent. Every <c>SweepEverySeconds</c>; 0 turns it off.
+/// than paying for a new reading), a chunk read and not staged (or placed) is, a file stuck splitting is split again, a
+/// finished staged file not yet promoted is promoted, and an author with chunks waiting and none in flight gets their
+/// next ones sent. Every <c>SweepEverySeconds</c>; 0 turns it off.
 /// </summary>
 public sealed class BulkImportSweeper(IServiceScopeFactory scopes, BulkImportOptions options, ILogger<BulkImportSweeper> logger)
     : BackgroundService
@@ -66,9 +67,18 @@ public sealed class BulkImportSweeper(IServiceScopeFactory scopes, BulkImportOpt
             .Select(c => c.UserId).Distinct().Take(100).ToListAsync(ct);
         foreach (var userId in waiting) await processor.DispatchAsync(userId, ct);
 
-        var total = reading.Count + read.Count + splitting.Count;
+        // A staged file whose every chunk is finished but whose promotion didn't happen (a restart, a failed promotion): its
+        // document is made now. Promotion is idempotent, so a file promoted meanwhile is left alone.
+        var unpromoted = await db.BulkImportFiles.AsNoTracking()
+            .Where(f => f.UsesStaging && f.PromotedAt == null && f.DocumentId == null && f.Status == Reading && f.UpdatedAt < stale
+                && f.Chunks.Any(c => c.Status == Done)
+                && !f.Chunks.Any(c => c.Status != Done && c.Status != Failed && c.Status != Cancelled))
+            .Select(f => f.Id).Take(50).ToListAsync(ct);
+        foreach (var id in unpromoted) await queue.SendAsync(new PromoteBulkImportFile(id));
+
+        var total = reading.Count + read.Count + splitting.Count + unpromoted.Count;
         if (total > 0)
-            logger.LogInformation("[BulkImport] Sweep: {Reading} chunk(s) read again, {Read} placed, {Split} file(s) split again",
-                reading.Count, read.Count, splitting.Count);
+            logger.LogInformation("[BulkImport] Sweep: {Reading} chunk(s) read again, {Read} placed, {Split} file(s) split again, {Promote} promoted",
+                reading.Count, read.Count, splitting.Count, unpromoted.Count);
     }
 }

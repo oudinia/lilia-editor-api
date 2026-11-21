@@ -8,6 +8,10 @@ namespace Lilia.Api.Services;
 /// document, in place of the chunk's placeholder, rather than making a document of their own. Implemented in Lilia.Api
 /// over <c>PdfPages</c>, <c>IEntitlementService</c>, the connector's credits, <c>JobService</c> and
 /// <c>ImportReviewService</c>.
+/// <para>Since 21 Nov 2026 a chunk is staged (<see cref="StageLatexProjectAsync"/>): the same import, its blocks and
+/// figures returned rather than written into a document, so the import never writes into the author's document while it
+/// runs. The file's document is made from them at the end (<see cref="ApplyStagedPreambleAsync"/> for its preamble).
+/// <see cref="PlaceLatexProjectAsync"/> stays for a chunk retried after that, and for files split before staging.</para>
 /// </summary>
 public interface IPdfImportPipeline
 {
@@ -37,6 +41,28 @@ public interface IPdfImportPipeline
         byte[] projectZip, string? sourcePdfKey, CancellationToken ct = default);
 
     /// <summary>
+    /// A chunk's LaTeX project zip imported exactly as <see cref="PlaceLatexProjectAsync"/> imports it (its own import job,
+    /// the LaTeX import, the cleanup of Mathpix's reading), but no document is touched: its blocks come back, each with
+    /// the id it will keep, and its files are stored under <paramref name="assetKeyPrefix"/> (<c>bulk-staging/{fileId}/</c>),
+    /// a figure's <c>src</c> pointing at <paramref name="assetUrlPrefix"/> + the file's name and its <c>stagedAssetId</c>
+    /// at it. <see cref="PdfChunkStaged.Preamble"/> is the LaTeX before <c>\begin{document}</c>. Throws when the reading
+    /// has no LaTeX; files stored before a failure are deleted.
+    /// </summary>
+    Task<PdfChunkStaged> StageLatexProjectAsync(
+        string userId, string fileName, byte[] projectZip, string? sourcePdfKey,
+        string assetKeyPrefix, string assetUrlPrefix, CancellationToken ct = default);
+
+    /// <summary>
+    /// A staged import's preamble onto its new document, as a single import's (class, packages, macros, page setup and
+    /// venue), then <paramref name="extraMacros"/> (later chunks' macros) where the preamble lacks them. In the caller's
+    /// transaction (the same database context).
+    /// </summary>
+    Task ApplyStagedPreambleAsync(Guid documentId, string ownerId, string? preamble, string? extraMacros, CancellationToken ct = default);
+
+    /// <summary>The macro and environment definitions of <paramref name="latex"/> that <paramref name="have"/> doesn't define yet, or null.</summary>
+    string? MissingDefinitions(string? have, string? latex);
+
+    /// <summary>
     /// Tells an editor open on <paramref name="documentId"/> that its blocks changed (the document's live room,
     /// <c>DocumentChangedExternally</c>), so it reloads them without a refresh.
     /// </summary>
@@ -53,6 +79,20 @@ public interface IPdfImportPipeline
 /// </summary>
 public sealed record PdfChunkPlacement(Guid SessionId, IReadOnlyList<Guid> BlockIds, int Warnings,
     int? ParseMs = null, int? FiguresMs = null, int? WriteMs = null);
+
+/// <summary>
+/// A chunk staged (21 Nov 2026): its review session, its blocks in order (each with the id it keeps in the document, its
+/// content as JSON), its files stored under the staging prefix, its preamble, its warnings, and how long the LaTeX read
+/// (parse and cleanup) and the files' storing took, in ms.
+/// </summary>
+public sealed record PdfChunkStaged(Guid SessionId, IReadOnlyList<StagedBlockData> Blocks, IReadOnlyList<StagedAssetData> Assets,
+    string? Preamble, int Warnings, int? ParseMs = null, int? FiguresMs = null);
+
+/// <summary>A staged block: the id it keeps, its type, its content (a block's, as JSON) and depth.</summary>
+public sealed record StagedBlockData(Guid Id, string Type, string ContentJson, int Depth);
+
+/// <summary>A staged file: the asset id it keeps, its name in staging URLs, its path in the zip, where it is stored, its type and size.</summary>
+public sealed record StagedAssetData(Guid Id, string Name, string OriginalPath, string StorageKey, string ContentType, long Size);
 
 /// <summary>
 /// Compiles a bulk import's finished document once, in the background, to measure it (21 Nov 2026, the owner: "how long

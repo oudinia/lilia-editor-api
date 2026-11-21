@@ -23,7 +23,7 @@ public static class BulkImportStats
             .Where(f => f.CreatedAt >= from && f.CreatedAt <= now)
             .Select(f => new
             {
-                f.Id, f.Status, f.Pages, f.UploadMs, f.SplitMs, f.FirstPageMs, f.TotalMs, f.CompileMs, f.CompileOk,
+                f.Id, f.Status, f.Pages, f.UploadMs, f.SplitMs, f.FirstPageMs, f.TotalMs, f.PromoteMs, f.CompileMs, f.CompileOk,
                 f.Precision, f.LowPrecisionPages,
             })
             .ToListAsync(ct);
@@ -53,6 +53,7 @@ public static class BulkImportStats
             Stage("placeFigures", "ms", chunks.Select(c => c.PlaceFiguresMs)),
             Stage("placeWrite", "ms", chunks.Select(c => c.PlaceWriteMs)),
             Stage("firstPage", "ms", files.Select(f => f.FirstPageMs)),
+            Stage("promote", "ms", files.Select(f => f.PromoteMs)),
             Stage("total", "ms", files.Select(f => f.TotalMs)),
             Stage("compile", "ms", files.Select(f => f.CompileMs)),
             Stage("pagesPerMinute", "pages/min", files.Select(f =>

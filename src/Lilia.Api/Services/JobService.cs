@@ -1052,6 +1052,32 @@ public class JobService : IJobService
         // cleaned up), then put into the file's document in place of its placeholder. Its own job, so the zip is kept
         // under imports/{jobId}.zip where the assets are staged from. An IMPORT_CHUNK job, never counted as an import: the
         // bulk file is the one import (the review of API #675: a 30-page PDF used 3 of a plan's monthly imports).
+        // Since staging (21 Nov 2026) only for a chunk retried after its file's document was made, and for files split
+        // before: the others go through StagePdfChunkAsync.
+        return await RunChunkJobAsync(userId, fileName, latexSource, projectZip, sourcePdfKey, documentId, async sessionId =>
+        {
+            var finalizing = System.Diagnostics.Stopwatch.GetTimestamp();
+            var blocks = await _reviewService.FinalizeIntoDocumentAsync(sessionId, userId, documentId, placeholderBlockId, applyPreamble, ct);
+            if (ImportPlaceTimer.Current is { } t2) t2.FinalizeMs += ImportPlaceTimer.Since(finalizing);
+            return blocks;
+        }, ct);
+    }
+
+    public async Task<Guid> StagePdfChunkAsync(
+        string userId, string fileName, string latexSource, byte[] projectZip, string? sourcePdfKey, CancellationToken ct = default)
+    {
+        // Bulk import staging (21 Nov 2026): the same chunk job and LaTeX project import, its review session left with
+        // its blocks; the caller reads them and stages them, and the document is made when the file is finished.
+        var (sessionId, _) = await RunChunkJobAsync(userId, fileName, latexSource, projectZip, sourcePdfKey, null,
+            _ => Task.FromResult<IReadOnlyList<Guid>>([]), ct);
+        return sessionId;
+    }
+
+    /// <summary>A chunk's IMPORT_CHUNK job: the LaTeX project import staged for review and cleaned up, then <paramref name="then"/>.</summary>
+    private async Task<(Guid SessionId, IReadOnlyList<Guid> BlockIds)> RunChunkJobAsync(
+        string userId, string fileName, string latexSource, byte[] projectZip, string? sourcePdfKey, Guid? documentId,
+        Func<Guid, Task<IReadOnlyList<Guid>>> then, CancellationToken ct)
+    {
         var job = new Job
         {
             Id = Guid.NewGuid(),
@@ -1077,9 +1103,7 @@ public class JobService : IJobService
             var staged = System.Diagnostics.Stopwatch.GetTimestamp();
             var sessionId = await StagePdfAsLatexProjectAsync(userId, job, request, title, latexSource, projectZip, sourcePdfKey);
             if (ImportPlaceTimer.Current is { } timer) timer.ParseMs += ImportPlaceTimer.Since(staged);
-            var finalizing = System.Diagnostics.Stopwatch.GetTimestamp();
-            var blocks = await _reviewService.FinalizeIntoDocumentAsync(sessionId, userId, documentId, placeholderBlockId, applyPreamble, ct);
-            if (ImportPlaceTimer.Current is { } t2) t2.FinalizeMs += ImportPlaceTimer.Since(finalizing);
+            var blocks = await then(sessionId);
             job.Status = JobStatus.Completed;
             job.Progress = 100;
             job.DocumentId = documentId;

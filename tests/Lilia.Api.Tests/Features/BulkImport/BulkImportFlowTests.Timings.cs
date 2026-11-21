@@ -59,6 +59,10 @@ public partial class BulkImportFlowTests
         row.SplitMs.Should().BeGreaterThanOrEqualTo(0);
         row.FirstPageMs.Should().BeGreaterThanOrEqualTo(row.UploadMs!.Value, "the first page counts from the upload's start");
         row.TotalMs.Should().BeGreaterThanOrEqualTo(row.FirstPageMs!.Value);
+        // The promotion: the staging made into the document in one go, timed, and inside the whole.
+        row.PromoteMs.Should().NotBeNull().And.BeGreaterThanOrEqualTo(0);
+        row.TotalMs.Should().BeGreaterThanOrEqualTo(row.PromoteMs!.Value);
+        row.PromotedAt.Should().NotBeNull();
         // Each chunk: its wait, Mathpix (submit → completed), the tex.zip, and the place split in parts.
         chunks.Should().HaveCount(3).And.OnlyContain(c =>
             c.QueueWaitMs >= 0 && c.MathpixMs >= 10 && c.TexZipMs >= 0
@@ -71,6 +75,7 @@ public partial class BulkImportFlowTests
         t.SplitMs.Should().Be(row.SplitMs);
         t.FirstPageMs.Should().Be(row.FirstPageMs);
         t.TotalMs.Should().Be(row.TotalMs);
+        t.PromoteMs.Should().Be(row.PromoteMs);
         t.MathpixMsPerPage.Should().Be((int)Math.Round(chunks.Sum(c => (double)c.MathpixMs!.Value) / 25));
         t.PlaceMsPerChunk.Should().NotBeNull();
         t.QueueWaitMsPerChunk.Should().NotBeNull();
@@ -249,7 +254,7 @@ public partial class BulkImportFlowTests
         var stats = (await res.Content.ReadFromJsonAsync<BulkImportStatsDto>())!;
         stats.Days.Should().Be(3);
         stats.Stages.Select(s => s.Stage).Should().Contain(["upload", "split", "queueWait", "mathpix", "mathpixPerPage", "texZip",
-            "place", "placeParse", "placeFigures", "placeWrite", "firstPage", "total", "compile", "pagesPerMinute", "precision"]);
+            "place", "placeParse", "placeFigures", "placeWrite", "firstPage", "promote", "total", "compile", "pagesPerMinute", "precision"]);
     }
 
     [Fact]
@@ -270,6 +275,7 @@ public partial class BulkImportFlowTests
                 {
                     Id = Guid.NewGuid(), BatchId = batch.Id, UserId = userId, OriginalName = $"f{i}.pdf", StorageKey = "k", Pages = 10,
                     Status = "done", UploadMs = uploads[i], TotalMs = 60_000 * (i + 1), CompileMs = i == 0 ? 2000 : null,
+                    PromoteMs = 10 * (i + 1),
                     CompileOk = i == 0 ? true : null, Precision = 0.9, LowPrecisionPages = i,
                     CreatedAt = now.AddHours(-1 - i),
                 };
@@ -303,6 +309,7 @@ public partial class BulkImportFlowTests
         perMinute.Max.Should().Be(10, "10 pages in 1 minute");
         perMinute.Min.Should().Be(2, "10 pages in 5 minutes");
         stats.Stages.Single(s => s.Stage == "compile").Count.Should().Be(1);
+        stats.Stages.Single(s => s.Stage == "promote").Should().Be(new BulkImportStageStatsDto("promote", "ms", 5, 30, 46, 10, 50));
         stats.Stages.Single(s => s.Stage == "split").Should().Be(new BulkImportStageStatsDto("split", "ms", 0, null, null, null, null));
     }
 }

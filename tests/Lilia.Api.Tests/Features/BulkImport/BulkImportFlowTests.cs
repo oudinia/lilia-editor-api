@@ -18,8 +18,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Lilia.Api.Tests.Features.BulkImport;
 
 /// <summary>
-/// Bulk import end to end (21 Nov 2026): the HTTP API, the document that exists from the split on and grows as Mathpix's
-/// readings are placed, per-page progress, the cache, failures, retry, cancelling by deleting the document, the plan, and
+/// Bulk import end to end (21 Nov 2026): the HTTP API, each chunk's reading staged and the document made in one go when the
+/// file is finished (staging, the same day), per-page progress, the cache, failures, retry, cancelling, the plan, and
 /// who may see a batch. Mathpix is <see cref="FakeMathpixClient"/> (no network); the queue is <see cref="RecordingQueue"/>,
 /// so each test runs the split, read and place steps itself, in the order it chooses. One test runs the real Wolverine
 /// queues (durable local, no broker) instead.
@@ -30,6 +30,7 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
     private readonly FakeMathpixClient _mathpix = new();
     private readonly RecordingQueue _queue = new();
     private readonly FakeBulkCompiler _compiler = new();
+    private readonly RecordingNotifier _notifier = new();
 
     public BulkImportFlowTests(TestDatabaseFixture fixture) : base(fixture) { }
 
@@ -54,6 +55,8 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
                 services.AddSingleton<Lilia.Api.Services.IBulkImportCompiler>(_compiler);
                 if (staff is not null)
                     services.PostConfigure<Lilia.Api.Services.EntitlementOptions>(o => o.StaffUserIds = [staff]);
+                services.RemoveAll<IBulkImportNotifier>();
+                services.AddSingleton<IBulkImportNotifier>(_notifier);
                 services.RemoveAll<BulkImportOptions>();
                 services.AddSingleton(new BulkImportOptions
                 {
@@ -129,6 +132,7 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
             case SplitBulkImportFile m: await p.SplitAsync(m.FileId); break;
             case ReadBulkImportChunk m: await p.ReadAsync(m.ChunkId); break;
             case PlaceBulkImportChunk m: await p.PlaceAsync(m.ChunkId); break;
+            case PromoteBulkImportFile m: await p.PromoteAsync(m.FileId); break;
             case CompileBulkImportFile m: await p.CompileAsync(m.FileId); break;
         }
     }
@@ -161,10 +165,10 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
         return await db.Operations.AsNoTracking().Where(o => o.UserId == userId && o.Kind == "import.pdf").SumAsync(o => o.Units ?? 0);
     }
 
-    // ── the document exists at once, with a placeholder per chunk ──────────────────────────────────────────────
+    // ── no document while it imports ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task After_the_split_the_document_exists_with_one_placeholder_per_chunk()
+    public async Task No_document_exists_while_the_file_imports()
     {
         var host = Host();
         var userId = await AuthorAsync();
@@ -175,22 +179,53 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
         file.Pages.Should().Be(25);
         file.Status.Should().Be("queued");
         file.DocumentId.Should().BeNull();
+        file.PreviewAvailable.Should().BeFalse();
 
         await SplitAsync(host);
 
         var after = (await BatchAsync(author, batchId)).Files.Single();
-        after.DocumentId.Should().NotBeNull("the document exists as soon as the file is split");
+        after.DocumentId.Should().BeNull("the document is made when every chunk is finished");
+        after.PromotedAt.Should().BeNull();
         after.Status.Should().Be("reading");
         after.Chunks.Total.Should().Be(3);
-        var blocks = await BlocksAsync(after.DocumentId!.Value);
-        blocks.Select(b => b.Text).Should().Equal(
-            "Pages 1\u201310: being read\u2026", "Pages 11\u201320: being read\u2026", "Pages 21\u201325: being read\u2026");
-        // The author can open it.
-        (await author.GetAsync($"/api/documents/{after.DocumentId}")).StatusCode.Should().Be(HttpStatusCode.OK);
-        var title = (await author.GetFromJsonAsync<JsonElement>($"/api/documents/{after.DocumentId}"));
-        title.GetRawText().Should().Contain("Forkosh notebook 3");
+        (await DocumentsOfAsync(userId)).Should().BeEmpty();
         // Fair: two chunks sent to the ocr queue, the third waits its turn.
-        _queue.Take<ReadBulkImportChunk>().Should().HaveCount(2);
+        var reads = _queue.Take<ReadBulkImportChunk>();
+        reads.Should().HaveCount(2);
+
+        // Read and staged: still no document, but a preview.
+        foreach (var read in reads) await RunAsync(host, read);
+        foreach (var place in _queue.Take<PlaceBulkImportChunk>()) await RunAsync(host, place);
+        var staged = (await BatchAsync(author, batchId)).Files.Single();
+        staged.DocumentId.Should().BeNull();
+        staged.PreviewAvailable.Should().BeTrue();
+        staged.Chunks.Done.Should().BeGreaterThan(0);
+        (await DocumentsOfAsync(userId)).Should().BeEmpty("the import writes to staging, never to a document, while it runs");
+        await using (var db = CreateDbContext())
+            (await db.BulkImportStagedBlocks.AsNoTracking().CountAsync(b => b.FileId == file.FileId)).Should().BeGreaterThan(0);
+
+        // Finished: one document, titled from the file name, and the staging gone.
+        await PumpAsync(host);
+        var done = (await BatchAsync(author, batchId)).Files.Single();
+        done.Status.Should().Be("done");
+        done.DocumentId.Should().NotBeNull();
+        done.PromotedAt.Should().NotBeNull();
+        (await DocumentsOfAsync(userId)).Should().Equal(done.DocumentId!.Value);
+        var title = await author.GetFromJsonAsync<JsonElement>($"/api/documents/{done.DocumentId}");
+        title.GetRawText().Should().Contain("Forkosh notebook 3");
+        await using (var db = CreateDbContext())
+        {
+            (await db.BulkImportStagedBlocks.AsNoTracking().CountAsync(b => b.FileId == file.FileId)).Should().Be(0);
+            (await db.BulkImportStagedAssets.AsNoTracking().CountAsync(a => a.FileId == file.FileId)).Should().Be(0);
+        }
+        // The progress that said "done" carried the document.
+        _notifier.Progress.Last(p => p.FileId == file.FileId).DocumentId.Should().Be(done.DocumentId);
+    }
+
+    private async Task<List<Guid>> DocumentsOfAsync(string userId)
+    {
+        await using var db = CreateDbContext();
+        return await db.Documents.AsNoTracking().IgnoreQueryFilters().Where(d => d.OwnerId == userId).Select(d => d.Id).ToListAsync();
     }
 
     // ── out of order, the order is still right ─────────────────────────────────────────────────────────────────
@@ -208,8 +243,16 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
         foreach (var read in _queue.Take<ReadBulkImportChunk>()) await RunAsync(host, read);
         var places = _queue.Take<PlaceBulkImportChunk>();
         places.Should().HaveCount(3);
-        // The last chunk first, then the first, then the middle one.
-        foreach (var i in new[] { 2, 0, 1 }) await RunAsync(host, places[i]);
+        // The last chunk first, then the first, then the middle one: staged in that order, no document meanwhile.
+        foreach (var i in new[] { 2, 0, 1 })
+        {
+            (await BatchAsync(author, batchId)).Files.Single().DocumentId.Should().BeNull();
+            await RunAsync(host, places[i]);
+        }
+        // Every chunk staged: the promotion makes the document.
+        var promotions = _queue.Take<PromoteBulkImportFile>();
+        promotions.Should().NotBeEmpty();
+        foreach (var m in promotions) await RunAsync(host, m);
 
         var file = (await BatchAsync(author, batchId)).Files.Single();
         file.Status.Should().Be("done");
@@ -311,6 +354,7 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
 
         var file = (await BatchAsync(author, batchId)).Files.Single();
         file.Status.Should().Be("partial");
+        file.DocumentId.Should().NotBeNull("promoted with what was read; the failed chunk is a placeholder");
         file.Chunks.Should().Be(new BulkImportChunkCountsDto(3, 2, 1));
         file.PagesDone.Should().Be(15);
         file.PagesFailed.Should().Be(10);
@@ -323,7 +367,11 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
         await using (var db = CreateDbContext())
             (await db.BulkImportChunks.AsNoTracking().SingleAsync(c => c.FileId == file.FileId && c.FirstPage == 11)).Attempts.Should().Be(3);
 
-        // Retry: only that chunk is read again, and its blocks take the placeholder's place.
+        // Retry after promotion: only that chunk is read again, and its blocks take the placeholder's place in the document
+        // (its version moved, the open editor told).
+        long versionBefore;
+        await using (var db = CreateDbContext())
+            versionBefore = await db.Documents.AsNoTracking().Where(d => d.Id == file.DocumentId).Select(d => (long)d.Version).SingleAsync();
         _mathpix.FailFirstPages.Clear();
         var someoneElse = ClientOf(host, NewId("x"));
         (await someoneElse.PostAsync($"/api/bulk-imports/{batchId}/files/{file.FileId}/retry", null)).StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -341,12 +389,17 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
             .Select(s => final.FindIndex(t => t.Contains(s))).Should().OnlyContain(i => i >= 0).And.BeInAscendingOrder();
         final.Should().NotContain(t => t.StartsWith("Pages 11"));
         (await PagesChargedAsync(userId)).Should().Be(25);
+        done.DocumentId.Should().Be(file.DocumentId, "the retry fills the same document");
+        (await DocumentsOfAsync(userId)).Should().ContainSingle();
+        await using (var db = CreateDbContext())
+            (await db.Documents.AsNoTracking().Where(d => d.Id == file.DocumentId).Select(d => (long)d.Version).SingleAsync())
+                .Should().BeGreaterThan(versionBefore, "a change from outside moves the version, so an open editor rebases");
     }
 
-    // ── deleting the document cancels what Mathpix hasn't got ──────────────────────────────────────────────────
+    // ── deleting an old-flow file's document cancels what Mathpix hasn't got ───────────────────────────────────
 
     [Fact]
-    public async Task Deleting_the_document_cancels_the_chunks_not_yet_read_without_charge()
+    public async Task Deleting_an_old_flow_files_document_cancels_the_chunks_not_yet_read_without_charge()
     {
         var host = Host();
         var userId = await AuthorAsync();
@@ -354,7 +407,7 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
         var batchId = await NewBatchAsync(author);
         await UploadOkAsync(author, batchId, BulkImportTestKit.Pdf(35));
         await SplitAsync(host);
-        var documentId = (await BatchAsync(author, batchId)).Files.Single().DocumentId!.Value;
+        var documentId = await AsSplitBeforeStagingAsync((await BatchAsync(author, batchId)).Files.Single().FileId);
 
         // The normal delete: to the Trash.
         (await author.DeleteAsync($"/api/documents/{documentId}")).IsSuccessStatusCode.Should().BeTrue();
@@ -373,24 +426,52 @@ public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task Cancelling_a_batch_stops_the_chunks_not_yet_sent()
+    public async Task Cancelling_a_batch_stops_the_chunks_not_yet_sent_and_deletes_the_staging()
     {
         var host = Host(maxChunksPerAuthor: 1);
         var userId = await AuthorAsync();
         var author = ClientOf(host, userId);
         var batchId = await NewBatchAsync(author);
-        await UploadOkAsync(author, batchId, BulkImportTestKit.Pdf(30));
+        _mathpix.FigureFirstPages.Add(1);
+        var uploaded = await UploadOkAsync(author, batchId, BulkImportTestKit.Pdf(30, salt: Guid.NewGuid().ToString()));
         await SplitAsync(host);
+        // The first chunk read and staged, with its figure; the others wait their turn.
+        foreach (var read in _queue.Take<ReadBulkImportChunk>()) await RunAsync(host, read);
+        foreach (var place in _queue.Take<PlaceBulkImportChunk>()) await RunAsync(host, place);
+        List<string> stagedKeys;
+        await using (var db = CreateDbContext())
+        {
+            (await db.BulkImportStagedBlocks.AsNoTracking().CountAsync(b => b.FileId == uploaded.FileId)).Should().BeGreaterThan(0);
+            stagedKeys = await db.BulkImportStagedAssets.AsNoTracking().Where(a => a.FileId == uploaded.FileId).Select(a => a.StorageKey).ToListAsync();
+        }
+        stagedKeys.Should().ContainSingle("the figure is staged").Which.Should().StartWith($"bulk-staging/{uploaded.FileId:N}/");
+        var storage = host.Services.GetRequiredService<Lilia.Core.Interfaces.IStorageService>();
+        (await storage.DownloadAsync(stagedKeys[0])).Dispose();
+        _queue.Sent.Clear(); // the next chunk's read, never run
 
         var cancel = await author.PostAsync($"/api/bulk-imports/{batchId}/cancel", null);
         cancel.StatusCode.Should().Be(HttpStatusCode.Accepted);
         await PumpAsync(host);
 
-        _mathpix.Submits.Should().Be(0);
+        _mathpix.Submits.Should().Be(1, "only the chunk read before the cancel reached Mathpix");
+        (await PagesChargedAsync(userId)).Should().Be(10, "nothing is charged for the pages not read");
         var file = (await BatchAsync(author, batchId)).Files.Single();
         file.Status.Should().Be("cancelled");
-        (await BlocksAsync(file.DocumentId!.Value)).Select(b => b.Text).Should().OnlyContain(t => t.EndsWith("not imported (cancelled)."));
+        file.DocumentId.Should().BeNull("no document is made for a cancelled file");
+        (await DocumentsOfAsync(userId)).Should().BeEmpty();
         (await BatchAsync(author, batchId)).Status.Should().Be("cancelled");
+        await using (var db = CreateDbContext())
+        {
+            (await db.BulkImportStagedBlocks.AsNoTracking().CountAsync(b => b.FileId == file.FileId)).Should().Be(0);
+            (await db.BulkImportStagedAssets.AsNoTracking().CountAsync(a => a.FileId == file.FileId)).Should().Be(0);
+            (await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == file.FileId).Select(c => c.Status).ToListAsync())
+                .Should().OnlyContain(st => st == "cancelled");
+        }
+        var gone = async () => (await storage.DownloadAsync(stagedKeys[0])).Dispose();
+        await gone.Should().ThrowAsync<Exception>("the staged figure is deleted with the staging");
+        // The preview has nothing staged left.
+        var preview = await author.GetFromJsonAsync<BulkImportPreviewDto>($"/api/bulk-imports/{batchId}/files/{file.FileId}/preview");
+        preview!.Blocks.Should().OnlyContain(b => b.Type == "placeholder");
     }
 
     // ── the plan, and who may see a batch ──────────────────────────────────────────────────────────────────────

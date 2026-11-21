@@ -41,6 +41,11 @@ public class BulkImportFileConfiguration : IEntityTypeConfiguration<BulkImportFi
         builder.Property(f => f.Status).HasColumnName("status").HasMaxLength(20).IsRequired();
         builder.Property(f => f.DocumentId).HasColumnName("document_id");
         builder.Property(f => f.PreambleApplied).HasColumnName("preamble_applied");
+        builder.Property(f => f.UsesStaging).HasColumnName("uses_staging");
+        builder.Property(f => f.PromotedAt).HasColumnName("promoted_at");
+        builder.Property(f => f.StagedPreamble).HasColumnName("staged_preamble");
+        builder.Property(f => f.StagedMacros).HasColumnName("staged_macros");
+        builder.Property(f => f.PromoteMs).HasColumnName("promote_ms");
         builder.Property(f => f.Error).HasColumnName("error").HasMaxLength(2000);
         builder.Property(f => f.Warnings).HasColumnName("warnings");
         builder.Property(f => f.UploadMs).HasColumnName("upload_ms");
@@ -93,6 +98,7 @@ public class BulkImportChunkConfiguration : IEntityTypeConfiguration<BulkImportC
         builder.Property(c => c.FromCache).HasColumnName("from_cache");
         builder.Property(c => c.ChargedPages).HasColumnName("charged_pages");
         builder.Property(c => c.PlaceholderBlockId).HasColumnName("placeholder_block_id");
+        builder.Property(c => c.SessionId).HasColumnName("session_id");
         builder.Property(c => c.Error).HasColumnName("error").HasMaxLength(2000);
         builder.Property(c => c.StartedAt).HasColumnName("started_at");
         builder.Property(c => c.QueueWaitMs).HasColumnName("queue_wait_ms");
@@ -113,6 +119,51 @@ public class BulkImportChunkConfiguration : IEntityTypeConfiguration<BulkImportC
         builder.HasIndex(c => c.CreatedAt).HasDatabaseName("ix_bulk_import_chunks_created");
 
         builder.HasOne(c => c.File).WithMany(f => f.Chunks).HasForeignKey(c => c.FileId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>A chunk's blocks staged until promotion (21 Nov 2026): the import never writes into the document while it runs.</summary>
+public class BulkImportStagedBlockConfiguration : IEntityTypeConfiguration<BulkImportStagedBlock>
+{
+    public void Configure(EntityTypeBuilder<BulkImportStagedBlock> builder)
+    {
+        builder.ToTable("bulk_import_staged_blocks");
+        builder.HasKey(b => b.Id);
+        builder.Property(b => b.Id).HasColumnName("id");
+        builder.Property(b => b.FileId).HasColumnName("file_id");
+        builder.Property(b => b.ChunkIndex).HasColumnName("chunk_index");
+        builder.Property(b => b.Order).HasColumnName("order_in_chunk");
+        builder.Property(b => b.Type).HasColumnName("block_type").HasMaxLength(50).IsRequired();
+        builder.Property(b => b.Content).HasColumnName("content").HasColumnType("jsonb").IsRequired();
+        builder.Property(b => b.Depth).HasColumnName("depth");
+        builder.Property(b => b.CreatedAt).HasColumnName("created_at");
+
+        builder.HasIndex(b => new { b.FileId, b.ChunkIndex, b.Order }).HasDatabaseName("ix_bulk_import_staged_blocks_file_order");
+        // A file erased (its batch, its author) takes its staging with it.
+        builder.HasOne(b => b.File).WithMany().HasForeignKey(b => b.FileId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>A chunk's files (figures' images) staged until promotion, kept under <c>bulk-staging/{fileId}/</c>.</summary>
+public class BulkImportStagedAssetConfiguration : IEntityTypeConfiguration<BulkImportStagedAsset>
+{
+    public void Configure(EntityTypeBuilder<BulkImportStagedAsset> builder)
+    {
+        builder.ToTable("bulk_import_staged_assets");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).HasColumnName("id");
+        builder.Property(a => a.FileId).HasColumnName("file_id");
+        builder.Property(a => a.ChunkIndex).HasColumnName("chunk_index");
+        builder.Property(a => a.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+        builder.Property(a => a.OriginalPath).HasColumnName("original_path").HasMaxLength(500).IsRequired();
+        builder.Property(a => a.StorageKey).HasColumnName("storage_key").HasMaxLength(500).IsRequired();
+        builder.Property(a => a.ContentType).HasColumnName("content_type").HasMaxLength(100).IsRequired();
+        builder.Property(a => a.Size).HasColumnName("size_bytes");
+        builder.Property(a => a.CreatedAt).HasColumnName("created_at");
+
+        builder.HasIndex(a => new { a.FileId, a.Name }).IsUnique().HasDatabaseName("ux_bulk_import_staged_assets_file_name");
+        builder.HasIndex(a => new { a.FileId, a.ChunkIndex }).HasDatabaseName("ix_bulk_import_staged_assets_file_chunk");
+        builder.HasOne(a => a.File).WithMany().HasForeignKey(a => a.FileId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

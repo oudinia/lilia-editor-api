@@ -13,7 +13,8 @@ namespace Lilia.Api.Features.BulkImport;
 /// <list type="bullet">
 /// <item>split: 2 at once (CPU and disk: a 95 MB PDF cut into chunk files);</item>
 /// <item>ocr: <c>BulkImport:MaxParallelChunks</c> at once (4): the calls to Mathpix in flight in this process;</item>
-/// <item>place: one at a time, so a document's blocks never interleave (and a lock per document across processes);</item>
+/// <item>place: one at a time, so a document's blocks never interleave (and a lock per document across processes); a
+/// chunk staged, and a finished file promoted into its document, go here too (21 Nov 2026), under a lock per file;</item>
 /// <item>compile (21 Nov 2026): a durable local queue in either case, one at a time: a finished file's document compiled
 /// once, to time it, in the process that has TeX, through the machine's compile slots.</item>
 /// </list>
@@ -36,6 +37,7 @@ public static class BulkImportMessaging
             opts.PublishMessage<SplitBulkImportFile>().ToRabbitQueue(SplitQueue);
             opts.PublishMessage<ReadBulkImportChunk>().ToRabbitQueue(OcrQueue);
             opts.PublishMessage<PlaceBulkImportChunk>().ToRabbitQueue(PlaceQueue);
+            opts.PublishMessage<PromoteBulkImportFile>().ToRabbitQueue(PlaceQueue);
             opts.ListenToRabbitQueue(SplitQueue).PreFetchCount(2).MaximumParallelMessages(2).UseDurableInbox();
             opts.ListenToRabbitQueue(OcrQueue).PreFetchCount((ushort)parallelChunks).MaximumParallelMessages(parallelChunks).UseDurableInbox();
             opts.ListenToRabbitQueue(PlaceQueue).PreFetchCount(1).Sequential().UseDurableInbox();
@@ -44,6 +46,7 @@ public static class BulkImportMessaging
         opts.PublishMessage<SplitBulkImportFile>().ToLocalQueue(SplitQueue).MaximumParallelMessages(2);
         opts.PublishMessage<ReadBulkImportChunk>().ToLocalQueue(OcrQueue).MaximumParallelMessages(parallelChunks);
         opts.PublishMessage<PlaceBulkImportChunk>().ToLocalQueue(PlaceQueue).Sequential();
+        opts.PublishMessage<PromoteBulkImportFile>().ToLocalQueue(PlaceQueue);
     }
 
     /// <summary>The settings, as the services and Wolverine see them, bound once at start.</summary>

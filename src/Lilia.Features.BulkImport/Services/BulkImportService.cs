@@ -191,6 +191,47 @@ public sealed class BulkImportService(
     public Task<BulkImportStatsDto> StatsAsync(int days, CancellationToken ct = default) =>
         BulkImportStats.ComputeAsync(db, days, DateTime.UtcNow, ct);
 
+    /// <summary>The file's read-only preview (21 Nov 2026); null when it isn't this author's.</summary>
+    public Task<BulkImportPreviewDto?> PreviewAsync(string userId, Guid batchId, Guid fileId, CancellationToken ct = default) =>
+        BulkImportReadModel.PreviewAsync(db, userId, batchId, fileId, ct);
+
+    /// <summary>The raster types a staged figure is served as (21 Nov 2026): never SVG, HTML or anything a browser runs.</summary>
+    internal static readonly string[] RasterTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+    /// <summary>
+    /// A staged figure of the author's file, for the preview (21 Nov 2026): its bytes and type, or null when it isn't this
+    /// author's, isn't staged (any more), or isn't a raster image.
+    /// </summary>
+    public async Task<(Stream Content, string ContentType)?> StagedAssetAsync(string userId, Guid batchId, Guid fileId, string name, CancellationToken ct = default)
+    {
+        if (name.Length > 100 || !System.Text.RegularExpressions.Regex.IsMatch(name, "^[0-9a-f]{32}\\.[a-z0-9]{1,5}$")) return null;
+        var asset = await db.BulkImportStagedAssets.AsNoTracking()
+            .Where(a => a.FileId == fileId && a.Name == name && a.File!.BatchId == batchId && a.File.UserId == userId)
+            .Select(a => new { a.StorageKey, a.ContentType })
+            .FirstOrDefaultAsync(ct);
+        if (asset is null) return null;
+        var type = asset.ContentType.ToLowerInvariant() == "image/jpg" ? "image/jpeg" : asset.ContentType.ToLowerInvariant();
+        if (Array.IndexOf(RasterTypes, type) < 0) return null;
+        try
+        {
+            return (await storage.DownloadAsync(asset.StorageKey), type);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "[BulkImport] Staged figure {Name} of file {FileId} couldn't be read", name, fileId);
+            return null;
+        }
+    }
+
+    /// <summary>Null: no such file of this author. False: nothing left to stop.</summary>
+    public async Task<(bool? Cancelled, BulkImportFileDto? File)> CancelFileAsync(string userId, Guid batchId, Guid fileId, CancellationToken ct = default)
+    {
+        var file = await db.BulkImportFiles.FirstOrDefaultAsync(f => f.Id == fileId && f.BatchId == batchId && f.UserId == userId, ct);
+        if (file is null) return (null, null);
+        var cancelled = await processor.CancelFileAsync(file, ct);
+        return (cancelled, await BulkImportReadModel.FileAsync(db, fileId, ct));
+    }
+
     public async Task<BulkImportBatchDto?> CancelAsync(string userId, Guid batchId, CancellationToken ct = default)
     {
         if (!await db.BulkImportBatches.AnyAsync(b => b.Id == batchId && b.UserId == userId, ct)) return null;

@@ -13,6 +13,12 @@ public interface IBulkImportNotifier
     /// <paramref name="force"/> (a chunk placed or failed, a file finished): those are always sent.
     /// </summary>
     Task FileChangedAsync(string userId, Guid batchId, BulkImportFileDto file, bool force);
+
+    /// <summary>
+    /// Sends <c>BulkImportPreviewChanged</c> <c>{ batchId, fileId, chunkIndex }</c> to the author's group when a chunk is
+    /// staged or fails (21 Nov 2026): an open preview reloads it. Never throttled.
+    /// </summary>
+    Task PreviewChangedAsync(string userId, Guid batchId, Guid fileId, int chunkIndex);
 }
 
 /// <summary>The hub's sender (<c>/hubs/bulk-import</c>, group <c>user:{id}</c>). A singleton: the throttle is per process.</summary>
@@ -34,6 +40,19 @@ public sealed class BulkImportNotifier(IHubContext<BulkImportHub> hub, BulkImpor
         catch (Exception ex)
         {
             logger.LogWarning(ex, "[BulkImport] Could not send the progress of file {FileId}", file.FileId);
+        }
+    }
+
+    public async Task PreviewChangedAsync(string userId, Guid batchId, Guid fileId, int chunkIndex)
+    {
+        try
+        {
+            await hub.Clients.Group(BulkImportHub.GroupOf(userId))
+                .SendAsync("BulkImportPreviewChanged", new BulkImportPreviewChangedDto(batchId, fileId, chunkIndex));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[BulkImport] Could not send the preview change of file {FileId}", fileId);
         }
     }
 }

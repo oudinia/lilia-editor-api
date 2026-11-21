@@ -59,7 +59,9 @@ public static class BulkImportReadModel
         var placedPages = chunks.Where(c => c.Status == BulkImportStatuses.Done).Sum(c => c.LastPage - c.FirstPage + 1);
         return new BulkImportFileDto(f.Id, f.OriginalName, f.Pages, pagesDone, pagesFailed, f.Status,
             new BulkImportChunkCountsDto(chunks.Count, done, failed), f.DocumentId, f.Error, f.Warnings,
-            TimingsOf(f, chunks, placedPages), PrecisionOf(f, chunks));
+            TimingsOf(f, chunks, placedPages), PrecisionOf(f, chunks),
+            PreviewAvailable: done + failed > 0,
+            PromotedAt: f.PromotedAt);
     }
 
     /// <summary>The file's timings: its own, and its chunks' averaged (21 Nov 2026).</summary>
@@ -84,7 +86,8 @@ public static class BulkImportReadModel
             f.CompileOk,
             f.CompileEngine,
             perMinute,
-            chunks.Count(c => c.FromCache));
+            chunks.Count(c => c.FromCache),
+            f.PromoteMs);
     }
 
     /// <summary>The file's precision and its low pages, in page order; null until a page has a score.</summary>
@@ -105,6 +108,42 @@ public static class BulkImportReadModel
         if (fileStatuses.All(s => s == BulkImportStatuses.Cancelled)) return BulkImportStatuses.Cancelled;
         if (fileStatuses.All(s => s == BulkImportStatuses.Failed)) return BulkImportStatuses.Failed;
         return BulkImportStatuses.Partial;
+    }
+
+    /// <summary>
+    /// The file's read-only preview (21 Nov 2026): its staged blocks in page order, a placeholder for each chunk not staged
+    /// yet. Null when the file isn't this author's (in this batch).
+    /// </summary>
+    public static async Task<BulkImportPreviewDto?> PreviewAsync(LiliaDbContext db, string userId, Guid batchId, Guid fileId, CancellationToken ct = default)
+    {
+        if (!await db.BulkImportFiles.AsNoTracking().AnyAsync(f => f.Id == fileId && f.BatchId == batchId && f.UserId == userId, ct)) return null;
+        if (await FileAsync(db, fileId, ct) is not { } file) return null;
+        var chunks = await db.BulkImportChunks.AsNoTracking().Where(c => c.FileId == fileId).OrderBy(c => c.Index)
+            .Select(c => new { c.Index, c.Status, c.FirstPage, c.LastPage }).ToListAsync(ct);
+        var staged = (await db.BulkImportStagedBlocks.AsNoTracking().Where(b => b.FileId == fileId)
+                .OrderBy(b => b.ChunkIndex).ThenBy(b => b.Order).ToListAsync(ct))
+            .ToLookup(b => b.ChunkIndex);
+        var blocks = new List<BulkImportPreviewBlockDto>();
+        foreach (var c in chunks)
+        {
+            if (staged.Contains(c.Index))
+            {
+                blocks.AddRange(staged[c.Index].Select(b => new BulkImportPreviewBlockDto(b.Id, b.Type, b.Content.RootElement.Clone(), c.Index)));
+                continue;
+            }
+            // Done with nothing staged: placed in the document (promoted, or a file split before staging), or staged with no
+            // block at all. Nothing to wait for.
+            if (c.Status == BulkImportStatuses.Done) continue;
+            var state = c.Status switch
+            {
+                BulkImportStatuses.Queued => "queued",
+                BulkImportStatuses.Failed or BulkImportStatuses.Cancelled => "failed",
+                _ => "reading",
+            };
+            blocks.Add(new BulkImportPreviewBlockDto(null, "placeholder",
+                System.Text.Json.JsonSerializer.SerializeToElement(new { firstPage = c.FirstPage, lastPage = c.LastPage, state }), c.Index));
+        }
+        return new BulkImportPreviewDto(file.FileId, file.Name, file.Pages, file.PagesDone, file.Status, file.DocumentId, blocks);
     }
 
     public static async Task<BulkImportBatchDto?> BatchAsync(LiliaDbContext db, string userId, Guid batchId, CancellationToken ct = default)
