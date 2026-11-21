@@ -88,6 +88,9 @@ internal sealed class FakeMathpixClient : IMathpixClient
     /// <summary>Chunks (by first page) whose reading has a figure: <c>\includegraphics{fig-N}</c> and its image in the zip.</summary>
     public ConcurrentBag<int> FigureFirstPages { get; } = new();
 
+    /// <summary>Text added to a chunk's reading, by its first page (a formula the import warns about, say); none by default.</summary>
+    public Func<int, string?>? ExtraText { get; set; }
+
     /// <summary>A 1×1 PNG, the figures' image.</summary>
     public static readonly byte[] Png = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
@@ -135,6 +138,8 @@ internal sealed class FakeMathpixClient : IMathpixClient
             "",
             @"\begin{document}",
             $"Text of pages {pdf.First} to {pdf.Last}.",
+            "",
+            ExtraText?.Invoke(pdf.First) ?? "",
             "",
             figure ? @"\begin{center}" + "\n" + @"\includegraphics[max width=\textwidth]{fig-" + pdf.First + "}\n" + @"\end{center}" : "",
             "",

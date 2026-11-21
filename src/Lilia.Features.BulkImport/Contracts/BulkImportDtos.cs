@@ -134,3 +134,42 @@ public sealed record BulkImportCreatedDto(Guid BatchId);
 
 /// <summary>Sent to the author's group (<c>user:{id}</c>) on <c>/hubs/bulk-import</c> as <c>BulkImportProgress</c>.</summary>
 public sealed record BulkImportProgressDto(Guid BatchId, BulkImportFileDto File);
+
+/// <summary>
+/// One warning of a file's import (21 Nov 2026, the launch bot's retest: "It never names the warning or the block"): its
+/// <c>Kind</c> (the diagnostic's code, e.g. <c>MathPrintedAsText</c>, <c>FigureImageMissing</c>,
+/// <c>PDF.OCR_LOW_PRECISION</c>; its category when it has no code), its <c>Severity</c>, a plain <c>Message</c> (without the
+/// chunk-local "Block N (type): " or "Page N: " the import wrote, since <c>BlockNumber</c> and <c>Page</c> say where), and
+/// where: the chunk's pages (<c>FirstPage</c>–<c>LastPage</c>, the file's), the page itself when the warning is about one,
+/// and the block. <c>BlockId</c> is the block's id in the preview and, once the file is promoted, in the document;
+/// <c>InDocument</c> says the block is in the document now (not deleted since), and <c>BlockNumber</c> is then its place
+/// there, from 1. Null for a warning about a page or the whole chunk.
+/// </summary>
+public sealed record BulkImportWarningDto(
+    string Kind,
+    string Severity,
+    string Message,
+    int ChunkIndex,
+    int FirstPage,
+    int LastPage,
+    int? Page,
+    Guid? BlockId,
+    string? BlockType,
+    bool InDocument,
+    int? BlockNumber);
+
+/// <summary>
+/// <c>GET /api/bulk-imports/{batchId}/files/{fileId}/warnings</c> (21 Nov 2026, author only): the file's warnings in page
+/// order, read from its chunks' import diagnostics. <c>Total</c> is the file's count (its <c>warnings</c>); a file read
+/// before a chunk kept its import record (a file split before staging) may list fewer. At most
+/// <c>Limit</c> are listed; <c>Truncated</c> says there were more.
+/// </summary>
+public sealed record BulkImportWarningListDto(
+    Guid FileId,
+    Guid? DocumentId,
+    int Total,
+    bool Truncated,
+    IReadOnlyList<BulkImportWarningDto> Warnings)
+{
+    public const int Limit = 500;
+}

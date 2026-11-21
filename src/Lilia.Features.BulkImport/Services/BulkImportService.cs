@@ -195,6 +195,10 @@ public sealed class BulkImportService(
     public Task<BulkImportPreviewDto?> PreviewAsync(string userId, Guid batchId, Guid fileId, CancellationToken ct = default) =>
         BulkImportReadModel.PreviewAsync(db, userId, batchId, fileId, ct);
 
+    /// <summary>The file's warnings, each named and placed (21 Nov 2026); null when it isn't this author's.</summary>
+    public Task<BulkImportWarningListDto?> WarningsAsync(string userId, Guid batchId, Guid fileId, CancellationToken ct = default) =>
+        BulkImportReadModel.WarningsAsync(db, userId, batchId, fileId, ct);
+
     /// <summary>The raster types a staged figure is served as (21 Nov 2026): never SVG, HTML or anything a browser runs.</summary>
     internal static readonly string[] RasterTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
