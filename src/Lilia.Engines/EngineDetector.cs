@@ -105,6 +105,8 @@ public static class EngineDetector
         if (Fontspec.IsMatch(commands) || FontPackages.IsMatch(commands)) return LatexEngine.Lualatex;
         // Chinese, Japanese or Korean text: pdflatex has no fonts for it here (CjkText).
         if (CjkText.Contains(latex)) return LatexEngine.Xelatex;
+        // Cyrillic, or Greek the preamble doesn't map: pdflatex can't print it, LuaLaTeX's Unicode faces can (UnicodeFacesText).
+        if (UnicodeFacesText.Contains(latex)) return LatexEngine.Lualatex;
         return LatexEngine.Pdflatex;
     }
 

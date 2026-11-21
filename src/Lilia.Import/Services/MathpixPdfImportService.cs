@@ -204,8 +204,9 @@ public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMa
                 return null;
             }
             // A figure without a caption is a bare \includegraphics in Mathpix's LaTeX: set it in a figure environment, so it
-            // is read as a figure block and its image stored, not its id printed as text (20 Nov 2026).
-            return (zip, MathpixFigures.AsFigureEnvironments(extracted.InlinedTex));
+            // is read as a figure block and its image stored, not its id printed as text (20 Nov 2026). A maths command
+            // Mathpix left in the text is set back in maths (OcrMathText, 21 Nov 2026).
+            return (zip, OcrMathText.MathCommandsAsMaths(MathpixFigures.AsFigureEnvironments(extracted.InlinedTex), out _));
         }
         catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
@@ -217,6 +218,8 @@ public partial class MathpixPdfImportService : IPdfParser, IScanImageParser, IMa
     internal async Task<List<ImportElement>> ParseMarkdownAsync(string markdown, CancellationToken ct = default)
     {
         var elements = new List<ImportElement>();
+        // A maths command Mathpix left in the text is set back in maths (OcrMathText, 21 Nov 2026).
+        markdown = OcrMathText.MathCommandsAsMaths(markdown, out _);
         // An image link in the middle of a line is a figure of its own, never a paragraph's text (20 Nov 2026).
         var lines = MathpixFigures.ImagesOnTheirOwnLines(markdown).Split('\n');
         var order = 0;
