@@ -97,6 +97,11 @@ public class JobService : IJobService
         {
             query = query.Where(j => j.JobType == jobType);
         }
+        else
+        {
+            // A bulk import's chunks are its machinery, not the author's jobs: the file's own IMPORT job is listed.
+            query = query.Where(j => j.JobType != JobTypes.ImportChunk);
+        }
 
         var jobs = await query
             .OrderByDescending(j => j.CreatedAt)
@@ -1045,13 +1050,14 @@ public class JobService : IJobService
     {
         // Bulk import (21 Nov 2026): a chunk of a PDF through the same LaTeX project import as one uploaded PDF (staged,
         // cleaned up), then put into the file's document in place of its placeholder. Its own job, so the zip is kept
-        // under imports/{jobId}.zip where the assets are staged from.
+        // under imports/{jobId}.zip where the assets are staged from. An IMPORT_CHUNK job, never counted as an import: the
+        // bulk file is the one import (the review of API #675: a 30-page PDF used 3 of a plan's monthly imports).
         var job = new Job
         {
             Id = Guid.NewGuid(),
             TenantId = userId,
             UserId = userId,
-            JobType = JobTypes.Import,
+            JobType = JobTypes.ImportChunk,
             Status = JobStatus.Processing,
             Progress = 10,
             SourceFormat = "pdf",

@@ -49,6 +49,15 @@ public static class JobStatus
 public static class JobTypes
 {
     public const string Import = "IMPORT";
+
+    /// <summary>
+    /// One chunk of a bulk-imported PDF (bulk import, 21 Nov 2026): the job that carries the chunk's LaTeX import (its zip at
+    /// <c>imports/{jobId}.zip</c>, its review session). Never an import of its own: the plan's monthly imports, the plan
+    /// meter, recent activity and the admin's stats count <see cref="Import"/> only, and the bulk file is that one
+    /// import (a job with the file's id). Its own type rather than a flag, so every reader that counts or lists imports
+    /// (they all test <c>== "IMPORT"</c>) leaves chunks out without being changed, and none can be missed.
+    /// </summary>
+    public const string ImportChunk = "IMPORT_CHUNK";
     public const string Export = "EXPORT";
     public const string Convert = "CONVERT";
 }

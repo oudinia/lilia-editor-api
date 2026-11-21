@@ -108,6 +108,23 @@ public sealed class BulkImportService(
                 CreatedAt = now,
                 UpdatedAt = now,
             });
+            // The file is ONE import (the review of API #675): its own import job, made here so the next file's plan check
+            // counts it, and shown as one import on the plan meter and in recent activity. Its id is the file's; the
+            // processor keeps its status and document in step. The chunks' jobs are IMPORT_CHUNK and never count.
+            db.Jobs.Add(new Job
+            {
+                Id = fileId,
+                TenantId = userId,
+                UserId = userId,
+                JobType = JobTypes.Import,
+                Status = JobStatus.Processing,
+                Progress = 0,
+                SourceFormat = "pdf",
+                TargetFormat = "lilia",
+                SourceFileName = SafeName(fileName),
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
             batch.Status = Processing;
             batch.UpdatedAt = now;
             await db.SaveChangesAsync(ct);

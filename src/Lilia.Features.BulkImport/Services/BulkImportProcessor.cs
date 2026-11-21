@@ -633,8 +633,40 @@ public sealed class BulkImportProcessor(
 
     private async Task NotifyAsync(BulkImportFile file, bool force, CancellationToken ct)
     {
+        // Every change worth saying at once is one the file's import job follows too (not each poll's page count).
+        if (force) await SyncImportJobAsync(file, ct);
         if (await BulkImportReadModel.FileAsync(db, file.Id, ct) is { } dto)
             await notifier.FileChangedAsync(file.UserId, file.BatchId, dto, force);
+    }
+
+    /// <summary>
+    /// The file's own import job (its id is the file's, made at upload: the one import the file counts as, the review of
+    /// API #675) follows the file: processing, then completed (done or partial), failed or cancelled, with its document.
+    /// It is what the plan's monthly imports, the plan meter and recent activity see; the chunks' jobs are IMPORT_CHUNK.
+    /// </summary>
+    private async Task SyncImportJobAsync(BulkImportFile file, CancellationToken ct)
+    {
+        var status = file.Status switch
+        {
+            Done or Partial => JobStatus.Completed,
+            Failed => JobStatus.Failed,
+            Cancelled => JobStatus.Cancelled,
+            _ => JobStatus.Processing,
+        };
+        var finished = status != JobStatus.Processing;
+        var progress = finished ? 100 : file.DocumentId is null ? 10 : 50;
+        var error = file.Status is Failed or Partial && file.Error is { } e ? Short(e) : null;
+        var completedAt = finished ? DateTime.UtcNow : (DateTime?)null;
+        var documentId = file.DocumentId;
+        var now = DateTime.UtcNow;
+        await db.Jobs.Where(j => j.Id == file.Id && j.JobType == JobTypes.Import)
+            .ExecuteUpdateAsync(j => j
+                .SetProperty(x => x.Status, status)
+                .SetProperty(x => x.Progress, progress)
+                .SetProperty(x => x.DocumentId, documentId)
+                .SetProperty(x => x.ErrorMessage, error)
+                .SetProperty(x => x.CompletedAt, completedAt)
+                .SetProperty(x => x.UpdatedAt, now), ct);
     }
 
     internal static string Short(string message) => message.Length > 1000 ? message[..1000] : message;

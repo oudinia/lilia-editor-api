@@ -430,6 +430,62 @@ public class BulkImportFlowTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
+    public async Task A_bulk_file_is_one_import_whatever_its_chunks_and_a_normal_import_still_works()
+    {
+        // The review of API #675: every chunk made an IMPORT job, so a 30-page PDF used 3 of a plan's monthly imports and
+        // could lock the author out of normal imports. A plan capped at 3 imports a month (Pro's caps otherwise, on a
+        // plan this class doesn't use): the bulk file is 1, and a normal import after it still runs.
+        var host = Host(enforce: true, maxChunksPerAuthor: 10);
+        var userId = NewId("q");
+        await SeedUserAsync(userId);
+        await using (var db = CreateDbContext())
+        {
+            var pro = await db.Plans.AsNoTracking().SingleAsync(p => p.Slug == "pro");
+            var capped = System.Text.Json.Nodes.JsonNode.Parse(pro.Caps.RootElement.GetRawText())!.AsObject();
+            capped["maxImportsPerMonth"] = 3;
+            capped["pdfPagesPerMonth"] = 1000;
+            var plan = await db.Plans.SingleAsync(p => p.Slug == "student");
+            plan.Caps = JsonDocument.Parse(capped.ToJsonString());
+            plan.Features = JsonDocument.Parse(pro.Features.RootElement.GetRawText());
+            db.UserPlans.Add(new UserPlan { Id = Guid.NewGuid(), UserId = userId, PlanId = plan.Id, Status = "active", StartedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        var author = ClientOf(host, userId);
+        var batchId = await NewBatchAsync(author);
+
+        await UploadOkAsync(author, batchId, BulkImportTestKit.Pdf(30, salt: Guid.NewGuid().ToString()));
+        await PumpAsync(host);
+
+        var file = (await BatchAsync(author, batchId)).Files.Single();
+        file.Status.Should().Be("done");
+        file.Chunks.Total.Should().Be(3);
+        using (var scope = host.Services.CreateScope())
+        {
+            var usage = await scope.ServiceProvider.GetRequiredService<Lilia.Api.Services.IEntitlementService>().GetUsageAsync(userId);
+            usage!.Imports.Used.Should().Be(1, "the bulk file is one import, its 3 chunks none");
+        }
+        await using (var db = CreateDbContext())
+        {
+            var jobs = await db.Jobs.AsNoTracking().Where(j => j.UserId == userId).ToListAsync();
+            jobs.Count(j => j.JobType == JobTypes.ImportChunk).Should().Be(3);
+            var import = jobs.Single(j => j.JobType == JobTypes.Import);
+            import.Id.Should().Be(file.FileId);
+            import.Status.Should().Be(JobStatus.Completed);
+            import.DocumentId.Should().Be(file.DocumentId);
+        }
+        // The jobs list shows the file's import, not its chunks.
+        var listed = await author.GetFromJsonAsync<JsonElement>("/api/lilia/jobs");
+        listed.GetRawText().Should().NotContain(JobTypes.ImportChunk);
+
+        var normal = await author.PostAsJsonAsync("/api/lilia/jobs/import",
+            new { content = "\\documentclass{article}\n\\begin{document}\n\\section{After}\nA normal import after a bulk one.\n\\end{document}\n", format = "LATEX", filename = "after.tex", skipReview = true });
+        normal.IsSuccessStatusCode.Should().BeTrue(await normal.Content.ReadAsStringAsync());
+        using (var scope = host.Services.CreateScope())
+            (await scope.ServiceProvider.GetRequiredService<Lilia.Api.Services.IEntitlementService>().GetUsageAsync(userId))!
+                .Imports.Used.Should().Be(2);
+    }
+
+    [Fact]
     public async Task Only_the_author_sees_a_batch()
     {
         var host = Host();
