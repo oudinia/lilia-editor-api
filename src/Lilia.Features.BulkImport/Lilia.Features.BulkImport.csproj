@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Bulk import slice (21 Nov 2026, the owner: mass conversion of scanned maths notebooks, the Forkosh case of
+    ~41 PDFs of ~150 pages). An author drops many PDFs and leaves; each is split into page chunks, the chunks are read
+    by Mathpix in parallel (bounded, fair between authors, cached by content), and put back together in page order as
+    one document per PDF. Its own project, as Sharing and Library: it uses the rest of the API only through
+    Lilia.Api.Contracts (IPdfImportPipeline for page counting, plan checks, charging and the LaTeX project import);
+    Lilia.Api references it, registers its services, and tells Wolverine to look here for handlers.
+    Its messages go to RabbitMQ when BulkImport:RabbitMq is set, else to durable local queues of the same names.
+  -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lilia.Api.Contracts\Lilia.Api.Contracts.csproj" />
+    <ProjectReference Include="..\Lilia.Core\Lilia.Core.csproj" />
+    <ProjectReference Include="..\Lilia.Import\Lilia.Import.csproj" />
+    <ProjectReference Include="..\Lilia.Infrastructure\Lilia.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WolverineFx" Version="5.39.1" />
+    <!-- The same version as WolverineFx: Wolverine's packages move together. -->
+    <PackageReference Include="WolverineFx.RabbitMQ" Version="5.39.1" />
+    <!-- Splitting PDFs in process (Apache-2.0). PDFsharp was the other candidate: its 6.5.0 (14 Oct 2026) moved to
+         AGPL-3.0-only, so only its last MIT release (6.2.4, Jan 2026) could be used, with no fixes after it. -->
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lilia.Api.Tests" />
+  </ItemGroup>
+
+  <!-- The implicit usings of the web SDK, which Lilia.Api has. -->
+  <ItemGroup>
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

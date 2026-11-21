@@ -671,6 +671,136 @@ public class ImportReviewService : IImportReviewService
         }
     }
 
+    /// <summary>
+    /// Finalize into a document that already exists (bulk import, 21 Nov 2026). The same copy as
+    /// <see cref="FinalizeInternalAsync"/> (staged rows into blocks, the zip's files as assets, inline images stored), but
+    /// no new document: the blocks take the place of <paramref name="replaceBlockId"/>, the blocks after it move down to
+    /// make room, and the document's version moves so an open editor's next save rebases instead of deleting them. One
+    /// placement per document at a time (an advisory lock on the document), so two chunks never interleave.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> FinalizeIntoDocumentAsync(Guid sessionId, string ownerId, Guid documentId,
+        Guid? replaceBlockId, bool applyPreamble, CancellationToken ct = default)
+    {
+        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        try
+        {
+            if (_context.Database.IsNpgsql())
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtext({"lilia-place:" + documentId}))", ct);
+
+            await _context.ImportBlockReviews
+                .Where(b => b.SessionId == sessionId && b.Status == "pending")
+                .ExecuteUpdateAsync(b => b
+                    .SetProperty(x => x.Status, "approved")
+                    .SetProperty(x => x.ReviewedBy, ownerId)
+                    .SetProperty(x => x.ReviewedAt, DateTime.UtcNow), ct);
+
+            var ids = await _context.ImportBlockReviews
+                .Where(b => b.SessionId == sessionId && (b.Status == "approved" || b.Status == "edited"))
+                .OrderBy(b => b.SortOrder)
+                .Select(b => b.Id)
+                .ToListAsync(ct);
+            var n = ids.Count;
+            var now = DateTime.UtcNow;
+
+            // Where the blocks go: the placeholder's place, else after the last block.
+            int? at = replaceBlockId is { } placeholder
+                ? await _context.Blocks.Where(b => b.Id == placeholder && b.DocumentId == documentId)
+                    .Select(b => (int?)b.SortOrder).FirstOrDefaultAsync(ct)
+                : null;
+            if (at is { } p)
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE blocks SET sort_order = sort_order + {n - 1} WHERE document_id = {documentId} AND sort_order > {p}", ct);
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"DELETE FROM blocks WHERE id = {replaceBlockId!.Value} AND document_id = {documentId}", ct);
+            }
+            else
+            {
+                at = (await _context.Blocks.Where(b => b.DocumentId == documentId).MaxAsync(b => (int?)b.SortOrder, ct) ?? -1) + 1;
+            }
+
+            await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO blocks (id, document_id, type, content, sort_order, depth, created_at, updated_at)
+                SELECT
+                    id,
+                    {documentId},
+                    COALESCE(current_type, original_type),
+                    COALESCE(current_content, original_content),
+                    {at.Value} + (ROW_NUMBER() OVER (ORDER BY sort_order))::int - 1,
+                    depth,
+                    {now},
+                    {now}
+                FROM import_block_reviews
+                WHERE session_id = {sessionId}
+                  AND status IN ('approved','edited')", ct);
+
+            // The preamble: the first chunk's whole, as a new document's; a later chunk's missing macros only.
+            var pre = await _context.ImportReviewSessions
+                .Where(s => s.Id == sessionId)
+                .Select(s => new { s.RawImportData, s.SourceFormat, DefinitionFormat = s.Definition != null ? s.Definition.SourceFormat : null })
+                .FirstOrDefaultAsync(ct);
+            if (pre != null && !string.IsNullOrWhiteSpace(pre.RawImportData) && IsLatexSource(pre.SourceFormat, pre.DefinitionFormat))
+            {
+                if (applyPreamble)
+                    await ApplyLatexSourceAsync(documentId, ownerId, pre.RawImportData, $"session {sessionId}", ct);
+                else
+                {
+                    var current = await _context.Documents.AsNoTracking().Where(d => d.Id == documentId)
+                        .Select(d => d.CustomPreamble).FirstOrDefaultAsync(ct);
+                    if (LatexPreambleExtractor.MissingDefinitions(current, pre.RawImportData) is { } missing)
+                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE documents SET custom_preamble =
+                                CASE WHEN custom_preamble IS NULL OR custom_preamble = '' THEN {missing}
+                                     ELSE custom_preamble || E'\n' || {missing} END
+                            WHERE id = {documentId}", ct);
+                }
+            }
+
+            try
+            {
+                await StageZipAssetsAsync(sessionId, documentId, ownerId, now, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] Failed to stage zip assets for session {SessionId} into {DocumentId}", sessionId, documentId);
+            }
+            try
+            {
+                await StageInlineFigureImagesAsync(documentId, ownerId, now, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ImportReview] Failed to store inline figure images for session {SessionId}", sessionId);
+            }
+
+            await _context.ImportReviewSessions
+                .Where(s => s.Id == sessionId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.Status, "imported")
+                    .SetProperty(x => x.DocumentId, documentId)
+                    .SetProperty(x => x.UpdatedAt, now), ct);
+            await _context.Jobs
+                .Where(j => _context.ImportReviewSessions.Where(s => s.Id == sessionId).Select(s => s.JobId).Contains(j.Id))
+                .ExecuteUpdateAsync(j => j.SetProperty(x => x.DocumentId, documentId).SetProperty(x => x.UpdatedAt, now), ct);
+
+            // Last, after every tracked save above: the editor's next save sees the version moved and rebases.
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE documents SET version = version + 1, updated_at = {now} WHERE id = {documentId}", ct);
+
+            await tx.CommitAsync(ct);
+            _logger.LogInformation("[ImportReview] Session {SessionId} placed into document {DocumentId}: {Count} blocks at {At}",
+                sessionId, documentId, n, at);
+            return ids;
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            _logger.LogError(ex, "[ImportReview] Failed to place session {SessionId} into document {DocumentId}", sessionId, documentId);
+            throw;
+        }
+    }
+
     public async Task<List<ImportDiagnosticDto>> GetDiagnosticsAsync(Guid sessionId, string userId)
     {
         // Permission gate — use the existing role check.

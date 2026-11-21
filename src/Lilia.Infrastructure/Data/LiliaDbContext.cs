@@ -139,6 +139,12 @@ public class LiliaDbContext : DbContext
     public DbSet<OperationCredit> OperationCredits => Set<OperationCredit>();
     public DbSet<StripeEvent> StripeEvents => Set<StripeEvent>();
 
+    // Bulk import (21 Nov 2026): many PDFs at once, split into chunks read by Mathpix, one document per PDF.
+    public DbSet<BulkImportBatch> BulkImportBatches => Set<BulkImportBatch>();
+    public DbSet<BulkImportFile> BulkImportFiles => Set<BulkImportFile>();
+    public DbSet<BulkImportChunk> BulkImportChunks => Set<BulkImportChunk>();
+    public DbSet<MathpixChunkCache> MathpixChunkCache => Set<MathpixChunkCache>();
+
     // LaTeX catalog (v1, Phase 1). The parser consults these tables at
     // import time to decide how to handle each token; unknown tokens
     // auto-insert with coverage_level='unsupported' so we accumulate

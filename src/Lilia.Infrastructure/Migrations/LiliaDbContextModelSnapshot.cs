@@ -1198,6 +1198,237 @@ namespace Lilia.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_bulk_import_batches_status");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_bulk_import_batches_user");
+
+                    b.ToTable("bulk_import_batches", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportChunk", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<int>("ChargedPages")
+                        .HasColumnType("integer")
+                        .HasColumnName("charged_pages");
+
+                    b.Property<string>("ChunkKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("chunk_key");
+
+                    b.Property<string>("ContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_id");
+
+                    b.Property<int>("FirstPage")
+                        .HasColumnType("integer")
+                        .HasColumnName("first_page");
+
+                    b.Property<bool>("FromCache")
+                        .HasColumnType("boolean")
+                        .HasColumnName("from_cache");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("integer")
+                        .HasColumnName("index");
+
+                    b.Property<int>("LastPage")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_page");
+
+                    b.Property<string>("MathpixPdfId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("mathpix_pdf_id");
+
+                    b.Property<int>("PagesCompleted")
+                        .HasColumnType("integer")
+                        .HasColumnName("pages_completed");
+
+                    b.Property<Guid?>("PlaceholderBlockId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("placeholder_block_id");
+
+                    b.Property<string>("ResultKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("result_key");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_bulk_import_chunks_status");
+
+                    b.HasIndex("FileId", "Index")
+                        .IsUnique()
+                        .HasDatabaseName("ux_bulk_import_chunks_file_index");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("ix_bulk_import_chunks_user_status");
+
+                    b.ToTable("bulk_import_chunks", (string)null);
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("OriginalName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("original_name");
+
+                    b.Property<int>("Pages")
+                        .HasColumnType("integer")
+                        .HasColumnName("pages");
+
+                    b.Property<bool>("PreambleApplied")
+                        .HasColumnType("boolean")
+                        .HasColumnName("preamble_applied");
+
+                    b.Property<string>("SourceHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("source_hash");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("Warnings")
+                        .HasColumnType("integer")
+                        .HasColumnName("warnings");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId")
+                        .HasDatabaseName("ix_bulk_import_files_batch");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("ix_bulk_import_files_document");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_bulk_import_files_status");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("ix_bulk_import_files_user_status");
+
+                    b.ToTable("bulk_import_files", (string)null);
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.ChangelogEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5755,6 +5986,32 @@ namespace Lilia.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.MathpixChunkCache", b =>
+                {
+                    b.Property<string>("Hash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Pages")
+                        .HasColumnType("integer")
+                        .HasColumnName("pages");
+
+                    b.Property<string>("ResultKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("result_key");
+
+                    b.HasKey("Hash");
+
+                    b.ToTable("mathpix_chunk_cache", (string)null);
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8381,6 +8638,44 @@ namespace Lilia.Infrastructure.Migrations
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportBatch", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportChunk", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.BulkImportFile", "File")
+                        .WithMany("Chunks")
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportFile", b =>
+                {
+                    b.HasOne("Lilia.Core.Entities.BulkImportBatch", "Batch")
+                        .WithMany("Files")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Lilia.Core.Entities.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Batch");
+                });
+
             modelBuilder.Entity("Lilia.Core.Entities.Comment", b =>
                 {
                     b.HasOne("Lilia.Core.Entities.Block", null)
@@ -9511,6 +9806,16 @@ namespace Lilia.Infrastructure.Migrations
             modelBuilder.Entity("Lilia.Core.Entities.BlockGroup", b =>
                 {
                     b.Navigation("Memberships");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportBatch", b =>
+                {
+                    b.Navigation("Files");
+                });
+
+            modelBuilder.Entity("Lilia.Core.Entities.BulkImportFile", b =>
+                {
+                    b.Navigation("Chunks");
                 });
 
             modelBuilder.Entity("Lilia.Core.Entities.Comment", b =>

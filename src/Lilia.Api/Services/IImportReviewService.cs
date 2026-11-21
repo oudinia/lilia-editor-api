@@ -22,6 +22,15 @@ public interface IImportReviewService
     Task<List<ReviewSessionSummaryDto>> ListActiveSessionsAsync(string userId);
     Task<bool> CancelSessionAsync(Guid sessionId, string userId, bool permanent = false);
     Task<FinalizeResultDto?> FinalizeSessionAsync(Guid sessionId, string userId, FinalizeSessionDto dto);
+    /// <summary>
+    /// A staged session's blocks put into an EXISTING document (bulk import, 21 Nov 2026: a chunk of a PDF growing its
+    /// document), in place of <paramref name="replaceBlockId"/> (appended when that block is gone), with the zip's figures
+    /// stored as the document's assets. <paramref name="applyPreamble"/>: the source's preamble and page setup as a new
+    /// document gets them; otherwise only the macros the document lacks. Returns the blocks placed, in order.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> FinalizeIntoDocumentAsync(Guid sessionId, string ownerId, Guid documentId, Guid? replaceBlockId,
+        bool applyPreamble, CancellationToken ct = default);
+
     /// <summary>An imported LaTeX source's preamble and page setup, written onto its new document.</summary>
     Task ApplyLatexSourceAsync(Guid documentId, string ownerId, string rawLatex, string source, CancellationToken ct = default);
 

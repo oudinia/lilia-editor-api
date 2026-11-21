@@ -52,6 +52,7 @@
     <ProjectReference Include="..\Lilia.Api.Contracts\Lilia.Api.Contracts.csproj" />
     <ProjectReference Include="..\Lilia.Features.Library\Lilia.Features.Library.csproj" />
     <ProjectReference Include="..\Lilia.Features.Sharing\Lilia.Features.Sharing.csproj" />
+    <ProjectReference Include="..\Lilia.Features.BulkImport\Lilia.Features.BulkImport.csproj" />
   </ItemGroup>
 
   <ItemGroup>

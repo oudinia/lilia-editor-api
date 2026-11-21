@@ -102,6 +102,15 @@ builder.Host.UseWolverine(opts =>
     // The slices that are projects of their own (2 Nov 2026): their handlers live in their assemblies.
     // Without this, the share email's handler would never run, and nothing would say so.
     opts.Discovery.IncludeAssembly(typeof(Lilia.Api.Features.Sharing.Handlers.SendShareEmailHandler).Assembly);
+    // Bulk import (21 Nov 2026): its handlers, and its queues: RabbitMQ when BulkImport:RabbitMq is set, else durable
+    // local queues of the same names (BulkImportMessaging).
+    // Read here, when the host is built, so a test host's settings are seen.
+    opts.Discovery.IncludeAssembly(typeof(Lilia.Api.Features.BulkImport.BulkImportMessaging).Assembly);
+    var bulkImportOptions = Lilia.Api.Features.BulkImport.BulkImportMessaging.Read(builder.Configuration);
+    Lilia.Api.Features.BulkImport.BulkImportMessaging.Apply(opts, bulkImportOptions);
+    Console.WriteLine(string.IsNullOrWhiteSpace(bulkImportOptions.RabbitMq)
+        ? "[BOOT] bulk import: durable local queues"
+        : "[BOOT] bulk import: RabbitMQ queues (BulkImport:RabbitMq)");
 
     // One node, no leader election, unless Wolverine:Solo=false. See MessageStoreSettings.
     MessageStoreSettings.Apply(opts.Durability, builder.Configuration);
@@ -530,6 +539,9 @@ builder.Services.AddScoped<ISnippetService, SnippetService>();
 builder.Services.AddScoped<IDiagnosticCaptureService, DiagnosticCaptureService>();
 builder.Services.AddScoped<IDraftBlockService, DraftBlockService>();
 builder.Services.AddScoped<IJobService, JobService>();
+// Bulk import (21 Nov 2026): the slice, and the single PDF import's steps it uses.
+builder.Services.AddScoped<IPdfImportPipeline, PdfImportPipeline>();
+Lilia.Api.Features.BulkImport.BulkImportServiceCollectionExtensions.AddBulkImport(builder.Services);
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IRecentActivityService, RecentActivityService>();
@@ -1245,6 +1257,7 @@ app.MapMcpMetadata();
 app.MapHub<ImportHub>("/hubs/import");
 app.MapHub<DocumentHub>("/hubs/document");
 app.MapHub<ImportReviewHub>("/hubs/import-review");
+app.MapHub<Lilia.Api.Features.BulkImport.Hubs.BulkImportHub>("/hubs/bulk-import");
 
 // Health check endpoint
 app.MapGet("/health", async (LiliaDbContext db) =>

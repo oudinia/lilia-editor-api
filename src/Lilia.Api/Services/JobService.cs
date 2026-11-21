@@ -949,6 +949,38 @@ public class JobService : IJobService
     private async Task<(Guid SessionId, Lilia.Core.Entities.Document? Document)> ImportPdfAsLatexProjectAsync(
         string userId, Job job, ImportRequestDto request, string title, string latexSource, byte[] texZip, string? keptPdf)
     {
+        var sessionId = await StagePdfAsLatexProjectAsync(userId, job, request, title, latexSource, texZip, keptPdf);
+
+        var staged = await _context.ImportReviewSessions.AsNoTracking()
+            .Where(s => s.Id == sessionId)
+            .Select(s => new { s.DocumentId })
+            .FirstAsync();
+        var documentId = staged.DocumentId;
+
+        // No review asked for and the import wasn't clean enough to finalize itself: finalized anyway, as Word's is.
+        if (documentId is null && request.SkipReview)
+            documentId = (await _reviewService.FinalizeSessionAsync(sessionId, userId, new FinalizeSessionDto(title, Force: true)))?.Document.Id;
+
+        Lilia.Core.Entities.Document? document = null;
+        if (documentId is { } id)
+        {
+            document = await _context.Documents.FindAsync(id);
+            job.DocumentId = id;
+        }
+
+        _logger.LogInformation("[Import] PDF imported from its tex.zip: review session {SessionId}, document {DocumentId}, job {JobId}",
+            sessionId, documentId, job.Id);
+        return (sessionId, document);
+    }
+
+    /// <summary>
+    /// The staging half of <see cref="ImportPdfAsLatexProjectAsync"/>, shared with bulk import's chunks (21 Nov 2026): the
+    /// tex.zip kept as <c>imports/{jobId}.zip</c>, the definition and review session, the LaTeX import run, and the cleanup
+    /// of Mathpix's reading. Returns the review session, staged and not finalized.
+    /// </summary>
+    private async Task<Guid> StagePdfAsLatexProjectAsync(
+        string userId, Job job, ImportRequestDto request, string title, string latexSource, byte[] texZip, string? keptPdf)
+    {
         if (_latexImportExecutor is null)
             throw new InvalidOperationException("PDF import is not available: the LaTeX import is not configured.");
 
@@ -1004,28 +1036,58 @@ public class JobService : IJobService
 
         await _latexImportExecutor.RunAsync(job.Id, sessionId);
         await ScanImportCleanup.ApplyAsync(_context, sessionId, _logger);
-
-        var staged = await _context.ImportReviewSessions.AsNoTracking()
-            .Where(s => s.Id == sessionId)
-            .Select(s => new { s.DocumentId })
-            .FirstAsync();
-        var documentId = staged.DocumentId;
-
-        // No review asked for and the import wasn't clean enough to finalize itself: finalized anyway, as Word's is.
-        if (documentId is null && request.SkipReview)
-            documentId = (await _reviewService.FinalizeSessionAsync(sessionId, userId, new FinalizeSessionDto(title, Force: true)))?.Document.Id;
-
-        Lilia.Core.Entities.Document? document = null;
-        if (documentId is { } id)
-        {
-            document = await _context.Documents.FindAsync(id);
-            job.DocumentId = id;
-        }
-
-        _logger.LogInformation("[Import] PDF imported from its tex.zip: review session {SessionId}, document {DocumentId}, job {JobId}",
-            sessionId, documentId, job.Id);
-        return (sessionId, document);
+        return sessionId;
     }
+
+    public async Task<(Guid SessionId, IReadOnlyList<Guid> BlockIds)> ImportPdfChunkIntoDocumentAsync(
+        string userId, string fileName, Guid documentId, Guid? placeholderBlockId, bool applyPreamble,
+        string latexSource, byte[] projectZip, string? sourcePdfKey, CancellationToken ct = default)
+    {
+        // Bulk import (21 Nov 2026): a chunk of a PDF through the same LaTeX project import as one uploaded PDF (staged,
+        // cleaned up), then put into the file's document in place of its placeholder. Its own job, so the zip is kept
+        // under imports/{jobId}.zip where the assets are staged from.
+        var job = new Job
+        {
+            Id = Guid.NewGuid(),
+            TenantId = userId,
+            UserId = userId,
+            JobType = JobTypes.Import,
+            Status = JobStatus.Processing,
+            Progress = 10,
+            SourceFormat = "pdf",
+            TargetFormat = "lilia",
+            SourceFileName = fileName,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _context.Jobs.Add(job);
+        await _context.SaveChangesAsync(ct);
+
+        var title = Path.GetFileNameWithoutExtension(fileName);
+        var request = new ImportRequestDto("", "PDF", fileName, title, SkipReview: true);
+        try
+        {
+            var sessionId = await StagePdfAsLatexProjectAsync(userId, job, request, title, latexSource, projectZip, sourcePdfKey);
+            var blocks = await _reviewService.FinalizeIntoDocumentAsync(sessionId, userId, documentId, placeholderBlockId, applyPreamble, ct);
+            job.Status = JobStatus.Completed;
+            job.Progress = 100;
+            job.DocumentId = documentId;
+            job.CompletedAt = DateTime.UtcNow;
+            job.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync(CancellationToken.None);
+            return (sessionId, blocks);
+        }
+        catch (Exception ex)
+        {
+            job.Status = JobStatus.Failed;
+            job.ErrorMessage = ex.Message.Length > 1000 ? ex.Message[..1000] : ex.Message;
+            job.UpdatedAt = DateTime.UtcNow;
+            try { await _context.SaveChangesAsync(CancellationToken.None); } catch (Exception saveEx) { _logger.LogWarning(saveEx, "[Import] Could not mark job {JobId} failed", job.Id); }
+            throw;
+        }
+    }
+
+    public Task ChargePdfPagesAsync(string userId, int pages) => RecordPdfPagesAsync(userId, "pdf", pages);
 
     public async Task<JobDto?> RetryJobAsync(Guid jobId, string userId)
     {
