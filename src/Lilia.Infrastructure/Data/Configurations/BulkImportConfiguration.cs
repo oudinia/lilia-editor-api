@@ -43,6 +43,17 @@ public class BulkImportFileConfiguration : IEntityTypeConfiguration<BulkImportFi
         builder.Property(f => f.PreambleApplied).HasColumnName("preamble_applied");
         builder.Property(f => f.Error).HasColumnName("error").HasMaxLength(2000);
         builder.Property(f => f.Warnings).HasColumnName("warnings");
+        builder.Property(f => f.UploadMs).HasColumnName("upload_ms");
+        builder.Property(f => f.SizeBytes).HasColumnName("size_bytes");
+        builder.Property(f => f.SplitMs).HasColumnName("split_ms");
+        builder.Property(f => f.FirstPageMs).HasColumnName("first_page_ms");
+        builder.Property(f => f.TotalMs).HasColumnName("total_ms");
+        builder.Property(f => f.CompileMs).HasColumnName("compile_ms");
+        builder.Property(f => f.CompileOk).HasColumnName("compile_ok");
+        builder.Property(f => f.CompileEngine).HasColumnName("compile_engine").HasMaxLength(20);
+        builder.Property(f => f.CompileError).HasColumnName("compile_error").HasMaxLength(500);
+        builder.Property(f => f.Precision).HasColumnName("precision_score");
+        builder.Property(f => f.LowPrecisionPages).HasColumnName("low_precision_pages");
         builder.Property(f => f.CreatedAt).HasColumnName("created_at");
         builder.Property(f => f.UpdatedAt).HasColumnName("updated_at");
 
@@ -50,6 +61,8 @@ public class BulkImportFileConfiguration : IEntityTypeConfiguration<BulkImportFi
         builder.HasIndex(f => new { f.UserId, f.Status }).HasDatabaseName("ix_bulk_import_files_user_status");
         builder.HasIndex(f => f.Status).HasDatabaseName("ix_bulk_import_files_status");
         builder.HasIndex(f => f.DocumentId).HasDatabaseName("ix_bulk_import_files_document");
+        // The timings' window (GET /api/bulk-imports/stats, lilia bulk-timings).
+        builder.HasIndex(f => f.CreatedAt).HasDatabaseName("ix_bulk_import_files_created");
 
         builder.HasOne(f => f.Batch).WithMany(b => b.Files).HasForeignKey(f => f.BatchId).OnDelete(DeleteBehavior.Cascade);
         // A deleted document leaves the file's record, without its link.
@@ -82,12 +95,22 @@ public class BulkImportChunkConfiguration : IEntityTypeConfiguration<BulkImportC
         builder.Property(c => c.PlaceholderBlockId).HasColumnName("placeholder_block_id");
         builder.Property(c => c.Error).HasColumnName("error").HasMaxLength(2000);
         builder.Property(c => c.StartedAt).HasColumnName("started_at");
+        builder.Property(c => c.QueueWaitMs).HasColumnName("queue_wait_ms");
+        builder.Property(c => c.MathpixMs).HasColumnName("mathpix_ms");
+        builder.Property(c => c.TexZipMs).HasColumnName("tex_zip_ms");
+        builder.Property(c => c.PlaceMs).HasColumnName("place_ms");
+        builder.Property(c => c.PlaceParseMs).HasColumnName("place_parse_ms");
+        builder.Property(c => c.PlaceFiguresMs).HasColumnName("place_figures_ms");
+        builder.Property(c => c.PlaceWriteMs).HasColumnName("place_write_ms");
+        builder.Property(c => c.Precision).HasColumnName("precision_score");
+        builder.Property(c => c.PrecisionPages).HasColumnName("precision_pages").HasColumnType("jsonb");
         builder.Property(c => c.CreatedAt).HasColumnName("created_at");
         builder.Property(c => c.UpdatedAt).HasColumnName("updated_at");
 
         builder.HasIndex(c => new { c.FileId, c.Index }).IsUnique().HasDatabaseName("ux_bulk_import_chunks_file_index");
         builder.HasIndex(c => new { c.UserId, c.Status }).HasDatabaseName("ix_bulk_import_chunks_user_status");
         builder.HasIndex(c => c.Status).HasDatabaseName("ix_bulk_import_chunks_status");
+        builder.HasIndex(c => c.CreatedAt).HasDatabaseName("ix_bulk_import_chunks_created");
 
         builder.HasOne(c => c.File).WithMany(f => f.Chunks).HasForeignKey(c => c.FileId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -102,6 +125,7 @@ public class MathpixChunkCacheConfiguration : IEntityTypeConfiguration<MathpixCh
         builder.Property(c => c.Hash).HasColumnName("hash").HasMaxLength(64);
         builder.Property(c => c.ResultKey).HasColumnName("result_key").HasMaxLength(500).IsRequired();
         builder.Property(c => c.Pages).HasColumnName("pages");
+        builder.Property(c => c.PrecisionPages).HasColumnName("precision_pages").HasColumnType("jsonb");
         builder.Property(c => c.CreatedAt).HasColumnName("created_at");
     }
 }

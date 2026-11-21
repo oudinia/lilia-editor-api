@@ -39,8 +39,40 @@ public class BulkImportFile
     /// <summary>Whether a chunk's preamble is on the document yet: the first chunk placed sets it whole, later ones add missing macros.</summary>
     public bool PreambleApplied { get; set; }
     public string? Error { get; set; }
-    /// <summary>The import's warnings (each chunk's LaTeX import diagnostics), summed.</summary>
+    /// <summary>The import's warnings (each chunk's LaTeX import diagnostics, and its pages the reader was unsure of), summed.</summary>
     public int Warnings { get; set; }
+
+    // ── measurement (21 Nov 2026, the owner: "how long it takes to actually compile, import and convert… timed
+    // exactly"). Milliseconds, null until the stage has run. "From the upload" counts from the request's start, so
+    // FirstPageMs and TotalMs include UploadMs. ─────────────────────────────────────────────────────────────────
+
+    /// <summary>The PDF received → kept in storage, its row written (hash, page count, plan check included).</summary>
+    public int? UploadMs { get; set; }
+    /// <summary>The PDF's size in bytes.</summary>
+    public long? SizeBytes { get; set; }
+    /// <summary>Split into chunks and the document made.</summary>
+    public int? SplitMs { get; set; }
+    /// <summary>From the upload to the first chunk placed in the document (the author sees a first page).</summary>
+    public int? FirstPageMs { get; set; }
+    /// <summary>From the upload to the file finished (done, partial or failed), the first time it finished.</summary>
+    public int? TotalMs { get; set; }
+    /// <summary>The document compiled once in the background when the file finished (the normal compile path).</summary>
+    public int? CompileMs { get; set; }
+    /// <summary>Whether that compile made a PDF; null until it ran.</summary>
+    public bool? CompileOk { get; set; }
+    /// <summary>The engine the compile used (typst, pdflatex, lualatex, xelatex).</summary>
+    public string? CompileEngine { get; set; }
+    /// <summary>The compile error's first line, when it failed.</summary>
+    public string? CompileError { get; set; }
+
+    /// <summary>
+    /// How sure the reader (Mathpix) was of the file's pages, 0–1: the mean of its pages' precision (each page counts
+    /// once), from each chunk's <see cref="BulkImportChunk.PrecisionPages"/>. Null when no page has a score.
+    /// </summary>
+    public double? Precision { get; set; }
+    /// <summary>The file's pages under <c>BulkImport:LowConfidence</c> (0.80): each is a warning to check against the scan.</summary>
+    public int LowPrecisionPages { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -84,6 +116,32 @@ public class BulkImportChunk
     public Guid? PlaceholderBlockId { get; set; }
     /// <summary>When the chunk was last claimed for reading: a read stuck past the stale limit is sent again.</summary>
     public DateTime? StartedAt { get; set; }
+
+    // ── measurement (21 Nov 2026), milliseconds, null until the stage has run ──────────────────────────────────
+
+    /// <summary>Made (at the split) → its reading started: the queue and the author's fairness hold.</summary>
+    public int? QueueWaitMs { get; set; }
+    /// <summary>Sent to Mathpix → Mathpix said <c>completed</c>; null for a cache hit (no call).</summary>
+    public int? MathpixMs { get; set; }
+    /// <summary>Mathpix's tex.zip conversion awaited and downloaded.</summary>
+    public int? TexZipMs { get; set; }
+    /// <summary>Put into the document, whole: the LaTeX import, its cleanup, its figures and the insert.</summary>
+    public int? PlaceMs { get; set; }
+    /// <summary>Of <see cref="PlaceMs"/>: the LaTeX read and staged for review (parse and cleanup).</summary>
+    public int? PlaceParseMs { get; set; }
+    /// <summary>Of <see cref="PlaceMs"/>: the figures stored as the document's assets.</summary>
+    public int? PlaceFiguresMs { get; set; }
+    /// <summary>Of <see cref="PlaceMs"/>: the blocks written into the document (figures not included).</summary>
+    public int? PlaceWriteMs { get; set; }
+
+    /// <summary>The chunk's pages' mean precision, 0–1 (see <see cref="PrecisionPages"/>); null when none has a score.</summary>
+    public double? Precision { get; set; }
+    /// <summary>
+    /// Per page, as JSON: <c>[{"page":37,"score":0.62,"min":0.31,"lines":40,"chars":1830,"low":true}]</c>, the file's page
+    /// numbers. From Mathpix's lines.json; null when it couldn't be read (never a reason to fail the chunk).
+    /// </summary>
+    public string? PrecisionPages { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
@@ -101,6 +159,8 @@ public class MathpixChunkCache
     public string Hash { get; set; } = string.Empty;
     public string ResultKey { get; set; } = string.Empty;
     public int Pages { get; set; }
+    /// <summary>The reading's precision per page (<see cref="BulkImportChunk.PrecisionPages"/>), so a cache hit has it too.</summary>
+    public string? PrecisionPages { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

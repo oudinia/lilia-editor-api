@@ -23,3 +23,9 @@ public sealed class PlaceBulkImportChunkHandler
     public Task Handle(PlaceBulkImportChunk message, BulkImportProcessor processor, CancellationToken ct) =>
         processor.PlaceAsync(message.ChunkId, ct);
 }
+
+public sealed class CompileBulkImportFileHandler
+{
+    public Task Handle(CompileBulkImportFile message, BulkImportProcessor processor, CancellationToken ct) =>
+        processor.CompileAsync(message.FileId, ct);
+}

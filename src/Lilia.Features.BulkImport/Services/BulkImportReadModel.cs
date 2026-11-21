@@ -1,5 +1,6 @@
 using Lilia.Api.Features.BulkImport.Contracts;
 using Lilia.Core.Entities;
+using Lilia.Import.Services;
 using Lilia.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,7 +13,8 @@ namespace Lilia.Api.Features.BulkImport.Services;
 /// </summary>
 public static class BulkImportReadModel
 {
-    private sealed record ChunkRow(Guid FileId, string Status, int FirstPage, int LastPage, int PagesCompleted);
+    private sealed record ChunkRow(Guid FileId, string Status, int FirstPage, int LastPage, int PagesCompleted,
+        bool FromCache, int? QueueWaitMs, int? MathpixMs, int? TexZipMs, int? PlaceMs, string? PrecisionPages);
 
     public static async Task<IReadOnlyList<BulkImportFileDto>> FilesAsync(LiliaDbContext db, IReadOnlyCollection<Guid> fileIds, CancellationToken ct = default)
     {
@@ -23,7 +25,8 @@ public static class BulkImportReadModel
             .ToListAsync(ct);
         var chunks = await db.BulkImportChunks.AsNoTracking()
             .Where(c => fileIds.Contains(c.FileId))
-            .Select(c => new ChunkRow(c.FileId, c.Status, c.FirstPage, c.LastPage, c.PagesCompleted))
+            .Select(c => new ChunkRow(c.FileId, c.Status, c.FirstPage, c.LastPage, c.PagesCompleted,
+                c.FromCache, c.QueueWaitMs, c.MathpixMs, c.TexZipMs, c.PlaceMs, c.PrecisionPages))
             .ToListAsync(ct);
         var byFile = chunks.ToLookup(c => c.FileId);
         return files.Select(f => ToDto(f, byFile[f.Id].ToList())).ToList();
@@ -53,8 +56,44 @@ public static class BulkImportReadModel
                     break;
             }
         }
+        var placedPages = chunks.Where(c => c.Status == BulkImportStatuses.Done).Sum(c => c.LastPage - c.FirstPage + 1);
         return new BulkImportFileDto(f.Id, f.OriginalName, f.Pages, pagesDone, pagesFailed, f.Status,
-            new BulkImportChunkCountsDto(chunks.Count, done, failed), f.DocumentId, f.Error, f.Warnings);
+            new BulkImportChunkCountsDto(chunks.Count, done, failed), f.DocumentId, f.Error, f.Warnings,
+            TimingsOf(f, chunks, placedPages), PrecisionOf(f, chunks));
+    }
+
+    /// <summary>The file's timings: its own, and its chunks' averaged (21 Nov 2026).</summary>
+    private static BulkImportTimingsDto TimingsOf(BulkImportFile f, List<ChunkRow> chunks, int placedPages)
+    {
+        var read = chunks.Where(c => c.MathpixMs is not null && !c.FromCache).ToList();
+        var readPages = read.Sum(c => c.LastPage - c.FirstPage + 1);
+        int? PerChunk(Func<ChunkRow, int?> pick) =>
+            chunks.Select(pick).Where(v => v is not null).Select(v => v!.Value).ToList() is { Count: > 0 } values
+                ? (int)Math.Round(values.Average()) : null;
+        double? perMinute = f.TotalMs is > 0 && placedPages > 0 ? Math.Round(placedPages / (f.TotalMs.Value / 60000.0), 1) : null;
+        return new BulkImportTimingsDto(
+            f.UploadMs,
+            f.SplitMs,
+            f.FirstPageMs,
+            f.TotalMs,
+            readPages > 0 ? (int)Math.Round(read.Sum(c => (double)c.MathpixMs!.Value) / readPages) : null,
+            PerChunk(c => c.FromCache ? null : c.TexZipMs),
+            PerChunk(c => c.PlaceMs),
+            PerChunk(c => c.QueueWaitMs),
+            f.CompileMs,
+            f.CompileOk,
+            f.CompileEngine,
+            perMinute,
+            chunks.Count(c => c.FromCache));
+    }
+
+    /// <summary>The file's precision and its low pages, in page order; null until a page has a score.</summary>
+    private static BulkImportPrecisionDto? PrecisionOf(BulkImportFile f, List<ChunkRow> chunks)
+    {
+        if (f.Precision is not { } score) return null;
+        var low = chunks.SelectMany(c => MathpixPrecision.Parse(c.PrecisionPages)).Where(p => p.Low).Select(p => p.Page)
+            .Distinct().Order().ToList();
+        return new BulkImportPrecisionDto(score, low);
     }
 
     /// <summary>A batch's status from its files': open (none), processing, done, cancelled, failed, or partial.</summary>

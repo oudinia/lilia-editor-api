@@ -1290,6 +1290,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("last_page");
 
+                    b.Property<int?>("MathpixMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("mathpix_ms");
+
                     b.Property<string>("MathpixPdfId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
@@ -1299,9 +1303,37 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("pages_completed");
 
+                    b.Property<int?>("PlaceFiguresMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("place_figures_ms");
+
+                    b.Property<int?>("PlaceMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("place_ms");
+
+                    b.Property<int?>("PlaceParseMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("place_parse_ms");
+
+                    b.Property<int?>("PlaceWriteMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("place_write_ms");
+
                     b.Property<Guid?>("PlaceholderBlockId")
                         .HasColumnType("uuid")
                         .HasColumnName("placeholder_block_id");
+
+                    b.Property<double?>("Precision")
+                        .HasColumnType("double precision")
+                        .HasColumnName("precision_score");
+
+                    b.Property<string>("PrecisionPages")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("precision_pages");
+
+                    b.Property<int?>("QueueWaitMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("queue_wait_ms");
 
                     b.Property<string>("ResultKey")
                         .HasMaxLength(500)
@@ -1318,6 +1350,10 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
+                    b.Property<int?>("TexZipMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("tex_zip_ms");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1329,6 +1365,9 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_bulk_import_chunks_created");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_bulk_import_chunks_status");
@@ -1354,6 +1393,24 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("batch_id");
 
+                    b.Property<string>("CompileEngine")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("compile_engine");
+
+                    b.Property<string>("CompileError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("compile_error");
+
+                    b.Property<int?>("CompileMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("compile_ms");
+
+                    b.Property<bool?>("CompileOk")
+                        .HasColumnType("boolean")
+                        .HasColumnName("compile_ok");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1366,6 +1423,14 @@ namespace Lilia.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("error");
+
+                    b.Property<int?>("FirstPageMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("first_page_ms");
+
+                    b.Property<int>("LowPrecisionPages")
+                        .HasColumnType("integer")
+                        .HasColumnName("low_precision_pages");
 
                     b.Property<string>("OriginalName")
                         .IsRequired()
@@ -1381,10 +1446,22 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("preamble_applied");
 
+                    b.Property<double?>("Precision")
+                        .HasColumnType("double precision")
+                        .HasColumnName("precision_score");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
                     b.Property<string>("SourceHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("source_hash");
+
+                    b.Property<int?>("SplitMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("split_ms");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1398,9 +1475,17 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("storage_key");
 
+                    b.Property<int?>("TotalMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_ms");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<int?>("UploadMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("upload_ms");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -1416,6 +1501,9 @@ namespace Lilia.Infrastructure.Migrations
 
                     b.HasIndex("BatchId")
                         .HasDatabaseName("ix_bulk_import_files_batch");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_bulk_import_files_created");
 
                     b.HasIndex("DocumentId")
                         .HasDatabaseName("ix_bulk_import_files_document");
@@ -6000,6 +6088,10 @@ namespace Lilia.Infrastructure.Migrations
                     b.Property<int>("Pages")
                         .HasColumnType("integer")
                         .HasColumnName("pages");
+
+                    b.Property<string>("PrecisionPages")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("precision_pages");
 
                     b.Property<string>("ResultKey")
                         .IsRequired()

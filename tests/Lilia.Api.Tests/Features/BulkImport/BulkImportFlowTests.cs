@@ -24,11 +24,12 @@ namespace Lilia.Api.Tests.Features.BulkImport;
 /// so each test runs the split, read and place steps itself, in the order it chooses. One test runs the real Wolverine
 /// queues (durable local, no broker) instead.
 /// </summary>
-public class BulkImportFlowTests : IntegrationTestBase, IDisposable
+public partial class BulkImportFlowTests : IntegrationTestBase, IDisposable
 {
     private readonly List<WebApplicationFactory<Program>> _factories = [];
     private readonly FakeMathpixClient _mathpix = new();
     private readonly RecordingQueue _queue = new();
+    private readonly FakeBulkCompiler _compiler = new();
 
     public BulkImportFlowTests(TestDatabaseFixture fixture) : base(fixture) { }
 
@@ -39,7 +40,7 @@ public class BulkImportFlowTests : IntegrationTestBase, IDisposable
 
     private static string NewId(string what) => $"bulk_{what}_{Guid.NewGuid():N}"[..30];
 
-    private WebApplicationFactory<Program> Host(bool realQueues = false, bool enforce = false, int maxChunksPerAuthor = 2)
+    private WebApplicationFactory<Program> Host(bool realQueues = false, bool enforce = false, int maxChunksPerAuthor = 2, string? staff = null)
     {
         var factory = Fixture.Factory.WithWebHostBuilder(b =>
         {
@@ -48,6 +49,11 @@ public class BulkImportFlowTests : IntegrationTestBase, IDisposable
             {
                 services.RemoveAll<IMathpixClient>();
                 services.AddSingleton<IMathpixClient>(_mathpix);
+                // The compile after a file is done is timed with a fake: no TeX in these tests.
+                services.RemoveAll<Lilia.Api.Services.IBulkImportCompiler>();
+                services.AddSingleton<Lilia.Api.Services.IBulkImportCompiler>(_compiler);
+                if (staff is not null)
+                    services.PostConfigure<Lilia.Api.Services.EntitlementOptions>(o => o.StaffUserIds = [staff]);
                 services.RemoveAll<BulkImportOptions>();
                 services.AddSingleton(new BulkImportOptions
                 {
@@ -123,6 +129,7 @@ public class BulkImportFlowTests : IntegrationTestBase, IDisposable
             case SplitBulkImportFile m: await p.SplitAsync(m.FileId); break;
             case ReadBulkImportChunk m: await p.ReadAsync(m.ChunkId); break;
             case PlaceBulkImportChunk m: await p.PlaceAsync(m.ChunkId); break;
+            case CompileBulkImportFile m: await p.CompileAsync(m.FileId); break;
         }
     }
 

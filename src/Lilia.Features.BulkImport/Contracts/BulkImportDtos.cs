@@ -6,9 +6,39 @@ namespace Lilia.Api.Features.BulkImport.Contracts;
 public sealed record BulkImportChunkCountsDto(int Total, int Done, int Failed);
 
 /// <summary>
+/// How long a file's import took, in ms (21 Nov 2026), each null until measured: the upload (received → stored), the
+/// split, the first page shown and the whole (both from the upload), Mathpix's ms per page read (cache hits left out),
+/// the place per chunk, the wait per chunk before its reading started (the queue and the fairness hold), the background
+/// compile (its result and engine), and the pages placed per minute of the whole. <c>CachedChunks</c>: chunks whose
+/// reading came from the cache (no Mathpix time).
+/// </summary>
+public sealed record BulkImportTimingsDto(
+    int? UploadMs,
+    int? SplitMs,
+    int? FirstPageMs,
+    int? TotalMs,
+    int? MathpixMsPerPage,
+    int? TexZipMsPerChunk,
+    int? PlaceMsPerChunk,
+    int? QueueWaitMsPerChunk,
+    int? CompileMs,
+    bool? CompileOk,
+    string? CompileEngine,
+    double? PagesPerMinute,
+    int CachedChunks);
+
+/// <summary>
+/// How sure the reader (Mathpix) was of the file's pages, 0–1 (the mean of its pages' scores), and the pages under
+/// <c>BulkImport:LowConfidence</c> to check against the scan (21 Nov 2026).
+/// </summary>
+public sealed record BulkImportPrecisionDto(double Score, IReadOnlyList<int> LowPages);
+
+/// <summary>
 /// One PDF of a batch and where it stands. <c>PagesDone</c> counts per page: the pages of placed chunks plus the pages
 /// Mathpix has read so far of chunks in flight. <c>DocumentId</c> is set as soon as the file is split: the document can be
-/// opened at once and grows. <c>Warnings</c> is the count of the import's warnings.
+/// opened at once and grows. <c>Warnings</c> is the count of the import's warnings (a page the reader was unsure of is
+/// one). <c>Timings</c> and <c>Precision</c> (21 Nov 2026): how long it took, and how sure the reader was (null until a
+/// page has a score).
 /// </summary>
 public sealed record BulkImportFileDto(
     Guid FileId,
@@ -20,7 +50,30 @@ public sealed record BulkImportFileDto(
     BulkImportChunkCountsDto Chunks,
     Guid? DocumentId,
     string? Error,
-    int Warnings);
+    int Warnings,
+    BulkImportTimingsDto? Timings = null,
+    BulkImportPrecisionDto? Precision = null);
+
+/// <summary>One stage's spread over the window (<c>GET /api/bulk-imports/stats</c>): how many measured, p50, p90, min, max.</summary>
+public sealed record BulkImportStageStatsDto(string Stage, string Unit, int Count, double? P50, double? P90, double? Min, double? Max);
+
+/// <summary>
+/// Staff only (<c>GET /api/bulk-imports/stats?days=7</c>, 21 Nov 2026): every file uploaded in the last <c>Days</c> days
+/// and its chunks, counted, and each stage's spread.
+/// </summary>
+public sealed record BulkImportStatsDto(
+    int Days,
+    DateTime From,
+    DateTime To,
+    int Files,
+    int FilesFinished,
+    int Chunks,
+    int CacheHits,
+    int Pages,
+    int CompilesOk,
+    int CompilesFailed,
+    int LowPrecisionPages,
+    IReadOnlyList<BulkImportStageStatsDto> Stages);
 
 /// <summary>A batch with its files (<c>GET /api/bulk-imports/{batchId}</c>).</summary>
 public sealed record BulkImportBatchDto(

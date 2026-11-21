@@ -38,6 +38,19 @@ public sealed class BulkImportsController(BulkImportService service, IServicePro
         return Ok(await service.ListAsync(userId, ct));
     }
 
+    /// <summary>
+    /// Staff only (21 Nov 2026): the bulk import timings and precision over the last <paramref name="days"/> days (1–365,
+    /// default 7), every author's: per stage, how many measured, p50, p90, min and max (<see cref="BulkImportStatsDto"/>).
+    /// Anyone else gets 403. The same numbers from the server: <c>lilia bulk-timings --days N</c>.
+    /// </summary>
+    [HttpGet("stats")]
+    public async Task<ActionResult<BulkImportStatsDto>> Stats([FromQuery] int days = 7, CancellationToken ct = default)
+    {
+        if (UserId is not { Length: > 0 } userId) return Unauthorized();
+        if (services.GetService<Lilia.Api.Services.IPdfImportPipeline>()?.IsStaff(userId) != true) return Forbid();
+        return Ok(await service.StatsAsync(days, ct));
+    }
+
     [HttpGet("{batchId:guid}")]
     public async Task<ActionResult<BulkImportBatchDto>> Get(Guid batchId, CancellationToken ct)
     {

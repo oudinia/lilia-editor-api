@@ -1073,8 +1073,13 @@ public class JobService : IJobService
         var request = new ImportRequestDto("", "PDF", fileName, title, SkipReview: true);
         try
         {
+            // Timed for the bulk import timings (21 Nov 2026) when a placement is being measured (ImportPlaceTimer).
+            var staged = System.Diagnostics.Stopwatch.GetTimestamp();
             var sessionId = await StagePdfAsLatexProjectAsync(userId, job, request, title, latexSource, projectZip, sourcePdfKey);
+            if (ImportPlaceTimer.Current is { } timer) timer.ParseMs += ImportPlaceTimer.Since(staged);
+            var finalizing = System.Diagnostics.Stopwatch.GetTimestamp();
             var blocks = await _reviewService.FinalizeIntoDocumentAsync(sessionId, userId, documentId, placeholderBlockId, applyPreamble, ct);
+            if (ImportPlaceTimer.Current is { } t2) t2.FinalizeMs += ImportPlaceTimer.Since(finalizing);
             job.Status = JobStatus.Completed;
             job.Progress = 100;
             job.DocumentId = documentId;

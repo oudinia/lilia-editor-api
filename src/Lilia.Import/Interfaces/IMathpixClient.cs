@@ -24,4 +24,12 @@ public interface IMathpixClient
     /// </summary>
     Task<bool> DeletePdfAsync(string pdfId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The PDF's line-by-line data (<c>GET /v3/pdf/{pdf_id}.lines.json</c>), raw: per page (<c>pages[].page</c>, from 1)
+    /// its lines (<c>pages[].lines[]</c>) with <c>text</c>, <c>confidence</c> and <c>confidence_rate</c> (0–1). Always
+    /// asked of api.mathpix.com, whatever <c>Mathpix:BaseUrl</c> says (the precision score, 21 Nov 2026). Throws when
+    /// Mathpix doesn't answer 200 or the data is over 20 MB.
+    /// </summary>
+    Task<string> GetLinesJsonAsync(string pdfId, CancellationToken ct = default);
+
 }
