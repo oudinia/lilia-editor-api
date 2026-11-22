@@ -673,7 +673,7 @@ public sealed class LiliaMcpWriteTools(
             importId,
             status = ticket.Status,
             pages = counted ? pages : (int?)null,
-            credits = allowance is null || !counted ? (int?)null : pages * allowance.CreditsPerPage,
+            credits = allowance is null || !counted || allowance.CreditsPerPage == 0 ? (int?)null : pages * allowance.CreditsPerPage,
             pagesNote = counted ? null : "Lilia couldn't count this PDF's pages from the file: it is charged the pages its reader reports, up to what the plan has left.",
             expiresAt = ticket.ExpiresAt,
             next = "Lilia is reading the file into LaTeX (up to about two minutes). Call import_status with this importId every 10 to 20 seconds until it says done or failed.",
