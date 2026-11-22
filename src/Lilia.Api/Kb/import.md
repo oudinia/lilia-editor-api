@@ -21,7 +21,7 @@ Already in a document? To bring in a piece of LaTeX, use **Paste LaTeX** from th
 
 ## PDFs and scanned notes {#pdf}
 - A `.pdf`, or a photo or scan of a page (`.jpg`, `.png`, up to 10 MB), handwritten maths notes included, is read into LaTeX by a maths OCR service, then reviewed like any import. Check the result against your page: handwriting is read well, but not perfectly.
-- PDFs and scans use your plan's monthly **PDF pages** (10 a month on Free, 100 on Pro): each PDF page counts as one, and so does each image. Each page also costs 10 credits, from the day's credits first (25 a day on Free), then from operation packs. Lilia checks both before reading the file and says which limit stops it, so a refused import costs nothing.
+- PDFs and scans use your plan's monthly **PDF pages** (10 a month on Free, 100 on Pro): each PDF page counts as one, and so does each image. Lilia checks them before reading the file, so a refused import costs nothing, and the pages don't count against the day's connector actions.
 - From Claude or another assistant connected to Lilia, `import_document` takes the PDF or image, and `import_status` says when the document is ready.
 
 ## What this means {#beginner}

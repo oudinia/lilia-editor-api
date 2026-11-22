@@ -52,9 +52,10 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
 
     private static readonly string Png = Convert.ToBase64String(ScanImageImportTests.Png);
 
-    private WebApplicationFactory<Program> Host(MathpixTexZipTests.FakeMathpix api)
+    private WebApplicationFactory<Program> Host(MathpixTexZipTests.FakeMathpix api, string? creditsPerPage = "10")
     {
-        var factory = Fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        // Pages charged as actions (off by default since 23 Nov 2026): these tests cover the charge when it is on.
+        var factory = Fixture.Factory.WithWebHostBuilder(builder => (creditsPerPage is null ? builder : builder.UseSetting("Mathpix:CreditsPerPage", creditsPerPage)).ConfigureServices(services =>
         {
             services.PostConfigure<EntitlementOptions>(o => { o.Enforce = true; o.StaffUserIds = []; });
             foreach (var d in services.Where(d => d.ServiceType == typeof(IPdfParser) || d.ServiceType == typeof(IScanImageParser)).ToList())
@@ -166,6 +167,27 @@ public class PdfImportCreditsTests : IntegrationTestBase, IDisposable
 
         (await CreditsUsedTodayAsync(host, user)).Should().Be(20);
         (await PagesThisMonthAsync(user)).Should().Be(2, "8 of Free's 10 are left");
+    }
+
+    // The owner, 23 Nov 2026 (Grok's bulk retest): by default a PDF page counts once, against the month's PDF pages, and
+    // costs no daily connector actions; a 3-page PDF Free used to be refused on credits now goes through.
+    [Fact]
+    public async Task By_default_PDF_pages_count_against_the_month_only_not_the_day_s_actions()
+    {
+        var user = NewId("monthly");
+        await SeedUserAsync(user);
+        var host = Host(new MathpixTexZipTests.FakeMathpix(), creditsPerPage: null);
+
+        var res = await UploadAsync(ClientOf(host, user, asApp: false), TwoPagePdf, "PDF", "notes.pdf");
+        res.StatusCode.Should().Be(HttpStatusCode.OK, await res.Content.ReadAsStringAsync());
+        (await CreditsUsedTodayAsync(host, user)).Should().Be(0);
+        (await PagesThisMonthAsync(user)).Should().Be(2);
+
+        (await UploadAsync(ClientOf(host, user, asApp: false), ThreePagePdf, "PDF", "notes.pdf")).StatusCode.Should().Be(HttpStatusCode.OK,
+            "3 pages fit the month's 8 left, and no longer need 30 actions");
+        // The month counts the pages read (the fake reader reads two of each file): still no day's actions.
+        (await PagesThisMonthAsync(user)).Should().BeGreaterThan(2);
+        (await CreditsUsedTodayAsync(host, user)).Should().Be(0);
     }
 
     [Fact]

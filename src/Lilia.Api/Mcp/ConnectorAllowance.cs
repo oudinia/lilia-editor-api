@@ -101,10 +101,12 @@ public sealed class ConnectorAllowance(
     // ── PDF and scan import: credits per page (the owner, 20 Nov 2026) ────────────────────────────────────────────────
 
     /// <summary>
-    /// What one page read by Mathpix costs, in the connector's credits (operations): <c>Mathpix:CreditsPerPage</c>, 10 by
-    /// default. A scanned image is one page.
+    /// What one page read by Mathpix costs, in the connector's credits (operations): <c>Mathpix:CreditsPerPage</c>. A scanned
+    /// image is one page. 0 by default since 23 Nov 2026 (the owner, on Grok's bulk retest: 16 pages took 160 of Pro's 500
+    /// daily actions, so a notebook of 150 pages couldn't pass in a day): a PDF page counts once, against the plan's monthly
+    /// PDF pages, not again as daily actions. Set it above 0 to charge pages as actions again.
     /// </summary>
-    public int CreditsPerPage => Math.Max(0, config.GetValue("Mathpix:CreditsPerPage", 10));
+    public int CreditsPerPage => Math.Max(0, config.GetValue("Mathpix:CreditsPerPage", 0));
 
     /// <summary>The credits used today from the daily allowance (every connector action, and the pages imported).</summary>
     public async Task<int> UsedTodayAsync(string userId, CancellationToken ct = default) =>
