@@ -17,6 +17,7 @@ public static class BulkImportServiceCollectionExtensions
         services.AddScoped<IBulkImportQueue, WolverineBulkImportQueue>();
         services.AddScoped<BulkImportProcessor>();
         services.AddScoped<BulkImportService>();
+        services.AddScoped<IBulkImports>(sp => sp.GetRequiredService<BulkImportService>());
         services.AddHostedService<BulkImportSweeper>();
         return services;
     }

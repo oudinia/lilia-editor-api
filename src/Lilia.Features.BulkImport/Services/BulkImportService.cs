@@ -9,20 +9,6 @@ using static Lilia.Core.Entities.BulkImportStatuses;
 
 namespace Lilia.Api.Features.BulkImport.Services;
 
-/// <summary>Why a file was not added to a batch (the controller's answer).</summary>
-public enum AddFileRefusal
-{
-    None,
-    BatchNotFound,
-    BatchClosed,
-    TooManyFiles,
-    TooLarge,
-    NotPdf,
-    PagesUnknown,
-}
-
-public sealed record AddFileResult(AddFileRefusal Refusal, BulkImportFileDto? File = null, string? Message = null);
-
 /// <summary>
 /// What the HTTP API does (21 Nov 2026): batches, files dropped one per request, the author's view of them, retry and
 /// cancel. A file is checked whole before anything leaves the machine: a PDF by its bytes, its exact pages, and the plan
@@ -35,7 +21,7 @@ public sealed class BulkImportService(
     IBulkImportQueue queue,
     BulkImportProcessor processor,
     BulkImportOptions options,
-    ILogger<BulkImportService> logger)
+    ILogger<BulkImportService> logger) : IBulkImports
 {
     public async Task<Guid> CreateBatchAsync(string userId, CancellationToken ct = default)
     {

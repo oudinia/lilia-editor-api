@@ -28,6 +28,8 @@ public class LiliaMcpServerTests : IntegrationTestBase
         "export_document", "import_status",
         // The connector test, 17 Nov 2026 (items D and G): the saved versions and the comments.
         "list_versions", "list_comments",
+        // Where a bulk import stands (22 Nov 2026).
+        "bulk_import_status",
     ];
 
     /// <summary>One JSON-RPC call; the reply may come as JSON or as one SSE "data:" line.</summary>
@@ -90,8 +92,9 @@ public class LiliaMcpServerTests : IntegrationTestBase
         var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
         // get_document, add_reference, add_figure_image, then list_versions, restore_version and the four comment tools,
-        // 17 Nov 2026 (the connector test); add_section, 22 Nov 2026 (launch-bot #276).
-        tools.Should().HaveCount(33);
+        // 17 Nov 2026 (the connector test); add_section, 22 Nov 2026 (launch-bot #276); start_bulk_import and
+        // bulk_import_status, 22 Nov 2026 (the owner: bulk import through the connector too).
+        tools.Should().HaveCount(35);
         foreach (var t in tools)
         {
             var name = t.GetProperty("name").GetString();

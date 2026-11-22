@@ -85,7 +85,7 @@ public sealed class OperationLog(LiliaDbContext db, ILogger<OperationLog> logger
     {
         "search_help" or "get_help" => "help",
         "list_documents" or "get_outline" or "get_block" or "search_document" or "get_document_settings"
-            or "get_lilia_latex" or "get_latex" or "import_status" or "list_versions" or "list_comments" or "get_document" => "read",
+            or "get_lilia_latex" or "get_latex" or "import_status" or "bulk_import_status" or "list_versions" or "list_comments" or "get_document" => "read",
         // restore_version is an undo, so it weighs what a small edit does, though it rewrites the document (17 Nov 2026).
         "add_block" or "add_section" or "edit_block" or "remove_block" or "reorder_blocks" or "set_title"
             or "set_document_settings" or "set_venue" or "add_figure_image" or "restore_version" or "add_reference"
@@ -93,7 +93,7 @@ public sealed class OperationLog(LiliaDbContext db, ILogger<OperationLog> logger
         "create_document" => withBody ? "document.write" : "document.create",
         "apply_lml" or "rewrite_document" or "paste_content" => "document.write",
         "check_document" => "check",
-        "import_document" => "import",
+        "import_document" or "start_bulk_import" => "import",
         _ => null,
     };
 }
