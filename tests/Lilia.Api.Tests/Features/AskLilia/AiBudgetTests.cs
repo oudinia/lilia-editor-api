@@ -32,11 +32,12 @@ public class AiBudgetTests : IntegrationTestBase, IDisposable
         foreach (var f in _factories) f.Dispose();
     }
 
-    private HttpClient Caller(string userId, decimal siteBudget = 0m, decimal freeBudget = 0m, bool comingSoon = false)
+    private HttpClient Caller(string userId, decimal siteBudget = 0m, decimal freeBudget = 0m, bool comingSoon = false, string? comingSoonPlan = null)
     {
         var factory = Fixture.Factory.WithWebHostBuilder(b =>
         {
             if (comingSoon) b.UseSetting("AI:ComingSoon", "true");
+            if (comingSoonPlan is not null) b.UseSetting("AI:ComingSoonPlans:0", comingSoonPlan);
             b.UseSetting("AI:Anthropic:ApiKey", "sk-test-not-a-key");
             b.UseSetting("AI:Enabled", "true");
             b.UseSetting("AI:EnforceCredits", "true");
@@ -117,6 +118,31 @@ public class AiBudgetTests : IntegrationTestBase, IDisposable
         var plan = await client.GetFromJsonAsync<JsonElement>("/api/plan");
         plan.GetProperty("ask").GetProperty("comingSoon").GetBoolean().Should().BeTrue();
         _chat.Calls.Should().BeEmpty("nothing reaches the model while Ask Lilia is coming soon");
+    }
+
+    // 22 Nov 2026, the owner: Ask Lilia on for Pro, Free still "coming soon" (AI:ComingSoonPlans = free).
+    [Fact]
+    public async Task Coming_soon_for_Free_only_Pro_asks_and_Free_is_told_coming_soon()
+    {
+        var pro = NewId("pro");
+        var free = NewId("free");
+        await SeedUserAsync(pro);
+        await SeedUserAsync(free);
+        await GivePlanAsync(pro, "pro");
+        await GivePlanAsync(free, "free");
+        _chat.Enqueue("It is.");
+
+        var proClient = Caller(pro, siteBudget: 1_000_000m, freeBudget: 1_000_000m, comingSoon: true, comingSoonPlan: "free");
+        var proAsk = await proClient.PostAsJsonAsync("/api/ai/ask", Ask("Is this clear?"));
+        proAsk.StatusCode.Should().Be(HttpStatusCode.OK, await proAsk.Content.ReadAsStringAsync());
+        (await proClient.GetFromJsonAsync<JsonElement>("/api/plan")).GetProperty("ask").GetProperty("comingSoon").GetBoolean().Should().BeFalse();
+
+        var freeClient = Caller(free, siteBudget: 1_000_000m, freeBudget: 1_000_000m, comingSoon: true, comingSoonPlan: "free");
+        var freeAsk = await freeClient.PostAsJsonAsync("/api/ai/ask", Ask("Is this clear?"));
+        (await freeAsk.Content.ReadAsStringAsync()).Should().Contain("coming soon");
+        (await freeClient.GetFromJsonAsync<JsonElement>("/api/plan")).GetProperty("ask").GetProperty("comingSoon").GetBoolean().Should().BeTrue();
+
+        _chat.Calls.Should().ContainSingle("only Pro's question reaches the model");
     }
 
     [Fact]
