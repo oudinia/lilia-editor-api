@@ -92,7 +92,7 @@ public sealed class LiliaMcpBulkImportTools(
             catch (QuotaExceededException limit)
             {
                 // The plan, not the request: the rest would be refused the same way.
-                results.Add(new { name, added = false, error = limit.Message, category = "plan-limit" });
+                results.Add(new { name, added = false, error = LiliaMcpAccountTools.PlanLimitMessage(limit), category = "plan-limit" });
                 break;
             }
         }
