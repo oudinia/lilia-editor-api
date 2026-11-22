@@ -16,7 +16,7 @@ namespace Lilia.Api.Mcp;
 public sealed class LiliaMcpBulkImportTools(
     IHttpContextAccessor http,
     IConfiguration config,
-    BulkImportService bulk,
+    IBulkImports bulk,
     ILogger<LiliaMcpBulkImportTools> logger)
 {
     /// <summary>PDFs one call takes: base64 grows a file by a third, and a request has to stay a request.</summary>
