@@ -146,15 +146,8 @@ public class LatexProjectExtractor : ILatexProjectExtractor
 
                 // .tex / .ltx are the only files NOT staged as Assets —
                 // they go through the inline resolver instead.
-                if (ext == ".tex" || ext == ".ltx")
-                {
-                    using var r = new StreamReader(SafeZip.OpenBounded(entry, budget), Encoding.UTF8);
-                    texFiles[NormalizeKey(entry.FullName)] = r.ReadToEnd();
-                    continue;
-                }
-
-                // Everything else: read bytes, classify, and add to the
-                // unified asset list.
+                // Every file is read whole and checked against the zip's CRC-32 (launch-bot #221, 23 Nov 2026): a zip
+                // that lost a character in transit is refused instead of stored with a damaged image.
                 byte[] bytes;
                 using (var stream = SafeZip.OpenBounded(entry, budget))
                 using (var buf = new MemoryStream())
@@ -162,6 +155,16 @@ public class LatexProjectExtractor : ILatexProjectExtractor
                     stream.CopyTo(buf);
                     bytes = buf.ToArray();
                 }
+                SafeZip.CheckCrc(entry, bytes);
+
+                if (ext == ".tex" || ext == ".ltx")
+                {
+                    using var r = new StreamReader(new MemoryStream(bytes), Encoding.UTF8);
+                    texFiles[NormalizeKey(entry.FullName)] = r.ReadToEnd();
+                    continue;
+                }
+
+                // Everything else: classify, and add to the unified asset list.
 
                 var kind = ClassifyKind(ext);
                 files.Add(new LatexProjectFile(

@@ -111,6 +111,40 @@ public static class SafeZip
     /// sizes <see cref="CheckHeaders"/> checks are what bound a read today;
     /// this keeps holding if a runtime or library stops truncating.
     /// </remarks>
+    /// <summary>
+    /// Refuses a file whose bytes don't match the CRC-32 the zip recorded for it (launch-bot #221, 23 Nov 2026: a PNG sent
+    /// through the connector arrived with 2 bytes changed, and was stored and printed half black). A zip sent as base64 can
+    /// lose a character on the way; the checksum catches it, so a damaged project is refused instead of stored.
+    /// </summary>
+    public static void CheckCrc(ZipArchiveEntry entry, ReadOnlySpan<byte> bytes)
+    {
+        if (Crc32(bytes) != entry.Crc32)
+            throw new InvalidDataException(
+                $"The project's file {entry.FullName} arrived damaged (it doesn't match the zip's checksum). Nothing was imported: send the zip again.");
+    }
+
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var table = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            var c = n;
+            for (var k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            table[n] = c;
+        }
+        return table;
+    }
+
+    /// <summary>The zip format's CRC-32 (IEEE 802.3), as <see cref="ZipArchiveEntry.Crc32"/> holds it.</summary>
+    public static uint Crc32(ReadOnlySpan<byte> bytes)
+    {
+        var c = 0xFFFFFFFFu;
+        foreach (var b in bytes) c = CrcTable[(c ^ b) & 0xFF] ^ (c >> 8);
+        return c ^ 0xFFFFFFFFu;
+    }
+
     public static Stream OpenBounded(ZipArchiveEntry entry, ZipBudget budget) =>
         Bound(entry.Open(), entry.FullName, budget);
 
