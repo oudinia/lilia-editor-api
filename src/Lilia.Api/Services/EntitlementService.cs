@@ -494,7 +494,10 @@ public class EntitlementService : IEntitlementService
     {
         var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         return _context.Jobs.AsNoTracking()
-            .CountAsync(j => j.UserId == userId && j.JobType == "IMPORT" && j.CreatedAt >= monthStart, ct);
+            // A refused or failed import made nothing, so it doesn't use the month's imports (launch-bot, 23 Nov 2026: a
+            // damaged zip refused three times counted three).
+            .CountAsync(j => j.UserId == userId && j.JobType == "IMPORT" && j.CreatedAt >= monthStart
+                && j.Status != JobStatus.Failed && j.Status != JobStatus.Cancelled, ct);
     }
 
     private readonly Lilia.Api.Directories.ITeamDirectory _teams;
