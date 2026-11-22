@@ -891,6 +891,7 @@ builder.Services.AddMcpServer(o =>
     .WithTools<Lilia.Api.Mcp.LiliaMcpTools>()
     .WithTools<Lilia.Api.Mcp.LiliaMcpWriteTools>()
     .WithTools<Lilia.Api.Mcp.LiliaMcpCommentTools>()
+    .WithTools<Lilia.Api.Mcp.LiliaMcpBulkImportTools>()
     .WithPrompts<Lilia.Api.Mcp.LiliaMcpPrompts>()
     // Free's daily connector allowance (5 Nov 2026): a refused call is a tool error the assistant reads out.
     .WithRequestFilters(f => f.AddCallToolFilter(Lilia.Api.Mcp.ConnectorAllowance.Filter));
