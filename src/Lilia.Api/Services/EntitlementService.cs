@@ -25,6 +25,11 @@ public class EntitlementService : IEntitlementService
     private readonly decimal _siteBudgetUsd;
     private readonly decimal _freeBudgetUsd;
     private readonly bool _aiComingSoon;
+    /// <summary>
+    /// The plans <c>AI:ComingSoon</c> applies to (22 Nov 2026, the owner: Ask Lilia on for Pro through the Claude API,
+    /// Free still "coming soon"). Null = every plan, as before. A user with no plan counts as one of them.
+    /// </summary>
+    private readonly HashSet<string>? _aiComingSoonPlans;
 
     /// <summary>
     /// The connector-first launch (the owner, 10 Nov 2026): Ask Lilia is shown as "coming soon" and Lilia pays for no
@@ -43,6 +48,8 @@ public class EntitlementService : IEntitlementService
         _siteBudgetUsd = configuration?.GetValue("AI:MonthlyBudgetUsd", 0m) ?? 0m;
         _freeBudgetUsd = configuration?.GetValue("AI:FreeMonthlyBudgetUsd", 0m) ?? 0m;
         _aiComingSoon = configuration?.GetValue("AI:ComingSoon", false) ?? false;
+        var soonPlans = configuration?.GetSection("AI:ComingSoonPlans").Get<string[]>();
+        _aiComingSoonPlans = soonPlans is { Length: > 0 } ? new HashSet<string>(soonPlans, StringComparer.OrdinalIgnoreCase) : null;
         _pdfSitePages = configuration?.GetValue("Import:PdfSitePagesPerMonth", 2000) ?? 2000;
         _context = context;
         _logger = logger;
@@ -113,7 +120,11 @@ public class EntitlementService : IEntitlementService
             .Where(o => o.UserId == userId && o.Kind == "import.pdf" && o.CreatedAt >= start).SumAsync(o => (int?)o.Units, ct) ?? 0;
     }
 
-    private bool IsStaff(string userId) => _options.StaffUserIds.Contains(userId, StringComparer.Ordinal);
+    /// <summary>Ask Lilia is "coming soon" for this plan: the switch is on, and it names no plans or names this one.</summary>
+    private bool AiComingSoonFor(ActivePlanDto? plan) =>
+        _aiComingSoon && (_aiComingSoonPlans is null || plan is null || _aiComingSoonPlans.Contains(plan.Slug));
+
+        private bool IsStaff(string userId) => _options.StaffUserIds.Contains(userId, StringComparer.Ordinal);
 
     public async Task<ActivePlanDto?> GetActivePlanAsync(string userId, CancellationToken ct = default)
     {
@@ -157,9 +168,9 @@ public class EntitlementService : IEntitlementService
         // Staff (the owner's account) hold Beta for its features but no limit at all: not documents,
         // and not Ask Lilia, whose Beta allowance would otherwise stop the owner's own use.
         if (IsStaff(userId)) return;
-        if (resource == QuotaResource.AiCredits && _aiComingSoon)
-            throw new QuotaExceededException("aiComingSoon", 0, 0, null, ComingSoonMessage);
         var plan = await GetActivePlanAsync(userId, ct);
+        if (resource == QuotaResource.AiCredits && AiComingSoonFor(plan))
+            throw new QuotaExceededException("aiComingSoon", 0, 0, null, ComingSoonMessage);
         if (plan is null) return; // No plan data at all — fail open (logged elsewhere).
 
         var (capKey, used, resetsAt) = resource switch
@@ -316,7 +327,7 @@ public class EntitlementService : IEntitlementService
                 Unlimited: askCap < 0,
                 ResetsAt: NextMonthStart(),
                 Enforced: _aiEnforced,
-                ComingSoon: _aiComingSoon && !IsStaff(userId)),
+                ComingSoon: AiComingSoonFor(plan) && !IsStaff(userId)),
             ReadOnly: await ReadOnlyAsync(userId, plan, ct),
             // Staff aren't limited (PdfPagesLeftThisMonthAsync), so their meter says unlimited too: on 21 Nov 2026 the owner's
             // account showed "0 of 100 PDF pages left" and "See plans" after the launch bot's bulk-import tests.
