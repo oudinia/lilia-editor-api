@@ -1740,6 +1740,9 @@ public partial class RenderService : IRenderService
             m => Ph($@"\textsuperscript{{{EscapeLatexStatic(m.Groups[1].Value)}}}"));
         // Author line breaks: \\ (not a single backslash).
         result = Regex.Replace(result, @"\\\\", _ => Ph(@"\\"));
+        // A character already escaped for LaTeX (an Overleaf title "Notes \#221", launch-bot #221, 22 Nov 2026) stays as it
+        // is: escaped again, it printed "\#221".
+        result = Regex.Replace(result, @"\\[#$%&_{}]", m => Ph(m.Value));
 
         result = EscapeLatexStatic(result);
         result = Regex.Replace(result, @"\x00TM(\d+)\x00",
