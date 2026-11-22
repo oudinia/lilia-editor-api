@@ -160,7 +160,8 @@ public class ConnectorFilesController(
         catch (QuotaExceededException limit)
         {
             t.Status = "failed";
-            t.Error = limit.Message;
+            // What import_status tells the app: the limit, its renewal and the plans page (22 Nov 2026, launch-bot #269).
+            t.Error = Lilia.Api.Mcp.LiliaMcpAccountTools.PlanLimitMessage(limit);
             return StatusCode(StatusCodes.Status402PaymentRequired, new { error = limit.Message, category = "plan-limit" });
         }
         catch (ArgumentException bad)

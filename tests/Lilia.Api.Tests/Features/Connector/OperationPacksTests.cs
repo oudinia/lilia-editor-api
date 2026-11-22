@@ -193,7 +193,7 @@ public class OperationPacksTests : IntegrationTestBase, IDisposable
         var plain = Caller(id);
         await UseTheAllowanceAsync(id);
         var refused = await CallAsync(plain, "list_documents");
-        refused.Text.Should().Contain("?plans=1").And.NotContain("settings/billing");
+        refused.Text.Should().EndWith("Plans and prices: https://liliaeditor.com/#pricing").And.NotContain("settings/billing");
 
         var factory = Fixture.Factory.WithWebHostBuilder(b =>
         {
@@ -211,6 +211,6 @@ public class OperationPacksTests : IntegrationTestBase, IDisposable
         var offered = await CallAsync(onSale, "list_documents");
         offered.IsError.Should().BeTrue();
         // In euros, as the website sells the pack (launch-bot #215, 19 Nov 2026).
-        offered.Text.Should().Contain("€5 for 300").And.NotContain("$5").And.Contain("/settings/billing").And.Contain("?plans=1");
+        offered.Text.Should().Contain("€5 for 300").And.NotContain("$5").And.Contain("/settings/billing").And.EndWith("Plans and prices: https://liliaeditor.com/#pricing");
     }
 }

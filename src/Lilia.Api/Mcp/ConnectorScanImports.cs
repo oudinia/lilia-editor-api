@@ -53,7 +53,8 @@ public sealed class ConnectorScanImports(IServiceScopeFactory scopes, ConnectorT
         }
         catch (QuotaExceededException limit)
         {
-            ticket.Error = limit.Message;
+            // import_status relays it: the limit, its renewal and the plans page (22 Nov 2026, launch-bot #269).
+            ticket.Error = LiliaMcpAccountTools.PlanLimitMessage(limit);
             ticket.Status = "failed";
         }
         catch (Exception ex)

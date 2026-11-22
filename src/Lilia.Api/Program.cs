@@ -892,6 +892,8 @@ builder.Services.AddMcpServer(o =>
     .WithTools<Lilia.Api.Mcp.LiliaMcpWriteTools>()
     .WithTools<Lilia.Api.Mcp.LiliaMcpCommentTools>()
     .WithTools<Lilia.Api.Mcp.LiliaMcpBulkImportTools>()
+    // whoami: the token's own account, plan and allowance (22 Nov 2026, launch-bot #269).
+    .WithTools<Lilia.Api.Mcp.LiliaMcpAccountTools>()
     .WithPrompts<Lilia.Api.Mcp.LiliaMcpPrompts>()
     // Free's daily connector allowance (5 Nov 2026): a refused call is a tool error the assistant reads out.
     .WithRequestFilters(f => f.AddCallToolFilter(Lilia.Api.Mcp.ConnectorAllowance.Filter));
