@@ -132,7 +132,7 @@ public class McpWriteToolsTests : IntegrationTestBase
         await SeedUserAsync("mcpw_roundtrip");
         var doc = await SeedDocumentAsync("mcpw_roundtrip", "Round trip");
         var app = App("mcpw_roundtrip", "openid documents:read documents:write");
-        var made = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = """
+        var made = await CallAsync(app, "rewrite_document", new { documentId = doc.Id.ToString(), format = "lml", content = """
             @heading[level=1, label=sec:a]
               Introduction
             @paragraph
@@ -146,7 +146,7 @@ public class McpWriteToolsTests : IntegrationTestBase
         made.TryGetProperty("error", out _).Should().BeFalse(made.ToString());
 
         var before = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
-        var again = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = before.GetProperty("lml").GetString() });
+        var again = await CallAsync(app, "rewrite_document", new { documentId = doc.Id.ToString(), format = "lml", content = before.GetProperty("lml").GetString() });
         again.TryGetProperty("error", out _).Should().BeFalse(again.ToString());
         var after = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
 
@@ -172,7 +172,7 @@ public class McpWriteToolsTests : IntegrationTestBase
         // An earlier edit in the same burst, so the burst already has an undo point.
         (await CallAsync(app, "set_title", new { documentId = doc.Id.ToString(), title = "LTX-154" })).TryGetProperty("error", out _).Should().BeFalse();
         var before = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
-        var rewrite = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = before.GetProperty("lml").GetString() });
+        var rewrite = await CallAsync(app, "rewrite_document", new { documentId = doc.Id.ToString(), format = "lml", content = before.GetProperty("lml").GetString() });
         rewrite.TryGetProperty("error", out _).Should().BeFalse(rewrite.ToString());
         var after = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
 
@@ -207,7 +207,7 @@ public class McpWriteToolsTests : IntegrationTestBase
 
         var before = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
         before.GetProperty("lml").GetString().Should().Contain("numbered=true");
-        var rewrite = await CallAsync(app, "apply_lml", new { documentId = doc.Id.ToString(), lml = before.GetProperty("lml").GetString() });
+        var rewrite = await CallAsync(app, "rewrite_document", new { documentId = doc.Id.ToString(), format = "lml", content = before.GetProperty("lml").GetString() });
         rewrite.TryGetProperty("error", out _).Should().BeFalse(rewrite.ToString());
         var after = await CallAsync(app, "get_document", new { documentId = doc.Id.ToString() });
 
@@ -466,7 +466,7 @@ public class McpWriteToolsTests : IntegrationTestBase
         await SeedBlockAsync(doc.Id, "paragraph", """{"text":"数据 means data."}""", 0);
         await SeedBlockAsync(doc.Id, "list", """{"items":["first item","second item"],"ordered":false}""", 1);
         var client = CreateClientAs("mcpw_engine");
-        (await CallAsync(client, "get_lilia_latex", new { documentId = doc.Id.ToString() }))
+        (await CallAsync(client, "get_latex", new { documentId = doc.Id.ToString() }))
             .GetProperty("engine").GetString().Should().Be("xelatex");
         var outline = await CallAsync(client, "get_outline", new { documentId = doc.Id.ToString() });
         var snippet = outline.GetProperty("blocks").EnumerateArray().First(b => b.GetProperty("type").GetString() == "list").GetProperty("snippet").GetString();
@@ -485,6 +485,67 @@ public class McpWriteToolsTests : IntegrationTestBase
         await using var db = CreateDbContext();
         var doc = await db.Documents.AsNoTracking().FirstAsync(d => d.Id == id);
         doc.OwnerId.Should().Be("mcpw_creator");
+        (await db.Blocks.CountAsync(b => b.DocumentId == id && b.Type == "paragraph")).Should().Be(1);
+    }
+
+    // Tool names in plain words (the owner, 22 Nov 2026, launch-bot #276): add_section, and LaTeX-first rewrites.
+    [Fact]
+    public async Task Add_section_adds_a_heading_at_the_level_asked()
+    {
+        await SeedUserAsync("mcpw_section");
+        var doc = await SeedDocumentAsync("mcpw_section", "Sections");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"First."}""", 0);
+        var app = App("mcpw_section", "openid documents:read documents:write");
+
+        var r = await CallAsync(app, "add_section", new { documentId = doc.Id.ToString(), title = "Related work", level = 2, label = "sec:related" });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        r.GetProperty("undo").GetProperty("versionId").GetGuid().Should().NotBeEmpty();
+        await using var db = CreateDbContext();
+        var heading = await db.Blocks.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id && b.Type == "heading");
+        heading.Content.RootElement.GetProperty("text").GetString().Should().Be("Related work");
+        heading.Content.RootElement.GetProperty("level").GetInt32().Should().Be(2);
+
+        var bad = await CallAsync(app, "add_section", new { documentId = doc.Id.ToString(), title = "Too deep", level = 5 });
+        bad.GetProperty("category").GetString().Should().Be("invalid");
+    }
+
+    [Fact]
+    public async Task Rewrite_document_takes_LaTeX_and_replaces_the_body_with_an_undo_point()
+    {
+        await SeedUserAsync("mcpw_rewrite");
+        var doc = await SeedDocumentAsync("mcpw_rewrite", "Rewritten");
+        await SeedBlockAsync(doc.Id, "paragraph", """{"text":"Old text."}""", 0);
+        var app = App("mcpw_rewrite", "openid documents:read documents:write");
+
+        var r = await CallAsync(app, "rewrite_document", new
+        {
+            documentId = doc.Id.ToString(),
+            content = "\\section{Introduction}\nA new paragraph.\n\\begin{equation}\nE = mc^2\n\\end{equation}",
+        });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        r.GetProperty("undo").GetProperty("versionId").GetGuid().Should().NotBeEmpty();
+        await using var db = CreateDbContext();
+        var types = await db.Blocks.AsNoTracking().Where(b => b.DocumentId == doc.Id && b.Type != "title")
+            .OrderBy(b => b.SortOrder).Select(b => b.Type).ToListAsync();
+        types.Should().Equal("heading", "paragraph", "equation");
+        (await db.Blocks.AsNoTracking().Where(b => b.DocumentId == doc.Id).ToListAsync())
+            .Should().NotContain(b => b.Content.RootElement.GetRawText().Contains("Old text"));
+
+        (await CallAsync(app, "rewrite_document", new { documentId = doc.Id.ToString(), content = "x", format = "docx" }))
+            .GetProperty("category").GetString().Should().Be("invalid");
+    }
+
+    [Fact]
+    public async Task An_app_creates_a_document_with_a_first_draft_in_LaTeX()
+    {
+        await SeedUserAsync("mcpw_creator_tex");
+        var r = await CallAsync(CreateClientAs("mcpw_creator_tex"), "create_document",
+            new { title = "Drafted in LaTeX", content = "\\section{Introduction}\nA first paragraph." });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        var id = r.GetProperty("id").GetGuid();
+        r.GetProperty("title").GetString().Should().Be("Drafted in LaTeX");
+        await using var db = CreateDbContext();
+        (await db.Blocks.CountAsync(b => b.DocumentId == id && b.Type == "heading")).Should().Be(1);
         (await db.Blocks.CountAsync(b => b.DocumentId == id && b.Type == "paragraph")).Should().Be(1);
     }
 }
