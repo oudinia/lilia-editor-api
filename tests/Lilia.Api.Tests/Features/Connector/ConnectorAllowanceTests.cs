@@ -116,9 +116,9 @@ public class ConnectorAllowanceTests : IntegrationTestBase, IDisposable
 
         var refused = await CallAsync(client, "list_documents");
         refused.IsError.Should().BeTrue();
-        // Not an upsell (a safety limit), but the plans page all the same (launch-bot #269, 22 Nov 2026).
+        // Not an upsell (a safety limit): no plans link either (launch-bot #269, 22 Nov 2026), only the renewal day.
         refused.Text.Should().Contain("500 connector actions a day on this plan, a safety limit").And.NotContain("Pro allows far more")
-            .And.EndWith("Plans and prices: https://liliaeditor.com/#pricing");
+            .And.Contain("(midnight UTC, ").And.NotContain("#pricing");
     }
 
     [Fact]

@@ -189,9 +189,9 @@ public sealed class ConnectorAllowance(
     }
 
     /// <summary>
-    /// What a refused call tells the author. Since 22 Nov 2026 (launch-bot #269) each names the limit, gives the day it
-    /// renews, and ends with Lilia's plans and prices (<see cref="LiliaMcpAccountTools.PricingUrl"/>): Claude relays it in
-    /// chat, the only place an MCP user can see the way to upgrade.
+    /// What a refused call tells the author. Since 22 Nov 2026 (launch-bot #269) each names the limit and the day it
+    /// renews; Free's ends with Lilia's plans and prices (<see cref="LiliaMcpAccountTools.PricingUrl"/>): Claude relays it
+    /// in chat, the only place an MCP user can see the way to upgrade. Pro's safety limits don't upsell.
     /// </summary>
     private string Message(string planSlug, int cap, DateTime now)
     {
@@ -200,11 +200,11 @@ public sealed class ConnectorAllowance(
         var back = $"They're back in about {hours} hour{(hours == 1 ? "" : "s")} (midnight UTC, {renews}).";
         if (planSlug == "packs")
             return $"Lilia allows {cap} connector actions a day, a safety limit, and today's are used. {back} " +
-                   $"Tell the author this; their operations stay on their account, and everything in the Lilia editor itself still works. {LiliaMcpAccountTools.PricingSentence}";
-        // Pro's cap is a safety limit (the owner, 10 Nov 2026: 500 a day), not an allowance to upsell: the link is the plans' limits.
+                   "Tell the author this; their operations stay on their account, and everything in the Lilia editor itself still works.";
+        // Pro's cap is a safety limit (the owner, 10 Nov 2026: 500 a day), not an allowance to upsell: no pricing link here.
         if (planSlug != "free")
             return $"Lilia allows {cap} connector actions a day on this plan, a safety limit, and today's are used. {back} " +
-                   $"If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works. {LiliaMcpAccountTools.PricingSentence}";
+                   "If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works.";
         var origin = McpOAuth.PublicOrigin(config);
         // Packs, once they're on sale (the owner, 14 Nov 2026: "shown … in the connector limit message").
         // In euros, as Stripe charges them and the website sells them (launch-bot #215, 19 Nov 2026: it said "$5").

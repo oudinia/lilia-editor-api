@@ -153,7 +153,8 @@ public sealed class LiliaMcpAccountTools(
         if (limit.ResetsAt is { } at && !text.Contains(at.ToString("d MMMM", CultureInfo.CurrentCulture), StringComparison.Ordinal)
             && !text.Contains(at.ToString("d MMMM", CultureInfo.InvariantCulture), StringComparison.Ordinal))
             text += $" This limit renews on {at.ToString("d MMMM", CultureInfo.InvariantCulture)} (UTC).";
-        return $"{text} {PricingSentence}";
+        // A text that already gives its own way to upgrade (the PDF credits one links the plans dialog) gets no second link.
+        return text.Contains("http", StringComparison.OrdinalIgnoreCase) ? text : $"{text} {PricingSentence}";
     }
 
     /// <summary>The sentence every plan-limit text ends with: the link last, so nothing sticks to it.</summary>
