@@ -36,7 +36,8 @@ public sealed class ConnectorAllowance(
     /// Pro's safety cap, so a balance can't become unlimited use.
     /// </summary>
     public const int PackSafetyCap = 500;
-    private static readonly HashSet<string> Free = ["search_help", "get_help"];
+    // whoami too (22 Nov 2026, launch-bot #269): it is where an author at the limit learns when it renews.
+    private static readonly HashSet<string> Free = ["search_help", "get_help", "whoami"];
 
     /// <summary>Whether a call may run: a refusal to tell the author, and the pack operation it spent, if any.</summary>
     public sealed record Decision(string? Refusal, Guid? Spend)
@@ -128,6 +129,19 @@ public sealed class ConnectorAllowance(
         return (plan.Slug, cap, used, Math.Max(0, cap - used), packBalance);
     }
 
+    /// <summary>Today's connector allowance, for <c>whoami</c>: the cap, the actions used and left, when it renews and, on Free, the packs' balance.</summary>
+    /// <param name="SafetyLimit">The cap is a safety limit (Pro's 500 a day), not an allowance; packs don't lift it.</param>
+    public sealed record Today(int Cap, int Used, int Left, DateTime ResetsAt, int? Packs, bool SafetyLimit);
+
+    /// <summary>
+    /// Where the author stands today (22 Nov 2026, launch-bot #269: <c>whoami</c>), from the same reading the refusals use;
+    /// null when no daily limit applies (the plan limits off, staff, a plan with no daily cap).
+    /// </summary>
+    public async Task<Today?> TodayAsync(string userId, CancellationToken ct = default) =>
+        await StandingAsync(userId, ct) is { } s
+            ? new Today(s.Cap, s.Used, s.LeftToday, DateTime.UtcNow.Date.AddDays(1), s.Slug == "free" ? s.Packs : null, s.Slug != "free")
+            : null;
+
     /// <summary>
     /// Refuses, before anything reaches Mathpix, a PDF or scan whose pages cost more credits than the author has: what is
     /// left of today's allowance, plus their packs on Free. Throws a <see cref="QuotaExceededException"/> ("pdfCredits")
@@ -174,25 +188,31 @@ public sealed class ConnectorAllowance(
         await CountAsync(DayKey(userId, now), s.Used, now, credits - fromPacks);
     }
 
+    /// <summary>
+    /// What a refused call tells the author. Since 22 Nov 2026 (launch-bot #269) each names the limit, gives the day it
+    /// renews, and ends with Lilia's plans and prices (<see cref="LiliaMcpAccountTools.PricingUrl"/>): Claude relays it in
+    /// chat, the only place an MCP user can see the way to upgrade.
+    /// </summary>
     private string Message(string planSlug, int cap, DateTime now)
     {
         var hours = Math.Max(1, (int)Math.Ceiling((now.Date.AddDays(1) - now).TotalHours));
-        var back = $"They're back in about {hours} hour{(hours == 1 ? "" : "s")} (midnight UTC).";
+        var renews = now.Date.AddDays(1).ToString("d MMMM", CultureInfo.InvariantCulture);
+        var back = $"They're back in about {hours} hour{(hours == 1 ? "" : "s")} (midnight UTC, {renews}).";
         if (planSlug == "packs")
             return $"Lilia allows {cap} connector actions a day, a safety limit, and today's are used. {back} " +
-                   "Tell the author this; their operations stay on their account, and everything in the Lilia editor itself still works.";
-        // Pro's cap is a safety limit (the owner, 10 Nov 2026: 500 a day), not an allowance to upsell.
+                   $"Tell the author this; their operations stay on their account, and everything in the Lilia editor itself still works. {LiliaMcpAccountTools.PricingSentence}";
+        // Pro's cap is a safety limit (the owner, 10 Nov 2026: 500 a day), not an allowance to upsell: the link is the plans' limits.
         if (planSlug != "free")
             return $"Lilia allows {cap} connector actions a day on this plan, a safety limit, and today's are used. {back} " +
-                   "If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works.";
+                   $"If the author needs more, they can write to Lilia's support. Tell the author this; everything in the Lilia editor itself still works. {LiliaMcpAccountTools.PricingSentence}";
         var origin = McpOAuth.PublicOrigin(config);
         // Packs, once they're on sale (the owner, 14 Nov 2026: "shown … in the connector limit message").
         // In euros, as Stripe charges them and the website sells them (launch-bot #215, 19 Nov 2026: it said "$5").
         var packOffer = stripe.Value.IsConfigured && !string.IsNullOrEmpty(stripe.Value.OperationsPackPriceId)
             ? $" Or the author can buy operations for checks, exports and imports: €{(stripe.Value.OperationsPackUnitCents / 100m).ToString("0.##", CultureInfo.InvariantCulture)} for {OperationPacks.PerPack}, never expiring, in {origin}/settings/billing."
             : "";
-        return $"Lilia's free plan includes {cap} connector actions a day, and today's are used. {back} " +
-               $"Pro allows far more: {origin}/?plans=1.{packOffer} Tell the author this; everything in the Lilia editor itself still works.";
+        return $"Lilia's free plan includes {cap} connector actions a day, and today's are used. {back}{packOffer} " +
+               $"Tell the author this; everything in the Lilia editor itself still works. Pro allows far more. {LiliaMcpAccountTools.PricingSentence}";
     }
 
     /// <summary>The call-tool filter that applies it to every connector call.</summary>

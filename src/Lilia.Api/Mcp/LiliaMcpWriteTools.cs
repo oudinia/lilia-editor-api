@@ -476,8 +476,9 @@ public sealed class LiliaMcpWriteTools(
         }
         catch (QuotaExceededException limit)
         {
-            // The author's plan, not the request: say so, so the app doesn't retry or rephrase.
-            return new { error = limit.Message, category = "plan-limit" };
+            // The author's plan, not the request: say so, so the app doesn't retry or rephrase. With the renewal date and
+            // the plans page (22 Nov 2026, launch-bot #269).
+            return new { error = LiliaMcpAccountTools.PlanLimitMessage(limit), category = "plan-limit" };
         }
         object? body = null;
         if (!string.IsNullOrWhiteSpace(lml))
@@ -601,7 +602,7 @@ public sealed class LiliaMcpWriteTools(
         }
         catch (QuotaExceededException limit)
         {
-            return new { error = limit.Message, category = "plan-limit" };
+            return new { error = LiliaMcpAccountTools.PlanLimitMessage(limit), category = "plan-limit" };
         }
         catch (Exception ex)
         {
@@ -658,7 +659,7 @@ public sealed class LiliaMcpWriteTools(
         {
             return new
             {
-                error = limit.Message,
+                error = LiliaMcpAccountTools.PlanLimitMessage(limit),
                 category = "plan-limit",
                 limit = new { resource = limit.Resource, cap = limit.Cap, used = limit.Used, resetsAt = limit.ResetsAt },
             };

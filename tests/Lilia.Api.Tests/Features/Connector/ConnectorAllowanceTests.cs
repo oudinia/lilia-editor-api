@@ -97,7 +97,8 @@ public class ConnectorAllowanceTests : IntegrationTestBase, IDisposable
 
         var refused = await CallAsync(client, "list_documents");
         refused.IsError.Should().BeTrue();
-        refused.Text.Should().Contain("25 connector actions a day").And.Contain("Pro allows far more").And.Contain("?plans=1");
+        refused.Text.Should().Contain("25 connector actions a day").And.Contain("Pro allows far more").And.Contain("(midnight UTC, ")
+            .And.EndWith("Plans and prices: https://liliaeditor.com/#pricing");
 
         (await CallAsync(client, "search_help", new { query = "export" })).IsError.Should().BeFalse("help doesn't count");
     }
@@ -115,7 +116,9 @@ public class ConnectorAllowanceTests : IntegrationTestBase, IDisposable
 
         var refused = await CallAsync(client, "list_documents");
         refused.IsError.Should().BeTrue();
-        refused.Text.Should().Contain("500 connector actions a day on this plan, a safety limit").And.NotContain("?plans=1");
+        // Not an upsell (a safety limit), but the plans page all the same (launch-bot #269, 22 Nov 2026).
+        refused.Text.Should().Contain("500 connector actions a day on this plan, a safety limit").And.NotContain("Pro allows far more")
+            .And.EndWith("Plans and prices: https://liliaeditor.com/#pricing");
     }
 
     [Fact]
