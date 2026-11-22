@@ -3189,6 +3189,44 @@ public partial class RenderService : IRenderService
             ? blockLatex
             : FloatEnd.Replace(FloatBegin.Replace(blockLatex, m => $@"\begin{{{m.Groups["env"].Value}}}[H]"), m => $@"\end{{{m.Groups["env"].Value}}}");
 
+    /// <summary>
+    /// One entry of Lilia's inline bibliography, as text. Field values are LaTeX, as BibTeX copies them (MCP-90). Since
+    /// 22 Nov 2026 (launch-bot #221 retest: get_latex's bibliography had no volume, pages or DOI while the compile from
+    /// references.bib printed them) it names the volume and number, the pages, the publisher and the DOI too.
+    /// </summary>
+    internal static string BibItemText(JsonElement data)
+    {
+        string Field(string name) => data.ValueKind == JsonValueKind.Object && data.TryGetProperty(name, out var v)
+            ? v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "").Trim() : v.ValueKind == JsonValueKind.Number ? v.GetRawText() : ""
+            : "";
+        var author = Field("author");
+        var title = Field("title");
+        var year = Field("year");
+        var journal = Field("journal");
+        var volume = Field("volume");
+        var number = Field("number");
+        var pages = Field("pages");
+        var publisher = Field("publisher");
+        var doi = Field("doi");
+
+        var citation = new List<string>();
+        if (author.Length > 0) citation.Add(BibTeXField.ToLatex(author));
+        if (title.Length > 0) citation.Add($"\\textit{{{BibTeXField.ToLatex(title)}}}");
+        if (journal.Length > 0)
+            citation.Add(BibTeXField.ToLatex(journal) + (volume.Length > 0 ? " " + BibTeXField.ToLatex(volume) + (number.Length > 0 ? $"({BibTeXField.ToLatex(number)})" : "") : ""));
+        // An arXiv preprint names its number where a journal would be (launch-bot #127, 17 Nov 2026).
+        else if (ArxivOf(data) is { } arxiv) citation.Add(arxiv);
+        // A conference paper or a chapter names its book (#131).
+        else if (Field("booktitle") is { Length: > 0 } booktitle) citation.Add("In " + BibTeXField.ToLatex(booktitle));
+        if (pages.Length > 0) citation.Add((pages.Contains('-') ? "pp.~" : "p.~") + BibTeXField.ToLatex(System.Text.RegularExpressions.Regex.Replace(pages, "-+", "--")));
+        if (publisher.Length > 0 && journal.Length == 0) citation.Add(BibTeXField.ToLatex(publisher));
+        if (year.Length > 0) citation.Add($"({year})");
+        var text = string.Join(", ", citation) + ".";
+        // The DOI as plain text: no package is needed for it, and an underscore in it can't break the compile.
+        if (doi.Length > 0) text += " doi:" + LatexText.Escape(doi) + ".";
+        return text;
+    }
+
     private string RenderBibliographyToLatex(
         IEnumerable<BibliographyEntry> entries,
         bool usesNatbib = false,
@@ -3215,28 +3253,7 @@ public partial class RenderService : IRenderService
             // Try to build a citation string from the data
             try
             {
-                var data = entry.Data?.RootElement;
-                if (data.HasValue)
-                {
-                    var author = data.Value.TryGetProperty("author", out var a) ? a.GetString() ?? "" : "";
-                    var title = data.Value.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-                    var year = data.Value.TryGetProperty("year", out var y) ? y.GetString() ?? "" : "";
-                    var journal = data.Value.TryGetProperty("journal", out var j) ? j.GetString() ?? "" : "";
-
-                    // Field values are LaTeX, as BibTeX copies them (MCP-90).
-                    var citation = new List<string>();
-                    if (!string.IsNullOrEmpty(author)) citation.Add(BibTeXField.ToLatex(author));
-                    if (!string.IsNullOrEmpty(title)) citation.Add($"\\textit{{{BibTeXField.ToLatex(title)}}}");
-                    if (!string.IsNullOrEmpty(journal)) citation.Add(BibTeXField.ToLatex(journal));
-                    // An arXiv preprint names its number where a journal would be (launch-bot #127, 17 Nov 2026).
-                    if (string.IsNullOrEmpty(journal) && ArxivOf(data.Value) is { } arxiv) citation.Add(arxiv);
-                    // A conference paper or a chapter names its book (#131).
-                    else if (string.IsNullOrEmpty(journal) && data.Value.TryGetProperty("booktitle", out var bt) && bt.GetString() is { Length: > 0 } booktitle)
-                        citation.Add("In " + BibTeXField.ToLatex(booktitle));
-                    if (!string.IsNullOrEmpty(year)) citation.Add($"({year})");
-
-                    sb.AppendLine(string.Join(", ", citation) + ".");
-                }
+                if (entry.Data?.RootElement is { } data) sb.AppendLine(BibItemText(data));
             }
             catch
             {
