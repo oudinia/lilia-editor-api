@@ -245,9 +245,12 @@ public sealed class ConnectorAllowance(
         catch (JsonException) { return false; }
     }
 
-    private static bool WithBody(CallToolRequestParams call) =>
-        call.Arguments?.TryGetValue("lml", out var lml) == true && lml.ValueKind == System.Text.Json.JsonValueKind.String
-        && !string.IsNullOrWhiteSpace(lml.GetString());
+    // create_document with a first draft: in LaTeX (content) or, advanced, LML (lml).
+    private static bool WithBody(CallToolRequestParams call) => HasText(call, "content") || HasText(call, "lml");
+
+    private static bool HasText(CallToolRequestParams call, string name) =>
+        call.Arguments?.TryGetValue(name, out var v) == true && v.ValueKind == System.Text.Json.JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(v.GetString());
 
     private static Guid? DocumentIdOf(CallToolRequestParams call) =>
         call.Arguments?.TryGetValue("documentId", out var id) == true && id.ValueKind == System.Text.Json.JsonValueKind.String

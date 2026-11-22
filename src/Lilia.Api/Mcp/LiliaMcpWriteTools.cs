@@ -98,14 +98,33 @@ public sealed class LiliaMcpWriteTools(
     // and no bibliography.
     private const string FieldGuide = "Fields by type (others are ignored): paragraph {text}; heading {text, level 1-6, label?}; equation {latex, equationMode: display|inline, label?, numbered?}; theorem {text, theoremType: theorem|lemma|definition|proposition|corollary|remark|example|proof, title?, label?, numbered?}; list {items:[{text}], kind: bullet|numbered|description — for description items:[{text: term, description}]}; table {headers:[...], rows:[[...]], caption?, label?, columnAlign?, rowColors?: {odd: hex like #F2F2F2, even: hex} (odd = first body row)}; figure {src, caption?, label?, width 0-1, alt?} or TikZ {kind:\"tikz\", source, caption?, label?, alt?} (alt: a description for readers who can't see it; ACM prints it as \\Description); code {code, language?, caption?, label?}; blockquote {text, attribution?, variant?: verse}; abstract {text}; algorithm {caption?, label?, lines:[{kind, text}]} with kind statement|require|ensure|if|elsif|else|endif|for|forall|endfor|while|endwhile|repeat|until|return|comment, or {code} with \\STATE / \\IF{…} lines; callout {text, title?, variant?}; footnote {text}; embed {code} — raw LaTeX printed as written; bibliography {text} — BibTeX entries (@article{key, …}) or lines \"@cite[key] Author — Title\"; frontMatter / backMatter {subType: preface|foreword|acknowledgements|dedication|afterword|appendix, text, title?}; CV: personalInfo {name, headline, email, phones:[{number}], homepage, location}, cvSection {title}, cvEntry {period, role, org, location, highlight?, description, tech:[]} (firstName/lastName, organization, startDate/endDate are mapped). Text fields take Lilia marks: **bold**, *italic*, $maths$, \\(…\\), Theorem~(thm:x) for a reference, @cite{key} for a citation. LaTeX typed in text stays LaTeX (commands, {…} groups, \\ control spaces): to print a brace write \\{ \\}, a backslash \\textbackslash{} (MCP-32); %, &, #, _ print as typed.";
 
-    [McpServerTool(Name = "add_block", Title = "Add a block", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Add a block to a document (small, targeted inserts). Returns the new block id. The open editor shows the change at once; to undo it, give the reply's undo.versionId to restore_version. An unknown type is refused. " + FieldGuide)]
+    // Tool names in plain words (the owner, 22 Nov 2026, launch-bot #276): add_block stays (a "block" is what the editor
+    // calls each piece of a document), titled "Insert content", with add_section as a shortcut; apply_lml became
+    // rewrite_document (LaTeX by default) and get_lilia_latex get_latex, so no tool name carries an internal word.
+    [McpServerTool(Name = "add_block", Title = "Insert content", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Insert one piece of content: a section heading, paragraph, equation (LaTeX), list, table, figure, theorem, quote or code, after a given block or at the end. Examples: paragraph {\"text\":\"…\"}; section heading {\"text\":\"Results\",\"level\":1} (or use add_section); equation {\"latex\":\"E = mc^2\"}; list {\"items\":[{\"text\":\"…\"}],\"kind\":\"bullet\"}. For a whole section of LaTeX at once, paste_content is quicker. Returns the new block id. The open editor shows the change at once; to undo it, give the reply's undo.versionId to restore_version. An unknown type is refused. " + FieldGuide)]
     public Task<object> AddBlock(
         [Description("The document id.")] string documentId,
         [Description("Block type, e.g. paragraph, heading, equation.")] string type,
         [Description("JSON content for the type, e.g. {\"text\":\"…\"}, {\"text\":\"…\",\"level\":2}, {\"latex\":\"…\"}.")] string content,
         [Description("Insert after this block id; omit to append at the end.")] string? afterId = null) =>
         WriteAsync(documentId, "add_block", new() { ["type"] = type, ["content"] = content, ["afterId"] = afterId });
+
+    [McpServerTool(Name = "add_section", Title = "Add a section", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Add a section heading: level 1 is a \\section, 2 a \\subsection, 3 a \\subsubsection. After a given block, or at the end. Returns the new block id; add the section's text after it with paste_content or add_block. To undo it, give the reply's undo.versionId to restore_version.")]
+    public Task<object> AddSection(
+        [Description("The document id.")] string documentId,
+        [Description("The section's title, e.g. \"Related work\".")] string title,
+        [Description("1 section (default), 2 subsection, 3 subsubsection.")] int level = 1,
+        [Description("A label to refer to it, e.g. sec:related. Optional.")] string? label = null,
+        [Description("Insert after this block id; omit to add at the end.")] string? afterId = null)
+    {
+        if (level is < 1 or > 3)
+            return Task.FromResult<object>(new { error = "level is 1 (section), 2 (subsection) or 3 (subsubsection).", category = "invalid" });
+        var content = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["text"] = title, ["level"] = level, ["label"] = string.IsNullOrWhiteSpace(label) ? null : label.Trim() }
+            .Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value));
+        return WriteAsync(documentId, "add_block", new() { ["type"] = "heading", ["content"] = content, ["afterId"] = afterId });
+    }
 
     [McpServerTool(Name = "edit_block", Title = "Edit a block", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Replace one block's content (and optionally its type) by id. Read it first with get_block. The content replaces the old one entirely: when changing the type, give the new type's fields. " + FieldGuide)]
@@ -324,13 +343,22 @@ public sealed class LiliaMcpWriteTools(
         [Description("Insert after this block id (from get_outline or a previous paste); omit to add at the end.")] string? afterId = null) =>
         WriteAsync(documentId, "paste_content", new() { ["content"] = content, ["format"] = format, ["afterId"] = afterId });
 
-    [McpServerTool(Name = "apply_lml", Title = "Rewrite the whole document", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Replace the WHOLE document body with LML, Lilia's block markup, in one step (for rewrites; prefer edit_block for small changes). Academic: @abstract, @heading[level=1], @paragraph, @equation[mode=display], @theorem[…], @bibliography; bodies indented 2 spaces. To put the old text back, give the reply's undo.versionId to restore_version.")]
-    public Task<object> ApplyLml(
+    [McpServerTool(Name = "rewrite_document", Title = "Rewrite the whole document", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Replace the WHOLE document body in one step, from LaTeX (a fragment or a whole paper, \\documentclass to \\end{document}); Lilia reads it with its LaTeX import, and a whole paper's page setup comes with it. For rewrites only: for a small change use edit_block, to add a section use paste_content. Get the current LaTeX with get_latex. To put the old text back, give the reply's undo.versionId to restore_version.")]
+    public Task<object> RewriteDocument(
         [Description("The document id.")] string documentId,
-        [Description("The full LML source for the body.")] string lml,
-        [Description("Optional title, used only when the document has no title yet; to rename a document, use set_title.")] string? title = null) =>
-        WriteAsync(documentId, "apply_lml", new() { ["lml"] = lml, ["title"] = title });
+        [Description("The new body, in LaTeX.")] string content,
+        [Description("latex (default). Advanced: lml, Lilia's internal block markup.")] string? format = null,
+        [Description("Optional title, used only when the document has no title yet; to rename a document, use set_title.")] string? title = null)
+    {
+        var f = (format ?? "latex").Trim().ToLowerInvariant();
+        return f switch
+        {
+            "latex" or "tex" => WriteAsync(documentId, "import_latex", new() { ["text"] = content, ["replace"] = true }),
+            "lml" => WriteAsync(documentId, "apply_lml", new() { ["lml"] = content, ["title"] = title }),
+            _ => Task.FromResult<object>(new { error = "format is latex (default) or lml.", category = "invalid" }),
+        };
+    }
 
     [McpServerTool(Name = "set_venue", Title = "Format for a venue", Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Format the document for a venue in one step: the publisher's class, options, front matter and reference style (the editor's Venue choice). Only the document's owner can choose it. Profile ids: acm-sigconf-review, acm-sigconf-final, acm-journal-review, acm-journal-final, ieee-conference, ieee-journal, elsevier-preprint, elsevier-review, elsevier-final, lncs-submission, lncs-camera-ready, aps-review, aps-final, aip-review, aip-final, ams-journal, iop-review, iop-final, siam-review, siam-final; \"\" removes the venue. Run check_document afterwards: a venue's class can need content it expects (an abstract, keywords).")]
@@ -421,14 +449,15 @@ public sealed class LiliaMcpWriteTools(
     }
 
     [McpServerTool(Name = "create_document", Title = "Create a document", Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Create a new document owned by the author, optionally with its body written in LML (as apply_lml). Kinds: article (default), report, book. Returns its id and address; then edit it with the other tools.")]
+    [Description("Create a new document owned by the author, optionally with a first draft in LaTeX (as rewrite_document). Kinds: article (default), report, book. Returns its id and address; then edit it with the other tools.")]
     public async Task<object> CreateDocument(
         [Description("The document's title.")] string title,
-        [Description("Optional body in LML, e.g. \"@heading[level=1]\\n  Introduction\\n@paragraph\\n  Text.\".")] string? lml = null,
-        [Description("article, report or book. Default article.")] string? kind = null)
+        [Description("Optional first draft in LaTeX, e.g. \"\\section{Introduction} Text.\".")] string? content = null,
+        [Description("article, report or book. Default article.")] string? kind = null,
+        [Description("Advanced: the first draft in LML, Lilia's internal block markup, instead of LaTeX.")] string? lml = null)
     {
         if (!AppMayWrite(User, RequireWriteScope(config))) return new { error = ReconnectMessage };
-        if (UnsafeIn(new object?[] { title, lml }) is { } refused) return new { error = refused, category = "refused" };
+        if (UnsafeIn(new object?[] { title, lml, content }) is { } refused) return new { error = refused, category = "refused" };
         var category = (kind ?? "article").Trim().ToLowerInvariant() switch
         {
             "report" => "report",
@@ -454,6 +483,9 @@ public sealed class LiliaMcpWriteTools(
         if (!string.IsNullOrWhiteSpace(lml))
             // MCP-02: the title given here stays; apply_lml would otherwise take the first heading.
             body = await WriteAsync(doc.Id.ToString(), "apply_lml", new() { ["lml"] = lml, ["title"] = doc.Title });
+        else if (!string.IsNullOrWhiteSpace(content))
+            // LaTeX first (22 Nov 2026). The title given here stays unless the draft names its own \title.
+            body = await WriteAsync(doc.Id.ToString(), "import_latex", new() { ["text"] = content, ["replace"] = true });
         return new { id = doc.Id, title = doc.Title, kind = category, body, url = $"{McpOAuth.PublicOrigin(config)}/d/{doc.Id}" };
     }
 
@@ -959,8 +991,8 @@ public sealed class LiliaMcpWriteTools(
         // (#124, 17 Nov 2026: undoing an apply_lml went back past every earlier edit too). And the burst starts again
         // after it (below): undoing an edit made after ten pastes went back to the empty document, 610 blocks gone
         // (launch-bot #149).
-        var bulk = tool is "apply_lml" or "paste_content";
-        var undo = bulk ? await FreshUndoPointAsync(doc.Id, app, tool == "apply_lml" ? "rewrite" : "paste") : await UndoPointAsync(doc.Id, app);
+        var bulk = tool is "apply_lml" or "import_latex" or "paste_content";
+        var undo = bulk ? await FreshUndoPointAsync(doc.Id, app, tool == "paste_content" ? "paste" : "rewrite") : await UndoPointAsync(doc.Id, app);
         var changed = new List<string>();
         var meta = false;
         object? result = null;

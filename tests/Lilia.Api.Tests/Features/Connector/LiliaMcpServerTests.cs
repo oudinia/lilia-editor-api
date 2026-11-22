@@ -22,7 +22,7 @@ public class LiliaMcpServerTests : IntegrationTestBase
 
     private static readonly string[] ReadTools =
     [
-        "list_documents", "get_outline", "get_document", "get_block", "search_document", "get_lilia_latex",
+        "list_documents", "get_outline", "get_document", "get_block", "search_document", "get_latex",
         "get_document_settings", "check_document", "search_help", "get_help",
         // Read-only too: a download link, and where an import is.
         "export_document", "import_status",
@@ -76,7 +76,8 @@ public class LiliaMcpServerTests : IntegrationTestBase
         read.Should().HaveCount(ReadTools.Length);
         read.Should().OnlyContain(t => t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean());
         // Step 3's edit tools are listed too, and say they write.
-        tools.Select(t => t.GetProperty("name").GetString()).Should().Contain(new[] { "add_block", "edit_block", "remove_block", "apply_lml" });
+        tools.Select(t => t.GetProperty("name").GetString()).Should().Contain(new[] { "add_block", "add_section", "edit_block", "remove_block", "rewrite_document", "get_latex" })
+            .And.NotContain(new[] { "apply_lml", "get_lilia_latex" });
         foreach (var t in tools.Where(t => !ReadTools.Contains(t.GetProperty("name").GetString())))
             (t.GetProperty("annotations").TryGetProperty("readOnlyHint", out var ro) && ro.GetBoolean()).Should().BeFalse();
     }
@@ -89,8 +90,8 @@ public class LiliaMcpServerTests : IntegrationTestBase
         var (_, body) = await RpcAsync(CreateClientAs("mcp_titles"), "tools/list");
         var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
         // get_document, add_reference, add_figure_image, then list_versions, restore_version and the four comment tools,
-        // 17 Nov 2026 (the connector test).
-        tools.Should().HaveCount(32);
+        // 17 Nov 2026 (the connector test); add_section, 22 Nov 2026 (launch-bot #276).
+        tools.Should().HaveCount(33);
         foreach (var t in tools)
         {
             var name = t.GetProperty("name").GetString();
@@ -166,7 +167,7 @@ public class LiliaMcpServerTests : IntegrationTestBase
         var list = await CallAsync(mallory, "list_documents", new { });
         list.GetProperty("documents").EnumerateArray().Select(d => d.GetProperty("id").GetGuid()).Should().NotContain(doc.Id);
 
-        foreach (var tool in new[] { "get_outline", "get_document_settings", "get_lilia_latex", "check_document" })
+        foreach (var tool in new[] { "get_outline", "get_document_settings", "get_latex", "check_document" })
         {
             var r = await CallAsync(mallory, tool, new { documentId = doc.Id.ToString() });
             r.GetProperty("error").GetString().Should().Contain("No document", $"{tool} must not open it");

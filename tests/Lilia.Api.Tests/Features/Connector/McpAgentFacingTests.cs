@@ -84,7 +84,7 @@ public class McpAgentFacingTests : IntegrationTestBase
             await db.SaveChangesAsync();
         }
         var heading = await SeedBlockAsync(doc.Id, "heading", """{"text":"Start","level":1}""", 0);
-        var r = await CallAsync(CreateClientAs("mcpt3_class"), "get_lilia_latex",
+        var r = await CallAsync(CreateClientAs("mcpt3_class"), "get_latex",
             new { documentId = doc.Id.ToString(), blockId = heading.Id.ToString() });
         r.GetProperty("latex").GetString().Should().Contain(@"\chapter");
     }
