@@ -62,7 +62,7 @@ public class McpPromptsTests : IntegrationTestBase
         });
 
         var text = got.GetProperty("messages")[0].GetProperty("content").GetProperty("text").GetString()!;
-        text.Should().Contain("\"Sleep stages\"").And.Contain("One create_document call").And.Contain("WHOLE body in its lml argument")
+        text.Should().Contain("\"Sleep stages\"").And.Contain("One create_document call").And.Contain("WHOLE first draft in LaTeX in its content argument").And.NotContain("lml").And.NotContain("LML")
             .And.Contain("check_document").And.Contain("set_venue").And.Contain("export_document as pdf")
             .And.Contain("Kind~(label)").And.Contain("Never invent references");
     }
