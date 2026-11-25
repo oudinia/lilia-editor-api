@@ -95,9 +95,10 @@ If a step is not in this guide, say you are not sure rather than inventing a men
   **Symbols**, then at the bottom **Comments**, **Validate** (the shield) and **History**. One panel
   opens at a time; click its icon again or press Esc to close it. Formatting (fonts, size, colour,
   highlight, alignment) is in the ribbon's **Text** tab, not a panel.
-- **Ask Lilia**: a new document opens with Ask Lilia beside it (the conversation, then the document);
-  **Move to the side instead** puts it in a side pane. Its **⋯** moves it: side by side, half and
-  half, docked at the side, a new window, keep on top. **New chat** starts a conversation; the
+- **Ask Lilia**: opens on demand. The **Ask Lilia** button in the top bar opens it over the
+  document, on the right; its **×**, **Esc** or a click outside closes it, and the conversation is
+  kept for next time. There is no sidebar any more. Its **Move** menu puts it side by side (half and
+  half), in a new window, or keeps it on top. **New chat** starts a conversation; the
   conversation menu copies, moves or deletes one. Attach a file (csv, tex, bib, docx, pdf) or an
   image (png, jpg, webp, svg). Select a block first to ask about just that block.
   **How Ask Lilia explains** (Simple · Standard · For LaTeX users): asked once (*How familiar are
