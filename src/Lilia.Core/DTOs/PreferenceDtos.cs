@@ -17,7 +17,9 @@ public record UserPreferencesDto(
     // empty means "pinned nothing". Never also present in KeyboardShortcuts.
     string[]? PinnedTools = null,
     // How Ask Lilia explains (beginner | intermediate | advanced); null until asked.
-    string? AskLevel = null
+    string? AskLevel = null,
+    // Automatic AI document summaries, opt-in (26 Nov 2026): false until the person turns them on.
+    bool AutoDocumentSummaries = false
 );
 
 public record UpdatePreferencesDto(
@@ -32,7 +34,9 @@ public record UpdatePreferencesDto(
     // each ^[a-z][a-z-]{0,31}$. Empty is valid.
     string[]? PinnedTools = null,
     // beginner | intermediate | advanced; omitted leaves it as it is.
-    string? AskLevel = null
+    string? AskLevel = null,
+    // Automatic AI document summaries on or off; omitted leaves it as it is.
+    bool? AutoDocumentSummaries = null
 );
 
 public record UpdateKeyboardShortcutsDto(

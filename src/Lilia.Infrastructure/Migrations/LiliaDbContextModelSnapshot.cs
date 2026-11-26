@@ -9074,6 +9074,12 @@ namespace Lilia.Infrastructure.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("ask_level");
 
+                    b.Property<bool>("AutoDocumentSummaries")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("auto_document_summaries");
+
                     b.Property<bool>("AutoSaveEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
