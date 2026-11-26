@@ -16,14 +16,12 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentService _documentService;
     private readonly ILogger<DocumentsController> _logger;
     private readonly IAuditService _auditService;
-    private readonly IPreferencesService? _preferences;
 
-    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger, IAuditService auditService, IPreferencesService? preferences = null)
+    public DocumentsController(IDocumentService documentService, ILogger<DocumentsController> logger, IAuditService auditService)
     {
         _documentService = documentService;
         _logger = logger;
         _auditService = auditService;
-        _preferences = preferences;
     }
 
     private string? GetUserId() => User.FindFirst("sub")?.Value
@@ -69,16 +67,13 @@ public class DocumentsController : ControllerBase
     /// My Documents cards. On-demand; owner-only. Returns { aiSummary }.
     /// </summary>
     [HttpPost("{id:guid}/summary")]
+    // Opt-in (Oussama, 26 Nov 2026, GDPR): refused before the allowance check and before any AI call while off.
+    [AutoSummariesOn]
     [MeteredAi]
     public async Task<IActionResult> GenerateSummary(Guid id)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-        // Opt-in (Oussama, 26 Nov 2026, GDPR): no excerpt goes to the AI provider unless the person turned automatic
-        // document summaries on in Settings. Refused before any AI call.
-        if (_preferences is null || !await _preferences.AutoDocumentSummariesAsync(userId, HttpContext.RequestAborted))
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "summaries_off", message = "Automatic document summaries are off. Turn them on in Settings to see a one-line summary of each document." });
 
         var summary = await _documentService.GenerateSummaryAsync(id, userId);
         if (summary == null) return NotFound();
