@@ -298,6 +298,40 @@ public class McpWriteToolsTests : IntegrationTestBase
         saved.MarginLeft.Should().Be("2cm");
     }
 
+    // MCP Inspector on production (26 Nov 2026, api#700): fontSize "12pt" failed with a .NET conversion message, and the
+    // failed call came back as an ordinary result.
+    [Fact]
+    public async Task A_number_sent_as_text_is_read_and_a_wrong_one_is_a_plain_tool_error()
+    {
+        await SeedUserAsync("mcpw_12pt");
+        var doc = await SeedDocumentAsync("mcpw_12pt");
+        var client = CreateClientAs("mcpw_12pt");
+
+        var r = await CallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { paperSize = "a4", fontSize = "12pt" } });
+        r.TryGetProperty("error", out _).Should().BeFalse(r.ToString());
+        (await CallAsync(client, "get_document_settings", new { documentId = doc.Id.ToString() })).GetProperty("fontSize").GetInt32().Should().Be(12);
+
+        var (isError, text) = await RawCallAsync(client, "set_document_settings", new { documentId = doc.Id.ToString(), settings = new { fontSize = "big" } });
+        isError.Should().BeTrue();
+        text.Should().Contain("fontSize is a number of points").And.NotContain("System.");
+    }
+
+    private static async Task<(bool IsError, string Text)> RawCallAsync(HttpClient client, string tool, object args)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/mcp")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = tool, arguments = args } }),
+                Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        var text = await (await client.SendAsync(req)).Content.ReadAsStringAsync();
+        var json = text.TrimStart().StartsWith('{') ? text : text.Split('\n').Last(l => l.StartsWith("data:"))["data:".Length..];
+        var result = JsonDocument.Parse(json).RootElement.GetProperty("result");
+        return (result.TryGetProperty("isError", out var e) && e.GetBoolean(), result.GetProperty("content")[0].GetProperty("text").GetString()!);
+    }
+
     // MCP-31: heading numbering is a document setting the author (or the app) chooses.
     [Fact]
     public async Task Heading_numbering_is_a_setting()

@@ -246,6 +246,9 @@ public sealed class ConnectorAllowance(
             && OperationLog.ConnectorCode(call.Name, WithBody(call)) is { } code
             && request.Services?.GetService<OperationLog>() is { } operations)
             await operations.RecordAsync(userId, DocumentIdOf(call), code, "connector");
+        // A reply that says "error" is a failed call: say so to the client too (MCP Inspector showed such calls as OK,
+        // 26 Nov 2026, api#700). The assistant still reads the message, which says what to do.
+        if (result.IsError != true && Failed(result)) result.IsError = true;
         return result;
     };
 

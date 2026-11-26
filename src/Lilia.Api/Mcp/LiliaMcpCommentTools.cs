@@ -108,7 +108,7 @@ public sealed class LiliaMcpCommentTools(
         };
     }
 
-    [McpServerTool(Name = "add_comment", Title = "Add a comment", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "add_comment", Title = "Add a comment", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Comment on one block of a document, in the signed-in author's name, as the editor's comment button does: everyone the document is shared with sees it in the Comments panel. Anyone who can open the document may comment, viewers too. Returns the comment's id. To answer a comment that is already there, use reply_to_comment.")]
     public async Task<object> AddComment(
         [Description("The document id.")] string documentId,
@@ -126,7 +126,7 @@ public sealed class LiliaMcpCommentTools(
         return new { id = comment.Id, block = BlockOf(d, bid), text = comment.Content, createdAt = comment.CreatedAt, url = EditorUrl(d.Id) };
     }
 
-    [McpServerTool(Name = "reply_to_comment", Title = "Reply to a comment", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "reply_to_comment", Title = "Reply to a comment", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Reply to a comment on a document (an id from list_comments), in the signed-in author's name, as the editor's Reply does. Anyone who can open the document may reply, viewers too. Returns the reply's id.")]
     public async Task<object> ReplyToComment(
         [Description("The document id.")] string documentId,
@@ -145,7 +145,7 @@ public sealed class LiliaMcpCommentTools(
         return new { id = reply.Id, commentId = cid, text = reply.Content, createdAt = reply.CreatedAt, url = EditorUrl(d.Id) };
     }
 
-    [McpServerTool(Name = "resolve_comment", Title = "Resolve a comment", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "resolve_comment", Title = "Resolve a comment", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Mark a comment on a document resolved (done), as the editor's Resolve does; it leaves the open list and stays readable with list_comments includeResolved. Only the comment's author or the document's owner can resolve it. Resolving one already resolved changes nothing.")]
     public async Task<object> ResolveComment(
         [Description("The document id.")] string documentId,

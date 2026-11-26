@@ -109,6 +109,42 @@ public class LiliaMcpServerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Every_tool_states_readOnlyHint_and_every_parameter_has_a_type()
+    {
+        // The Claude Connectors Directory's tool check (26 Nov 2026, api#700): readOnlyHint on all 36 (false on the
+        // write tools, which also say destructiveHint), and a type on every parameter, set_document_settings.settings
+        // included (a JsonElement, published without one).
+        await SeedUserAsync("mcp_types");
+        var (_, body) = await RpcAsync(CreateClientAs("mcp_types"), "tools/list");
+        var tools = body.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
+        tools.Should().HaveCount(36);
+        foreach (var t in tools)
+        {
+            var name = t.GetProperty("name").GetString();
+            var a = t.GetProperty("annotations");
+            a.TryGetProperty("readOnlyHint", out var ro).Should().BeTrue($"{name} states readOnlyHint");
+            if (!ro.GetBoolean()) a.TryGetProperty("destructiveHint", out _).Should().BeTrue($"{name} writes, so it says whether it destroys");
+            if (!t.GetProperty("inputSchema").TryGetProperty("properties", out var props)) continue;
+            foreach (var p in props.EnumerateObject())
+                (p.Value.TryGetProperty("type", out _) || p.Value.TryGetProperty("anyOf", out _) || p.Value.TryGetProperty("$ref", out _))
+                    .Should().BeTrue($"{name}.{p.Name} has a type");
+        }
+        tools.Count(t => !t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean()).Should().Be(20);
+        var settings = tools.Single(t => t.GetProperty("name").GetString() == "set_document_settings")
+            .GetProperty("inputSchema").GetProperty("properties").GetProperty("settings");
+        settings.GetProperty("type").GetString().Should().Be("object");
+        // Portable optional parameters: no type unions, no null defaults (MCP Inspector, 26 Nov 2026).
+        foreach (var t in tools)
+            if (t.GetProperty("inputSchema").TryGetProperty("properties", out var ps))
+                foreach (var p in ps.EnumerateObject())
+                {
+                    if (p.Value.TryGetProperty("type", out var ty)) ty.ValueKind.Should().Be(JsonValueKind.String, $"{t.GetProperty("name")}.{p.Name}");
+                    (p.Value.TryGetProperty("default", out var d) && d.ValueKind == JsonValueKind.Null).Should().BeFalse($"{t.GetProperty("name")}.{p.Name}");
+                }
+        settings.GetProperty("properties").TryGetProperty("fontSize", out _).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task An_author_reads_their_own_document()
     {
         await SeedUserAsync("mcp_owner");
