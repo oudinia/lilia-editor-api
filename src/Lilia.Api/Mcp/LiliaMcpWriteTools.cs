@@ -101,7 +101,7 @@ public sealed class LiliaMcpWriteTools(
     // Tool names in plain words (the owner, 22 Nov 2026, launch-bot #276): add_block stays (a "block" is what the editor
     // calls each piece of a document), titled "Insert content", with add_section as a shortcut; apply_lml became
     // rewrite_document (LaTeX by default) and get_lilia_latex get_latex, so no tool name carries an internal word.
-    [McpServerTool(Name = "add_block", Title = "Insert content", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "add_block", Title = "Insert content", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Insert one piece of content: a section heading, paragraph, equation (LaTeX), list, table, figure, theorem, quote or code, after a given block or at the end. Examples: paragraph {\"text\":\"…\"}; section heading {\"text\":\"Results\",\"level\":1} (or use add_section); equation {\"latex\":\"E = mc^2\"}; list {\"items\":[{\"text\":\"…\"}],\"kind\":\"bullet\"}. For a whole section of LaTeX at once, paste_content is quicker. Returns the new block id. The open editor shows the change at once; to undo it, give the reply's undo.versionId to restore_version. An unknown type is refused. " + FieldGuide)]
     public Task<object> AddBlock(
         [Description("The document id.")] string documentId,
@@ -110,7 +110,7 @@ public sealed class LiliaMcpWriteTools(
         [Description("Insert after this block id; omit to append at the end.")] string? afterId = null) =>
         WriteAsync(documentId, "add_block", new() { ["type"] = type, ["content"] = content, ["afterId"] = afterId });
 
-    [McpServerTool(Name = "add_section", Title = "Add a section", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "add_section", Title = "Add a section", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Add a section heading: level 1 is a \\section, 2 a \\subsection, 3 a \\subsubsection. After a given block, or at the end. Returns the new block id; add the section's text after it with paste_content or add_block. To undo it, give the reply's undo.versionId to restore_version.")]
     public Task<object> AddSection(
         [Description("The document id.")] string documentId,
@@ -126,7 +126,7 @@ public sealed class LiliaMcpWriteTools(
         return WriteAsync(documentId, "add_block", new() { ["type"] = "heading", ["content"] = content, ["afterId"] = afterId });
     }
 
-    [McpServerTool(Name = "edit_block", Title = "Edit a block", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "edit_block", Title = "Edit a block", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Replace one block's content (and optionally its type) by id. Read it first with get_block. The content replaces the old one entirely: when changing the type, give the new type's fields. " + FieldGuide)]
     public Task<object> EditBlock(
         [Description("The document id.")] string documentId,
@@ -165,14 +165,14 @@ public sealed class LiliaMcpWriteTools(
         return node.ToJsonString();
     }
 
-    [McpServerTool(Name = "remove_block", Title = "Remove a block", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "remove_block", Title = "Remove a block", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Delete one block by id. To put it back, give the reply's undo.versionId to restore_version.")]
     public Task<object> RemoveBlock(
         [Description("The document id.")] string documentId,
         [Description("The block id to delete.")] string blockId) =>
         WriteAsync(documentId, "remove_block", new() { ["blockId"] = blockId });
 
-    [McpServerTool(Name = "reorder_blocks", Title = "Reorder blocks", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "reorder_blocks", Title = "Reorder blocks", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Put the document's blocks in this exact order (every block id, from get_outline).")]
     public Task<object> ReorderBlocks(
         [Description("The document id.")] string documentId,
@@ -184,7 +184,7 @@ public sealed class LiliaMcpWriteTools(
     /// through the connector an assistant had to type the BibTeX itself, and could get the details wrong. The entry goes
     /// in the document's bibliography block (made at the end when there is none), under a key no other entry uses.
     /// </summary>
-    [McpServerTool(Name = "add_reference", Title = "Add a reference", Destructive = false, Idempotent = false, OpenWorld = true)]
+    [McpServerTool(Name = "add_reference", Title = "Add a reference", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true)]
     [Description("Add a reference to the document's bibliography from its DOI, arXiv id or ISBN (give one): Lilia looks it up (Crossref, arXiv, Open Library) and writes the entry, so its authors, title, venue and year are the real ones. Returns the cite key and what to write in the text to cite it (@cite{key}). A DOI the document already holds is not added twice: its key is returned. The bibliography block is made at the end when there is none.")]
     public async Task<object> AddReference(
         [Description("The document id.")] string documentId,
@@ -286,7 +286,7 @@ public sealed class LiliaMcpWriteTools(
         return key + Guid.NewGuid().ToString("N")[..6];
     }
 
-    [McpServerTool(Name = "set_title", Title = "Set the title", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "set_title", Title = "Set the title", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Set the document's title (also its name and the LaTeX \\title), and optionally the authors, date, keywords and, for ACM, the rights and CCS lines. What you leave out stays as it is. Each author's affiliation, country and email go in authors (ACM, IEEE, Elsevier and the other venues print them in their own way); author is the plain alternative, one line each (name first).")]
     public Task<object> SetTitle(
         [Description("The document id.")] string documentId,
@@ -334,7 +334,7 @@ public sealed class LiliaMcpWriteTools(
     private static string OneLine(string s) => System.Text.RegularExpressions.Regex.Replace(s.Trim(), @"\s*\r?\n\s*", ", ");
 
     // Paste → LaTeX, phase 3 (11 Nov 2026): move a paper over section by section, each one checked.
-    [McpServerTool(Name = "paste_content", Title = "Paste text into a document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "paste_content", Title = "Paste text into a document", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Paste any text into a document where asked: LaTeX (a fragment or a whole paper), Markdown or plain text, or Lilia text. Lilia reads it as its Import → Paste does, adds the blocks after afterId (or at the end), checks that the document still compiles, and returns the new block ids, the verdict (problems on the pasted blocks) and the LaTeX of what was pasted. The way to move a paper over section by section: paste a section, read the verdict, fix with edit_block, paste the next after the last block added. The rest of the document and its settings are left as they are.")]
     public Task<object> PasteContent(
         [Description("The document id.")] string documentId,
@@ -343,7 +343,7 @@ public sealed class LiliaMcpWriteTools(
         [Description("Insert after this block id (from get_outline or a previous paste); omit to add at the end.")] string? afterId = null) =>
         WriteAsync(documentId, "paste_content", new() { ["content"] = content, ["format"] = format, ["afterId"] = afterId });
 
-    [McpServerTool(Name = "rewrite_document", Title = "Rewrite the whole document", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "rewrite_document", Title = "Rewrite the whole document", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description("Replace the WHOLE document body in one step, from LaTeX (a fragment or a whole paper, \\documentclass to \\end{document}); Lilia reads it with its LaTeX import, and a whole paper's page setup comes with it. For rewrites only: for a small change use edit_block, to add a section use paste_content. Get the current LaTeX with get_latex. To put the old text back, give the reply's undo.versionId to restore_version.")]
     public Task<object> RewriteDocument(
         [Description("The document id.")] string documentId,
@@ -360,7 +360,7 @@ public sealed class LiliaMcpWriteTools(
         };
     }
 
-    [McpServerTool(Name = "set_venue", Title = "Format for a venue", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "set_venue", Title = "Format for a venue", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Format the document for a venue in one step: the publisher's class, options, front matter and reference style (the editor's Venue choice). Only the document's owner can choose it. Profile ids: acm-sigconf-review, acm-sigconf-final, acm-journal-review, acm-journal-final, ieee-conference, ieee-journal, elsevier-preprint, elsevier-review, elsevier-final, lncs-submission, lncs-camera-ready, aps-review, aps-final, aip-review, aip-final, ams-journal, iop-review, iop-final, siam-review, siam-final; \"\" removes the venue. Run check_document afterwards: a venue's class can need content it expects (an abstract, keywords).")]
     public Task<object> SetVenue(
         [Description("The document id.")] string documentId,
@@ -377,6 +377,10 @@ public sealed class LiliaMcpWriteTools(
         "columns", "columnGap", "balancedColumns", "fontSize", "lineSpacing",
     };
     /** Every field set_document_settings takes, as Ask Lilia's tool names it. */
+    /// <summary>For the published schema of set_document_settings (McpToolSchemaFixes, api#700).</summary>
+    internal static IReadOnlyList<string> SettingNamesForSchema => SettingNames;
+    internal static bool IsNumericSetting(string name) => NumericSettings.Contains(name);
+
     private static readonly string[] SettingNames =
     [
         "paperSize", "orientation", "marginTop", "marginBottom", "marginLeft", "marginRight", "columns", "columnGap",
@@ -403,7 +407,7 @@ public sealed class LiliaMcpWriteTools(
         ["language"] = JsonSerializer.SerializeToElement("auto"),
     };
 
-    [McpServerTool(Name = "set_document_settings", Title = "Change the page setup", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "set_document_settings", Title = "Change the page setup", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Change the page setup. Pass only the fields to change, as one JSON object: paperSize (a4|letter|legal|a5|executive|b5), orientation (portrait|landscape), marginTop/marginBottom/marginLeft/marginRight (e.g. 2.5cm, \"\" = class default), columns (1-3), columnGap (cm), columnSeparator (none|rule), balancedColumns, fontFamily (serif|sans-serif|monospace|charter|times|palatino|bookman), fontSize (10|11|12), lineSpacing (0.8-3), paragraphIndent (length or none), pageNumbering (arabic|roman|none), headingNumbering (none|1-5: the heading levels numbered, which the table of contents lists too; default), headerLeft/headerCenter/headerRight/footerLeft/footerCenter/footerRight (plain text), language (auto|en|en-GB|fr|de|es|it|pt|nl|pl|sv|tr|ru|el|ar|he|zh|ja|ko: the PDF's language, auto reads it from the text), customPreamble (your own LaTeX added after Lilia's preamble, whose packages stay; it replaces the previous customPreamble, so read that first with get_document_settings). Invalid values change nothing and list the valid ones.")]
     public Task<object> SetDocumentSettings(
         [Description("The document id.")] string documentId,
@@ -448,7 +452,7 @@ public sealed class LiliaMcpWriteTools(
         return WriteAsync(documentId, "set_document_settings", args);
     }
 
-    [McpServerTool(Name = "create_document", Title = "Create a document", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "create_document", Title = "Create a document", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Create a new document owned by the author, optionally with a first draft in LaTeX (as rewrite_document). Kinds: article (default), report, book. Returns its id and address; then edit it with the other tools.")]
     public async Task<object> CreateDocument(
         [Description("The document's title.")] string title,
@@ -520,7 +524,7 @@ public sealed class LiliaMcpWriteTools(
         catch (Exception) { return null; }
     }
 
-    [McpServerTool(Name = "import_document", Title = "Import a file", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "import_document", Title = "Import a file", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Import a file you have as a new Lilia document: .tex, .md or .lml as text; .docx, an Overleaf project .zip, a .pdf, or a scanned page as .jpg or .png (a photo of handwritten maths notes) as base64. Up to 10 MB. A zip's \\input files are read as one document, its images and .bib kept with it. Lilia's importer runs as for a dropped file (no review step). Text, Word and zip files answer at once with the new document's id and address. A PDF or an image is read into LaTeX by Lilia's maths OCR, which takes up to about two minutes: the reply is an importId at once; call import_status with it every 10 to 20 seconds until it says done (the document) or failed (the reason). PDFs and images use the author's plan's monthly PDF pages (an image counts as one page), not the day's connector actions; a refusal says which limit and what is left. Then get_outline, check_document. When the file is with the author rather than with you, use start_import.")]
     public async Task<object> ImportDocument(
         [Description("The file name, e.g. paper.tex, thesis.docx, notes.md, notes.lml, paper.pdf, notes-scan.jpg. Its extension gives the format unless format is set.")] string filename,
@@ -680,7 +684,7 @@ public sealed class LiliaMcpWriteTools(
         };
     }
 
-    [McpServerTool(Name = "start_import", Title = "Start a file import", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "start_import", Title = "Start a file import", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Import a file (.tex, an Overleaf project .zip, .docx, .md, .lml, a .pdf, or a scanned page as .jpg or .png) the author has, without it passing through this conversation: returns a link to Lilia's drop page. Give the author the link; they drop the file there (signed in to Lilia). Then call import_status with the importId to get the new document. The link works for 30 minutes. A PDF or an image uses the author's plan's monthly PDF pages (an image counts as one). When you have the file yourself, import_document does it.")]
     public async Task<object> StartImport()
     {
@@ -734,7 +738,7 @@ public sealed class LiliaMcpWriteTools(
 
     // The connector test (17 Nov 2026, item C): a figure could only be TikZ. An image link printed "Missing figure" and
     // there was no upload, so a plot the assistant made had no way in. The file comes in the call; nothing is fetched.
-    [McpServerTool(Name = "add_figure_image", Title = "Put an image in a figure", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "add_figure_image", Title = "Put an image in a figure", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Put an image you have in a figure, from the file itself (a plot or diagram you made, a picture the author gave you): PNG, JPEG or PDF (its first page prints), up to 10 MB, sent as base64. Lilia stores it as the editor's upload does and adds a figure block after afterId (or at the end); with blockId it puts the image in that figure instead, keeping its caption, label and width unless you give new ones. Lilia never fetches a link: send the file. SVG, GIF, WebP and other formats are refused: convert to PNG, or to PDF for a vector drawing. Then check_document.")]
     public async Task<object> AddFigureImage(
         [Description("The document id.")] string documentId,
@@ -881,7 +885,7 @@ public sealed class LiliaMcpWriteTools(
     /// point: restoring that very version would leave nothing to go back to), so the restore can be undone the same way.
     /// The next edit starts a new undo point, at the restored text.
     /// </summary>
-    [McpServerTool(Name = "restore_version", Title = "Restore a saved version", Destructive = true, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "restore_version", Title = "Restore a saved version", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description("Put a document back to one of its saved versions, as History's Restore does: its blocks, bibliography and page setup become the version's. The version id comes from list_versions, or is the undo.versionId an edit's reply gave (restoring it undoes every change made since). The document as it is now is saved first and the reply gives that version's id: restore it the same way to undo the restore. Only someone who may edit the document can restore it.")]
     public async Task<object> RestoreVersion(
         [Description("The document id.")] string documentId,

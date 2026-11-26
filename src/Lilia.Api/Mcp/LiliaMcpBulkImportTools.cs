@@ -37,7 +37,7 @@ public sealed class LiliaMcpBulkImportTools(
         [property: Description("The file name, e.g. notebook-07.pdf.")] string Filename,
         [property: Description("The PDF, base64, up to 10 MB.")] string Content);
 
-    [McpServerTool(Name = "start_bulk_import", Title = "Start a bulk PDF import", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "start_bulk_import", Title = "Start a bulk PDF import", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Convert many PDFs at once (scanned notebooks, handwritten notes, papers), each into its own document, in the background: the author can leave and come back. Two ways: (1) send the PDFs you have as files (up to 5 per call, 10 MB each; call again with the same batchId to add more, up to 50); (2) send no files to get the link to Lilia's bulk drop page, where the author drops up to 50 PDFs of 95 MB each. Each page counts against the author's plan's monthly PDF pages. Then call bulk_import_status for progress: each file is read 10 pages at a time, and its document appears when it is finished.")]
     public async Task<object> StartBulkImport(
         [Description("The PDFs to convert. Omit to get the drop page's link instead.")] BulkImportUpload[]? files = null,
