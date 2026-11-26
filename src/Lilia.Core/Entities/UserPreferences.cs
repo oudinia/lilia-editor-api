@@ -49,6 +49,15 @@ public class UserPreferences
     /// <summary>When <see cref="EditableDocumentIds"/> was last chosen (the once-a-day rule).</summary>
     public DateTime? EditableChosenAt { get; set; }
 
+    /// <summary>
+    /// Automatic document summaries (Oussama, 26 Nov 2026: opt-in, under GDPR): when on, the documents list asks the AI
+    /// provider (Anthropic) for a one-line summary of each document, from its title and opening text. Off by default for
+    /// new and existing accounts; using Ask Lilia or a quick action doesn't turn it on. While off, the summary endpoint
+    /// refuses (no AI call), the list hides the one-liners, and Ask Lilia's library context leaves them out. Summaries
+    /// already stored are kept, not deleted.
+    /// </summary>
+    public bool AutoDocumentSummaries { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties

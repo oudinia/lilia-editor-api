@@ -67,6 +67,8 @@ public class DocumentsController : ControllerBase
     /// My Documents cards. On-demand; owner-only. Returns { aiSummary }.
     /// </summary>
     [HttpPost("{id:guid}/summary")]
+    // Opt-in (Oussama, 26 Nov 2026, GDPR): refused before the allowance check and before any AI call while off.
+    [AutoSummariesOn]
     [MeteredAi]
     public async Task<IActionResult> GenerateSummary(Guid id)
     {

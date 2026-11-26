@@ -523,6 +523,10 @@ public sealed partial class AskLiliaService : IAskLiliaService
             try
             {
                 var lib = await _documentService.GetDocumentsPaginatedAsync(userId, 1, 50, sortBy: "updatedAt", sortDir: "desc");
+                // The documents' AI one-liners only when the person opted in to automatic document summaries
+                // (Oussama, 26 Nov 2026, GDPR): without it, titles, sizes and readiness only.
+                var withSummaries = await _context.UserPreferences
+                    .Where(p => p.UserId == userId).Select(p => p.AutoDocumentSummaries).FirstOrDefaultAsync(ct);
                 if (lib.Items.Count > 0)
                 {
                     var sb = new System.Text.StringBuilder();
@@ -536,7 +540,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
                             : d.ValidationCheckedAt == null ? "draft (unchecked)"
                             : "clean";
                         sb.Append("- \"").Append(d.Title).Append("\" — ")
-                          .Append(string.IsNullOrWhiteSpace(d.AiSummary) ? "(no summary yet)" : d.AiSummary)
+                          .Append(!withSummaries ? "(no summary: automatic summaries are off)"
+                              : string.IsNullOrWhiteSpace(d.AiSummary) ? "(no summary yet)" : d.AiSummary)
                           .Append(" · ").Append(d.BlockCount).Append(" blocks · ").Append(readiness)
                           .AppendLine();
                     }

@@ -46,6 +46,9 @@ public partial class PreferencesService : IPreferencesService
         _logger = logger;
     }
 
+    public Task<bool> AutoDocumentSummariesAsync(string userId, CancellationToken ct = default) =>
+        _context.UserPreferences.Where(p => p.UserId == userId).Select(p => p.AutoDocumentSummaries).FirstOrDefaultAsync(ct);
+
     public async Task<UserPreferencesDto> GetPreferencesAsync(string userId)
     {
         var preferences = await _context.UserPreferences.FindAsync(userId);
@@ -125,6 +128,7 @@ public partial class PreferencesService : IPreferencesService
             preferences.AskLevel = AskLevels.Normalize(dto.AskLevel)
                 ?? throw new ArgumentException($"Unknown Ask Lilia level '{dto.AskLevel}'.", nameof(dto));
         }
+        if (dto.AutoDocumentSummaries.HasValue) preferences.AutoDocumentSummaries = dto.AutoDocumentSummaries.Value;
         if (dto.PinnedTools != null)
         {
             var error = ValidatePinnedTools(dto.PinnedTools);
@@ -220,7 +224,8 @@ public partial class PreferencesService : IPreferencesService
             shortcuts,
             p.UpdatedAt,
             pinned,
-            p.AskLevel
+            p.AskLevel,
+            p.AutoDocumentSummaries
         );
     }
 }
