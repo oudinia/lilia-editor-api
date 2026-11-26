@@ -35,10 +35,22 @@ public static class McpToolSchemaFixes
             settings["type"] = "object";
             var props = new JsonObject();
             foreach (var name in LiliaMcpWriteTools.SettingNamesForSchema)
-                props[name] = new JsonObject { ["type"] = LiliaMcpWriteTools.IsNumericSetting(name) ? new JsonArray("number", "null") : new JsonArray("string", "number", "boolean", "null") };
+                props[name] = SettingSchema(name);
             settings["properties"] = props;
             settings["minProperties"] = 1;
         }
         return JsonSerializer.SerializeToElement(root);
     }
+
+    /// <summary>One plain type per setting, no unions (MCP Inspector's "schema portability" warnings, 26 Nov 2026).
+    /// The tool still accepts null (back to the default) and a number sent as text ("12pt").</summary>
+    private static JsonObject SettingSchema(string name) => name switch
+    {
+        "fontSize" => new JsonObject { ["type"] = "integer", ["enum"] = new JsonArray(10, 11, 12), ["description"] = "Points." },
+        "columns" => new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 3 },
+        "columnGap" => new JsonObject { ["type"] = "number", ["description"] = "Centimetres." },
+        "lineSpacing" => new JsonObject { ["type"] = "number", ["minimum"] = 0.8, ["maximum"] = 3 },
+        "balancedColumns" => new JsonObject { ["type"] = "boolean" },
+        _ => new JsonObject { ["type"] = "string" },
+    };
 }

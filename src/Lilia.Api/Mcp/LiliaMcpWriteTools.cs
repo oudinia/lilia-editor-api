@@ -379,7 +379,6 @@ public sealed class LiliaMcpWriteTools(
     /** Every field set_document_settings takes, as Ask Lilia's tool names it. */
     /// <summary>For the published schema of set_document_settings (McpToolSchemaFixes, api#700).</summary>
     internal static IReadOnlyList<string> SettingNamesForSchema => SettingNames;
-    internal static bool IsNumericSetting(string name) => NumericSettings.Contains(name);
 
     private static readonly string[] SettingNames =
     [
@@ -424,11 +423,20 @@ public sealed class LiliaMcpWriteTools(
 
         var args = new Dictionary<string, object?>();
         var unknown = new List<string>();
+        var invalid = new List<string>();
         foreach (var p in settings.EnumerateObject())
         {
             // A misspelt field was dropped without a word.
             var name = SettingNames.FirstOrDefault(n => n.Equals(p.Name, StringComparison.OrdinalIgnoreCase));
             if (name is null) { unknown.Add(p.Name); continue; }
+            // A number sent as text, "12pt" or "12" (MCP Inspector on production, 26 Nov 2026, api#700): it failed with
+            // .NET's "could not be converted to System.Nullable`1[System.Int32]". Read it as the number, or say what's wanted.
+            if (NumericSettings.Contains(name) && p.Value.ValueKind == JsonValueKind.String)
+            {
+                if (NumberFromText(name, p.Value.GetString()) is { } parsed) { args[name] = parsed; continue; }
+                invalid.Add(NumericHint(name));
+                continue;
+            }
             args[name] = p.Value.ValueKind switch
             {
                 // null on a text setting means "unset", as get_document_settings reports it; it was a
@@ -449,8 +457,33 @@ public sealed class LiliaMcpWriteTools(
                 error = $"Lilia has no setting {string.Join(", ", unknown.Select(u => $"'{u}'"))}. Settings: {string.Join(", ", SettingNames)}. Nothing was changed.",
                 category = "invalid",
             });
+        if (invalid.Count > 0)
+            return Task.FromResult<object>(new { error = string.Join(" ", invalid) + " Nothing was changed.", category = "invalid" });
         return WriteAsync(documentId, "set_document_settings", args);
     }
+
+    /// <summary>"12pt", "12", " 1.5 " → the number; "true"/"false" for balancedColumns; null when it isn't one.</summary>
+    internal static JsonElement? NumberFromText(string name, string? text)
+    {
+        var t = (text ?? "").Trim();
+        if (name.Equals("balancedColumns", StringComparison.OrdinalIgnoreCase))
+            return bool.TryParse(t, out var b) ? JsonSerializer.SerializeToElement(b) : null;
+        if (t.EndsWith("pt", StringComparison.OrdinalIgnoreCase)) t = t[..^2].TrimEnd();
+        if (!double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)) return null;
+        var whole = name.Equals("fontSize", StringComparison.OrdinalIgnoreCase) || name.Equals("columns", StringComparison.OrdinalIgnoreCase);
+        if (whole && d != Math.Floor(d)) return null;
+        return whole ? JsonSerializer.SerializeToElement((int)d) : JsonSerializer.SerializeToElement(d);
+    }
+
+    private static string NumericHint(string name) => name.ToLowerInvariant() switch
+    {
+        "fontsize" => "fontSize is a number of points: 10, 11 or 12 (e.g. 12, or \"12pt\").",
+        "columns" => "columns is a whole number: 1, 2 or 3.",
+        "columngap" => "columnGap is a number of centimetres, e.g. 1.5.",
+        "linespacing" => "lineSpacing is a number from 0.8 to 3, e.g. 1.5.",
+        "balancedcolumns" => "balancedColumns is true or false.",
+        _ => $"{name} is a number.",
+    };
 
     [McpServerTool(Name = "create_document", Title = "Create a document", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Create a new document owned by the author, optionally with a first draft in LaTeX (as rewrite_document). Kinds: article (default), report, book. Returns its id and address; then edit it with the other tools.")]
