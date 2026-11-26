@@ -22,9 +22,32 @@ public static class McpToolSchemaFixes
         foreach (var tool in result.Tools)
         {
             if (tool.Name == "set_document_settings") tool.InputSchema = TypeSettings(tool.InputSchema);
+            tool.InputSchema = Portable(tool.InputSchema);
         }
         return result;
     };
+
+    /// <summary>
+    /// Optional parameters are published the portable way (MCP Inspector's "schema portability" warnings, 26 Nov 2026):
+    /// a C# <c>string? x = null</c> came out as <c>"type": ["string", "null"], "default": null</c>, a type union and a null
+    /// default that several clients' schema dialects don't take. An optional parameter is simply one not listed in
+    /// <c>required</c>; leaving it out and sending null mean the same to every tool, so the null is dropped from both.
+    /// </summary>
+    internal static JsonElement Portable(JsonElement schema)
+    {
+        var root = JsonNode.Parse(schema.GetRawText())!.AsObject();
+        if (root["properties"] is JsonObject props)
+        {
+            foreach (var (_, node) in props)
+            {
+                if (node is not JsonObject p) continue;
+                if (p["type"] is JsonArray types && types.Count == 2 && types.Any(t => t?.GetValue<string>() == "null"))
+                    p["type"] = types.First(t => t?.GetValue<string>() != "null")!.GetValue<string>();
+                if (p.TryGetPropertyValue("default", out var d) && d is null) p.Remove("default");
+            }
+        }
+        return JsonSerializer.SerializeToElement(root);
+    }
 
     /// <summary>The settings parameter as an object whose properties are the settings Lilia knows (extra keys are refused by the tool).</summary>
     internal static JsonElement TypeSettings(JsonElement schema)

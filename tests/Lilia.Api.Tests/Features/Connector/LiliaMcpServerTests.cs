@@ -133,6 +133,14 @@ public class LiliaMcpServerTests : IntegrationTestBase
         var settings = tools.Single(t => t.GetProperty("name").GetString() == "set_document_settings")
             .GetProperty("inputSchema").GetProperty("properties").GetProperty("settings");
         settings.GetProperty("type").GetString().Should().Be("object");
+        // Portable optional parameters: no type unions, no null defaults (MCP Inspector, 26 Nov 2026).
+        foreach (var t in tools)
+            if (t.GetProperty("inputSchema").TryGetProperty("properties", out var ps))
+                foreach (var p in ps.EnumerateObject())
+                {
+                    if (p.Value.TryGetProperty("type", out var ty)) ty.ValueKind.Should().Be(JsonValueKind.String, $"{t.GetProperty("name")}.{p.Name}");
+                    (p.Value.TryGetProperty("default", out var d) && d.ValueKind == JsonValueKind.Null).Should().BeFalse($"{t.GetProperty("name")}.{p.Name}");
+                }
         settings.GetProperty("properties").TryGetProperty("fontSize", out _).Should().BeTrue();
     }
 
