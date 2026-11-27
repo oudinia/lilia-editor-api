@@ -11,7 +11,8 @@ namespace Lilia.Api.Tests.Features.AskLilia;
 
 /// <summary>
 /// The owner's rule for unused Ask Lilia credits (14 Nov 2026, "Capped, 3 months"): they roll over, never more than
-/// one month's allowance, expire after 3 months and are lost when the plan ends. Free's taste is 30 a month.
+/// one month's allowance, expire after 3 months and are lost when the plan ends. Free's taste is 75 a month
+/// (27 Nov 2026). The rule examples below use a sample allowance; they are not the plan row.
 /// </summary>
 public class AskRolloverRuleTests
 {
@@ -97,7 +98,7 @@ public class AskRolloverTests : IntegrationTestBase, IDisposable
         var plans = Entitlements(out var scope);
         using var _ = scope;
 
-        (await Ask(plans, free, 31))!.Cap.Should().Be(30, "months before the account existed left nothing unused");
+        (await Ask(plans, free, 76))!.Cap.Should().Be(75, "months before the account existed left nothing unused");
     }
 
     private static async Task<QuotaExceededException?> Ask(IEntitlementService plans, string userId, int credits)
@@ -114,11 +115,11 @@ public class AskRolloverTests : IntegrationTestBase, IDisposable
     }
 
     [Fact]
-    public async Task Free_has_a_taste_of_30_credits_and_Pro_500()
+    public async Task Free_has_a_taste_of_75_credits_and_Pro_500()
     {
         await using var db = CreateDbContext();
         var caps = await db.Plans.Where(p => p.Slug == "pro" || p.Slug == "free").ToDictionaryAsync(p => p.Slug, p => p.Caps);
-        caps["free"].RootElement.GetProperty("aiCreditsPerMonth").GetInt32().Should().Be(30);
+        caps["free"].RootElement.GetProperty("aiCreditsPerMonth").GetInt32().Should().Be(75);
         caps["pro"].RootElement.GetProperty("aiCreditsPerMonth").GetInt32().Should().Be(500);
     }
 
@@ -128,15 +129,15 @@ public class AskRolloverTests : IntegrationTestBase, IDisposable
         var free = NewId("free");
         await SeedUserAsync(free);
         await JoinedAsync(free, ThisMonth.AddMonths(-1));
-        await SpendAsync(free, 10, ThisMonth.AddMonths(-1).AddDays(3));   // 20 of last month's 30 left
+        await SpendAsync(free, 10, ThisMonth.AddMonths(-1).AddDays(3));   // 65 of last month's 75 left
         await SpendAsync(free, 25, ThisMonth.AddHours(1));
         var plans = Entitlements(out var scope);
         using var _ = scope;
 
-        (await Ask(plans, free, 25)).Should().BeNull("25 + 25 is within 30 + the 20 carried");
-        var refused = await Ask(plans, free, 26);
+        (await Ask(plans, free, 115)).Should().BeNull("25 + 115 is within 75 + the 65 carried");
+        var refused = await Ask(plans, free, 116);
         refused!.Resource.Should().Be("aiCreditsPerMonth");
-        refused.Cap.Should().Be(50);
+        refused.Cap.Should().Be(140);
     }
 
     [Fact]
@@ -159,8 +160,8 @@ public class AskRolloverTests : IntegrationTestBase, IDisposable
         var plans = Entitlements(out var scope);
         using var _ = scope;
 
-        (await Ask(plans, user, 30)).Should().BeNull("Free's own 30");
-        (await Ask(plans, user, 31))!.Cap.Should().Be(30, "Pro's unused months ended with Pro");
+        (await Ask(plans, user, 75)).Should().BeNull("Free's own 75");
+        (await Ask(plans, user, 76))!.Cap.Should().Be(75, "Pro's unused months ended with Pro");
     }
 
     [Fact]
@@ -169,7 +170,7 @@ public class AskRolloverTests : IntegrationTestBase, IDisposable
         var free = NewId("meter");
         await SeedUserAsync(free);
         await JoinedAsync(free, ThisMonth.AddMonths(-2));
-        await SpendAsync(free, 30, ThisMonth.AddHours(1));   // last month unused: 30 carried, so half of 60 is used
+        await SpendAsync(free, 75, ThisMonth.AddHours(1));   // last month unused: 75 carried, so half of 150 is used
         var plans = Entitlements(out var scope);
         using var _ = scope;
 
