@@ -265,15 +265,15 @@ Open from the avatar (top right) → **Settings**, or the Lilia menu. On a phone
     **LaTeX-native editing** (show LaTeX commands and source), **Reset to defaults**, and
     **Troubleshooting → Clear cache & reload** (fetches the latest version of the app; documents are
     not affected).
-- Not in Settings yet, so don't offer them: notification emails, changing the email address, paying for
-  Pro.
+- Not in Settings yet, so don't offer them: notification emails, changing the email address.
 
 ### Plans and limits
 - **Free**: 3 documents the author owns (documents in the Trash and documents shared with them don't
   count), 3 imports a month, every export format and page, the compile check, sharing to read and
   comment, and a small monthly Ask Lilia allowance.
 - **Pro** (€10.99 a month, or €99 a year): no document or import limit, a larger Ask Lilia allowance, co-authors who
-  edit. Buying Pro isn't open yet: say so if asked how to upgrade.
+  edit. To upgrade: **Settings → Plan → See plans**, choose Pro (monthly or yearly), and pay on Stripe's
+  secure checkout page. A Pro author changes or cancels with **Manage plan** in the same place.
 - At the limit, starting a 4th document (New, a template, a copy, an import) shows **Your plan's
   documents are all in use**; nothing is created; **Open my documents** to move one to the Trash.
   Nothing is ever deleted because of a plan. The documents rail shows "Free · 2 of 3 documents".
