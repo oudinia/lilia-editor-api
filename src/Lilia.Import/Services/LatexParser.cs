@@ -740,7 +740,9 @@ public class LatexParser : ILatexParser
             if (titleMatch.HasValue)
             {
                 CheckRegexDispatchDrift("title", "metadata-extract");
-                document.Title = StripInlineCommandsForPlainText(WithoutTypeSwitches(titleMatch.Value.Inner));
+                // The title is plain text in the editor: a character escaped for LaTeX ("Notes \#221") is the character
+                // itself. The exports escape it again (launch-bot #221 retest, 28 Nov 2026: the title block showed "\#221").
+                document.Title = UnescapeLatexSpecials(StripInlineCommandsForPlainText(WithoutTypeSwitches(titleMatch.Value.Inner)));
                 // amsart's document-level note, a \thanks after \title and before the first \author (funding, a preliminary
                 // version with its \cite): the title's own. It was dropped with the body's stray \thanks (launch-bot #249,
                 // 19 Nov 2026).
@@ -1805,6 +1807,10 @@ public class LatexParser : ILatexParser
             return -1;
         }
     }
+
+    /// <summary>LaTeX's escaped specials as the characters they print: \# \$ \% \&amp; \_ \{ \} (a double backslash is a line break, left as is).</summary>
+    internal static string UnescapeLatexSpecials(string text) =>
+        string.IsNullOrEmpty(text) ? text : Regex.Replace(text, @"(?<!\\)\\([#$%&_{}])", "$1");
 
     private static string StripInlineCommandsForPlainText(string text)
     {
