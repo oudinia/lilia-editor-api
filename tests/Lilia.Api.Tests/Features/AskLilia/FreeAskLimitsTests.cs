@@ -17,9 +17,10 @@ namespace Lilia.Api.Tests.Features.AskLilia;
 
 /// <summary>
 /// Ask Lilia on the Free plan (28 Nov 2026, the owner): 75 credits must not be enough to write or repair a whole
-/// document, or Free replaces Pro. So Free answers come from the light model, each answer stops at a per-answer credit
-/// limit (the pending tools are refused and the model must answer), and the whole-document tools are off. Pro and Beta
-/// are unchanged. Nothing is sent to Anthropic.
+/// document, or Free replaces Pro. So Free answers come from the light model and each answer stops at a per-answer credit
+/// limit (the pending tools are refused and the model must answer). The same evening he let a short whole document
+/// through: apply_lml is back on Free, and a large rewrite stops at the limit instead of being refused up front.
+/// Pro and Beta are unchanged. Nothing is sent to Anthropic.
 /// </summary>
 public class FreeAskLimitsTests
 {
@@ -109,6 +110,23 @@ public class FreeAskLimitsTests
     }
 
     [Fact]
+    public async Task A_large_one_step_rewrite_that_costs_more_than_the_limit_is_not_applied()
+    {
+        // Writing a long document's LML in one round costs more than the limit on its own: the call is refused.
+        var model = new ToolCallingChatClient(round => round == 0 ? [ToolCallingChatClient.Call("apply_lml", new() { ["lml"] = "# A long document" })] : [])
+        { Answer = "That document is too long for one Free answer." };
+        var loop = await Service(plan: null, model, creditsPerRound: 7).RunToolLoopAsync(
+            [new ChatMessage(ChatRole.User, "Rewrite the whole document in French")], new ChatOptions { Tools = [] }, [], webSearch: false,
+            new AskLiliaService.CompileRepair(new List<string>()), "lilia-polish", null, Guid.NewGuid(), default,
+            creditCap: 6, model: "claude-haiku-5-5");
+
+        model.ToolModes.Should().HaveCount(2, "the rewrite round, then the answer");
+        model.ToolModes[^1].Should().BeOfType<NoneChatToolMode>();
+        loop.CapReached.Should().BeTrue();
+        loop.ToolCalls.Should().Be(0, "the refused rewrite was never run");
+    }
+
+    [Fact]
     public async Task Without_a_cap_the_loop_runs_as_before()
     {
         var model = new ToolCallingChatClient(round => round < 5 ? [ToolCallingChatClient.Call("search_kb", new() { ["query"] = "x" })] : []);
@@ -127,8 +145,9 @@ public class FreeAskLimitsTests
         AskLiliaService.FreeCapNote("en").Should().Contain("Free plan").And.Contain("Pro").And.Contain("Undo AI changes");
         AskLiliaService.FreeCapNote("fr").Should().Contain("Gratuit").And.Contain("Pro");
         AskLiliaService.FreeCapNote("es").Should().Contain("Gratis").And.Contain("Pro");
-        AskLiliaService.FreeBlockedTools.Should().BeEquivalentTo(["apply_lml", "import_latex"]);
-        AskLiliaService.FreePlanNote.Should().Contain("Pro").And.Contain("apply_lml");
+        // 28 Nov 2026 evening: a short whole document goes through on Free; only a large one stops, at the limit.
+        AskLiliaService.FreeBlockedTools.Should().BeEquivalentTo(["import_latex"]);
+        AskLiliaService.FreePlanNote.Should().Contain("apply_lml once").And.Contain("Do not refuse up front").And.Contain("Pro-sized");
     }
 
     [Fact]

@@ -759,15 +759,20 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private async Task<string?> FreeModelForAsync(string userId, CancellationToken ct) =>
         _freeModel is not null && _catalog.Get(_freeModel) is not null && await IsFreeAskAsync(userId, ct) ? _freeModel : null;
 
-    /// <summary>The whole-document tools a Free answer doesn't get: one call replaces or imports the entire document.</summary>
-    internal static readonly HashSet<string> FreeBlockedTools = new(StringComparer.Ordinal) { "apply_lml", "import_latex" };
+    /// <summary>
+    /// The tools a Free answer doesn't get. import_latex turns a pasted .tex into the document, an import that the Free
+    /// plan's monthly imports count elsewhere. apply_lml stays (28 Nov 2026 evening, the owner: a short whole document,
+    /// such as a note on Pythagoras, may be written or rewritten on Free; only a large one stops, at the per-answer limit).
+    /// </summary>
+    internal static readonly HashSet<string> FreeBlockedTools = new(StringComparer.Ordinal) { "import_latex" };
 
-    /// <summary>What the model is told on the Free plan, so it scopes the work instead of starting what it can't finish.</summary>
+    /// <summary>What the model is told on the Free plan: no refusal up front, the cheapest way, and the limit's meaning.</summary>
     internal const string FreePlanNote =
-        "FREE PLAN — this author is on Lilia's Free plan. Answer questions, explain, and change at most one section or a few blocks per answer. "
-        + "Rewriting, translating or repairing the whole document, or writing a full new document, is a Pro feature: do not start it. "
-        + "Instead say in one sentence that it is a Pro-sized job, then offer to do one section now (name which). "
-        + "apply_lml and import_latex are not available on this plan.";
+        "FREE PLAN — this author is on Lilia's Free plan. Each answer has a credit limit. Do what is asked, including writing or rewriting "
+        + "a whole short document, in the cheapest way: for a whole-document write or rewrite, use apply_lml once rather than many per-block edits. "
+        + "Do not refuse up front because a job is whole-document. If the server tells you the Free plan's limit for this answer was reached, "
+        + "stop and answer: say what you did and what is left (a large document is a Pro-sized job, or can be done one section per question). "
+        + "import_latex is not available on this plan.";
 
     /// <summary>The note added to an answer that stopped at the Free plan's per-answer limit, in the author's language.</summary>
     internal static string FreeCapNote(string? language) => KbLanguage.Normalize(language) switch
