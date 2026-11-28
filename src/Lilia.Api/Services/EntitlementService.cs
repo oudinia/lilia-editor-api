@@ -26,8 +26,10 @@ public class EntitlementService : IEntitlementService
     private readonly decimal _freeBudgetUsd;
     private readonly bool _aiComingSoon;
     /// <summary>
-    /// The plans <c>AI:ComingSoon</c> applies to (22 Nov 2026, the owner: Ask Lilia on for Pro through the Claude API,
-    /// Free still "coming soon"). Null = every plan, as before. A user with no plan counts as one of them.
+    /// The plans <c>AI:ComingSoon</c> applies to (22 Nov 2026, the owner: Ask Lilia on for Pro, Free still "coming soon").
+    /// Null or an empty list means every plan: clearing the list does not turn a plan on. A user with no plan counts
+    /// as one of them. Which plans wait is server configuration, not this service (27 Nov 2026: Free's allowance is 75
+    /// and Free comes off that list there, without emptying it).
     /// </summary>
     private readonly HashSet<string>? _aiComingSoonPlans;
 
