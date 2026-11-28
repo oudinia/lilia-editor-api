@@ -109,6 +109,12 @@ public sealed partial class AskLiliaService : IAskLiliaService
     private readonly string? _mathModel;
     private readonly Dictionary<string, AiTierOptions> _tiers;
     private readonly int _creditsPerCompile;
+    // Ask Lilia on the Free plan (28 Nov 2026, the owner: 75 credits must not be enough to write or repair a whole
+    // document, or Free replaces Pro). Free answers come from the light model (AI:Free:Model), each answer stops at
+    // AI:Free:CreditCapPerAnswer credits, and the whole-document tools are off. Unset model or cap 0: as before.
+    private readonly string? _freeModel;
+    private readonly string? _freeEffort;
+    private readonly int _freeCreditCap;
     private readonly bool _useAi;
     private readonly bool _enabled;
     private readonly bool _enforceCredits;
@@ -151,6 +157,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// </summary>
     internal async Task<(string Model, string? Effort)> ChooseModelAsync(string userId, string? requested, AiSkill skill, CancellationToken ct)
     {
+        if (await FreeModelForAsync(userId, ct) is { } free) return (free, _freeEffort);
         var model = await ResolveModelAsync(userId, requested, ct);
         if (!string.IsNullOrWhiteSpace(requested) && model == requested) return (model, null);
         // The tier's model and effort go together: a tier whose model isn't in the catalog falls back to
@@ -332,6 +339,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
         _mathModel = configuration["AI:Math:Model"];
         _tiers = configuration.GetSection("AI:Tiers").Get<Dictionary<string, AiTierOptions>>() ?? new();
         _creditsPerCompile = configuration.GetValue("AI:CheckDocument:CreditsPerCompile", 1);
+        _freeModel = configuration["AI:Free:Model"] is { Length: > 0 } fm ? fm : null;
+        _freeEffort = configuration["AI:Free:Effort"] is { Length: > 0 } fe ? fe : null;
+        _freeCreditCap = Math.Max(0, configuration.GetValue("AI:Free:CreditCapPerAnswer", 0));
         _chatClient = chatClient;
         _entitlement = entitlement;
         _catalog = catalog;
@@ -555,6 +565,9 @@ public sealed partial class AskLiliaService : IAskLiliaService
             }
         }
 
+        // The Free plan's limits (28 Nov 2026): told to the model, and enforced on the tools and the loop below.
+        var freeAsk = _freeCreditCap > 0 || _freeModel is not null ? await IsFreeAskAsync(userId, ct) : false;
+        if (freeAsk && editMode) systemSb.AppendLine().AppendLine(FreePlanNote);
         var system = systemSb.ToString();
         var messages = new List<ChatMessage> { new(ChatRole.System, system) };
 
@@ -622,6 +635,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
             // doesn't need to dispatch it (it never surfaces as a FunctionCallContent).
             if (webSearch)
                 tools = tools.Append((AITool)new HostedWebSearchTool()).ToList();
+            if (freeAsk)
+                tools = tools.Where(t => !FreeBlockedTools.Contains(t.Name)).ToList();
             var options = new ChatOptions
             {
                 ModelId = model,
@@ -636,7 +651,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
                 RawRepresentationFactory = _ => CachedRequest(model, effort),
             };
 
-            var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct, spend);
+            var loop = await RunToolLoopAsync(messages, options, tools, webSearch, repair, skill.Id, documentId, aiRequestId, ct, spend,
+                creditCap: freeAsk ? _freeCreditCap : 0, model: model);
             var (response, use, toolCalls, webSearches, partialApply, citations) =
                 (loop.Response, loop.Use, loop.ToolCalls, loop.WebSearches, loop.PartialApply, loop.Citations);
             var (inputTokens, outputTokens) = (use.Input, use.Output);
@@ -666,6 +682,8 @@ public sealed partial class AskLiliaService : IAskLiliaService
             {
                 reply = DoneNote(request.Language, metaChanged && changed.Count == 0 ? null : changed.Distinct().Count());
             }
+            if (loop.CapReached)
+                reply = string.IsNullOrWhiteSpace(reply) ? FreeCapNote(request.Language) : reply + "\n\n" + FreeCapNote(request.Language);
             if (response.FinishReason == ChatFinishReason.Length)
                 _logger.LogWarning("[AskLilia] skill={Skill} reply cut off at the output limit ({Output} output tokens)", skill.Id, outputTokens);
             reply = WithCutOffNote(reply, response.FinishReason, request.Language);
@@ -715,6 +733,7 @@ public sealed partial class AskLiliaService : IAskLiliaService
     /// <summary>The catalog's default model, or the one asked for when the caller's tier allows it.</summary>
     private async Task<string> ResolveModelAsync(string userId, string? requested, CancellationToken ct)
     {
+        if (await FreeModelForAsync(userId, ct) is { } free) return free;
         var model = _catalog.DefaultModelId();
         if (!string.IsNullOrWhiteSpace(requested))
         {
@@ -725,6 +744,46 @@ public sealed partial class AskLiliaService : IAskLiliaService
         }
         return model;
     }
+
+    /// <summary>
+    /// True for an account on the Free plan: no paid plan row, or the free plan itself. Beta, Pro and the rest are not
+    /// (the owner and testers hold Beta).
+    /// </summary>
+    internal async Task<bool> IsFreeAskAsync(string userId, CancellationToken ct)
+    {
+        var plan = await _entitlement.GetActivePlanAsync(userId, ct);
+        return plan is null || string.Equals(plan.Slug, "free", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The light model a Free account's answers come from, when one is configured and in the catalog.</summary>
+    private async Task<string?> FreeModelForAsync(string userId, CancellationToken ct) =>
+        _freeModel is not null && _catalog.Get(_freeModel) is not null && await IsFreeAskAsync(userId, ct) ? _freeModel : null;
+
+    /// <summary>The whole-document tools a Free answer doesn't get: one call replaces or imports the entire document.</summary>
+    internal static readonly HashSet<string> FreeBlockedTools = new(StringComparer.Ordinal) { "apply_lml", "import_latex" };
+
+    /// <summary>What the model is told on the Free plan, so it scopes the work instead of starting what it can't finish.</summary>
+    internal const string FreePlanNote =
+        "FREE PLAN — this author is on Lilia's Free plan. Answer questions, explain, and change at most one section or a few blocks per answer. "
+        + "Rewriting, translating or repairing the whole document, or writing a full new document, is a Pro feature: do not start it. "
+        + "Instead say in one sentence that it is a Pro-sized job, then offer to do one section now (name which). "
+        + "apply_lml and import_latex are not available on this plan.";
+
+    /// <summary>The note added to an answer that stopped at the Free plan's per-answer limit, in the author's language.</summary>
+    internal static string FreeCapNote(string? language) => KbLanguage.Normalize(language) switch
+    {
+        "fr" => "ℹ️ **Limite du plan Gratuit atteinte pour cette réponse.** Les gros travaux (réécrire ou réparer tout le document) sont réservés à Pro. "
+                + "Ce qui a déjà été modifié peut être annulé (Annuler les modifications de l'IA). Demandez-moi une section à la fois, ou passez à Pro dans Paramètres › Offre.",
+        "es" => "ℹ️ **Se alcanzó el límite del plan Gratis para esta respuesta.** Los trabajos grandes (reescribir o reparar todo el documento) son de Pro. "
+                + "Lo que ya se cambió se puede deshacer (Deshacer cambios de la IA). Pídeme una sección cada vez, o pasa a Pro en Ajustes › Plan.",
+        _ => "ℹ️ **This answer reached the Free plan's limit.** Big jobs (rewriting or repairing the whole document) are part of Pro. "
+             + "Anything already changed can be undone (Undo AI changes). Ask me for one section at a time, or upgrade to Pro in Settings › Plan.",
+    };
+
+    /// <summary>What a tool call gets once the Free answer's limit is reached: no more work, answer now.</summary>
+    internal const string FreeCapToolNote =
+        "Free plan limit for this answer reached: this call was not run and no more tools can be used. Answer the author now: "
+        + "say what you did, what is left, and that the rest is a Pro-sized job (or can be done one section per question).";
 
     /// <summary>Debit the turn's tokens (and any surcharge) and read the balance back. Best effort: the reply is what was asked for.</summary>
     private async Task<(int Credits, AiArchitectBalance? Balance, int CreditsUsed)> MeterAsync(
