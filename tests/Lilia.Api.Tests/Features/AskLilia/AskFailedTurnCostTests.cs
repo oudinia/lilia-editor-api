@@ -27,6 +27,10 @@ public class AskFailedTurnCostTests : FourCallersTestBase, IDisposable
         {
             b.UseSetting("AI:Anthropic:ApiKey", "sk-test-not-a-key");
             b.UseSetting("AI:Enabled", "true");
+            // These accounts have no plan, so they count as Free; the Free per-answer limit and light model
+            // (FreeAskLimitsTests) are not what these tests are about.
+            b.UseSetting("AI:Free:CreditCapPerAnswer", "0");
+            b.UseSetting("AI:Free:Model", "");
             b.ConfigureTestServices(s =>
             {
                 foreach (var d in s.Where(d => d.ServiceType == typeof(IChatClient)).ToList()) s.Remove(d);

@@ -53,7 +53,7 @@ public sealed partial class AskLiliaService
 
     internal sealed record ToolLoopResult(
         ChatResponse Response, AiTokenUse Use, int ToolCalls, int WebSearches,
-        bool PartialApply, List<WebCitation> Citations, int Rounds = 0, int LargestPrompt = 0);
+        bool PartialApply, List<WebCitation> Citations, int Rounds = 0, int LargestPrompt = 0, bool CapReached = false);
 
     /// <summary>Compile the document as saved now, and count it against the turn.</summary>
     private async Task<DocumentCheck> RunCheckAsync(LiveDocument live, Guid docGuid, string userId, CompileRepair repair, CancellationToken ct)
@@ -124,8 +124,12 @@ public sealed partial class AskLiliaService
     /// </summary>
     internal async Task<ToolLoopResult> RunToolLoopAsync(
         List<ChatMessage> messages, ChatOptions options, IList<AITool> tools, bool webSearch, CompileRepair repair,
-        string skillId, Guid? documentId, Guid aiRequestId, CancellationToken ct, TurnSpend? spend = null)
+        string skillId, Guid? documentId, Guid aiRequestId, CancellationToken ct, TurnSpend? spend = null,
+        int creditCap = 0, string? model = null)
     {
+        // The Free plan's per-answer limit (28 Nov 2026): once the answer has spent creditCap credits (tokens at the
+        // model's rate, plus compile checks), pending tool calls are refused and the next round is the answer.
+        var capReached = false;
         ChatResponse response = null!;
         var use = AiTokenUse.None;
         var (rounds, largestPrompt) = (0, 0);
@@ -159,6 +163,18 @@ public sealed partial class AskLiliaService
                 .OfType<FunctionCallContent>()
                 .ToList();
             if (calls.Count == 0) break; // final answer
+
+            if (creditCap > 0 && !capReached && model is not null
+                && _catalog.CreditsFor(model, use) + repair.Compiles * _creditsPerCompile >= creditCap)
+            {
+                capReached = true;
+                _logger.LogInformation("[AskLilia] free per-answer cap ({Cap} credits) reached for skill={Skill} doc={DocId} req={ReqId} after {Rounds} round(s)",
+                    creditCap, skillId, documentId, aiRequestId, rounds);
+                foreach (var call in calls)
+                    messages.Add(new ChatMessage(ChatRole.Tool, [new FunctionResultContent(call.CallId, new { error = FreeCapToolNote })]));
+                options.ToolMode = ChatToolMode.None;
+                continue;
+            }
 
             // Last allowed round still wants tools → execute them, but we cannot
             // get a follow-up summary round. Flag partial so the client warns.
@@ -200,7 +216,7 @@ public sealed partial class AskLiliaService
                 options.ToolMode = ChatToolMode.None;
             }
         }
-        return new ToolLoopResult(response, use, toolCalls, webSearches, partialApply, citations, rounds, largestPrompt);
+        return new ToolLoopResult(response, use, toolCalls, webSearches, partialApply && !capReached, citations, rounds, largestPrompt, capReached);
     }
 
     /// <summary>
